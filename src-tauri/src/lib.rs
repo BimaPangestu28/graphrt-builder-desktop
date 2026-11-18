@@ -97,6 +97,8 @@ pub fn run() {
             commands::triggers::set_trigger_enabled,
             commands::triggers::delete_trigger,
             commands::triggers::preview_schedule,
+            commands::versions::compare_agent_versions,
+            commands::versions::get_version_flow_summary,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start the graphrt desktop app");

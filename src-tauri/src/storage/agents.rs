@@ -104,6 +104,8 @@ impl Database {
     }
 
     /// Copies an old version's flow into a NEW version on top (history is never rewritten).
+    /// When that flow is identical to the current one, nothing is written and the
+    /// agent is returned unchanged, so repeated Undo/Redo does not pile up versions.
     pub fn restore_agent_version(&self, agent_id: &str, version: i64) -> AppResult<Agent> {
         let mut connection = self.lock()?;
         let transaction = connection.transaction()?;
@@ -116,6 +118,9 @@ impl Database {
             )
             .optional()?
             .ok_or_else(|| AppError::NotFound(format!("version {version} of agent {agent_id}")))?;
+        if restored_flow == agent.flow_yaml {
+            return Ok(agent);
+        }
         let change_summary = format!("Restored version {version}");
         append_version(&transaction, &agent, &restored_flow, &change_summary)?;
         let updated_agent = fetch_agent(&transaction, agent_id)?;
@@ -366,6 +371,23 @@ mod tests {
         assert_eq!(versions[0].change_summary, "Restored version 1");
         assert_eq!(versions[0].flow_yaml, agent.flow_yaml);
         assert_eq!(versions[1].flow_yaml, "nodes: [changed]");
+    }
+
+    #[test]
+    fn restoring_a_flow_identical_to_the_current_one_adds_no_version() {
+        let database = test_database();
+        let agent = create_test_agent(&database, "Restorable");
+        let edited = database.update_agent_flow(&agent.id, "nodes: [changed]", "Changed").unwrap();
+        let restored = database.update_agent_flow(&agent.id, &agent.flow_yaml, "Back").unwrap();
+
+        // Current (v3) already has v1's flow; restoring v1 or v3 is a no-op.
+        assert_eq!(database.restore_agent_version(&agent.id, 1).unwrap(), restored);
+        assert_eq!(database.restore_agent_version(&agent.id, 3).unwrap(), restored);
+        assert_eq!(database.list_agent_versions(&agent.id).unwrap().len(), 3);
+
+        let redone = database.restore_agent_version(&agent.id, 2).unwrap();
+        assert_eq!(redone.current_version, 4);
+        assert_eq!(redone.flow_yaml, edited.flow_yaml);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { joinClassNames } from '@/components/ui'
-import type { StepDiffRow } from './diffAgentSteps'
+import type { StepDiffRow } from './stepDiffRows'
 
 const markerBaseClassNames = 'w-[22px] shrink-0 text-center text-[12px]'
 
@@ -29,23 +29,23 @@ function MarkedRow({ marker, label, tone, children }: { marker: string; label: s
 function StepDiffRowContent({ row }: { row: StepDiffRow }) {
   switch (row.kind) {
     case 'unchanged':
-      return <UnchangedRow name={row.step.name} position={row.position} />
+      return <UnchangedRow name={row.step.title} position={row.position} />
     case 'removed':
       return (
         <MarkedRow marker="−" label="Removed" tone="danger">
-          <span className="text-danger-deep line-through">{row.step.name}</span>
+          <span className="text-danger-deep line-through">{row.step.title}</span>
         </MarkedRow>
       )
     case 'added':
       return (
         <MarkedRow marker="+" label="Added" tone="ok">
-          <span>{row.step.name}</span>
+          <span>{row.step.title}</span>
         </MarkedRow>
       )
     case 'changed':
       return (
         <MarkedRow marker="~" label="Changed" tone="amber">
-          <span>{row.step.name}</span>
+          <span>{row.step.title}</span>
           <span className="text-[13px] text-amber-deep">
             {row.fromSetting} → {row.toSetting}
           </span>

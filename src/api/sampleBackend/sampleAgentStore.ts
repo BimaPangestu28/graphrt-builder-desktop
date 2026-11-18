@@ -148,13 +148,31 @@ export function restoreStoredVersion(agentId: string, versionNumber: number): Ag
   const storedAgent = findStoredAgent(agentId)
   const restoredVersion = storedAgent.versions.find((version) => version.version === versionNumber)
   if (!restoredVersion) throw new BackendError('not_found', `Agent ${agentId} has no version ${versionNumber}`)
+  // Like the desktop backend: restoring the current steps again adds no version.
+  if (renderVersionYaml(storedAgent, restoredVersion) === renderVersionYaml(storedAgent, currentVersionOf(storedAgent))) return toAgent(storedAgent)
   return saveNewVersion(agentId, restoredVersion.steps, `Restored v${versionNumber}`)
+}
+
+function summarizeVersion(storedAgent: StoredAgent, version: SampleVersionSeed): FlowSummary {
+  const steps = copySteps(version.steps)
+  const usesModel = steps.some((flowStep) => flowStep.nodeType === 'llm')
+  return { steps, inputs: storedAgent.inputs.map((input) => ({ ...input })), modelProviders: usesModel ? ['openai'] : [], env: [] }
 }
 
 /** Steps, inputs and model providers of the current version. @throws BackendError - `not_found` */
 export function summarizeStoredAgent(agentId: string): FlowSummary {
   const storedAgent = findStoredAgent(agentId)
-  const steps = copySteps(currentVersionOf(storedAgent).steps)
-  const usesModel = steps.some((flowStep) => flowStep.nodeType === 'llm')
-  return { steps, inputs: storedAgent.inputs.map((input) => ({ ...input })), modelProviders: usesModel ? ['openai'] : [], env: [] }
+  return summarizeVersion(storedAgent, currentVersionOf(storedAgent))
+}
+
+/**
+ * Steps, inputs and model providers of one saved version.
+ *
+ * @throws BackendError - `not_found` when the agent or version does not exist
+ */
+export function summarizeStoredVersion(agentId: string, versionNumber: number): FlowSummary {
+  const storedAgent = findStoredAgent(agentId)
+  const version = storedAgent.versions.find((candidate) => candidate.version === versionNumber)
+  if (!version) throw new BackendError('not_found', `Agent ${agentId} has no version ${versionNumber}`)
+  return summarizeVersion(storedAgent, version)
 }
