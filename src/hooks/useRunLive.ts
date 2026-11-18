@@ -15,15 +15,44 @@ export interface LiveRun {
 /** Event types after which the stored run (pause reasons, outputs, error) is read again. */
 const runRefreshEventTypes = new Set(['status_changed', 'run_paused', 'run_succeeded', 'run_failed', 'run_aborted'])
 
+/** The desktop's own status signal: it reuses the last stored `seq`, so it is not kept as an event. */
+const statusSignalType = 'status_changed'
+
+function chunkText(record: RunEventRecord): string {
+  return typeof record.event.chunk === 'string' ? record.event.chunk : ''
+}
+
+/** A stored chunk row that already holds several live chunks' text (`coalesced: n`). */
+function isStoredChunkRow(record: RunEventRecord): boolean {
+  return typeof record.event.coalesced === 'number'
+}
+
 /**
- * Merges two event lists by `seq`, dropping duplicates (a live event can also be in the loaded list).
+ * Picks what to keep when two records share a `seq`. Live `node_chunk`s of one stored
+ * row share its seq: their texts are joined, and the stored row (complete text) wins
+ * once it is loaded. Any other duplicate is the same event seen live and loaded.
+ */
+function combineSameSeq(existing: RunEventRecord, incoming: RunEventRecord): RunEventRecord {
+  if (existing.event.type !== 'node_chunk' || incoming.event.type !== 'node_chunk') return incoming
+  if (isStoredChunkRow(existing)) return existing
+  if (isStoredChunkRow(incoming)) return incoming
+  return { ...incoming, event: { ...incoming.event, chunk: chunkText(existing) + chunkText(incoming) } }
+}
+
+/**
+ * Merges two event lists by `seq` (a live event can also be in the loaded list), joining
+ * live chunks that share a seq and leaving out `status_changed` signals.
  *
  * @example
  * mergeRunEvents([{ seq: 1 }, { seq: 2 }], [{ seq: 2 }, { seq: 3 }]) // seq 1, 2, 3
  */
 export function mergeRunEvents(currentEvents: RunEventRecord[], incomingEvents: RunEventRecord[]): RunEventRecord[] {
   const eventsBySeq = new Map<number, RunEventRecord>()
-  for (const event of [...currentEvents, ...incomingEvents]) eventsBySeq.set(event.seq, event)
+  for (const record of [...currentEvents, ...incomingEvents]) {
+    if (record.event.type === statusSignalType) continue
+    const existing = eventsBySeq.get(record.seq)
+    eventsBySeq.set(record.seq, existing ? combineSameSeq(existing, record) : record)
+  }
   return [...eventsBySeq.values()].sort((first, second) => first.seq - second.seq)
 }
 

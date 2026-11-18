@@ -19,6 +19,26 @@ describe('mergeRunEvents', () => {
     const merged = mergeRunEvents([buildEventRecord(2), buildEventRecord(1)], [buildEventRecord(2), buildEventRecord(3)])
     expect(merged.map((record) => record.seq)).toEqual([1, 2, 3])
   })
+
+  it('keeps run_succeeded when a status_changed signal reuses its seq', () => {
+    const succeeded: RunEventRecord = { ...buildEventRecord(4), event: { type: 'run_succeeded' } }
+    const statusSignal: RunEventRecord = { ...buildEventRecord(4), event: { type: 'status_changed' } }
+    const merged = mergeRunEvents([succeeded], [statusSignal])
+    expect(merged.map((record) => record.event.type)).toEqual(['run_succeeded'])
+  })
+
+  it('joins live chunks that share a seq and prefers the stored coalesced row', () => {
+    const chunk = (text: string, coalesced?: number): RunEventRecord => ({
+      ...buildEventRecord(5),
+      event: { type: 'node_chunk', node_id: 'write', chunk: text, ...(coalesced ? { coalesced } : {}) },
+    })
+    const live = mergeRunEvents(mergeRunEvents([], [chunk('Hel')]), [chunk('lo')])
+    expect(live[0].event.chunk).toBe('Hello')
+
+    const withStored = mergeRunEvents(live, [chunk('Hello!', 3)])
+    expect(withStored[0].event.chunk).toBe('Hello!')
+    expect(mergeRunEvents(withStored, [chunk(' late')])[0].event.chunk).toBe('Hello!')
+  })
 })
 
 describe('useRunLive', () => {
