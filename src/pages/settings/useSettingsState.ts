@@ -7,36 +7,29 @@ import {
   runHistoryRetentionOptions,
 } from '@/data/settings'
 
-/** Every value the settings screen lets the user change. Lives in memory only (no backend). */
+/**
+ * Settings-screen values that have no backend yet and live in memory only. The desktop
+ * preferences (login, menu bar, keep awake, notifications) come from `useAppSettings`.
+ */
 export interface SettingsValues {
-  startAtLogin: boolean
-  showInMenuBar: boolean
-  keepMacAwake: boolean
   defaultModel: (typeof defaultModelOptions)[number]
   modelFallback: (typeof modelFallbackOptions)[number]
   runHistoryRetention: (typeof runHistoryRetentionOptions)[number]
   shareCrashReports: boolean
   appearance: (typeof appearanceOptions)[number]
   language: (typeof languageOptions)[number]
-  notifyWhenApprovalNeeded: boolean
-  notifyWhenRunFails: boolean
   notifyNewChatMessages: boolean
   dailySummary: boolean
   remoteServerUrl: string
 }
 
 const initialSettingsValues: SettingsValues = {
-  startAtLogin: true,
-  showInMenuBar: true,
-  keepMacAwake: true,
   defaultModel: 'OpenAI gpt-4o-mini',
   modelFallback: 'Switch to Ollama',
   runHistoryRetention: '30 days',
   shareCrashReports: false,
   appearance: 'Match the Mac',
   language: 'English',
-  notifyWhenApprovalNeeded: true,
-  notifyWhenRunFails: true,
   notifyNewChatMessages: false,
   dailySummary: false,
   remoteServerUrl: '',

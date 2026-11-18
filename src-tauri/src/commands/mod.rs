@@ -4,6 +4,7 @@
 
 pub mod agent_tools;
 pub mod agents;
+pub mod app_settings;
 pub mod builder;
 pub mod chains;
 pub mod conversations;

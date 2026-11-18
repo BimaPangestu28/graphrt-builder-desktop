@@ -14,6 +14,7 @@
 //! - [`agent_steps`]: agents used as steps and team members (the `agents` tool provider)
 //! - [`chains`]: starting the next agent of a chain when a run finishes
 //! - [`knowledge`]: knowledge bases (graphrt-rag) agents can search
+//! - [`desktop`]: menu bar icon, notifications, keep running when closed, launch at login
 //! - [`commands`]: the Tauri commands the frontend calls
 
 pub mod agent_builder;
@@ -22,6 +23,7 @@ pub mod chains;
 pub mod commands;
 pub mod conversations;
 pub mod credentials;
+pub mod desktop;
 pub mod engine;
 pub mod error;
 pub mod flow;
@@ -37,8 +39,10 @@ use tauri::Manager;
 
 use crate::chains::{ChainRunner, ChainingSink};
 use crate::credentials::CredentialStore;
+use crate::desktop::notify::{NotifyingSink, TauriRunNotifier};
+use crate::desktop::RunActivitySink;
 use crate::engine::tauri_sink::TauriRunEventSink;
-use crate::engine::RunManager;
+use crate::engine::{RunEventSink, RunManager};
 use crate::state::AppState;
 use crate::storage::Database;
 
@@ -59,9 +63,13 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         log::warn!("could not prune old run events: {error}");
     }
     let credentials = Arc::new(CredentialStore::keychain());
-    let tauri_sink = Arc::new(TauriRunEventSink::new(app.handle().clone()));
+    let tauri_sink: Arc<dyn RunEventSink> = Arc::new(TauriRunEventSink::new(app.handle().clone()));
+    let notifier = Arc::new(TauriRunNotifier::install(app.handle().clone()));
+    let notifying_sink = Arc::new(NotifyingSink::new(tauri_sink, notifier, db.clone()));
+    let status_listener = desktop::desktop_status_listener(app.handle().clone());
+    let activity_sink = Arc::new(RunActivitySink::new(notifying_sink, status_listener));
     let chain_runner = Arc::new(ChainRunner::new(db.clone()));
-    let sink = Arc::new(ChainingSink::new(tauri_sink, chain_runner.clone()));
+    let sink = Arc::new(ChainingSink::new(activity_sink, chain_runner.clone()));
     let runs = Arc::new(RunManager::new(db.clone(), credentials.clone(), sink));
     chain_runner.attach(&runs);
     let scheduler = scheduler::spawn(db.clone(), runs.clone());
@@ -83,7 +91,7 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
 /// Panics if the Tauri runtime fails to start (for example, a malformed `tauri.conf.json`).
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    desktop::register_plugins(tauri::Builder::default())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -91,8 +99,10 @@ pub fn run() {
             }
             let app_state = initialize_app_state(app)?;
             app.manage(app_state);
+            desktop::setup(app)?;
             Ok(())
         })
+        .on_window_event(desktop::window::handle_window_event)
         .invoke_handler(tauri::generate_handler![
             commands::agents::list_agents,
             commands::agents::get_agent,
@@ -161,7 +171,12 @@ pub fn run() {
             commands::knowledge::sync_knowledge_base,
             commands::knowledge::update_knowledge_settings,
             commands::knowledge::search_knowledge,
+            commands::app_settings::get_app_settings,
+            commands::app_settings::update_app_settings,
+            commands::app_settings::export_agents,
+            commands::app_settings::delete_all_data,
         ])
-        .run(tauri::generate_context!())
-        .expect("failed to start the graphrt desktop app");
+        .build(tauri::generate_context!())
+        .expect("failed to start the graphrt desktop app")
+        .run(desktop::handle_run_event);
 }

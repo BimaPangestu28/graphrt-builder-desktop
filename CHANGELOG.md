@@ -48,6 +48,16 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
   searchable from the Knowledge screen. Works without any API key (local embeddings
   plus keyword search); uses OpenAI embeddings when an OpenAI key is set. Agents
   search them with graphrt's `knowledge-retrieval` step, by knowledge base id or name.
+- **Menu bar icon**: shows whether the runner is online, how many agents are scheduled
+  and how many runs wait for you, with Open graphrt, Pause all agents for 1 hour /
+  Resume agents, and Quit graphrt. Closing the window keeps graphrt running so
+  schedules still fire; quit from the menu bar or the app menu.
+- **Notifications** when a run waits for your approval or fails; clicking one opens the run.
+- **Settings › Runner, Notifications, Privacy and data** are saved: open at login, show in
+  the menu bar, keep the Mac awake while an agent runs (only while plugged in, if you
+  like), the default for missed runs, export all agents as JSON (never keys) and
+  delete all data (optionally with the saved keys).
+- The app opens on Welcome until a model provider is set up, and on Home afterwards.
 
 ### Changed
 

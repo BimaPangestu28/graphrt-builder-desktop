@@ -14,9 +14,12 @@
 //! time. [`SchedulerHandle::request_tick`] lets the app tick right away (for
 //! example from a system wake notification).
 //!
+//! While "Pause all agents" is on (see [`pause`]), ticks fire nothing.
+//!
 //! See [`cron_schedule`] for the accepted cron syntax.
 
 pub mod cron_schedule;
+pub mod pause;
 pub mod tick;
 
 use std::sync::Arc;
