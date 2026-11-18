@@ -1,10 +1,11 @@
 import { Link, useParams } from 'react-router-dom'
+import type { VersionComparison, VersionSteps } from '@/api/versionTypes'
 import { AppShell } from '@/components/layout'
 import { useAgent } from '@/hooks/useAgent'
 import { describeError } from '@/lib/agentDisplay'
 import { agentPath, sampleAgentId } from '@/routes'
-import { diffAgentSteps } from './version-history/diffAgentSteps'
 import { StepDiffList } from './version-history/StepDiffList'
+import { toStepDiffRows } from './version-history/stepDiffRows'
 import { useVersionHistory, type ChangeNotice, type VersionEntry } from './version-history/useVersionHistory'
 import { VersionHistoryList } from './version-history/VersionHistoryList'
 
@@ -57,15 +58,45 @@ function VersionHeader({ agentId, agentName, selectedVersion, isViewingCurrent, 
   )
 }
 
-interface RestorePreviewProps {
+/** Why a version's steps cannot be shown, e.g. its workflow no longer compiles. */
+function describeUnreadableVersion(versionSteps: VersionSteps): string | null {
+  if (!versionSteps.error) return null
+  return `Could not read the steps of v${versionSteps.version}: ${versionSteps.error.message}`
+}
+
+interface StepComparisonProps {
+  comparison: VersionComparison | null
+  isComparing: boolean
+  comparisonError: Error | null
+}
+
+/** The step list, or why it is not there yet. */
+function StepComparison({ comparison, isComparing, comparisonError }: StepComparisonProps) {
+  if (comparisonError) return <p className="m-0 text-muted">{`Could not compare the versions: ${describeError(comparisonError)}`}</p>
+  if (isComparing || !comparison) return <p className="m-0 text-muted">Comparing versions…</p>
+  const unreadableMessages = [comparison.to, comparison.from].map(describeUnreadableVersion).filter((message) => message !== null)
+  if (unreadableMessages.length > 0) {
+    return (
+      <div role="alert" className="flex flex-col gap-1 rounded-[10px] bg-danger-tint px-3.5 py-3 text-danger-deep">
+        {unreadableMessages.map((message) => (
+          <span key={message}>{message}</span>
+        ))}
+      </div>
+    )
+  }
+  return <StepDiffList rows={toStepDiffRows(comparison.changes)} />
+}
+
+interface RestorePreviewProps extends StepComparisonProps {
   currentVersion: VersionEntry
   selectedVersion: VersionEntry
   nextVersionNumber: number
 }
 
-function RestorePreview({ currentVersion, selectedVersion, nextVersionNumber }: RestorePreviewProps) {
+function RestorePreview({ currentVersion, selectedVersion, nextVersionNumber, comparison, isComparing, comparisonError }: RestorePreviewProps) {
   const isViewingCurrent = currentVersion.number === selectedVersion.number
-  const diffRows = diffAgentSteps(currentVersion.steps, selectedVersion.steps)
+  // Ignore a comparison that belongs to another pair of versions while the next one loads.
+  const matchingComparison = comparison && comparison.from.version === currentVersion.number && comparison.to.version === selectedVersion.number ? comparison : null
 
   return (
     <section aria-labelledby="restore-preview-heading" className="box-border flex min-w-0 flex-[3_1_480px] flex-col gap-4 px-8 py-7">
@@ -79,7 +110,7 @@ function RestorePreview({ currentVersion, selectedVersion, nextVersionNumber }: 
             : `Compared with the current version, v${currentVersion.number}`}
         </span>
       </div>
-      <StepDiffList rows={diffRows} />
+      <StepComparison comparison={matchingComparison} isComparing={isComparing} comparisonError={comparisonError} />
       <p className="m-0 rounded-[10px] bg-subtle px-3.5 py-3 leading-normal text-body">
         Runs already in progress keep the version they started with. Restoring creates v{nextVersionNumber}, so you can always come back
       </p>
@@ -94,13 +125,15 @@ function ChangeToast({ changeNotice, onUndo }: { changeNotice: ChangeNotice; onU
       className="fixed bottom-7 left-1/2 z-10 flex -translate-x-1/2 items-center gap-4 rounded-xl bg-ink py-3 pr-3 pl-[18px] text-white shadow-[0_12px_32px_rgba(0,0,0,0.2)]"
     >
       <span>{changeNotice.message}</span>
-      <button
-        type="button"
-        onClick={onUndo}
-        className="h-8 cursor-pointer rounded-lg border-0 bg-surface px-3 font-sans text-[13px] font-semibold text-ink"
-      >
-        Undo
-      </button>
+      {changeNotice.previousVersionNumber !== null && (
+        <button
+          type="button"
+          onClick={onUndo}
+          className="h-8 cursor-pointer rounded-lg border-0 bg-surface px-3 font-sans text-[13px] font-semibold text-ink"
+        >
+          Undo
+        </button>
+      )}
     </div>
   )
 }
@@ -113,7 +146,8 @@ function HistoryMessage({ children }: { children: string }) {
 /**
  * Screen 24 · Version history of the agent in the `:agentId` route, from `listAgentVersions`.
  * Pick a version in History to see, step by step, what restoring it would remove or change
- * compared with the current one. Restore calls `restoreAgentVersion`, which adds a new
+ * compared with the current one (`compareAgentVersions`, computed by the backend from each
+ * version's step summary). Restore calls `restoreAgentVersion`, which adds a new
  * version on top; the toast's Undo restores the version that was current before.
  */
 export function VersionHistoryPage() {
@@ -144,7 +178,14 @@ export function VersionHistoryPage() {
           </p>
         )}
         <div className="flex flex-auto flex-wrap">
-          <RestorePreview currentVersion={currentVersion} selectedVersion={selectedVersion} nextVersionNumber={versionHistory.nextVersionNumber} />
+          <RestorePreview
+            currentVersion={currentVersion}
+            selectedVersion={selectedVersion}
+            nextVersionNumber={versionHistory.nextVersionNumber}
+            comparison={versionHistory.comparison}
+            isComparing={versionHistory.isComparing}
+            comparisonError={versionHistory.comparisonError}
+          />
           <VersionHistoryList
             versions={versionHistory.versions}
             currentVersionNumber={currentVersion.number}

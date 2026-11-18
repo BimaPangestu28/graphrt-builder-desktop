@@ -40,8 +40,59 @@ pub(super) fn compare_flows(before: &FlowSummary, after: &FlowSummary) -> FlowCh
     FlowChanges { changed_step_ids: changed_steps.iter().map(|step| step.id.clone()).collect(), summary }
 }
 
-fn step_differs(old: &FlowStep, new: &FlowStep) -> bool {
+/// True when a step's type, title or detail differ between two versions.
+pub(crate) fn step_differs(old: &FlowStep, new: &FlowStep) -> bool {
     old.node_type != new.node_type || old.title != new.title || old.detail != new.detail
+}
+
+/// How one step id fares between two step lists (see [`match_steps`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum StepMatch<'a> {
+    /// Only in `after`.
+    Added(&'a FlowStep),
+    /// Only in `before`.
+    Removed(&'a FlowStep),
+    /// In both, and [`step_differs`].
+    Changed { before: &'a FlowStep, after: &'a FlowStep },
+    /// In both, with the same type, title and detail.
+    Unchanged { before: &'a FlowStep, after: &'a FlowStep },
+}
+
+/// Matches steps by id. Rows follow `before`'s order; steps only in `after` are
+/// inserted right after the step that precedes them in `after` (or first).
+pub(crate) fn match_steps<'a>(before: &'a [FlowStep], after: &'a [FlowStep]) -> Vec<StepMatch<'a>> {
+    let mut matches = Vec::with_capacity(before.len().max(after.len()));
+    append_added_after(before, after, None, &mut matches);
+    for old in before {
+        let Some(after_index) = after.iter().position(|step| step.id == old.id) else {
+            matches.push(StepMatch::Removed(old));
+            continue;
+        };
+        let new = &after[after_index];
+        matches.push(if step_differs(old, new) {
+            StepMatch::Changed { before: old, after: new }
+        } else {
+            StepMatch::Unchanged { before: old, after: new }
+        });
+        append_added_after(before, after, Some(after_index), &mut matches);
+    }
+    matches
+}
+
+/// Pushes the run of `after`-only steps that follows `after_index` (or starts the list).
+fn append_added_after<'a>(
+    before: &[FlowStep],
+    after: &'a [FlowStep],
+    after_index: Option<usize>,
+    matches: &mut Vec<StepMatch<'a>>,
+) {
+    let start = after_index.map_or(0, |index| index + 1);
+    for step in after.iter().skip(start) {
+        if before.iter().any(|old| old.id == step.id) {
+            return;
+        }
+        matches.push(StepMatch::Added(step));
+    }
 }
 
 /// "Changed 2 steps: A, B" / "Removed 1 step: C" / "... and 3 more".
@@ -116,6 +167,30 @@ mod tests {
         let changes = compare_flows(&flow, &flow.clone());
         assert!(changes.changed_step_ids.is_empty());
         assert_eq!(changes.summary, "Changed step settings");
+    }
+
+    #[test]
+    fn match_steps_keeps_before_order_and_inserts_added_steps() {
+        let before = vec![step("a", "Find", ""), step("b", "Write", "x"), step("c", "Send", "")];
+        let after = vec![
+            step("new_first", "Ask", ""),
+            step("a", "Find", ""),
+            step("b", "Write", "y"),
+            step("d", "Approve", ""),
+        ];
+        let kinds: Vec<(&str, &str)> = match_steps(&before, &after)
+            .into_iter()
+            .map(|matched| match matched {
+                StepMatch::Added(step) => ("added", step.id.as_str()),
+                StepMatch::Removed(step) => ("removed", step.id.as_str()),
+                StepMatch::Changed { after, .. } => ("changed", after.id.as_str()),
+                StepMatch::Unchanged { after, .. } => ("unchanged", after.id.as_str()),
+            })
+            .collect();
+        assert_eq!(
+            kinds,
+            [("added", "new_first"), ("unchanged", "a"), ("changed", "b"), ("added", "d"), ("removed", "c")]
+        );
     }
 
     #[test]

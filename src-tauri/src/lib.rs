@@ -121,6 +121,8 @@ pub fn run() {
             commands::conversations::close_conversation,
             commands::conversations::set_bot_enabled,
             commands::conversations::get_bot_enabled,
+            commands::versions::compare_agent_versions,
+            commands::versions::get_version_flow_summary,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start the graphrt desktop app");
