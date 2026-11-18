@@ -6,6 +6,8 @@ interface RunsTableProps {
   runs: RunRecord[]
   selectedRunId: string | null
   onSelectRun: (runId: string) => void
+  /** Shown in place of rows when there are none. */
+  emptyMessage?: string
 }
 
 const headerCellClassNames = 'border-b border-line px-3.5 py-3 font-medium'
@@ -42,7 +44,7 @@ function RunRow({ run, isSelected, isLast, onSelectRun }: { run: RunRecord; isSe
 }
 
 /** Table of runs, newest first. Clicking a row opens it in the detail panel. */
-export function RunsTable({ runs, selectedRunId, onSelectRun }: RunsTableProps) {
+export function RunsTable({ runs, selectedRunId, onSelectRun, emptyMessage = 'No runs match these filters' }: RunsTableProps) {
   return (
     <div className="overflow-x-auto rounded-[14px] border border-line">
       <table className="w-full border-collapse text-[13px]">
@@ -62,7 +64,7 @@ export function RunsTable({ runs, selectedRunId, onSelectRun }: RunsTableProps) 
           {runs.length === 0 && (
             <tr>
               <td colSpan={5} className="px-3.5 py-6 text-center text-muted">
-                No runs match these filters
+                {emptyMessage}
               </td>
             </tr>
           )}

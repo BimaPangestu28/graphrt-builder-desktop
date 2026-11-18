@@ -1,22 +1,20 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { isDesktopApp } from '@/api/client'
 import { AppShell } from '@/components/layout'
 import { StrokeIcon } from '@/components/ui'
-import {
-  buildCalendarEntries,
-  formatWeekRange,
-  getWeekDates,
-  initialScheduleTriggers,
-  scheduleTimeZone,
-  scheduleToday,
-  type ScheduleTrigger,
-} from '@/data/scheduler'
+import { buildCalendarEntries, formatWeekRange, getWeekDates, scheduleTimeZone, scheduleToday, type ScheduleTrigger } from '@/data/scheduler'
+import { useAgentNames } from '@/hooks/useAgentNames'
+import { useTriggers } from '@/hooks/useTriggers'
+import { formatZonedIsoDate } from '@/lib/schedule'
 import { routePaths } from '@/routes'
+import { RunErrorNotice } from '@/pages/agent-run/RunErrorNotice'
 import { CalendarGrid } from './scheduler/CalendarGrid'
 import { ScheduleList } from './scheduler/ScheduleList'
 import { ScheduleRulesPanel } from './scheduler/ScheduleRulesPanel'
 import { ScheduleToolbar, type ScheduleViewMode } from './scheduler/ScheduleToolbar'
 import { TriggersPanel } from './scheduler/TriggersPanel'
+import { mockEventTriggers, sortLikeMockup, toScheduleTrigger } from './scheduler/schedulerViewModel'
 
 /** Dark promo card pointing to moving schedules onto a server so they run with the Mac off. */
 function RemoteRunnerPromo() {
@@ -33,41 +31,68 @@ function RemoteRunnerPromo() {
   )
 }
 
-function toggleTriggerById(triggers: ScheduleTrigger[], triggerId: string): ScheduleTrigger[] {
-  return triggers.map((trigger) => (trigger.id === triggerId ? { ...trigger, isEnabled: !trigger.isEnabled } : trigger))
+/**
+ * Backend triggers as calendar triggers, plus (in the browser preview) the mockup's event and
+ * webhook triggers, which the backend cannot hold yet and which toggle locally.
+ */
+function useSchedulerTriggers() {
+  const getAgentName = useAgentNames()
+  const { triggers, error, toggleError, setEnabled } = useTriggers()
+  const [mockTriggers, setMockTriggers] = useState(() => (isDesktopApp() ? [] : mockEventTriggers))
+
+  const backendTriggers = triggers.map((trigger) => toScheduleTrigger(trigger, getAgentName(trigger.agentId)))
+  const scheduleTriggers: ScheduleTrigger[] = sortLikeMockup([...backendTriggers, ...mockTriggers])
+
+  const toggleTrigger = (triggerId: string) => {
+    const backendTrigger = triggers.find((trigger) => trigger.id === triggerId)
+    if (backendTrigger) {
+      void setEnabled(triggerId, !backendTrigger.enabled)
+      return
+    }
+    setMockTriggers((current) => current.map((trigger) => (trigger.id === triggerId ? { ...trigger, isEnabled: !trigger.isEnabled } : trigger)))
+  }
+
+  return { scheduleTriggers, timezone: triggers[0]?.timezone ?? scheduleTimeZone, error: error ?? toggleError, toggleTrigger }
 }
 
 /**
  * Screen 10 · Scheduler.
- * A week calendar of every scheduled run (done, failed, waiting on you, planned, paused),
- * with the trigger list and global schedule rules alongside.
- * The Day / Week / List switch, week arrows and trigger switches all update the calendar.
+ * A week calendar of every scheduled run with the trigger list and global schedule rules alongside.
+ * Triggers come from `listTriggers` and their switches call `setTriggerEnabled`; planned runs are
+ * drawn from each trigger's cron expression. Past-run blocks stay on mock data until the backend
+ * links runs to triggers. The browser preview is pinned to the mockup's week.
  */
 export function SchedulerPage() {
   const [viewMode, setViewMode] = useState<ScheduleViewMode>('week')
   const [weekOffset, setWeekOffset] = useState(0)
-  const [triggers, setTriggers] = useState(initialScheduleTriggers)
+  const { scheduleTriggers, timezone, error, toggleTrigger } = useSchedulerTriggers()
 
-  const weekDates = getWeekDates(scheduleToday, weekOffset)
-  const visibleDates = viewMode === 'day' ? [weekDates.includes(scheduleToday) ? scheduleToday : weekDates[0]] : weekDates
-  const entries = buildCalendarEntries({ dates: visibleDates, triggers, todayIsoDate: scheduleToday })
+  const todayIsoDate = isDesktopApp() ? formatZonedIsoDate(new Date(), timezone) : scheduleToday
+  const weekDates = getWeekDates(todayIsoDate, weekOffset)
+  const visibleDates = viewMode === 'day' ? [weekDates.includes(todayIsoDate) ? todayIsoDate : weekDates[0]] : weekDates
+  const entries = buildCalendarEntries({ dates: visibleDates, triggers: scheduleTriggers, todayIsoDate })
   const viewLabel = viewMode === 'day' ? 'Day view' : viewMode === 'week' ? 'Week view' : 'List view'
 
   return (
     <AppShell activeNav="schedule" agents={{ kind: 'list' }} mainClassName="box-border flex flex-wrap content-start gap-6 p-8">
       <ScheduleToolbar
-        subtitle={`${formatWeekRange(weekDates)} · ${scheduleTimeZone}`}
+        subtitle={`${formatWeekRange(weekDates)} · ${timezone}`}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         onShiftWeek={(direction) => setWeekOffset((currentOffset) => currentOffset + direction)}
       />
+      {error && (
+        <div className="flex-[1_1_100%]">
+          <RunErrorNotice title="Could not update the schedules" error={error} />
+        </div>
+      )}
       {viewMode === 'list' ? (
         <ScheduleList entries={entries} label={viewLabel} />
       ) : (
-        <CalendarGrid dates={visibleDates} entries={entries} todayIsoDate={scheduleToday} label={viewLabel} />
+        <CalendarGrid dates={visibleDates} entries={entries} todayIsoDate={todayIsoDate} label={viewLabel} />
       )}
       <aside aria-label="Triggers and rules" className="flex min-w-0 flex-[1_1_300px] flex-col gap-4">
-        <TriggersPanel triggers={triggers} onToggleTrigger={(triggerId) => setTriggers((current) => toggleTriggerById(current, triggerId))} />
+        <TriggersPanel triggers={scheduleTriggers} onToggleTrigger={toggleTrigger} />
         <ScheduleRulesPanel />
         <RemoteRunnerPromo />
       </aside>

@@ -13,6 +13,8 @@ export interface RunStep {
 
 export interface RunRecord {
   id: string
+  /** Backend agent id, when the record comes from the runs API. */
+  agentId?: string
   agentName: string
   startedBy: string
   when: string
