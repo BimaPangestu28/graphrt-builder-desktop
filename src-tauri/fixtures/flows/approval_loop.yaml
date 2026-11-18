@@ -78,11 +78,42 @@ graph:
         data: '{"to": "{{#each_cafe.item.phone#}}", "type": "text", "text": {"body": "{{#draft_message.text#}}"}}'
       timeout: { connect: 5, read: 30 }
 
+    - id: write_report
+      type: llm
+      title: Write the run report
+      model:
+        provider: anthropic
+        name: claude-haiku-4-5
+        completion_params: { temperature: 0, max_tokens: 800 }
+      prompt_template:
+        - role: system
+          text: "You report what an automation run did, in plain words. A send result of 200 means the message was sent; an empty result means the person skipped it."
+        - role: user
+          text: "Cafes found: {{#find_cafes.json.results#}}\n\nSend result per cafe, in the same order: {{#each_cafe.output#}}"
+      structured_output_enabled: true
+      structured_output:
+        schema:
+          type: object
+          properties:
+            summary: { type: string, description: "One plain sentence, e.g. Sent the offer to 4 of 6 cafes in Rajabasa." }
+            items:
+              type: array
+              items:
+                type: object
+                properties:
+                  name: { type: string }
+                  phone: { type: string }
+                  status: { type: string, enum: [sent, skipped, failed] }
+            places_found: { type: number }
+            messages_sent: { type: number }
+
     - id: end
       type: end
       outputs:
-        - { variable: cafes, value_selector: [find_cafes, json, results] }
-        - { variable: send_results, value_selector: [each_cafe, output] }
+        - { variable: summary, value_selector: [write_report, structured_output, summary] }
+        - { variable: items, value_selector: [write_report, structured_output, items] }
+        - { variable: places_found, value_selector: [write_report, structured_output, places_found] }
+        - { variable: messages_sent, value_selector: [write_report, structured_output, messages_sent] }
 
   edges:
     - { source: start, target: find_cafes }
@@ -90,4 +121,5 @@ graph:
     - { source: each_cafe_start, target: draft_message }
     - { source: draft_message, target: approve_message }
     - { source: approve_message, target: send_message, handle: send }
-    - { source: each_cafe, target: end }
+    - { source: each_cafe, target: write_report }
+    - { source: write_report, target: end }

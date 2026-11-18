@@ -8,6 +8,7 @@
 //! - [`flow`]: graphrt workflow validation and step summaries
 //! - [`agent_builder`]: drafting an agent's workflow from plain language
 //! - [`engine`]: running agents on graphrt and streaming events to the UI
+//! - [`run_summary`]: plain-language run summaries and weekly agent stats
 //! - [`scheduler`]: starting scheduled runs while the app is running
 //! - [`commands`]: the Tauri commands the frontend calls
 
@@ -17,6 +18,7 @@ pub mod credentials;
 pub mod engine;
 pub mod error;
 pub mod flow;
+pub mod run_summary;
 pub mod scheduler;
 pub mod state;
 pub mod storage;
@@ -91,6 +93,8 @@ pub fn run() {
             commands::runs::list_runs,
             commands::runs::get_run,
             commands::runs::list_run_events,
+            commands::run_summary::get_run_summary,
+            commands::run_summary::list_agent_run_stats,
             commands::triggers::list_triggers,
             commands::triggers::create_trigger,
             commands::triggers::update_trigger,

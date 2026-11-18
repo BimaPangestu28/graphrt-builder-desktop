@@ -5,5 +5,6 @@
 pub mod agents;
 pub mod builder;
 pub mod credentials;
+pub mod run_summary;
 pub mod runs;
 pub mod triggers;
