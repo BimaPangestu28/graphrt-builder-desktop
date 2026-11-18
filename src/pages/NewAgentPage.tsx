@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { AppShell } from '@/components/layout'
 import { Icon, joinClassNames } from '@/components/ui'
 import { agentKindOptions, agentTemplates, buildPathByAgentKind, defaultJobDescription, type AgentKind, type AgentTemplate } from '@/data/newAgentTemplates'
+import type { BuildRequestLocationState } from './agent-builder/buildRequestState'
 
 /** Pill radio group for choosing what kind of agent to make. */
 function AgentKindPicker({ selectedKind, onSelect }: { selectedKind: AgentKind; onSelect: (kind: AgentKind) => void }) {
@@ -53,7 +54,8 @@ function TemplateCard({ template }: { template: AgentTemplate }) {
 /**
  * Screen 02 · New agent. The empty-state home before any agent exists:
  * pick a kind, describe the job in plain words and press "Build agent",
- * or start from one of the templates below.
+ * or start from one of the templates below. "Build agent" hands the request
+ * (`{ buildRequest }` router state) to the screen that builds it.
  */
 export function NewAgentPage() {
   const navigate = useNavigate()
@@ -63,7 +65,9 @@ export function NewAgentPage() {
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (canBuild) navigate(buildPathByAgentKind[selectedKind], { state: { jobDescription } })
+    if (!canBuild) return
+    const locationState: BuildRequestLocationState = { buildRequest: { description: jobDescription.trim(), kind: selectedKind } }
+    navigate(buildPathByAgentKind[selectedKind], { state: locationState })
   }
 
   return (

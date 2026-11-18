@@ -7,14 +7,26 @@ export type StepDiffRow =
   | { kind: 'added'; step: AgentStepSnapshot }
   | { kind: 'changed'; step: AgentStepSnapshot; fromSetting: string; toSetting: string }
 
+const settingSeparator = ' · '
+
+/**
+ * Keeps only the parts of two settings that differ, so "Uses the place name · max 2
+ * sentences" vs "Uses the place name · max 4 sentences" reads "max 2 sentences → max 4 sentences".
+ */
+function describeSettingChange(currentSetting: string | undefined, restoredSetting: string | undefined) {
+  const currentParts = (currentSetting ?? '').split(settingSeparator).filter(Boolean)
+  const restoredParts = (restoredSetting ?? '').split(settingSeparator).filter(Boolean)
+  const removedParts = currentParts.filter((part) => !restoredParts.includes(part))
+  const addedParts = restoredParts.filter((part) => !currentParts.includes(part))
+  return { fromSetting: removedParts.join(settingSeparator) || 'none', toSetting: addedParts.join(settingSeparator) || 'none' }
+}
+
 function describeChange(currentStep: AgentStepSnapshot, restoredStep: AgentStepSnapshot): StepDiffRow | null {
-  if (currentStep.setting === restoredStep.setting) return null
-  return {
-    kind: 'changed',
-    step: restoredStep,
-    fromSetting: currentStep.setting ?? 'none',
-    toSetting: restoredStep.setting ?? 'none',
+  if (currentStep.setting === restoredStep.setting && currentStep.name === restoredStep.name) return null
+  if (currentStep.setting === restoredStep.setting) {
+    return { kind: 'changed', step: restoredStep, fromSetting: currentStep.name, toSetting: restoredStep.name }
   }
+  return { kind: 'changed', step: restoredStep, ...describeSettingChange(currentStep.setting, restoredStep.setting) }
 }
 
 /**

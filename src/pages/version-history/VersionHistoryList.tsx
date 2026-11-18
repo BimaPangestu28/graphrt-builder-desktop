@@ -1,5 +1,8 @@
 import { joinClassNames } from '@/components/ui'
-import { draftVersionsGroup, type AgentVersion } from '@/data/versionHistory'
+import type { VersionEntry } from './useVersionHistory'
+
+/** How many of the newest versions get their own card; older ones are grouped into one. */
+const listedVersionCount = 3
 
 const cardClassNames = 'flex w-full flex-col gap-1 rounded-[10px] bg-surface text-left font-sans text-[14px] text-ink'
 
@@ -16,14 +19,26 @@ function VersionCardBody({ title, savedAt, summary, origin }: { title: string; s
   )
 }
 
+/** One non-restorable card standing in for every version older than the listed ones. */
+function OlderVersionsCard({ olderVersions }: { olderVersions: VersionEntry[] }) {
+  const newestOlderVersion = olderVersions[0]
+  const oldestOlderVersion = olderVersions[olderVersions.length - 1]
+  const title = olderVersions.length === 1 ? `v${newestOlderVersion.number}` : `v${oldestOlderVersion.number} to v${newestOlderVersion.number}`
+  return (
+    <li className={joinClassNames(cardClassNames, 'border border-line px-3.5 py-3')}>
+      <VersionCardBody title={title} savedAt={newestOlderVersion.savedAt} summary={olderVersions.length === 1 ? newestOlderVersion.summary : 'Earlier versions'} />
+    </li>
+  )
+}
+
 interface VersionHistoryListProps {
-  versions: AgentVersion[]
+  versions: VersionEntry[]
   currentVersionNumber: number
   selectedVersionNumber: number
   onSelectVersion: (versionNumber: number) => void
 }
 
-/** Right column of screen 24: every saved version, newest first; click one to preview it. */
+/** Right column of screen 24: the newest versions, newest first, then older ones grouped; click one to preview it. */
 export function VersionHistoryList({ versions, currentVersionNumber, selectedVersionNumber, onSelectVersion }: VersionHistoryListProps) {
   return (
     <aside
@@ -34,7 +49,7 @@ export function VersionHistoryList({ versions, currentVersionNumber, selectedVer
         History
       </h2>
       <ol className="m-0 flex list-none flex-col gap-1.5 p-0">
-        {versions.map((version) => {
+        {versions.slice(0, listedVersionCount).map((version) => {
           const isSelected = version.number === selectedVersionNumber
           const isCurrent = version.number === currentVersionNumber
           return (
@@ -53,15 +68,12 @@ export function VersionHistoryList({ versions, currentVersionNumber, selectedVer
                   title={isCurrent ? `v${version.number} · current` : `v${version.number}`}
                   savedAt={version.savedAt}
                   summary={version.summary}
-                  origin={version.origin}
                 />
               </button>
             </li>
           )
         })}
-        <li className={joinClassNames(cardClassNames, 'border border-line px-3.5 py-3')}>
-          <VersionCardBody title={draftVersionsGroup.label} savedAt={draftVersionsGroup.savedAt} summary={draftVersionsGroup.summary} />
-        </li>
+        {versions.length > listedVersionCount && <OlderVersionsCard olderVersions={versions.slice(listedVersionCount)} />}
       </ol>
     </aside>
   )

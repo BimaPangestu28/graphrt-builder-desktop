@@ -1,67 +1,86 @@
 import { useState, type FormEvent } from 'react'
+import type { Agent, FlowStep } from '@/api/types'
 import { StrokeIcon } from '@/components/ui'
-import { mapsLeadsAgentName, mapsLeadsJobDescription } from '@/data/mapsLeadsAgent'
 import { PanelHeader, UserChatBubble } from './ChatBubbles'
-
-/** A message typed after the screen opened, with its mocked assistant reply. */
-interface FollowUpExchange {
-  id: number
-  request: string
-  reply: string
-}
-
-const mockedFollowUpReply = 'Got it. I will apply that change and check the steps again before your next test'
+import type { ChatExchange, LatestRevision } from './useAgentRevisions'
 
 const assistantBlockClassNames = 'flex max-w-[92%] flex-col'
 const outlineButtonClassNames =
-  'h-8 cursor-pointer rounded-lg border border-line-strong bg-surface px-3 text-[13px] font-medium text-ink hover:bg-subtle'
+  'h-8 cursor-pointer rounded-lg border border-line-strong bg-surface px-3 text-[13px] font-medium text-ink hover:bg-subtle disabled:cursor-not-allowed disabled:opacity-50'
 
-/** First assistant reply: summary of the generated agent. */
-function AgentSummaryReply() {
+function pluralize(count: number, singular: string, plural: string): string {
+  return `${count} ${count === 1 ? singular : plural}`
+}
+
+/** First assistant reply: summary of the agent's current steps. */
+function AgentSummaryReply({ agentName, steps }: { agentName: string; steps: FlowStep[] }) {
+  const approvalCount = steps.filter((flowStep) => flowStep.needsApproval).length
+  const stepCountLabel = pluralize(steps.length, 'step', 'steps')
   return (
     <div className={`${assistantBlockClassNames} gap-3`}>
-      <p className="m-0 leading-[1.55]">Your agent has 6 steps. It asks you before every message, and it needs WhatsApp connected on this Mac before the first run</p>
+      <p className="m-0 leading-[1.55]">
+        Your agent has {stepCountLabel}.{approvalCount > 0 ? ' It asks you before anything that needs your approval' : ' It runs without stopping for approval'}
+      </p>
       <div className="flex flex-col gap-2.5 rounded-xl border border-line px-4 py-3.5">
         <div className="flex items-center justify-between gap-3">
-          <span className="font-semibold">{mapsLeadsAgentName}</span>
+          <span className="font-semibold">{agentName}</span>
           <span className="rounded-full bg-brand-soft px-2 py-[3px] text-[12px] font-medium text-brand-strong">Checked</span>
         </div>
-        <span className="text-[13px] text-body">6 steps · 1 approval · about $0.01 per place</span>
+        <span className="text-[13px] text-body">
+          {stepCountLabel} · {pluralize(approvalCount, 'approval', 'approvals')}
+        </span>
       </div>
     </div>
   )
 }
 
-/** Reply to "make the message shorter…", listing changed steps with an Undo/Redo toggle. */
-function StepChangesReply({ isUndone, onToggleUndo }: { isUndone: boolean; onToggleUndo: () => void }) {
+interface ChangeReplyProps {
+  exchange: ChatExchange
+  steps: FlowStep[]
+  /** Present only on the latest successful change, which can be undone. */
+  undoableRevision: LatestRevision | null
+  isBusy: boolean
+  onToggleUndo: () => void
+}
+
+/** Reply to a change request: progress, the summary with changed steps, and Undo/Redo. */
+function ChangeReply({ exchange, steps, undoableRevision, isBusy, onToggleUndo }: ChangeReplyProps) {
+  if (exchange.status !== 'done') {
+    return <p className={`m-0 max-w-[92%] leading-[1.55] ${exchange.status === 'failed' ? 'text-danger' : 'text-body'}`}>{exchange.reply}</p>
+  }
+  const changedSteps = steps.filter((flowStep) => exchange.changedStepIds.includes(flowStep.id))
+  const isUndone = undoableRevision?.isUndone ?? false
   return (
     <div className={`${assistantBlockClassNames} gap-2.5`}>
-      <p className="m-0 leading-[1.55]">{isUndone ? 'Undone. Steps 4 and 6 are back to how they were' : 'Done. Two steps changed'}</p>
-      <div className="flex flex-col gap-1.5">
-        <span className="rounded-lg border border-line bg-subtle px-3 py-2 text-[13px]">
-          <b className="font-semibold">Write message</b> · max 2 sentences
-        </span>
-        <span className="rounded-lg border border-line bg-subtle px-3 py-2 text-[13px]">
-          <b className="font-semibold">Send WhatsApp</b> · 30s gap between messages
-        </span>
-      </div>
-      <div className="flex gap-2">
-        <button type="button" onClick={onToggleUndo} className={outlineButtonClassNames}>
-          {isUndone ? 'Redo' : 'Undo'}
-        </button>
-      </div>
+      <p className="m-0 leading-[1.55]">{isUndone ? `Undone. Back to v${undoableRevision?.versionBefore}` : exchange.reply}</p>
+      {!isUndone && changedSteps.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          {changedSteps.map((flowStep) => (
+            <span key={flowStep.id} className="rounded-lg border border-line bg-subtle px-3 py-2 text-[13px]">
+              <b className="font-semibold">{flowStep.title}</b> · {flowStep.detail}
+            </span>
+          ))}
+        </div>
+      )}
+      {undoableRevision && (
+        <div className="flex gap-2">
+          <button type="button" onClick={onToggleUndo} disabled={isBusy} className={outlineButtonClassNames}>
+            {isUndone ? 'Redo' : 'Undo'}
+          </button>
+        </div>
+      )}
     </div>
   )
 }
 
 /** Prompt box at the bottom of the chat column. */
-function ChangeRequestForm({ onSubmitRequest }: { onSubmitRequest: (request: string) => void }) {
+function ChangeRequestForm({ isBusy, onSubmitRequest }: { isBusy: boolean; onSubmitRequest: (request: string) => void }) {
   const [draftRequest, setDraftRequest] = useState('')
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const trimmedRequest = draftRequest.trim()
-    if (!trimmedRequest) return
+    if (!trimmedRequest || isBusy) return
     onSubmitRequest(trimmedRequest)
     setDraftRequest('')
   }
@@ -83,7 +102,7 @@ function ChangeRequestForm({ onSubmitRequest }: { onSubmitRequest: (request: str
         <button
           type="submit"
           aria-label="Send"
-          disabled={!draftRequest.trim()}
+          disabled={!draftRequest.trim() || isBusy}
           className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-[9px] border-0 bg-ink text-white hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <StrokeIcon size={18}>
@@ -96,37 +115,52 @@ function ChangeRequestForm({ onSubmitRequest }: { onSubmitRequest: (request: str
 }
 
 interface BuilderChatPanelProps {
-  isLastChangeUndone: boolean
+  agent: Agent | null
+  steps: FlowStep[]
+  modelName: string | null
+  exchanges: ChatExchange[]
+  latestRevision: LatestRevision | null
+  isBusy: boolean
+  undoErrorMessage: string | null
+  onSubmitRequest: (request: string) => void
   onToggleUndo: () => void
 }
 
 /** Left column of screen 04: the build conversation plus a box to ask for more changes. */
-export function BuilderChatPanel({ isLastChangeUndone, onToggleUndo }: BuilderChatPanelProps) {
-  const [followUpExchanges, setFollowUpExchanges] = useState<FollowUpExchange[]>([])
-
-  function addFollowUpExchange(request: string) {
-    setFollowUpExchanges((exchanges) => [...exchanges, { id: exchanges.length + 1, request, reply: mockedFollowUpReply }])
-  }
-
+export function BuilderChatPanel(props: BuilderChatPanelProps) {
+  const { agent, steps, modelName, exchanges, latestRevision, isBusy, undoErrorMessage, onSubmitRequest, onToggleUndo } = props
   return (
     <section aria-label="Chat" className="box-border flex min-w-0 flex-[1_1_380px] flex-col border-r border-line bg-surface">
       <PanelHeader className="justify-between">
         <span className="font-semibold">Build with chat</span>
-        <span className="text-[12px] text-muted">gpt-4o-mini</span>
+        {modelName && <span className="text-[12px] text-muted">{modelName}</span>}
       </PanelHeader>
       <div aria-live="polite" className="flex flex-auto flex-col gap-5 p-6">
-        <UserChatBubble>{mapsLeadsJobDescription}</UserChatBubble>
-        <AgentSummaryReply />
-        <UserChatBubble>Make the message shorter and wait 30 seconds between messages</UserChatBubble>
-        <StepChangesReply isUndone={isLastChangeUndone} onToggleUndo={onToggleUndo} />
-        {followUpExchanges.map((exchange) => (
+        {agent && (
+          <>
+            <UserChatBubble>{agent.description}</UserChatBubble>
+            <AgentSummaryReply agentName={agent.name} steps={steps} />
+          </>
+        )}
+        {exchanges.map((exchange) => (
           <div key={exchange.id} className="flex flex-col gap-5">
             <UserChatBubble>{exchange.request}</UserChatBubble>
-            <p className="m-0 max-w-[92%] leading-[1.55]">{exchange.reply}</p>
+            <ChangeReply
+              exchange={exchange}
+              steps={steps}
+              undoableRevision={latestRevision?.exchangeId === exchange.id ? latestRevision : null}
+              isBusy={isBusy}
+              onToggleUndo={onToggleUndo}
+            />
           </div>
         ))}
+        {undoErrorMessage && (
+          <p role="alert" className="m-0 text-danger">
+            {undoErrorMessage}
+          </p>
+        )}
       </div>
-      <ChangeRequestForm onSubmitRequest={addFollowUpExchange} />
+      <ChangeRequestForm isBusy={isBusy || !agent} onSubmitRequest={onSubmitRequest} />
     </section>
   )
 }
