@@ -1,19 +1,18 @@
+import type { Conversation } from '@/api/conversationTypes'
 import { joinClassNames } from '@/components/ui'
-import { conversationStatusLabels, type ConversationStatus } from '@/data/inbox'
+import { getConversationStatusLabel, getConversationTone, type ConversationTone } from './conversationDisplay'
 
-const statusClassNames: Record<ConversationStatus, string> = {
-  'order-to-confirm': 'bg-amber-soft text-amber-strong',
-  'asked-for-you': 'bg-amber-soft text-amber-strong',
-  'bot-not-sure': 'bg-amber-soft text-amber-strong',
-  'bot-answering': 'bg-brand-soft text-brand-strong',
-  closed: 'bg-canvas text-ink-2',
+const toneClassNames: Record<ConversationTone, string> = {
+  amber: 'bg-amber-soft text-amber-strong',
+  brand: 'bg-brand-soft text-brand-strong',
+  grey: 'bg-canvas text-ink-2',
 }
 
-/** Rounded status label on an inbox row: amber when waiting for you, teal while the bot answers, grey when closed. */
-export function ConversationStatusPill({ status }: { status: ConversationStatus }) {
+/** Rounded status label on an inbox row: amber when a person has the chat, teal while the bot answers, grey when closed. */
+export function ConversationStatusPill({ conversation }: { conversation: Pick<Conversation, 'status' | 'handoffReason'> }) {
   return (
-    <span className={joinClassNames('rounded-full px-2 py-[3px] font-medium whitespace-nowrap', statusClassNames[status])}>
-      {conversationStatusLabels[status]}
+    <span className={joinClassNames('rounded-full px-2 py-[3px] font-medium whitespace-nowrap', toneClassNames[getConversationTone(conversation)])}>
+      {getConversationStatusLabel(conversation)}
     </span>
   )
 }

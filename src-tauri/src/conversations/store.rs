@@ -27,7 +27,7 @@ const CONVERSATION_SELECT: &str = "
     FROM conversations c
     LEFT JOIN conversation_messages last_message ON last_message.rowid = (
         SELECT m.rowid FROM conversation_messages m
-        WHERE m.conversation_id = c.id ORDER BY m.created_at DESC, m.rowid DESC LIMIT 1
+        WHERE m.conversation_id = c.id AND m.author != 'system' ORDER BY m.created_at DESC, m.rowid DESC LIMIT 1
     )";
 
 impl ToSql for ConversationStatus {

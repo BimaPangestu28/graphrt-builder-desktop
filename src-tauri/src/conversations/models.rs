@@ -85,6 +85,7 @@ pub struct Conversation {
     pub suggested_reply: Option<String>,
     /// The workflow's `conversation.*` variables, carried from one turn to the next.
     pub variables: serde_json::Value,
+    /// Latest customer, bot or owner message (system notices are skipped).
     pub last_message_text: Option<String>,
     pub last_message_author: Option<MessageAuthor>,
     /// RFC 3339 timestamps; `updated_at` moves with every message and status change.
