@@ -4,17 +4,21 @@ interface ReplyComposerProps {
   draft: string
   onDraftChange: (draft: string) => void
   onSend: () => void
-  /** False while the bot answers: the composer is disabled until you take over. */
-  isHumanReplying: boolean
-  suggestedReply?: string
+  /** False while the bot answers or the chat is closed: the composer is disabled. */
+  canReply: boolean
+  /** Placeholder shown while replying is not possible. */
+  disabledPlaceholder: string
+  suggestedReply?: string | null
+  /** True while a reply is being sent. */
+  isSending?: boolean
 }
 
 /**
  * Composer under the chat detail thread: an optional suggested reply chip, a textarea and Send.
  * Enter sends, Shift+Enter adds a new line.
  */
-export function ReplyComposer({ draft, onDraftChange, onSend, isHumanReplying, suggestedReply }: ReplyComposerProps) {
-  const canSend = isHumanReplying && draft.trim() !== ''
+export function ReplyComposer({ draft, onDraftChange, onSend, canReply, disabledPlaceholder, suggestedReply, isSending = false }: ReplyComposerProps) {
+  const canSend = canReply && !isSending && draft.trim() !== ''
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -29,7 +33,7 @@ export function ReplyComposer({ draft, onDraftChange, onSend, isHumanReplying, s
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-2.5 border-t border-line px-5 pt-3 pb-4">
-      {isHumanReplying && suggestedReply && (
+      {canReply && suggestedReply && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[12px] text-muted">Suggested</span>
           <button
@@ -50,10 +54,10 @@ export function ReplyComposer({ draft, onDraftChange, onSend, isHumanReplying, s
           id="reply"
           rows={2}
           value={draft}
-          disabled={!isHumanReplying}
+          disabled={!canReply}
           onChange={(event) => onDraftChange(event.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={isHumanReplying ? 'Reply as yourself' : 'The bot is answering. Take over to reply yourself'}
+          placeholder={canReply ? 'Reply as yourself' : disabledPlaceholder}
           className="min-w-0 flex-1 resize-none rounded-xl border border-line-strong px-3 py-2.5 text-[14px] leading-normal text-ink outline-none focus:border-brand disabled:bg-subtle"
         />
         <button

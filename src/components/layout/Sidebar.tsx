@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { Icon, LogoLockup, StatusDot, joinClassNames } from '@/components/ui'
 import type { Agent } from '@/api/types'
 import { useAgents } from '@/hooks/useAgents'
+import { useConversationCounts } from '@/hooks/useConversations'
 import { getKindLabel, getStatusDotTone } from '@/lib/agentDisplay'
 import { agentPath, routePaths, sampleAgentId } from '@/routes'
 
@@ -23,6 +24,7 @@ export interface SidebarProps {
   agents?: SidebarAgentsState
   /** Second line of the runner card, e.g. "Online · OpenAI connected". */
   runnerStatus?: string
+  /** Shown next to Inbox until the live number of chats waiting for you has loaded. */
   inboxCount?: number
 }
 
@@ -85,8 +87,10 @@ function SidebarAgentsSection({ agents }: { agents: SidebarAgentsState }) {
   return <SidebarAgentList activeAgentId={agents.activeAgentId} />
 }
 
-/** Left navigation shared by every in-app screen of the mockup. */
-export function Sidebar({ activeNav, agents = { kind: 'list' }, runnerStatus = 'Online · 2 agents scheduled', inboxCount = 3 }: SidebarProps) {
+/** Left navigation shared by every in-app screen. The Inbox badge is the live number of chats waiting for you. */
+export function Sidebar({ activeNav, agents = { kind: 'list' }, runnerStatus = 'Online · 2 agents scheduled', inboxCount = 0 }: SidebarProps) {
+  const { data: conversationCounts } = useConversationCounts()
+  const waitingCount = conversationCounts?.waitingForYou ?? inboxCount
   return (
     <nav aria-label="Main" className="box-border flex max-w-full flex-[1_1_232px] flex-col gap-[18px] px-3.5 py-5 md:sticky md:top-0 md:max-h-screen md:max-w-[232px] md:overflow-y-auto">
       <Link to={routePaths.home} className="px-1.5 no-underline" aria-label="graphrt home">
@@ -100,9 +104,9 @@ export function Sidebar({ activeNav, agents = { kind: 'list' }, runnerStatus = '
         {primaryNavItems.map((item) => (
           <Link key={item.key} to={item.path} aria-current={activeNav === item.key ? 'page' : undefined} className={navLinkClassNames(activeNav === item.key)}>
             {item.label}
-            {item.key === 'inbox' && inboxCount > 0 && (
+            {item.key === 'inbox' && waitingCount > 0 && (
               <span className="box-border flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-soft px-1.5 text-[11px] font-semibold text-amber-strong">
-                {inboxCount}
+                {waitingCount}
               </span>
             )}
           </Link>

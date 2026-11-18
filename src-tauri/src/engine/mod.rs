@@ -37,6 +37,7 @@ use serde::{Deserialize, Serialize};
 use self::active_runs::ActiveRuns;
 use self::chunk_buffer::ChunkBufferLimits;
 use self::driver::RunDriver;
+pub(crate) use self::preparation::prepare_engine_and_env;
 use crate::credentials::CredentialStore;
 use crate::error::{AppError, AppResult};
 use crate::storage::models::{Run, RunStatus, RunTrigger};

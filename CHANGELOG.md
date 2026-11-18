@@ -27,6 +27,12 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
   as you choose. Agents become Active or Paused with their schedules.
 - **Needs panel**: the builder lists the keys and secrets an agent needs, and missing
   secrets can be added in place. A run will not start while one is missing.
+- **Chatbot conversations**: the chatbot's Try it panel chats with its real workflow,
+  which remembers the conversation between messages. When the workflow hands a chat
+  over (an order to confirm, a question it cannot answer), the bot stops and the chat
+  waits in the Inbox. You can take over, reply, hand it back or close it, and the
+  Inbox, chat and sidebar count update live. The Inbox switch pauses the bot.
+  WhatsApp and Telegram are not connected yet.
 - graphrt is used as a git dependency pinned to a commit until its crates are published.
 
 ### Changed
