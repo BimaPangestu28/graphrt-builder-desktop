@@ -2,6 +2,8 @@
 //! the node registry the desktop enables, validation, and a step summary
 //! for the builder (screen 04) and run views (06, 07, 20).
 
+mod summary;
+
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
@@ -42,17 +44,58 @@ pub struct FlowSummary {
     pub model_providers: Vec<String>,
 }
 
+/// Compact description of the workflow document format, written for the
+/// agent builder's model prompt.
+const WORKFLOW_FORMAT_GUIDE: &str = include_str!("format_guide.md");
+
 /// Node kinds enabled in the desktop: graphrt builtins + `graphrt-llm` + `graphrt-http`.
 pub fn node_registry() -> graphrt_core::Registry {
-    graphrt_core::Registry::with_builtins()
+    let mut registry = graphrt_core::Registry::with_builtins();
+    graphrt_llm::register(&mut registry);
+    graphrt_http::register(&mut registry);
+    registry
 }
 
 /// Compiles the document with [`node_registry`]; `AppError::Workflow` carries graphrt's message.
-pub fn compile_flow(_flow_yaml: &str) -> AppResult<graphrt_core::Graph> {
-    Err(AppError::Internal("not implemented".into()))
+///
+/// # Errors
+/// - `AppError::InvalidInput` when the document is blank (or only comments).
+/// - `AppError::Workflow` when graphrt rejects the document (syntax, unknown
+///   node type, bad config, missing reference, cycles...).
+pub fn compile_flow(flow_yaml: &str) -> AppResult<graphrt_core::Graph> {
+    if is_blank_document(flow_yaml) {
+        return Err(AppError::InvalidInput(
+            "the workflow document is empty".into(),
+        ));
+    }
+    let graph = graphrt_core::Graph::from_text(flow_yaml, &node_registry())
+        .map_err(|error| AppError::Workflow(error.to_string()))?;
+    for warning in graph.warnings() {
+        log::debug!("workflow warning: {warning}");
+    }
+    Ok(graph)
 }
 
 /// Validates and summarizes a document for the UI.
-pub fn summarize_flow(_flow_yaml: &str) -> AppResult<FlowSummary> {
-    Err(AppError::Internal("not implemented".into()))
+///
+/// # Errors
+/// Same as [`compile_flow`]: the document is compiled first.
+pub fn summarize_flow(flow_yaml: &str) -> AppResult<FlowSummary> {
+    let graph = compile_flow(flow_yaml)?;
+    Ok(summary::summarize_graph(&graph))
 }
+
+/// The workflow format cheat-sheet the agent builder includes in its prompt.
+pub fn workflow_format_guide() -> &'static str {
+    WORKFLOW_FORMAT_GUIDE
+}
+
+/// True when the text has no content besides whitespace and YAML comments.
+fn is_blank_document(text: &str) -> bool {
+    text.lines()
+        .map(str::trim)
+        .all(|line| line.is_empty() || line.starts_with('#'))
+}
+
+#[cfg(test)]
+mod tests;
