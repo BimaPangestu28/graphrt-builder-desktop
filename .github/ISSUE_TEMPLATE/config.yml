@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/BimaPangestu28/graphrt-builder-desktop/security/advisories/new
+    about: Report privately — please do not open a public issue.
+  - name: Runtime issues
+    url: https://github.com/BimaPangestu28/graphrt/issues
+    about: Problems with running workflows belong to the graphrt runtime.

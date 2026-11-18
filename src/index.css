@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+/*
+ * graphrt design tokens, taken from the "graphrt Builder Mockup" canvas.
+ * Ink + teal for the brand, amber for "waiting on you", green for healthy, red for errors.
+ * Use these as Tailwind utilities, e.g. bg-ink, text-muted, border-line, bg-amber-soft.
+ */
+@theme {
+  --font-sans: Geist, system-ui, sans-serif;
+
+  --color-ink: #18181B;          /* primary text, primary buttons */
+  --color-ink-2: #3F3F46;        /* nav links, secondary text */
+  --color-body: #52525B;         /* body copy */
+  --color-muted: #5F5F67;        /* labels, meta text */
+  --color-faint: #A1A1AA;        /* paused dots, placeholders */
+  --color-canvas: #F4F4F5;       /* window background behind sidebar */
+  --color-surface: #FFFFFF;
+  --color-subtle: #FAFAFA;       /* table headers, nested panels */
+  --color-chip: #F2F2F4;         /* chips, inactive tabs */
+  --color-selected: #EEEEF0;     /* active nav item */
+  --color-line: #EAEAEC;         /* default borders */
+  --color-line-strong: #E4E4E7;  /* inputs, cards */
+  --color-line-heavy: #D4D4D8;
+
+  --color-teal: #2DD4BF;         /* brand accent dot */
+  --color-brand: #0E7C66;        /* links, selected outlines */
+  --color-brand-strong: #0A5C4C;
+  --color-brand-soft: #E6F2EF;
+  --color-brand-tint: #F5FBF9;
+  --color-brand-line: #CFE6E0;
+  --color-brand-line-2: #BFE3D9;
+
+  --color-ok: #16A34A;           /* online / active dot */
+  --color-ok-strong: #166534;
+  --color-ok-deep: #14532D;
+  --color-ok-soft: #DCFCE7;
+  --color-ok-tint: #F0FDF4;
+
+  --color-amber-strong: #92400E; /* waiting on you */
+  --color-amber-deep: #6B3A0A;
+  --color-amber: #B45309;
+  --color-amber-soft: #FEF3E2;
+  --color-amber-tint: #FFFBF3;
+  --color-amber-line: #F5C77E;
+  --color-amber-line-2: #F5DDB8;
+
+  --color-danger: #991B1B;
+  --color-danger-deep: #7F1D1D;
+  --color-danger-soft: #FEE2E2;
+  --color-danger-tint: #FEF2F2;
+  --color-danger-line: #FECACA;
+}
+
+/* Base styles live in the base layer so Tailwind utilities (text-ink, etc.) can override them. */
+@layer base {
+  /* The mockups use the browser's default line-height, not Tailwind preflight's 1.5 */
+  html { line-height: normal; }
+  html, body, #root { height: 100%; }
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    font-size: 14px;
+    color: var(--color-ink);
+    background: var(--color-canvas);
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Text links are underlined in the mockups; components opt out with no-underline */
+  a { color: var(--color-brand); text-decoration: underline; }
+  a:hover { color: var(--color-brand-strong); }
+}

@@ -1,0 +1,40 @@
+name: Bug report
+description: Something does not work or does not match the design.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Please do not report security vulnerabilities here — see SECURITY.md.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead? Screenshots help.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: The screen you were on and the steps you took. Remove keys and personal data.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Errors
+      description: Error messages from the app or the developer console.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: App version, or the commit you built from.
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      placeholder: e.g. macOS 15 arm64, Windows 11, Ubuntu 24.04

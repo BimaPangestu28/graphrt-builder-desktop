@@ -1,0 +1,51 @@
+import { useState } from 'react'
+import { systemNotifications } from '@/data/menuBar'
+import { MenuBarPopover } from '@/pages/menu-bar/MenuBarPopover'
+import { SystemNotificationCard } from '@/pages/menu-bar/SystemNotificationCard'
+
+function CanvasColumnLabel({ children }: { children: string }) {
+  return <span className="text-[13px] font-semibold text-ink-2">{children}</span>
+}
+
+/**
+ * Screen 25 · Menu bar and notifications.
+ * A fixed 1440x900 illustration (centered, scrolls on smaller windows) of how graphrt lives in the
+ * macOS menu bar: the popover with things that need you, the running agent and quick actions,
+ * next to the system notifications it sends. Actions link into the app; "Pause all agents" toggles
+ * and "In 1 hour" snoozes the review notification.
+ */
+export function MenuBarPage() {
+  const [areAgentsPaused, setAreAgentsPaused] = useState(false)
+  const [snoozedNotificationIds, setSnoozedNotificationIds] = useState<string[]>([])
+  const visibleNotifications = systemNotifications.filter((notification) => !snoozedNotificationIds.includes(notification.id))
+
+  const snoozeNotification = (notificationId: string) => setSnoozedNotificationIds((previousIds) => [...previousIds, notificationId])
+
+  return (
+    <div className="min-h-screen overflow-auto bg-[#E9E9EC]">
+      <div className="mx-auto box-border flex h-[900px] w-[1440px] gap-16 p-16 text-[14px] text-ink">
+        <div className="flex flex-[0_0_380px] flex-col gap-3">
+          <CanvasColumnLabel>Menu bar popover</CanvasColumnLabel>
+          <MenuBarPopover areAgentsPaused={areAgentsPaused} onTogglePause={() => setAreAgentsPaused((isPaused) => !isPaused)} />
+        </div>
+
+        <div className="flex flex-auto flex-col gap-3">
+          <CanvasColumnLabel>System notifications</CanvasColumnLabel>
+          <div className="flex w-[400px] flex-col gap-3">
+            {visibleNotifications.map((notification) => (
+              <SystemNotificationCard key={notification.id} notification={notification} onSnooze={snoozeNotification} />
+            ))}
+            {snoozedNotificationIds.length > 0 && (
+              <p role="status" className="m-0 text-[13px] text-muted">
+                {snoozedNotificationIds.length} notification snoozed. It comes back in 1 hour
+              </p>
+            )}
+            <p className="mt-2 mb-0 leading-[1.6] text-ink-2">
+              Only things that need you make a sound. Finished runs stay quiet and show up in Runs. Each type can be turned off in Settings › Notifications
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
