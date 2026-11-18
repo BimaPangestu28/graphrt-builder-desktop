@@ -9,11 +9,13 @@
 //! - [`agent_builder`]: drafting an agent's workflow from plain language
 //! - [`engine`]: running agents on graphrt and streaming events to the UI
 //! - [`scheduler`]: starting scheduled runs while the app is running
+//! - [`desktop`]: menu bar icon, notifications, keep running when closed, launch at login
 //! - [`commands`]: the Tauri commands the frontend calls
 
 pub mod agent_builder;
 pub mod commands;
 pub mod credentials;
+pub mod desktop;
 pub mod engine;
 pub mod error;
 pub mod flow;
@@ -26,8 +28,10 @@ use std::sync::Arc;
 use tauri::Manager;
 
 use crate::credentials::CredentialStore;
+use crate::desktop::notify::{NotifyingSink, TauriRunNotifier};
+use crate::desktop::RunActivitySink;
 use crate::engine::tauri_sink::TauriRunEventSink;
-use crate::engine::RunManager;
+use crate::engine::{RunEventSink, RunManager};
 use crate::state::AppState;
 use crate::storage::Database;
 
@@ -44,7 +48,11 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         Err(error) => log::warn!("could not clean up interrupted runs: {error}"),
     }
     let credentials = Arc::new(CredentialStore::keychain());
-    let sink = Arc::new(TauriRunEventSink::new(app.handle().clone()));
+    let tauri_sink: Arc<dyn RunEventSink> = Arc::new(TauriRunEventSink::new(app.handle().clone()));
+    let notifier = Arc::new(TauriRunNotifier::install(app.handle().clone()));
+    let notifying_sink = Arc::new(NotifyingSink::new(tauri_sink, notifier, db.clone()));
+    let status_listener = desktop::desktop_status_listener(app.handle().clone());
+    let sink = Arc::new(RunActivitySink::new(notifying_sink, status_listener));
     let runs = Arc::new(RunManager::new(db.clone(), credentials.clone(), sink));
     let scheduler = scheduler::spawn(db.clone(), runs.clone());
     Ok(AppState { db, credentials, runs, scheduler })
@@ -56,15 +64,17 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
 /// Panics if the Tauri runtime fails to start (for example, a malformed `tauri.conf.json`).
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    desktop::register_plugins(tauri::Builder::default())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(tauri_plugin_log::Builder::default().level(log::LevelFilter::Info).build())?;
             }
             let app_state = initialize_app_state(app)?;
             app.manage(app_state);
+            desktop::setup(app)?;
             Ok(())
         })
+        .on_window_event(desktop::window::handle_window_event)
         .invoke_handler(tauri::generate_handler![
             commands::agents::list_agents,
             commands::agents::get_agent,
@@ -97,7 +107,12 @@ pub fn run() {
             commands::triggers::set_trigger_enabled,
             commands::triggers::delete_trigger,
             commands::triggers::preview_schedule,
+            commands::app_settings::get_app_settings,
+            commands::app_settings::update_app_settings,
+            commands::app_settings::export_agents,
+            commands::app_settings::delete_all_data,
         ])
-        .run(tauri::generate_context!())
-        .expect("failed to start the graphrt desktop app");
+        .build(tauri::generate_context!())
+        .expect("failed to start the graphrt desktop app")
+        .run(desktop::handle_run_event);
 }

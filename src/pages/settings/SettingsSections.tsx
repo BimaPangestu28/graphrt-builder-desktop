@@ -1,16 +1,21 @@
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
+import type { AppSettings } from '@/api/appSettingsTypes'
+import type { MissedRunPolicy } from '@/api/types'
 import {
   appVersion,
   appearanceOptions,
   dataFolderPath,
   defaultModelOptions,
   languageOptions,
+  missedRunPolicyLabels,
   modelFallbackOptions,
   runHistoryRetentionOptions,
 } from '@/data/settings'
 import { routePaths } from '@/routes'
+import { DataActions } from './DataActions'
 import { ActionRow, SelectRow, SettingsGroup, ToggleRow, settingsButtonClassNames } from './SettingRows'
+import type { UpdateAppSetting } from './useAppSettings'
 import type { SettingsValues, UpdateSetting } from './useSettingsState'
 
 interface SectionProps {
@@ -18,27 +23,55 @@ interface SectionProps {
   updateSetting: UpdateSetting
 }
 
-/** Runner group: login item, menu bar, keep awake and model choices. */
-export function RunnerSection({ settingsValues, updateSetting }: SectionProps) {
+/** Sections that also show desktop preferences stored by the backend. */
+interface AppSettingsSectionProps extends SectionProps {
+  appSettings: AppSettings
+  updateAppSetting: UpdateAppSetting
+}
+
+type MissedRunPolicyLabel = (typeof missedRunPolicyLabels)[MissedRunPolicy]
+const missedRunPolicyOptions = Object.values(missedRunPolicyLabels)
+
+function findMissedRunPolicy(label: MissedRunPolicyLabel): MissedRunPolicy {
+  return label === missedRunPolicyLabels.skip ? 'skip' : 'run_once'
+}
+
+/** Runner group: login item, menu bar, keep awake, missed runs and model choices. */
+export function RunnerSection({ settingsValues, updateSetting, appSettings, updateAppSetting }: AppSettingsSectionProps) {
   return (
     <SettingsGroup headingId="settings-runner-heading" title="Runner">
       <ToggleRow
         title="Start graphrt when I log in"
         description="So scheduled agents run without opening the app"
-        isChecked={settingsValues.startAtLogin}
-        onToggle={(isChecked) => updateSetting('startAtLogin', isChecked)}
+        isChecked={appSettings.openAtLogin}
+        onToggle={(isChecked) => void updateAppSetting('openAtLogin', isChecked)}
       />
       <ToggleRow
         title="Show in the menu bar"
         description="Approve and check runs without opening the window"
-        isChecked={settingsValues.showInMenuBar}
-        onToggle={(isChecked) => updateSetting('showInMenuBar', isChecked)}
+        isChecked={appSettings.showInMenuBar}
+        onToggle={(isChecked) => void updateAppSetting('showInMenuBar', isChecked)}
       />
       <ToggleRow
         title="Keep the Mac awake while an agent runs"
-        description="Only while plugged in"
-        isChecked={settingsValues.keepMacAwake}
-        onToggle={(isChecked) => updateSetting('keepMacAwake', isChecked)}
+        description={appSettings.keepAwakeOnlyOnPower ? 'Only while plugged in' : 'Also on battery'}
+        isChecked={appSettings.keepAwakeWhileRunning}
+        onToggle={(isChecked) => void updateAppSetting('keepAwakeWhileRunning', isChecked)}
+      />
+      {appSettings.keepAwakeWhileRunning && (
+        <ToggleRow
+          title="Only while plugged in"
+          description="On battery the Mac sleeps as usual"
+          isChecked={appSettings.keepAwakeOnlyOnPower}
+          onToggle={(isChecked) => void updateAppSetting('keepAwakeOnlyOnPower', isChecked)}
+        />
+      )}
+      <SelectRow
+        title="If a scheduled run was missed"
+        description="Default for new schedules, when the Mac was asleep or off"
+        value={missedRunPolicyLabels[appSettings.missedRunDefaultPolicy]}
+        options={missedRunPolicyOptions}
+        onSelect={(label) => void updateAppSetting('missedRunDefaultPolicy', findMissedRunPolicy(label))}
       />
       <SelectRow
         title="Default AI model for new agents"
@@ -59,36 +92,11 @@ export function RunnerSection({ settingsValues, updateSetting }: SectionProps) {
   )
 }
 
-type PendingDataAction = 'idle' | 'confirmDelete' | 'deleted' | 'exported' | 'revealed'
-
-const dataActionMessages: Partial<Record<PendingDataAction, string>> = {
-  deleted: 'All agents, runs and keys were deleted from this Mac',
-  exported: 'Exported 5 agents to your Downloads folder',
-  revealed: 'Opened the data folder in Finder',
-}
-
-function DeleteConfirmation({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
-  return (
-    <div role="alert" className="flex flex-wrap items-center gap-3 rounded-[10px] border border-danger-line bg-danger-tint px-3.5 py-3">
-      <span className="flex-auto text-[13px] text-danger-deep">Delete every agent, run and saved key? This cannot be undone</span>
-      <button type="button" onClick={onCancel} className={`${settingsButtonClassNames} h-[34px]`}>
-        Cancel
-      </button>
-      <button
-        type="button"
-        onClick={onConfirm}
-        className="h-[34px] cursor-pointer rounded-[9px] border-0 bg-danger px-3.5 font-sans text-[13px] font-semibold text-white"
-      >
-        Delete everything
-      </button>
-    </div>
-  )
-}
+type PendingFolderAction = 'idle' | 'revealed'
 
 /** Privacy and data group: data folder, retention, crash reports, export and delete. */
-export function PrivacySection({ settingsValues, updateSetting }: SectionProps) {
-  const [pendingDataAction, setPendingDataAction] = useState<PendingDataAction>('idle')
-  const statusMessage = dataActionMessages[pendingDataAction]
+export function PrivacySection({ settingsValues, updateSetting, onDataDeleted }: SectionProps & { onDataDeleted: () => void }) {
+  const [folderAction, setFolderAction] = useState<PendingFolderAction>('idle')
 
   return (
     <SettingsGroup headingId="settings-privacy-heading" title="Privacy and data">
@@ -97,7 +105,7 @@ export function PrivacySection({ settingsValues, updateSetting }: SectionProps) 
         description={dataFolderPath}
         isMonospace
         action={
-          <button type="button" onClick={() => setPendingDataAction('revealed')} className={`${settingsButtonClassNames} h-[34px] rounded-lg px-3`}>
+          <button type="button" onClick={() => setFolderAction('revealed')} className={`${settingsButtonClassNames} h-[34px] rounded-lg px-3`}>
             Show in Finder
           </button>
         }
@@ -114,26 +122,12 @@ export function PrivacySection({ settingsValues, updateSetting }: SectionProps) 
         isChecked={settingsValues.shareCrashReports}
         onToggle={(isChecked) => updateSetting('shareCrashReports', isChecked)}
       />
-      <div className="flex gap-2 py-3.5">
-        <button type="button" onClick={() => setPendingDataAction('exported')} className={`${settingsButtonClassNames} h-9`}>
-          Export all agents
-        </button>
-        <button
-          type="button"
-          onClick={() => setPendingDataAction('confirmDelete')}
-          className="h-9 cursor-pointer rounded-[9px] border border-danger-line bg-surface px-3.5 font-sans text-[13px] font-medium text-danger hover:bg-danger-tint"
-        >
-          Delete all data
-        </button>
-      </div>
-      {pendingDataAction === 'confirmDelete' && (
-        <DeleteConfirmation onConfirm={() => setPendingDataAction('deleted')} onCancel={() => setPendingDataAction('idle')} />
-      )}
-      {statusMessage && (
+      {folderAction === 'revealed' && (
         <p role="status" className="m-0 text-[13px] text-body">
-          {statusMessage}
+          Opened the data folder in Finder
         </p>
       )}
+      <DataActions onDataDeleted={onDataDeleted} />
     </SettingsGroup>
   )
 }
@@ -227,20 +221,20 @@ export function GeneralSection({ settingsValues, updateSetting }: SectionProps) 
 }
 
 /** Notifications group: which events show a Mac notification. */
-export function NotificationsSection({ settingsValues, updateSetting }: SectionProps) {
+export function NotificationsSection({ settingsValues, updateSetting, appSettings, updateAppSetting }: AppSettingsSectionProps) {
   return (
     <SettingsGroup headingId="settings-notifications-heading" title="Notifications">
       <ToggleRow
         title="An agent needs my approval"
         description="Before it sends a message or spends money"
-        isChecked={settingsValues.notifyWhenApprovalNeeded}
-        onToggle={(isChecked) => updateSetting('notifyWhenApprovalNeeded', isChecked)}
+        isChecked={appSettings.notifyOnApproval}
+        onToggle={(isChecked) => void updateAppSetting('notifyOnApproval', isChecked)}
       />
       <ToggleRow
         title="A run fails"
         description="With one button that fixes it"
-        isChecked={settingsValues.notifyWhenRunFails}
-        onToggle={(isChecked) => updateSetting('notifyWhenRunFails', isChecked)}
+        isChecked={appSettings.notifyOnFailure}
+        onToggle={(isChecked) => void updateAppSetting('notifyOnFailure', isChecked)}
       />
       <ToggleRow
         title="New chatbot conversations"

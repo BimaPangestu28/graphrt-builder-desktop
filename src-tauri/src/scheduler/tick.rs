@@ -96,6 +96,11 @@ pub async fn run_due_triggers(
     now: DateTime<Utc>,
 ) -> AppResult<TickReport> {
     let _tick_guard = TICK_LOCK.lock().await;
+    // "Pause all agents": skip the whole tick. Triggers due meanwhile are late
+    // once the pause ends, so their missed-run policy applies (see `pause`).
+    if super::pause::paused_until(db, now)?.is_some() {
+        return Ok(TickReport::default());
+    }
     let enabled_triggers: Vec<Trigger> =
         db.list_triggers(None)?.into_iter().filter(|trigger| trigger.enabled).collect();
     let mut report = TickReport::default();
@@ -399,6 +404,36 @@ mod tests {
         assert_eq!(report.planned, vec![trigger.id.clone()]);
         assert_eq!(starter.start_count(), 0);
         assert_eq!(stored_next_fire(&database, &trigger.id).as_deref(), Some("2026-11-20T02:00:00+00:00"));
+    }
+
+    #[tokio::test]
+    async fn paused_scheduler_fires_nothing_and_resumes_after() {
+        let (database, trigger) = database_with_trigger(MissedRunPolicy::RunOnce, Some(scheduled_fire_time()));
+        let starter = FakeRunStarter::default();
+        let pause_start = scheduled_fire_time() - Duration::minutes(10);
+        let pause_end = super::super::pause::pause_scheduler(&database, pause_start, Duration::hours(1)).unwrap();
+
+        let paused_report =
+            run_due_triggers(&database, &starter, scheduled_fire_time() + Duration::seconds(5)).await.unwrap();
+        assert!(paused_report.is_empty());
+        assert_eq!(starter.start_count(), 0);
+        assert_eq!(stored_next_fire(&database, &trigger.id), Some(format_fire_time(scheduled_fire_time())));
+
+        // After the pause the late trigger runs once (its policy is RunOnce).
+        let resumed_report = run_due_triggers(&database, &starter, pause_end + Duration::seconds(1)).await.unwrap();
+        assert_eq!(resumed_report.started, vec![trigger.id.clone()]);
+        assert_eq!(starter.start_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn resuming_early_fires_due_triggers_again() {
+        let (database, trigger) = database_with_trigger(MissedRunPolicy::RunOnce, Some(scheduled_fire_time()));
+        let starter = FakeRunStarter::default();
+        super::super::pause::pause_scheduler(&database, scheduled_fire_time(), Duration::hours(1)).unwrap();
+        super::super::pause::resume_scheduler(&database).unwrap();
+
+        let report = run_due_triggers(&database, &starter, scheduled_fire_time() + Duration::seconds(5)).await.unwrap();
+        assert_eq!(report.started, vec![trigger.id]);
     }
 
     #[tokio::test]

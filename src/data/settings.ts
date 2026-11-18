@@ -17,5 +17,11 @@ export const runHistoryRetentionOptions = ['30 days', '90 days', 'Forever'] as c
 export const appearanceOptions = ['Match the Mac', 'Light', 'Dark'] as const
 export const languageOptions = ['English', 'Bahasa Indonesia'] as const
 
+/** Labels of the missed-run policy select, by backend value. */
+export const missedRunPolicyLabels = {
+  run_once: 'Run it once when the Mac wakes',
+  skip: 'Skip it',
+} as const
+
 export const dataFolderPath = '~/Library/Application Support/graphrt'
 export const appVersion = '0.9.0'

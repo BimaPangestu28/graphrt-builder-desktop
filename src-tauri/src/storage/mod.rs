@@ -18,6 +18,7 @@
 
 pub mod agents;
 mod codec;
+mod maintenance;
 mod migrations;
 pub mod models;
 pub mod runs;

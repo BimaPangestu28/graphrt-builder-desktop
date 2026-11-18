@@ -3,6 +3,7 @@
 //! Argument names are camelCase on the JavaScript side (Tauri's default).
 
 pub mod agents;
+pub mod app_settings;
 pub mod builder;
 pub mod credentials;
 pub mod runs;
