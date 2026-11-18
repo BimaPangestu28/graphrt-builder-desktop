@@ -120,6 +120,10 @@ filter_by: { enabled: true, conditions: [{ key: rating, comparison_operator: ">"
 limit: { enabled: true, size: 10 }
 ```
 
+`knowledge-retrieval` - search knowledge bases; output `result` (list of `{content, title, score}`):
+`query_variable_selector: [start, question]`, `dataset_ids: [kb_...]`, `multiple_retrieval_config: { top_k: 4 }`.
+Feed an `llm` with `context: { enabled: true, variable_selector: [look_up, result] }` and `{{#context#}}`.
+
 `variable-aggregator` - first non-null: `variables: [[branch_a, text], [branch_b, text]]`
 
 `iteration` (container) - runs its body once per item; output `output` (list):

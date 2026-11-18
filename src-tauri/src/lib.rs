@@ -9,6 +9,7 @@
 //! - [`agent_builder`]: drafting an agent's workflow from plain language
 //! - [`engine`]: running agents on graphrt and streaming events to the UI
 //! - [`scheduler`]: starting scheduled runs while the app is running
+//! - [`knowledge`]: knowledge bases (graphrt-rag) agents can search
 //! - [`commands`]: the Tauri commands the frontend calls
 
 pub mod agent_builder;
@@ -17,6 +18,7 @@ pub mod credentials;
 pub mod engine;
 pub mod error;
 pub mod flow;
+pub mod knowledge;
 pub mod scheduler;
 pub mod state;
 pub mod storage;
@@ -47,7 +49,13 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
     let sink = Arc::new(TauriRunEventSink::new(app.handle().clone()));
     let runs = Arc::new(RunManager::new(db.clone(), credentials.clone(), sink));
     let scheduler = scheduler::spawn(db.clone(), runs.clone());
-    Ok(AppState { db, credentials, runs, scheduler })
+    let knowledge = Arc::new(knowledge::KnowledgeService::new(
+        db.clone(),
+        credentials.clone(),
+        data_dir.join(knowledge::KNOWLEDGE_DIR_NAME),
+        Arc::new(knowledge::events::TauriKnowledgeEventSink::new(app.handle().clone())),
+    ));
+    Ok(AppState { db, credentials, runs, scheduler, knowledge })
 }
 
 /// Builds and runs the Tauri application.
@@ -57,6 +65,7 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(tauri_plugin_log::Builder::default().level(log::LevelFilter::Info).build())?;
@@ -97,6 +106,16 @@ pub fn run() {
             commands::triggers::set_trigger_enabled,
             commands::triggers::delete_trigger,
             commands::triggers::preview_schedule,
+            commands::knowledge::list_knowledge_bases,
+            commands::knowledge::get_knowledge_base,
+            commands::knowledge::create_knowledge_base,
+            commands::knowledge::rename_knowledge_base,
+            commands::knowledge::delete_knowledge_base,
+            commands::knowledge::add_knowledge_source,
+            commands::knowledge::remove_knowledge_source,
+            commands::knowledge::sync_knowledge_base,
+            commands::knowledge::update_knowledge_settings,
+            commands::knowledge::search_knowledge,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start the graphrt desktop app");

@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use crate::credentials::CredentialStore;
 use crate::engine::RunManager;
+use crate::knowledge::KnowledgeService;
 use crate::scheduler::SchedulerHandle;
 use crate::storage::Database;
 
@@ -13,4 +14,5 @@ pub struct AppState {
     pub credentials: Arc<CredentialStore>,
     pub runs: Arc<RunManager>,
     pub scheduler: SchedulerHandle,
+    pub knowledge: Arc<KnowledgeService>,
 }
