@@ -1,11 +1,10 @@
 import { useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { AppShell } from '@/components/layout'
 import { Icon, joinClassNames } from '@/components/ui'
 import { agentKindOptions, agentTemplates, buildPathByAgentKind, jobDescriptionPlaceholder, type AgentKind, type AgentTemplate } from '@/data/newAgentTemplates'
-import { useDefaultModel } from '@/hooks/useDefaultModel'
-import { routePaths } from '@/routes'
 import type { BuildRequestLocationState } from './agent-builder/buildRequestState'
+import { ModelPickerChip } from './new-agent/ModelPickerChip'
 
 /** Pill radio group for choosing what kind of agent to make. */
 function AgentKindPicker({ selectedKind, onSelect }: { selectedKind: AgentKind; onSelect: (kind: AgentKind) => void }) {
@@ -34,20 +33,6 @@ function AgentKindPicker({ selectedKind, onSelect }: { selectedKind: AgentKind; 
 /** Grey info chip under the prompt (runtime location, model). */
 function PromptChip({ children }: { children: ReactNode }) {
   return <span className="flex h-[30px] items-center gap-1.5 rounded-lg bg-canvas px-2.5 text-[13px] text-ink-2">{children}</span>
-}
-
-/** The real default model new agents use; a link to Connections when none is connected. */
-function DefaultModelChip() {
-  const { data: defaultModel, error, isLoading } = useDefaultModel()
-  if (isLoading) return <PromptChip>Checking model…</PromptChip>
-  if (defaultModel) return <PromptChip>{defaultModel.name}</PromptChip>
-  return (
-    <PromptChip>
-      <Link to={routePaths.connections} className="font-medium">
-        {error ? 'Could not check the model' : 'Connect a model'}
-      </Link>
-    </PromptChip>
-  )
 }
 
 /** A starter: picking it fills the prompt and the kind; it builds nothing by itself. */
@@ -123,7 +108,7 @@ export function NewAgentPage() {
                 <Icon name="monitor" size={14} />
                 Runs on this Mac
               </PromptChip>
-              <DefaultModelChip />
+              <ModelPickerChip />
             </div>
             <button
               type="submit"

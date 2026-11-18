@@ -68,6 +68,17 @@ describe('ConnectionsPage', () => {
     expect(screen.queryByLabelText('Anthropic API key')).not.toBeInTheDocument()
   })
 
+  it('makes a connected provider the default model', async () => {
+    const setDefaultModelSpy = vi.spyOn(sampleCredentialsBackend, 'setDefaultModel')
+    await sampleCredentialsBackend.setApiKey('deepseek', 'sk-deepseek')
+    renderConnectionsPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Use DeepSeek by default' }))
+    await waitFor(() => expect(setDefaultModelSpy).toHaveBeenCalledWith({ provider: 'deepseek', name: 'deepseek-chat' }))
+    // DeepSeek is now the default, so its card no longer offers it; OpenAI does.
+    expect(await screen.findByRole('button', { name: 'Use OpenAI by default' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Use DeepSeek by default' })).not.toBeInTheDocument()
+  })
+
   it('replaces and removes a stored key', async () => {
     const setApiKeySpy = vi.spyOn(sampleCredentialsBackend, 'setApiKey')
     const deleteApiKeySpy = vi.spyOn(sampleCredentialsBackend, 'deleteApiKey')

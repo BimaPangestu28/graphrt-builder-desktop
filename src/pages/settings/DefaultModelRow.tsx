@@ -1,31 +1,9 @@
 import { useState } from 'react'
 import { setDefaultModel } from '@/api/credentials'
-import type { ModelChoice, ProviderStatus } from '@/api/types'
-import { modelProviderNames, recommendedModels } from '@/data/settings'
 import { useProviderStatuses } from '@/hooks/useProviderStatuses'
 import { describeError } from '@/lib/agentDisplay'
+import { describeModelChoice, listDefaultModelChoices } from '@/lib/modelChoices'
 import { ActionRow, SelectRow } from './SettingRows'
-
-/** "OpenAI gpt-4o-mini". */
-export function describeModelChoice(choice: ModelChoice): string {
-  return `${modelProviderNames[choice.provider]} ${choice.name}`
-}
-
-/**
- * The models the select offers: the current default, then the recommended model of
- * every provider that has a key.
- *
- * @param statuses - Provider statuses (ProviderStatus[])
- * @param defaultModel - The stored default (ModelChoice)
- * @returns Distinct choices, the current default first (ModelChoice[])
- */
-export function listDefaultModelChoices(statuses: ProviderStatus[], defaultModel: ModelChoice): ModelChoice[] {
-  const configuredRecommendations = recommendedModels.filter((choice) =>
-    statuses.some((status) => status.provider === choice.provider && status.configured),
-  )
-  const isDefault = (choice: ModelChoice) => choice.provider === defaultModel.provider && choice.name === defaultModel.name
-  return [defaultModel, ...configuredRecommendations.filter((choice) => !isDefault(choice))]
-}
 
 /**
  * "Default AI model for new agents", stored with `setDefaultModel` (the same default the
@@ -74,3 +52,6 @@ export function DefaultModelRow() {
     </>
   )
 }
+
+// Re-exported for existing imports of the Settings row's helpers.
+export { describeModelChoice, listDefaultModelChoices } from '@/lib/modelChoices'
