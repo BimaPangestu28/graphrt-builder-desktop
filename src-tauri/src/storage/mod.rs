@@ -9,20 +9,24 @@
 //! - `runs(id, agent_id, agent_version, trigger, status, started_at, finished_at,
 //!    outputs_json, error_message, pause_reasons_json, snapshot_json)`
 //! - `run_events(run_id, seq, event_json, created_at)`
+//! - `run_inputs(run_id, inputs_json)`: the inputs each run started with
 //! - `triggers(id, agent_id, cron_expression, timezone, enabled, missed_run_policy,
 //!    inputs_json, last_fired_at, next_fire_at, created_at)`
 //! - `settings(key, value)`
 //! - `chains(...)`, `chain_steps(...)`: chains of agents (see `chains.rs`)
+//! - `agent_settings(agent_id, key, value_json, updated_at)`: per-agent JSON settings
 //!
 //! `Database` is cheap to share (`Arc<Database>`); every method takes `&self`
 //! and locks the single connection for the duration of the call.
 
+pub mod agent_settings;
 pub mod agents;
 pub mod chains;
 mod codec;
 mod maintenance;
 mod migrations;
 pub mod models;
+pub mod run_inputs;
 pub mod runs;
 pub mod settings;
 #[cfg(test)]

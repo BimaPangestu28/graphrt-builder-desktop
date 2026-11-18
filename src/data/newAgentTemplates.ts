@@ -11,16 +11,21 @@ export const agentKindOptions = [
 
 export type AgentKind = (typeof agentKindOptions)[number]['value']
 
-/** A starter template card on the New agent screen. */
+/**
+ * A starter card on the New agent screen. Picking it fills the prompt with `description`
+ * and selects `kind`; nothing is built until the user presses "Build agent".
+ */
 export interface AgentTemplate {
   id: string
   title: string
+  /** Starter text put into the prompt. */
   description: string
-  /** Connected services and step count, e.g. "Gmail · Telegram · 4 steps". */
+  /** Kind pill selected with it. */
+  kind: AgentKind
+  /** Services it will likely use and its rough size, e.g. "Gmail · Telegram · 4 steps". */
   meta: string
   /** Kind tag shown top-right, only for non-task agents. */
   kindLabel?: string
-  path: string
 }
 
 export const agentTemplates: AgentTemplate[] = [
@@ -28,44 +33,44 @@ export const agentTemplates: AgentTemplate[] = [
     id: 'morning-digest',
     title: 'Morning email digest',
     description: 'Summarize important emails and send them to Telegram at 07:00',
+    kind: 'task',
     meta: 'Gmail · Telegram · 4 steps',
-    path: routePaths.scheduler,
   },
   {
     id: 'invoice-reminders',
     title: 'Invoice reminders',
     description: 'Find unpaid rows in a sheet and email a polite reminder',
+    kind: 'task',
     meta: 'Google Sheets · Gmail · 5 steps',
-    path: routePaths.generating,
   },
   {
     id: 'customer-chatbot',
     title: 'Customer chatbot',
     description: 'Answer WhatsApp questions from your menu and price list, pass orders to you',
+    kind: 'chatbot',
     meta: 'WhatsApp · Knowledge',
     kindLabel: 'Chatbot',
-    path: routePaths.chatbotSetup,
   },
   {
     id: 'form-to-sheet',
     title: 'Form responses to sheet',
     description: 'Clean up new form entries, tag them, and add them to a sheet',
+    kind: 'task',
     meta: 'Webhook · Google Sheets · 4 steps',
-    path: routePaths.generating,
   },
   {
     id: 'review-replies',
     title: 'Review reply drafts',
     description: 'Draft replies to new Google reviews and ask you before posting',
+    kind: 'task',
     meta: 'Google Business · 5 steps',
-    path: routePaths.generating,
   },
   {
     id: 'ask-documents',
     title: 'Ask your documents',
     description: 'Answer questions from a folder of PDFs on this Mac',
+    kind: 'task',
     meta: 'Local files · 3 steps',
-    path: routePaths.knowledge,
   },
 ]
 
@@ -77,5 +82,8 @@ export const buildPathByAgentKind: Record<AgentKind, string> = {
   team: routePaths.team,
 }
 
-/** Prefilled job so the first-run flow matches the Maps leads example used across screens 02 to 08. */
-export const defaultJobDescription = mapsLeadsJobDescription
+/**
+ * Example shown greyed out in the empty prompt (never submitted): the Maps leads job used
+ * across screens 02 to 08.
+ */
+export const jobDescriptionPlaceholder = `For example: ${mapsLeadsJobDescription}`

@@ -265,7 +265,30 @@ fn build_input(variable: &Json) -> Option<FlowInput> {
         .find(|text| !text.is_empty())
         .map_or_else(|| humanize_kind(&name), str::to_owned);
     let required = variable.get("required").and_then(Json::as_bool).unwrap_or(false);
-    Some(FlowInput { name, label, required })
+    let input_type = variable
+        .get("type")
+        .and_then(Json::as_str)
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .unwrap_or(super::DEFAULT_INPUT_TYPE)
+        .to_owned();
+    let options = variable
+        .get("options")
+        .and_then(Json::as_array)
+        .map(|choices| choices.iter().filter_map(option_text).collect())
+        .unwrap_or_default();
+    let default_value = variable.get("default").filter(|value| !value.is_null()).cloned();
+    Some(FlowInput { name, label, required, input_type, options, default_value })
+}
+
+/// A `select` choice as text (graphrt accepts strings and plain scalars).
+fn option_text(choice: &Json) -> Option<String> {
+    match choice {
+        Json::String(text) => Some(text.clone()),
+        Json::Number(number) => Some(number.to_string()),
+        Json::Bool(flag) => Some(flag.to_string()),
+        _ => None,
+    }
 }
 
 fn collect_model_providers(graph: &Graph) -> Vec<String> {

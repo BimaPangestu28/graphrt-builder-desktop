@@ -1,5 +1,6 @@
 import type { Run, RunEventRecord } from '@/api/types'
-import { buildStepProgress, readApprovalRequest } from '@/pages/agent-run/runProgress'
+import { readPendingApprovals } from '@/api/pauseReasons'
+import { buildStepProgress } from '@/pages/agent-run/runProgress'
 import { toRunFilter, toRunRecord } from '@/pages/runs/runViewModel'
 import { toScheduleTrigger } from '@/pages/scheduler/schedulerViewModel'
 
@@ -38,9 +39,42 @@ describe('run progress', () => {
     ])
   })
 
-  it('reads the drafted message from the pause reason', () => {
-    expect(readApprovalRequest(baseRun)).toEqual({ nodeId: 'approve', message: 'Hello', recipient: null })
-    expect(readApprovalRequest({ ...baseRun, status: 'running' })).toBeNull()
+  it('reads the question from graphrt human-input pause data', () => {
+    const run: Run = {
+      ...baseRun,
+      pauseReasons: [
+        {
+          frame: 'each[2]',
+          node_id: 'approve',
+          kind: 'human_input',
+          data: {
+            prompt: 'Approve [ITEM]?',
+            fields: [{ name: 'note', label: 'Note', type: 'text', required: false, default: 'Hello' }],
+            actions: [{ id: 'yes', title: 'Yes please' }, { id: 'no' }],
+            timeout_ms: 60000,
+          },
+        },
+        { frame: '', node_id: null, kind: 'external', data: null },
+      ],
+    }
+    expect(readPendingApprovals(run)).toEqual([
+      {
+        nodeId: 'approve',
+        frame: 'each[2]',
+        resumeKey: 'each[2]/approve',
+        stepTitle: null,
+        prompt: 'Approve [ITEM]?',
+        fields: [{ name: 'note', label: 'Note', fieldType: 'text', required: false, defaultValue: 'Hello' }],
+        actions: [
+          { id: 'yes', title: 'Yes please' },
+          { id: 'no', title: 'no' },
+        ],
+        timeoutMs: 60000,
+        container: { nodeId: 'each', nodeType: null, title: null, index: 2, total: null, finished: null, item: null },
+      },
+    ])
+    expect(readPendingApprovals({ ...run, status: 'running' })).toEqual([])
+    expect(readPendingApprovals(baseRun)[0]).toMatchObject({ resumeKey: 'approve', container: null, fields: [], actions: [] })
   })
 })
 

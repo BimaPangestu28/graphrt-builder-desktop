@@ -132,15 +132,31 @@ fn validate_name(name: &str) -> AppResult<String> {
     Ok(name.to_owned())
 }
 
-/// Agents whose current workflow refers to the knowledge base, by id or (in a
-/// `knowledge-retrieval` step) by its exact name.
-fn usages_of(knowledge_base: &StoredKnowledgeBase, agents: &[Agent]) -> Vec<KnowledgeUsage> {
+/// Agents that use the knowledge base: chatbots whose saved setup attaches it
+/// (`crate::chatbot_setup`), and other agents whose current workflow refers to
+/// it by id or (in a `knowledge-retrieval` step) by its exact name.
+fn usages_of(knowledge_base: &StoredKnowledgeBase, agents: &[Agent], db: &Database) -> Vec<KnowledgeUsage> {
     let mentions_name = |flow_yaml: &str| {
         flow_yaml.contains(retrieval::KNOWLEDGE_RETRIEVAL_KIND) && flow_yaml.contains(&knowledge_base.name)
     };
+    let attached_by_setup = |agent: &Agent| {
+        if agent.kind != crate::storage::models::AgentKind::Chatbot {
+            return None;
+        }
+        match crate::chatbot_setup::load_saved_settings(db, &agent.id) {
+            Ok(saved) => saved.map(|settings| settings.knowledge_base_ids.contains(&knowledge_base.id)),
+            Err(error) => {
+                log::warn!("could not read the chatbot setup of {}: {error}", agent.id);
+                None
+            }
+        }
+    };
     agents
         .iter()
-        .filter(|agent| agent.flow_yaml.contains(&knowledge_base.id) || mentions_name(&agent.flow_yaml))
+        .filter(|agent| {
+            attached_by_setup(agent)
+                .unwrap_or_else(|| agent.flow_yaml.contains(&knowledge_base.id) || mentions_name(&agent.flow_yaml))
+        })
         .map(|agent| KnowledgeUsage { agent_id: agent.id.clone(), agent_name: agent.name.clone() })
         .collect()
 }
@@ -191,7 +207,7 @@ impl KnowledgeService {
                 .unwrap_or(u32::MAX),
             passage_count: sources.iter().map(|source| source.passage_count).sum(),
             storage_bytes: stores::store_size_bytes(Path::new(&stored.store_path)),
-            used_by: usages_of(stored, agents),
+            used_by: usages_of(stored, agents, &self.db),
             last_synced_at: stored.last_synced_at.clone(),
             created_at: stored.created_at.clone(),
             updated_at: stored.updated_at.clone(),

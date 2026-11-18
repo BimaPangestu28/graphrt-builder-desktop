@@ -1,8 +1,10 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { AppShell } from '@/components/layout'
 import { Icon, joinClassNames } from '@/components/ui'
-import { agentKindOptions, agentTemplates, buildPathByAgentKind, defaultJobDescription, type AgentKind, type AgentTemplate } from '@/data/newAgentTemplates'
+import { agentKindOptions, agentTemplates, buildPathByAgentKind, jobDescriptionPlaceholder, type AgentKind, type AgentTemplate } from '@/data/newAgentTemplates'
+import { useDefaultModel } from '@/hooks/useDefaultModel'
+import { routePaths } from '@/routes'
 import type { BuildRequestLocationState } from './agent-builder/buildRequestState'
 
 /** Pill radio group for choosing what kind of agent to make. */
@@ -34,9 +36,28 @@ function PromptChip({ children }: { children: ReactNode }) {
   return <span className="flex h-[30px] items-center gap-1.5 rounded-lg bg-canvas px-2.5 text-[13px] text-ink-2">{children}</span>
 }
 
-function TemplateCard({ template }: { template: AgentTemplate }) {
+/** The real default model new agents use; a link to Connections when none is connected. */
+function DefaultModelChip() {
+  const { data: defaultModel, error, isLoading } = useDefaultModel()
+  if (isLoading) return <PromptChip>Checking model…</PromptChip>
+  if (defaultModel) return <PromptChip>{defaultModel.name}</PromptChip>
   return (
-    <Link to={template.path} className="flex flex-col gap-2 rounded-[14px] border border-line bg-surface p-[18px] no-underline !text-ink hover:border-line-heavy">
+    <PromptChip>
+      <Link to={routePaths.connections} className="font-medium">
+        {error ? 'Could not check the model' : 'Connect a model'}
+      </Link>
+    </PromptChip>
+  )
+}
+
+/** A starter: picking it fills the prompt and the kind; it builds nothing by itself. */
+function TemplateCard({ template, onPick }: { template: AgentTemplate; onPick: (template: AgentTemplate) => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onPick(template)}
+      className="flex cursor-pointer flex-col gap-2 rounded-[14px] border border-line bg-surface p-[18px] text-left text-ink hover:border-line-heavy"
+    >
       {template.kindLabel ? (
         <span className="flex items-center justify-between gap-2">
           <span className="font-semibold">{template.title}</span>
@@ -47,21 +68,29 @@ function TemplateCard({ template }: { template: AgentTemplate }) {
       )}
       <span className="leading-normal text-body">{template.description}</span>
       <span className="text-[12px] text-muted">{template.meta}</span>
-    </Link>
+    </button>
   )
 }
 
 /**
  * Screen 02 · New agent. The empty-state home before any agent exists:
  * pick a kind, describe the job in plain words and press "Build agent",
- * or start from one of the templates below. "Build agent" hands the request
+ * or pick a template below to fill in the description and kind as a starting point.
+ * The chip under the prompt shows the real default model. "Build agent" hands the request
  * (`{ buildRequest }` router state) to the screen that builds it.
  */
 export function NewAgentPage() {
   const navigate = useNavigate()
   const [selectedKind, setSelectedKind] = useState<AgentKind>('task')
-  const [jobDescription, setJobDescription] = useState(defaultJobDescription)
+  const [jobDescription, setJobDescription] = useState('')
+  const jobDescriptionRef = useRef<HTMLTextAreaElement>(null)
   const canBuild = jobDescription.trim().length > 0
+
+  function handleTemplatePick(template: AgentTemplate) {
+    setSelectedKind(template.kind)
+    setJobDescription(template.description)
+    jobDescriptionRef.current?.focus()
+  }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -81,10 +110,12 @@ export function NewAgentPage() {
         <div className="flex flex-col gap-3.5 rounded-[18px] border border-line-strong bg-surface px-[18px] pt-[18px] pb-3.5">
           <textarea
             id="task"
+            ref={jobDescriptionRef}
             rows={4}
             value={jobDescription}
+            placeholder={jobDescriptionPlaceholder}
             onChange={(event) => setJobDescription(event.target.value)}
-            className="resize-none border-0 bg-transparent text-[16px] leading-[1.6] text-ink outline-none"
+            className="resize-none border-0 bg-transparent text-[16px] leading-[1.6] text-ink outline-none placeholder:text-muted"
           />
           <div className="flex flex-wrap items-center justify-between gap-2.5">
             <div className="flex flex-wrap gap-2">
@@ -92,7 +123,7 @@ export function NewAgentPage() {
                 <Icon name="monitor" size={14} />
                 Runs on this Mac
               </PromptChip>
-              <PromptChip>gpt-4o-mini</PromptChip>
+              <DefaultModelChip />
             </div>
             <button
               type="submit"
@@ -111,7 +142,7 @@ export function NewAgentPage() {
         <span className="font-semibold">Or start from a template</span>
         <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
           {agentTemplates.map((template) => (
-            <TemplateCard key={template.id} template={template} />
+            <TemplateCard key={template.id} template={template} onPick={handleTemplatePick} />
           ))}
         </div>
       </section>

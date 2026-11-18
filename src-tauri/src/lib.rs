@@ -9,19 +9,27 @@
 //! - [`agent_builder`]: drafting an agent's workflow from plain language
 //! - [`engine`]: running agents on graphrt and streaming events to the UI
 //! - [`run_summary`]: plain-language run summaries and weekly agent stats
+//! - [`usage_summary`]: run and model-token totals since a date (Home "This month")
+//! - [`run_review`]: what a paused run waits for (review screen)
 //! - [`scheduler`]: starting scheduled runs while the app is running
 //! - [`conversations`]: chatbot conversations, the bot's replies and hand-offs
+//! - [`chatbot_setup`]: a chatbot's persona, hand-off rules, knowledge and channels
+//! - [`teams`]: a team's activity, guardrails and coordinator chat
 //! - [`agent_steps`]: agents used as steps and team members (the `agents` tool provider)
 //! - [`chains`]: starting the next agent of a chain when a run finishes
 //! - [`knowledge`]: knowledge bases (graphrt-rag) agents can search
 //! - [`node_runtime`]: the bundled Node.js plugins run on and Playwright's browser
 //! - [`plugins`]: graphrt plugins from the catalog (node kinds and tools for every run)
+//! - [`problems`]: what went wrong (failed runs, missing keys, plugins, schedules) and retries
+//! - [`mcp`]: MCP servers the user adds; their tools for every run (graphrt-mcp)
+//! - [`workflow_secrets`]: every workflow secret across agents and MCP servers
 //! - [`desktop`]: menu bar icon, notifications, keep running when closed, launch at login
 //! - [`commands`]: the Tauri commands the frontend calls
 
 pub mod agent_builder;
 pub mod agent_steps;
 pub mod chains;
+pub mod chatbot_setup;
 pub mod commands;
 pub mod conversations;
 pub mod credentials;
@@ -30,12 +38,18 @@ pub mod engine;
 pub mod error;
 pub mod flow;
 pub mod knowledge;
+pub mod mcp;
 pub mod node_runtime;
 pub mod plugins;
+pub mod problems;
+pub mod run_review;
 pub mod run_summary;
 pub mod scheduler;
 pub mod state;
 pub mod storage;
+pub mod teams;
+pub mod usage_summary;
+pub mod workflow_secrets;
 
 use std::sync::Arc;
 
@@ -62,14 +76,16 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         Ok(_) => {}
         Err(error) => log::warn!("could not clean up interrupted runs: {error}"),
     }
-    // Keep 30 days of event logs for finished runs; running / paused runs keep theirs.
-    if let Err(error) = db.prune_old_run_events(30) {
+    // Keep the event logs of finished runs for the chosen days (Settings > Privacy and
+    // data, 30 by default); running / paused runs keep theirs.
+    if let Err(error) = desktop::app_settings::AppSettings::load_or_default(&db).prune_run_history(&db) {
         log::warn!("could not prune old run events: {error}");
     }
     let credentials = Arc::new(CredentialStore::keychain());
     let tauri_sink: Arc<dyn RunEventSink> = Arc::new(TauriRunEventSink::new(app.handle().clone()));
     let notifier = Arc::new(TauriRunNotifier::install(app.handle().clone()));
-    let notifying_sink = Arc::new(NotifyingSink::new(tauri_sink, notifier, db.clone()));
+    let notifying_sink = Arc::new(NotifyingSink::new(tauri_sink, notifier.clone(), db.clone()));
+    desktop::daily_summary::spawn(db.clone(), notifier.clone());
     let status_listener = desktop::desktop_status_listener(app.handle().clone());
     let activity_sink = Arc::new(RunActivitySink::new(notifying_sink, status_listener));
     let chain_runner = Arc::new(ChainRunner::new(db.clone()));
@@ -77,7 +93,11 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
     let runs = Arc::new(RunManager::new(db.clone(), credentials.clone(), sink));
     chain_runner.attach(&runs);
     let scheduler = scheduler::spawn(db.clone(), runs.clone());
-    let conversation_sink = Arc::new(conversations::tauri_sink::TauriConversationEventSink::new(app.handle().clone()));
+    let conversation_sink = Arc::new(desktop::chat_notify::ChatNotifyingSink::new(
+        Arc::new(conversations::tauri_sink::TauriConversationEventSink::new(app.handle().clone())),
+        notifier.clone(),
+        db.clone(),
+    ));
     let conversations =
         Arc::new(conversations::ConversationManager::new(db.clone(), credentials.clone(), conversation_sink));
     let knowledge = Arc::new(knowledge::KnowledgeService::new(
@@ -100,6 +120,7 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         events: Arc::new(plugins::events::TauriPluginEventSink::new(app.handle().clone())),
     }));
     plugins.activate();
+    mcp::publish_from_database(&db);
     Ok(AppState {
         db,
         credentials,
@@ -148,6 +169,11 @@ pub fn run() {
             commands::credentials::list_workflow_secrets,
             commands::credentials::set_workflow_secret,
             commands::credentials::delete_workflow_secret,
+            commands::credentials::list_all_workflow_secrets,
+            commands::mcp::list_mcp_servers,
+            commands::mcp::add_mcp_server,
+            commands::mcp::remove_mcp_server,
+            commands::mcp::test_mcp_server,
             commands::builder::build_agent,
             commands::builder::revise_agent,
             commands::builder::get_flow_summary,
@@ -159,6 +185,10 @@ pub fn run() {
             commands::runs::list_run_events,
             commands::run_summary::get_run_summary,
             commands::run_summary::list_agent_run_stats,
+            commands::usage_summary::get_usage_summary,
+            commands::run_review::get_run_review,
+            commands::run_review::get_run_inputs,
+            commands::run_review::get_last_run_inputs,
             commands::triggers::list_triggers,
             commands::triggers::create_trigger,
             commands::triggers::update_trigger,
@@ -189,6 +219,15 @@ pub fn run() {
             commands::agent_tools::get_team,
             commands::agent_tools::add_agent_step,
             commands::agent_tools::add_team_member,
+            commands::teams::list_team_activity,
+            commands::teams::get_team_guardrails,
+            commands::teams::set_team_max_agent_calls,
+            commands::teams::list_coordinator_chat,
+            commands::teams::send_coordinator_message,
+            commands::chatbot_setup::get_chatbot_setup,
+            commands::chatbot_setup::save_chatbot_settings,
+            commands::chatbot_setup::attach_chatbot_knowledge,
+            commands::chatbot_setup::detach_chatbot_knowledge,
             commands::knowledge::list_knowledge_bases,
             commands::knowledge::get_knowledge_base,
             commands::knowledge::create_knowledge_base,
@@ -203,6 +242,8 @@ pub fn run() {
             commands::app_settings::update_app_settings,
             commands::app_settings::export_agents,
             commands::app_settings::delete_all_data,
+            commands::app_settings::get_data_folder_path,
+            commands::app_settings::reveal_data_folder,
             commands::node_runtime::node_runtime_info,
             commands::node_runtime::install_browser_runtime,
             commands::plugins::list_plugin_catalog,
@@ -215,6 +256,12 @@ pub fn run() {
             commands::plugins::delete_plugin_config,
             commands::plugins::browser_runtime_status,
             commands::plugins::run_plugin_action,
+            commands::problems::list_problems,
+            commands::problems::get_failed_run_report,
+            commands::problems::retry_run,
+            commands::schedule_rules::get_schedule_rules,
+            commands::schedule_rules::update_schedule_rules,
+            commands::schedule_rules::list_scheduled_runs,
         ])
         .build(tauri::generate_context!())
         .expect("failed to start the graphrt desktop app")

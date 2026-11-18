@@ -7,6 +7,7 @@ use tauri::{AppHandle, State};
 use crate::desktop as desktop_integration;
 use crate::desktop::app_settings::AppSettings;
 use crate::desktop::data::{self, DeletionSummary, ExportSummary};
+use crate::desktop::data_folder;
 use crate::error::AppResult;
 use crate::state::AppState;
 use crate::storage::models::{RunFilter, RunStatus};
@@ -17,15 +18,35 @@ pub fn get_app_settings(state: State<'_, AppState>) -> AppResult<AppSettings> {
 }
 
 /// Stores every field, then applies launch at login, the tray icon and keep awake.
+/// A shorter run history retention prunes old run logs right away.
 #[tauri::command]
 pub fn update_app_settings(
     app_handle: AppHandle,
     state: State<'_, AppState>,
     settings: AppSettings,
 ) -> AppResult<AppSettings> {
+    let previous_retention = AppSettings::load_or_default(&state.db).run_history_retention_days;
     settings.save(&state.db)?;
     desktop_integration::apply_settings(&app_handle, &settings);
+    if settings.run_history_retention_days != previous_retention {
+        match settings.prune_run_history(&state.db) {
+            Ok(deleted_count) => log::info!("pruned {deleted_count} run events after the retention changed"),
+            Err(error) => log::warn!("could not prune old run events: {error}"),
+        }
+    }
     Ok(settings)
+}
+
+/// Absolute path of the folder holding the database, knowledge bases and plugins.
+#[tauri::command]
+pub fn get_data_folder_path(app_handle: AppHandle) -> AppResult<String> {
+    Ok(data_folder::data_folder(&app_handle)?.display().to_string())
+}
+
+/// Opens the data folder in Finder (Explorer / the file manager elsewhere).
+#[tauri::command]
+pub fn reveal_data_folder(app_handle: AppHandle) -> AppResult<()> {
+    data_folder::open_in_file_manager(&data_folder::data_folder(&app_handle)?)
 }
 
 /// Writes every agent (workflow, versions, schedules; no secrets) as JSON to `path`.
@@ -49,6 +70,8 @@ pub async fn delete_all_data(
     log::info!("removed {removed_plugin_count} plugins while deleting all data");
     let summary = data::delete_all_data(&state.db, &state.credentials, remove_keychain_items)?;
     desktop_integration::apply_settings(&app_handle, &AppSettings::default());
+    // The MCP server list was a setting: new runs must not see the deleted servers.
+    crate::mcp::publish(Vec::new());
     Ok(summary)
 }
 

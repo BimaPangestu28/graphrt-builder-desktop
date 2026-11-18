@@ -17,6 +17,7 @@ function renderGeneratingPage(locationState: unknown = buildRequestState) {
         <Route path={routePaths.generating} element={<GeneratingPage />} />
         <Route path={agentPath('builder', 'maps-leads')} element={<p>Builder screen</p>} />
         <Route path={routePaths.connections} element={<p>Connections screen</p>} />
+        <Route path={routePaths.newAgent} element={<p>New agent screen</p>} />
       </Routes>
     </MemoryRouter>,
   )
@@ -65,12 +66,15 @@ describe('GeneratingPage', () => {
     expect(screen.getByText('Builder screen')).toBeInTheDocument()
   })
 
-  it('builds the sample job when opened directly', async () => {
+  it('builds nothing when opened without a request and links back to New agent', async () => {
     const buildAgentSpy = vi.spyOn(sampleBuilderBackend, 'buildAgent')
     renderGeneratingPage(null)
     await advanceBy(0)
-    expect(buildAgentSpy).toHaveBeenCalledWith(expect.objectContaining({ kind: 'task' }), expect.any(Function))
-    expect(screen.getByText(/Find cafes in Bandar Lampung/)).toBeInTheDocument()
+    expect(buildAgentSpy).not.toHaveBeenCalled()
+    expect(screen.getByRole('heading', { name: 'Nothing to build yet' })).toBeInTheDocument()
+    expect(screen.queryByText(/Find cafes in Bandar Lampung/)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('link', { name: 'Describe a new agent' }))
+    expect(screen.getByText('New agent screen')).toBeInTheDocument()
   })
 
   it('links to Connections when no model key is set up', async () => {

@@ -38,6 +38,7 @@ use serde::{Deserialize, Serialize};
 use self::active_runs::ActiveRuns;
 use self::chunk_buffer::ChunkBufferLimits;
 use self::driver::RunDriver;
+pub(crate) use self::preparation::flow_for_version;
 pub(crate) use self::preparation::prepare_engine_and_env;
 
 /// Other agents as tools for a workflow of `agent_id` that is not a `RunManager`
@@ -166,10 +167,15 @@ impl RunManager {
         let engine =
             preparation::build_engine(&agent.flow_yaml, &self.credentials, &self.db, &*self.model_source, tools)?;
         let mut run_input = RunInput::new();
+        let stored_inputs = inputs.clone();
         run_input.inputs = preparation::json_object_to_value_map(inputs, "run inputs")?;
         run_input.env = preparation::workflow_env(&agent.flow_yaml, &self.credentials)?;
 
         let run = self.db.insert_run(agent_id, agent.current_version, trigger)?;
+        // Kept only to prefill the next run; a failure must not stop this one.
+        if let Err(error) = self.db.save_run_inputs(&run.id, &stored_inputs) {
+            log::warn!("could not store the inputs of run {}: {error}", run.id);
+        }
         self.driver_for(&run).send_status(&run.id, RunStatus::Running);
         self.spawn_driver(&run, engine.run(run_input))?;
         Ok(run)

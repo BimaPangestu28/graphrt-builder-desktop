@@ -1,5 +1,7 @@
 import { BackendError } from '../client'
+import type { WorkflowSecretOverview } from '../connectionTypes'
 import type { ModelChoice, ModelProvider, ProviderStatus, WorkflowSecretStatus } from '../types'
+import { readSampleMcpServers } from './mcpServers'
 import { requireText, respondWith } from './sampleResponse'
 
 /**
@@ -24,9 +26,20 @@ function createInitialState(): SampleCredentialsState {
     configuredProviders: new Set<ModelProvider>(['openai']),
     ollamaBaseUrl: defaultOllamaBaseUrl,
     defaultModel: { provider: 'openai', name: 'gpt-4o-mini' },
-    configuredSecretNames: new Set<string>(),
+    configuredSecretNames: new Set<string>(['GOOGLE_PLACES_API_KEY']),
   }
 }
+
+/** Secrets the sample agents declare, as the Connections design shows them (screen 21). */
+const sampleAgentSecrets: Array<Omit<WorkflowSecretOverview, 'configured' | 'mcpServers'>> = [
+  {
+    name: 'GOOGLE_PLACES_API_KEY',
+    description: 'Google Places API key',
+    isSecret: true,
+    required: true,
+    agents: [{ agentId: 'maps-leads', agentName: 'Maps leads to WhatsApp' }],
+  },
+]
 
 let credentialsState = createInitialState()
 
@@ -90,6 +103,25 @@ function listSampleWorkflowSecrets(_agentId: string): WorkflowSecretStatus[] {
   return []
 }
 
+/** Every sample secret name with its status: the agents' secrets plus the sample MCP servers' ones. */
+function listAllSampleWorkflowSecrets(): WorkflowSecretOverview[] {
+  const secretsByName = new Map<string, WorkflowSecretOverview>()
+  for (const agentSecret of sampleAgentSecrets) {
+    secretsByName.set(agentSecret.name, { ...agentSecret, agents: [...agentSecret.agents], configured: false, mcpServers: [] })
+  }
+  for (const server of readSampleMcpServers()) {
+    const serverSecretNames = [...server.secretEnv, ...(server.bearerTokenSecret ? [server.bearerTokenSecret] : [])]
+    for (const secretName of serverSecretNames) {
+      const secret = secretsByName.get(secretName) ?? { name: secretName, description: null, isSecret: true, required: true, configured: false, agents: [], mcpServers: [] }
+      secret.mcpServers.push(server.name)
+      secretsByName.set(secretName, secret)
+    }
+  }
+  return [...secretsByName.values()]
+    .map((secret) => ({ ...secret, configured: credentialsState.configuredSecretNames.has(secret.name) }))
+    .sort((first, second) => first.name.localeCompare(second.name))
+}
+
 /** Whether a sample workflow secret was set (tests read this after saving). */
 export function isSampleWorkflowSecretConfigured(name: string): boolean {
   return credentialsState.configuredSecretNames.has(name)
@@ -103,6 +135,7 @@ export const sampleCredentialsBackend = {
   setDefaultModel: (choice: ModelChoice): Promise<void> => respondWith(() => storeDefaultModel(choice)),
   setOllamaBaseUrl: (baseUrl: string): Promise<void> => respondWith(() => storeOllamaBaseUrl(baseUrl)),
   listWorkflowSecrets: (agentId: string): Promise<WorkflowSecretStatus[]> => respondWith(() => listSampleWorkflowSecrets(agentId)),
+  listAllWorkflowSecrets: (): Promise<WorkflowSecretOverview[]> => respondWith(listAllSampleWorkflowSecrets),
   setWorkflowSecret: (name: string, value: string): Promise<void> => respondWith(() => storeWorkflowSecret(name, value)),
   deleteWorkflowSecret: (name: string): Promise<void> => respondWith(() => {
       credentialsState.configuredSecretNames.delete(name)

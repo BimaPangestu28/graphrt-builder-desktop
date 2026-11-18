@@ -1,9 +1,9 @@
-import type { GraphrtEvent, Run, RunEventRecord } from '@/api/types'
+import type { GraphrtEvent, RunEventRecord } from '@/api/types'
 import type { TestRunStep, TestRunStepState } from '@/data/testRun'
 
 /**
- * Turns a run's graphrt events into what screens 06, 07 and 20 show: per-step progress,
- * the pending approval, and small facts such as how many places were found.
+ * Turns a run's graphrt events into what screens 06, 07 and 20 show: per-step progress and
+ * elapsed time. The pending question is read by `src/api/pauseReasons.ts`.
  */
 
 /** A step the run is expected to go through, before any event arrives. */
@@ -90,51 +90,6 @@ export function buildStepProgress(template: RunStepTemplate[], events: RunEventR
       detail: progress.detail ?? undefined,
     }))
   return [...templateSteps, ...extraSteps]
-}
-
-/** What a paused run asks the user, read from its first pause reason. */
-export interface ApprovalRequest {
-  nodeId: string
-  /** The drafted message to approve or edit. */
-  message: string
-  /** Who it goes to, when the run says. */
-  recipient: string | null
-}
-
-function readRecordField(record: unknown, fieldName: string): string | null {
-  if (!record || typeof record !== 'object') return null
-  const fieldValue = (record as Record<string, unknown>)[fieldName]
-  return typeof fieldValue === 'string' ? fieldValue : null
-}
-
-/**
- * The approval a paused run waits for. The drafted text is taken from `data.message`,
- * `data.draft` or `data.text`, or `data` itself when it is a string.
- *
- * @returns The request, or null when the run is not paused on a node (ApprovalRequest | null)
- */
-export function readApprovalRequest(run: Run | null): ApprovalRequest | null {
-  const pauseReason = run?.status === 'paused' ? run.pauseReasons?.[0] : undefined
-  if (!pauseReason?.node_id) return null
-  const pauseData = pauseReason.data
-  const message =
-    typeof pauseData === 'string'
-      ? pauseData
-      : readRecordField(pauseData, 'message') ?? readRecordField(pauseData, 'draft') ?? readRecordField(pauseData, 'text') ?? ''
-  return { nodeId: pauseReason.node_id, message, recipient: readRecordField(pauseData, 'recipient') }
-}
-
-/** True when the run skipped the given node (the user chose "Skip this place"). */
-export function wasNodeSkipped(events: RunEventRecord[], nodeId: string): boolean {
-  return events.some(({ event }) => event.type === 'node_skipped' && event.node_id === nodeId)
-}
-
-/** Places found by the search step, if an event reported it. */
-export function readPlacesFound(events: RunEventRecord[]): number | null {
-  for (const { event } of events) {
-    if (typeof event.places_found === 'number') return event.places_found
-  }
-  return null
 }
 
 /** "14s ago", "3m ago" or "2h ago" between two instants. */

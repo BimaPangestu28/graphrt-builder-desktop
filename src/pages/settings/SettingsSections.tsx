@@ -1,19 +1,21 @@
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
+import { revealDataFolder } from '@/api/appInfo'
 import type { AppSettings } from '@/api/appSettingsTypes'
+import type { AppInfo } from '@/api/connectionTypes'
 import type { MissedRunPolicy } from '@/api/types'
 import {
-  appVersion,
   appearanceOptions,
-  dataFolderPath,
-  defaultModelOptions,
+  describeRetention,
   languageOptions,
   missedRunPolicyLabels,
   modelFallbackOptions,
-  runHistoryRetentionOptions,
+  runHistoryRetentionChoices,
 } from '@/data/settings'
+import { describeError } from '@/lib/agentDisplay'
 import { routePaths } from '@/routes'
 import { DataActions } from './DataActions'
+import { DefaultModelRow } from './DefaultModelRow'
 import { ActionRow, SelectRow, SettingsGroup, ToggleRow, settingsButtonClassNames } from './SettingRows'
 import type { UpdateAppSetting } from './useAppSettings'
 import type { SettingsValues, UpdateSetting } from './useSettingsState'
@@ -21,6 +23,11 @@ import type { SettingsValues, UpdateSetting } from './useSettingsState'
 interface SectionProps {
   settingsValues: SettingsValues
   updateSetting: UpdateSetting
+  /**
+   * True in the browser preview: also show the design's controls that have no backend
+   * yet (model fallback, crash reports). The desktop app hides them.
+   */
+  showsPreviewOnlySettings: boolean
 }
 
 /** Sections that also show desktop preferences stored by the backend. */
@@ -37,7 +44,7 @@ function findMissedRunPolicy(label: MissedRunPolicyLabel): MissedRunPolicy {
 }
 
 /** Runner group: login item, menu bar, keep awake, missed runs and model choices. */
-export function RunnerSection({ settingsValues, updateSetting, appSettings, updateAppSetting }: AppSettingsSectionProps) {
+export function RunnerSection({ settingsValues, updateSetting, showsPreviewOnlySettings, appSettings, updateAppSetting }: AppSettingsSectionProps) {
   return (
     <SettingsGroup headingId="settings-runner-heading" title="Runner">
       <ToggleRow
@@ -72,59 +79,96 @@ export function RunnerSection({ settingsValues, updateSetting, appSettings, upda
         value={missedRunPolicyLabels[appSettings.missedRunDefaultPolicy]}
         options={missedRunPolicyOptions}
         onSelect={(label) => void updateAppSetting('missedRunDefaultPolicy', findMissedRunPolicy(label))}
+        hasDivider
       />
-      <SelectRow
-        title="Default AI model for new agents"
-        description="Each agent can still pick its own"
-        value={settingsValues.defaultModel}
-        options={defaultModelOptions}
-        onSelect={(model) => updateSetting('defaultModel', model)}
-      />
-      <SelectRow
-        title="If the main model fails"
-        description="Out of credit, rate limited or offline"
-        value={settingsValues.modelFallback}
-        options={modelFallbackOptions}
-        onSelect={(fallback) => updateSetting('modelFallback', fallback)}
-        hasDivider={false}
-      />
+      <DefaultModelRow />
+      {showsPreviewOnlySettings && (
+        <SelectRow
+          title="If the main model fails"
+          description="Out of credit, rate limited or offline"
+          value={settingsValues.modelFallback}
+          options={modelFallbackOptions}
+          onSelect={(fallback) => updateSetting('modelFallback', fallback)}
+          hasDivider={false}
+        />
+      )}
     </SettingsGroup>
   )
 }
 
-type PendingFolderAction = 'idle' | 'revealed'
+type FolderActionState = { kind: 'idle' } | { kind: 'revealed' } | { kind: 'failed'; message: string }
 
-/** Privacy and data group: data folder, retention, crash reports, export and delete. */
-export function PrivacySection({ settingsValues, updateSetting, onDataDeleted }: SectionProps & { onDataDeleted: () => void }) {
-  const [folderAction, setFolderAction] = useState<PendingFolderAction>('idle')
+/** Retention choices, plus the stored value when it is not one of them. */
+function listRetentionLabels(storedDays: number | null): string[] {
+  const choices = runHistoryRetentionChoices.includes(storedDays) ? runHistoryRetentionChoices : [storedDays, ...runHistoryRetentionChoices]
+  return choices.map(describeRetention)
+}
+
+function findRetentionDays(label: string, storedDays: number | null): number | null {
+  const knownChoices = [storedDays, ...runHistoryRetentionChoices]
+  const matchingIndex = knownChoices.findIndex((days) => describeRetention(days) === label)
+  // `find` cannot be used: null (forever) is a valid choice.
+  return matchingIndex === -1 ? storedDays : knownChoices[matchingIndex]
+}
+
+interface PrivacySectionProps extends SectionProps {
+  /** Null while the stored preferences load (the retention row waits for them). */
+  appSettings: AppSettings | null
+  updateAppSetting: UpdateAppSetting
+  appInfo: AppInfo | null
+  onDataDeleted: () => void
+}
+
+/** Privacy and data group: data folder, run history retention, crash reports, export and delete. */
+export function PrivacySection({ settingsValues, updateSetting, showsPreviewOnlySettings, appSettings, updateAppSetting, appInfo, onDataDeleted }: PrivacySectionProps) {
+  const [folderAction, setFolderAction] = useState<FolderActionState>({ kind: 'idle' })
+
+  async function handleReveal() {
+    try {
+      await revealDataFolder()
+      setFolderAction({ kind: 'revealed' })
+    } catch (revealError) {
+      setFolderAction({ kind: 'failed', message: `Could not open the data folder: ${describeError(revealError)}` })
+    }
+  }
 
   return (
     <SettingsGroup headingId="settings-privacy-heading" title="Privacy and data">
       <ActionRow
         title="Data folder"
-        description={dataFolderPath}
+        description={appInfo?.dataFolderPath ?? 'Loading…'}
         isMonospace
         action={
-          <button type="button" onClick={() => setFolderAction('revealed')} className={`${settingsButtonClassNames} h-[34px] rounded-lg px-3`}>
+          <button type="button" onClick={() => void handleReveal()} className={`${settingsButtonClassNames} h-[34px] rounded-lg px-3`}>
             Show in Finder
           </button>
         }
       />
-      <SelectRow
-        title="Keep run history for"
-        value={settingsValues.runHistoryRetention}
-        options={runHistoryRetentionOptions}
-        onSelect={(retention) => updateSetting('runHistoryRetention', retention)}
-      />
-      <ToggleRow
-        title="Share anonymous crash reports"
-        description="Never includes messages, files or keys"
-        isChecked={settingsValues.shareCrashReports}
-        onToggle={(isChecked) => updateSetting('shareCrashReports', isChecked)}
-      />
-      {folderAction === 'revealed' && (
+      {appSettings && (
+        <SelectRow
+          title="Keep run history for"
+          description="Step-by-step logs of finished runs; their results are kept"
+          value={describeRetention(appSettings.runHistoryRetentionDays)}
+          options={listRetentionLabels(appSettings.runHistoryRetentionDays)}
+          onSelect={(label) => void updateAppSetting('runHistoryRetentionDays', findRetentionDays(label, appSettings.runHistoryRetentionDays))}
+        />
+      )}
+      {showsPreviewOnlySettings && (
+        <ToggleRow
+          title="Share anonymous crash reports"
+          description="Never includes messages, files or keys"
+          isChecked={settingsValues.shareCrashReports}
+          onToggle={(isChecked) => updateSetting('shareCrashReports', isChecked)}
+        />
+      )}
+      {folderAction.kind === 'revealed' && (
         <p role="status" className="m-0 text-[13px] text-body">
           Opened the data folder in Finder
+        </p>
+      )}
+      {folderAction.kind === 'failed' && (
+        <p role="alert" className="m-0 text-[13px] text-danger">
+          {folderAction.message}
         </p>
       )}
       <DataActions onDataDeleted={onDataDeleted} />
@@ -132,7 +176,7 @@ export function PrivacySection({ settingsValues, updateSetting, onDataDeleted }:
   )
 }
 
-/** Dark promo card pointing people at running graphrt on their own server. */
+/** Dark promo card pointing people at running graphrt on their own server (browser preview only). */
 export function RemoteRunnerBanner({ onConnectServer }: { onConnectServer: () => void }) {
   return (
     <section aria-labelledby="settings-remote-banner-heading" className="flex flex-wrap items-center gap-4 rounded-[14px] bg-ink p-[18px] text-white">
@@ -155,7 +199,7 @@ export function RemoteRunnerBanner({ onConnectServer }: { onConnectServer: () =>
   )
 }
 
-/** Remote runner group: a server address form with a mock "connected" result. */
+/** Remote runner group (browser preview only: no remote runner exists yet). */
 export function RemoteRunnerSection({ settingsValues, updateSetting }: SectionProps) {
   const [connectedServerUrl, setConnectedServerUrl] = useState<string | null>(null)
   const trimmedServerUrl = settingsValues.remoteServerUrl.trim()
@@ -198,7 +242,7 @@ export function RemoteRunnerSection({ settingsValues, updateSetting }: SectionPr
   )
 }
 
-/** General group: appearance and language. */
+/** General group: appearance and language (browser preview only: no dark theme or translations yet). */
 export function GeneralSection({ settingsValues, updateSetting }: SectionProps) {
   return (
     <SettingsGroup headingId="settings-general-heading" title="General">
@@ -220,8 +264,8 @@ export function GeneralSection({ settingsValues, updateSetting }: SectionProps) 
   )
 }
 
-/** Notifications group: which events show a Mac notification. */
-export function NotificationsSection({ settingsValues, updateSetting, appSettings, updateAppSetting }: AppSettingsSectionProps) {
+/** Notifications group: which events show a Mac notification (all stored by the backend). */
+export function NotificationsSection({ appSettings, updateAppSetting }: AppSettingsSectionProps) {
   return (
     <SettingsGroup headingId="settings-notifications-heading" title="Notifications">
       <ToggleRow
@@ -237,15 +281,16 @@ export function NotificationsSection({ settingsValues, updateSetting, appSetting
         onToggle={(isChecked) => void updateAppSetting('notifyOnFailure', isChecked)}
       />
       <ToggleRow
-        title="New chatbot conversations"
-        description="When a customer messages the Catering assistant"
-        isChecked={settingsValues.notifyNewChatMessages}
-        onToggle={(isChecked) => updateSetting('notifyNewChatMessages', isChecked)}
+        title="A chatbot conversation needs me"
+        description="When a chatbot hands a customer chat over to you"
+        isChecked={appSettings.notifyOnChatHandoff}
+        onToggle={(isChecked) => void updateAppSetting('notifyOnChatHandoff', isChecked)}
       />
       <ToggleRow
         title="Daily summary at 18:00"
-        isChecked={settingsValues.dailySummary}
-        onToggle={(isChecked) => updateSetting('dailySummary', isChecked)}
+        description="How many runs succeeded or failed in the last 24 hours"
+        isChecked={appSettings.notifyDailySummary}
+        onToggle={(isChecked) => void updateAppSetting('notifyDailySummary', isChecked)}
         hasDivider={false}
       />
     </SettingsGroup>
@@ -253,13 +298,14 @@ export function NotificationsSection({ settingsValues, updateSetting, appSetting
 }
 
 /** About group: version and helpful links. */
-export function AboutSection() {
+export function AboutSection({ appInfo }: { appInfo: AppInfo | null }) {
+  const versionText = appInfo ? `Version ${appInfo.version}${appInfo.updateStatus ? ` · ${appInfo.updateStatus}` : ''}` : 'Loading…'
   return (
     <SettingsGroup headingId="settings-about-heading" title="About">
-      <ActionRow title="graphrt" description={`Version ${appVersion} · up to date`} action={null} />
+      <ActionRow title="graphrt" description={versionText} action={null} />
       <ActionRow
         title="Connected accounts"
-        description="Gmail, WhatsApp, OpenAI and more"
+        description="AI model keys, secrets, MCP servers and plugins"
         hasDivider={false}
         action={
           <Link to={routePaths.connections} className={`${settingsButtonClassNames} inline-flex h-[34px] items-center rounded-lg px-3 no-underline !text-ink`}>

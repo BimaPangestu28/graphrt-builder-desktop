@@ -1,18 +1,17 @@
 import { useState } from 'react'
+import { listAppConnections } from '@/api/appConnections'
+import type { WorkflowSecretOverview } from '@/api/connectionTypes'
+import { listAllWorkflowSecrets } from '@/api/credentials'
 import { AppShell } from '@/components/layout'
 import { StrokeIcon } from '@/components/ui'
-import {
-  advancedConnections,
-  connectionCategoryTitles,
-  initialConnections,
-  type Connection,
-  type ConnectionCategory,
-} from '@/data/connections'
+import { advancedConnections, connectionCategoryTitles, type Connection, type ConnectionCategory } from '@/data/connections'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { useProviderStatuses } from '@/hooks/useProviderStatuses'
 import { AdvancedSection } from './connections/AdvancedSection'
 import { ConnectionCard } from './connections/ConnectionCard'
 import { buildModelConnections } from './connections/modelConnections'
 import { ModelProvidersSection } from './connections/ModelProvidersSection'
+import { describeSecretUsers } from './connections/SecretRows'
 
 const sectionHeadingClassNames = 'm-0 text-[13px] font-semibold text-muted'
 
@@ -42,21 +41,29 @@ function matchesConnection(searchQuery: string, connection: Connection): boolean
   return matchesSearch(searchQuery, connection.name, connection.connectedDescription, connection.availableDescription)
 }
 
-const initialAppConnections = initialConnections.filter((connection) => connection.category === 'apps')
+function matchesSecret(searchQuery: string, secret: WorkflowSecretOverview): boolean {
+  return matchesSearch(searchQuery, secret.name, secret.description ?? '', describeSecretUsers(secret), 'secret')
+}
 
 /**
  * Screen 21 · Connections.
- * Apps, AI models and keys the agents use. Search filters every section, the banner
- * reconnects a signed-out Gmail, and Connect sets up the remaining apps (mock data).
- * AI models come from `listProviderStatuses`; their keys are added, replaced and removed
- * through the keychain commands. Advanced → Plugins manages graphrt plugins (catalog,
- * install, trust, settings, browser runtime).
+ * Apps, AI models and keys the agents use. Search filters every section.
+ * Apps come from `listAppConnections` (none in the desktop app, where apps connect through
+ * plugins; the preview's sample apps include a signed-out Gmail banner). AI models come from
+ * `listProviderStatuses`; their keys are added, replaced and removed through the keychain
+ * commands. Advanced lists every workflow secret (`listAllWorkflowSecrets`), MCP servers
+ * and graphrt plugins.
  */
 export function ConnectionsPage() {
-  const [connections, setConnections] = useState<Connection[]>(initialAppConnections)
+  const appConnectionsState = useAsyncData(listAppConnections, [])
+  const [reconnectedAppIds, setReconnectedAppIds] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const providerSetupState = useProviderStatuses()
   const providerSetup = providerSetupState.data
+  const secretsLoadState = useAsyncData(listAllWorkflowSecrets, [])
+  const connections = (appConnectionsState.data ?? []).map((connection): Connection =>
+    reconnectedAppIds.includes(connection.id) ? { ...connection, state: 'connected' } : connection,
+  )
 
   const modelConnections = providerSetup ? buildModelConnections(providerSetup.statuses, providerSetup.defaultModel) : null
   const visibleModelConnections = modelConnections?.filter((connection) => matchesConnection(searchQuery, connection)) ?? null
@@ -65,13 +72,14 @@ export function ConnectionsPage() {
   const signedOutConnections = connections.filter((connection) => connection.state === 'signedOut')
   const visibleConnections = connections.filter((connection) => matchesConnection(searchQuery, connection))
   const visibleAdvancedRows = advancedConnections.filter((row) => matchesSearch(searchQuery, row.name, row.description))
+  const visibleSecrets = secretsLoadState.data?.filter((secret) => matchesSecret(searchQuery, secret)) ?? null
   const categories: ConnectionCategory[] = ['apps']
-  const hasNoMatches = visibleConnections.length === 0 && visibleAdvancedRows.length === 0 && !showsModelSection
+  const hasNoAdvancedMatches = visibleAdvancedRows.length === 0 && (visibleSecrets?.length ?? 0) === 0
+  const showsAdvancedSection = !isSearching || !hasNoAdvancedMatches
+  const hasNoMatches = visibleConnections.length === 0 && hasNoAdvancedMatches && !showsModelSection
 
   function markConnected(connectionId: string) {
-    setConnections((previousConnections) =>
-      previousConnections.map((connection) => (connection.id === connectionId ? { ...connection, state: 'connected' } : connection)),
-    )
+    setReconnectedAppIds((previousIds) => [...previousIds, connectionId])
   }
 
   return (
@@ -89,7 +97,7 @@ export function ConnectionsPage() {
           <input
             type="search"
             aria-label="Search connections"
-            placeholder="Search 40+ apps"
+            placeholder="Search connections"
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
             className="min-w-0 flex-auto border-0 bg-transparent text-[14px] text-ink outline-none"
@@ -123,7 +131,12 @@ export function ConnectionsPage() {
         <ModelProvidersSection connections={visibleModelConnections} loadError={providerSetupState.error} onKeysChanged={providerSetupState.reload} />
       )}
 
-      {visibleAdvancedRows.length > 0 && <AdvancedSection rows={visibleAdvancedRows} />}
+      {showsAdvancedSection && (
+        <AdvancedSection
+          rows={visibleAdvancedRows}
+          secretsState={{ visibleSecrets, loadError: secretsLoadState.error, isSearching, reload: secretsLoadState.reload }}
+        />
+      )}
 
       {hasNoMatches && <p className="m-0 text-muted">No connections match “{searchQuery.trim()}”</p>}
     </AppShell>

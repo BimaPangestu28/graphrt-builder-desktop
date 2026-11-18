@@ -67,6 +67,17 @@ export function agentPath(routeKey: AgentRouteKey, agentId: string, query?: Reco
   return queryString ? `${path}?${queryString}` : path
 }
 
+/**
+ * Review a run (19) for one paused run. `routePaths.batchApproval` without `runId` opens the
+ * latest run waiting for an answer.
+ *
+ * @example
+ * runReviewPath(run.id) // "/runs/review?runId=r1"
+ */
+export function runReviewPath(runId: string): string {
+  return `${routePaths.batchApproval}?${new URLSearchParams({ runId }).toString()}`
+}
+
 /** Knowledge detail (18) for any knowledge base; `routePaths.knowledgeDetail` is the sample one. */
 export const knowledgeDetailPattern = '/knowledge/:knowledgeBaseId'
 

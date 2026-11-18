@@ -60,6 +60,9 @@ pub struct TickReport {
     pub skipped_missed: Vec<String>,
     /// Enabled triggers without a usable `next_fire_at` that got one planned.
     pub planned: Vec<String>,
+    /// Due triggers not run because `max_concurrent_runs` scheduled runs were
+    /// already running (see [`super::rules::ScheduleRules`]); only moved on.
+    pub skipped_busy: Vec<String>,
 }
 
 impl TickReport {
@@ -68,6 +71,24 @@ impl TickReport {
             && self.failed_to_start.is_empty()
             && self.skipped_missed.is_empty()
             && self.planned.is_empty()
+            && self.skipped_busy.is_empty()
+    }
+}
+
+/// How many more scheduled runs this tick may start.
+#[derive(Debug, Clone, Copy)]
+struct RunSlots {
+    remaining: usize,
+}
+
+impl RunSlots {
+    /// Free slots: the limit minus the scheduled runs already running.
+    ///
+    /// @throws AppError::Database - when the rules or the running runs cannot be read
+    fn available(db: &Database) -> AppResult<Self> {
+        let limit = super::rules::ScheduleRules::load(db)?.max_concurrent_runs as usize;
+        let running = db.count_running_runs(RunTrigger::Schedule)?;
+        Ok(Self { remaining: limit.saturating_sub(running) })
     }
 }
 
@@ -104,8 +125,9 @@ pub async fn run_due_triggers(
     let enabled_triggers: Vec<Trigger> =
         db.list_triggers(None)?.into_iter().filter(|trigger| trigger.enabled).collect();
     let mut report = TickReport::default();
+    let mut slots = RunSlots::available(db)?;
     for trigger in enabled_triggers {
-        process_trigger(db, starter, &trigger, now, &mut report).await;
+        process_trigger(db, starter, &trigger, now, &mut slots, &mut report).await;
     }
     Ok(report)
 }
@@ -115,16 +137,17 @@ async fn process_trigger(
     starter: &dyn ScheduledRunStarter,
     trigger: &Trigger,
     now: DateTime<Utc>,
+    slots: &mut RunSlots,
     report: &mut TickReport,
 ) {
     match classify_trigger(trigger, now) {
         TriggerTiming::NotDue => {}
         TriggerTiming::NotPlanned => plan_trigger(db, trigger, now, report),
-        TriggerTiming::Due => fire_trigger(db, starter, trigger, now, report).await,
+        TriggerTiming::Due => fire_trigger_if_free(db, starter, trigger, now, slots, report).await,
         TriggerTiming::Missed => match trigger.missed_run_policy {
             MissedRunPolicy::RunOnce => {
                 log::info!("trigger {} missed its run while the app was not running; running once now", trigger.id);
-                fire_trigger(db, starter, trigger, now, report).await;
+                fire_trigger_if_free(db, starter, trigger, now, slots, report).await;
             }
             MissedRunPolicy::Skip => skip_missed_trigger(db, trigger, now, report),
         },
@@ -189,6 +212,30 @@ fn skip_missed_trigger(db: &Database, trigger: &Trigger, now: DateTime<Utc>, rep
     log::info!("trigger {} missed its run while the app was not running; skipping it", trigger.id);
     if advance_trigger(db, trigger, now) {
         report.skipped_missed.push(trigger.id.clone());
+    }
+}
+
+/// Fires the trigger when a run slot is free; otherwise moves it on without a run.
+/// A start that fails does not use up a slot.
+async fn fire_trigger_if_free(
+    db: &Database,
+    starter: &dyn ScheduledRunStarter,
+    trigger: &Trigger,
+    now: DateTime<Utc>,
+    slots: &mut RunSlots,
+    report: &mut TickReport,
+) {
+    if slots.remaining == 0 {
+        log::info!("trigger {} skipped: the limit of scheduled runs at the same time is reached", trigger.id);
+        if advance_trigger(db, trigger, now) {
+            report.skipped_busy.push(trigger.id.clone());
+        }
+        return;
+    }
+    let started_before = report.started.len();
+    fire_trigger(db, starter, trigger, now, report).await;
+    if report.started.len() > started_before {
+        slots.remaining -= 1;
     }
 }
 
@@ -434,6 +481,65 @@ mod tests {
 
         let report = run_due_triggers(&database, &starter, scheduled_fire_time() + Duration::seconds(5)).await.unwrap();
         assert_eq!(report.started, vec![trigger.id]);
+    }
+
+    fn add_trigger(database: &Database, agent_id: &str, next_fire_at: DateTime<Utc>) -> Trigger {
+        let new_trigger = NewTrigger {
+            agent_id: agent_id.to_owned(),
+            cron_expression: "0 0 9 * * Mon-Fri".into(),
+            timezone: "Asia/Jakarta".into(),
+            missed_run_policy: MissedRunPolicy::RunOnce,
+            inputs: json!({}),
+        };
+        database.create_trigger(new_trigger, Some(&format_fire_time(next_fire_at))).unwrap()
+    }
+
+    #[tokio::test]
+    async fn concurrency_limit_skips_runs_beyond_it() {
+        let (database, first) = database_with_trigger(MissedRunPolicy::RunOnce, Some(scheduled_fire_time()));
+        let second = add_trigger(&database, &first.agent_id, scheduled_fire_time());
+        let third = add_trigger(&database, &first.agent_id, scheduled_fire_time());
+        let starter = FakeRunStarter::default();
+        let now = scheduled_fire_time() + Duration::seconds(5);
+
+        let report = run_due_triggers(&database, &starter, now).await.unwrap();
+        assert_eq!(report.started.len(), 2, "the default limit is 2");
+        assert_eq!(report.skipped_busy.len(), 1);
+        assert_eq!(starter.start_count(), 2);
+        let mut handled: Vec<String> = report.started.iter().chain(&report.skipped_busy).cloned().collect();
+        handled.sort();
+        let mut expected = vec![first.id, second.id, third.id.clone()];
+        expected.sort();
+        assert_eq!(handled, expected);
+        // The skipped trigger moved on: it does not fire on the next tick.
+        let skipped_id = &report.skipped_busy[0];
+        assert_eq!(stored_next_fire(&database, skipped_id).as_deref(), Some("2026-11-20T02:00:00+00:00"));
+    }
+
+    #[tokio::test]
+    async fn running_scheduled_runs_count_against_the_limit() {
+        let (database, trigger) = database_with_trigger(MissedRunPolicy::RunOnce, Some(scheduled_fire_time()));
+        super::super::rules::ScheduleRules { max_concurrent_runs: 1 }.save(&database).unwrap();
+        database.insert_run(&trigger.agent_id, 1, RunTrigger::Schedule).unwrap();
+        // A manual run does not count.
+        database.insert_run(&trigger.agent_id, 1, RunTrigger::Manual).unwrap();
+        let starter = FakeRunStarter::default();
+
+        let report = run_due_triggers(&database, &starter, scheduled_fire_time() + Duration::seconds(5)).await.unwrap();
+        assert_eq!(report.skipped_busy, vec![trigger.id]);
+        assert_eq!(starter.start_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn failed_starts_do_not_use_up_the_limit() {
+        let (database, first) = database_with_trigger(MissedRunPolicy::RunOnce, Some(scheduled_fire_time()));
+        add_trigger(&database, &first.agent_id, scheduled_fire_time());
+        add_trigger(&database, &first.agent_id, scheduled_fire_time());
+        let starter = FakeRunStarter::failing();
+
+        let report = run_due_triggers(&database, &starter, scheduled_fire_time() + Duration::seconds(5)).await.unwrap();
+        assert_eq!(report.failed_to_start.len(), 3);
+        assert!(report.skipped_busy.is_empty());
     }
 
     #[tokio::test]

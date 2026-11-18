@@ -8,7 +8,7 @@
 //! Deleting removes every agent (with its versions, runs, events and
 //! schedules) and every setting, and optionally the keychain items graphrt
 //! wrote: the provider keys and the workflow secrets named by the deleted
-//! agents' workflows.
+//! agents' workflows and by the configured MCP servers.
 
 use std::path::Path;
 
@@ -125,7 +125,10 @@ pub fn delete_all_data(
     remove_keychain_items: bool,
 ) -> AppResult<DeletionSummary> {
     let agents = db.list_agents()?;
-    let secret_names = workflow_secret_names(&agents);
+    let mut secret_names = workflow_secret_names(&agents);
+    secret_names.extend(mcp_secret_names(db));
+    secret_names.sort();
+    secret_names.dedup();
     db.delete_all_data()?;
     let mut summary = DeletionSummary { deleted_agent_count: agents.len(), removed_keychain_item_count: 0 };
     if !remove_keychain_items {
@@ -144,6 +147,15 @@ pub fn delete_all_data(
         }
     }
     Ok(summary)
+}
+
+/// Secrets the configured MCP servers need (their list is a setting, deleted with the rest).
+fn mcp_secret_names(db: &Database) -> Vec<String> {
+    let definitions = crate::mcp::definitions::load_definitions(db).unwrap_or_else(|error| {
+        log::warn!("could not read the MCP servers before deleting all data: {error}");
+        Vec::new()
+    });
+    definitions.iter().flat_map(|definition| definition.secret_names()).map(str::to_owned).collect()
 }
 
 /// Distinct `env.*` names declared by the agents' workflows (unreadable workflows are skipped).
@@ -253,5 +265,23 @@ mod tests {
         let summary = delete_all_data(&db, &credentials, true).unwrap();
         assert_eq!(summary.removed_keychain_item_count, KEYED_PROVIDERS.len());
         assert_eq!(credentials.read_api_key(ModelProvider::Openai).unwrap(), None);
+    }
+
+    #[test]
+    fn delete_all_data_also_removes_the_mcp_servers_and_their_secrets() {
+        let (db, _) = database_with_agent();
+        let credentials = CredentialStore::in_memory();
+        credentials.set_workflow_secret("GITHUB_TOKEN", SECRET_VALUE).unwrap();
+        let input = crate::mcp::McpServerInput {
+            name: "github".into(),
+            transport: crate::mcp::McpServerTransport::Stdio { command: "github-mcp".into(), args: vec![] },
+            secret_env: vec!["GITHUB_TOKEN".into()],
+            bearer_token_secret: None,
+        };
+        crate::mcp::definitions::add_definition(&db, input).unwrap();
+
+        delete_all_data(&db, &credentials, true).unwrap();
+        assert!(!credentials.has_workflow_secret("GITHUB_TOKEN").unwrap());
+        assert!(crate::mcp::definitions::load_definitions(&db).unwrap().is_empty());
     }
 }

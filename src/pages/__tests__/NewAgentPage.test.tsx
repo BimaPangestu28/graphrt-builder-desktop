@@ -1,6 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
-import { defaultJobDescription } from '@/data/newAgentTemplates'
+import { BackendError } from '@/api/client'
+import { resetSampleCredentials, sampleCredentialsBackend } from '@/api/sampleBackend/credentials'
+import { jobDescriptionPlaceholder } from '@/data/newAgentTemplates'
 import { routePaths } from '@/routes'
 import { NewAgentPage } from '../NewAgentPage'
 
@@ -10,25 +12,72 @@ function GeneratingStandIn() {
   return <p>Generating screen {JSON.stringify(location.state)}</p>
 }
 
+function ChatbotSetupStandIn() {
+  const location = useLocation()
+  return <p>Chatbot setup screen {JSON.stringify(location.state)}</p>
+}
+
 function renderNewAgentPage() {
   return render(
     <MemoryRouter initialEntries={[routePaths.newAgent]}>
       <Routes>
         <Route path={routePaths.newAgent} element={<NewAgentPage />} />
         <Route path={routePaths.generating} element={<GeneratingStandIn />} />
-        <Route path={routePaths.chatbotSetup} element={<p>Chatbot setup screen</p>} />
+        <Route path={routePaths.chatbotSetup} element={<ChatbotSetupStandIn />} />
+        <Route path={routePaths.connections} element={<p>Connections screen</p>} />
       </Routes>
     </MemoryRouter>,
   )
 }
 
 describe('NewAgentPage', () => {
-  it('shows the prompt, kind pills and templates', () => {
+  beforeEach(() => resetSampleCredentials())
+  afterEach(() => vi.restoreAllMocks())
+
+  it('starts with an empty prompt, the example as placeholder, kind pills and templates', async () => {
     renderNewAgentPage()
     expect(screen.getByRole('heading', { name: 'What should your agent do?' })).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: 'Do a task' })).toBeChecked()
-    expect(screen.getByLabelText('Describe the job')).toHaveValue(defaultJobDescription)
-    expect(screen.getByRole('link', { name: /Customer chatbot/ })).toHaveAttribute('href', routePaths.chatbotSetup)
+    const prompt = screen.getByLabelText('Describe the job')
+    expect(prompt).toHaveValue('')
+    expect(prompt).toHaveAttribute('placeholder', jobDescriptionPlaceholder)
+    expect(screen.getByRole('button', { name: 'Build agent' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Customer chatbot/ })).toBeInTheDocument()
+    expect(screen.getByText('Runs on this Mac')).toBeInTheDocument()
+    await screen.findByText('gpt-4o-mini')
+  })
+
+  it('shows the real default model on the chip', async () => {
+    vi.spyOn(sampleCredentialsBackend, 'getDefaultModel').mockResolvedValue({ provider: 'deepseek', name: 'deepseek-chat' })
+    renderNewAgentPage()
+    expect(screen.getByText('Checking model…')).toBeInTheDocument()
+    expect(await screen.findByText('deepseek-chat')).toBeInTheDocument()
+    expect(screen.queryByText('gpt-4o-mini')).not.toBeInTheDocument()
+  })
+
+  it('links the chip to Connections when no model is connected', async () => {
+    vi.spyOn(sampleCredentialsBackend, 'getDefaultModel').mockRejectedValue(new BackendError('missing_credentials', 'a model provider'))
+    renderNewAgentPage()
+    fireEvent.click(await screen.findByRole('link', { name: 'Connect a model' }))
+    expect(screen.getByText('Connections screen')).toBeInTheDocument()
+  })
+
+  it('fills the prompt and kind from a template without building anything', () => {
+    renderNewAgentPage()
+    const prompt = screen.getByLabelText('Describe the job')
+    fireEvent.click(screen.getByRole('button', { name: /Customer chatbot/ }))
+    expect(prompt).toHaveValue('Answer WhatsApp questions from your menu and price list, pass orders to you')
+    expect(screen.getByRole('radio', { name: 'Answer customers' })).toBeChecked()
+    expect(prompt).toHaveFocus()
+    expect(screen.queryByText(/Chatbot setup screen/)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Invoice reminders/ }))
+    expect(prompt).toHaveValue('Find unpaid rows in a sheet and email a polite reminder')
+    expect(screen.getByRole('radio', { name: 'Do a task' })).toBeChecked()
+    fireEvent.click(screen.getByRole('button', { name: 'Build agent' }))
+    expect(screen.getByText(/Generating screen/)).toHaveTextContent(
+      JSON.stringify({ buildRequest: { description: 'Find unpaid rows in a sheet and email a polite reminder', kind: 'task' } }),
+    )
   })
 
   it('builds a task agent by passing the request to the generating screen', () => {
@@ -46,6 +95,6 @@ describe('NewAgentPage', () => {
     expect(screen.getByRole('button', { name: 'Build agent' })).toBeDisabled()
     fireEvent.change(screen.getByLabelText('Describe the job'), { target: { value: 'Answer menu questions' } })
     fireEvent.click(screen.getByRole('button', { name: 'Build agent' }))
-    expect(screen.getByText('Chatbot setup screen')).toBeInTheDocument()
+    expect(screen.getByText(/Chatbot setup screen/)).toBeInTheDocument()
   })
 })

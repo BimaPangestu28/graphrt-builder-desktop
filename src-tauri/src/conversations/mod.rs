@@ -48,6 +48,7 @@ use self::models::{
     MessageAuthor, NewConversation,
 };
 pub use self::store::OUTREACH_ORIGIN;
+use crate::chatbot_setup::reply::prepare_reply;
 use crate::credentials::CredentialStore;
 use crate::engine::{agent_tools_for, prepare_engine_and_env, KeychainModelRegistrySource, ModelRegistrySource};
 use crate::error::{AppError, AppResult};
@@ -131,6 +132,11 @@ impl ConversationManager {
         self
     }
 
+    /// Whether a channel adapter is registered under `channel_name` (the test channel always is).
+    pub fn is_channel_connected(&self, channel_name: &str) -> bool {
+        self.channels.contains(channel_name)
+    }
+
     /// # Errors
     /// `InvalidInput` for a non-positive limit.
     pub fn list_conversations(&self, filter: &ConversationFilter) -> AppResult<Vec<Conversation>> {
@@ -182,6 +188,9 @@ impl ConversationManager {
         let adapter = self.channels.get(channel_name)?;
         let inbound = adapter.parse_inbound(payload)?;
         self.ensure_chatbot(agent_id)?;
+        if !crate::chatbot_setup::is_channel_enabled(&self.db, agent_id, adapter.name())? {
+            return Err(AppError::InvalidInput(format!("this chatbot does not answer on {}", adapter.name())));
+        }
         let conversation = match self.db.find_open_conversation(agent_id, adapter.name(), &inbound.customer_handle)? {
             Some(conversation) => conversation,
             None => {
@@ -346,13 +355,27 @@ impl ConversationManager {
         self.record_turn(&conversation, turn).await
     }
 
+    /// Runs the chatbot's flow with its saved setup applied (persona, rules,
+    /// knowledge; see `crate::chatbot_setup`) and enforces the hand-off rules.
     async fn run_turn(&self, conversation: &Conversation, message_text: &str) -> AppResult<BotTurn> {
         let agent = self.db.get_agent(&conversation.agent_id)?;
+        let prepared = prepare_reply(&self.db, &self.credentials, &agent, message_text).await?;
         // Chatbots can call other agents as tools, like any run of this agent.
         let tools = agent_tools_for(self.db.clone(), self.credentials.clone(), self.model_source.clone(), &agent.id);
         let (engine, env) =
-            prepare_engine_and_env(&agent.flow_yaml, &self.credentials, &self.db, &*self.model_source, tools)?;
-        run_bot_turn(&engine, env, conversation, message_text).await
+            prepare_engine_and_env(&prepared.flow_text, &self.credentials, &self.db, &*self.model_source, tools)?;
+        let mut turn = run_bot_turn(&engine, env, conversation, message_text, &prepared.sys_values).await?;
+        if let (Some(rules), Some(handoff)) = (prepared.handoff_rules, turn.handoff.as_ref()) {
+            if !rules.allows(handoff.reason.as_deref()) {
+                log::info!(
+                    "conversation {}: ignored a hand-off ({:?}) whose rule is switched off",
+                    conversation.id,
+                    handoff.reason
+                );
+                turn.handoff = None;
+            }
+        }
+        Ok(turn)
     }
 
     async fn record_turn(&self, conversation: &Conversation, turn: BotTurn) -> AppResult<()> {
@@ -446,6 +469,7 @@ pub fn describe_handoff_reason(reason: Option<&str>) -> String {
         Some("order_to_confirm") => "order ready to confirm".into(),
         Some("asked_for_person") => "customer asked for a person".into(),
         Some("not_sure") => "answer not in the knowledge".into(),
+        Some("sounds_upset") => "customer sounds upset".into(),
         Some(BOT_ERROR_REASON) => "the bot could not answer".into(),
         Some(BOT_PAUSED_REASON) => "the bot is paused".into(),
         Some(other) => other.replace('_', " "),

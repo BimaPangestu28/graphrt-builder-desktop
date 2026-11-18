@@ -1,47 +1,29 @@
-import type { KnowledgeSourceType } from './knowledge'
+import type { ChatbotPersona, HandoffRules } from '@/api/chatbotSetupTypes'
 
-/** Mock state for the Catering assistant chatbot setup (screen 14). */
-
-export interface ChatbotPersona {
-  displayName: string
-  tone: string
-  instructions: string
-}
+/**
+ * Chatbot setup (screen 14): the static choices the form offers, and the seed of the
+ * sample "Catering assistant" used only by `src/api/sampleBackend` (browser preview, tests).
+ */
 
 export const chatbotToneOptions = ['Friendly, casual Indonesian', 'Formal'] as const
 
-export const initialChatbotPersona: ChatbotPersona = {
+/** The hand-off rules in display order, with their labels. */
+export const handoffRuleOptions: ReadonlyArray<{ key: keyof HandoffRules; label: string }> = [
+  { key: 'asksForPerson', label: 'The customer asks for a person' },
+  { key: 'notInKnowledge', label: 'The answer is not in the knowledge' },
+  { key: 'orderReady', label: 'An order is ready to confirm' },
+  { key: 'soundsUpset', label: 'The customer sounds upset' },
+]
+
+/** Sample persona of the "Catering assistant". */
+export const sampleChatbotPersona: ChatbotPersona = {
   displayName: 'Admin Catering',
   tone: chatbotToneOptions[0],
   instructions: 'Answer questions about our menu, prices and delivery. Collect the date, number of people and address for orders. Never promise a discount',
 }
 
-export interface ChatbotKnowledgeFile {
-  id: string
-  name: string
-  type: KnowledgeSourceType
-  /** "12 pages · ready" when indexed, otherwise reading progress. */
-  progress: { kind: 'ready'; summary: string } | { kind: 'reading'; percent: number }
-}
-
-export const initialChatbotKnowledgeFiles: ChatbotKnowledgeFile[] = [
-  { id: 'menu-november', name: 'Menu November.pdf', type: 'PDF', progress: { kind: 'ready', summary: '12 pages · ready' } },
-  { id: 'price-list', name: 'Price list.xlsx', type: 'XLS', progress: { kind: 'ready', summary: '84 rows · ready' } },
-  { id: 'delivery-faq', name: 'Delivery and FAQ', type: 'TXT', progress: { kind: 'reading', percent: 60 } },
-]
-
-export interface HandoffRule {
-  id: string
-  label: string
-  isEnabled: boolean
-}
-
-export const initialHandoffRules: HandoffRule[] = [
-  { id: 'asks-for-person', label: 'The customer asks for a person', isEnabled: true },
-  { id: 'not-in-knowledge', label: 'The answer is not in the knowledge', isEnabled: true },
-  { id: 'order-ready', label: 'An order is ready to confirm', isEnabled: true },
-  { id: 'sounds-upset', label: 'The customer sounds upset', isEnabled: false },
-]
+/** Sample hand-off rules of the "Catering assistant". */
+export const sampleHandoffRules: HandoffRules = { asksForPerson: true, notInKnowledge: true, orderReady: true, soundsUpset: false }
 
 export interface TryItMessage {
   id: string
@@ -51,6 +33,7 @@ export interface TryItMessage {
   citations?: string[]
 }
 
+/** Opening exchange of the sample test conversation. */
 export const initialTryItMessages: TryItMessage[] = [
   {
     id: 'try-1',

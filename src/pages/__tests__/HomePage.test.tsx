@@ -3,8 +3,10 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { resetSampleAgents, sampleAgentsBackend } from '@/api/sampleBackend/agents'
 import { sampleRunSummaryBackend } from '@/api/sampleBackend/runSummary'
+import { resetSampleConversations } from '@/api/sampleBackend/conversations'
 import { resetSampleRuns, sampleRunsBackend } from '@/api/sampleBackend/runs'
-import { agentPath, agentRoutePatterns, routePaths } from '@/routes'
+import { resetSampleTriggers } from '@/api/sampleBackend/triggers'
+import { agentPath, agentRoutePatterns, routePaths, runReviewPath } from '@/routes'
 import { HomePage } from '@/pages/HomePage'
 import { getGreetingForHour } from '@/pages/home-dashboard/greeting'
 
@@ -14,6 +16,7 @@ function renderHomePage() {
       <Routes>
         <Route path={routePaths.home} element={<HomePage />} />
         <Route path={agentRoutePatterns.testRun} element={<p>Test run screen</p>} />
+        <Route path={routePaths.batchApproval} element={<p>Review screen</p>} />
       </Routes>
     </MemoryRouter>,
   )
@@ -23,6 +26,8 @@ describe('HomePage', () => {
   beforeEach(() => {
     resetSampleAgents()
     resetSampleRuns()
+    resetSampleConversations()
+    resetSampleTriggers()
   })
   afterEach(() => vi.restoreAllMocks())
 
@@ -34,16 +39,18 @@ describe('HomePage', () => {
     expect(within(needsYou).getByText('Checking what needs you…')).toBeInTheDocument()
     expect(await within(needsYou).findByText('Catering assistant is waiting for you')).toBeInTheDocument()
     expect(within(needsYou).getByText(/An order for 40 nasi box is waiting for your confirmation/)).toBeInTheDocument()
-    expect(within(needsYou).getByText('Gmail sign-in expired')).toBeInTheDocument()
-    expect(screen.getByText('3 things need you · next run tomorrow 07:00')).toBeInTheDocument()
+    expect(await within(needsYou).findByText('Gmail sign-in expired')).toBeInTheDocument()
+    expect(await within(needsYou).findByText('3 customers are waiting in Inbox')).toBeInTheDocument()
+    expect(await screen.findByText(/^4 things need you · next run (today|tomorrow|\w{3} \d+ \w{3}) \d\d:\d\d$/)).toBeInTheDocument()
   })
 
   it('opens a paused run from "Review"', async () => {
     renderHomePage()
     const reviewLink = await screen.findByRole('link', { name: 'Review' })
-    expect(reviewLink).toHaveAttribute('href', agentPath('testRun', 'catering-assistant', { runId: 'catering-assistant-0852' }))
+    // A run that is not a test run is answered on the review screen.
+    expect(reviewLink).toHaveAttribute('href', runReviewPath('catering-assistant-0852'))
     fireEvent.click(reviewLink)
-    expect(screen.getByText('Test run screen')).toBeInTheDocument()
+    expect(screen.getByText('Review screen')).toBeInTheDocument()
   })
 
   it('says when nothing needs the user', async () => {
@@ -84,7 +91,23 @@ describe('HomePage', () => {
     expect(within(recentRunsTable).getAllByRole('row')).toHaveLength(6)
     expect(within(recentRunsTable).getByText('11 sent · 1 skipped')).toBeInTheDocument()
     expect(within(recentRunsTable).getByText('Needs you')).toBeInTheDocument()
-    expect(screen.getByText('$0.38')).toBeInTheDocument()
+  })
+
+  it('shows this month\'s runs and AI tokens from the sample backend, with no invented cost', async () => {
+    renderHomePage()
+    const thisMonth = screen.getByRole('region', { name: 'This month' })
+    expect(await within(thisMonth).findByText('64')).toBeInTheDocument()
+    expect(within(thisMonth).getByText('AI tokens')).toBeInTheDocument()
+    expect(within(thisMonth).getByText('412K')).toBeInTheDocument()
+    expect(within(thisMonth).queryByText(/cost|Time saved/)).not.toBeInTheDocument()
+  })
+
+  it('shows each agent\'s schedule from its triggers', async () => {
+    renderHomePage()
+    const agentsSection = screen.getByRole('region', { name: 'Agents' })
+    expect(await within(agentsSection).findByText('Weekdays 09:00')).toBeInTheDocument()
+    expect(within(agentsSection).getByText('Every day 07:00')).toBeInTheDocument()
+    expect(within(agentsSection).getByText('Schedule off · Mondays 10:00')).toBeInTheDocument()
   })
 
   it('shows quiet messages when agents or runs cannot be loaded', async () => {

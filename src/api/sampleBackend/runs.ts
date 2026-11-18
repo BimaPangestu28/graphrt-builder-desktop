@@ -1,6 +1,6 @@
 import { BackendError } from '../client'
 import type { GraphrtEvent, Run, RunEventPayload, RunEventRecord, RunFilter, RunStatus, RunTrigger } from '../types'
-import { pendingApproval, testRunPlaces } from '@/data/testRun'
+import { buildSampleApprovalPauseData, sampleMapsLeadsInputs, sampleTestPlaces } from './sampleTestRun'
 import { buildSeededRuns } from './sampleRunSeed'
 
 /**
@@ -8,7 +8,9 @@ import { buildSeededRuns } from './sampleRunSeed'
  *
  * - The history is seeded from the Runs screen (20).
  * - `startRun` plays the "Maps leads to WhatsApp" test with small timers: ask input → search Google Maps
- *   → write a message → pause on `approve_message` with the drafted message in the pause reason's `data`.
+ *   → for each place: write a message → pause on `approve_message` with graphrt's `human-input` pause
+ *   data (`{ prompt, fields, actions }`, the drafted message as the `message` field's default).
+ * - The inputs each run started with are kept, like the desktop's `run_inputs` table.
  * - `resumeRun` continues to success: approve sends the (edited) message, skip ends without sending.
  *   Outputs follow the run output convention (`summary`, `items`, `places_found`, `messages_sent`).
  *
@@ -27,13 +29,6 @@ const placesFoundCount = 18
 /** Token usage the scripted "Write a short message" step reports. */
 const sampleWriteMessageUsage = { prompt_tokens: 180, completion_tokens: 32, total_tokens: 212 }
 
-/** The pause reason `data` of the scripted test run. */
-export interface SampleApprovalRequest {
-  question: string
-  recipient: string
-  message: string
-}
-
 interface ScriptStep {
   event: GraphrtEvent
   /** Applied to the run before the event is sent. */
@@ -44,7 +39,11 @@ let storedRuns: Run[] = []
 let eventsByRunId = new Map<string, RunEventRecord[]>()
 let runSubscribers = new Set<(payload: RunEventPayload) => void>()
 let scriptTimersByRunId = new Map<string, ReturnType<typeof setTimeout>>()
+let inputsByRunId = new Map<string, Record<string, unknown>>()
 let startedRunCount = 0
+
+/** Seeded runs of the sample agent that started with {@link sampleMapsLeadsInputs}. */
+const seededMapsLeadsRunIds = ['maps-leads-0900', 'maps-leads-test']
 
 /** Puts the runs back to the seeded history, drops subscribers and stops scripted runs. */
 export function resetSampleRuns(): void {
@@ -54,6 +53,7 @@ export function resetSampleRuns(): void {
   startedRunCount = 0
   const seededRuns = buildSeededRuns(Date.now())
   storedRuns = seededRuns.map((seededRun) => seededRun.run)
+  inputsByRunId = new Map(seededMapsLeadsRunIds.map((runId) => [runId, { ...sampleMapsLeadsInputs }]))
   eventsByRunId = new Map(
     seededRuns.map((seededRun) => [
       seededRun.run.id,
@@ -128,24 +128,21 @@ function nodeEvent(type: string, nodeId: string, fields: Record<string, unknown>
   return { event: { type, node_id: nodeId, ...fields } }
 }
 
-function buildApprovalRequest(): SampleApprovalRequest {
-  return { question: 'Send this message?', recipient: pendingApproval.recipientSummary, message: pendingApproval.draftMessage }
-}
-
 function buildTestRunScript(): ScriptStep[] {
-  const approvalRequest = buildApprovalRequest()
+  const pauseData = buildSampleApprovalPauseData()
   return [
     nodeEvent('node_started', 'ask_input', { title: 'Ask for keyword, city and offer' }),
     nodeEvent('node_succeeded', 'ask_input', { detail: '0.0s', duration_ms: 0 }),
     nodeEvent('node_started', 'search_maps', { title: 'Search Google Maps' }),
     nodeEvent('node_succeeded', 'search_maps', { detail: `${placesFoundCount} places · 1.2s`, duration_ms: 1200, places_found: placesFoundCount }),
+    nodeEvent('node_started', 'for_each_place', { title: 'For each place', kind: 'iteration' }),
     nodeEvent('node_started', 'write_message', { title: 'Write a short message', kind: 'llm' }),
     nodeEvent('node_succeeded', 'write_message', { detail: '212 tokens · 2.4s', duration_ms: 2400, usage: sampleWriteMessageUsage }),
     nodeEvent('node_started', sampleApprovalNodeId, { title: 'Ask me before sending', kind: 'human-input' }),
     nodeEvent('node_paused', sampleApprovalNodeId, { kind: 'human_input' }),
     {
       event: { type: 'run_paused' },
-      changeRun: (run) => ({ ...run, status: 'paused', pauseReasons: [{ node_id: sampleApprovalNodeId, kind: 'human_input', data: approvalRequest }] }),
+      changeRun: (run) => ({ ...run, status: 'paused', pauseReasons: [{ frame: '', node_id: sampleApprovalNodeId, kind: 'human_input', data: pauseData }] }),
     },
   ]
 }
@@ -159,15 +156,16 @@ function finishTestRun(outputs: Record<string, unknown>): ScriptStep {
 
 /** The places of the test run as run output `items`: the first one tested, the rest not in the test. */
 function buildTestRunItems(firstPlaceStatus: 'sent' | 'skipped'): Array<Record<string, string>> {
-  return testRunPlaces.map((place, index) => ({ name: place.name, phone: place.phone, status: index === 0 ? firstPlaceStatus : 'not in test' }))
+  return sampleTestPlaces.map((place, index) => ({ name: place.name, phone: place.phone, status: index === 0 ? firstPlaceStatus : 'not in test' }))
 }
 
 function buildApprovedScript(message: string): ScriptStep[] {
-  const sentPlaceName = testRunPlaces[0]?.name ?? 'the first place'
+  const sentPlaceName = sampleTestPlaces[0]?.name ?? 'the first place'
   return [
     nodeEvent('node_succeeded', sampleApprovalNodeId, { detail: 'Approved', outputs: { action: 'approve' }, branch: 'approve' }),
     nodeEvent('node_started', 'send_whatsapp', { title: 'Send WhatsApp', kind: 'http-request' }),
     nodeEvent('node_succeeded', 'send_whatsapp', { detail: '1 sent' }),
+    nodeEvent('node_succeeded', 'for_each_place', { detail: '1 place' }),
     finishTestRun({
       summary: `Sent the test message to ${sentPlaceName}.`,
       items: buildTestRunItems('sent'),
@@ -183,6 +181,7 @@ function buildSkippedScript(): ScriptStep[] {
   return [
     nodeEvent('node_skipped', sampleApprovalNodeId, { detail: 'Skipped' }),
     nodeEvent('node_skipped', 'send_whatsapp'),
+    nodeEvent('node_succeeded', 'for_each_place', { detail: '1 place' }),
     finishTestRun({
       summary: 'Skipped the test message, so nothing was sent.',
       items: buildTestRunItems('skipped'),
@@ -242,6 +241,7 @@ export const sampleRunsBackend = {
       }
       storedRuns = [run, ...storedRuns]
       eventsByRunId.set(run.id, [])
+      inputsByRunId.set(run.id, { ...inputs })
       playScript(run.id, [{ event: { type: 'run_started', inputs } }, ...buildTestRunScript()])
       return { ...run }
     }),
@@ -283,6 +283,24 @@ export const sampleRunsBackend = {
     respond(() => {
       findRun(runId)
       return [...(eventsByRunId.get(runId) ?? [])]
+    }),
+
+  /** Inputs the run started with; null when unknown. */
+  getRunInputs: (runId: string): Promise<Record<string, unknown> | null> =>
+    respond(() => {
+      findRun(runId)
+      const inputs = inputsByRunId.get(runId)
+      return inputs ? { ...inputs } : null
+    }),
+
+  /** Inputs of the agent's newest run that has them; null when none. */
+  getLastRunInputs: (agentId: string): Promise<Record<string, unknown> | null> =>
+    respond(() => {
+      const newestRun = storedRuns
+        .filter((run) => run.agentId === agentId && inputsByRunId.has(run.id))
+        .sort((first, second) => second.startedAt.localeCompare(first.startedAt))[0]
+      const inputs = newestRun ? inputsByRunId.get(newestRun.id) : undefined
+      return inputs ? { ...inputs } : null
     }),
 
   subscribeToRunEvents: (onRunEvent: (payload: RunEventPayload) => void): Promise<() => void> => {

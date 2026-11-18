@@ -16,6 +16,9 @@ function createInitialSettings(): AppSettings {
     keepAwakeWhileRunning: true,
     keepAwakeOnlyOnPower: true,
     missedRunDefaultPolicy: 'run_once',
+    notifyOnChatHandoff: false,
+    notifyDailySummary: false,
+    runHistoryRetentionDays: 30,
   }
 }
 

@@ -1,7 +1,9 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { resetSampleAgents, sampleAgentsBackend } from '@/api/sampleBackend/agents'
+import { resetSampleChatbotSetups, sampleChatbotSetupBackend } from '@/api/sampleBackend/chatbotSetup'
 import { resetSampleConversations, sampleConversationsBackend } from '@/api/sampleBackend/conversations'
+import { resetSampleKnowledge } from '@/api/sampleBackend/knowledge'
 import { ChatbotSetupPage } from '../ChatbotSetupPage'
 
 function renderChatbotSetup() {
@@ -23,17 +25,19 @@ describe('ChatbotSetupPage', () => {
   beforeEach(() => {
     resetSampleAgents()
     resetSampleConversations()
+    resetSampleChatbotSetups()
+    resetSampleKnowledge()
   })
 
   it('shows the chatbot name and the setup sections', async () => {
     renderChatbotSetup()
     expect(await screen.findByRole('heading', { level: 1, name: 'Catering assistant' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Persona' })).toBeInTheDocument()
-    expect(screen.getByLabelText('Name customers see')).toHaveValue('Admin Catering')
+    expect(await screen.findByLabelText('Name customers see')).toHaveValue('Admin Catering')
     expect(screen.getByRole('heading', { name: 'Try it' })).toBeInTheDocument()
   })
 
-  it('pauses and goes live through the agent status, and removes a knowledge file', async () => {
+  it('pauses and goes live through the agent status', async () => {
     renderChatbotSetup()
     expect(await screen.findByText('Live')).toBeInTheDocument()
     await act(async () => {
@@ -46,9 +50,45 @@ describe('ChatbotSetupPage', () => {
     })
     expect(await screen.findByText('Live')).toBeInTheDocument()
     expect((await sampleAgentsBackend.getAgent('catering-assistant')).status).toBe('active')
+  })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Remove Price list.xlsx' }))
-    expect(screen.queryByText('Price list.xlsx')).not.toBeInTheDocument()
+  it('saves the persona, hand-off rules and channels', async () => {
+    renderChatbotSetup()
+    const nameField = await screen.findByLabelText('Name customers see')
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+    fireEvent.change(nameField, { target: { value: 'Admin Dapur' } })
+    fireEvent.change(screen.getByLabelText('Tone'), { target: { value: 'Formal' } })
+    fireEvent.click(screen.getByLabelText('The customer sounds upset'))
+    fireEvent.click(screen.getByRole('checkbox', { name: /WhatsApp/ }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    })
+    expect(await screen.findByText('Saved · the bot uses it from its next reply')).toBeInTheDocument()
+    const saved = await sampleChatbotSetupBackend.getChatbotSetup('catering-assistant')
+    expect(saved.settings.persona).toMatchObject({ displayName: 'Admin Dapur', tone: 'Formal' })
+    expect(saved.settings.handoffRules.soundsUpset).toBe(true)
+    expect(saved.settings.disabledChannels).toEqual(['whatsapp'])
+  })
+
+  it('lists the attached knowledge base with its sources, and removes and adds knowledge', async () => {
+    renderChatbotSetup()
+    expect(await screen.findByText('Menu November.pdf')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Catering menu and prices · Manage' })).toHaveAttribute('href', '/knowledge/menu-and-prices')
+    expect(screen.getByRole('link', { name: 'Connect Telegram' })).toHaveAttribute('href', '/connections?section=plugins')
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Remove Catering menu and prices' }))
+    })
+    expect(await screen.findByText('The chatbot does not answer from any knowledge yet')).toBeInTheDocument()
+    expect((await sampleChatbotSetupBackend.getChatbotSetup('catering-assistant')).settings.knowledgeBaseIds).toEqual([])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add a knowledge base' }))
+    fireEvent.change(screen.getByLabelText('Knowledge base'), { target: { value: 'past-orders' } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Use it' }))
+    })
+    expect(await screen.findByText('Orders.csv')).toBeInTheDocument()
+    expect((await sampleChatbotSetupBackend.getChatbotSetup('catering-assistant')).settings.knowledgeBaseIds).toEqual(['past-orders'])
   })
 
   it('answers a test message in a real test conversation', async () => {

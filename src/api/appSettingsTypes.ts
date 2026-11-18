@@ -20,6 +20,12 @@ export interface AppSettings {
   keepAwakeOnlyOnPower: boolean
   /** Policy proposed for new schedules when a run is missed. */
   missedRunDefaultPolicy: MissedRunPolicy
+  /** Notify when a chatbot hands a customer conversation over to the user. */
+  notifyOnChatHandoff: boolean
+  /** One notification at 18:00 counting the runs of the last 24 hours. */
+  notifyDailySummary: boolean
+  /** Days the step-by-step logs of finished runs are kept; null keeps them forever. */
+  runHistoryRetentionDays: number | null
 }
 
 export interface ExportSummary {

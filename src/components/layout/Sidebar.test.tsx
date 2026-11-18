@@ -50,6 +50,12 @@ describe('Sidebar', () => {
     expect(await screen.findByText('Could not load agents')).toBeInTheDocument()
   })
 
+  it('shows the given runner line in the browser preview', async () => {
+    renderSidebar({ runnerStatus: 'Online · OpenAI connected' })
+    expect(screen.getByText('Online · OpenAI connected')).toBeInTheDocument()
+    await screen.findByRole('link', { name: /Maps leads to WhatsApp/ })
+  })
+
   it('hides the inbox count when there is nothing waiting', async () => {
     renderSidebar({ inboxCount: 0 })
     expect(screen.getByRole('link', { name: 'Inbox' })).toHaveTextContent(/^Inbox$/)

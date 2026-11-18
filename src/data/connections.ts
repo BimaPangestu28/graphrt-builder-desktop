@@ -1,6 +1,7 @@
 /**
- * Mock connections for screen 21: apps, AI model providers and advanced keys/tools
- * the runner uses. Secrets themselves live in macOS Keychain, never here.
+ * Connection shapes for screen 21 and the AI model card templates (names and descriptions;
+ * their state comes from the backend). Sample app accounts live in
+ * `api/sampleBackend/appConnections.ts`. Secrets themselves live in macOS Keychain, never here.
  */
 export type ConnectionCategory = 'apps' | 'models'
 
@@ -27,46 +28,6 @@ export interface Connection {
 }
 
 export const initialConnections: Connection[] = [
-  {
-    id: 'whatsapp',
-    name: 'WhatsApp',
-    category: 'apps',
-    state: 'connected',
-    connectedLabel: 'Connected',
-    connectedDescription: '+62 8•• •••• 1204 · used by 2 agents',
-    availableDescription: 'Send and receive messages',
-    setupActionLabel: 'Connect',
-  },
-  {
-    id: 'gmail',
-    name: 'Gmail',
-    category: 'apps',
-    state: 'signedOut',
-    connectedLabel: 'Connected',
-    connectedDescription: 'Used by Morning email digest',
-    availableDescription: 'Read and send email',
-    setupActionLabel: 'Connect',
-  },
-  {
-    id: 'google-sheets',
-    name: 'Google Sheets',
-    category: 'apps',
-    state: 'connected',
-    connectedLabel: 'Connected',
-    connectedDescription: 'Used by Lead tracker, Knowledge',
-    availableDescription: 'Read and write spreadsheets',
-    setupActionLabel: 'Connect',
-  },
-  {
-    id: 'telegram',
-    name: 'Telegram',
-    category: 'apps',
-    state: 'available',
-    connectedLabel: 'Connected',
-    connectedDescription: 'Not used by any agent yet',
-    availableDescription: 'Send and receive messages',
-    setupActionLabel: 'Connect',
-  },
   {
     id: 'openai',
     name: 'OpenAI',
@@ -124,15 +85,15 @@ export interface AdvancedConnection {
   name: string
   description: string
   /**
-   * A static "Connected" status, a Manage button (to Settings), or the plugins row whose
-   * Manage button opens the Plugins panel (its installed count comes from the backend).
+   * Which panel the row's Manage button opens: MCP servers or plugins. Both show a live
+   * count from the backend after the description.
    */
-  kind: 'status' | 'manage' | 'plugins'
+  kind: 'mcp' | 'plugins'
 }
 
+/** The fixed rows under Advanced; the Secrets list above them comes from the backend. */
 export const advancedConnections: AdvancedConnection[] = [
-  { id: 'google-places', name: 'Google Places API key', description: 'Used by Maps leads to WhatsApp', kind: 'status' },
-  { id: 'mcp-servers', name: 'MCP servers', description: 'Give agents tools from any MCP server · 1 added', kind: 'manage' },
+  { id: 'mcp-servers', name: 'MCP servers', description: 'Give agents tools from any MCP server', kind: 'mcp' },
   { id: 'plugins', name: 'Plugins', description: 'Steps written in Python, TypeScript, Rust or WebAssembly', kind: 'plugins' },
 ]
 

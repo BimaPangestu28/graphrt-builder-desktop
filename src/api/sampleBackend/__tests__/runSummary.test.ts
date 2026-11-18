@@ -25,9 +25,9 @@ function buildRun(changes: Partial<Run>): Run {
 async function playSampleTestRun(action: 'approve' | 'skip'): Promise<string> {
   vi.useFakeTimers()
   const run = await sampleRunsBackend.startRun('maps-leads', 'test', {})
-  await vi.advanceTimersByTimeAsync(sampleRunStepDelayMs * 10)
+  await vi.advanceTimersByTimeAsync(sampleRunStepDelayMs * 11)
   await sampleRunsBackend.resumeRun(run.id, { [sampleApprovalNodeId]: { action, values: { message: 'Hi' } } })
-  await vi.advanceTimersByTimeAsync(sampleRunStepDelayMs * 4)
+  await vi.advanceTimersByTimeAsync(sampleRunStepDelayMs * 5)
   vi.useRealTimers()
   return run.id
 }

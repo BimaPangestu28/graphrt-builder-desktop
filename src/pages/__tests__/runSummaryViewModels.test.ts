@@ -3,7 +3,7 @@ import type { Run } from '@/api/types'
 import { formatCounterLabel, formatCounterValue, pickHeadlineCounter } from '@/pages/agent-run/runCounters'
 import { buildItemTable, buildRunResultView, formatDurationMs, toneForItemStatus } from '@/pages/agent-run/runResultSummary'
 import { buildPausedRunItems, buildRecentRunRows, describeAgentRunStats } from '@/pages/home-dashboard/homeViewModel'
-import { agentPath } from '@/routes'
+import { agentPath, runReviewPath } from '@/routes'
 
 const now = new Date('2026-11-18T12:00:00')
 const agentName = (agentId: string) => (agentId === 'agent-1' ? 'Cafe offers' : agentId)
@@ -107,7 +107,7 @@ describe('run result view', () => {
     ])
     expect(view.activity).toBe('6 steps done · 1 skipped · You approved 2, skipped 1')
     expect(view.builderReply).toBe('Sent 2 of 3 offers.')
-    expect(view.placesFound).toBe(3)
+    expect(view.hasNoOutputs).toBe(false)
     expect(view.table).toBeNull()
   })
 
@@ -115,7 +115,8 @@ describe('run result view', () => {
     expect(buildRunResultView(buildSummary({ status: 'paused', durationMs: null })).builderReply).toBe('The run is waiting for you')
     expect(buildRunResultView(buildSummary({ status: 'failed', errorMessage: 'boom', headline: 'ignored' })).builderReply).toBe('The run did not finish: boom')
     expect(buildRunResultView(buildSummary({})).activity).toBeNull()
-    expect(buildRunResultView(null).table?.moreLabel).toBe('15 more places')
+    expect(buildRunResultView(buildSummary({})).hasNoOutputs).toBe(true)
+    expect(buildRunResultView(buildSummary({})).table).toBeNull()
   })
 
   it('formats durations and status tones', () => {
@@ -152,9 +153,15 @@ describe('home view model', () => {
       title: 'Cafe offers is waiting for you',
       detail: 'Send this? · Today 09:00 run · paused for your review',
       actionLabel: 'Review',
-      actionPath: agentPath('testRun', 'agent-1', { runId: 'run-9' }),
+      actionPath: runReviewPath('run-9'),
       isPrimaryAction: true,
     })
+  })
+
+  it('sends paused test runs back to the test screen', () => {
+    const pausedTestRun = buildRun({ id: 'run-7', trigger: 'test', status: 'paused', pauseReasons: [] })
+    const [item] = buildPausedRunItems([pausedTestRun], agentName, now)
+    expect(item.actionPath).toBe(agentPath('testRun', 'agent-1', { runId: 'run-7' }))
   })
 
   it('uses the summary headline as the recent run result', () => {

@@ -11,6 +11,47 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
 
 ### Added
 
+- **Real data on New agent, Building, Home and the sidebar** in the desktop app: the prompt
+  starts empty and the model chip shows the real default model (or links to Connections);
+  templates fill in the description and kind instead of opening sample screens; Building
+  opened without a request links back to New agent; the sidebar runner card names the
+  connected provider and how many agents are scheduled; Home counts paused runs and
+  waiting chats, shows the next scheduled run, each agent's schedule and this month's runs
+  and AI tokens (new `get_usage_summary` command). The invented cost and "time saved" are gone.
+- **When something goes wrong** (screen 23) lists real problems: the latest failed run of each
+  agent (failing step and graphrt's error in plain words), missing provider keys, workflow
+  secrets and plugin settings, plugins that are missing, broken or untrusted, the browser
+  runtime for Playwright plugins, and schedules that no longer parse or keep failing. Each has
+  buttons that open the screen or run the command that fixes it. "Retry from the start" starts
+  a new run with the same inputs (graphrt cannot resume a failed run).
+- **Scheduler** (screen 10) draws past runs from the run history, and its rules are stored:
+  the missed-run default and keep-awake are app settings, and a new limit on scheduled runs at
+  the same time is enforced by the scheduler (a schedule due beyond it skips that run).
+- **Chatbot setup** is saved and used: the persona, tone, instructions and hand-off rules reach
+  every bot reply (switched-off rules are enforced by the app), the chatbot answers from the
+  knowledge bases attached on the setup screen, and WhatsApp/Telegram show as not connected
+  with a link to Connections > Plugins until a channel is connected.
+- **Team** activity and coordinator chat come from real runs of the team and its members;
+  a message to the coordinator starts a team run. The "agent calls per run" guardrail is
+  saved and enforced when the coordinator calls members.
+- **Secrets** (Connections > Advanced): every `env.*` secret any agent declares or an MCP
+  server needs, with who uses it and whether it is set; add, replace or remove values
+  (password fields, stored in the keychain, never shown again).
+- **MCP servers** (Connections > Advanced): add a server started by a command or reached by
+  URL, with the secrets it needs; test the connection to list its tools. Every run can use
+  them in `tool` and `agent` nodes (`<name>/<tool>` or `mcp:<name>`); the app connects only
+  when a node uses a server. The builder knows the configured servers and their tools.
+- **Settings**: run history retention (30 days, 90 days or forever; applied at start-up and
+  when changed), a notification when a chatbot hands a conversation over, a daily summary
+  notification at 18:00, the default model for new agents, the real data folder with Show in
+  Finder, and the real app version.
+
+- **Test run, run result and run review show only real run data**: the test run (06) starts
+  from a form built from the flow's inputs (prefilled from the last run, whose inputs are now
+  kept per run) and shows a paused `human-input` step exactly as graphrt sends it (prompt,
+  form fields, actions); the result (07) shows only what the run reported; Review a run (19)
+  lists the questions a paused run waits on (one per item for a parallel iteration, one at a
+  time for a sequential one, with "all remaining") and resumes with every answer at once.
 - **DeepSeek** as a model provider: add a key on Welcome or Connections and agents use
   `deepseek-chat` by default (`deepseek-reasoner` works too, with its reasoning streamed).
 - **Plugins**: install graphrt plugins from the graphrt-plugins catalog (Connections > Plugins):
@@ -71,6 +112,9 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
 
 - Agent screens are addressed by agent id (`/agents/<id>/steps`, `/test`, `/schedule`...).
 - Welcome and Connections save real provider keys; Home and the sidebar list real agents.
+- The desktop app no longer shows sample content on Connections and Settings: no sample
+  apps or "Connected" rows, and controls without a backend (appearance, language, model
+  fallback, crash reports, remote runner) are hidden. The browser preview still shows them.
 
 ### Known limitations
 

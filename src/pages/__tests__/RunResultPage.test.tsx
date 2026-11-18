@@ -2,11 +2,13 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { resumeRun, startRun } from '@/api/runs'
+import { sampleRunReviewBackend } from '@/api/sampleBackend/runReview'
 import type { RunSummary } from '@/api/runSummaryTypes'
 import { sampleRunSummaryBackend } from '@/api/sampleBackend/runSummary'
-import { resetSampleRuns, sampleRunStepDelayMs } from '@/api/sampleBackend/runs'
+import { resetSampleRuns, sampleRunStepDelayMs, sampleRunsBackend } from '@/api/sampleBackend/runs'
 import { agentPath, routePaths, sampleAgentId } from '@/routes'
 import { RunResultPage } from '@/pages/RunResultPage'
+import { LocationProbe } from '@/test/runTestUtils'
 
 function renderRunResultPage(initialEntry: string = routePaths.runResult) {
   return render(
@@ -14,6 +16,7 @@ function renderRunResultPage(initialEntry: string = routePaths.runResult) {
       <Routes>
         <Route path={routePaths.runResult} element={<RunResultPage />} />
         <Route path={routePaths.scheduleAgent} element={<p>Schedule screen</p>} />
+        <Route path={routePaths.batchApproval} element={<LocationProbe />} />
       </Routes>
     </MemoryRouter>,
   )
@@ -22,10 +25,10 @@ function renderRunResultPage(initialEntry: string = routePaths.runResult) {
 /** Plays the sample test run to the end and returns its id. */
 async function finishSampleRun(action: 'approve' | 'skip'): Promise<string> {
   vi.useFakeTimers()
-  const run = await startRun(sampleAgentId, 'test', {})
-  await vi.advanceTimersByTimeAsync(sampleRunStepDelayMs * 10)
+  const run = await startRun(sampleAgentId, 'test', { keyword: 'cafe', city: '[CITY]' })
+  await vi.advanceTimersByTimeAsync(sampleRunStepDelayMs * 11)
   await resumeRun(run.id, { approve_message: { action, values: { message: 'Hi' } } })
-  await vi.advanceTimersByTimeAsync(sampleRunStepDelayMs * 4)
+  await vi.advanceTimersByTimeAsync(sampleRunStepDelayMs * 5)
   vi.useRealTimers()
   return run.id
 }
@@ -52,6 +55,7 @@ function buildSummary(changes: Partial<RunSummary>): RunSummary {
 describe('RunResultPage', () => {
   beforeEach(() => {
     resetSampleRuns()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
   })
 
   afterEach(() => {
@@ -59,26 +63,51 @@ describe('RunResultPage', () => {
     vi.restoreAllMocks()
   })
 
-  it('shows the mockup result without a run', () => {
+  it('shows the latest finished test run of the agent without ?runId=', async () => {
     renderRunResultPage()
-    expect(screen.getByRole('heading', { level: 1, name: 'Test run' })).toBeInTheDocument()
+    expect(await screen.findByText(/^Yesterday \d\d:\d\d · on this Mac$/)).toBeInTheDocument()
     expect(screen.getByText('Succeeded')).toBeInTheDocument()
-    expect(screen.getByText('$0.004')).toBeInTheDocument()
-    expect(screen.getByRole('cell', { name: '[PLACE NAME 1]' })).toBeInTheDocument()
-    expect(screen.getByText('15 more places')).toBeInTheDocument()
+    expect(screen.getByText('Test with cafe · Bandar Lampung · catering menu')).toBeInTheDocument()
+    expect(screen.getByText('Places found')).toBeInTheDocument()
   })
 
-  it('offers the table as a CSV download', () => {
+  it('says so when the agent has no finished test', async () => {
+    vi.spyOn(sampleRunsBackend, 'listRuns').mockResolvedValue([])
     renderRunResultPage()
-    const exportLink = screen.getByRole('link', { name: 'Export CSV' })
-    expect(exportLink).toHaveAttribute('download', 'maps-leads-test-run.csv')
+    expect(await screen.findByText('No finished test yet')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Test it' })).toHaveAttribute('href', agentPath('testRun', sampleAgentId))
+    expect(screen.queryByText('$0.004')).not.toBeInTheDocument()
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+  })
+
+  it('offers the items as a CSV download', async () => {
+    const runId = await finishSampleRun('approve')
+    renderRunResultPage(agentPath('runResult', sampleAgentId, { runId }))
+    const exportLink = await screen.findByRole('link', { name: 'Export CSV' })
+    expect(exportLink).toHaveAttribute('download', `run-${runId.slice(0, 8)}.csv`)
     expect(decodeURIComponent(exportLink.getAttribute('href') ?? '')).toContain('"[PLACE NAME 1]","[PHONE]","Sent"')
   })
 
-  it('opens the schedule dialog from "What next?"', () => {
+  it('opens the schedule dialog from "What next?"', async () => {
     renderRunResultPage()
-    fireEvent.click(screen.getByRole('button', { name: 'Run it every weekday on new places' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Put it on a schedule' }))
     expect(screen.getByText('Schedule screen')).toBeInTheDocument()
+  })
+
+  it('runs it now with the same inputs and opens the review', async () => {
+    const runId = await finishSampleRun('approve')
+    const startRunSpy = vi.spyOn(sampleRunsBackend, 'startRun')
+    renderRunResultPage(agentPath('runResult', sampleAgentId, { runId }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Run it now with the same inputs' }))
+    expect(await screen.findByLabelText('Current location')).toHaveTextContent(/^\/runs\/review\?runId=sample-run-2$/)
+    expect(startRunSpy).toHaveBeenCalledWith(sampleAgentId, 'manual', { keyword: 'cafe', city: '[CITY]' })
+  })
+
+  it('does not offer "run it now" when the run inputs are unknown', async () => {
+    vi.spyOn(sampleRunReviewBackend, 'getRunInputs').mockResolvedValue(null)
+    renderRunResultPage()
+    expect(await screen.findByText('Test this agent')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Run it now with the same inputs' })).not.toBeInTheDocument()
   })
 
   it('loads the run summary from ?runId= and shows its headline, counters and items', async () => {
@@ -95,7 +124,7 @@ describe('RunResultPage', () => {
     const table = screen.getByRole('table')
     expect(within(table).getAllByRole('columnheader').map((header) => header.textContent)).toEqual(['Name', 'Phone', 'Status'])
     expect(within(table).getByRole('cell', { name: 'Sent' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Run now for the other 17 places' })).toBeInTheDocument()
+    expect(screen.getByText('Test with cafe · [CITY]')).toBeInTheDocument()
   })
 
   it('shows the headline of a skipped test', async () => {
@@ -114,7 +143,13 @@ describe('RunResultPage', () => {
     expect(screen.getByText('1m 05s')).toBeInTheDocument()
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Export CSV' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Run it now for everything' })).toBeInTheDocument()
+  })
+
+  it('says when a run reported neither items nor counts', async () => {
+    vi.spyOn(sampleRunSummaryBackend, 'getRunSummary').mockResolvedValue(buildSummary({ durationMs: null }))
+    renderRunResultPage(agentPath('runResult', sampleAgentId, { runId: 'run-1' }))
+    expect(await screen.findByText('This run did not list the things it handled or report any counts.')).toBeInTheDocument()
+    expect(screen.queryByRole('term')).not.toBeInTheDocument()
   })
 
   it('says why a failed run did not finish', async () => {

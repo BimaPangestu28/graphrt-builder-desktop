@@ -1,6 +1,6 @@
 import type { Run, RunEventRecord, RunFilter, RunStatus as BackendRunStatus, RunTrigger } from '@/api/types'
 import type { RunRecord, RunStatus as RunsScreenStatus, RunStep } from '@/data/runs'
-import { agentPath, routePaths } from '@/routes'
+import { agentPath, routePaths, runReviewPath } from '@/routes'
 import { collectNodeProgress, humanizeNodeId } from '@/pages/agent-run/runProgress'
 import { formatAiCost, formatClockTime, formatRunDay, formatRunDuration } from '@/pages/agent-run/runResultSummary'
 
@@ -88,8 +88,9 @@ function buildTiming(run: Run, now: Date): string {
 }
 
 function buildFollowUp(run: Run): RunRecord['followUp'] {
-  if (run.status === 'failed') return { label: 'See what went wrong', path: routePaths.errorStates }
+  if (run.status === 'failed') return { label: 'See what went wrong', path: `${routePaths.errorStates}?${new URLSearchParams({ runId: run.id })}` }
   if (run.status === 'paused' && run.trigger === 'test') return { label: 'Continue the test', path: agentPath('testRun', run.agentId, { runId: run.id }) }
+  if (run.status === 'paused' && run.trigger === 'schedule') return { label: 'Review', path: runReviewPath(run.id) }
   if (run.status === 'paused') return { label: 'Open in Inbox', path: routePaths.chatDetail }
   if (run.status === 'succeeded' && run.trigger === 'test') return { label: 'Open test result', path: agentPath('runResult', run.agentId, { runId: run.id }) }
   return undefined
