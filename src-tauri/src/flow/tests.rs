@@ -176,7 +176,9 @@ fn long_prompts_are_truncated_in_detail() {
 #[test]
 fn format_guide_is_compact_and_covers_key_nodes() {
     let guide = workflow_format_guide();
-    assert!(guide.lines().count() <= 150, "{} lines", guide.lines().count());
+    // Feature-specific rules live in `agent_builder/guides/`; this cheat-sheet only
+    // lists node types. The cap keeps the builder's system prompt small.
+    assert!(guide.lines().count() <= 175, "{} lines", guide.lines().count());
     for needle in ["human-input", "http-request", "iteration-start", "{{#", "handle", "llm"] {
         assert!(guide.contains(needle), "missing {needle}");
     }

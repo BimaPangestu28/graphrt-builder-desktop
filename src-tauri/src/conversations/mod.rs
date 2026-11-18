@@ -49,7 +49,7 @@ use self::models::{
 };
 pub use self::store::OUTREACH_ORIGIN;
 use crate::credentials::CredentialStore;
-use crate::engine::{prepare_engine_and_env, KeychainModelRegistrySource, ModelRegistrySource};
+use crate::engine::{agent_tools_for, prepare_engine_and_env, KeychainModelRegistrySource, ModelRegistrySource};
 use crate::error::{AppError, AppResult};
 use crate::storage::models::AgentKind;
 use crate::storage::Database;
@@ -348,7 +348,10 @@ impl ConversationManager {
 
     async fn run_turn(&self, conversation: &Conversation, message_text: &str) -> AppResult<BotTurn> {
         let agent = self.db.get_agent(&conversation.agent_id)?;
-        let (engine, env) = prepare_engine_and_env(&agent.flow_yaml, &self.credentials, &self.db, &*self.model_source)?;
+        // Chatbots can call other agents as tools, like any run of this agent.
+        let tools = agent_tools_for(self.db.clone(), self.credentials.clone(), self.model_source.clone(), &agent.id);
+        let (engine, env) =
+            prepare_engine_and_env(&agent.flow_yaml, &self.credentials, &self.db, &*self.model_source, tools)?;
         run_bot_turn(&engine, env, conversation, message_text).await
     }
 

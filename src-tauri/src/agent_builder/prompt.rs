@@ -20,6 +20,7 @@ const EXAMPLE_APPROVAL_LOOP: &str = include_str!("../../fixtures/flows/approval_
 const DOMAIN_GUIDES: &[&str] = &[
     include_str!("guides/run_outputs.md"), // end-node outputs: summary, items, counters
     include_str!("guides/chatbot.md"),     // chatbot conversations
+    include_str!("guides/agents_as_tools.md"), // other agents as tool steps and team members
 ];
 
 /// Prefix of the line carrying the agent's display name in a build reply.

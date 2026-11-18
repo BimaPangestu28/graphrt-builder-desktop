@@ -63,6 +63,12 @@ instruction: "You are ..."
 query: "{{#start.request#}}"
 max_iterations: 10
 require_approval: ["*"]                  # optional: ask the user before each tool call
+tools: [agents/<agent id>]               # optional: the user's agents it may call (a team)
+```
+
+`tool` - run another of the user's agents (tool = agent id); outputs `text`, `json` (its outputs):
+```yaml
+{ provider_id: agents, tool_name: <agent id>, timeout_ms: 600000, tool_parameters: { place: { type: variable, value: [find, json, first] } } }
 ```
 
 `question-classifier` (branch) - outputs `class_id`; edges use the class id as handle:
@@ -142,9 +148,3 @@ break_conditions: [{ variable_selector: [refine, draft], comparison_operator: co
 ## Per-node options (any node)
 `retry: { max_retries: 2, interval_ms: 1000, backoff: 2.0 }`, `timeout_ms: 30000`,
 `on_error: { strategy: fail-branch }` (then an edge with `handle: fail-branch`).
-
-## Run outputs
-`end` outputs are what the app shows after a run: `summary` (always; one plain sentence about what happened),
-`items` (list of objects, one per thing handled, each with `name` or `title` and a `status` such as `sent`,
-`skipped`, `failed`, plus a few short fields) and optional number counters in snake_case (`messages_sent`).
-Produce them with an `llm` using `structured_output`, read as `[write_report, structured_output, summary]`.

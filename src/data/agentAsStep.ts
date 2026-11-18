@@ -1,6 +1,6 @@
 /**
- * Mock data for screen 12 (Agent as a step): the steps of "Maps leads to WhatsApp"
- * and the catalog of things that can be inserted after "Search Google Maps".
+ * Mock data for screen 12 (Agent as a step): the catalog of things that can be inserted into another agent. The sample backend
+ * (`api/sampleBackend/sampleChainSeeds.ts`) turns the "My agents" items into agents.
  */
 
 export type StepCatalogCategory = 'builtIn' | 'myAgents' | 'plugins'
@@ -21,12 +21,6 @@ export interface StepCatalogItem {
   /** Agents that need no input cannot run as a step inside a loop. */
   needsNoInput?: boolean
 }
-
-export const stepCatalogTabs: Array<{ category: StepCatalogCategory; label: string }> = [
-  { category: 'builtIn', label: 'Built-in' },
-  { category: 'myAgents', label: 'My agents' },
-  { category: 'plugins', label: 'Plugins' },
-]
 
 export const stepCatalogItems: StepCatalogItem[] = [
   {
@@ -94,31 +88,3 @@ export const stepCatalogItems: StepCatalogItem[] = [
     getsBack: ['reachable', 'has_form'],
   },
 ]
-
-export const initialInsertedStepId = 'lead-qualifier'
-
-export const stepsBeforeInsert = ['Ask for keyword, city and offer', 'Search Google Maps', 'For each place']
-
-export interface LoopBodyStep {
-  title: string
-  tag?: { label: string; tone: 'muted' | 'amber' }
-}
-
-export const stepsAfterInsert: LoopBodyStep[] = [
-  { title: 'Skip places with score below 6', tag: { label: 'New', tone: 'muted' } },
-  { title: 'Write a short message' },
-  { title: 'Ask me before sending', tag: { label: 'Approval', tone: 'amber' } },
-  { title: 'Send WhatsApp' },
-]
-
-/**
- * Catalog items in a tab whose name or description matches the search text (case-insensitive).
- */
-export function filterStepCatalog(items: StepCatalogItem[], options: { category: StepCatalogCategory; searchText: string }): StepCatalogItem[] {
-  const normalizedSearch = options.searchText.trim().toLowerCase()
-  return items.filter(
-    (item) =>
-      item.category === options.category &&
-      (normalizedSearch === '' || `${item.name} ${item.description}`.toLowerCase().includes(normalizedSearch)),
-  )
-}

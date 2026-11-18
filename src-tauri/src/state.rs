@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use crate::chains::ChainRunner;
 use crate::credentials::CredentialStore;
 use crate::engine::RunManager;
 use crate::scheduler::SchedulerHandle;
@@ -14,4 +15,6 @@ pub struct AppState {
     pub runs: Arc<RunManager>,
     pub scheduler: SchedulerHandle,
     pub conversations: Arc<crate::conversations::ConversationManager>,
+    /// Starts the next agents of chains when runs finish.
+    pub chains: Arc<ChainRunner>,
 }

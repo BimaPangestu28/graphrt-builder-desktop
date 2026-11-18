@@ -114,6 +114,27 @@ const MIGRATIONS: &[&str] = &[
     );
     CREATE INDEX conversation_messages_by_conversation ON conversation_messages (conversation_id, created_at);
     "#,
+    // Chains of agents: "when agent A finishes, start agent B" (screen 11).
+    r#"
+    CREATE TABLE chains (
+        id         TEXT PRIMARY KEY NOT NULL,
+        name       TEXT NOT NULL CHECK (length(trim(name)) > 0),
+        status     TEXT NOT NULL CHECK (status IN ('active', 'paused')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE chain_steps (
+        chain_id           TEXT NOT NULL REFERENCES chains (id) ON DELETE CASCADE,
+        position           INTEGER NOT NULL CHECK (position >= 0),
+        agent_id           TEXT NOT NULL REFERENCES agents (id) ON DELETE CASCADE,
+        input_mapping_json TEXT NOT NULL,
+        run_condition      TEXT NOT NULL CHECK (run_condition IN ('on_success', 'always')),
+        on_failure         TEXT NOT NULL CHECK (on_failure IN ('stop', 'continue')),
+        PRIMARY KEY (chain_id, position)
+    );
+    CREATE INDEX chain_steps_by_agent ON chain_steps (agent_id);
+    "#,
 ];
 
 /// Applies every migration newer than the database's `user_version`.
@@ -164,6 +185,8 @@ mod tests {
             [
                 "agent_versions",
                 "agents",
+                "chain_steps",
+                "chains",
                 "conversation_messages",
                 "conversations",
                 "run_events",

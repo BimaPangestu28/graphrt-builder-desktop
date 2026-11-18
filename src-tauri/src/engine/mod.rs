@@ -22,6 +22,7 @@
 //! env/secret provider plugs in there and nowhere else.
 
 mod active_runs;
+pub mod agent_tools;
 mod chunk_buffer;
 mod driver;
 mod preparation;
@@ -38,6 +39,18 @@ use self::active_runs::ActiveRuns;
 use self::chunk_buffer::ChunkBufferLimits;
 use self::driver::RunDriver;
 pub(crate) use self::preparation::prepare_engine_and_env;
+
+/// Other agents as tools for a workflow of `agent_id` that is not a `RunManager`
+/// run (e.g. a chatbot turn); refuses calls back into `agent_id`.
+pub(crate) fn agent_tools_for(
+    db: Arc<Database>,
+    credentials: Arc<CredentialStore>,
+    model_source: Arc<dyn ModelRegistrySource>,
+    agent_id: &str,
+) -> graphrt_core::tool::ToolRegistry {
+    let dependencies = agent_tools::EngineDependencies { db, credentials, model_source };
+    agent_tools::agent_tool_registry(&dependencies, vec![agent_id.to_owned()])
+}
 use crate::credentials::CredentialStore;
 use crate::error::{AppError, AppResult};
 use crate::storage::models::{Run, RunStatus, RunTrigger};
@@ -149,7 +162,9 @@ impl RunManager {
     ///   no run is recorded in that case.
     pub async fn start_run(&self, agent_id: &str, trigger: RunTrigger, inputs: serde_json::Value) -> AppResult<Run> {
         let agent = self.db.get_agent(agent_id)?;
-        let engine = preparation::build_engine(&agent.flow_yaml, &self.credentials, &self.db, &*self.model_source)?;
+        let tools = self.agent_tools(&agent.id);
+        let engine =
+            preparation::build_engine(&agent.flow_yaml, &self.credentials, &self.db, &*self.model_source, tools)?;
         let mut run_input = RunInput::new();
         run_input.inputs = preparation::json_object_to_value_map(inputs, "run inputs")?;
         run_input.env = preparation::workflow_env(&agent.flow_yaml, &self.credentials)?;
@@ -177,7 +192,8 @@ impl RunManager {
         }
         let agent = self.db.get_agent(&run.agent_id)?;
         let flow_yaml = preparation::flow_for_version(&self.db, &agent, run.agent_version)?;
-        let engine = preparation::build_engine(&flow_yaml, &self.credentials, &self.db, &*self.model_source)?;
+        let tools = self.agent_tools(&agent.id);
+        let engine = preparation::build_engine(&flow_yaml, &self.credentials, &self.db, &*self.model_source, tools)?;
         let snapshot = Snapshot::from_json(&self.db.get_run_snapshot(run_id)?)?;
         let resume_inputs = preparation::json_object_to_value_map(node_inputs, "node inputs")?;
         let mut run_input = RunInput::new().resume(snapshot, resume_inputs);
@@ -240,6 +256,16 @@ impl RunManager {
             RunStatus::Running | RunStatus::Paused => None,
             finished => Some(already_finished(run_id, finished)),
         }
+    }
+
+    /// Tool registry for a top-level run of `agent_id`: other agents as tools.
+    fn agent_tools(&self, agent_id: &str) -> graphrt_core::tool::ToolRegistry {
+        let dependencies = agent_tools::EngineDependencies {
+            db: self.db.clone(),
+            credentials: self.credentials.clone(),
+            model_source: self.model_source.clone(),
+        };
+        agent_tools::agent_tool_registry(&dependencies, vec![agent_id.to_owned()])
     }
 
     fn finish_aborted(&self, run: &Run) -> AppResult<()> {

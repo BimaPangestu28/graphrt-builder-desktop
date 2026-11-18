@@ -11,9 +11,13 @@
 //! - [`run_summary`]: plain-language run summaries and weekly agent stats
 //! - [`scheduler`]: starting scheduled runs while the app is running
 //! - [`conversations`]: chatbot conversations, the bot's replies and hand-offs
+//! - [`agent_steps`]: agents used as steps and team members (the `agents` tool provider)
+//! - [`chains`]: starting the next agent of a chain when a run finishes
 //! - [`commands`]: the Tauri commands the frontend calls
 
 pub mod agent_builder;
+pub mod agent_steps;
+pub mod chains;
 pub mod commands;
 pub mod conversations;
 pub mod credentials;
@@ -29,6 +33,7 @@ use std::sync::Arc;
 
 use tauri::Manager;
 
+use crate::chains::{ChainRunner, ChainingSink};
 use crate::credentials::CredentialStore;
 use crate::engine::tauri_sink::TauriRunEventSink;
 use crate::engine::RunManager;
@@ -52,13 +57,16 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         log::warn!("could not prune old run events: {error}");
     }
     let credentials = Arc::new(CredentialStore::keychain());
-    let sink = Arc::new(TauriRunEventSink::new(app.handle().clone()));
+    let tauri_sink = Arc::new(TauriRunEventSink::new(app.handle().clone()));
+    let chain_runner = Arc::new(ChainRunner::new(db.clone()));
+    let sink = Arc::new(ChainingSink::new(tauri_sink, chain_runner.clone()));
     let runs = Arc::new(RunManager::new(db.clone(), credentials.clone(), sink));
+    chain_runner.attach(&runs);
     let scheduler = scheduler::spawn(db.clone(), runs.clone());
     let conversation_sink = Arc::new(conversations::tauri_sink::TauriConversationEventSink::new(app.handle().clone()));
     let conversations =
         Arc::new(conversations::ConversationManager::new(db.clone(), credentials.clone(), conversation_sink));
-    Ok(AppState { db, credentials, runs, scheduler, conversations })
+    Ok(AppState { db, credentials, runs, scheduler, conversations, chains: chain_runner })
 }
 
 /// Builds and runs the Tauri application.
@@ -123,6 +131,17 @@ pub fn run() {
             commands::conversations::get_bot_enabled,
             commands::versions::compare_agent_versions,
             commands::versions::get_version_flow_summary,
+            commands::chains::list_chains,
+            commands::chains::get_chain,
+            commands::chains::create_chain,
+            commands::chains::update_chain,
+            commands::chains::delete_chain,
+            commands::chains::set_chain_status,
+            commands::chains::test_chain,
+            commands::agent_tools::list_agent_steps,
+            commands::agent_tools::get_team,
+            commands::agent_tools::add_agent_step,
+            commands::agent_tools::add_team_member,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start the graphrt desktop app");

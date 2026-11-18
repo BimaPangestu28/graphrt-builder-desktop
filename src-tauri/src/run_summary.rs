@@ -8,7 +8,7 @@
 //!   human-input pause reasons still waiting on a paused run;
 //! - model token usage summed over `node_succeeded.usage` of non-container nodes
 //!   (iteration and loop nodes repeat their body's usage, so they are left out);
-//! - the run output convention (see "Run outputs" in `flow/format_guide.md`):
+//! - the run output convention (see `agent_builder/guides/run_outputs.md`):
 //!   `summary` → headline, `items` → items, numeric top-level outputs → counters.
 //!
 //! [`agent_run_stats`] gives each agent's last-7-days totals for the Home cards.

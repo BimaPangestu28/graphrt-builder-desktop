@@ -366,9 +366,14 @@ async fn abort_before_the_task_registers_aborts_the_graphrt_run() {
     harness.runs.abort_run(&run.id).unwrap();
     assert_eq!(harness.db.get_run(&run.id).unwrap().status, RunStatus::Aborted);
 
-    let engine =
-        preparation::build_engine(&agent.flow_yaml, &harness.credentials, &harness.db, &*harness.runs.model_source)
-            .unwrap();
+    let engine = preparation::build_engine(
+        &agent.flow_yaml,
+        &harness.credentials,
+        &harness.db,
+        &*harness.runs.model_source,
+        graphrt_core::tool::ToolRegistry::new(),
+    )
+    .unwrap();
     let mut run_input = graphrt_core::RunInput::new();
     run_input.inputs = preparation::json_object_to_value_map(json!({"question": "?"}), "run inputs").unwrap();
     harness.runs.spawn_driver(&run, engine.run(run_input)).unwrap();
