@@ -1,6 +1,6 @@
 import type { Run, RunEventRecord } from '@/api/types'
 import { readPendingApprovals } from '@/api/pauseReasons'
-import { buildStepProgress } from '@/pages/agent-run/runProgress'
+import { buildRunStepViews } from '@/pages/agent-run/runSteps'
 import { toRunFilter, toRunRecord } from '@/pages/runs/runViewModel'
 import { toScheduleTrigger } from '@/pages/scheduler/schedulerViewModel'
 
@@ -22,8 +22,8 @@ const baseRun: Run = {
 }
 
 describe('run progress', () => {
-  it('lays events over the expected steps and appends unknown nodes', () => {
-    const steps = buildStepProgress(
+  it('lays events over the expected steps and leaves out nodes the summary does not list', () => {
+    const steps = buildRunStepViews(
       [
         { id: 'search', label: 'Search' },
         { id: 'approve', label: 'Approve' },
@@ -31,11 +31,10 @@ describe('run progress', () => {
       ],
       [buildEvent(1, 'node_started', 'search'), buildEvent(2, 'node_succeeded', 'search', { duration_ms: 1200 }), buildEvent(3, 'node_paused', 'approve'), buildEvent(4, 'node_failed', 'extra_check')],
     )
-    expect(steps.map((step) => [step.label, step.state, step.detail])).toEqual([
-      ['Search', 'done', '1.2s'],
-      ['Approve', 'waiting', undefined],
-      ['Send', 'pending', undefined],
-      ['Extra check', 'failed', undefined],
+    expect(steps.map((step) => [step.label, step.state, step.durationMs])).toEqual([
+      ['Search', 'done', 1200],
+      ['Approve', 'waiting', null],
+      ['Send', 'pending', null],
     ])
   })
 

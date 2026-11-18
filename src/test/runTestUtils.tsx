@@ -1,9 +1,9 @@
 import { act } from '@testing-library/react'
 import { useLocation } from 'react-router-dom'
-import { sampleRunStepDelayMs } from '@/api/sampleBackend/runs'
+import { sampleRunStepDelayMs, sampleStepsUntilApproval } from '@/api/sampleBackend/runs'
 
 /** Steps the scripted sample test run plays before it pauses for approval. */
-export const stepsUntilApproval = 11
+export const stepsUntilApproval = sampleStepsUntilApproval
 /** Steps the scripted run plays after "Approve and send" until it succeeds. */
 export const stepsAfterApproval = 5
 

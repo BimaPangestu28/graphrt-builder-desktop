@@ -13,7 +13,7 @@ const agentStatusLabels: Record<AgentStatus, string> = {
 interface SidebarAgentOptions {
   /** Replaces the agent's own status, e.g. "Testing · waiting for you". */
   status?: string
-  statusTone?: 'brand' | 'amber'
+  statusTone?: 'brand' | 'amber' | 'danger'
 }
 
 /**
