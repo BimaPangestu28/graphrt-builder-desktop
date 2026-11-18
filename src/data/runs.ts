@@ -121,7 +121,7 @@ export const runRecords: RunRecord[] = [
     steps: [{ label: 'Read new Gmail', detail: 'sign-in expired', isDone: false }],
     output: 'Gmail needs you to sign in again. The digest is paused until then',
     rawLog: ['07:00:00 schedule fired (daily 07:00)', '07:00:03 gmail.list error: invalid_grant (token expired)'],
-    followUp: { label: 'See what went wrong', path: routePaths.errorStates },
+    followUp: { label: 'See what went wrong', path: `${routePaths.errorStates}?runId=morning-digest-yesterday` },
   },
   {
     id: 'maps-leads-test',

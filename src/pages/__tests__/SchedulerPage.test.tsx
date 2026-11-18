@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { BackendError } from '@/api/client'
+import { resetSampleAppSettings, sampleAppSettingsBackend } from '@/api/sampleBackend/appSettings'
+import { resetSampleScheduleRules, sampleScheduleRulesBackend } from '@/api/sampleBackend/scheduleRules'
 import { resetSampleTriggers, sampleTriggersBackend } from '@/api/sampleBackend/triggers'
 import { SchedulerPage } from '../SchedulerPage'
 
@@ -21,6 +23,8 @@ async function findWeekView() {
 describe('SchedulerPage', () => {
   beforeEach(() => {
     resetSampleTriggers()
+    resetSampleScheduleRules()
+    resetSampleAppSettings()
   })
 
   afterEach(() => {
@@ -78,6 +82,57 @@ describe('SchedulerPage', () => {
     vi.spyOn(sampleTriggersBackend, 'listTriggers').mockRejectedValue(new BackendError('database', 'Database is locked'))
     renderSchedulerPage()
     expect(await screen.findByRole('alert')).toHaveTextContent('Database is locked')
+  })
+
+  it('draws past runs from the scheduled-run history and links a failure to its run', async () => {
+    const historySpy = vi.spyOn(sampleScheduleRulesBackend, 'listScheduledRuns')
+    renderSchedulerPage()
+    const weekView = await findWeekView()
+    expect(await within(weekView).findByText('14 sent')).toBeInTheDocument()
+    expect(within(weekView).getByRole('link', { name: /Failed/ })).toHaveAttribute('href', '/runs/problems?runId=morning-digest-yesterday')
+    expect(historySpy).toHaveBeenCalledWith('2026-11-15T00:00:00.000Z', '2026-11-24T00:00:00.000Z')
+  })
+
+  it('shows no past runs when the history is empty', async () => {
+    vi.spyOn(sampleScheduleRulesBackend, 'listScheduledRuns').mockResolvedValue([])
+    renderSchedulerPage()
+    const weekView = await findWeekView()
+    expect(within(weekView).queryByText('Needs you')).not.toBeInTheDocument()
+    expect(within(weekView).queryByText('14 sent')).not.toBeInTheDocument()
+  })
+
+  it('stores the concurrency limit as a scheduler rule', async () => {
+    const updateRulesSpy = vi.spyOn(sampleScheduleRulesBackend, 'updateScheduleRules')
+    renderSchedulerPage()
+    const concurrencySelect = screen.getByRole('combobox', { name: 'Agents running at the same time' })
+    await vi.waitFor(() => expect(concurrencySelect).toBeEnabled())
+    expect(concurrencySelect).toHaveValue('2')
+    fireEvent.change(concurrencySelect, { target: { value: '4' } })
+    await vi.waitFor(() => expect(updateRulesSpy).toHaveBeenCalledWith({ maxConcurrentRuns: 4 }))
+    expect(await sampleScheduleRulesBackend.getScheduleRules()).toEqual({ maxConcurrentRuns: 4 })
+  })
+
+  it('stores the missed-run default and keep-awake in the app settings', async () => {
+    const updateSettingsSpy = vi.spyOn(sampleAppSettingsBackend, 'updateAppSettings')
+    renderSchedulerPage()
+    const missedRunSelect = screen.getByRole('combobox', { name: 'If the Mac was asleep' })
+    await vi.waitFor(() => expect(missedRunSelect).toBeEnabled())
+    fireEvent.change(missedRunSelect, { target: { value: 'Skip the missed run' } })
+    await vi.waitFor(() => expect(updateSettingsSpy).toHaveBeenCalledWith(expect.objectContaining({ missedRunDefaultPolicy: 'skip' })))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Keep the Mac awake while an agent runs' }))
+    await vi.waitFor(() =>
+      expect(updateSettingsSpy).toHaveBeenLastCalledWith(expect.objectContaining({ missedRunDefaultPolicy: 'skip', keepAwakeWhileRunning: false })),
+    )
+  })
+
+  it('puts a rule back and explains when it cannot be saved', async () => {
+    vi.spyOn(sampleScheduleRulesBackend, 'updateScheduleRules').mockRejectedValue(new BackendError('database', 'Disk is full'))
+    renderSchedulerPage()
+    const concurrencySelect = screen.getByRole('combobox', { name: 'Agents running at the same time' })
+    await vi.waitFor(() => expect(concurrencySelect).toBeEnabled())
+    fireEvent.change(concurrencySelect, { target: { value: '1' } })
+    expect(await screen.findByRole('alert')).toHaveTextContent('Disk is full')
+    expect(concurrencySelect).toHaveValue('2')
   })
 
   it('switches to the list view', () => {

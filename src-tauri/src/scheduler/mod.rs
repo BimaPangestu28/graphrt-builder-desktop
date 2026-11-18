@@ -16,10 +16,14 @@
 //!
 //! While "Pause all agents" is on (see [`pause`]), ticks fire nothing.
 //!
+//! At most [`rules::ScheduleRules::max_concurrent_runs`] scheduled runs run at
+//! once; a trigger that comes due while that many are running skips this run.
+//!
 //! See [`cron_schedule`] for the accepted cron syntax.
 
 pub mod cron_schedule;
 pub mod pause;
+pub mod rules;
 pub mod tick;
 
 use std::sync::Arc;

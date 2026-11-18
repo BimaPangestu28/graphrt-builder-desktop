@@ -1,14 +1,12 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
+import { getFailedRunReport } from '@/api/problems'
+import type { FailedRunReport, FailedRunStep, FailedRunStepState, ProblemAction } from '@/api/problemTypes'
 import { StrokeIcon, joinClassNames } from '@/components/ui'
-import { failedRun, type FailedRunStep, type FailedRunStepState } from '@/data/errorStates'
-
-type RecoveryState = 'failed' | 'reconnected' | 'retryBlocked' | 'resumed'
-
-const recoveryMessages: Partial<Record<RecoveryState, string>> = {
-  reconnected: 'Gmail is connected again. Retry to finish the missed digest',
-  retryBlocked: 'Gmail is still signed out, so the retry would fail again. Reconnect Gmail first',
-  resumed: 'Resumed from Read new emails. The digest was sent to Telegram',
-}
+import { useLoadedData } from '@/hooks/useRunData'
+import { formatRunDay } from '@/pages/agent-run/runResultSummary'
+import { routePaths } from '@/routes'
+import { CommandOutcomeMessage, ProblemActionControl, type CommandOutcome } from './ProblemActionControl'
 
 function StepMarker({ state }: { state: FailedRunStepState }) {
   if (state === 'done') {
@@ -51,77 +49,90 @@ function RunStepList({ steps }: { steps: FailedRunStep[] }) {
   )
 }
 
-const allStepsDone: FailedRunStep[] = failedRun.steps.map((step) => ({ ...step, state: 'done', note: undefined }))
+function retryAction(report: FailedRunReport): ProblemAction {
+  return { kind: 'retry_run', label: 'Retry from the start', agentId: report.agentId, runId: report.runId }
+}
 
-/** Left column of screen 23: the failed run, how to fix it, its steps and raw details. */
-export function FailedRunPanel() {
-  const [recoveryState, setRecoveryState] = useState<RecoveryState>('failed')
-  const isGmailConnected = recoveryState === 'reconnected' || recoveryState === 'resumed'
-  const steps = recoveryState === 'resumed' ? allStepsDone : failedRun.steps
-  const recoveryMessage = recoveryMessages[recoveryState]
-
-  function handleRetry() {
-    setRecoveryState(isGmailConnected ? 'resumed' : 'retryBlocked')
-  }
-
+/** The "Fix it" box: what to do, the button that fixes the cause, and a retry from the start. */
+function FixItBox({ report }: { report: FailedRunReport }) {
+  const [commandOutcome, setCommandOutcome] = useState<CommandOutcome | null>(null)
   return (
-    <section aria-labelledby="failed-run-heading" className="box-border flex min-w-0 flex-[3_1_520px] flex-col gap-[22px] p-8">
-      <div className="flex items-start gap-4">
-        <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-danger-soft text-danger">
-          <StrokeIcon size={22}>
-            <circle cx="12" cy="12" r="9" />
-            <path d="M12 7.5v5.5M12 16.5v.01" />
-          </StrokeIcon>
-        </span>
-        <div className="flex flex-col gap-1.5">
-          <span className="text-[13px] text-muted">
-            {failedRun.agentName} · {failedRun.startedAt}
-          </span>
-          <h1 id="failed-run-heading" className="m-0 text-[22px] font-semibold tracking-[-0.3px]">
-            {failedRun.title}
-          </h1>
-          <p className="m-0 leading-[1.6] text-ink-2">{failedRun.explanation}</p>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-3 rounded-[14px] border border-line p-[18px]">
-        <span className="font-semibold">Fix it</span>
-        <ol className="m-0 flex flex-col gap-2.5 pl-5 leading-normal">
-          {failedRun.fixSteps.map((fixStep) => (
-            <li key={fixStep}>{fixStep}</li>
-          ))}
-        </ol>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            disabled={isGmailConnected}
-            onClick={() => setRecoveryState('reconnected')}
-            className="h-10 cursor-pointer rounded-[9px] border-0 bg-ink px-4 font-sans text-[14px] font-semibold text-white disabled:cursor-default disabled:bg-ok"
-          >
-            {isGmailConnected ? 'Gmail reconnected' : 'Reconnect Gmail'}
-          </button>
-          <button
-            type="button"
-            disabled={recoveryState === 'resumed'}
-            onClick={handleRetry}
-            className="h-10 cursor-pointer rounded-[9px] border border-line-strong bg-surface px-4 font-sans text-[14px] font-medium text-ink hover:bg-subtle disabled:cursor-default disabled:opacity-50"
-          >
-            Retry from the failed step
-          </button>
-        </div>
-        {recoveryMessage && (
-          <p role="status" className={joinClassNames('m-0 text-[13px]', recoveryState === 'retryBlocked' ? 'text-danger' : 'text-ok-strong')}>
-            {recoveryMessage}
-          </p>
+    <div className="flex flex-col gap-3 rounded-[14px] border border-line p-[18px]">
+      <span className="font-semibold">Fix it</span>
+      <ol className="m-0 flex flex-col gap-2.5 pl-5 leading-normal">
+        {report.fixSteps.map((fixStep) => (
+          <li key={fixStep}>{fixStep}</li>
+        ))}
+      </ol>
+      <div className="flex flex-wrap gap-2">
+        {report.fixAction && <ProblemActionControl action={report.fixAction} style="primary" onCommandFinished={setCommandOutcome} />}
+        {report.retry.canRetry && commandOutcome?.kind !== 'done' && (
+          <ProblemActionControl action={retryAction(report)} style="secondary" onCommandFinished={setCommandOutcome} />
         )}
       </div>
+      {!report.retry.canRetry && report.retry.reason && <p className="m-0 text-[13px] text-body">Retry is not available: {report.retry.reason}</p>}
+      {commandOutcome && <CommandOutcomeMessage outcome={commandOutcome} />}
+    </div>
+  )
+}
 
-      <RunStepList steps={steps} />
+function FailedRunIcon() {
+  return (
+    <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-danger-soft text-danger">
+      <StrokeIcon size={22}>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7.5v5.5M12 16.5v.01" />
+      </StrokeIcon>
+    </span>
+  )
+}
 
+function FailedRunReportView({ report }: { report: FailedRunReport }) {
+  return (
+    <>
+      <div className="flex items-start gap-4">
+        <FailedRunIcon />
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[13px] text-muted">
+            {report.agentName} · {formatRunDay(report.startedAt, new Date())}
+          </span>
+          <h1 id="failed-run-heading" className="m-0 text-[22px] font-semibold tracking-[-0.3px]">
+            {report.title}
+          </h1>
+          <p className="m-0 leading-[1.6] text-ink-2">{report.explanation}</p>
+        </div>
+      </div>
+      <FixItBox key={report.runId} report={report} />
+      <RunStepList steps={report.steps} />
       <details className="rounded-xl border border-line px-4 py-3">
         <summary className="cursor-pointer font-medium">Technical details</summary>
-        <pre className="m-0 mt-3 whitespace-pre-wrap font-mono text-[12px] leading-[1.6] text-ink-2">{failedRun.technicalDetails}</pre>
+        <pre className="m-0 mt-3 whitespace-pre-wrap font-mono text-[12px] leading-[1.6] text-ink-2">{report.technicalDetails}</pre>
       </details>
+    </>
+  )
+}
+
+function NoFailedRun({ message }: { message: string }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <h1 id="failed-run-heading" className="m-0 text-[22px] font-semibold tracking-[-0.3px]">
+        No failed runs
+      </h1>
+      <p className="m-0 leading-[1.6] text-ink-2">{message}</p>
+      <Link to={routePaths.runs}>See every run</Link>
+    </div>
+  )
+}
+
+/** Left column of screen 23: one failed run, how to fix it, its steps and graphrt's error. */
+export function FailedRunPanel({ runId }: { runId: string | null }) {
+  const { data: report, error, isLoading } = useLoadedData(() => (runId ? getFailedRunReport(runId) : Promise.resolve(null)), [runId])
+  return (
+    <section aria-labelledby="failed-run-heading" className="box-border flex min-w-0 flex-[3_1_520px] flex-col gap-[22px] p-8">
+      {!runId && <NoFailedRun message="The latest run of every agent finished without an error." />}
+      {runId && error && <NoFailedRun message={`Could not load this run: ${error.message}`} />}
+      {runId && !error && isLoading && !report && <p className="m-0 text-body">Loading the run…</p>}
+      {runId && report && <FailedRunReportView report={report} />}
     </section>
   )
 }
