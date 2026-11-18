@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use graphrt_core::engine::Limits;
+use graphrt_core::tool::ToolRegistry;
 use graphrt_core::{Engine, IndexMap, Services, Value};
 
 use super::ModelRegistrySource;
@@ -20,6 +21,9 @@ const DEFAULT_NODE_TIMEOUT_MS: u64 = 2 * 60 * 1000;
 
 /// Compiles the flow, checks provider keys and wires graphrt services.
 ///
+/// `tools` is the graphrt tool registry for `tool` / `agent` nodes (the
+/// `agents` provider, see `agent_tools`); other tool providers are added to it.
+///
 /// # Errors
 /// `InvalidInput` / `Workflow` for a bad flow, `MissingCredentials` when a model
 /// provider the flow uses is not configured, or whatever building the model
@@ -29,13 +33,14 @@ pub(super) fn build_engine(
     credentials: &CredentialStore,
     db: &Database,
     model_source: &dyn ModelRegistrySource,
+    tools: ToolRegistry,
 ) -> AppResult<Engine> {
     let summary = flow::summarize_flow(flow_yaml)?;
     ensure_providers_configured(&summary.model_providers, credentials, db)?;
     let graph = flow::compile_flow(flow_yaml)?;
     let http_client = graphrt_http::HttpClient::new(graphrt_http::EgressPolicy::default())
         .map_err(|error| AppError::Internal(format!("could not set up the HTTP client: {error}")))?;
-    let services = Services::new().with(model_source.build_registry(credentials, db)?).with(http_client);
+    let services = Services::new().with(model_source.build_registry(credentials, db)?).with(http_client).with(tools);
     Ok(Engine::new(Arc::new(graph)).with_services(services).with_limits(run_limits()))
 }
 

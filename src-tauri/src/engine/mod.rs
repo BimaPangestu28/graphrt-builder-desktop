@@ -18,6 +18,7 @@
 //! `preparation::workflow_env`, which currently returns an empty map; a future
 //! env/secret provider plugs in there and nowhere else.
 
+pub mod agent_tools;
 mod driver;
 mod preparation;
 pub mod tauri_sink;
@@ -167,7 +168,9 @@ impl RunManager {
     ///   no run is recorded in that case.
     pub async fn start_run(&self, agent_id: &str, trigger: RunTrigger, inputs: serde_json::Value) -> AppResult<Run> {
         let agent = self.db.get_agent(agent_id)?;
-        let engine = preparation::build_engine(&agent.flow_yaml, &self.credentials, &self.db, &*self.model_source)?;
+        let tools = self.agent_tools(&agent.id);
+        let engine =
+            preparation::build_engine(&agent.flow_yaml, &self.credentials, &self.db, &*self.model_source, tools)?;
         let mut run_input = RunInput::new();
         run_input.inputs = preparation::json_object_to_value_map(inputs, "run inputs")?;
         run_input.env = preparation::workflow_env(&agent.flow_yaml, &self.credentials)?;
@@ -195,7 +198,8 @@ impl RunManager {
         }
         let agent = self.db.get_agent(&run.agent_id)?;
         let flow_yaml = preparation::flow_for_version(&self.db, &agent, run.agent_version)?;
-        let engine = preparation::build_engine(&flow_yaml, &self.credentials, &self.db, &*self.model_source)?;
+        let tools = self.agent_tools(&agent.id);
+        let engine = preparation::build_engine(&flow_yaml, &self.credentials, &self.db, &*self.model_source, tools)?;
         let snapshot = Snapshot::from_json(&self.db.get_run_snapshot(run_id)?)?;
         let resume_inputs = preparation::json_object_to_value_map(node_inputs, "node inputs")?;
         let mut run_input = RunInput::new().resume(snapshot, resume_inputs);
@@ -233,6 +237,16 @@ impl RunManager {
                 Err(AppError::InvalidInput(format!("run {run_id} has already finished ({})", finished.as_db_text())))
             }
         }
+    }
+
+    /// Tool registry for a top-level run of `agent_id`: other agents as tools.
+    fn agent_tools(&self, agent_id: &str) -> graphrt_core::tool::ToolRegistry {
+        let dependencies = agent_tools::EngineDependencies {
+            db: self.db.clone(),
+            credentials: self.credentials.clone(),
+            model_source: self.model_source.clone(),
+        };
+        agent_tools::agent_tool_registry(&dependencies, vec![agent_id.to_owned()])
     }
 
     fn finish_aborted(&self, run: &Run) -> AppResult<()> {

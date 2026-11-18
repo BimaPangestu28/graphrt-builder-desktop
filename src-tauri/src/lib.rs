@@ -9,9 +9,13 @@
 //! - [`agent_builder`]: drafting an agent's workflow from plain language
 //! - [`engine`]: running agents on graphrt and streaming events to the UI
 //! - [`scheduler`]: starting scheduled runs while the app is running
+//! - [`agent_steps`]: agents used as steps and team members (the `agents` tool provider)
+//! - [`chains`]: starting the next agent of a chain when a run finishes
 //! - [`commands`]: the Tauri commands the frontend calls
 
 pub mod agent_builder;
+pub mod agent_steps;
+pub mod chains;
 pub mod commands;
 pub mod credentials;
 pub mod engine;
@@ -25,6 +29,7 @@ use std::sync::Arc;
 
 use tauri::Manager;
 
+use crate::chains::{ChainRunner, ChainingSink};
 use crate::credentials::CredentialStore;
 use crate::engine::tauri_sink::TauriRunEventSink;
 use crate::engine::RunManager;
@@ -44,10 +49,13 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         Err(error) => log::warn!("could not clean up interrupted runs: {error}"),
     }
     let credentials = Arc::new(CredentialStore::keychain());
-    let sink = Arc::new(TauriRunEventSink::new(app.handle().clone()));
+    let tauri_sink = Arc::new(TauriRunEventSink::new(app.handle().clone()));
+    let chain_runner = Arc::new(ChainRunner::new(db.clone()));
+    let sink = Arc::new(ChainingSink::new(tauri_sink, chain_runner.clone()));
     let runs = Arc::new(RunManager::new(db.clone(), credentials.clone(), sink));
+    chain_runner.attach(&runs);
     let scheduler = scheduler::spawn(db.clone(), runs.clone());
-    Ok(AppState { db, credentials, runs, scheduler })
+    Ok(AppState { db, credentials, runs, scheduler, chains: chain_runner })
 }
 
 /// Builds and runs the Tauri application.
@@ -97,6 +105,17 @@ pub fn run() {
             commands::triggers::set_trigger_enabled,
             commands::triggers::delete_trigger,
             commands::triggers::preview_schedule,
+            commands::chains::list_chains,
+            commands::chains::get_chain,
+            commands::chains::create_chain,
+            commands::chains::update_chain,
+            commands::chains::delete_chain,
+            commands::chains::set_chain_status,
+            commands::chains::test_chain,
+            commands::agent_tools::list_agent_steps,
+            commands::agent_tools::get_team,
+            commands::agent_tools::add_agent_step,
+            commands::agent_tools::add_team_member,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start the graphrt desktop app");

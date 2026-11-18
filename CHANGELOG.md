@@ -27,6 +27,14 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
   as you choose. Agents become Active or Paused with their schedules.
 - **Needs panel**: the builder lists the keys and secrets an agent needs, and missing
   secrets can be added in place. A run will not start while one is missing.
+- **Agents as steps and teams**: every agent can be called by another one as a graphrt
+  `tool` step (provider `agents`), getting back its outputs; a team is an `agent` step
+  whose tools are its member agents. "Add" on the step catalog and "Add member" ask the
+  builder for the change, saved as a new version. Calls refuse recursion, go at most three
+  agents deep, stop after ten minutes, and fail clearly if the called agent asks for approval.
+- **Chains**: "when this agent finishes, start that one" with input mapping, a run
+  condition and a failure policy per link. Chains are activated or paused, can be tested
+  from their first agent, and never run an agent twice in one pass.
 - graphrt is used as a git dependency pinned to a commit until its crates are published.
 
 ### Changed
