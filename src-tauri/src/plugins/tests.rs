@@ -595,3 +595,34 @@ async fn live_catalog_installs_every_plugin() {
         assert!(tools.tools.get("whatsapp-api").is_some());
     }
 }
+
+#[tokio::test]
+async fn removing_all_plugins_clears_folders_and_keeps_settings_unless_asked() {
+    let fixture = installed_fixture().await;
+    fixture.service.set_config(PLUGIN, "FIXTURE_ECHO_TOKEN", "token-value").await.unwrap();
+    let profile_dir = fixture.app_data.path().join("plugin-data").join(PLUGIN).join("profile");
+    std::fs::create_dir_all(&profile_dir).unwrap();
+
+    assert_eq!(fixture.service.remove_all(false).await, 1);
+
+    assert_nothing_installed(&fixture);
+    assert!(!fixture.app_data.path().join("plugin-data").exists());
+    assert!(fixture.credentials.has_plugin_config(PLUGIN, "FIXTURE_ECHO_TOKEN").unwrap());
+}
+
+#[tokio::test]
+async fn removing_all_plugins_with_settings_also_clears_the_keychain() {
+    let fixture = installed_fixture().await;
+    fixture.service.set_config(PLUGIN, "FIXTURE_ECHO_TOKEN", "token-value").await.unwrap();
+
+    assert_eq!(fixture.service.remove_all(true).await, 1);
+
+    assert_nothing_installed(&fixture);
+    assert!(!fixture.credentials.has_plugin_config(PLUGIN, "FIXTURE_ECHO_TOKEN").unwrap());
+}
+
+#[tokio::test]
+async fn removing_all_plugins_when_none_are_installed_is_a_no_op() {
+    let fixture = Fixture::new();
+    assert_eq!(fixture.service.remove_all(true).await, 0);
+}

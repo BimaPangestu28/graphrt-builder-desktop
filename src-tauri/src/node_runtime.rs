@@ -1,7 +1,7 @@
 //! The Node.js runtime graphrt plugins run on.
 //!
 //! graphrt's process plugins declare `"command": "node"`. The desktop app ships
-//! its own Node as a Tauri sidecar (`binaries/node-<target-triple>`, fetched and
+//! its own Node as a Tauri sidecar (`binaries/graphrt-node-<target-triple>`, fetched and
 //! checksum-verified at build time by `scripts/fetch-node.sh`), so users never
 //! install Node themselves. Plugins that drive a browser (Playwright:
 //! `google-maps-scraper`, `whatsapp-web`) get Chromium downloaded on demand.
@@ -17,10 +17,10 @@
 //! Where the sidecar lives at run time (Tauri copies it next to the main
 //! executable and strips the target triple):
 //!
-//! - macOS app: `graphrt.app/Contents/MacOS/node`
-//! - Windows: `node.exe` next to `graphrt.exe`
-//! - Linux deb / AppImage: `usr/bin/node` next to `usr/bin/graphrt`
-//! - `tauri dev` / `cargo run`: `target/<profile>/node` (copied by tauri-build)
+//! - macOS app: `graphrt.app/Contents/MacOS/graphrt-node`
+//! - Windows: `graphrt-node.exe` next to `graphrt.exe`
+//! - Linux deb / AppImage: `usr/bin/graphrt-node` next to `usr/bin/graphrt`
+//! - `tauri dev` / `cargo run`: `target/<profile>/graphrt-node` (copied by tauri-build)
 //!
 //! Debug builds fall back to a `node` on PATH (logged); release builds never do.
 //!
@@ -71,10 +71,17 @@ const PLUGIN_SEARCH_DEPTH: usize = 3;
 /// Playwright writes this file into a browser folder once it is fully extracted.
 const INSTALLATION_COMPLETE_MARKER: &str = "INSTALLATION_COMPLETE";
 
+/// The bundled sidecar is `graphrt-node`, not `node`: Linux packages install it
+/// into `/usr/bin`, where `node` would clash with the distribution's nodejs.
 #[cfg(windows)]
-const NODE_FILE_NAME: &str = "node.exe";
+const SIDECAR_FILE_NAME: &str = "graphrt-node.exe";
 #[cfg(not(windows))]
-const NODE_FILE_NAME: &str = "node";
+const SIDECAR_FILE_NAME: &str = "graphrt-node";
+/// A system-wide Node, only looked for on PATH in debug builds.
+#[cfg(windows)]
+const SYSTEM_NODE_FILE_NAME: &str = "node.exe";
+#[cfg(not(windows))]
+const SYSTEM_NODE_FILE_NAME: &str = "node";
 
 /// Whether the Chromium that Playwright plugins need is installed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -455,20 +462,22 @@ pub fn resolve_node_location(
     }
 }
 
-/// `<exe dir>/node` covers bundles and `target/<profile>`; test binaries run
+/// `<exe dir>/graphrt-node` covers bundles and `target/<profile>`; test binaries run
 /// from `target/<profile>/deps`, so its parent is tried too.
 fn sidecar_candidates(executable_dir: &Path) -> Vec<PathBuf> {
-    let mut candidates = vec![executable_dir.join(NODE_FILE_NAME)];
+    let mut candidates = vec![executable_dir.join(SIDECAR_FILE_NAME)];
     if executable_dir.file_name() == Some(OsStr::new("deps")) {
         if let Some(profile_dir) = executable_dir.parent() {
-            candidates.push(profile_dir.join(NODE_FILE_NAME));
+            candidates.push(profile_dir.join(SIDECAR_FILE_NAME));
         }
     }
     candidates
 }
 
 fn find_node_on_path(system_path: &OsStr) -> Option<PathBuf> {
-    std::env::split_paths(system_path).map(|dir| dir.join(NODE_FILE_NAME)).find(|path| is_usable_executable(path))
+    std::env::split_paths(system_path)
+        .map(|dir| dir.join(SYSTEM_NODE_FILE_NAME))
+        .find(|path| is_usable_executable(path))
 }
 
 /// A non-empty regular file (executable on Unix). Empty files are build placeholders.
@@ -849,7 +858,7 @@ mod tests {
     }
 
     fn bundled_location(dir: &Path) -> NodeLocation {
-        let executable = dir.join("bin").join(NODE_FILE_NAME);
+        let executable = dir.join("bin").join(SIDECAR_FILE_NAME);
         write_executable(&executable);
         NodeLocation { executable: Some(executable), source: NodeSource::Bundled }
     }
@@ -858,19 +867,19 @@ mod tests {
     fn finds_the_sidecar_in_a_macos_bundle() {
         let temp = tempfile::tempdir().unwrap();
         let macos_dir = temp.path().join("graphrt.app/Contents/MacOS");
-        write_executable(&macos_dir.join(NODE_FILE_NAME));
+        write_executable(&macos_dir.join(SIDECAR_FILE_NAME));
         let location = resolve_node_location(&macos_dir, false, None);
         assert_eq!(location.source, NodeSource::Bundled);
-        assert_eq!(location.executable, Some(macos_dir.join(NODE_FILE_NAME)));
+        assert_eq!(location.executable, Some(macos_dir.join(SIDECAR_FILE_NAME)));
     }
 
     #[test]
     fn finds_the_sidecar_in_the_dev_target_dir_from_tests() {
         let temp = tempfile::tempdir().unwrap();
         let profile_dir = temp.path().join("target/debug");
-        write_executable(&profile_dir.join(NODE_FILE_NAME));
+        write_executable(&profile_dir.join(SIDECAR_FILE_NAME));
         let location = resolve_node_location(&profile_dir.join("deps"), false, None);
-        assert_eq!(location.executable, Some(profile_dir.join(NODE_FILE_NAME)));
+        assert_eq!(location.executable, Some(profile_dir.join(SIDECAR_FILE_NAME)));
     }
 
     #[test]
@@ -878,14 +887,14 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let app_dir = temp.path().join("app");
         std::fs::create_dir_all(&app_dir).unwrap();
-        std::fs::write(app_dir.join(NODE_FILE_NAME), b"").unwrap();
+        std::fs::write(app_dir.join(SIDECAR_FILE_NAME), b"").unwrap();
         let system_dir = temp.path().join("usr/local/bin");
-        write_executable(&system_dir.join(NODE_FILE_NAME));
+        write_executable(&system_dir.join(SYSTEM_NODE_FILE_NAME));
         let system_path = std::env::join_paths([temp.path().join("missing"), system_dir.clone()]).unwrap();
 
         let debug_location = resolve_node_location(&app_dir, true, Some(&system_path));
         assert_eq!(debug_location.source, NodeSource::System);
-        assert_eq!(debug_location.executable, Some(system_dir.join(NODE_FILE_NAME)));
+        assert_eq!(debug_location.executable, Some(system_dir.join(SYSTEM_NODE_FILE_NAME)));
 
         let release_location = resolve_node_location(&app_dir, false, Some(&system_path));
         assert_eq!(release_location, NodeLocation { executable: None, source: NodeSource::Missing });

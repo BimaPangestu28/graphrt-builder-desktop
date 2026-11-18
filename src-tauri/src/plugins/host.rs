@@ -217,7 +217,7 @@ fn attach_host_warnings(host: &PluginHost, states: &mut [PluginState]) {
 }
 
 /// Plugin folders, sorted, skipping dot folders.
-fn plugin_dirs(plugins_dir: &Path) -> Vec<std::path::PathBuf> {
+pub(super) fn plugin_dirs(plugins_dir: &Path) -> Vec<std::path::PathBuf> {
     let Ok(entries) = std::fs::read_dir(plugins_dir) else { return Vec::new() };
     let mut dirs: Vec<_> = entries
         .filter_map(Result::ok)

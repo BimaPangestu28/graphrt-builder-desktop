@@ -27,7 +27,7 @@ function hostTargetTriple() {
 
 function sidecarProblem(targetTriple) {
   const extension = targetTriple.includes("windows") ? ".exe" : "";
-  const sidecarPath = join(binariesDir, `node-${targetTriple}${extension}`);
+  const sidecarPath = join(binariesDir, `graphrt-node-${targetTriple}${extension}`);
   let sidecarSize = 0;
   try {
     sidecarSize = statSync(sidecarPath).size;

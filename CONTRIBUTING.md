@@ -20,11 +20,11 @@ Open `#/screens` to jump to any screen.
 ### Bundled Node.js
 
 graphrt plugins are Node programs, so the app ships Node as a Tauri sidecar
-(`bundle.externalBin: ["binaries/node"]`). `scripts/fetch-node.sh [<target-triple>...]`
+(`bundle.externalBin: ["binaries/graphrt-node"]`). `scripts/fetch-node.sh [<target-triple>...]`
 downloads the version pinned in `scripts/node-version` from nodejs.org, checks it
 against `SHASUMS256.txt` (whose signature is verified against pinned Node.js
 release keys when `gpg` is installed; CI makes gpg mandatory with
-`GRAPHRT_REQUIRE_NODE_SIGNATURE=1`) and writes `src-tauri/binaries/node-<triple>[.exe]`
+`GRAPHRT_REQUIRE_NODE_SIGNATURE=1`) and writes `src-tauri/binaries/graphrt-node-<triple>[.exe]`
 (gitignored). The default target is the host; `universal-apple-darwin` fetches
 both macOS arches and lipo's them into `node-universal-apple-darwin`, which Tauri
 needs for `--target universal-apple-darwin`.

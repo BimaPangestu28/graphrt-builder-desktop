@@ -9,7 +9,7 @@
 #
 # For each target it downloads the official archive of the version pinned in
 # scripts/node-version from nodejs.org, checks it against SHASUMS256.txt and
-# places only the `node` executable at src-tauri/binaries/node-<triple>[.exe]
+# places only the `node` executable at src-tauri/binaries/graphrt-node-<triple>[.exe]
 # (gitignored). Node's LICENSE (which also carries the notices of the
 # libraries Node bundles: V8, OpenSSL, ICU, libuv, ...) is copied to
 # src-tauri/licenses/node-LICENSE.txt, which the app bundle ships.
@@ -99,8 +99,8 @@ archive_name_for() {
 
 sidecar_path_for() {
   case "$1" in
-    *-windows-*) echo "$binaries_dir/node-$1.exe" ;;
-    *) echo "$binaries_dir/node-$1" ;;
+    *-windows-*) echo "$binaries_dir/graphrt-node-$1.exe" ;;
+    *) echo "$binaries_dir/graphrt-node-$1" ;;
   esac
 }
 
@@ -248,9 +248,9 @@ fetch_universal_macos() {
   fetch_target aarch64-apple-darwin
   fetch_target x86_64-apple-darwin
   command -v lipo > /dev/null || fail "lipo (Xcode command line tools) is needed for universal-apple-darwin"
-  local universal="$binaries_dir/node-universal-apple-darwin"
+  local universal="$binaries_dir/graphrt-node-universal-apple-darwin"
   lipo -create -output "$universal.partial" \
-    "$binaries_dir/node-aarch64-apple-darwin" "$binaries_dir/node-x86_64-apple-darwin"
+    "$binaries_dir/graphrt-node-aarch64-apple-darwin" "$binaries_dir/graphrt-node-x86_64-apple-darwin"
   chmod 755 "$universal.partial"
   mv "$universal.partial" "$universal"
   echo "fetch-node: universal-apple-darwin -> $universal"

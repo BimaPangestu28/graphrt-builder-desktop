@@ -1,6 +1,6 @@
 //! Build script: Tauri codegen plus a guard for the Node.js sidecar.
 //!
-//! `bundle.externalBin` lists `binaries/node`, which `scripts/fetch-node.sh`
+//! `bundle.externalBin` lists `binaries/graphrt-node`, which `scripts/fetch-node.sh`
 //! downloads (it is not committed). tauri-build refuses to build when a sidecar
 //! is missing, which would make `cargo test` / `cargo clippy` need the network.
 //! So for debug builds without the sidecar this script drops `externalBin` from
@@ -22,7 +22,7 @@ fn main() {
 fn prepare_node_sidecar() -> Result<(), String> {
     let target_triple = std::env::var("TARGET").map_err(|error| format!("TARGET is not set: {error}"))?;
     let extension = if target_triple.contains("windows") { ".exe" } else { "" };
-    let sidecar = Path::new("binaries").join(format!("node-{target_triple}{extension}"));
+    let sidecar = Path::new("binaries").join(format!("graphrt-node-{target_triple}{extension}"));
     // Re-run once the sidecar is fetched (the directory changes when it appears).
     println!("cargo:rerun-if-changed=binaries");
     println!("cargo:rerun-if-changed={}", sidecar.display());

@@ -34,16 +34,19 @@ pub fn export_agents(state: State<'_, AppState>, path: String) -> AppResult<Expo
     data::export_agents_to_file(&state.db, &PathBuf::from(path.trim()))
 }
 
-/// Stops open runs, then deletes agents, runs, schedules and settings; with
-/// `remove_keychain_items` also the saved provider keys and workflow secrets.
+/// Stops open runs, then deletes agents, runs, schedules, knowledge stores,
+/// installed plugins and their data, and settings; with `remove_keychain_items`
+/// also the saved provider keys, workflow secrets and plugin settings.
 #[tauri::command]
-pub fn delete_all_data(
+pub async fn delete_all_data(
     app_handle: AppHandle,
     state: State<'_, AppState>,
     remove_keychain_items: bool,
 ) -> AppResult<DeletionSummary> {
     abort_open_runs(&state);
     delete_knowledge_stores(&state);
+    let removed_plugin_count = state.plugins.remove_all(remove_keychain_items).await;
+    log::info!("removed {removed_plugin_count} plugins while deleting all data");
     let summary = data::delete_all_data(&state.db, &state.credentials, remove_keychain_items)?;
     desktop_integration::apply_settings(&app_handle, &AppSettings::default());
     Ok(summary)

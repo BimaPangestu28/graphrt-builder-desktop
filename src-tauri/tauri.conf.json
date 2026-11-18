@@ -37,11 +37,16 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "externalBin": ["binaries/node"],
+    "externalBin": [
+      "binaries/graphrt-node"
+    ],
     "resources": {
       "licenses/node-LICENSE.txt": "licenses/node-LICENSE.txt"
     },
     "category": "DeveloperTool",
-    "shortDescription": "Build and run automation agents on your Mac"
+    "shortDescription": "Build and run automation agents on your Mac",
+    "macOS": {
+      "entitlements": "Entitlements.plist"
+    }
   }
 }

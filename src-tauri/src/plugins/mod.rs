@@ -403,6 +403,43 @@ impl PluginService {
         Ok(())
     }
 
+    /// Settings › Delete all data: removes every installed plugin and the
+    /// `plugin-data` folder (browser profiles such as a WhatsApp Web login),
+    /// and with `remove_settings` also each plugin's keychain settings.
+    /// Trust records go with the settings table, which the caller empties.
+    /// Returns how many plugins were removed; failures are logged per plugin.
+    pub async fn remove_all(&self, remove_settings: bool) -> usize {
+        let _change = self.changes.lock().await;
+        let snapshot = self.snapshot();
+        let mut removed_count = 0;
+        for plugin_dir in host::plugin_dirs(&self.plugins_dir) {
+            let Some(name) = plugin_dir.file_name().and_then(|file_name| file_name.to_str()).map(str::to_owned) else {
+                continue;
+            };
+            if remove_settings {
+                let requested_env =
+                    snapshot.plugin(&name).map(|plugin| plugin.permissions.env.clone()).unwrap_or_default();
+                for variable in requested_env {
+                    if let Err(error) = self.credentials.delete_plugin_config(&name, &variable) {
+                        log::warn!("could not delete the {variable} setting of plugin {name}: {error}");
+                    }
+                }
+            }
+            match install::remove_plugin_dir(&self.plugins_dir, &name) {
+                Ok(()) => removed_count += 1,
+                Err(error) => log::warn!("could not remove plugin {name}: {error}"),
+            }
+        }
+        if let Err(error) = std::fs::remove_dir_all(&self.plugin_data_dir) {
+            if error.kind() != std::io::ErrorKind::NotFound {
+                log::warn!("could not remove the plugin data folder: {error}");
+            }
+        }
+        self.reload();
+        self.events.send(PluginEvent::PluginsChanged);
+        removed_count
+    }
+
     /// Trusts or stops trusting a plugin: trusted plugins receive their
     /// settings and plaintext secrets.
     ///
