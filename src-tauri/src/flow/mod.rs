@@ -64,9 +64,7 @@ pub fn node_registry() -> graphrt_core::Registry {
 ///   node type, bad config, missing reference, cycles...).
 pub fn compile_flow(flow_yaml: &str) -> AppResult<graphrt_core::Graph> {
     if is_blank_document(flow_yaml) {
-        return Err(AppError::InvalidInput(
-            "the workflow document is empty".into(),
-        ));
+        return Err(AppError::InvalidInput("the workflow document is empty".into()));
     }
     let graph = graphrt_core::Graph::from_text(flow_yaml, &node_registry())
         .map_err(|error| AppError::Workflow(error.to_string()))?;
@@ -92,9 +90,7 @@ pub fn workflow_format_guide() -> &'static str {
 
 /// True when the text has no content besides whitespace and YAML comments.
 fn is_blank_document(text: &str) -> bool {
-    text.lines()
-        .map(str::trim)
-        .all(|line| line.is_empty() || line.starts_with('#'))
+    text.lines().map(str::trim).all(|line| line.is_empty() || line.starts_with('#'))
 }
 
 #[cfg(test)]

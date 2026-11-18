@@ -35,9 +35,7 @@ fn collect_steps(graph: &Graph) -> Vec<FlowStep> {
     if let Some(root) = graph.root_scope() {
         append_scope_steps(graph, &root.nodes, 0, &mut visited, &mut steps);
     }
-    let remaining: Vec<NodeIx> = (0..graph.nodes().len())
-        .filter(|ix| !visited.contains(ix))
-        .collect();
+    let remaining: Vec<NodeIx> = (0..graph.nodes().len()).filter(|ix| !visited.contains(ix)).collect();
     for node_index in remaining {
         if let Some(node) = graph.node(node_index) {
             push_step(graph, node, &mut visited, node_index, &mut steps);
@@ -85,9 +83,7 @@ fn push_step(
     let mut parent = node.parent;
     while let Some(parent_index) = parent {
         depth += 1;
-        parent = graph
-            .node(parent_index)
-            .and_then(|parent_node| parent_node.parent);
+        parent = graph.node(parent_index).and_then(|parent_node| parent_node.parent);
     }
     steps.push(build_step(node, depth));
 }
@@ -153,34 +149,20 @@ fn step_detail(kind: &str, config: &Map<String, Json>) -> String {
     }
     match kind {
         "http-request" => http_detail(config),
-        "iteration" => {
-            selector_detail(config.get("iterator_selector")).map(|path| format!("over {path}"))
-        }
+        "iteration" => selector_detail(config.get("iterator_selector")).map(|path| format!("over {path}")),
         "tool" => tool_detail(config),
-        _ => first_text(
-            config,
-            &["prompt", "instruction", "query", "answer", "template"],
-        ),
+        _ => first_text(config, &["prompt", "instruction", "query", "answer", "template"]),
     }
     .unwrap_or_default()
 }
 
 fn model_field<'a>(config: &'a Map<String, Json>, field: &str) -> Option<&'a str> {
-    config
-        .get("model")?
-        .get(field)?
-        .as_str()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
+    config.get("model")?.get(field)?.as_str().map(str::trim).filter(|value| !value.is_empty())
 }
 
 /// `POST example.com`.
 fn http_detail(config: &Map<String, Json>) -> Option<String> {
-    let method = config
-        .get("method")
-        .and_then(Json::as_str)
-        .unwrap_or("get")
-        .to_uppercase();
+    let method = config.get("method").and_then(Json::as_str).unwrap_or("get").to_uppercase();
     let url = config.get("url").and_then(Json::as_str)?;
     Some(format!("{method} {}", url_host(url)))
 }
@@ -188,10 +170,7 @@ fn http_detail(config: &Map<String, Json>) -> Option<String> {
 /// Host part of a URL, or the URL itself when it has no recognizable host.
 fn url_host(url: &str) -> &str {
     let without_scheme = url.split_once("://").map_or(url, |(_, rest)| rest);
-    let host = without_scheme
-        .split(['/', '?', '#'])
-        .next()
-        .unwrap_or(without_scheme);
+    let host = without_scheme.split(['/', '?', '#']).next().unwrap_or(without_scheme);
     if host.is_empty() {
         url
     } else {
@@ -201,10 +180,7 @@ fn url_host(url: &str) -> &str {
 
 fn tool_detail(config: &Map<String, Json>) -> Option<String> {
     let provider = config.get("provider_id").and_then(Json::as_str)?;
-    let tool = config
-        .get("tool_name")
-        .and_then(Json::as_str)
-        .unwrap_or_default();
+    let tool = config.get("tool_name").and_then(Json::as_str).unwrap_or_default();
     Some(format!("{provider}/{tool}"))
 }
 
@@ -213,13 +189,8 @@ fn selector_detail(selector: Option<&Json>) -> Option<String> {
     match selector? {
         Json::String(path) => Some(path.clone()),
         Json::Array(parts) => {
-            let parts: Vec<String> = parts
-                .iter()
-                .map(|part| {
-                    part.as_str()
-                        .map_or_else(|| part.to_string(), str::to_owned)
-                })
-                .collect();
+            let parts: Vec<String> =
+                parts.iter().map(|part| part.as_str().map_or_else(|| part.to_string(), str::to_owned)).collect();
             Some(parts.join("."))
         }
         _ => None,
@@ -277,15 +248,8 @@ fn build_input(variable: &Json) -> Option<FlowInput> {
         .map(str::trim)
         .find(|text| !text.is_empty())
         .map_or_else(|| humanize_kind(&name), str::to_owned);
-    let required = variable
-        .get("required")
-        .and_then(Json::as_bool)
-        .unwrap_or(false);
-    Some(FlowInput {
-        name,
-        label,
-        required,
-    })
+    let required = variable.get("required").and_then(Json::as_bool).unwrap_or(false);
+    Some(FlowInput { name, label, required })
 }
 
 fn collect_model_providers(graph: &Graph) -> Vec<String> {

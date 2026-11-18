@@ -5,7 +5,12 @@ use crate::state::AppState;
 use crate::storage::models::{Run, RunEventRecord, RunFilter, RunTrigger};
 
 #[tauri::command]
-pub async fn start_run(state: State<'_, AppState>, agent_id: String, trigger: RunTrigger, inputs: serde_json::Value) -> AppResult<Run> {
+pub async fn start_run(
+    state: State<'_, AppState>,
+    agent_id: String,
+    trigger: RunTrigger,
+    inputs: serde_json::Value,
+) -> AppResult<Run> {
     state.runs.start_run(&agent_id, trigger, inputs).await
 }
 

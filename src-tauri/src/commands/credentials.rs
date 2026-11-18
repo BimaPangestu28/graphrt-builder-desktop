@@ -1,6 +1,9 @@
 use tauri::State;
 
-use crate::credentials::{self, ModelChoice, ModelProvider, ProviderStatus, SETTING_DEFAULT_MODEL, SETTING_DEFAULT_PROVIDER, SETTING_OLLAMA_BASE_URL};
+use crate::credentials::{
+    self, ModelChoice, ModelProvider, ProviderStatus, SETTING_DEFAULT_MODEL, SETTING_DEFAULT_PROVIDER,
+    SETTING_OLLAMA_BASE_URL,
+};
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 

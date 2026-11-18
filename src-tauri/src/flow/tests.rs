@@ -9,11 +9,7 @@ fn step_ids(summary: &FlowSummary) -> Vec<&str> {
 }
 
 fn find_step<'a>(summary: &'a FlowSummary, id: &str) -> &'a FlowStep {
-    summary
-        .steps
-        .iter()
-        .find(|step| step.id == id)
-        .unwrap_or_else(|| panic!("no step `{id}`"))
+    summary.steps.iter().find(|step| step.id == id).unwrap_or_else(|| panic!("no step `{id}`"))
 }
 
 #[test]
@@ -30,23 +26,14 @@ fn invalid_reference_fixture_fails_with_workflow_error() {
         AppError::Workflow(message) => assert!(message.contains("search"), "{message}"),
         other => panic!("expected a workflow error, got {other:?}"),
     }
-    assert!(matches!(
-        summarize_flow(INVALID_REFERENCE),
-        Err(AppError::Workflow(_))
-    ));
+    assert!(matches!(summarize_flow(INVALID_REFERENCE), Err(AppError::Workflow(_))));
 }
 
 #[test]
 fn empty_document_is_rejected_as_invalid_input() {
     for text in ["", "   \n\t", "# just a comment\n"] {
-        assert!(
-            matches!(compile_flow(text), Err(AppError::InvalidInput(_))),
-            "{text:?}"
-        );
-        assert!(
-            matches!(summarize_flow(text), Err(AppError::InvalidInput(_))),
-            "{text:?}"
-        );
+        assert!(matches!(compile_flow(text), Err(AppError::InvalidInput(_))), "{text:?}");
+        assert!(matches!(summarize_flow(text), Err(AppError::InvalidInput(_))), "{text:?}");
     }
 }
 
@@ -72,14 +59,7 @@ fn unknown_node_type_is_a_workflow_error() {
 fn registry_includes_llm_and_http_kinds() {
     let registry = node_registry();
     let kinds: Vec<&str> = registry.kinds().collect();
-    for kind in [
-        "start",
-        "human-input",
-        "iteration",
-        "llm",
-        "agent",
-        "http-request",
-    ] {
+    for kind in ["start", "human-input", "iteration", "llm", "agent", "http-request"] {
         assert!(kinds.contains(&kind), "missing {kind}");
     }
 }
@@ -95,30 +75,14 @@ fn simple_answer_summary() {
     assert!(!model_step.needs_approval);
     assert_eq!(model_step.depth, 0);
     assert_eq!(find_step(&summary, "reply").title, "Reply");
-    assert_eq!(
-        summary.inputs,
-        [FlowInput {
-            name: "question".into(),
-            label: "Your question".into(),
-            required: true
-        }]
-    );
+    assert_eq!(summary.inputs, [FlowInput { name: "question".into(), label: "Your question".into(), required: true }]);
     assert_eq!(summary.model_providers, ["openai"]);
 }
 
 #[test]
 fn approval_loop_steps_follow_execution_order_with_depth() {
     let summary = summarize_flow(APPROVAL_LOOP).unwrap();
-    assert_eq!(
-        step_ids(&summary),
-        [
-            "find_cafes",
-            "each_cafe",
-            "draft_message",
-            "approve_message",
-            "send_message"
-        ]
-    );
+    assert_eq!(step_ids(&summary), ["find_cafes", "each_cafe", "draft_message", "approve_message", "send_message"]);
     let depths: Vec<u32> = summary.steps.iter().map(|step| step.depth).collect();
     assert_eq!(depths, [0, 0, 1, 1, 1]);
 }
@@ -138,20 +102,12 @@ fn approval_loop_titles_details_and_approval() {
     let approve = find_step(&summary, "approve_message");
     assert_eq!(approve.title, "Ask me before continuing");
     assert!(approve.needs_approval);
-    assert!(
-        approve.detail.starts_with("Send this message to"),
-        "{}",
-        approve.detail
-    );
+    assert!(approve.detail.starts_with("Send this message to"), "{}", approve.detail);
     assert!(approve.detail.chars().count() <= 80);
     let send = find_step(&summary, "send_message");
     assert_eq!(send.detail, "POST example.com");
     assert!(!send.needs_approval);
-    let approvals = summary
-        .steps
-        .iter()
-        .filter(|step| step.needs_approval)
-        .count();
+    let approvals = summary.steps.iter().filter(|step| step.needs_approval).count();
     assert_eq!(approvals, 1);
 }
 
@@ -161,21 +117,9 @@ fn approval_loop_inputs_and_providers() {
     assert_eq!(
         summary.inputs,
         [
-            FlowInput {
-                name: "area".into(),
-                label: "Area to search".into(),
-                required: true
-            },
-            FlowInput {
-                name: "offer".into(),
-                label: "Offer to send".into(),
-                required: true
-            },
-            FlowInput {
-                name: "max_cafes".into(),
-                label: "Max cafes".into(),
-                required: false
-            },
+            FlowInput { name: "area".into(), label: "Area to search".into(), required: true },
+            FlowInput { name: "offer".into(), label: "Offer to send".into(), required: true },
+            FlowInput { name: "max_cafes".into(), label: "Max cafes".into(), required: false },
         ]
     );
     assert_eq!(summary.model_providers, ["anthropic"]);
@@ -229,19 +173,8 @@ fn long_prompts_are_truncated_in_detail() {
 #[test]
 fn format_guide_is_compact_and_covers_key_nodes() {
     let guide = workflow_format_guide();
-    assert!(
-        guide.lines().count() <= 150,
-        "{} lines",
-        guide.lines().count()
-    );
-    for needle in [
-        "human-input",
-        "http-request",
-        "iteration-start",
-        "{{#",
-        "handle",
-        "llm",
-    ] {
+    assert!(guide.lines().count() <= 150, "{} lines", guide.lines().count());
+    for needle in ["human-input", "http-request", "iteration-start", "{{#", "handle", "llm"] {
         assert!(guide.contains(needle), "missing {needle}");
     }
 }

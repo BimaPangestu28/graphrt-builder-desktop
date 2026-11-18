@@ -17,7 +17,11 @@ pub const TICK_SECONDS: u64 = 20;
 
 /// Next fire time strictly after `after` (RFC 3339 UTC), or `None` if the cron
 /// expression never fires again. Validates the expression and time zone.
-pub fn next_fire_after(_cron_expression: &str, _timezone: &str, _after: chrono::DateTime<chrono::Utc>) -> AppResult<Option<String>> {
+pub fn next_fire_after(
+    _cron_expression: &str,
+    _timezone: &str,
+    _after: chrono::DateTime<chrono::Utc>,
+) -> AppResult<Option<String>> {
     Err(AppError::Internal("not implemented".into()))
 }
 

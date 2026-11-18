@@ -110,8 +110,7 @@ pub fn apply(connection: &Connection) -> AppResult<()> {
 
 fn read_schema_version(connection: &Connection) -> AppResult<usize> {
     let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-    usize::try_from(version)
-        .map_err(|_| AppError::Internal(format!("invalid database schema version {version}")))
+    usize::try_from(version).map_err(|_| AppError::Internal(format!("invalid database schema version {version}")))
 }
 
 #[cfg(test)]
@@ -119,14 +118,9 @@ mod tests {
     use super::*;
 
     fn table_names(connection: &Connection) -> Vec<String> {
-        let mut statement = connection
-            .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
-            .unwrap();
-        statement
-            .query_map([], |row| row.get(0))
-            .unwrap()
-            .collect::<Result<_, _>>()
-            .unwrap()
+        let mut statement =
+            connection.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").unwrap();
+        statement.query_map([], |row| row.get(0)).unwrap().collect::<Result<_, _>>().unwrap()
     }
 
     #[test]
@@ -135,14 +129,7 @@ mod tests {
         apply(&connection).unwrap();
         assert_eq!(
             table_names(&connection),
-            [
-                "agent_versions",
-                "agents",
-                "run_events",
-                "runs",
-                "settings",
-                "triggers"
-            ]
+            ["agent_versions", "agents", "run_events", "runs", "settings", "triggers"]
         );
         assert_eq!(read_schema_version(&connection).unwrap(), MIGRATIONS.len());
     }
@@ -158,9 +145,7 @@ mod tests {
     #[test]
     fn refuses_a_newer_schema() {
         let connection = Connection::open_in_memory().unwrap();
-        connection
-            .pragma_update(None, "user_version", MIGRATIONS.len() + 1)
-            .unwrap();
+        connection.pragma_update(None, "user_version", MIGRATIONS.len() + 1).unwrap();
         assert!(matches!(apply(&connection), Err(AppError::Internal(_))));
     }
 

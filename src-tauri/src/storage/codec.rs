@@ -81,13 +81,9 @@ pub(crate) fn json_to_text(value: &serde_json::Value) -> String {
 }
 
 /// Reads a nullable JSON TEXT column.
-pub(crate) fn optional_json_column(
-    row: &Row<'_>,
-    column_name: &str,
-) -> rusqlite::Result<Option<serde_json::Value>> {
+pub(crate) fn optional_json_column(row: &Row<'_>, column_name: &str) -> rusqlite::Result<Option<serde_json::Value>> {
     let text: Option<String> = row.get(column_name)?;
-    text.map(|json_text| parse_json_text(row, column_name, &json_text))
-        .transpose()
+    text.map(|json_text| parse_json_text(row, column_name, &json_text)).transpose()
 }
 
 /// Reads a NOT NULL JSON TEXT column.
@@ -96,18 +92,10 @@ pub(crate) fn json_column(row: &Row<'_>, column_name: &str) -> rusqlite::Result<
     parse_json_text(row, column_name, &json_text)
 }
 
-fn parse_json_text(
-    row: &Row<'_>,
-    column_name: &str,
-    json_text: &str,
-) -> rusqlite::Result<serde_json::Value> {
+fn parse_json_text(row: &Row<'_>, column_name: &str, json_text: &str) -> rusqlite::Result<serde_json::Value> {
     serde_json::from_str(json_text).map_err(|parse_error| {
         let column_index = row.as_ref().column_index(column_name).unwrap_or(0);
-        rusqlite::Error::FromSqlConversionFailure(
-            column_index,
-            rusqlite::types::Type::Text,
-            Box::new(parse_error),
-        )
+        rusqlite::Error::FromSqlConversionFailure(column_index, rusqlite::types::Type::Text, Box::new(parse_error))
     })
 }
 
@@ -117,40 +105,23 @@ mod tests {
 
     /// The stored text must equal the serde name so DB values and frontend JSON agree.
     fn assert_matches_serde<T: serde::Serialize>(value: T, db_text: &str) {
-        assert_eq!(
-            serde_json::to_value(value).unwrap(),
-            serde_json::json!(db_text)
-        );
+        assert_eq!(serde_json::to_value(value).unwrap(), serde_json::json!(db_text));
     }
 
     #[test]
     fn enum_db_text_matches_serde_names() {
-        for kind in [
-            AgentKind::Task,
-            AgentKind::Chatbot,
-            AgentKind::Chain,
-            AgentKind::Team,
-        ] {
+        for kind in [AgentKind::Task, AgentKind::Chatbot, AgentKind::Chain, AgentKind::Team] {
             assert_matches_serde(kind, kind.as_db_text());
         }
-        for status in [
-            AgentStatus::Draft,
-            AgentStatus::Tested,
-            AgentStatus::Active,
-            AgentStatus::Paused,
-        ] {
+        for status in [AgentStatus::Draft, AgentStatus::Tested, AgentStatus::Active, AgentStatus::Paused] {
             assert_matches_serde(status, status.as_db_text());
         }
         for trigger in [RunTrigger::Test, RunTrigger::Manual, RunTrigger::Schedule] {
             assert_matches_serde(trigger, trigger.as_db_text());
         }
-        for status in [
-            RunStatus::Running,
-            RunStatus::Paused,
-            RunStatus::Succeeded,
-            RunStatus::Failed,
-            RunStatus::Aborted,
-        ] {
+        for status in
+            [RunStatus::Running, RunStatus::Paused, RunStatus::Succeeded, RunStatus::Failed, RunStatus::Aborted]
+        {
             assert_matches_serde(status, status.as_db_text());
         }
         for policy in [MissedRunPolicy::RunOnce, MissedRunPolicy::Skip] {
@@ -161,12 +132,10 @@ mod tests {
     #[test]
     fn enum_round_trips_through_sqlite_and_rejects_unknown_text() {
         let connection = rusqlite::Connection::open_in_memory().unwrap();
-        let round_tripped: MissedRunPolicy = connection
-            .query_row("SELECT ?1", [MissedRunPolicy::RunOnce], |row| row.get(0))
-            .unwrap();
+        let round_tripped: MissedRunPolicy =
+            connection.query_row("SELECT ?1", [MissedRunPolicy::RunOnce], |row| row.get(0)).unwrap();
         assert_eq!(round_tripped, MissedRunPolicy::RunOnce);
-        let unknown: rusqlite::Result<RunStatus> =
-            connection.query_row("SELECT 'exploded'", [], |row| row.get(0));
+        let unknown: rusqlite::Result<RunStatus> = connection.query_row("SELECT 'exploded'", [], |row| row.get(0));
         assert!(unknown.is_err());
     }
 }

@@ -12,17 +12,12 @@ use super::models::{NewTrigger, Trigger};
 use super::{now_rfc3339, Database};
 use crate::error::{AppError, AppResult};
 
-const TRIGGER_COLUMNS: &str =
-    "id, agent_id, cron_expression, timezone, enabled, missed_run_policy, \
+const TRIGGER_COLUMNS: &str = "id, agent_id, cron_expression, timezone, enabled, missed_run_policy, \
      inputs_json, last_fired_at, next_fire_at, created_at";
 
 impl Database {
     /// Inserts an enabled trigger with the given `next_fire_at`.
-    pub fn create_trigger(
-        &self,
-        new_trigger: NewTrigger,
-        next_fire_at: Option<&str>,
-    ) -> AppResult<Trigger> {
+    pub fn create_trigger(&self, new_trigger: NewTrigger, next_fire_at: Option<&str>) -> AppResult<Trigger> {
         validate_trigger_fields(&new_trigger)?;
         let trigger = Trigger {
             id: uuid::Uuid::new_v4().to_string(),
@@ -39,9 +34,7 @@ impl Database {
         let connection = self.lock()?;
         ensure_agent_exists(&connection, &trigger.agent_id)?;
         connection.execute(
-            &format!(
-                "INSERT INTO triggers ({TRIGGER_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"
-            ),
+            &format!("INSERT INTO triggers ({TRIGGER_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"),
             params![
                 trigger.id,
                 trigger.agent_id,
@@ -71,9 +64,7 @@ impl Database {
              WHERE (?1 IS NULL OR agent_id = ?1)
              ORDER BY created_at ASC, rowid ASC"
         ))?;
-        let triggers = statement
-            .query_map([agent_id], map_trigger_row)?
-            .collect::<Result<Vec<_>, _>>()?;
+        let triggers = statement.query_map([agent_id], map_trigger_row)?.collect::<Result<Vec<_>, _>>()?;
         Ok(triggers)
     }
 
@@ -133,12 +124,7 @@ impl Database {
     }
 
     /// Records a fire (or a skipped missed run) and the next planned time.
-    pub fn record_trigger_fired(
-        &self,
-        trigger_id: &str,
-        fired_at: &str,
-        next_fire_at: Option<&str>,
-    ) -> AppResult<()> {
+    pub fn record_trigger_fired(&self, trigger_id: &str, fired_at: &str, next_fire_at: Option<&str>) -> AppResult<()> {
         let connection = self.lock()?;
         let updated_rows = connection.execute(
             "UPDATE triggers SET last_fired_at = ?1, next_fire_at = ?2 WHERE id = ?3",
@@ -152,8 +138,7 @@ impl Database {
 
     pub fn delete_trigger(&self, trigger_id: &str) -> AppResult<()> {
         let connection = self.lock()?;
-        let deleted_rows =
-            connection.execute("DELETE FROM triggers WHERE id = ?1", [trigger_id])?;
+        let deleted_rows = connection.execute("DELETE FROM triggers WHERE id = ?1", [trigger_id])?;
         if deleted_rows == 0 {
             return Err(trigger_not_found(trigger_id));
         }
@@ -167,29 +152,21 @@ fn trigger_not_found(trigger_id: &str) -> AppError {
 
 fn fetch_trigger(connection: &Connection, trigger_id: &str) -> AppResult<Trigger> {
     connection
-        .query_row(
-            &format!("SELECT {TRIGGER_COLUMNS} FROM triggers WHERE id = ?1"),
-            [trigger_id],
-            map_trigger_row,
-        )
+        .query_row(&format!("SELECT {TRIGGER_COLUMNS} FROM triggers WHERE id = ?1"), [trigger_id], map_trigger_row)
         .optional()?
         .ok_or_else(|| trigger_not_found(trigger_id))
 }
 
 fn validate_trigger_fields(new_trigger: &NewTrigger) -> AppResult<()> {
     if new_trigger.cron_expression.trim().is_empty() {
-        return Err(AppError::InvalidInput(
-            "cron expression must not be empty".into(),
-        ));
+        return Err(AppError::InvalidInput("cron expression must not be empty".into()));
     }
     if new_trigger.timezone.trim().is_empty() {
         return Err(AppError::InvalidInput("time zone must not be empty".into()));
     }
     // Workflow inputs are always a JSON object; anything else would fail every scheduled run.
     if !new_trigger.inputs.is_object() {
-        return Err(AppError::InvalidInput(
-            "schedule inputs must be a JSON object".into(),
-        ));
+        return Err(AppError::InvalidInput("schedule inputs must be a JSON object".into()));
     }
     Ok(())
 }
@@ -233,9 +210,7 @@ mod tests {
     fn create_trigger_is_enabled_and_round_trips() {
         let database = test_database();
         let agent = create_test_agent(&database, "Scheduled");
-        let trigger = database
-            .create_trigger(weekday_trigger(&agent.id), Some(NEXT_FIRE))
-            .unwrap();
+        let trigger = database.create_trigger(weekday_trigger(&agent.id), Some(NEXT_FIRE)).unwrap();
         assert!(trigger.enabled);
         assert_eq!(trigger.next_fire_at.as_deref(), Some(NEXT_FIRE));
         assert!(trigger.last_fired_at.is_none());
@@ -246,29 +221,17 @@ mod tests {
     #[test]
     fn create_trigger_validates_input_and_agent() {
         let database = test_database();
-        assert!(matches!(
-            database.create_trigger(weekday_trigger("ghost"), None),
-            Err(AppError::NotFound(_))
-        ));
+        assert!(matches!(database.create_trigger(weekday_trigger("ghost"), None), Err(AppError::NotFound(_))));
         let agent = create_test_agent(&database, "Scheduled");
         let mut blank_cron = weekday_trigger(&agent.id);
         blank_cron.cron_expression = "  ".into();
-        assert!(matches!(
-            database.create_trigger(blank_cron, None),
-            Err(AppError::InvalidInput(_))
-        ));
+        assert!(matches!(database.create_trigger(blank_cron, None), Err(AppError::InvalidInput(_))));
         let mut blank_zone = weekday_trigger(&agent.id);
         blank_zone.timezone = String::new();
-        assert!(matches!(
-            database.create_trigger(blank_zone, None),
-            Err(AppError::InvalidInput(_))
-        ));
+        assert!(matches!(database.create_trigger(blank_zone, None), Err(AppError::InvalidInput(_))));
         let mut array_inputs = weekday_trigger(&agent.id);
         array_inputs.inputs = json!([1, 2]);
-        assert!(matches!(
-            database.create_trigger(array_inputs, None),
-            Err(AppError::InvalidInput(_))
-        ));
+        assert!(matches!(database.create_trigger(array_inputs, None), Err(AppError::InvalidInput(_))));
         assert!(database.list_triggers(None).unwrap().is_empty());
     }
 
@@ -277,29 +240,15 @@ mod tests {
         let database = test_database();
         let first_agent = create_test_agent(&database, "One");
         let second_agent = create_test_agent(&database, "Two");
-        let first = database
-            .create_trigger(weekday_trigger(&first_agent.id), None)
-            .unwrap();
-        let second = database
-            .create_trigger(weekday_trigger(&second_agent.id), None)
-            .unwrap();
-        let third = database
-            .create_trigger(weekday_trigger(&first_agent.id), None)
-            .unwrap();
+        let first = database.create_trigger(weekday_trigger(&first_agent.id), None).unwrap();
+        let second = database.create_trigger(weekday_trigger(&second_agent.id), None).unwrap();
+        let third = database.create_trigger(weekday_trigger(&first_agent.id), None).unwrap();
 
-        let all_ids: Vec<String> = database
-            .list_triggers(None)
-            .unwrap()
-            .into_iter()
-            .map(|trigger| trigger.id)
-            .collect();
+        let all_ids: Vec<String> =
+            database.list_triggers(None).unwrap().into_iter().map(|trigger| trigger.id).collect();
         assert_eq!(all_ids, [first.id.clone(), second.id, third.id.clone()]);
-        let first_agent_ids: Vec<String> = database
-            .list_triggers(Some(&first_agent.id))
-            .unwrap()
-            .into_iter()
-            .map(|trigger| trigger.id)
-            .collect();
+        let first_agent_ids: Vec<String> =
+            database.list_triggers(Some(&first_agent.id)).unwrap().into_iter().map(|trigger| trigger.id).collect();
         assert_eq!(first_agent_ids, [first.id, third.id]);
         assert!(database.list_triggers(Some("ghost")).unwrap().is_empty());
     }
@@ -308,9 +257,7 @@ mod tests {
     fn update_trigger_replaces_editable_fields() {
         let database = test_database();
         let agent = create_test_agent(&database, "Scheduled");
-        let trigger = database
-            .create_trigger(weekday_trigger(&agent.id), Some(NEXT_FIRE))
-            .unwrap();
+        let trigger = database.create_trigger(weekday_trigger(&agent.id), Some(NEXT_FIRE)).unwrap();
         let changes = NewTrigger {
             agent_id: agent.id.clone(),
             cron_expression: "0 30 7 * * *".into(),
@@ -333,36 +280,25 @@ mod tests {
         let database = test_database();
         let agent = create_test_agent(&database, "Owner");
         let other_agent = create_test_agent(&database, "Other");
-        let trigger = database
-            .create_trigger(weekday_trigger(&agent.id), None)
-            .unwrap();
+        let trigger = database.create_trigger(weekday_trigger(&agent.id), None).unwrap();
         assert!(matches!(
             database.update_trigger(&trigger.id, weekday_trigger(&other_agent.id), None),
             Err(AppError::InvalidInput(_))
         ));
-        assert_eq!(
-            database.get_trigger(&trigger.id).unwrap().agent_id,
-            agent.id
-        );
+        assert_eq!(database.get_trigger(&trigger.id).unwrap().agent_id, agent.id);
     }
 
     #[test]
     fn disable_and_reenable_trigger() {
         let database = test_database();
         let agent = create_test_agent(&database, "Scheduled");
-        let trigger = database
-            .create_trigger(weekday_trigger(&agent.id), Some(NEXT_FIRE))
-            .unwrap();
+        let trigger = database.create_trigger(weekday_trigger(&agent.id), Some(NEXT_FIRE)).unwrap();
 
-        let disabled = database
-            .set_trigger_enabled(&trigger.id, false, None)
-            .unwrap();
+        let disabled = database.set_trigger_enabled(&trigger.id, false, None).unwrap();
         assert!(!disabled.enabled);
         assert!(disabled.next_fire_at.is_none());
 
-        let enabled = database
-            .set_trigger_enabled(&trigger.id, true, Some(NEXT_FIRE))
-            .unwrap();
+        let enabled = database.set_trigger_enabled(&trigger.id, true, Some(NEXT_FIRE)).unwrap();
         assert!(enabled.enabled);
         assert_eq!(enabled.next_fire_at.as_deref(), Some(NEXT_FIRE));
     }
@@ -371,13 +307,9 @@ mod tests {
     fn record_fire_updates_times() {
         let database = test_database();
         let agent = create_test_agent(&database, "Scheduled");
-        let trigger = database
-            .create_trigger(weekday_trigger(&agent.id), Some(NEXT_FIRE))
-            .unwrap();
+        let trigger = database.create_trigger(weekday_trigger(&agent.id), Some(NEXT_FIRE)).unwrap();
         let following = "2026-11-20T09:00:00+00:00";
-        database
-            .record_trigger_fired(&trigger.id, NEXT_FIRE, Some(following))
-            .unwrap();
+        database.record_trigger_fired(&trigger.id, NEXT_FIRE, Some(following)).unwrap();
         let fired = database.get_trigger(&trigger.id).unwrap();
         assert_eq!(fired.last_fired_at.as_deref(), Some(NEXT_FIRE));
         assert_eq!(fired.next_fire_at.as_deref(), Some(following));
@@ -387,18 +319,10 @@ mod tests {
     fn delete_trigger_then_not_found() {
         let database = test_database();
         let agent = create_test_agent(&database, "Scheduled");
-        let trigger = database
-            .create_trigger(weekday_trigger(&agent.id), None)
-            .unwrap();
+        let trigger = database.create_trigger(weekday_trigger(&agent.id), None).unwrap();
         database.delete_trigger(&trigger.id).unwrap();
-        assert!(matches!(
-            database.get_trigger(&trigger.id),
-            Err(AppError::NotFound(_))
-        ));
-        assert!(matches!(
-            database.delete_trigger(&trigger.id),
-            Err(AppError::NotFound(_))
-        ));
+        assert!(matches!(database.get_trigger(&trigger.id), Err(AppError::NotFound(_))));
+        assert!(matches!(database.delete_trigger(&trigger.id), Err(AppError::NotFound(_))));
         // The agent is untouched.
         assert!(database.get_agent(&agent.id).is_ok());
     }
@@ -407,21 +331,12 @@ mod tests {
     fn missing_trigger_is_not_found_everywhere() {
         let database = test_database();
         let agent = create_test_agent(&database, "Scheduled");
-        assert!(matches!(
-            database.get_trigger("ghost"),
-            Err(AppError::NotFound(_))
-        ));
+        assert!(matches!(database.get_trigger("ghost"), Err(AppError::NotFound(_))));
         assert!(matches!(
             database.update_trigger("ghost", weekday_trigger(&agent.id), None),
             Err(AppError::NotFound(_))
         ));
-        assert!(matches!(
-            database.set_trigger_enabled("ghost", true, None),
-            Err(AppError::NotFound(_))
-        ));
-        assert!(matches!(
-            database.record_trigger_fired("ghost", NEXT_FIRE, None),
-            Err(AppError::NotFound(_))
-        ));
+        assert!(matches!(database.set_trigger_enabled("ghost", true, None), Err(AppError::NotFound(_))));
+        assert!(matches!(database.record_trigger_fired("ghost", NEXT_FIRE, None), Err(AppError::NotFound(_))));
     }
 }

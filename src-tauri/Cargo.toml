@@ -26,7 +26,7 @@ tauri-plugin-log = "2.0.0"
 
 # graphrt runtime, pinned to a commit until the crates are published on crates.io
 graphrt-core = { git = "https://github.com/BimaPangestu28/graphrt", rev = "32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088" }
-graphrt-llm = { git = "https://github.com/BimaPangestu28/graphrt", rev = "32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088", default-features = false, features = ["openai", "anthropic", "gemini"] }
+graphrt-llm = { git = "https://github.com/BimaPangestu28/graphrt", rev = "32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088", default-features = false, features = ["openai", "anthropic", "gemini", "mock"] }
 graphrt-http = { git = "https://github.com/BimaPangestu28/graphrt", rev = "32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088" }
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }

@@ -9,7 +9,11 @@ use crate::storage::models::Agent;
 
 /// Progress arrives on `on_progress` while the agent is drafted (screen 03).
 #[tauri::command]
-pub async fn build_agent(state: State<'_, AppState>, request: BuildRequest, on_progress: Channel<BuildProgress>) -> AppResult<Agent> {
+pub async fn build_agent(
+    state: State<'_, AppState>,
+    request: BuildRequest,
+    on_progress: Channel<BuildProgress>,
+) -> AppResult<Agent> {
     if request.description.trim().is_empty() {
         return Err(AppError::InvalidInput("describe what the agent should do".into()));
     }

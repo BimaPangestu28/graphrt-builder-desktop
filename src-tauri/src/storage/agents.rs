@@ -10,8 +10,7 @@ use super::models::{Agent, AgentStatus, AgentVersion, NewAgent};
 use super::{now_rfc3339, Database};
 use crate::error::{AppError, AppResult};
 
-const AGENT_COLUMNS: &str =
-    "id, name, kind, description, flow_yaml, status, current_version, created_at, updated_at";
+const AGENT_COLUMNS: &str = "id, name, kind, description, flow_yaml, status, current_version, created_at, updated_at";
 
 impl Database {
     /// Creates an agent as version 1 with status `Draft` and records that version.
@@ -33,9 +32,7 @@ impl Database {
         let mut connection = self.lock()?;
         let transaction = connection.transaction()?;
         transaction.execute(
-            &format!(
-                "INSERT INTO agents ({AGENT_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"
-            ),
+            &format!("INSERT INTO agents ({AGENT_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"),
             params![
                 agent.id,
                 agent.name,
@@ -48,14 +45,7 @@ impl Database {
                 agent.updated_at,
             ],
         )?;
-        insert_version(
-            &transaction,
-            &agent.id,
-            1,
-            &agent.flow_yaml,
-            "Created",
-            &agent.created_at,
-        )?;
+        insert_version(&transaction, &agent.id, 1, &agent.flow_yaml, "Created", &agent.created_at)?;
         transaction.commit()?;
         Ok(agent)
     }
@@ -69,22 +59,14 @@ impl Database {
     pub fn list_agents(&self) -> AppResult<Vec<Agent>> {
         let connection = self.lock()?;
         // rowid breaks ties between agents touched within the same timestamp.
-        let mut statement = connection.prepare(&format!(
-            "SELECT {AGENT_COLUMNS} FROM agents ORDER BY updated_at DESC, rowid DESC"
-        ))?;
-        let agents = statement
-            .query_map([], map_agent_row)?
-            .collect::<Result<Vec<_>, _>>()?;
+        let mut statement =
+            connection.prepare(&format!("SELECT {AGENT_COLUMNS} FROM agents ORDER BY updated_at DESC, rowid DESC"))?;
+        let agents = statement.query_map([], map_agent_row)?.collect::<Result<Vec<_>, _>>()?;
         Ok(agents)
     }
 
     /// Saves a new flow as the next version and makes it current.
-    pub fn update_agent_flow(
-        &self,
-        agent_id: &str,
-        flow_yaml: &str,
-        change_summary: &str,
-    ) -> AppResult<Agent> {
+    pub fn update_agent_flow(&self, agent_id: &str, flow_yaml: &str, change_summary: &str) -> AppResult<Agent> {
         validate_flow(flow_yaml)?;
         let mut connection = self.lock()?;
         let transaction = connection.transaction()?;
@@ -117,9 +99,7 @@ impl Database {
             "SELECT agent_id, version, flow_yaml, change_summary, created_at
              FROM agent_versions WHERE agent_id = ?1 ORDER BY version DESC",
         )?;
-        let versions = statement
-            .query_map([agent_id], map_version_row)?
-            .collect::<Result<Vec<_>, _>>()?;
+        let versions = statement.query_map([agent_id], map_version_row)?.collect::<Result<Vec<_>, _>>()?;
         Ok(versions)
     }
 
@@ -159,21 +139,14 @@ impl Database {
 /// to check an agent exists inside their own transaction.
 pub(super) fn fetch_agent(connection: &Connection, agent_id: &str) -> AppResult<Agent> {
     connection
-        .query_row(
-            &format!("SELECT {AGENT_COLUMNS} FROM agents WHERE id = ?1"),
-            [agent_id],
-            map_agent_row,
-        )
+        .query_row(&format!("SELECT {AGENT_COLUMNS} FROM agents WHERE id = ?1"), [agent_id], map_agent_row)
         .optional()?
         .ok_or_else(|| agent_not_found(agent_id))
 }
 
 pub(super) fn ensure_agent_exists(connection: &Connection, agent_id: &str) -> AppResult<()> {
-    let exists: bool = connection.query_row(
-        "SELECT EXISTS (SELECT 1 FROM agents WHERE id = ?1)",
-        [agent_id],
-        |row| row.get(0),
-    )?;
+    let exists: bool =
+        connection.query_row("SELECT EXISTS (SELECT 1 FROM agents WHERE id = ?1)", [agent_id], |row| row.get(0))?;
     if exists {
         Ok(())
     } else {
@@ -205,22 +178,10 @@ fn update_agent_column(
 
 /// Records `flow_yaml` as `agent.current_version + 1` and makes it current.
 /// Must run inside the caller's transaction.
-fn append_version(
-    connection: &Connection,
-    agent: &Agent,
-    flow_yaml: &str,
-    change_summary: &str,
-) -> AppResult<()> {
+fn append_version(connection: &Connection, agent: &Agent, flow_yaml: &str, change_summary: &str) -> AppResult<()> {
     let next_version = agent.current_version + 1;
     let now = now_rfc3339();
-    insert_version(
-        connection,
-        &agent.id,
-        next_version,
-        flow_yaml,
-        change_summary,
-        &now,
-    )?;
+    insert_version(connection, &agent.id, next_version, flow_yaml, change_summary, &now)?;
     connection.execute(
         "UPDATE agents SET flow_yaml = ?1, current_version = ?2, updated_at = ?3 WHERE id = ?4",
         params![flow_yaml, next_version, now, agent.id],
@@ -248,18 +209,14 @@ fn insert_version(
 fn validated_name(name: &str) -> AppResult<String> {
     let trimmed_name = name.trim();
     if trimmed_name.is_empty() {
-        return Err(AppError::InvalidInput(
-            "agent name must not be empty".into(),
-        ));
+        return Err(AppError::InvalidInput("agent name must not be empty".into()));
     }
     Ok(trimmed_name.to_string())
 }
 
 fn validate_flow(flow_yaml: &str) -> AppResult<()> {
     if flow_yaml.trim().is_empty() {
-        return Err(AppError::InvalidInput(
-            "agent flow must not be empty".into(),
-        ));
+        return Err(AppError::InvalidInput("agent flow must not be empty".into()));
     }
     Ok(())
 }
@@ -322,10 +279,7 @@ mod tests {
             description: String::new(),
             flow_yaml: "nodes: []".into(),
         };
-        assert!(matches!(
-            database.create_agent(blank_name),
-            Err(AppError::InvalidInput(_))
-        ));
+        assert!(matches!(database.create_agent(blank_name), Err(AppError::InvalidInput(_))));
 
         let blank_flow = NewAgent {
             name: "Named".into(),
@@ -333,10 +287,7 @@ mod tests {
             description: String::new(),
             flow_yaml: " \n ".into(),
         };
-        assert!(matches!(
-            database.create_agent(blank_flow),
-            Err(AppError::InvalidInput(_))
-        ));
+        assert!(matches!(database.create_agent(blank_flow), Err(AppError::InvalidInput(_))));
         assert_eq!(database.list_agents().unwrap().len(), 1);
     }
 
@@ -344,34 +295,13 @@ mod tests {
     fn missing_agent_is_not_found_everywhere() {
         let database = test_database();
         let missing = "no-such-agent";
-        assert!(matches!(
-            database.get_agent(missing),
-            Err(AppError::NotFound(_))
-        ));
-        assert!(matches!(
-            database.rename_agent(missing, "x"),
-            Err(AppError::NotFound(_))
-        ));
-        assert!(matches!(
-            database.set_agent_status(missing, AgentStatus::Active),
-            Err(AppError::NotFound(_))
-        ));
-        assert!(matches!(
-            database.update_agent_flow(missing, "a: b", "x"),
-            Err(AppError::NotFound(_))
-        ));
-        assert!(matches!(
-            database.list_agent_versions(missing),
-            Err(AppError::NotFound(_))
-        ));
-        assert!(matches!(
-            database.restore_agent_version(missing, 1),
-            Err(AppError::NotFound(_))
-        ));
-        assert!(matches!(
-            database.delete_agent(missing),
-            Err(AppError::NotFound(_))
-        ));
+        assert!(matches!(database.get_agent(missing), Err(AppError::NotFound(_))));
+        assert!(matches!(database.rename_agent(missing, "x"), Err(AppError::NotFound(_))));
+        assert!(matches!(database.set_agent_status(missing, AgentStatus::Active), Err(AppError::NotFound(_))));
+        assert!(matches!(database.update_agent_flow(missing, "a: b", "x"), Err(AppError::NotFound(_))));
+        assert!(matches!(database.list_agent_versions(missing), Err(AppError::NotFound(_))));
+        assert!(matches!(database.restore_agent_version(missing, 1), Err(AppError::NotFound(_))));
+        assert!(matches!(database.delete_agent(missing), Err(AppError::NotFound(_))));
     }
 
     #[test]
@@ -386,21 +316,11 @@ mod tests {
         let database = test_database();
         let first = create_test_agent(&database, "First");
         let second = create_test_agent(&database, "Second");
-        let names: Vec<String> = database
-            .list_agents()
-            .unwrap()
-            .into_iter()
-            .map(|agent| agent.name)
-            .collect();
+        let names: Vec<String> = database.list_agents().unwrap().into_iter().map(|agent| agent.name).collect();
         assert_eq!(names, ["Second", "First"]);
 
         database.rename_agent(&first.id, "First renamed").unwrap();
-        let ids: Vec<String> = database
-            .list_agents()
-            .unwrap()
-            .into_iter()
-            .map(|agent| agent.id)
-            .collect();
+        let ids: Vec<String> = database.list_agents().unwrap().into_iter().map(|agent| agent.id).collect();
         assert_eq!(ids, [first.id, second.id]);
     }
 
@@ -408,15 +328,11 @@ mod tests {
     fn update_flow_appends_versions_and_keeps_history() {
         let database = test_database();
         let agent = create_test_agent(&database, "Reporter");
-        let version_two = database
-            .update_agent_flow(&agent.id, "nodes: [a]", "Added a")
-            .unwrap();
+        let version_two = database.update_agent_flow(&agent.id, "nodes: [a]", "Added a").unwrap();
         assert_eq!(version_two.current_version, 2);
         assert_eq!(version_two.flow_yaml, "nodes: [a]");
         assert_eq!(version_two.created_at, agent.created_at);
-        let version_three = database
-            .update_agent_flow(&agent.id, "nodes: [a, b]", "Added b")
-            .unwrap();
+        let version_three = database.update_agent_flow(&agent.id, "nodes: [a, b]", "Added b").unwrap();
         assert_eq!(version_three.current_version, 3);
 
         let versions = database.list_agent_versions(&agent.id).unwrap();
@@ -430,10 +346,7 @@ mod tests {
     fn update_flow_rejects_blank_flow_without_new_version() {
         let database = test_database();
         let agent = create_test_agent(&database, "Reporter");
-        assert!(matches!(
-            database.update_agent_flow(&agent.id, "   ", "oops"),
-            Err(AppError::InvalidInput(_))
-        ));
+        assert!(matches!(database.update_agent_flow(&agent.id, "   ", "oops"), Err(AppError::InvalidInput(_))));
         assert_eq!(database.get_agent(&agent.id).unwrap().current_version, 1);
         assert_eq!(database.list_agent_versions(&agent.id).unwrap().len(), 1);
     }
@@ -442,9 +355,7 @@ mod tests {
     fn restore_creates_a_new_version_with_old_flow() {
         let database = test_database();
         let agent = create_test_agent(&database, "Restorable");
-        database
-            .update_agent_flow(&agent.id, "nodes: [changed]", "Changed")
-            .unwrap();
+        database.update_agent_flow(&agent.id, "nodes: [changed]", "Changed").unwrap();
 
         let restored = database.restore_agent_version(&agent.id, 1).unwrap();
         assert_eq!(restored.current_version, 3);
@@ -474,19 +385,11 @@ mod tests {
         let renamed = database.rename_agent(&agent.id, " New ").unwrap();
         assert_eq!(renamed.name, "New");
         assert!(renamed.updated_at >= agent.updated_at);
-        assert!(matches!(
-            database.rename_agent(&agent.id, ""),
-            Err(AppError::InvalidInput(_))
-        ));
+        assert!(matches!(database.rename_agent(&agent.id, ""), Err(AppError::InvalidInput(_))));
 
-        let activated = database
-            .set_agent_status(&agent.id, AgentStatus::Active)
-            .unwrap();
+        let activated = database.set_agent_status(&agent.id, AgentStatus::Active).unwrap();
         assert_eq!(activated.status, AgentStatus::Active);
-        assert_eq!(
-            database.get_agent(&agent.id).unwrap().status,
-            AgentStatus::Active
-        );
+        assert_eq!(database.get_agent(&agent.id).unwrap().status, AgentStatus::Active);
         // Status changes are not flow changes.
         assert_eq!(activated.current_version, 1);
     }
@@ -496,12 +399,8 @@ mod tests {
         let database = test_database();
         let agent = create_test_agent(&database, "Doomed");
         let survivor = create_test_agent(&database, "Survivor");
-        let run = database
-            .insert_run(&agent.id, 1, RunTrigger::Manual)
-            .unwrap();
-        database
-            .append_run_event(&run.id, &serde_json::json!({"type": "run_started"}))
-            .unwrap();
+        let run = database.insert_run(&agent.id, 1, RunTrigger::Manual).unwrap();
+        database.append_run_event(&run.id, &serde_json::json!({"type": "run_started"})).unwrap();
         database
             .create_trigger(
                 NewTrigger {
@@ -514,45 +413,21 @@ mod tests {
                 None,
             )
             .unwrap();
-        database
-            .insert_run(&survivor.id, 1, RunTrigger::Test)
-            .unwrap();
+        database.insert_run(&survivor.id, 1, RunTrigger::Test).unwrap();
 
         database.delete_agent(&agent.id).unwrap();
 
-        assert!(matches!(
-            database.get_agent(&agent.id),
-            Err(AppError::NotFound(_))
-        ));
+        assert!(matches!(database.get_agent(&agent.id), Err(AppError::NotFound(_))));
         let connection = database.lock().unwrap();
-        let count_rows = |sql: &str| -> i64 {
-            connection
-                .query_row(sql, [&agent.id], |row| row.get(0))
-                .unwrap()
-        };
-        assert_eq!(
-            count_rows("SELECT COUNT(*) FROM agent_versions WHERE agent_id = ?1"),
-            0
-        );
-        assert_eq!(
-            count_rows("SELECT COUNT(*) FROM runs WHERE agent_id = ?1"),
-            0
-        );
-        assert_eq!(
-            count_rows("SELECT COUNT(*) FROM triggers WHERE agent_id = ?1"),
-            0
-        );
+        let count_rows = |sql: &str| -> i64 { connection.query_row(sql, [&agent.id], |row| row.get(0)).unwrap() };
+        assert_eq!(count_rows("SELECT COUNT(*) FROM agent_versions WHERE agent_id = ?1"), 0);
+        assert_eq!(count_rows("SELECT COUNT(*) FROM runs WHERE agent_id = ?1"), 0);
+        assert_eq!(count_rows("SELECT COUNT(*) FROM triggers WHERE agent_id = ?1"), 0);
         let event_count: i64 = connection
-            .query_row(
-                "SELECT COUNT(*) FROM run_events WHERE run_id = ?1",
-                [&run.id],
-                |row| row.get(0),
-            )
+            .query_row("SELECT COUNT(*) FROM run_events WHERE run_id = ?1", [&run.id], |row| row.get(0))
             .unwrap();
         assert_eq!(event_count, 0);
-        let surviving_runs: i64 = connection
-            .query_row("SELECT COUNT(*) FROM runs", [], |row| row.get(0))
-            .unwrap();
+        let surviving_runs: i64 = connection.query_row("SELECT COUNT(*) FROM runs", [], |row| row.get(0)).unwrap();
         assert_eq!(surviving_runs, 1);
     }
 }
