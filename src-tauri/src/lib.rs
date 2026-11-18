@@ -16,6 +16,7 @@
 //! - [`knowledge`]: knowledge bases (graphrt-rag) agents can search
 //! - [`node_runtime`]: the bundled Node.js plugins run on and Playwright's browser
 //! - [`plugins`]: graphrt plugins from the catalog (node kinds and tools for every run)
+//! - [`problems`]: what went wrong (failed runs, missing keys, plugins, schedules) and retries
 //! - [`desktop`]: menu bar icon, notifications, keep running when closed, launch at login
 //! - [`commands`]: the Tauri commands the frontend calls
 
@@ -32,6 +33,7 @@ pub mod flow;
 pub mod knowledge;
 pub mod node_runtime;
 pub mod plugins;
+pub mod problems;
 pub mod run_summary;
 pub mod scheduler;
 pub mod state;
@@ -215,6 +217,12 @@ pub fn run() {
             commands::plugins::delete_plugin_config,
             commands::plugins::browser_runtime_status,
             commands::plugins::run_plugin_action,
+            commands::problems::list_problems,
+            commands::problems::get_failed_run_report,
+            commands::problems::retry_run,
+            commands::schedule_rules::get_schedule_rules,
+            commands::schedule_rules::update_schedule_rules,
+            commands::schedule_rules::list_scheduled_runs,
         ])
         .build(tauri::generate_context!())
         .expect("failed to start the graphrt desktop app")

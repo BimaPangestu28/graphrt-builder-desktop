@@ -8,15 +8,24 @@ const entryKindClassNames: Record<CalendarEntryKind, string> = {
   done: 'bg-ok-soft !text-ok-deep hover:bg-ok-soft/70',
   failed: 'bg-danger-soft !text-danger-deep hover:bg-danger-soft/70',
   needsYou: 'border border-amber-line bg-amber-soft !text-[#7C2D12] hover:bg-amber-soft/70',
+  running: 'border border-brand bg-brand-tint !text-brand-strong hover:bg-brand-soft',
   planned: 'border border-dashed border-brand text-brand-strong',
   paused: 'border border-dashed border-faint text-body',
 }
 
-/** Where clicking a finished run takes you: the run list, the failure details, or the approval queue. */
-const entryKindDestinations: Partial<Record<CalendarEntryKind, string>> = {
-  done: routePaths.runs,
-  failed: routePaths.errorStates,
-  needsYou: routePaths.batchApproval,
+/** Where clicking a run takes you: the run list, that run's failure details, or the approval queue. */
+function getEntryDestination(entry: CalendarEntry): string | undefined {
+  switch (entry.kind) {
+    case 'done':
+    case 'running':
+      return routePaths.runs
+    case 'failed':
+      return entry.runId ? `${routePaths.errorStates}?${new URLSearchParams({ runId: entry.runId })}` : routePaths.errorStates
+    case 'needsYou':
+      return routePaths.batchApproval
+    default:
+      return undefined
+  }
 }
 
 interface CalendarEntryBlockProps {
@@ -39,7 +48,7 @@ export function CalendarEntryBlock({ entry, style }: CalendarEntryBlockProps) {
       <span className="truncate">{entry.detail}</span>
     </>
   )
-  const destination = entryKindDestinations[entry.kind]
+  const destination = getEntryDestination(entry)
   if (destination) {
     return (
       <Link to={destination} className={className} style={style}>

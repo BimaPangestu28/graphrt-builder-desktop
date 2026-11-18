@@ -1,6 +1,7 @@
 /**
- * Mock data for screen 10 (Scheduler): the user's triggers, what already ran this week,
- * and helpers to lay a week out on the calendar grid.
+ * Screen 10 (Scheduler): the design's sample triggers (event and webhook ones are shown in the
+ * browser preview only), the rule choices, and helpers to lay a week out on the calendar grid.
+ * Past runs come from the backend (`listScheduledRuns`).
  * Dates are plain "YYYY-MM-DD" strings handled in UTC so the grid never shifts with the machine's time zone.
  */
 
@@ -30,35 +31,35 @@ export const initialScheduleTriggers: ScheduleTrigger[] = [
   { id: 'invoice-reminders', agentName: 'Invoice reminders', shortName: 'Invoices', description: 'Mondays at 10:00', iconKind: 'schedule', isEnabled: false, recurrence: { hour: 10, weekdays: [1] } },
 ]
 
-export type RunOutcome = 'done' | 'failed' | 'needsYou'
+export type RunOutcome = 'done' | 'failed' | 'needsYou' | 'running'
 
+/** A run a schedule started, placed on its trigger's row (see `schedulerViewModel.toPastRuns`). */
 export interface PastRun {
   triggerId: string
+  runId: string
   date: string
   outcome: RunOutcome
   /** Text under the agent name, e.g. "14 sent". */
   summary: string
 }
 
-/** The mock "today" every screen of the mockup is set on (a Wednesday). */
+/** The mock "today" the browser preview is pinned to (a Wednesday), so it matches the design. */
 export const scheduleToday = '2026-11-18'
+/** Time zone of the browser preview's sample schedules. */
 export const scheduleTimeZone = 'Asia/Jakarta'
-
-export const pastRuns: PastRun[] = [
-  { triggerId: 'morning-digest', date: '2026-11-16', outcome: 'done', summary: 'Done' },
-  { triggerId: 'morning-digest', date: '2026-11-17', outcome: 'failed', summary: 'Failed' },
-  { triggerId: 'morning-digest', date: '2026-11-18', outcome: 'done', summary: 'Done' },
-  { triggerId: 'maps-leads', date: '2026-11-16', outcome: 'done', summary: '14 sent' },
-  { triggerId: 'maps-leads', date: '2026-11-17', outcome: 'done', summary: '15 sent' },
-  { triggerId: 'maps-leads', date: '2026-11-18', outcome: 'needsYou', summary: 'Needs you' },
-]
 
 /** First and last hour row of the calendar. */
 export const calendarFirstHour = 6
 export const calendarLastHour = 12
 
 export const ifMacAsleepOptions = ['Run once when it wakes up', 'Skip the missed run']
-export const concurrencyOptions = ['Up to 2', '1', 'Up to 4']
+
+/** "Agents running at the same time" choices and the limit each one stores, in the design's order. */
+export const concurrencyOptions: Array<{ label: string; maxConcurrentRuns: number }> = [
+  { label: 'Up to 2', maxConcurrentRuns: 2 },
+  { label: '1', maxConcurrentRuns: 1 },
+  { label: 'Up to 4', maxConcurrentRuns: 4 },
+]
 
 export type CalendarEntryKind = RunOutcome | 'planned' | 'paused'
 
@@ -69,6 +70,8 @@ export interface CalendarEntry {
   title: string
   detail: string
   kind: CalendarEntryKind
+  /** The run behind a past-run block. */
+  runId?: string
 }
 
 const dayInMilliseconds = 24 * 60 * 60 * 1000
@@ -136,7 +139,7 @@ function buildEntryForDay(trigger: ScheduleTrigger, isoDate: string, todayIsoDat
   if (!recurrence || !recurrence.weekdays.includes(parseIsoDate(isoDate).getUTCDay())) return null
   const base = { key: `${trigger.id}-${isoDate}`, date: isoDate, hour: recurrence.hour, title: trigger.shortName }
   const pastRun = runs.find((run) => run.triggerId === trigger.id && run.date === isoDate)
-  if (pastRun) return { ...base, kind: pastRun.outcome, detail: pastRun.summary }
+  if (pastRun) return { ...base, kind: pastRun.outcome, detail: pastRun.summary, runId: pastRun.runId }
   if (!trigger.isEnabled) return { ...base, kind: 'paused', detail: 'Paused' }
   if (isoDate > todayIsoDate) return { ...base, kind: 'planned', detail: formatHour(recurrence.hour) }
   return null
@@ -148,7 +151,7 @@ function buildEntryForDay(trigger: ScheduleTrigger, isoDate: string, todayIsoDat
  * Runs outside the visible hours are left out.
  */
 export function buildCalendarEntries(options: { dates: string[]; triggers: ScheduleTrigger[]; todayIsoDate: string; runs?: PastRun[] }): CalendarEntry[] {
-  const { dates, triggers, todayIsoDate, runs = pastRuns } = options
+  const { dates, triggers, todayIsoDate, runs = [] } = options
   return dates
     .flatMap((isoDate) => triggers.map((trigger) => buildEntryForDay(trigger, isoDate, todayIsoDate, runs)))
     .filter((entry): entry is CalendarEntry => entry !== null && entry.hour >= calendarFirstHour && entry.hour <= calendarLastHour)

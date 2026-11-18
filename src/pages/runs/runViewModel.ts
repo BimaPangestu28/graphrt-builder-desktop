@@ -88,7 +88,7 @@ function buildTiming(run: Run, now: Date): string {
 }
 
 function buildFollowUp(run: Run): RunRecord['followUp'] {
-  if (run.status === 'failed') return { label: 'See what went wrong', path: routePaths.errorStates }
+  if (run.status === 'failed') return { label: 'See what went wrong', path: `${routePaths.errorStates}?${new URLSearchParams({ runId: run.id })}` }
   if (run.status === 'paused' && run.trigger === 'test') return { label: 'Continue the test', path: agentPath('testRun', run.agentId, { runId: run.id }) }
   if (run.status === 'paused') return { label: 'Open in Inbox', path: routePaths.chatDetail }
   if (run.status === 'succeeded' && run.trigger === 'test') return { label: 'Open test result', path: agentPath('runResult', run.agentId, { runId: run.id }) }

@@ -11,6 +11,15 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
 
 ### Added
 
+- **When something goes wrong** (screen 23) lists real problems: the latest failed run of each
+  agent (failing step and graphrt's error in plain words), missing provider keys, workflow
+  secrets and plugin settings, plugins that are missing, broken or untrusted, the browser
+  runtime for Playwright plugins, and schedules that no longer parse or keep failing. Each has
+  buttons that open the screen or run the command that fixes it. "Retry from the start" starts
+  a new run with the same inputs (graphrt cannot resume a failed run).
+- **Scheduler** (screen 10) draws past runs from the run history, and its rules are stored:
+  the missed-run default and keep-awake are app settings, and a new limit on scheduled runs at
+  the same time is enforced by the scheduler (a schedule due beyond it skips that run).
 - **DeepSeek** as a model provider: add a key on Welcome or Connections and agents use
   `deepseek-chat` by default (`deepseek-reasoner` works too, with its reasoning streamed).
 - **Plugins**: install graphrt plugins from the graphrt-plugins catalog (Connections > Plugins):

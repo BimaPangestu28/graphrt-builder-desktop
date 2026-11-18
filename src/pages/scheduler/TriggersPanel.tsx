@@ -64,6 +64,7 @@ export function TriggersPanel({ triggers, onToggleTrigger }: TriggersPanelProps)
       <h2 id="scheduler-triggers-heading" className="m-0 text-[16px] font-semibold">
         Triggers
       </h2>
+      {triggers.length === 0 && <p className="m-0 text-[13px] text-body">No schedules yet. Schedule an agent from its page to see it here</p>}
       {triggers.map((trigger) => (
         <TriggerRow key={trigger.id} trigger={trigger} onToggle={onToggleTrigger} />
       ))}

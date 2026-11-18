@@ -180,6 +180,32 @@ impl Database {
         Ok(runs)
     }
 
+    /// Runs started in `[since, until)` (RFC 3339 UTC as written by [`now_rfc3339`])
+    /// by `trigger`, oldest first. For the Scheduler's past-run blocks, so callers
+    /// pass a bounded window (one week).
+    pub fn list_runs_started_between(&self, since: &str, until: &str, trigger: RunTrigger) -> AppResult<Vec<Run>> {
+        let connection = self.lock()?;
+        let mut statement = connection.prepare(&format!(
+            "SELECT {RUN_COLUMNS} FROM runs
+             WHERE started_at >= ?1 AND started_at < ?2 AND \"trigger\" = ?3
+             ORDER BY started_at ASC, rowid ASC"
+        ))?;
+        let runs = statement.query_map(params![since, until, trigger], map_run_row)?.collect::<Result<Vec<_>, _>>()?;
+        Ok(runs)
+    }
+
+    /// How many runs started by `trigger` are in status `Running` right now
+    /// (paused runs wait for the user and are not counted).
+    pub fn count_running_runs(&self, trigger: RunTrigger) -> AppResult<usize> {
+        let connection = self.lock()?;
+        let count: i64 = connection.query_row(
+            "SELECT COUNT(*) FROM runs WHERE status = ?1 AND \"trigger\" = ?2",
+            params![RunStatus::Running, trigger],
+            |row| row.get(0),
+        )?;
+        Ok(usize::try_from(count).unwrap_or(0))
+    }
+
     /// Runs left in `Running` by a crash or quit are marked `Failed` at start-up.
     ///
     /// Paused runs are left alone: their snapshot is persisted, so they remain resumable.
@@ -537,6 +563,50 @@ mod tests {
         assert_eq!(ids(database.list_runs_started_since(since, None).unwrap()), [other_run.id, recent_run.id.clone()]);
         assert_eq!(ids(database.list_runs_started_since(since, Some(&agent.id)).unwrap()), [recent_run.id]);
         assert!(database.list_runs_started_since(since, Some("ghost")).unwrap().is_empty());
+    }
+
+    #[test]
+    fn list_runs_started_between_keeps_the_window_and_trigger() {
+        let database = test_database();
+        let agent = create_test_agent(&database, "A");
+        let set_started_at = |run_id: &str, started_at: &str| {
+            database
+                .lock()
+                .unwrap()
+                .execute("UPDATE runs SET started_at = ?1 WHERE id = ?2", [started_at, run_id])
+                .unwrap();
+        };
+        let before = database.insert_run(&agent.id, 1, RunTrigger::Schedule).unwrap();
+        let monday = database.insert_run(&agent.id, 1, RunTrigger::Schedule).unwrap();
+        let tuesday = database.insert_run(&agent.id, 1, RunTrigger::Schedule).unwrap();
+        let manual = database.insert_run(&agent.id, 1, RunTrigger::Manual).unwrap();
+        let after = database.insert_run(&agent.id, 1, RunTrigger::Schedule).unwrap();
+        set_started_at(&before.id, "2026-11-15T23:59:59+00:00");
+        set_started_at(&monday.id, "2026-11-16T02:00:00.5+00:00");
+        set_started_at(&tuesday.id, "2026-11-17T02:00:00+00:00");
+        set_started_at(&manual.id, "2026-11-17T03:00:00+00:00");
+        set_started_at(&after.id, "2026-11-23T00:00:00+00:00");
+
+        let runs = database
+            .list_runs_started_between("2026-11-16T00:00:00+00:00", "2026-11-23T00:00:00+00:00", RunTrigger::Schedule)
+            .unwrap();
+        let ids: Vec<String> = runs.into_iter().map(|run| run.id).collect();
+        assert_eq!(ids, [monday.id, tuesday.id]);
+    }
+
+    #[test]
+    fn count_running_runs_counts_only_running_runs_of_the_trigger() {
+        let database = test_database();
+        let agent = create_test_agent(&database, "A");
+        let running = database.insert_run(&agent.id, 1, RunTrigger::Schedule).unwrap();
+        let finished = database.insert_run(&agent.id, 1, RunTrigger::Schedule).unwrap();
+        let paused = database.insert_run(&agent.id, 1, RunTrigger::Schedule).unwrap();
+        database.insert_run(&agent.id, 1, RunTrigger::Manual).unwrap();
+        database.finish_run(&finished.id, RunStatus::Succeeded, None, None).unwrap();
+        database.mark_run_paused(&paused.id, "{}", &json!([])).unwrap();
+        assert_eq!(database.count_running_runs(RunTrigger::Schedule).unwrap(), 1);
+        database.finish_run(&running.id, RunStatus::Failed, None, Some("boom")).unwrap();
+        assert_eq!(database.count_running_runs(RunTrigger::Schedule).unwrap(), 0);
     }
 
     #[test]

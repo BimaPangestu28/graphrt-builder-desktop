@@ -1,10 +1,13 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { isDesktopApp } from '@/api/client'
+import { listScheduledRuns } from '@/api/scheduleRules'
+import type { Trigger } from '@/api/types'
 import { AppShell } from '@/components/layout'
 import { StrokeIcon } from '@/components/ui'
-import { buildCalendarEntries, formatWeekRange, getWeekDates, scheduleTimeZone, scheduleToday, type ScheduleTrigger } from '@/data/scheduler'
+import { buildCalendarEntries, formatWeekRange, getWeekDates, scheduleTimeZone, scheduleToday, type PastRun, type ScheduleTrigger } from '@/data/scheduler'
 import { useAgentNames } from '@/hooks/useAgentNames'
+import { useLoadedData } from '@/hooks/useRunData'
 import { useTriggers } from '@/hooks/useTriggers'
 import { formatZonedIsoDate } from '@/lib/schedule'
 import { routePaths } from '@/routes'
@@ -14,7 +17,7 @@ import { ScheduleList } from './scheduler/ScheduleList'
 import { ScheduleRulesPanel } from './scheduler/ScheduleRulesPanel'
 import { ScheduleToolbar, type ScheduleViewMode } from './scheduler/ScheduleToolbar'
 import { TriggersPanel } from './scheduler/TriggersPanel'
-import { mockEventTriggers, sortLikeMockup, toScheduleTrigger } from './scheduler/schedulerViewModel'
+import { getRunHistoryWindow, mockEventTriggers, sortLikeMockup, toPastRuns, toScheduleTrigger } from './scheduler/schedulerViewModel'
 
 /** Dark promo card pointing to moving schedules onto a server so they run with the Mac off. */
 function RemoteRunnerPromo() {
@@ -29,6 +32,13 @@ function RemoteRunnerPromo() {
       </span>
     </Link>
   )
+}
+
+/** The calendar's zone: the first schedule's, else this Mac's (the preview is pinned to the design's). */
+function resolveTimezone(triggers: Trigger[]): string {
+  if (triggers[0]) return triggers[0].timezone
+  if (!isDesktopApp()) return scheduleTimeZone
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 }
 
 /**
@@ -52,25 +62,34 @@ function useSchedulerTriggers() {
     setMockTriggers((current) => current.map((trigger) => (trigger.id === triggerId ? { ...trigger, isEnabled: !trigger.isEnabled } : trigger)))
   }
 
-  return { scheduleTriggers, timezone: triggers[0]?.timezone ?? scheduleTimeZone, error: error ?? toggleError, toggleTrigger }
+  return { triggers, scheduleTriggers, timezone: resolveTimezone(triggers), error: error ?? toggleError, toggleTrigger }
+}
+
+/** Runs the schedules started on `weekDates`, placed on their trigger rows. */
+function usePastRuns(weekDates: string[], triggers: Trigger[], timezone: string): { pastRuns: PastRun[]; error: Error | null } {
+  const { since, until } = getRunHistoryWindow(weekDates)
+  const { data: runs, error } = useLoadedData(() => listScheduledRuns(since, until), [since, until])
+  const pastRuns = toPastRuns(runs ?? [], triggers, timezone).filter((pastRun) => weekDates.includes(pastRun.date))
+  return { pastRuns, error }
 }
 
 /**
  * Screen 10 · Scheduler.
  * A week calendar of every scheduled run with the trigger list and global schedule rules alongside.
  * Triggers come from `listTriggers` and their switches call `setTriggerEnabled`; planned runs are
- * drawn from each trigger's cron expression. Past-run blocks stay on mock data until the backend
- * links runs to triggers. The browser preview is pinned to the mockup's week.
+ * drawn from each trigger's cron expression and past runs from `listScheduledRuns`. The browser
+ * preview is pinned to the design's week.
  */
 export function SchedulerPage() {
   const [viewMode, setViewMode] = useState<ScheduleViewMode>('week')
   const [weekOffset, setWeekOffset] = useState(0)
-  const { scheduleTriggers, timezone, error, toggleTrigger } = useSchedulerTriggers()
+  const { triggers, scheduleTriggers, timezone, error, toggleTrigger } = useSchedulerTriggers()
 
   const todayIsoDate = isDesktopApp() ? formatZonedIsoDate(new Date(), timezone) : scheduleToday
   const weekDates = getWeekDates(todayIsoDate, weekOffset)
+  const { pastRuns, error: historyError } = usePastRuns(weekDates, triggers, timezone)
   const visibleDates = viewMode === 'day' ? [weekDates.includes(todayIsoDate) ? todayIsoDate : weekDates[0]] : weekDates
-  const entries = buildCalendarEntries({ dates: visibleDates, triggers: scheduleTriggers, todayIsoDate })
+  const entries = buildCalendarEntries({ dates: visibleDates, triggers: scheduleTriggers, todayIsoDate, runs: pastRuns })
   const viewLabel = viewMode === 'day' ? 'Day view' : viewMode === 'week' ? 'Week view' : 'List view'
 
   return (
@@ -86,6 +105,11 @@ export function SchedulerPage() {
           <RunErrorNotice title="Could not update the schedules" error={error} />
         </div>
       )}
+      {historyError && (
+        <div className="flex-[1_1_100%]">
+          <RunErrorNotice title="Could not load past runs" error={historyError} />
+        </div>
+      )}
       {viewMode === 'list' ? (
         <ScheduleList entries={entries} label={viewLabel} />
       ) : (
@@ -94,7 +118,8 @@ export function SchedulerPage() {
       <aside aria-label="Triggers and rules" className="flex min-w-0 flex-[1_1_300px] flex-col gap-4">
         <TriggersPanel triggers={scheduleTriggers} onToggleTrigger={toggleTrigger} />
         <ScheduleRulesPanel />
-        <RemoteRunnerPromo />
+        {/* Running schedules on a server does not exist yet, so the desktop app does not advertise it. */}
+        {!isDesktopApp() && <RemoteRunnerPromo />}
       </aside>
     </AppShell>
   )
