@@ -1,23 +1,47 @@
 import { Link } from 'react-router-dom'
 import { Icon, StrokeIcon, joinClassNames } from '@/components/ui'
-import { stepCatalogTabs, type StepCatalogCategory, type StepCatalogItem } from '@/data/agentAsStep'
+import type { AgentStepInfo } from '@/api/chainTypes'
 import { routePaths } from '@/routes'
 
-interface CatalogItemCardProps {
-  item: StepCatalogItem
-  isAdded: boolean
-  onAdd: (itemId: string) => void
+/**
+ * Agents in the catalog whose name or description matches the search text (case-insensitive).
+ *
+ * @param agents - Catalog entries (AgentStepInfo[])
+ * @param searchText - What the user typed (string)
+ * @returns The matching entries, in catalog order (AgentStepInfo[])
+ */
+export function filterAgentCatalog(agents: AgentStepInfo[], searchText: string): AgentStepInfo[] {
+  const normalizedSearch = searchText.trim().toLowerCase()
+  if (!normalizedSearch) return agents
+  return agents.filter((agent) => `${agent.name} ${agent.description}`.toLowerCase().includes(normalizedSearch))
 }
 
-function CatalogItemAction({ item, isAdded, onAdd }: CatalogItemCardProps) {
+/** "In place · Out score, reason" */
+function describeSignature(agent: AgentStepInfo): string {
+  const parts = []
+  if (agent.inputs.length > 0) parts.push(`In ${agent.inputs.map((input) => input.name).join(', ')}`)
+  if (agent.outputs.length > 0) parts.push(`Out ${agent.outputs.join(', ')}`)
+  if (agent.usedByCount > 0) parts.push(`used in ${agent.usedByCount} ${agent.usedByCount === 1 ? 'agent' : 'agents'}`)
+  return parts.join(' · ')
+}
+
+interface CatalogItemCardProps {
+  agent: AgentStepInfo
+  isAdded: boolean
+  isAdding: boolean
+  onAdd: (agentId: string) => void
+}
+
+function CatalogItemAction({ agent, isAdded, isAdding, onAdd }: CatalogItemCardProps) {
   if (isAdded) return <span className="text-[12px] font-medium text-ok-strong">Added</span>
-  if (item.needsNoInput) return <span className="text-[12px] text-muted">Needs no input</span>
+  if (!agent.usableAsStep) return <span className="text-[12px] text-muted">Can't run as a step</span>
   return (
     <button
       type="button"
-      aria-label={`Add ${item.name}`}
-      onClick={() => onAdd(item.id)}
-      className="h-[30px] cursor-pointer rounded-lg border border-line-strong bg-surface px-3 text-[12px] font-medium text-ink hover:bg-subtle"
+      aria-label={`Add ${agent.name}`}
+      disabled={isAdding}
+      onClick={() => onAdd(agent.agentId)}
+      className="h-[30px] cursor-pointer rounded-lg border border-line-strong bg-surface px-3 text-[12px] font-medium text-ink hover:bg-subtle disabled:cursor-default disabled:text-muted"
     >
       Add
     </button>
@@ -25,15 +49,15 @@ function CatalogItemAction({ item, isAdded, onAdd }: CatalogItemCardProps) {
 }
 
 function CatalogItemCard(props: CatalogItemCardProps) {
-  const { item, isAdded } = props
+  const { agent, isAdded } = props
   return (
     <div className={joinClassNames('flex flex-col gap-2 rounded-xl bg-surface p-3.5', isAdded ? 'border-2 border-ink' : 'border border-line')}>
       <div className="flex items-center justify-between gap-2">
-        <span className="font-semibold">{item.name}</span>
+        <span className="font-semibold">{agent.name}</span>
         <CatalogItemAction {...props} />
       </div>
-      <span className="leading-normal text-body">{item.description}</span>
-      <span className="text-[12px] text-muted">{[item.signature, item.usageNote].filter(Boolean).join(' · ')}</span>
+      {agent.description && <span className="leading-normal text-body">{agent.description}</span>}
+      <span className="text-[12px] text-muted">{agent.usableAsStep ? describeSignature(agent) : agent.unusableReason}</span>
     </div>
   )
 }
@@ -41,20 +65,19 @@ function CatalogItemCard(props: CatalogItemCardProps) {
 interface AddStepPanelProps {
   searchText: string
   onSearchTextChange: (searchText: string) => void
-  activeCategory: StepCatalogCategory
-  onCategoryChange: (category: StepCatalogCategory) => void
-  visibleItems: StepCatalogItem[]
-  addedItemId: string | undefined
-  onAddItem: (itemId: string) => void
+  visibleAgents: AgentStepInfo[]
+  addedAgentId: string | undefined
+  isAdding: boolean
+  onAddAgent: (agentId: string) => void
 }
 
-/** Right panel of screen 12: search, Built-in / My agents / Plugins tabs, and catalog cards with Add buttons. */
-export function AddStepPanel({ searchText, onSearchTextChange, activeCategory, onCategoryChange, visibleItems, addedItemId, onAddItem }: AddStepPanelProps) {
+/** Right panel of screen 12: search and the catalog of your agents with Add buttons. */
+export function AddStepPanel({ searchText, onSearchTextChange, visibleAgents, addedAgentId, isAdding, onAddAgent }: AddStepPanelProps) {
   return (
     <aside aria-labelledby="add-step-heading" className="box-border flex min-w-0 flex-[1_1_360px] flex-col gap-4 border-l border-line bg-subtle p-6">
       <div className="flex items-center justify-between">
         <h2 id="add-step-heading" className="m-0 text-[18px] font-semibold">
-          Add a step
+          Add one of your agents
         </h2>
         <Link to={routePaths.chain} aria-label="Close" className="flex size-8 items-center justify-center rounded-lg !text-ink-2 hover:bg-chip">
           <Icon name="close" size={16} />
@@ -67,41 +90,23 @@ export function AddStepPanel({ searchText, onSearchTextChange, activeCategory, o
         </StrokeIcon>
         <input
           type="search"
-          aria-label="Search steps"
-          placeholder="Search steps and agents"
+          aria-label="Search agents"
+          placeholder="Search your agents"
           value={searchText}
           onChange={(event) => onSearchTextChange(event.target.value)}
           className="min-w-0 flex-auto border-0 bg-transparent text-[14px] text-ink outline-none"
         />
       </label>
-      <div role="tablist" aria-label="Step sources" className="flex gap-1 rounded-[10px] bg-selected p-1">
-        {stepCatalogTabs.map((tab) => {
-          const isSelected = tab.category === activeCategory
-          return (
-            <button
-              key={tab.category}
-              type="button"
-              role="tab"
-              aria-selected={isSelected}
-              onClick={() => onCategoryChange(tab.category)}
-              className={joinClassNames(
-                'h-8 flex-[1_1_0] cursor-pointer rounded-[7px] border-0 text-[13px]',
-                isSelected ? 'bg-surface font-semibold text-ink' : 'bg-transparent font-medium text-body',
-              )}
-            >
-              {tab.label}
-            </button>
-          )
-        })}
-      </div>
-      <div role="tabpanel" aria-label={stepCatalogTabs.find((tab) => tab.category === activeCategory)?.label} className="flex flex-col gap-2">
-        {visibleItems.length === 0 && <p className="m-0 text-[13px] text-muted">Nothing matches “{searchText}”</p>}
-        {visibleItems.map((item) => (
-          <CatalogItemCard key={item.id} item={item} isAdded={item.id === addedItemId} onAdd={onAddItem} />
+      <div aria-label="My agents" role="list" className="flex flex-col gap-2">
+        {visibleAgents.length === 0 && <p className="m-0 text-[13px] text-muted">{searchText ? `Nothing matches “${searchText}”` : 'No other agents yet'}</p>}
+        {visibleAgents.map((agent) => (
+          <div role="listitem" key={agent.agentId}>
+            <CatalogItemCard agent={agent} isAdded={agent.agentId === addedAgentId} isAdding={isAdding} onAdd={onAddAgent} />
+          </div>
         ))}
       </div>
       <p className="m-0 text-[13px] leading-normal text-body">
-        An agent works as a step when it says what it needs and what it gives back. Approvals inside it still come to you
+        An agent works as a step when it says what it needs and what it gives back. Agents that stop to ask you cannot run as a step yet
       </p>
     </aside>
   )

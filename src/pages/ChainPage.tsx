@@ -1,66 +1,66 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { AppShell } from '@/components/layout'
-import { joinClassNames } from '@/components/ui'
-import { chainAgents, chainName, initialChainLinks, type ChainLink } from '@/data/chain'
-import { routePaths } from '@/routes'
-import { ChainFlow } from './chain/ChainFlow'
-import { LinkSettingsPanel } from './chain/LinkSettingsPanel'
+import { createChain, listAgentSteps, listChains } from '@/api/chains'
+import type { AgentStepInfo, Chain } from '@/api/chainTypes'
+import { useAsyncData } from '@/hooks/useAsyncData'
+import { ChainEditor } from './chain/ChainEditor'
 
-const headerButtonClassNames = 'flex h-9 items-center rounded-lg px-3.5 text-[13px] font-medium no-underline'
-
-interface ChainHeaderProps {
-  isActive: boolean
-  onToggleActive: () => void
+interface ChainScreenData {
+  chains: Chain[]
+  agents: AgentStepInfo[]
 }
 
-/** Breadcrumb with the chain's status, plus Test chain and Activate / Pause actions. */
-function ChainHeader({ isActive, onToggleActive }: ChainHeaderProps) {
+async function loadChainScreen(): Promise<ChainScreenData> {
+  const [chains, agents] = await Promise.all([listChains(), listAgentSteps()])
+  return { chains, agents }
+}
+
+function EmptyChains({ onCreate, isCreating }: { onCreate: () => void; isCreating: boolean }) {
   return (
-    <header className="box-border flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-line px-6 py-3">
-      <div className="flex items-center gap-2 text-muted">
-        <Link to={routePaths.home} className="no-underline !text-muted hover:!text-ink">
-          Chains
-        </Link>
-        <span aria-hidden="true">/</span>
-        <h1 className="m-0 text-[14px] font-semibold text-ink">{chainName}</h1>
-        <span className={joinClassNames('rounded-full px-2 py-[3px] text-[12px] font-medium', isActive ? 'bg-ok-soft text-ok-strong' : 'bg-selected text-ink-2')}>
-          {isActive ? 'Active' : 'Draft'}
-        </span>
-      </div>
-      <div className="flex gap-2">
-        <Link to={routePaths.testRun} className={`${headerButtonClassNames} border border-line-strong bg-surface !text-ink hover:bg-subtle`}>
-          Test chain
-        </Link>
-        <button type="button" onClick={onToggleActive} className={`${headerButtonClassNames} cursor-pointer border-0 bg-ink text-white hover:bg-ink-2`}>
-          {isActive ? 'Pause' : 'Activate'}
-        </button>
-      </div>
-    </header>
+    <div className="flex flex-col items-start gap-3 p-8">
+      <h1 className="m-0 text-[22px] font-semibold">Chains</h1>
+      <p className="m-0 max-w-[460px] leading-normal text-body">A chain starts the next agent when one finishes and passes its results along.</p>
+      <button type="button" disabled={isCreating} onClick={onCreate} className="h-10 cursor-pointer rounded-[10px] border-0 bg-ink px-4 font-medium text-white hover:bg-ink-2">
+        New chain
+      </button>
+    </div>
   )
 }
 
 /**
  * Screen 11 · Chain agents.
- * Builds a chain where each agent runs after the previous one, passing its outputs along.
- * Clicking a link between two agents opens its settings on the right; edits update the link label live.
+ * Shows the chain named by `?chainId=` (or the first one): each agent runs after the previous one,
+ * passing its outputs along. Clicking a link opens its settings on the right.
  */
 export function ChainPage() {
-  const [links, setLinks] = useState<ChainLink[]>(initialChainLinks)
-  const [selectedLinkId, setSelectedLinkId] = useState(initialChainLinks[0].id)
-  const [isActive, setIsActive] = useState(false)
+  const [searchParams] = useSearchParams()
+  const requestedChainId = searchParams.get('chainId')
+  const { data, error, isLoading, reload } = useAsyncData(loadChainScreen, [])
+  const [isCreating, setIsCreating] = useState(false)
 
-  const selectedLink = links.find((link) => link.id === selectedLinkId) ?? links[0]
-  const targetAgent = chainAgents[selectedLink.fromIndex + 1]
-  const updateSelectedLink = (updatedLink: ChainLink) => setLinks((current) => current.map((link) => (link.id === updatedLink.id ? updatedLink : link)))
+  const chain = data ? (data.chains.find((candidate) => candidate.id === requestedChainId) ?? data.chains[0]) : undefined
+
+  const createFirstChain = async () => {
+    setIsCreating(true)
+    try {
+      await createChain({ name: 'New chain', steps: [] })
+      await reload()
+    } finally {
+      setIsCreating(false)
+    }
+  }
 
   return (
     <AppShell agents={{ kind: 'list', activeAgentId: 'leads-recap' }} mainClassName="flex flex-col">
-      <ChainHeader isActive={isActive} onToggleActive={() => setIsActive((current) => !current)} />
-      <div className="flex flex-auto flex-wrap">
-        <ChainFlow agents={chainAgents} links={links} selectedLinkId={selectedLink.id} onSelectLink={setSelectedLinkId} />
-        <LinkSettingsPanel link={selectedLink} linkNumber={selectedLink.fromIndex + 1} targetAgentName={targetAgent.name} onChange={updateSelectedLink} />
-      </div>
+      {isLoading && !data && <p className="m-0 p-8 text-muted">Loading the chain…</p>}
+      {error && (
+        <p role="alert" className="m-0 p-8 text-amber-strong">
+          Could not load the chain: {error.message}
+        </p>
+      )}
+      {data && !chain && <EmptyChains onCreate={() => void createFirstChain()} isCreating={isCreating} />}
+      {data && chain && <ChainEditor key={chain.id} initialChain={chain} agents={data.agents} />}
     </AppShell>
   )
 }

@@ -25,7 +25,6 @@ export interface TeamActivity {
 }
 
 export const teamName = 'Catering sales team'
-export const teamGoalSummary = 'Goal · 20 new clients by 30 Nov · 7 so far'
 
 export const teamGoalMessage = 'Get us 20 new catering clients in Bandar Lampung this month. Focus on cafes and offices'
 
