@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import type { Agent, FlowSummary } from '@/api/types'
 import { joinClassNames } from '@/components/ui'
-import { mapsLeadsAgentName, mapsLeadsRequirements, mapsLeadsSteps } from '@/data/mapsLeadsAgent'
-import { routePaths } from '@/routes'
-import { AgentRequirementsList } from './AgentRequirementsList'
+import { agentPath } from '@/routes'
+import { AgentRequirementsList, type BuilderRequirement } from './AgentRequirementsList'
 import { BuilderStepCard } from './BuilderStepCard'
 
 const builderTabs = [
@@ -46,16 +46,16 @@ function BuilderTabList({ activeTab, onSelect }: { activeTab: BuilderTabKey; onS
 }
 
 /** History, Schedule and the primary "Test with 1 place" action. */
-function BuilderHeaderActions() {
+function BuilderHeaderActions({ agentId }: { agentId: string }) {
   return (
     <div className="flex gap-2">
-      <Link to={routePaths.versionHistory} className={outlineHeaderLinkClassNames}>
+      <Link to={agentPath('versionHistory', agentId)} className={outlineHeaderLinkClassNames}>
         History
       </Link>
-      <Link to={routePaths.scheduleAgent} className={outlineHeaderLinkClassNames}>
+      <Link to={agentPath('scheduleAgent', agentId)} className={outlineHeaderLinkClassNames}>
         Schedule
       </Link>
-      <Link to={routePaths.testRun} className={`${headerLinkBaseClassNames} bg-ink !text-white hover:bg-ink-2`}>
+      <Link to={agentPath('testRun', agentId)} className={`${headerLinkBaseClassNames} bg-ink !text-white hover:bg-ink-2`}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <path d="M7 4.5v15l13-7.5z" />
         </svg>
@@ -65,63 +65,85 @@ function BuilderHeaderActions() {
   )
 }
 
-function StepsTabContent({ showsLatestChange }: { showsLatestChange: boolean }) {
+interface StepsTabContentProps {
+  flowSummary: FlowSummary | null
+  flowSummaryError: Error | null
+  highlightedStepIds: Set<string>
+  requirements: BuilderRequirement[]
+  onSaveSecret?: (secretName: string, value: string) => Promise<void>
+}
+
+function StepsTabContent({ flowSummary, flowSummaryError, highlightedStepIds, requirements, onSaveSecret }: StepsTabContentProps) {
+  if (flowSummaryError) return <p className="m-0 text-muted">Could not read the steps: {flowSummaryError.message}</p>
+  if (!flowSummary) return <p className="m-0 text-muted">Loading steps…</p>
   return (
     <>
       <ol className="m-0 flex list-none flex-col gap-2 p-0">
-        {mapsLeadsSteps.map((step) => (
-          <BuilderStepCard key={step.number} step={step} showsLatestChange={showsLatestChange} />
+        {flowSummary.steps.map((flowStep, stepIndex) => (
+          <BuilderStepCard key={flowStep.id} flowStep={flowStep} number={stepIndex + 1} isChanged={highlightedStepIds.has(flowStep.id)} />
         ))}
       </ol>
-      <AgentRequirementsList requirements={mapsLeadsRequirements} />
+      <AgentRequirementsList requirements={requirements} onSaveSecret={onSaveSecret} />
     </>
   )
 }
 
-function RunsTabContent() {
+function RunsTabContent({ agentId }: { agentId: string }) {
   return (
     <div className="flex flex-col items-start gap-3 rounded-xl border border-dashed border-line-strong bg-surface p-6">
       <span className="font-semibold">No runs yet</span>
       <span className="text-body">Test it with one place first. Every run shows up here with what each step did</span>
-      <Link to={routePaths.testRun} className="font-medium">
+      <Link to={agentPath('testRun', agentId)} className="font-medium">
         Test with 1 place
       </Link>
     </div>
   )
 }
 
-function SourceTabContent({ showsLatestChange }: { showsLatestChange: boolean }) {
-  const sourceLines = mapsLeadsSteps.map((step) => {
-    const visibleVersion = !showsLatestChange && step.previousVersion ? step.previousVersion : step
-    const indentation = step.isInsideLoop ? '    ' : '  '
-    return `${indentation}- step: ${visibleVersion.title}\n${indentation}  with: ${visibleVersion.detail}`
-  })
+/** The graphrt workflow document of the current version, as stored. */
+function SourceTabContent({ flowYaml }: { flowYaml: string }) {
   return (
-    <pre className="m-0 overflow-x-auto rounded-xl border border-line bg-surface p-4 font-mono text-[12px] leading-[1.6] text-ink-2">
-      {`agent: ${mapsLeadsAgentName}\nruns_on: this-mac\nsteps:\n${sourceLines.join('\n')}`}
-    </pre>
+    <pre className="m-0 overflow-x-auto rounded-xl border border-line bg-surface p-4 font-mono text-[12px] leading-[1.6] text-ink-2">{flowYaml}</pre>
   )
 }
 
+interface BuilderAgentPanelProps {
+  agent: Agent
+  flowSummary: FlowSummary | null
+  flowSummaryError: Error | null
+  highlightedStepIds: Set<string>
+  requirements: BuilderRequirement[]
+  /** Saves a workflow secret pasted in the "Needs" box. */
+  onSaveSecret?: (secretName: string, value: string) => Promise<void>
+}
+
 /** Right column of screen 04: tabs, actions, the agent's steps and what it needs connected. */
-export function BuilderAgentPanel({ showsLatestChange }: { showsLatestChange: boolean }) {
+export function BuilderAgentPanel({ agent, flowSummary, flowSummaryError, highlightedStepIds, requirements, onSaveSecret }: BuilderAgentPanelProps) {
   const [activeTab, setActiveTab] = useState<BuilderTabKey>('steps')
 
   return (
     <section aria-label="Agent" className="box-border flex min-w-0 flex-[1_1_440px] flex-col bg-subtle">
       <header className="box-border flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-line px-6 py-3">
         <BuilderTabList activeTab={activeTab} onSelect={setActiveTab} />
-        <BuilderHeaderActions />
+        <BuilderHeaderActions agentId={agent.id} />
       </header>
 
       <div role="tabpanel" id={`builder-panel-${activeTab}`} aria-labelledby={`builder-tab-${activeTab}`} className="flex flex-col gap-6 p-6">
         <div className="flex flex-col gap-1">
-          <h1 className="m-0 text-[22px] font-semibold">{mapsLeadsAgentName}</h1>
+          <h1 className="m-0 text-[22px] font-semibold">{agent.name}</h1>
           <span className="text-body">Runs on this Mac · started by hand</span>
         </div>
-        {activeTab === 'steps' && <StepsTabContent showsLatestChange={showsLatestChange} />}
-        {activeTab === 'runs' && <RunsTabContent />}
-        {activeTab === 'source' && <SourceTabContent showsLatestChange={showsLatestChange} />}
+        {activeTab === 'steps' && (
+          <StepsTabContent
+            flowSummary={flowSummary}
+            flowSummaryError={flowSummaryError}
+            highlightedStepIds={highlightedStepIds}
+            requirements={requirements}
+            onSaveSecret={onSaveSecret}
+          />
+        )}
+        {activeTab === 'runs' && <RunsTabContent agentId={agent.id} />}
+        {activeTab === 'source' && <SourceTabContent flowYaml={agent.flowYaml} />}
       </div>
     </section>
   )

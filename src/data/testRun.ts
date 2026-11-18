@@ -1,6 +1,7 @@
 /** Mock data for screen 06 (test run waiting for approval) and 07 (test run result). */
 
-export type TestRunStepState = 'done' | 'waiting' | 'pending'
+/** `running`, `failed` and `skipped` appear only while following a live run. */
+export type TestRunStepState = 'done' | 'running' | 'waiting' | 'failed' | 'skipped' | 'pending'
 
 export interface TestRunStep {
   id: string

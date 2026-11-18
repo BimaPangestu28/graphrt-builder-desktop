@@ -45,44 +45,33 @@ export interface AgentSummaryStat {
   label: string
 }
 
-export interface AgentSummary {
-  id: string
-  name: string
-  isActive: boolean
+/**
+ * Schedule line and run stats on each Home agent card, keyed by agent id. The agents come
+ * from `listAgents`; schedules and run counts stay mock data until triggers and runs are
+ * wired to Home.
+ */
+export interface AgentActivity {
   scheduleSummary: string
   stats: AgentSummaryStat[]
-  path: string
 }
 
-export const agentSummaries: AgentSummary[] = [
-  {
-    id: 'maps-leads',
-    name: 'Maps leads to WhatsApp',
-    isActive: true,
+export const agentActivityById: Record<string, AgentActivity> = {
+  'maps-leads': {
     scheduleSummary: 'Weekdays 09:00 · 6 steps',
     stats: [
       { count: 47, label: 'sent this week' },
       { count: 9, label: 'replies' },
     ],
-    path: routePaths.builder,
   },
-  {
-    id: 'morning-digest',
-    name: 'Morning email digest',
-    isActive: true,
+  'morning-digest': {
     scheduleSummary: 'Every day 07:00 · 4 steps',
     stats: [{ count: 5, label: 'runs this week' }, { label: 'Last run ok' }],
-    path: routePaths.scheduler,
   },
-  {
-    id: 'invoice-reminders',
-    name: 'Invoice reminders',
-    isActive: false,
+  'invoice-reminders': {
     scheduleSummary: 'Mondays 10:00 · 5 steps',
     stats: [{ label: 'Paused by you on 12 Nov' }],
-    path: routePaths.scheduler,
   },
-]
+}
 
 export type RecentRunStatus = 'Needs you' | 'Done' | 'Failed'
 

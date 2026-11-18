@@ -1,28 +1,32 @@
-import { Link } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { AppShell } from '@/components/layout'
-import type { AgentVersion } from '@/data/versionHistory'
-import { routePaths } from '@/routes'
+import { useAgent } from '@/hooks/useAgent'
+import { describeError } from '@/lib/agentDisplay'
+import { agentPath, sampleAgentId } from '@/routes'
 import { diffAgentSteps } from './version-history/diffAgentSteps'
 import { StepDiffList } from './version-history/StepDiffList'
-import { useVersionHistory, type ChangeNotice } from './version-history/useVersionHistory'
+import { useVersionHistory, type ChangeNotice, type VersionEntry } from './version-history/useVersionHistory'
 import { VersionHistoryList } from './version-history/VersionHistoryList'
 
 const headerButtonBaseClassNames = 'inline-flex h-9 cursor-pointer items-center rounded-lg px-3.5 font-sans text-[13px] font-medium no-underline'
 const secondaryHeaderButtonClassNames = `${headerButtonBaseClassNames} border border-line-strong bg-surface !text-ink hover:bg-subtle`
 
 interface VersionHeaderProps {
+  agentId: string
   agentName: string
-  selectedVersion: AgentVersion
+  selectedVersion: VersionEntry
   isViewingCurrent: boolean
+  isRestoring: boolean
   onShowCurrent: () => void
   onRestore: () => void
 }
 
-function VersionHeader({ agentName, selectedVersion, isViewingCurrent, onShowCurrent, onRestore }: VersionHeaderProps) {
+function VersionHeader({ agentId, agentName, selectedVersion, isViewingCurrent, isRestoring, onShowCurrent, onRestore }: VersionHeaderProps) {
+  const builderPath = agentPath('builder', agentId)
   return (
     <header className="box-border flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-line px-6 py-3">
       <div className="flex items-center gap-2.5">
-        <Link to={routePaths.builder} className="text-[16px] font-semibold no-underline !text-ink">
+        <Link to={builderPath} className="text-[16px] font-semibold no-underline !text-ink">
           {agentName}
         </Link>
         <span className="rounded-full bg-selected px-2 py-[3px] text-[12px] font-medium text-ink-2">
@@ -32,7 +36,7 @@ function VersionHeader({ agentName, selectedVersion, isViewingCurrent, onShowCur
       </div>
       <div className="flex gap-2">
         {isViewingCurrent ? (
-          <Link to={routePaths.builder} className={secondaryHeaderButtonClassNames}>
+          <Link to={builderPath} className={secondaryHeaderButtonClassNames}>
             Back to steps
           </Link>
         ) : (
@@ -43,7 +47,7 @@ function VersionHeader({ agentName, selectedVersion, isViewingCurrent, onShowCur
         <button
           type="button"
           onClick={onRestore}
-          disabled={isViewingCurrent}
+          disabled={isViewingCurrent || isRestoring}
           className={`${headerButtonBaseClassNames} border-0 bg-ink text-white hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-40`}
         >
           Restore v{selectedVersion.number}
@@ -54,8 +58,8 @@ function VersionHeader({ agentName, selectedVersion, isViewingCurrent, onShowCur
 }
 
 interface RestorePreviewProps {
-  currentVersion: AgentVersion
-  selectedVersion: AgentVersion
+  currentVersion: VersionEntry
+  selectedVersion: VersionEntry
   nextVersionNumber: number
 }
 
@@ -101,36 +105,61 @@ function ChangeToast({ changeNotice, onUndo }: { changeNotice: ChangeNotice; onU
   )
 }
 
+/** Quiet message while the history loads or when it cannot be read. */
+function HistoryMessage({ children }: { children: string }) {
+  return <p className="m-0 px-8 py-7 text-muted">{children}</p>
+}
+
 /**
- * Screen 24 · Version history for "Maps leads to WhatsApp".
+ * Screen 24 · Version history of the agent in the `:agentId` route, from `listAgentVersions`.
  * Pick a version in History to see, step by step, what restoring it would remove or change
- * compared with the current one. Restore adds a new version on top; the toast's Undo
- * takes back the latest change. All state is local.
+ * compared with the current one. Restore calls `restoreAgentVersion`, which adds a new
+ * version on top; the toast's Undo restores the version that was current before.
  */
 export function VersionHistoryPage() {
-  const versionHistory = useVersionHistory()
+  const agentId = useParams().agentId ?? sampleAgentId
+  const { data: agent } = useAgent(agentId)
+  const versionHistory = useVersionHistory(agentId)
   const { currentVersion, selectedVersion, changeNotice } = versionHistory
-  const isViewingCurrent = selectedVersion.number === currentVersion.number
+
+  function renderContent() {
+    if (versionHistory.loadError) return <HistoryMessage>{`Could not load the history: ${describeError(versionHistory.loadError)}`}</HistoryMessage>
+    if (versionHistory.isLoading) return <HistoryMessage>Loading history…</HistoryMessage>
+    if (!currentVersion || !selectedVersion) return <HistoryMessage>No saved versions yet</HistoryMessage>
+    const isViewingCurrent = selectedVersion.number === currentVersion.number
+    return (
+      <>
+        <VersionHeader
+          agentId={agentId}
+          agentName={agent?.name ?? 'Agent'}
+          selectedVersion={selectedVersion}
+          isViewingCurrent={isViewingCurrent}
+          isRestoring={versionHistory.isRestoring}
+          onShowCurrent={versionHistory.showCurrentVersion}
+          onRestore={() => void versionHistory.restoreSelectedVersion()}
+        />
+        {versionHistory.restoreErrorMessage && (
+          <p role="alert" className="m-0 border-b border-danger-line bg-danger-tint px-6 py-3 text-danger-deep">
+            {versionHistory.restoreErrorMessage}
+          </p>
+        )}
+        <div className="flex flex-auto flex-wrap">
+          <RestorePreview currentVersion={currentVersion} selectedVersion={selectedVersion} nextVersionNumber={versionHistory.nextVersionNumber} />
+          <VersionHistoryList
+            versions={versionHistory.versions}
+            currentVersionNumber={currentVersion.number}
+            selectedVersionNumber={selectedVersion.number}
+            onSelectVersion={versionHistory.selectVersion}
+          />
+        </div>
+        {changeNotice && <ChangeToast changeNotice={changeNotice} onUndo={() => void versionHistory.undoLastChange()} />}
+      </>
+    )
+  }
 
   return (
-    <AppShell agents={{ kind: 'list', activeAgentId: 'maps-leads' }} mainClassName="flex flex-col">
-      <VersionHeader
-        agentName="Maps leads to WhatsApp"
-        selectedVersion={selectedVersion}
-        isViewingCurrent={isViewingCurrent}
-        onShowCurrent={versionHistory.showCurrentVersion}
-        onRestore={versionHistory.restoreSelectedVersion}
-      />
-      <div className="flex flex-auto flex-wrap">
-        <RestorePreview currentVersion={currentVersion} selectedVersion={selectedVersion} nextVersionNumber={versionHistory.nextVersionNumber} />
-        <VersionHistoryList
-          versions={versionHistory.versions}
-          currentVersionNumber={currentVersion.number}
-          selectedVersionNumber={selectedVersion.number}
-          onSelectVersion={versionHistory.selectVersion}
-        />
-      </div>
-      {changeNotice && <ChangeToast changeNotice={changeNotice} onUndo={versionHistory.undoLastChange} />}
+    <AppShell agents={{ kind: 'list', activeAgentId: agentId }} mainClassName="flex flex-col">
+      {renderContent()}
     </AppShell>
   )
 }

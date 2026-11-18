@@ -1,5 +1,8 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { BackendError } from '@/api/client'
+import { startRun } from '@/api/runs'
+import { resetSampleRuns, sampleRunsBackend } from '@/api/sampleBackend/runs'
 import { RunsPage } from '../RunsPage'
 
 function renderRunsPage() {
@@ -10,38 +13,82 @@ function renderRunsPage() {
   )
 }
 
+/** Waits for the run list (header row + 6 seeded runs). */
+async function findRunRows() {
+  const table = screen.getByRole('table')
+  await within(table).findByText('Gmail sign-in expired')
+  return within(table).getAllByRole('row')
+}
+
 describe('RunsPage', () => {
-  it('lists runs and opens the scheduled Maps leads run by default', () => {
+  beforeEach(() => {
+    resetSampleRuns()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('shows a loading row before the runs arrive', () => {
+    renderRunsPage()
+    expect(screen.getByText('Loading runs…')).toBeInTheDocument()
+  })
+
+  it('lists runs and opens the scheduled Maps leads run by default', async () => {
     renderRunsPage()
     expect(screen.getByRole('heading', { level: 1, name: 'Runs' })).toBeInTheDocument()
-    expect(screen.getAllByRole('row')).toHaveLength(7)
+    expect(await findRunRows()).toHaveLength(7)
     expect(screen.getByRole('heading', { level: 2, name: 'Maps leads to WhatsApp' })).toBeInTheDocument()
-    expect(screen.getByText('You approved 11 of 12')).toBeInTheDocument()
+    expect(await screen.findByText('You approved 11 of 12')).toBeInTheDocument()
+    expect(screen.getByText(/47m 12s · \$0\.05 AI cost/)).toBeInTheDocument()
   })
 
-  it('filters by status', () => {
+  it('filters by status through the backend filter', async () => {
+    const listRunsSpy = vi.spyOn(sampleRunsBackend, 'listRuns')
     renderRunsPage()
+    await findRunRows()
     fireEvent.click(screen.getByRole('button', { name: 'Failed 1' }))
+    expect(listRunsSpy).toHaveBeenLastCalledWith({ agentId: undefined, status: 'failed', limit: undefined })
     const table = screen.getByRole('table')
+    expect(await within(table).findByText('Gmail sign-in expired')).toBeInTheDocument()
     expect(within(table).getAllByRole('row')).toHaveLength(2)
-    expect(within(table).getByText('Gmail sign-in expired')).toBeInTheDocument()
   })
 
-  it('filters by agent', () => {
+  it('filters by agent', async () => {
     renderRunsPage()
-    fireEvent.change(screen.getByRole('combobox', { name: 'Agent' }), { target: { value: 'Morning email digest' } })
-    expect(within(screen.getByRole('table')).getAllByRole('row')).toHaveLength(3)
-    expect(screen.getByRole('button', { name: 'Running 0' })).toBeInTheDocument()
+    await findRunRows()
+    fireEvent.change(screen.getByRole('combobox', { name: 'Agent' }), { target: { value: 'morning-digest' } })
+    expect(await screen.findByRole('button', { name: 'Running 0' })).toBeInTheDocument()
+    const table = screen.getByRole('table')
+    await vi.waitFor(() => expect(within(table).getAllByRole('row')).toHaveLength(3))
   })
 
-  it('switches and closes the detail panel', () => {
+  it('switches and closes the detail panel', async () => {
     renderRunsPage()
-    fireEvent.click(screen.getByRole('button', { name: 'Show run: Catering assistant, 08:52' }))
+    await findRunRows()
+    fireEvent.click(screen.getByRole('button', { name: /^Show run: Catering assistant/ }))
     expect(screen.getByRole('heading', { level: 2, name: 'Catering assistant' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Open in Inbox' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Show raw log' }))
-    expect(screen.getByLabelText('Raw log')).toHaveTextContent('approval requested')
+    expect(await screen.findByLabelText('Raw log')).toHaveTextContent('approval requested')
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
     expect(screen.queryByRole('heading', { level: 2 })).not.toBeInTheDocument()
+  })
+
+  it('adds a run that starts while the screen is open', async () => {
+    renderRunsPage()
+    await findRunRows()
+    await act(async () => {
+      await startRun('maps-leads', 'test', {})
+    })
+    const table = screen.getByRole('table')
+    await vi.waitFor(() => expect(within(table).getAllByRole('row')).toHaveLength(8))
+    expect(within(table).getAllByText('Running')).toHaveLength(3)
+  })
+
+  it('shows an error when runs cannot be loaded', async () => {
+    vi.spyOn(sampleRunsBackend, 'listRuns').mockRejectedValue(new BackendError('database', 'Database is locked'))
+    renderRunsPage()
+    expect(await screen.findByRole('alert')).toHaveTextContent('Database is locked')
   })
 })

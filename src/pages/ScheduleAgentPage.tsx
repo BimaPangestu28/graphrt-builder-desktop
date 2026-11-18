@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useId, useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { createTrigger } from '@/api/triggers'
+import type { NewTrigger } from '@/api/types'
 import { Icon } from '@/components/ui'
 import {
   approvalModeOptions,
@@ -8,9 +10,15 @@ import {
   type AgentScheduleSettings,
   type ApprovalMode,
 } from '@/data/scheduleAgent'
-import { routePaths } from '@/routes'
+import { toError } from '@/hooks/useRunData'
+import { useSchedulePreview } from '@/hooks/useTriggers'
+import { buildCronExpression, formatFireTime, toMissedRunPolicy } from '@/lib/schedule'
+import { agentPath, routePaths, sampleAgentId } from '@/routes'
 import { ScheduleBackdrop } from '@/pages/schedule-agent/ScheduleBackdrop'
-import { FrequencyRadioTiles, ScheduleFieldset, StackedField, scheduleControlClassNames } from '@/pages/schedule-agent/ScheduleFormFields'
+import { FrequencyRadioTiles, ScheduleFieldset, StackedField, WeekdayToggleGroup, scheduleControlClassNames } from '@/pages/schedule-agent/ScheduleFormFields'
+
+/** The dialog promises "A missed run starts when it wakes up", which is this missed-run choice. */
+const dialogMissedRunOption = 'Run once when it wakes up'
 
 function RunnerAwakeNotice() {
   return (
@@ -37,27 +45,82 @@ function useCloseOnEscape(onClose: () => void) {
   }, [onClose])
 }
 
+/** Cron expression for the form's "When" choice, or null for "By hand" or an incomplete choice. */
+function buildSettingsCron(settings: AgentScheduleSettings): string | null {
+  return buildCronExpression({ frequency: settings.frequency, time: settings.time, customWeekdays: settings.customWeekdays })
+}
+
+/** The trigger to create for the form, or null when nothing should be scheduled. */
+export function buildNewTrigger(agentId: string, settings: AgentScheduleSettings): NewTrigger | null {
+  const cronExpression = buildSettingsCron(settings)
+  if (!cronExpression) return null
+  return {
+    agentId,
+    cronExpression,
+    timezone: settings.timeZone,
+    missedRunPolicy: toMissedRunPolicy(dialogMissedRunOption),
+    inputs: {
+      keyword: settings.searchKeyword,
+      city: settings.city,
+      skipAlreadyMessaged: settings.skipAlreadyMessaged,
+      approvalMode: settings.approvalMode,
+    },
+  }
+}
+
+/** "Next runs: Thu 19 Nov 09:00 · Fri 20 Nov 09:00 …" under the time fields. */
+function NextRunsPreview({ settings }: { settings: AgentScheduleSettings }) {
+  const cronExpression = buildSettingsCron(settings)
+  const { fireTimes, error } = useSchedulePreview(cronExpression, settings.timeZone)
+  if (settings.frequency === 'manual') return <span className="text-[13px] text-body">Runs only when you start it</span>
+  if (!cronExpression) return <span className="text-[13px] text-body">Pick a time and at least one day</span>
+  if (error) return <span className="text-[13px] text-danger">Could not preview this schedule: {error.message}</span>
+  if (fireTimes.length === 0) return null
+  return (
+    <span aria-live="polite" className="text-[13px] text-body">
+      Next runs: {fireTimes.map((fireTime) => formatFireTime(fireTime, settings.timeZone)).join(' · ')}
+    </span>
+  )
+}
+
 /**
- * Screen 08 · Schedule the agent.
- * A modal over the dimmed builder: pick when "Maps leads to WhatsApp" runs, what each run searches for,
- * and how approvals work. "Activate agent" saves and goes Home (09); Cancel, the close button
- * and Escape go back to the test result (07). Choosing "By hand" disables the time fields.
+ * Screen 08 · Schedule the agent (`/agents/:agentId/schedule`).
+ * A modal over the dimmed builder: pick when the agent runs, what each run searches for, and how
+ * approvals work. The "When" choice becomes a cron expression whose next fire times are previewed;
+ * "Activate agent" creates the trigger and goes Home (09). Cancel, the close button and Escape go
+ * back to the test result (07). Choosing "By hand" disables the time fields and creates no trigger.
  */
 export function ScheduleAgentPage() {
   const navigate = useNavigate()
+  const { agentId = sampleAgentId } = useParams()
   const titleId = useId()
   const [scheduleSettings, setScheduleSettings] = useState<AgentScheduleSettings>(defaultScheduleSettings)
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState<Error | null>(null)
   const isManualOnly = scheduleSettings.frequency === 'manual'
 
   const updateSetting = <Key extends keyof AgentScheduleSettings>(key: Key, value: AgentScheduleSettings[Key]) =>
     setScheduleSettings((previousSettings) => ({ ...previousSettings, [key]: value }))
 
-  const closeDialog = useCallback(() => navigate(routePaths.runResult), [navigate])
+  const closeDialog = useCallback(() => navigate(agentPath('runResult', agentId)), [navigate, agentId])
   useCloseOnEscape(closeDialog)
 
-  const activateAgent = (event: FormEvent<HTMLFormElement>) => {
+  const activateAgent = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    navigate(routePaths.home, { state: { activatedSchedule: scheduleSettings } })
+    const newTrigger = buildNewTrigger(agentId, scheduleSettings)
+    if (!newTrigger && !isManualOnly) {
+      setSaveError(new Error('Pick a time and at least one day'))
+      return
+    }
+    setIsSaving(true)
+    setSaveError(null)
+    try {
+      const trigger = newTrigger ? await createTrigger(newTrigger) : null
+      navigate(routePaths.home, { state: { activatedSchedule: scheduleSettings, triggerId: trigger?.id ?? null } })
+    } catch (createFailure) {
+      setSaveError(toError(createFailure))
+      setIsSaving(false)
+    }
   }
 
   return (
@@ -68,7 +131,7 @@ export function ScheduleAgentPage() {
           role="dialog"
           aria-modal="true"
           aria-labelledby={titleId}
-          onSubmit={activateAgent}
+          onSubmit={(event) => void activateAgent(event)}
           className="box-border flex w-full max-w-[620px] flex-col gap-6 rounded-[20px] bg-surface p-8 shadow-[0_24px_64px_rgba(0,0,0,0.18)]"
         >
           <div className="flex items-start justify-between gap-3">
@@ -90,6 +153,9 @@ export function ScheduleAgentPage() {
 
           <ScheduleFieldset legend="When">
             <FrequencyRadioTiles value={scheduleSettings.frequency} onChange={(frequency) => updateSetting('frequency', frequency)} />
+            {scheduleSettings.frequency === 'custom' && (
+              <WeekdayToggleGroup value={scheduleSettings.customWeekdays} onChange={(weekdays) => updateSetting('customWeekdays', weekdays)} />
+            )}
             <div className="grid grid-cols-2 gap-2.5">
               <StackedField label="Time">
                 <input
@@ -115,6 +181,7 @@ export function ScheduleAgentPage() {
                 </select>
               </StackedField>
             </div>
+            <NextRunsPreview settings={scheduleSettings} />
           </ScheduleFieldset>
 
           <ScheduleFieldset legend="Each run">
@@ -157,6 +224,12 @@ export function ScheduleAgentPage() {
 
           <RunnerAwakeNotice />
 
+          {saveError && (
+            <div role="alert" className="rounded-xl border border-danger-soft px-4 py-3 text-[13px] text-danger">
+              Could not activate the schedule: {saveError.message}
+            </div>
+          )}
+
           <div className="flex justify-end gap-2">
             <button
               type="button"
@@ -165,8 +238,12 @@ export function ScheduleAgentPage() {
             >
               Cancel
             </button>
-            <button type="submit" className="h-11 cursor-pointer rounded-xl border-0 bg-ink px-5 text-[14px] font-semibold text-white hover:bg-ink-2">
-              Activate agent
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="h-11 cursor-pointer rounded-xl border-0 bg-ink px-5 text-[14px] font-semibold text-white hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isSaving ? 'Activating…' : 'Activate agent'}
             </button>
           </div>
         </form>

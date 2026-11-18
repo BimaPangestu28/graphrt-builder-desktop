@@ -1,11 +1,38 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { setApiKey, setDefaultModel, setOllamaBaseUrl } from '@/api/credentials'
+import type { ModelChoice, ModelProvider } from '@/api/types'
 import { LogoMark } from '@/components/ui'
+import { describeError } from '@/lib/agentDisplay'
 import { routePaths } from '@/routes'
 import { LockIcon } from './agent-builder/LockIcon'
 
 const aiProviders = ['OpenAI', 'Anthropic', 'Google Gemini', 'Ollama (local)'] as const
 type AiProvider = (typeof aiProviders)[number]
+
+/** Backend provider and the recommended small model for each option in the picker. */
+const modelChoiceByProvider: Record<AiProvider, ModelChoice> = {
+  OpenAI: { provider: 'openai', name: 'gpt-4o-mini' },
+  Anthropic: { provider: 'anthropic', name: 'claude-haiku-5-5' },
+  'Google Gemini': { provider: 'gemini', name: 'gemini-2.5-flash' },
+  'Ollama (local)': { provider: 'ollama', name: 'llama3.2' },
+}
+
+const defaultOllamaBaseUrl = 'http://localhost:11434'
+
+/**
+ * Stores the chosen provider's key (or the local Ollama address) and makes its
+ * recommended model the default for new agents.
+ *
+ * @throws BackendError - when the key or setting cannot be saved
+ */
+async function saveModelSetup(provider: AiProvider, apiKey: string): Promise<void> {
+  const modelChoice = modelChoiceByProvider[provider]
+  const backendProvider: ModelProvider = modelChoice.provider
+  if (backendProvider === 'ollama') await setOllamaBaseUrl(defaultOllamaBaseUrl)
+  else await setApiKey(backendProvider, apiKey.trim())
+  await setDefaultModel(modelChoice)
+}
 
 const fieldClassNames = 'box-border h-10 rounded-[10px] border border-line-strong bg-surface text-[14px] text-ink'
 
@@ -59,7 +86,7 @@ function ApiKeyOption({ provider, apiKey, onProviderChange, onApiKeyChange }: Ap
               aria-label="API key"
               value={apiKey}
               disabled={isLocalModel}
-              placeholder={isLocalModel ? 'Not needed for Ollama' : undefined}
+              placeholder={isLocalModel ? 'Not needed for Ollama' : 'sk-proj-xxxxxxxxxxxx'}
               onChange={(event) => onApiKeyChange(event.target.value)}
               className={`${fieldClassNames} px-3 disabled:bg-subtle`}
             />
@@ -77,18 +104,30 @@ function ApiKeyOption({ provider, apiKey, onProviderChange, onApiKeyChange }: Ap
 /**
  * Screen 01 · Welcome. First-run onboarding shown before the app shell exists:
  * pick which AI powers agents (own API key today, graphrt credits later) and whether
- * agents keep running from the menu bar. Continue leads to the first "New agent" screen.
+ * agents keep running from the menu bar. Continue saves the key in the keychain (or the local Ollama address) plus the default
+ * model, then opens the first "New agent" screen.
  */
 export function WelcomePage() {
   const navigate = useNavigate()
   const [provider, setProvider] = useState<AiProvider>('OpenAI')
-  const [apiKey, setApiKey] = useState('sk-proj-xxxxxxxxxxxx')
+  const [apiKey, setApiKeyDraft] = useState('')
   const [keepRunningInMenuBar, setKeepRunningInMenuBar] = useState(true)
-  const canContinue = provider === 'Ollama (local)' || apiKey.trim().length > 0
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null)
+  const canContinue = !isSaving && (provider === 'Ollama (local)' || apiKey.trim().length > 0)
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (canContinue) navigate(routePaths.newAgent)
+    if (!canContinue) return
+    setIsSaving(true)
+    setSaveErrorMessage(null)
+    try {
+      await saveModelSetup(provider, apiKey)
+      navigate(routePaths.newAgent)
+    } catch (saveError) {
+      setSaveErrorMessage(`Could not save your AI setup: ${describeError(saveError)}`)
+      setIsSaving(false)
+    }
   }
 
   return (
@@ -108,7 +147,7 @@ export function WelcomePage() {
         <fieldset className="m-0 flex flex-col gap-2.5 border-0 p-0">
           <legend className="mb-2.5 p-0 font-semibold">Which AI should your agents use?</legend>
           <CreditsOption />
-          <ApiKeyOption provider={provider} apiKey={apiKey} onProviderChange={setProvider} onApiKeyChange={setApiKey} />
+          <ApiKeyOption provider={provider} apiKey={apiKey} onProviderChange={setProvider} onApiKeyChange={setApiKeyDraft} />
         </fieldset>
 
         <label className="flex cursor-pointer items-start gap-3">
@@ -124,6 +163,12 @@ export function WelcomePage() {
           </span>
         </label>
 
+        {saveErrorMessage && (
+          <p role="alert" className="m-0 leading-normal text-danger">
+            {saveErrorMessage}
+          </p>
+        )}
+
         <div className="flex items-center justify-between gap-3">
           <Link to={routePaths.home} className="font-medium">
             I have an account
@@ -133,7 +178,7 @@ export function WelcomePage() {
             disabled={!canContinue}
             className="h-11 cursor-pointer rounded-xl border-0 bg-ink px-[22px] text-[15px] font-semibold text-white hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Continue
+            {isSaving ? 'Saving…' : 'Continue'}
           </button>
         </div>
       </form>

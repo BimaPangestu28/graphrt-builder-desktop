@@ -1,9 +1,12 @@
+import type { ReactNode } from 'react'
 import { joinClassNames } from '@/components/ui'
 import type { Connection, ConnectionState } from '@/data/connections'
 
 interface ConnectionCardProps {
   connection: Connection
   onSetUp: (connectionId: string) => void
+  /** Extra actions under a set-up connection, e.g. Replace key / Remove. */
+  footer?: ReactNode
 }
 
 const cardBorderClassNames: Record<ConnectionState, string> = {
@@ -23,7 +26,7 @@ const statusLabelClassNames: Record<Exclude<ConnectionState, 'available'>, strin
  * One app or AI model on the Connections screen. Set-up connections show their status
  * and usage; ones not set up yet show a Connect / Add key button instead.
  */
-export function ConnectionCard({ connection, onSetUp }: ConnectionCardProps) {
+export function ConnectionCard({ connection, onSetUp, footer }: ConnectionCardProps) {
   const cardClassNames = joinClassNames('rounded-xl p-3.5', cardBorderClassNames[connection.state])
 
   if (connection.state === 'available') {
@@ -53,6 +56,7 @@ export function ConnectionCard({ connection, onSetUp }: ConnectionCardProps) {
         <span className={joinClassNames('text-[12px]', statusLabelClassNames[connection.state])}>{statusLabel}</span>
       </div>
       <span className="text-[13px] text-body">{connection.connectedDescription}</span>
+      {footer}
     </div>
   )
 }

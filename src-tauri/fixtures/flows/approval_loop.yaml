@@ -1,0 +1,93 @@
+# Finds cafes in an area and sends each one a WhatsApp offer,
+# asking the user to approve every message before it is sent.
+version: "1"
+name: cafe-whatsapp-offers
+description: Find cafes on Google Maps and send each a WhatsApp offer, asking me before each message.
+env:
+  - { name: MAPS_API_KEY, type: secret }
+  - { name: WHATSAPP_TOKEN, type: secret }
+graph:
+  nodes:
+    - id: start
+      type: start
+      variables:
+        - { variable: area, type: text-input, required: true, label: Area to search }
+        - { variable: offer, type: paragraph, required: true, label: Offer to send }
+        - { variable: max_cafes, type: number, required: false, default: 10 }
+
+    - id: find_cafes
+      type: http-request
+      title: Find cafes on Google Maps
+      method: get
+      url: "https://example.com/maps/api/place/textsearch/json"
+      params:
+        - { key: query, value: "cafes in {{#start.area#}}" }
+        - { key: limit, value: "{{#start.max_cafes#}}" }
+        - { key: key, value: "{{#env.MAPS_API_KEY#}}" }
+      headers: "Accept: application/json"
+      timeout: { connect: 5, read: 30 }
+      retry: { max_retries: 2, interval_ms: 1000, backoff: 2.0 }
+
+    - id: each_cafe
+      type: iteration
+      title: For each cafe
+      iterator_selector: [find_cafes, json, results]
+      output_selector: [send_message, status_code]
+      is_parallel: false
+      error_handle_mode: continue-on-error
+
+    - id: each_cafe_start
+      type: iteration-start
+      parent: each_cafe
+
+    - id: draft_message
+      type: llm
+      parent: each_cafe
+      model:
+        provider: anthropic
+        name: claude-haiku-4-5
+        completion_params: { temperature: 0.7, max_tokens: 300 }
+      prompt_template:
+        - role: system
+          text: "You write short, friendly WhatsApp messages to small businesses. No more than 60 words."
+        - role: user
+          text: "Write a message to {{#each_cafe.item.name#}} ({{#each_cafe.item.address#}}) presenting this offer: {{#start.offer#}}"
+
+    - id: approve_message
+      type: human-input
+      parent: each_cafe
+      prompt: "Send this message to {{#each_cafe.item.name#}}?\n\n{{#draft_message.text#}}"
+      form:
+        fields:
+          - { name: note, label: Note, type: text, required: false }
+      actions:
+        - { id: send, title: Send }
+        - { id: skip, title: Skip }
+
+    - id: send_message
+      type: http-request
+      title: Send the WhatsApp message
+      parent: each_cafe
+      method: post
+      url: "https://example.com/whatsapp/v1/messages"
+      authorization:
+        type: api-key
+        config: { type: bearer, api_key: "{{#env.WHATSAPP_TOKEN#}}" }
+      body:
+        type: json
+        data: '{"to": "{{#each_cafe.item.phone#}}", "type": "text", "text": {"body": "{{#draft_message.text#}}"}}'
+      timeout: { connect: 5, read: 30 }
+
+    - id: end
+      type: end
+      outputs:
+        - { variable: cafes, value_selector: [find_cafes, json, results] }
+        - { variable: send_results, value_selector: [each_cafe, output] }
+
+  edges:
+    - { source: start, target: find_cafes }
+    - { source: find_cafes, target: each_cafe }
+    - { source: each_cafe_start, target: draft_message }
+    - { source: draft_message, target: approve_message }
+    - { source: approve_message, target: send_message, handle: send }
+    - { source: each_cafe, target: end }

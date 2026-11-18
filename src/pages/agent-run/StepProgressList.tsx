@@ -3,7 +3,10 @@ import type { TestRunStep, TestRunStepState } from '@/data/testRun'
 
 const stepStateLabels: Record<TestRunStepState, string> = {
   done: 'Done',
+  running: 'Running',
   waiting: 'Waiting for you',
+  failed: 'Failed',
+  skipped: 'Skipped',
   pending: 'Not started',
 }
 
@@ -13,6 +16,18 @@ function StepStateMarker({ state }: { state: TestRunStepState }) {
       <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-ok-soft text-ok-strong">
         <StrokeIcon size={12} strokeWidth={3}>
           <path d="M5 12.5 10 17 19 7" />
+        </StrokeIcon>
+      </span>
+    )
+  }
+  if (state === 'running') {
+    return <span aria-hidden="true" className="box-border size-5 shrink-0 animate-pulse rounded-full border-2 border-brand bg-brand-soft" />
+  }
+  if (state === 'failed') {
+    return (
+      <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-danger-soft text-danger">
+        <StrokeIcon size={12} strokeWidth={3}>
+          <path d="M7 7l10 10M17 7 7 17" />
         </StrokeIcon>
       </span>
     )
@@ -28,7 +43,7 @@ export function StepProgressList({ steps }: { steps: TestRunStep[] }) {
   return (
     <ol className="m-0 flex list-none flex-col gap-3 rounded-xl border border-line bg-surface p-4">
       {steps.map((step) => (
-        <li key={step.id} className={joinClassNames('flex items-center gap-2.5', step.state === 'pending' && 'text-muted')}>
+        <li key={step.id} className={joinClassNames('flex items-center gap-2.5', (step.state === 'pending' || step.state === 'skipped') && 'text-muted')}>
           <StepStateMarker state={step.state} />
           <span className={joinClassNames('flex-auto', step.state === 'waiting' && 'font-semibold')}>
             {step.label}

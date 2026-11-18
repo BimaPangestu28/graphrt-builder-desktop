@@ -1,5 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
-import { routePaths } from './routes'
+import { agentRoutePatterns, routePaths } from './routes'
 import { ScreenIndexPage } from './pages/ScreenIndexPage'
 import { WelcomePage } from './pages/WelcomePage'
 import { NewAgentPage } from './pages/NewAgentPage'
@@ -32,11 +32,11 @@ const screenRoutes = [
   { path: routePaths.welcome, element: <WelcomePage /> },
   { path: routePaths.newAgent, element: <NewAgentPage /> },
   { path: routePaths.generating, element: <GeneratingPage /> },
-  { path: routePaths.builder, element: <BuilderPage /> },
-  { path: routePaths.connectWhatsApp, element: <ConnectWhatsAppPage /> },
-  { path: routePaths.testRun, element: <TestRunPage /> },
-  { path: routePaths.runResult, element: <RunResultPage /> },
-  { path: routePaths.scheduleAgent, element: <ScheduleAgentPage /> },
+  { path: agentRoutePatterns.builder, element: <BuilderPage /> },
+  { path: agentRoutePatterns.connectWhatsApp, element: <ConnectWhatsAppPage /> },
+  { path: agentRoutePatterns.testRun, element: <TestRunPage /> },
+  { path: agentRoutePatterns.runResult, element: <RunResultPage /> },
+  { path: agentRoutePatterns.scheduleAgent, element: <ScheduleAgentPage /> },
   { path: routePaths.home, element: <HomePage /> },
   { path: routePaths.scheduler, element: <SchedulerPage /> },
   { path: routePaths.chain, element: <ChainPage /> },
@@ -52,7 +52,7 @@ const screenRoutes = [
   { path: routePaths.connections, element: <ConnectionsPage /> },
   { path: routePaths.settings, element: <SettingsPage /> },
   { path: routePaths.errorStates, element: <ErrorStatesPage /> },
-  { path: routePaths.versionHistory, element: <VersionHistoryPage /> },
+  { path: agentRoutePatterns.versionHistory, element: <VersionHistoryPage /> },
   { path: routePaths.menuBar, element: <MenuBarPage /> },
 ]
 

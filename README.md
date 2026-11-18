@@ -61,4 +61,4 @@ src-tauri/            Rust shell (Tauri 2): window, bundling, future local runne
 Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, checks and commit style, and follow the [Code of Conduct](CODE_OF_CONDUCT.md). Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
 
 ## License
-Licensed under the [Apache License 2.0](LICENSE).
+Licensed under the [Apache License 2.0](LICENSE). See [NOTICE](NOTICE) for attribution and the use of the graphrt name and logo.

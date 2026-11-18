@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { joinClassNames } from '@/components/ui'
 import { scheduleFrequencyOptions, type ScheduleFrequency } from '@/data/scheduleAgent'
+import { weekdayChoices } from '@/lib/schedule'
 
 /** Shared look for the dialog's text inputs and selects (40px, 10px radius). */
 export const scheduleControlClassNames =
@@ -50,6 +51,33 @@ export function FrequencyRadioTiles({ value, onChange }: { value: ScheduleFreque
             />
             {option.label}
           </label>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Weekday toggles for the "Custom" frequency, Monday first. */
+export function WeekdayToggleGroup({ value, onChange }: { value: number[]; onChange: (weekdays: number[]) => void }) {
+  const toggleWeekday = (weekday: number) =>
+    onChange(value.includes(weekday) ? value.filter((selectedWeekday) => selectedWeekday !== weekday) : [...value, weekday])
+  return (
+    <div role="group" aria-label="Days" className="flex flex-wrap gap-1.5">
+      {weekdayChoices.map((choice) => {
+        const isSelected = value.includes(choice.weekday)
+        return (
+          <button
+            key={choice.weekday}
+            type="button"
+            aria-pressed={isSelected}
+            onClick={() => toggleWeekday(choice.weekday)}
+            className={joinClassNames(
+              'h-9 min-w-12 cursor-pointer rounded-[9px] bg-surface px-2.5 text-[13px] text-ink',
+              isSelected ? 'border-2 border-ink font-semibold' : 'border border-line-strong font-medium hover:bg-subtle',
+            )}
+          >
+            {choice.label}
+          </button>
         )
       })}
     </div>
