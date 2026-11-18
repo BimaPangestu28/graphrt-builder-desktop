@@ -165,6 +165,21 @@ impl Database {
         Ok(events)
     }
 
+    /// Every run started at or after `since` (RFC 3339, UTC as written by
+    /// [`now_rfc3339`]), optionally of one agent, newest first. Not limited:
+    /// callers pass a bounded window such as the last 7 days.
+    pub fn list_runs_started_since(&self, since: &str, agent_id: Option<&str>) -> AppResult<Vec<Run>> {
+        let connection = self.lock()?;
+        // Every `started_at` comes from `now_rfc3339` (same UTC format), so text order is time order.
+        let mut statement = connection.prepare(&format!(
+            "SELECT {RUN_COLUMNS} FROM runs
+             WHERE started_at >= ?1 AND (?2 IS NULL OR agent_id = ?2)
+             ORDER BY started_at DESC, rowid DESC"
+        ))?;
+        let runs = statement.query_map(params![since, agent_id], map_run_row)?.collect::<Result<Vec<_>, _>>()?;
+        Ok(runs)
+    }
+
     /// Runs left in `Running` by a crash or quit are marked `Failed` at start-up.
     ///
     /// Paused runs are left alone: their snapshot is persisted, so they remain resumable.
@@ -501,6 +516,27 @@ mod tests {
         assert_eq!(ids(database.list_runs(&both).unwrap()), [oldest.id]);
         let limited = RunFilter { limit: Some(1), ..RunFilter::default() };
         assert_eq!(ids(database.list_runs(&limited).unwrap()), [newest.id]);
+    }
+
+    #[test]
+    fn list_runs_started_since_filters_by_time_and_agent() {
+        let database = test_database();
+        let agent = create_test_agent(&database, "A");
+        let other_agent = create_test_agent(&database, "B");
+        let old_run = database.insert_run(&agent.id, 1, RunTrigger::Manual).unwrap();
+        let recent_run = database.insert_run(&agent.id, 1, RunTrigger::Manual).unwrap();
+        let other_run = database.insert_run(&other_agent.id, 1, RunTrigger::Manual).unwrap();
+        database
+            .lock()
+            .unwrap()
+            .execute("UPDATE runs SET started_at = '2020-01-01T00:00:00+00:00' WHERE id = ?1", [&old_run.id])
+            .unwrap();
+        let since = "2021-01-01T00:00:00+00:00";
+
+        let ids = |runs: Vec<Run>| runs.into_iter().map(|run| run.id).collect::<Vec<_>>();
+        assert_eq!(ids(database.list_runs_started_since(since, None).unwrap()), [other_run.id, recent_run.id.clone()]);
+        assert_eq!(ids(database.list_runs_started_since(since, Some(&agent.id)).unwrap()), [recent_run.id]);
+        assert!(database.list_runs_started_since(since, Some("ghost")).unwrap().is_empty());
     }
 
     #[test]

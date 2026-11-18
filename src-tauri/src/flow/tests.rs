@@ -82,9 +82,12 @@ fn simple_answer_summary() {
 #[test]
 fn approval_loop_steps_follow_execution_order_with_depth() {
     let summary = summarize_flow(APPROVAL_LOOP).unwrap();
-    assert_eq!(step_ids(&summary), ["find_cafes", "each_cafe", "draft_message", "approve_message", "send_message"]);
+    assert_eq!(
+        step_ids(&summary),
+        ["find_cafes", "each_cafe", "draft_message", "approve_message", "send_message", "write_report"]
+    );
     let depths: Vec<u32> = summary.steps.iter().map(|step| step.depth).collect();
-    assert_eq!(depths, [0, 0, 1, 1, 1]);
+    assert_eq!(depths, [0, 0, 1, 1, 1, 0]);
 }
 
 #[test]

@@ -24,16 +24,32 @@ interface RunSeedTiming {
   /** Omitted for runs still running or paused. */
   durationSeconds?: number
   aiCostUsd?: number
+  /** Numeric run outputs (the run output convention's counters), e.g. `messages_sent`. */
+  counters?: Record<string, number>
   trigger: RunTrigger
 }
 
 const seedTimingsByRunId: Record<string, RunSeedTiming> = {
   'lead-tracker-1340': { startClock: '13:40:00', daysAgo: 0, trigger: 'manual' },
-  'maps-leads-0900': { startClock: '09:00:00', daysAgo: 0, durationSeconds: 47 * 60 + 12, aiCostUsd: 0.05, trigger: 'schedule' },
+  'maps-leads-0900': {
+    startClock: '09:00:00',
+    daysAgo: 0,
+    durationSeconds: 47 * 60 + 12,
+    aiCostUsd: 0.05,
+    counters: { places_found: 15, messages_sent: 11 },
+    trigger: 'schedule',
+  },
   'catering-assistant-0852': { startClock: '08:52:10', daysAgo: 0, trigger: 'manual' },
-  'morning-digest-0700': { startClock: '07:00:00', daysAgo: 0, durationSeconds: 22, aiCostUsd: 0.01, trigger: 'schedule' },
+  'morning-digest-0700': { startClock: '07:00:00', daysAgo: 0, durationSeconds: 22, aiCostUsd: 0.01, counters: { emails_summarized: 8 }, trigger: 'schedule' },
   'morning-digest-yesterday': { startClock: '07:00:00', daysAgo: 1, durationSeconds: 3, trigger: 'schedule' },
-  'maps-leads-test': { startClock: '13:03:00', daysAgo: 1, durationSeconds: 9, aiCostUsd: 0.01, trigger: 'test' },
+  'maps-leads-test': {
+    startClock: '13:03:00',
+    daysAgo: 1,
+    durationSeconds: 9,
+    aiCostUsd: 0.01,
+    counters: { places_found: 18, messages_sent: 1 },
+    trigger: 'test',
+  },
 }
 
 /** Clock time "now" stands for in the mockup. */
@@ -118,7 +134,12 @@ function buildSeededRun(record: RunRecord, nowMs: number): SeededRun {
     status,
     startedAt: new Date(startMs).toISOString(),
     finishedAt: finishedMs === null ? null : new Date(finishedMs).toISOString(),
-    outputs: { summary: record.result, message: record.output, ...(timing.aiCostUsd === undefined ? {} : { aiCostUsd: timing.aiCostUsd }) },
+    outputs: {
+      summary: record.result,
+      ...timing.counters,
+      message: record.output,
+      ...(timing.aiCostUsd === undefined ? {} : { aiCostUsd: timing.aiCostUsd }),
+    },
     errorMessage: status === 'failed' ? record.output : null,
     pauseReasons:
       status === 'paused' && pausedStep

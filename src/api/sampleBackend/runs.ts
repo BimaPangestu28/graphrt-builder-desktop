@@ -10,6 +10,7 @@ import { buildSeededRuns } from './sampleRunSeed'
  * - `startRun` plays the "Maps leads to WhatsApp" test with small timers: ask input → search Google Maps
  *   → write a message → pause on `approve_message` with the drafted message in the pause reason's `data`.
  * - `resumeRun` continues to success: approve sends the (edited) message, skip ends without sending.
+ *   Outputs follow the run output convention (`summary`, `items`, `places_found`, `messages_sent`).
  *
  * Every event goes to {@link sampleRunsBackend.subscribeToRunEvents} subscribers, like the Tauri `run-event`.
  * Call {@link resetSampleRuns} in tests; scripted steps are {@link sampleRunStepDelayMs} apart.
@@ -22,6 +23,9 @@ export const sampleRunStepDelayMs = 300
 export const sampleApprovalNodeId = 'approve_message'
 
 const placesFoundCount = 18
+
+/** Token usage the scripted "Write a short message" step reports. */
+const sampleWriteMessageUsage = { prompt_tokens: 180, completion_tokens: 32, total_tokens: 212 }
 
 /** The pause reason `data` of the scripted test run. */
 export interface SampleApprovalRequest {
@@ -135,9 +139,9 @@ function buildTestRunScript(): ScriptStep[] {
     nodeEvent('node_succeeded', 'ask_input', { detail: '0.0s', duration_ms: 0 }),
     nodeEvent('node_started', 'search_maps', { title: 'Search Google Maps' }),
     nodeEvent('node_succeeded', 'search_maps', { detail: `${placesFoundCount} places · 1.2s`, duration_ms: 1200, places_found: placesFoundCount }),
-    nodeEvent('node_started', 'write_message', { title: 'Write a short message' }),
-    nodeEvent('node_succeeded', 'write_message', { detail: '212 tokens · 2.4s', duration_ms: 2400 }),
-    nodeEvent('node_started', sampleApprovalNodeId, { title: 'Ask me before sending' }),
+    nodeEvent('node_started', 'write_message', { title: 'Write a short message', kind: 'llm' }),
+    nodeEvent('node_succeeded', 'write_message', { detail: '212 tokens · 2.4s', duration_ms: 2400, usage: sampleWriteMessageUsage }),
+    nodeEvent('node_started', sampleApprovalNodeId, { title: 'Ask me before sending', kind: 'human-input' }),
     nodeEvent('node_paused', sampleApprovalNodeId, { kind: 'human_input' }),
     {
       event: { type: 'run_paused' },
@@ -153,13 +157,25 @@ function finishTestRun(outputs: Record<string, unknown>): ScriptStep {
   }
 }
 
+/** The places of the test run as run output `items`: the first one tested, the rest not in the test. */
+function buildTestRunItems(firstPlaceStatus: 'sent' | 'skipped'): Array<Record<string, string>> {
+  return testRunPlaces.map((place, index) => ({ name: place.name, phone: place.phone, status: index === 0 ? firstPlaceStatus : 'not in test' }))
+}
+
 function buildApprovedScript(message: string): ScriptStep[] {
-  const places = testRunPlaces.map((place, index) => ({ ...place, outcome: index === 0 ? 'Sent' : 'Not in test' }))
+  const sentPlaceName = testRunPlaces[0]?.name ?? 'the first place'
   return [
-    nodeEvent('node_succeeded', sampleApprovalNodeId, { detail: 'Approved' }),
-    nodeEvent('node_started', 'send_whatsapp', { title: 'Send WhatsApp' }),
+    nodeEvent('node_succeeded', sampleApprovalNodeId, { detail: 'Approved', outputs: { action: 'approve' }, branch: 'approve' }),
+    nodeEvent('node_started', 'send_whatsapp', { title: 'Send WhatsApp', kind: 'http-request' }),
     nodeEvent('node_succeeded', 'send_whatsapp', { detail: '1 sent' }),
-    finishTestRun({ summary: 'Test · 1 sent', placesFound: placesFoundCount, messagesSent: 1, sentMessage: message, aiCostUsd: 0.004, places }),
+    finishTestRun({
+      summary: `Sent the test message to ${sentPlaceName}.`,
+      items: buildTestRunItems('sent'),
+      places_found: placesFoundCount,
+      messages_sent: 1,
+      aiCostUsd: 0.004,
+      sent_message: message,
+    }),
   ]
 }
 
@@ -168,12 +184,12 @@ function buildSkippedScript(): ScriptStep[] {
     nodeEvent('node_skipped', sampleApprovalNodeId, { detail: 'Skipped' }),
     nodeEvent('node_skipped', 'send_whatsapp'),
     finishTestRun({
-      summary: 'Test · skipped',
-      placesFound: placesFoundCount,
-      messagesSent: 0,
-      skipped: true,
+      summary: 'Skipped the test message, so nothing was sent.',
+      items: buildTestRunItems('skipped'),
+      places_found: placesFoundCount,
+      messages_sent: 0,
       aiCostUsd: 0.003,
-      places: testRunPlaces.map((place) => ({ ...place, outcome: 'Not in test' })),
+      skipped: true,
     }),
   ]
 }

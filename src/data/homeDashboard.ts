@@ -1,6 +1,10 @@
 import { routePaths } from '@/routes'
 
-/** Mock data for screen 09, the Home dashboard once agents are running. */
+/**
+ * Data for screen 09, the Home dashboard. Paused runs, agent run stats and recent runs come
+ * from the backend; what is left here is preview-only sample content (Inbox and connection
+ * reminders, schedule lines, monthly usage) not yet backed by the runtime.
+ */
 
 export interface AttentionItem {
   id: string
@@ -12,15 +16,8 @@ export interface AttentionItem {
   isPrimaryAction: boolean
 }
 
-export const attentionItems: AttentionItem[] = [
-  {
-    id: 'review-messages',
-    title: 'Maps leads to WhatsApp wants to send 12 messages',
-    detail: 'Weekday run 09:00 · paused for your review',
-    actionLabel: 'Review messages',
-    actionPath: routePaths.batchApproval,
-    isPrimaryAction: true,
-  },
+/** Inbox and connection reminders shown under the paused runs in the browser preview only. */
+export const sampleAttentionItems: AttentionItem[] = [
   {
     id: 'inbox-waiting',
     title: '2 customers are waiting in Inbox',
@@ -45,35 +42,14 @@ export interface AgentSummaryStat {
   label: string
 }
 
-/**
- * Schedule line and run stats on each Home agent card, keyed by agent id. The agents come
- * from `listAgents`; schedules and run counts stay mock data until triggers and runs are
- * wired to Home.
- */
-export interface AgentActivity {
-  scheduleSummary: string
-  stats: AgentSummaryStat[]
+/** Schedule line on the sample agents' Home cards, keyed by agent id (preview content). */
+export const agentScheduleSummaryById: Record<string, string> = {
+  'maps-leads': 'Weekdays 09:00 · 6 steps',
+  'morning-digest': 'Every day 07:00 · 4 steps',
+  'invoice-reminders': 'Mondays 10:00 · 5 steps',
 }
 
-export const agentActivityById: Record<string, AgentActivity> = {
-  'maps-leads': {
-    scheduleSummary: 'Weekdays 09:00 · 6 steps',
-    stats: [
-      { count: 47, label: 'sent this week' },
-      { count: 9, label: 'replies' },
-    ],
-  },
-  'morning-digest': {
-    scheduleSummary: 'Every day 07:00 · 4 steps',
-    stats: [{ count: 5, label: 'runs this week' }, { label: 'Last run ok' }],
-  },
-  'invoice-reminders': {
-    scheduleSummary: 'Mondays 10:00 · 5 steps',
-    stats: [{ label: 'Paused by you on 12 Nov' }],
-  },
-}
-
-export type RecentRunStatus = 'Needs you' | 'Done' | 'Failed'
+export type RecentRunStatus = 'Needs you' | 'Done' | 'Failed' | 'Running' | 'Stopped'
 
 export interface RecentRun {
   id: string
@@ -82,13 +58,6 @@ export interface RecentRun {
   resultSummary: string
   status: RecentRunStatus
 }
-
-export const recentRuns: RecentRun[] = [
-  { id: 'run-4', agentName: 'Maps leads to WhatsApp', startedAt: 'Today 09:00', resultSummary: '12 messages ready', status: 'Needs you' },
-  { id: 'run-3', agentName: 'Morning email digest', startedAt: 'Today 07:00', resultSummary: '8 emails summarized', status: 'Done' },
-  { id: 'run-2', agentName: 'Maps leads to WhatsApp', startedAt: 'Yesterday 09:00', resultSummary: '15 sent · 1 skipped', status: 'Done' },
-  { id: 'run-1', agentName: 'Morning email digest', startedAt: 'Yesterday 07:00', resultSummary: 'Gmail sign-in expired', status: 'Failed' },
-]
 
 export const monthlyUsage = [
   { label: 'Runs', value: '64' },

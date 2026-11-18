@@ -142,3 +142,9 @@ break_conditions: [{ variable_selector: [refine, draft], comparison_operator: co
 ## Per-node options (any node)
 `retry: { max_retries: 2, interval_ms: 1000, backoff: 2.0 }`, `timeout_ms: 30000`,
 `on_error: { strategy: fail-branch }` (then an edge with `handle: fail-branch`).
+
+## Run outputs
+`end` outputs are what the app shows after a run: `summary` (always; one plain sentence about what happened),
+`items` (list of objects, one per thing handled, each with `name` or `title` and a `status` such as `sent`,
+`skipped`, `failed`, plus a few short fields) and optional number counters in snake_case (`messages_sent`).
+Produce them with an `llm` using `structured_output`, read as `[write_report, structured_output, summary]`.
