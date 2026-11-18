@@ -18,7 +18,7 @@ export type MainNavKey = 'home' | 'inbox' | 'runs' | 'schedule' | 'knowledge' | 
  */
 export type SidebarAgentsState =
   | { kind: 'empty' }
-  | { kind: 'draft'; name: string; status: string; statusTone?: 'brand' | 'amber'; agentId?: string }
+  | { kind: 'draft'; name: string; status: string; statusTone?: 'brand' | 'amber' | 'danger'; agentId?: string }
   | { kind: 'list'; activeAgentId?: string }
 
 export interface SidebarProps {
@@ -77,6 +77,12 @@ function SidebarAgentList({ activeAgentId }: { activeAgentId?: string }) {
   )
 }
 
+const sidebarStatusToneClassNames: Record<'brand' | 'amber' | 'danger', string> = {
+  brand: 'text-brand-strong',
+  amber: 'font-medium text-amber-strong',
+  danger: 'font-medium text-danger',
+}
+
 function SidebarAgentsSection({ agents }: { agents: SidebarAgentsState }) {
   if (agents.kind === 'empty') {
     return <span className="px-2.5 py-2 leading-normal text-muted">No agents yet. Your first one will show up here</span>
@@ -85,7 +91,7 @@ function SidebarAgentsSection({ agents }: { agents: SidebarAgentsState }) {
     return (
       <Link to={agents.agentId ? agentPath('builder', agents.agentId) : routePaths.home} className="flex flex-col gap-0.5 rounded-[10px] bg-brand-soft px-3 py-2.5 no-underline !text-ink">
         <span className="font-semibold">{agents.name}</span>
-        <span className={joinClassNames('text-[12px]', agents.statusTone === 'amber' ? 'font-medium text-amber-strong' : 'text-brand-strong')}>{agents.status}</span>
+        <span className={joinClassNames('text-[12px]', sidebarStatusToneClassNames[agents.statusTone ?? 'brand'])}>{agents.status}</span>
       </Link>
     )
   }

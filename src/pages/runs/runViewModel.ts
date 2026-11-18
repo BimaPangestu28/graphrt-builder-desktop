@@ -1,7 +1,7 @@
 import type { Run, RunEventRecord, RunFilter, RunStatus as BackendRunStatus, RunTrigger } from '@/api/types'
 import type { RunRecord, RunStatus as RunsScreenStatus, RunStep } from '@/data/runs'
 import { agentPath, routePaths, runReviewPath } from '@/routes'
-import { collectNodeProgress, humanizeNodeId } from '@/pages/agent-run/runProgress'
+import { buildRunStepViews } from '@/pages/agent-run/runSteps'
 import { formatAiCost, formatClockTime, formatRunDay, formatRunDuration } from '@/pages/agent-run/runResultSummary'
 
 /**
@@ -139,12 +139,12 @@ export function buildRawLog(events: RunEventRecord[]): string[] {
   return events.filter(({ event }) => event.type !== 'status_changed').map((record) => `${formatLogClock(record.createdAt)} ${describeLogEvent(record)}`)
 }
 
-/** Steps for the detail panel: one per node, done when it succeeded. */
+/** Steps for the CSV export: one per node shown as a step, done when it succeeded. */
 export function buildRunSteps(events: RunEventRecord[]): RunStep[] {
-  return collectNodeProgress(events).map((progress) => ({
-    label: progress.title ?? humanizeNodeId(progress.nodeId),
-    detail: progress.detail ?? (progress.state === 'running' ? 'running' : ''),
-    isDone: progress.state === 'done' || progress.state === 'skipped',
+  return buildRunStepViews([], events).map((step) => ({
+    label: step.label,
+    detail: step.detail ?? (step.state === 'running' ? 'running' : ''),
+    isDone: step.state === 'done' || step.state === 'skipped',
   }))
 }
 

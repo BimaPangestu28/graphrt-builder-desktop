@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react'
 import { startRun } from '@/api/runs'
-import { resetSampleRuns, sampleRunStepDelayMs, sampleRunsBackend } from '@/api/sampleBackend/runs'
+import { resetSampleRuns, sampleRunStepDelayMs, sampleRunsBackend, sampleStepsUntilApproval } from '@/api/sampleBackend/runs'
 import type { RunEventRecord } from '@/api/types'
 import { mergeRunEvents, useRunLive } from '../useRunLive'
 
@@ -68,7 +68,7 @@ describe('useRunLive', () => {
     expect(result.current.events).toHaveLength(0)
     await advanceSteps(3)
     expect(result.current.events.map(({ event }) => event.type)).toEqual(['run_started', 'node_started', 'node_succeeded'])
-    await advanceSteps(8)
+    await advanceSteps(sampleStepsUntilApproval - 3)
     expect(result.current.run?.status).toBe('paused')
     expect(result.current.run?.pauseReasons?.[0].node_id).toBe('approve_message')
   })

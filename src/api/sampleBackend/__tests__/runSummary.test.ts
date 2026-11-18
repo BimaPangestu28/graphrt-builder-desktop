@@ -1,7 +1,7 @@
 import { getRunSummary, listAgentRunStats } from '@/api/runSummary'
 import type { GraphrtEvent, Run } from '@/api/types'
 import { resetSampleAgents } from '../agents'
-import { resetSampleRuns, sampleApprovalNodeId, sampleRunStepDelayMs, sampleRunsBackend } from '../runs'
+import { resetSampleRuns, sampleApprovalNodeId, sampleRunStepDelayMs, sampleRunsBackend, sampleStepsUntilApproval } from '../runs'
 import { buildSampleAgentRunStats, sampleRunSummaryBackend, summarizeSampleRun } from '../runSummary'
 
 const dayMs = 24 * 60 * 60 * 1000
@@ -25,7 +25,7 @@ function buildRun(changes: Partial<Run>): Run {
 async function playSampleTestRun(action: 'approve' | 'skip'): Promise<string> {
   vi.useFakeTimers()
   const run = await sampleRunsBackend.startRun('maps-leads', 'test', {})
-  await vi.advanceTimersByTimeAsync(sampleRunStepDelayMs * 11)
+  await vi.advanceTimersByTimeAsync(sampleRunStepDelayMs * sampleStepsUntilApproval)
   await sampleRunsBackend.resumeRun(run.id, { [sampleApprovalNodeId]: { action, values: { message: 'Hi' } } })
   await vi.advanceTimersByTimeAsync(sampleRunStepDelayMs * 5)
   vi.useRealTimers()
