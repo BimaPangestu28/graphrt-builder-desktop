@@ -167,12 +167,13 @@ async fn simple_answer_succeeds_with_events_stored_and_sent_in_order() {
     let finished = harness.db.get_run(&run.id).unwrap();
     assert_eq!(finished.status, RunStatus::Succeeded);
     let records = harness.db.list_run_events(&run.id).unwrap();
-    // Outputs are graphrt's `run_succeeded` outputs verbatim. (The fixture's
-    // `answer` node and `answer` end output both feed graphrt's concatenated
-    // `answer` key, so the text appears twice.)
+    // Outputs are graphrt's `run_succeeded` outputs verbatim: the `answer` node's
+    // streamed reply plus the end node's `result`, each holding the text once.
     let succeeded_event = &records.last().unwrap().event;
     assert_eq!(finished.outputs.as_ref(), Some(&succeeded_event["outputs"]));
-    assert!(finished.outputs.unwrap()["answer"].as_str().unwrap().contains("Rust is a systems language."));
+    let outputs = finished.outputs.unwrap();
+    assert_eq!(outputs["result"], json!("Rust is a systems language."));
+    assert_eq!(outputs["answer"], json!("Rust is a systems language."));
 
     let seqs: Vec<i64> = records.iter().map(|record| record.seq).collect();
     assert_eq!(seqs, (1..=records.len() as i64).collect::<Vec<_>>());

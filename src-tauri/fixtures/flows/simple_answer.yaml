@@ -27,7 +27,7 @@ graph:
     - id: end
       type: end
       outputs:
-        - { variable: answer, value_selector: [answer_question, text], value_type: string }
+        - { variable: result, value_selector: [answer_question, text], value_type: string }
 
   edges:
     - { source: start, target: answer_question }
