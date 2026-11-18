@@ -5,7 +5,7 @@ import { resumeRun, startRun } from '@/api/runs'
 import { sampleRunReviewBackend } from '@/api/sampleBackend/runReview'
 import type { RunSummary } from '@/api/runSummaryTypes'
 import { sampleRunSummaryBackend } from '@/api/sampleBackend/runSummary'
-import { resetSampleRuns, sampleRunStepDelayMs, sampleRunsBackend } from '@/api/sampleBackend/runs'
+import { resetSampleRuns, sampleRunStepDelayMs, sampleRunsBackend, sampleStepsUntilApproval } from '@/api/sampleBackend/runs'
 import { agentPath, routePaths, sampleAgentId } from '@/routes'
 import { RunResultPage } from '@/pages/RunResultPage'
 import { LocationProbe } from '@/test/runTestUtils'
@@ -26,7 +26,7 @@ function renderRunResultPage(initialEntry: string = routePaths.runResult) {
 async function finishSampleRun(action: 'approve' | 'skip'): Promise<string> {
   vi.useFakeTimers()
   const run = await startRun(sampleAgentId, 'test', { keyword: 'cafe', city: '[CITY]' })
-  await vi.advanceTimersByTimeAsync(sampleRunStepDelayMs * 11)
+  await vi.advanceTimersByTimeAsync(sampleRunStepDelayMs * sampleStepsUntilApproval)
   await resumeRun(run.id, { approve_message: { action, values: { message: 'Hi' } } })
   await vi.advanceTimersByTimeAsync(sampleRunStepDelayMs * 5)
   vi.useRealTimers()

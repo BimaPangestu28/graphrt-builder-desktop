@@ -11,6 +11,11 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
 
 ### Added
 
+- **Live test runs**: the step list shows only your steps in order, with live durations, "3 of 10 · Kopi
+  Kenangan" progress for loops, and rows you can open to see streamed model text, outputs and errors
+  in plain words. The chat column narrates the run; finished runs offer Run again and Edit steps.
+  The Runs detail panel uses the same list.
+- The builder rejects drafts that call placeholder addresses such as api.example.com.
 - **The builder streams its work**: while an agent is drafted or changed, Building and the builder chat
   show the model's explanation as it writes, the step titles as they appear and a live token count.
   Step details show references in plain words (‹name›) instead of template syntax.

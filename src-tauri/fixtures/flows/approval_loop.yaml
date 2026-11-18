@@ -6,6 +6,7 @@ description: Find cafes on Google Maps and send each a WhatsApp offer, asking me
 env:
   - { name: MAPS_API_KEY, type: secret }
   - { name: WHATSAPP_TOKEN, type: secret }
+  - { name: WHATSAPP_PHONE_NUMBER_ID, type: string }
 graph:
   nodes:
     - id: start
@@ -19,7 +20,7 @@ graph:
       type: http-request
       title: Find cafes on Google Maps
       method: get
-      url: "https://example.com/maps/api/place/textsearch/json"
+      url: "https://maps.googleapis.com/maps/api/place/textsearch/json"
       params:
         - { key: query, value: "cafes in {{#start.area#}}" }
         - { key: limit, value: "{{#start.max_cafes#}}" }
@@ -69,7 +70,7 @@ graph:
       title: Send the WhatsApp message
       parent: each_cafe
       method: post
-      url: "https://example.com/whatsapp/v1/messages"
+      url: "https://graph.facebook.com/v21.0/{{#env.WHATSAPP_PHONE_NUMBER_ID#}}/messages"
       authorization:
         type: api-key
         config: { type: bearer, api_key: "{{#env.WHATSAPP_TOKEN#}}" }

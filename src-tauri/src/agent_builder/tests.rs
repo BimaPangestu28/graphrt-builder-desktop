@@ -414,3 +414,22 @@ async fn the_name_line_is_not_part_of_the_explanation() {
     assert_eq!(agent.name, "Cafe offers");
     assert_eq!(progress.previews().last().unwrap().explanation, "");
 }
+
+#[tokio::test]
+async fn a_draft_calling_a_placeholder_address_is_sent_back_for_repair() {
+    let placeholder_draft = APPROVAL_LOOP.replace(
+        "https://graph.facebook.com/v21.0/{{#env.WHATSAPP_PHONE_NUMBER_ID#}}/messages",
+        "https://api.example.com/send-promotion",
+    );
+    assert_ne!(placeholder_draft, APPROVAL_LOOP, "fixture URL changed; update this test");
+    let db = test_database();
+    let (mock, builder) =
+        mock_builder(&[fenced_reply("Cafe offers", &placeholder_draft), fenced_reply("Cafe offers", APPROVAL_LOOP)]);
+
+    let agent = build_agent_with_model(&db, &builder, request(CAFE_REQUEST, None), &|_| {}).await.unwrap();
+
+    assert_eq!(agent.flow_yaml.trim(), APPROVAL_LOOP.trim());
+    let repair_text = mock.requests()[1].messages[3].text();
+    assert!(repair_text.contains("api.example.com"), "{repair_text}");
+    assert!(repair_text.contains("placeholder"), "{repair_text}");
+}

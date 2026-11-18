@@ -4,8 +4,13 @@ import { AppShell } from '@/components/layout'
 import { joinClassNames } from '@/components/ui'
 import { defaultSelectedRunId } from '@/data/runs'
 import { useAgentNames, type AgentNameLookup } from '@/hooks/useAgentNames'
+import { getVersionFlowSummary } from '@/api/versions'
+import { useNow } from '@/hooks/useNow'
+import { useLoadedData } from '@/hooks/useRunData'
 import { useRunEvents, useRuns } from '@/hooks/useRuns'
 import { RunErrorNotice } from '@/pages/agent-run/RunErrorNotice'
+import { toRunStepTemplate } from '@/pages/agent-run/runProgress'
+import { buildRunStepViews } from '@/pages/agent-run/runSteps'
 import { RunDetailPanel } from './runs/RunDetailPanel'
 import { RunsTable } from './runs/RunsTable'
 import { allAgentsFilterValue, countRunsForFilter, toRunFilter, toRunRecord, withRunEvents, type RunsStatusFilter } from './runs/runViewModel'
@@ -74,8 +79,11 @@ function RunsFilterBar({ agentFilter, statusFilter, allRuns, getAgentName, onAge
 /** Detail panel for the selected run, with steps and raw log from its events. */
 function SelectedRunPanel({ run, getAgentName, onClose }: { run: Run; getAgentName: AgentNameLookup; onClose: () => void }) {
   const { data: events } = useRunEvents(run.id)
+  const { data: flowSummary } = useLoadedData(() => getVersionFlowSummary(run.agentId, run.agentVersion), [run.agentId, run.agentVersion])
+  const now = useNow(run.status === 'running')
   const record = withRunEvents(toRunRecord(run, getAgentName(run.agentId)), events ?? [])
-  return <RunDetailPanel key={run.id} run={record} onClose={onClose} />
+  const stepViews = buildRunStepViews(toRunStepTemplate(flowSummary), events ?? [])
+  return <RunDetailPanel key={run.id} run={record} stepViews={stepViews} now={now} onClose={onClose} />
 }
 
 /**

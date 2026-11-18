@@ -45,7 +45,10 @@ Never write a real or made-up key into the document.
 - Every `llm`, `agent`, `question-classifier` and `parameter-extractor` node uses \
 `model: { provider: {provider}, name: {model} }`. The examples use other models; do not copy those.
 - Give every step a short `title` in plain words, e.g. \"Find cafes on Google Maps\", \"Write a short message\".
-- Use the best-known public API for each outside service and keep requests simple.
+- Use the best-known public API for each outside service and keep requests simple. Prefer an installed plugin \
+step when one covers the service. Never use placeholder addresses such as example.com or your-domain.com: the \
+URLs in the examples below are placeholders and must not be copied. If no real API or plugin is available, read \
+the address from an `env` value and say in your opening sentence what the user needs to connect.
 - Every node must be reachable from `start`, and every reference must name an existing node and output.
 - Keep the flow as small as the job allows and finish with an `end` node that outputs the useful results.";
 

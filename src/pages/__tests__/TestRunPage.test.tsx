@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { sampleBuilderBackend } from '@/api/sampleBackend/builder'
@@ -122,15 +122,101 @@ describe('TestRunPage', () => {
     expect(startRunSpy).toHaveBeenCalledWith('maps-leads', 'test', { tier: 'pro', count: 10, notify: true, brief: 'Line one\nLine two', extra: { a: 1 } })
   })
 
-  it('fills in steps from the flow summary and live run events', async () => {
+  it('fills in steps from the flow summary and live run events, without bookkeeping nodes', async () => {
     await startTestFromForm()
-    await playSampleRunSteps(7)
-    const steps = screen.getAllByRole('listitem')
-    expect(steps).toHaveLength(6)
-    expect(within(steps[1]).getByText('18 places · 1.2s')).toBeInTheDocument()
-    expect(steps[3]).toHaveTextContent('Running')
-    expect(steps[5]).toHaveTextContent('Not started')
+    await playSampleRunSteps(9)
+    const steps = within(screen.getByRole('list', { name: 'Steps' })).getAllByRole('listitem')
+    expect(steps.map((step) => step.textContent?.split(',')[0])).toEqual([
+      'Search Google Maps',
+      'For each place',
+      'Write a short message',
+      'Ask me before sending',
+      'Send WhatsApp',
+    ])
+    expect(within(steps[0]).getByText('1.2s')).toBeInTheDocument()
+    expect(within(steps[1]).getByText(/^1 of 1 · \[PLACE NAME 1\]/)).toBeInTheDocument()
+    expect(within(steps[1]).getByRole('progressbar')).toHaveAttribute('aria-valuemax', '1')
+    expect(steps[2]).toHaveTextContent('Running')
+    expect(steps[4]).toHaveTextContent('Not started')
+    expect(screen.queryByText(/Ask for keyword, city and offer/)).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Send this message?' })).not.toBeInTheDocument()
+  })
+
+  it('opens the writing model step with its streamed text and closes it when it finishes', async () => {
+    await startTestFromForm()
+    await playSampleRunSteps(9)
+    const writeButton = screen.getByRole('button', { name: /^Write a short message/ })
+    expect(writeButton).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByLabelText('Streaming text')).toHaveTextContent(/^Hi \[PLACE NAME\] team, we run a catering/)
+    expect(screen.getByLabelText('Streaming text')).not.toHaveTextContent('menu?')
+
+    await playSampleRunSteps(3)
+    expect(writeButton).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(writeButton)
+    expect(writeButton).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByLabelText('Final text')).toHaveTextContent(sampleDraftMessage)
+    expect(screen.getByText('212 tokens (180 in · 32 out)')).toBeInTheDocument()
+
+    const searchButton = screen.getByRole('button', { name: /^Search Google Maps/ })
+    fireEvent.click(searchButton)
+    expect(searchButton).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText('1 item • [PLACE NAME 1]')).toBeInTheDocument()
+  })
+
+  it('narrates the run in the chat column and links to the approval', async () => {
+    await renderPausedTestRun()
+    const feed = screen.getByRole('log', { name: 'Run updates' })
+    expect(within(feed).getByText('Search Google Maps: found 18 places')).toBeInTheDocument()
+    expect(within(feed).getByText('Place 1 of 1: [PLACE NAME 1] — waiting for you')).toBeInTheDocument()
+    fireEvent.click(within(feed).getByRole('button', { name: 'Waiting for your approval' }))
+    expect(document.activeElement).toHaveAttribute('id', 'approval-card')
+  })
+
+  it('ticks the elapsed time in the header while running', async () => {
+    await startTestFromForm()
+    await playSampleRunSteps(1)
+    expect(screen.getByText(/^Running · 0:00 · 0 of 2 steps done$/)).toBeInTheDocument()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    expect(screen.getByText(/^Running · 0:01/)).toBeInTheDocument()
+  })
+
+  it('after a failure explains the error, offers Run again and Edit steps, and marks the sidebar', async () => {
+    const rawError = 'connection: error sending request: client error (Connect): dns error: failed to lookup address information: nodename nor servname provided, or not known'
+    const failedRun: Run = { ...buildPausedRun(null), status: 'failed', pauseReasons: null, finishedAt: new Date().toISOString(), errorMessage: rawError }
+    vi.spyOn(sampleRunsBackend, 'getRun').mockResolvedValue(failedRun)
+    vi.spyOn(sampleRunsBackend, 'getRunInputs').mockResolvedValue({ keyword: 'cafe', city: 'Bandar Lampung', offer: 'catering menu' })
+    vi.spyOn(sampleRunsBackend, 'listRunEvents').mockResolvedValue(
+      [
+        { type: 'run_started' },
+        { type: 'node_started', node_id: 'for_each_place', frame: '', kind: 'iteration' },
+        { type: 'node_progress', node_id: 'for_each_place', frame: '', name: 'iteration_next', data: { index: 0, total: 1 } },
+        { type: 'node_started', node_id: 'send_whatsapp', frame: 'for_each_place[0]', kind: 'http-request' },
+        { type: 'node_failed', node_id: 'send_whatsapp', frame: 'for_each_place[0]', error: rawError, handled: false, elapsed_ms: 30 },
+        { type: 'node_failed', node_id: 'for_each_place', frame: '', error: `connection: iteration item 0 failed: ${rawError}`, handled: false },
+        { type: 'run_failed', error: `connection: iteration item 0 failed: ${rawError}` },
+      ].map((event, index) => ({ runId: 'custom-run', seq: index + 1, event, createdAt: new Date().toISOString() })),
+    )
+    const startRunSpy = vi.spyOn(sampleRunsBackend, 'startRun')
+    renderTestRunPage(`${routePaths.testRun}?runId=custom-run`)
+    await flushBackendCalls()
+
+    expect(screen.queryByRole('button', { name: 'Stop run' })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Edit steps' })).toBeInTheDocument()
+    expect(screen.getByText('Test failed')).toBeInTheDocument()
+    expect(screen.getByRole('log', { name: 'Run updates' })).toHaveTextContent('Failed at Send WhatsApp (Place 1 of 1): Could not reach the server: that address doesn\'t exist')
+
+    const sendButton = screen.getByRole('button', { name: /^Send WhatsApp/ })
+    expect(sendButton).toHaveAttribute('aria-expanded', 'true')
+    const sendRow = sendButton.closest('li') as HTMLElement
+    expect(within(sendRow).getByText("Could not reach the server: that address doesn't exist")).toBeInTheDocument()
+    expect(within(sendRow).getByText('Technical details')).toBeInTheDocument()
+    expect(within(sendRow).getByRole('link', { name: 'Ask the builder to fix this step' })).toHaveAttribute('href', '/agents/maps-leads/steps')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run again' }))
+    await flushBackendCalls()
+    expect(startRunSpy).toHaveBeenCalledWith('maps-leads', 'test', { keyword: 'cafe', city: 'Bandar Lampung', offer: 'catering menu' })
   })
 
   it('shows the paused step with the prompt, fields and actions from the pause', async () => {

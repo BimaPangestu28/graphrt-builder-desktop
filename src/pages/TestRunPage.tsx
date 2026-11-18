@@ -6,18 +6,23 @@ import type { ApprovalAnswer, PendingApproval, RunInputs } from '@/api/runReview
 import { abortRun, startRun } from '@/api/runs'
 import type { Agent, FlowSummary, Run } from '@/api/types'
 import { AppShell } from '@/components/layout'
+import { joinClassNames } from '@/components/ui'
+import { useNow } from '@/hooks/useNow'
 import { toError, useLoadedData } from '@/hooks/useRunData'
 import { useRunLive } from '@/hooks/useRunLive'
 import { agentPath, runReviewPath, sampleAgentId } from '@/routes'
 import { ApprovalCard } from '@/pages/agent-run/ApprovalCard'
 import { RunErrorNotice } from '@/pages/agent-run/RunErrorNotice'
 import { RunInputsForm } from '@/pages/agent-run/RunInputsForm'
+import { RunNarrationFeed } from '@/pages/agent-run/RunNarrationFeed'
 import { BuildChatPanel, BuilderReply, RunPanel, RunTitleRow, RunWorkspace, UserChatBubble, runHeaderActionClassNames } from '@/pages/agent-run/RunWorkspace'
 import { StatusPill } from '@/pages/agent-run/StatusPill'
 import { StepProgressList } from '@/pages/agent-run/StepProgressList'
 import { buildRunSidebarAgents, useRunAgent } from '@/pages/agent-run/runAgentSidebar'
 import { summarizeRunInputs } from '@/pages/agent-run/runInputValues'
-import { buildStepProgress, formatElapsedSince } from '@/pages/agent-run/runProgress'
+import { buildRunNarration } from '@/pages/agent-run/runNarration'
+import { buildRunStepViews } from '@/pages/agent-run/runSteps'
+import { buildRunHeaderMeta, buildSidebarRunStatus, isRunActive } from '@/pages/agent-run/testRunHeader'
 import { toRunStepTemplate, useAgentFlowSummary } from '@/pages/agent-run/useRunStepTemplate'
 
 function RunStatusPill({ run }: { run: Run | null }) {
@@ -28,12 +33,40 @@ function RunStatusPill({ run }: { run: Run | null }) {
   return <StatusPill tone="neutral" size="title">Running</StatusPill>
 }
 
-function buildBuilderReply(run: Run | null): string {
-  if (run?.status === 'paused') return 'The test is waiting for your answer on the right'
+/** What the chat says before the first update arrives. */
+function buildNarrationPlaceholder(run: Run | null): string {
   if (run?.status === 'failed') return `The test stopped: ${run.errorMessage ?? 'something went wrong'}`
   if (run?.status === 'aborted') return 'You stopped this test'
-  if (run?.status === 'succeeded') return 'The test finished'
-  return 'Running the test. Progress shows on the right'
+  return 'Starting the test…'
+}
+
+/** Scrolls to the approval card and moves focus there. */
+function focusApprovalCard(approvalCard: HTMLElement | null): void {
+  if (!approvalCard) return
+  const prefersReducedMotion = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  approvalCard.scrollIntoView?.({ behavior: prefersReducedMotion ? 'auto' : 'smooth', block: 'center' })
+  approvalCard.focus({ preventScroll: true })
+}
+
+interface FinishedRunActionsProps {
+  agentId: string
+  runInputs: RunInputs | null
+}
+
+/** "Run again" (same inputs) and "Edit steps", once the test ended without success. */
+function FinishedRunActions({ agentId, runInputs }: FinishedRunActionsProps) {
+  const { startTest, startError, isStarting } = useStartTestRun(agentId)
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {startError && <span className="text-[13px] text-danger">{startError.message}</span>}
+      <button type="button" disabled={isStarting} onClick={() => void startTest(runInputs ?? {})} className={joinClassNames(runHeaderActionClassNames, 'disabled:cursor-not-allowed disabled:opacity-50')}>
+        {isStarting ? 'Starting…' : 'Run again'}
+      </button>
+      <Link to={agentPath('builder', agentId)} className={runHeaderActionClassNames}>
+        Edit steps
+      </Link>
+    </div>
+  )
 }
 
 /** "Test with cafe · Bandar Lampung" from the run's inputs; a plain request without them. */
@@ -93,6 +126,11 @@ function TestRunScreen({ agentId, agent, runId, flowSummary }: TestRunScreenProp
   const firstApproval = pendingApprovals[0]
   const visibleError = liveError ?? answerError ?? stopError
   const stepTemplate = toRunStepTemplate(flowSummary)
+  const isActive = isRunActive(run)
+  const now = useNow(isActive)
+  const steps = buildRunStepViews(stepTemplate, events)
+  const narrationLines = buildRunNarration(stepTemplate, events)
+  const approvalCardRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (run?.status !== 'succeeded') return
@@ -112,32 +150,37 @@ function TestRunScreen({ agentId, agent, runId, flowSummary }: TestRunScreenProp
     navigate(agentPath('builder', agentId))
   }
 
-  const isPaused = run?.status === 'paused'
   return (
-    <AppShell agents={buildRunSidebarAgents(agentId, agent, { status: isPaused ? 'Testing · waiting for you' : 'Testing', statusTone: isPaused ? 'amber' : 'brand' })}>
+    <AppShell agents={buildRunSidebarAgents(agentId, agent, buildSidebarRunStatus(run))}>
       <RunWorkspace>
         <BuildChatPanel>
           <UserChatBubble>{describeTestRequest(runInputs)}</UserChatBubble>
-          <BuilderReply>{buildBuilderReply(run)}</BuilderReply>
+          <RunNarrationFeed lines={narrationLines} placeholder={buildNarrationPlaceholder(run)} onOpenApproval={() => focusApprovalCard(approvalCardRef.current)} />
         </BuildChatPanel>
 
         <RunPanel
           headerAction={
-            <button type="button" onClick={() => void stopTest()} className={runHeaderActionClassNames}>
-              Stop run
-            </button>
+            isActive ? (
+              <button type="button" onClick={() => void stopTest()} className={runHeaderActionClassNames}>
+                Stop run
+              </button>
+            ) : (
+              <FinishedRunActions agentId={agentId} runInputs={runInputs} />
+            )
           }
         >
-          <RunTitleRow meta={run ? `Started ${formatElapsedSince(run.startedAt)}` : 'Starting the test…'} status={<RunStatusPill run={run} />} />
+          <RunTitleRow meta={buildRunHeaderMeta(run, steps, now)} status={<RunStatusPill run={run} />} />
           {visibleError && <RunErrorNotice title="Something went wrong with this test" error={visibleError} />}
-          <StepProgressList steps={buildStepProgress(stepTemplate, events)} />
+          <StepProgressList steps={steps} now={now} fixPath={agentPath('builder', agentId)} />
           {firstApproval && (
-            <ApprovalCard
-              key={`${runId}-${firstApproval.resumeKey}`}
-              approval={firstApproval}
-              isSubmitting={isSubmitting}
-              onAnswer={(answer) => void answerApproval(firstApproval, answer)}
-            />
+            <div ref={approvalCardRef} id="approval-card" tabIndex={-1} className="rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-amber">
+              <ApprovalCard
+                key={`${runId}-${firstApproval.resumeKey}`}
+                approval={firstApproval}
+                isSubmitting={isSubmitting}
+                onAnswer={(answer) => void answerApproval(firstApproval, answer)}
+              />
+            </div>
           )}
           {pendingApprovals.length > 1 && <MoreQuestionsNotice runId={runId} count={pendingApprovals.length - 1} />}
         </RunPanel>
@@ -217,7 +260,7 @@ function TestSetupScreen({ agentId, agent, flowSummary, flowSummaryError, isFlow
           ) : (
             !flowSummaryError && <p className="m-0 text-body">Loading the agent's inputs…</p>
           )}
-          {stepTemplate.length > 0 && <StepProgressList steps={buildStepProgress(stepTemplate, [])} />}
+          {stepTemplate.length > 0 && <StepProgressList steps={buildRunStepViews(stepTemplate, [])} />}
         </RunPanel>
       </RunWorkspace>
     </AppShell>
