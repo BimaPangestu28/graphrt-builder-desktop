@@ -6,10 +6,28 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+# A new push to the same branch or PR cancels the run it supersedes (never on main).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  version:
+    name: version consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: scripts/check-version.sh
+
   frontend:
     name: typecheck + test + build
     runs-on: ubuntu-latest
@@ -26,10 +44,13 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      # Reused by the clippy job: tauri::generate_context! embeds dist/ at compile time.
       - uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist
+          if-no-files-found: error
+          retention-days: 1
 
   rust:
     name: fmt + clippy
@@ -42,8 +63,9 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: src-tauri -> target
       # tauri::generate_context! embeds the built frontend, so clippy needs dist/
+      # (built once by the frontend job instead of installing Node here).
       - uses: actions/download-artifact@v4
         with:
           name: dist
@@ -76,6 +98,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: src-tauri -> target
       - run: pnpm install --frozen-lockfile
       - run: pnpm tauri build --no-bundle
