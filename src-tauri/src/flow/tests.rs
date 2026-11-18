@@ -98,7 +98,7 @@ fn approval_loop_titles_details_and_approval() {
     let summary = summarize_flow(APPROVAL_LOOP).unwrap();
     let find = find_step(&summary, "find_cafes");
     assert_eq!(find.title, "Find cafes on Google Maps");
-    assert_eq!(find.detail, "GET example.com");
+    assert_eq!(find.detail, "GET maps.googleapis.com");
     let each = find_step(&summary, "each_cafe");
     assert_eq!(each.title, "For each cafe");
     assert_eq!(each.detail, "over find_cafes.json.results");
@@ -111,7 +111,7 @@ fn approval_loop_titles_details_and_approval() {
     assert!(approve.detail.starts_with("Send this message to"), "{}", approve.detail);
     assert!(approve.detail.chars().count() <= 80);
     let send = find_step(&summary, "send_message");
-    assert_eq!(send.detail, "POST example.com");
+    assert_eq!(send.detail, "POST graph.facebook.com");
     assert!(!send.needs_approval);
     let approvals = summary.steps.iter().filter(|step| step.needs_approval).count();
     assert_eq!(approvals, 1);
@@ -252,8 +252,10 @@ fn approval_before_a_loop_covers_sending_steps_inside_it() {
 fn approval_loop_declares_its_secrets() {
     let summary = summarize_flow(APPROVAL_LOOP).unwrap();
     let names: Vec<&str> = summary.env.iter().map(|variable| variable.name.as_str()).collect();
-    assert_eq!(names, ["MAPS_API_KEY", "WHATSAPP_TOKEN"]);
-    assert!(summary.env.iter().all(|variable| variable.is_secret && !variable.has_default));
+    assert_eq!(names, ["MAPS_API_KEY", "WHATSAPP_TOKEN", "WHATSAPP_PHONE_NUMBER_ID"]);
+    let secret_flags: Vec<bool> = summary.env.iter().map(|variable| variable.is_secret).collect();
+    assert_eq!(secret_flags, [true, true, false]);
+    assert!(summary.env.iter().all(|variable| !variable.has_default));
 }
 
 #[test]
@@ -278,4 +280,17 @@ fn references_read_as_plain_words_in_step_details() {
     let summary = summarize_flow(APPROVAL_LOOP).unwrap();
     let approval = find_step(&summary, "approve_message");
     assert!(!approval.detail.contains("{{#"), "{}", approval.detail);
+}
+
+#[test]
+fn http_steps_calling_placeholder_addresses_are_found() {
+    assert!(find_placeholder_http_steps(APPROVAL_LOOP).unwrap().is_empty());
+    let with_placeholder = APPROVAL_LOOP.replace(
+        "https://graph.facebook.com/v21.0/{{#env.WHATSAPP_PHONE_NUMBER_ID#}}/messages",
+        "https://api.example.com/send-promotion",
+    );
+    assert_eq!(
+        find_placeholder_http_steps(&with_placeholder).unwrap(),
+        vec!["Send the WhatsApp message (api.example.com)".to_owned()]
+    );
 }

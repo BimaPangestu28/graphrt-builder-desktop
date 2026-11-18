@@ -3,6 +3,7 @@
 //! for the builder (screen 04) and run views (06, 07, 20).
 
 mod approval;
+mod placeholders;
 mod summary;
 
 use serde::{Deserialize, Serialize};
@@ -149,6 +150,16 @@ pub fn summarize_flow(flow_yaml: &str) -> AppResult<FlowSummary> {
 pub fn find_unapproved_sending_steps(flow_yaml: &str) -> AppResult<Vec<String>> {
     let graph = compile_flow(flow_yaml)?;
     Ok(approval::unapproved_sending_steps(&graph))
+}
+
+/// HTTP steps whose URL points at a placeholder address such as `api.example.com`,
+/// as "<step title> (<host>)". Such a run can only fail.
+///
+/// # Errors
+/// Same as [`compile_flow`]: the document is compiled first.
+pub fn find_placeholder_http_steps(flow_yaml: &str) -> AppResult<Vec<String>> {
+    let graph = compile_flow(flow_yaml)?;
+    Ok(placeholders::placeholder_http_steps(&graph))
 }
 
 /// The workflow format cheat-sheet the agent builder includes in its prompt.

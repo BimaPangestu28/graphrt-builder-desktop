@@ -291,6 +291,17 @@ fn validate_draft(flow_yaml: &str, builder: &BuilderModel) -> Result<FlowSummary
             builder.choice.name
         ));
     }
+    // Placeholder hosts (copied from examples) can only fail at run time.
+    let placeholders = flow::find_placeholder_http_steps(flow_yaml).map_err(|error| error.to_string())?;
+    if !placeholders.is_empty() {
+        return Err(format!(
+            "these steps call placeholder addresses that do not exist: {}. Use the real API of the service, or a \
+             plugin step if an installed plugin covers it; if neither is available, read the address from an \
+             `env` value (e.g. `{{{{#env.SEND_URL#}}}}`) and say in your opening sentence which service or plugin \
+             the user should connect",
+            placeholders.join(", ")
+        ));
+    }
     // The app promises to ask before anything is sent, so a draft that can send
     // without stopping at an approval goes back to the model.
     let unapproved = flow::find_unapproved_sending_steps(flow_yaml).map_err(|error| error.to_string())?;
