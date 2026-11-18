@@ -2,6 +2,7 @@
 //! the node registry the desktop enables, validation, and a step summary
 //! for the builder (screen 04) and run views (06, 07, 20).
 
+mod approval;
 mod summary;
 
 use serde::{Deserialize, Serialize};
@@ -81,6 +82,17 @@ pub fn compile_flow(flow_yaml: &str) -> AppResult<graphrt_core::Graph> {
 pub fn summarize_flow(flow_yaml: &str) -> AppResult<FlowSummary> {
     let graph = compile_flow(flow_yaml)?;
     Ok(summary::summarize_graph(&graph))
+}
+
+/// Titles of steps that send data out (HTTP POST/PUT/PATCH/DELETE) on a path
+/// that does not first stop at a `human-input` approval. Empty means the flow
+/// keeps the promise "it asks you before anything is sent".
+///
+/// # Errors
+/// Same as [`compile_flow`]: the document is compiled first.
+pub fn find_unapproved_sending_steps(flow_yaml: &str) -> AppResult<Vec<String>> {
+    let graph = compile_flow(flow_yaml)?;
+    Ok(approval::unapproved_sending_steps(&graph))
 }
 
 /// The workflow format cheat-sheet the agent builder includes in its prompt.

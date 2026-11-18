@@ -298,3 +298,34 @@ async fn missing_credentials_are_reported() {
     let revise_result = revise_agent(&db, &credentials, &agent.id, "Change it", &|_| {}).await;
     assert!(matches!(revise_result, Err(AppError::MissingCredentials(_))), "{revise_result:?}");
 }
+
+/// Like the cafe fixture but the message is sent without asking first.
+fn approval_loop_without_approval() -> String {
+    APPROVAL_LOOP
+        .replace("    - { source: draft_message, target: approve_message }\n", "    - { source: draft_message, target: send_message }\n")
+        .replace("    - { source: approve_message, target: send_message, handle: send }\n", "")
+        .replace(
+            "    - id: approve_message\n      type: human-input\n      parent: each_cafe\n      prompt: \"Send this message to {{#each_cafe.item.name#}}?\\n\\n{{#draft_message.text#}}\"\n      form:\n        fields:\n          - { name: note, label: Note, type: text, required: false }\n      actions:\n        - { id: send, title: Send }\n        - { id: skip, title: Skip }\n\n",
+            "",
+        )
+}
+
+#[tokio::test]
+async fn draft_that_sends_without_approval_is_sent_back_for_repair() {
+    let unapproved_draft = approval_loop_without_approval();
+    assert!(!unapproved_draft.contains("human-input"), "fixture text changed; update this test");
+    let db = test_database();
+    let (mock, builder) =
+        mock_builder(&[fenced_reply("Cafe offers", &unapproved_draft), fenced_reply("Cafe offers", APPROVAL_LOOP)]);
+    let progress = ProgressLog::default();
+
+    let agent = build_agent_with_model(&db, &builder, request(CAFE_REQUEST, None), &|update| progress.record(update))
+        .await
+        .unwrap();
+
+    assert_eq!(agent.flow_yaml.trim(), APPROVAL_LOOP.trim());
+    let repair_text = mock.requests()[1].messages[3].text();
+    assert!(repair_text.contains("Send the WhatsApp message"), "{repair_text}");
+    assert!(repair_text.contains("human-input"), "{repair_text}");
+    assert!(progress.stages().contains(&BuildStage::Repairing));
+}

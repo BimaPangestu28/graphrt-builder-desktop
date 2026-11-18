@@ -269,6 +269,16 @@ fn validate_draft(flow_yaml: &str, builder: &BuilderModel) -> Result<FlowSummary
             builder.choice.name
         ));
     }
+    // The app promises to ask before anything is sent, so a draft that can send
+    // without stopping at an approval goes back to the model.
+    let unapproved = flow::find_unapproved_sending_steps(flow_yaml).map_err(|error| error.to_string())?;
+    if !unapproved.is_empty() {
+        return Err(format!(
+            "these steps send data without asking the user first: {}. Put a `human-input` approval step before \
+             each of them on every path (only its approve action may lead to the sending step)",
+            unapproved.join(", ")
+        ));
+    }
     Ok(summary)
 }
 

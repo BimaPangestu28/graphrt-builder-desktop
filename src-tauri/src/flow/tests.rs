@@ -178,3 +178,60 @@ fn format_guide_is_compact_and_covers_key_nodes() {
         assert!(guide.contains(needle), "missing {needle}");
     }
 }
+
+/// A small flow that posts straight after the start node.
+const DIRECT_POST: &str = r#"
+version: "1"
+name: direct-post
+graph:
+  nodes:
+    - { id: start, type: start, variables: [] }
+    - id: notify
+      type: http-request
+      title: Notify the team
+      method: post
+      url: "https://example.com/hooks/notify"
+    - { id: end, type: end, outputs: [] }
+  edges:
+    - { source: start, target: notify }
+    - { source: notify, target: end }
+"#;
+
+#[test]
+fn approval_loop_sends_only_after_approval() {
+    assert_eq!(find_unapproved_sending_steps(APPROVAL_LOOP).unwrap(), Vec::<String>::new());
+}
+
+#[test]
+fn reading_steps_need_no_approval() {
+    assert_eq!(find_unapproved_sending_steps(SIMPLE_ANSWER).unwrap(), Vec::<String>::new());
+}
+
+#[test]
+fn post_without_approval_is_reported() {
+    assert_eq!(find_unapproved_sending_steps(DIRECT_POST).unwrap(), vec!["Notify the team".to_owned()]);
+}
+
+#[test]
+fn a_bypass_around_the_approval_is_reported() {
+    let bypassed = APPROVAL_LOOP.replace(
+        "    - { source: draft_message, target: approve_message }",
+        "    - { source: draft_message, target: approve_message }\n    - { source: draft_message, target: send_message }",
+    );
+    assert_ne!(bypassed, APPROVAL_LOOP, "fixture edge text changed; update this test");
+    assert_eq!(find_unapproved_sending_steps(&bypassed).unwrap(), vec!["Send the WhatsApp message".to_owned()]);
+}
+
+#[test]
+fn approval_before_a_loop_covers_sending_steps_inside_it() {
+    let approval_moved = APPROVAL_LOOP
+        .replace("      type: human-input\n      parent: each_cafe\n", "      type: human-input\n")
+        .replace(
+            "    - { source: find_cafes, target: each_cafe }",
+            "    - { source: find_cafes, target: approve_message }\n    - { source: approve_message, target: each_cafe, handle: send }",
+        )
+        .replace("    - { source: draft_message, target: approve_message }\n", "    - { source: draft_message, target: send_message }\n")
+        .replace("    - { source: approve_message, target: send_message, handle: send }\n", "")
+        .replace("{{#each_cafe.item.name#}}?\\n\\n{{#draft_message.text#}}", "all cafes?");
+    assert_eq!(find_unapproved_sending_steps(&approval_moved).unwrap(), Vec::<String>::new());
+}
