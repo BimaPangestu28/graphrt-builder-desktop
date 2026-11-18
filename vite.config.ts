@@ -17,6 +17,8 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     css: false,
+    // Full-page tests can exceed Vitest's 5 s default when the machine is busy
+    testTimeout: 15_000,
     // Agent worktrees under .claude/ hold other copies of the repo
     exclude: [...configDefaults.exclude, '.claude/**', 'src-tauri/**'],
   },
