@@ -1,16 +1,19 @@
 import { useState } from 'react'
 import { setDefaultModel } from '@/api/credentials'
+import { useAvailableModels } from '@/hooks/useAvailableModels'
 import { useProviderStatuses } from '@/hooks/useProviderStatuses'
 import { describeError } from '@/lib/agentDisplay'
-import { describeModelChoice, listDefaultModelChoices } from '@/lib/modelChoices'
+import { buildModelOptionGroups, describeModelChoice } from '@/lib/modelChoices'
 import { ActionRow, SelectRow } from './SettingRows'
 
 /**
  * "Default AI model for new agents", stored with `setDefaultModel` (the same default the
- * Connections screen marks). Offers the recommended model of each provider with a key.
+ * Connections screen marks). Offers every chat model each connected provider reports
+ * for its key (the recommended one while loading or when the provider can't be reached).
  */
 export function DefaultModelRow() {
   const providerSetupState = useProviderStatuses()
+  const availableModelsState = useAvailableModels()
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null)
   const providerSetup = providerSetupState.data
   const title = 'Default AI model for new agents'
@@ -20,7 +23,9 @@ export function DefaultModelRow() {
     return <ActionRow title={title} description={status} action={null} />
   }
 
-  const choices = listDefaultModelChoices(providerSetup.statuses, providerSetup.defaultModel)
+  const choices = buildModelOptionGroups(providerSetup.defaultModel, providerSetup.statuses, availableModelsState.data).flatMap(
+    (group) => group.choices,
+  )
   const labels = choices.map(describeModelChoice)
 
   async function selectModel(label: string) {

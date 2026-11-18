@@ -11,6 +11,10 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
 
 ### Added
 
+- **Model picker lists every model your keys can use**: New agent, Settings and Connections ask each
+  connected provider for its chat models (OpenAI, Anthropic, Gemini, DeepSeek, and the models pulled
+  in Ollama), grouped by provider; the recommended model is shown while loading or when a provider
+  can't be reached. Keys stay in the keychain; lists are cached for ten minutes.
 - **Real data on New agent, Building, Home and the sidebar** in the desktop app: the prompt
   starts empty and the model chip shows the real default model (or links to Connections);
   templates fill in the description and kind instead of opening sample screens; Building

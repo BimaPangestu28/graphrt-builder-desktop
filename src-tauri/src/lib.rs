@@ -39,6 +39,7 @@ pub mod error;
 pub mod flow;
 pub mod knowledge;
 pub mod mcp;
+pub mod model_catalog;
 pub mod node_runtime;
 pub mod plugins;
 pub mod problems;
@@ -131,6 +132,7 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         knowledge,
         node_runtime,
         plugins,
+        model_catalog: Arc::new(model_catalog::ModelCatalog::with_http()?),
     })
 }
 
@@ -166,6 +168,7 @@ pub fn run() {
             commands::credentials::get_default_model,
             commands::credentials::set_default_model,
             commands::credentials::set_ollama_base_url,
+            commands::credentials::list_available_models,
             commands::credentials::list_workflow_secrets,
             commands::credentials::set_workflow_secret,
             commands::credentials::delete_workflow_secret,

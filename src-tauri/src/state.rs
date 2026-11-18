@@ -24,4 +24,6 @@ pub struct AppState {
     pub node_runtime: Arc<NodeRuntime>,
     /// Installed graphrt plugins (they run on `node_runtime`).
     pub plugins: Arc<crate::plugins::PluginService>,
+    /// The chat models each connected provider offers (cached).
+    pub model_catalog: Arc<crate::model_catalog::ModelCatalog>,
 }

@@ -44,28 +44,30 @@ describe('NewAgentPage', () => {
     expect(screen.getByRole('button', { name: 'Build agent' })).toBeDisabled()
     expect(screen.getByRole('button', { name: /Customer chatbot/ })).toBeInTheDocument()
     expect(screen.getByText('Runs on this Mac')).toBeInTheDocument()
-    expect(await screen.findByRole('combobox', { name: 'Model for new agents' })).toHaveDisplayValue('gpt-4o-mini · OpenAI')
+    expect(await screen.findByRole('combobox', { name: 'Model for new agents' })).toHaveDisplayValue('gpt-4o-mini')
   })
 
   it('shows the real default model on the chip', async () => {
     vi.spyOn(sampleCredentialsBackend, 'getDefaultModel').mockResolvedValue({ provider: 'deepseek', name: 'deepseek-chat' })
     renderNewAgentPage()
     expect(screen.getByText('Checking model…')).toBeInTheDocument()
-    expect(await screen.findByRole('combobox', { name: 'Model for new agents' })).toHaveDisplayValue('deepseek-chat · DeepSeek')
+    expect(await screen.findByRole('combobox', { name: 'Model for new agents' })).toHaveDisplayValue('deepseek-chat')
   })
 
-  it('lets the user switch the model to another provider with a key', async () => {
+  it('lists every model of each connected provider and switches between them', async () => {
     await sampleCredentialsBackend.setApiKey('deepseek', 'sk-deepseek')
     await sampleCredentialsBackend.setDefaultModel({ provider: 'deepseek', name: 'deepseek-chat' })
     const setDefaultModelSpy = vi.spyOn(sampleCredentialsBackend, 'setDefaultModel')
     renderNewAgentPage()
 
     const picker = await screen.findByRole('combobox', { name: 'Model for new agents' })
-    await waitFor(() => expect(within(picker).getAllByRole('option').map((option) => option.textContent)).toEqual(['deepseek-chat · DeepSeek', 'gpt-4o-mini · OpenAI']))
-    fireEvent.change(picker, { target: { value: 'openai:gpt-4o-mini' } })
+    await waitFor(() => expect(within(picker).getAllByRole('group').map((group) => group.getAttribute('label'))).toEqual(['DeepSeek', 'OpenAI', 'Ollama']))
+    const openAiGroup = within(picker).getAllByRole('group')[1]
+    expect(within(openAiGroup).getAllByRole('option').map((option) => option.textContent)).toEqual(['gpt-4.1', 'gpt-4.1-mini', 'gpt-4o', 'gpt-4o-mini', 'o3-mini'])
+    fireEvent.change(picker, { target: { value: 'openai:gpt-4.1' } })
 
-    await waitFor(() => expect(setDefaultModelSpy).toHaveBeenCalledWith({ provider: 'openai', name: 'gpt-4o-mini' }))
-    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Model for new agents' })).toHaveDisplayValue('gpt-4o-mini · OpenAI'))
+    await waitFor(() => expect(setDefaultModelSpy).toHaveBeenCalledWith({ provider: 'openai', name: 'gpt-4.1' }))
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Model for new agents' })).toHaveDisplayValue('gpt-4.1'))
   })
 
   it('links the chip to Connections when no model is connected', async () => {

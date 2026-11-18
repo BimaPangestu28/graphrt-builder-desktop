@@ -2,22 +2,24 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { listProviderStatuses, setDefaultModel } from '@/api/credentials'
 import { useAsyncData } from '@/hooks/useAsyncData'
+import { useAvailableModels } from '@/hooks/useAvailableModels'
 import { useDefaultModel } from '@/hooks/useDefaultModel'
-import { describeError, getProviderName } from '@/lib/agentDisplay'
-import { listDefaultModelChoices, modelChoiceKey } from '@/lib/modelChoices'
+import { describeError } from '@/lib/agentDisplay'
+import { buildModelOptionGroups, modelChoiceKey } from '@/lib/modelChoices'
 import { routePaths } from '@/routes'
 
 const chipClassNames = 'flex h-[30px] items-center gap-1.5 rounded-lg bg-canvas px-2.5 text-[13px] text-ink-2'
 
 /**
- * The model new agents use, shown as a chip under the prompt. It is a picker: the
- * current default plus the recommended model of every provider with a key, so adding
- * an OpenAI key makes "gpt-4o-mini" selectable here. Changing it updates the default
+ * The model new agents use, shown as a chip under the prompt. It is a picker listing,
+ * per connected provider, every chat model the provider offers for the stored key
+ * (asked from the provider; the recommended model while loading or if that fails). Changing it updates the default
  * (the same setting as Settings › Default AI model). With no provider it links to Connections.
  */
 export function ModelPickerChip() {
   const defaultModelState = useDefaultModel()
   const statusesState = useAsyncData(listProviderStatuses, [])
+  const availableModelsState = useAvailableModels()
   const [isSaving, setIsSaving] = useState(false)
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null)
   const defaultModel = defaultModelState.data
@@ -33,7 +35,8 @@ export function ModelPickerChip() {
     )
   }
 
-  const choices = listDefaultModelChoices(statusesState.data ?? [], defaultModel)
+  const groups = buildModelOptionGroups(defaultModel, statusesState.data ?? [], availableModelsState.data)
+  const choices = groups.flatMap((group) => group.choices)
 
   async function selectModel(choiceKey: string) {
     const choice = choices.find((candidate) => modelChoiceKey(candidate) === choiceKey)
@@ -60,10 +63,14 @@ export function ModelPickerChip() {
           disabled={isSaving}
           className="cursor-pointer border-0 bg-transparent text-[13px] text-ink-2 outline-none"
         >
-          {choices.map((choice) => (
-            <option key={modelChoiceKey(choice)} value={modelChoiceKey(choice)}>
-              {choice.name} · {getProviderName(choice.provider)}
-            </option>
+          {groups.map((group) => (
+            <optgroup key={group.provider} label={group.note ? `${group.label} (${group.note})` : group.label}>
+              {group.choices.map((choice) => (
+                <option key={modelChoiceKey(choice)} value={modelChoiceKey(choice)}>
+                  {choice.name}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
       </label>
