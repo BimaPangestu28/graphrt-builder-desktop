@@ -27,6 +27,7 @@ pub mod desktop;
 pub mod engine;
 pub mod error;
 pub mod flow;
+pub mod node_runtime;
 pub mod knowledge;
 pub mod run_summary;
 pub mod scheduler;
