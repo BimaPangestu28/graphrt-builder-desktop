@@ -11,6 +11,9 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
 
 ### Added
 
+- **The builder streams its work**: while an agent is drafted or changed, Building and the builder chat
+  show the model's explanation as it writes, the step titles as they appear and a live token count.
+  Step details show references in plain words (‹name›) instead of template syntax.
 - **Model picker lists every model your keys can use**: New agent, Settings and Connections ask each
   connected provider for its chat models (OpenAI, Anthropic, Gemini, DeepSeek, and the models pulled
   in Ollama), grouped by provider; the recommended model is shown while loading or when a provider
@@ -113,6 +116,9 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
 - The app opens on Welcome until a model provider is set up, and on Home afterwards.
 
 ### Changed
+
+- Fixed: the Steps/Source tabs on test runs, Close on Connect WhatsApp and the scheduler's New trigger
+  opened the sample agent ("agent maps-leads not found"); they now use the agent you are on.
 
 - Agent screens are addressed by agent id (`/agents/<id>/steps`, `/test`, `/schedule`...).
 - Welcome and Connections save real provider keys; Home and the sidebar list real agents.
