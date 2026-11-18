@@ -6,6 +6,8 @@
 //! a plugin its own environment, so before adding each manifest to the host
 //! this module rewrites the in-memory copy:
 //!
+//! - `"command": "node"` becomes the bundled Node's absolute path
+//!   (`NodeRuntime::node_executable()`), since `add` does not re-validate;
 //! - the fixed `env` map gets `NodeRuntime::plugin_process_env()` (bundled
 //!   Node on `PATH`, the Playwright browser cache) and, for trusted plugins
 //!   only, the requested variables stored in the keychain;
@@ -118,6 +120,8 @@ pub(crate) struct HostInputs<'a> {
     pub credentials: &'a CredentialStore,
     /// From `NodeRuntime::plugin_process_env()`.
     pub process_env: &'a [(String, String)],
+    /// From `NodeRuntime::node_executable()`: replaces `"command": "node"`.
+    pub node_executable: Option<&'a Path>,
     /// The built-in registry plugin kinds must not collide with.
     pub base_registry: &'a graphrt_core::Registry,
     /// `<app data>/plugin-data`: per-plugin folders for requested `*_PROFILE_DIR` variables.
@@ -278,6 +282,9 @@ fn failed_state(dir: &Path, message: String) -> PluginState {
     }
 }
 
+/// The manifest command that means "the bundled Node".
+const NODE_COMMAND: &str = "node";
+
 /// Requested variables ending in this get a default folder under `plugin-data`.
 const PROFILE_DIR_SUFFIX: &str = "_PROFILE_DIR";
 
@@ -291,6 +298,12 @@ fn prepare_for_host(mut manifest: LoadedManifest, trusted: bool, inputs: &HostIn
         )));
     };
     process.inherit_env = false;
+    // A Finder-launched app has a minimal PATH; run the bundled Node by its absolute path.
+    if process.command == NODE_COMMAND {
+        if let Some(node_executable) = inputs.node_executable {
+            process.command = node_executable.to_string_lossy().into_owned();
+        }
+    }
     for (variable, value) in inputs.process_env {
         process.env.insert(variable.clone(), value.clone());
     }

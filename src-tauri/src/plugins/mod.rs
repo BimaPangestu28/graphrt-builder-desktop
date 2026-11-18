@@ -174,12 +174,20 @@ impl PluginService {
         };
         let base_registry = crate::flow::builtin_node_registry();
         let process_env = self.node_runtime.plugin_process_env();
+        let node_executable = match self.node_runtime.node_executable() {
+            Ok(path) => Some(path),
+            Err(error) => {
+                log::warn!("plugins will look for `node` on PATH: {error}");
+                None
+            }
+        };
         let inputs = HostInputs {
             trusted: &trusted,
             credentials: &self.credentials,
             process_env: &process_env,
             base_registry: &base_registry,
             plugin_data_dir: &self.plugin_data_dir,
+            node_executable: node_executable.as_deref(),
         };
         let snapshot = Arc::new(build_snapshot(&self.plugins_dir, &inputs));
         for plugin in &snapshot.plugins {
@@ -448,14 +456,6 @@ impl PluginService {
 
     pub fn browser_runtime_status(&self) -> BrowserRuntimeStatus {
         self.node_runtime.browser_runtime_status()
-    }
-
-    /// Downloads the browser runtime (delegates to [`NodeRuntime`]).
-    ///
-    /// # Errors
-    /// Whatever the Node runtime reports.
-    pub async fn install_browser_runtime(&self) -> AppResult<()> {
-        self.node_runtime.install_browser_runtime().await
     }
 
     fn require_installed(&self, name: &str) -> AppResult<()> {

@@ -59,15 +59,10 @@ pub async fn delete_plugin_config(
     state.plugins.delete_config(name.trim(), variable.trim()).await
 }
 
+/// Whether Chromium is installed (`install_browser_runtime` lives in `commands::node_runtime`).
 #[tauri::command]
 pub fn browser_runtime_status(state: State<'_, AppState>) -> BrowserRuntimeStatus {
     state.plugins.browser_runtime_status()
-}
-
-/// Progress arrives as `node-runtime-event` (see `node_runtime`).
-#[tauri::command]
-pub async fn install_browser_runtime(state: State<'_, AppState>) -> AppResult<()> {
-    state.plugins.install_browser_runtime().await
 }
 
 /// Runs one node kind a trusted plugin declares (e.g. `whatsapp-web.login`).

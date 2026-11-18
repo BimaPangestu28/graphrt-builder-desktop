@@ -6,8 +6,8 @@
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "pnpm dev",
-    "beforeBuildCommand": "pnpm build"
+    "beforeDevCommand": "node scripts/check-node-sidecar.mjs && pnpm dev",
+    "beforeBuildCommand": "node scripts/check-node-sidecar.mjs && pnpm build"
   },
   "app": {
     "windows": [
@@ -37,6 +37,10 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "externalBin": ["binaries/node"],
+    "resources": {
+      "licenses/node-LICENSE.txt": "licenses/node-LICENSE.txt"
+    },
     "category": "DeveloperTool",
     "shortDescription": "Build and run automation agents on your Mac"
   }

@@ -14,6 +14,7 @@
 //! - [`agent_steps`]: agents used as steps and team members (the `agents` tool provider)
 //! - [`chains`]: starting the next agent of a chain when a run finishes
 //! - [`knowledge`]: knowledge bases (graphrt-rag) agents can search
+//! - [`node_runtime`]: the bundled Node.js plugins run on and Playwright's browser
 //! - [`plugins`]: graphrt plugins from the catalog (node kinds and tools for every run)
 //! - [`desktop`]: menu bar icon, notifications, keep running when closed, launch at login
 //! - [`commands`]: the Tauri commands the frontend calls
@@ -85,17 +86,31 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         data_dir.join(knowledge::KNOWLEDGE_DIR_NAME),
         Arc::new(knowledge::events::TauriKnowledgeEventSink::new(app.handle().clone())),
     ));
+    let node_runtime = Arc::new(
+        node_runtime::NodeRuntime::new(data_dir.clone())
+            .with_event_sink(Arc::new(node_runtime::TauriNodeRuntimeEventSink::new(app.handle().clone()))),
+    );
     let plugins = Arc::new(plugins::PluginService::new(plugins::PluginServiceConfig {
         app_data_dir: data_dir.clone(),
         catalog_url: plugins::DEFAULT_CATALOG_URL.to_owned(),
         db: db.clone(),
         credentials: credentials.clone(),
-        node_runtime: Arc::new(node_runtime::NodeRuntime::new(data_dir.clone())),
+        node_runtime: node_runtime.clone(),
         downloader: Arc::new(plugins::download::HttpsDownloader::new()?),
         events: Arc::new(plugins::events::TauriPluginEventSink::new(app.handle().clone())),
     }));
     plugins.activate();
-    Ok(AppState { db, credentials, runs, scheduler, conversations, chains: chain_runner, knowledge, plugins })
+    Ok(AppState {
+        db,
+        credentials,
+        runs,
+        scheduler,
+        conversations,
+        chains: chain_runner,
+        knowledge,
+        node_runtime,
+        plugins,
+    })
 }
 
 /// Builds and runs the Tauri application.
@@ -188,6 +203,8 @@ pub fn run() {
             commands::app_settings::update_app_settings,
             commands::app_settings::export_agents,
             commands::app_settings::delete_all_data,
+            commands::node_runtime::node_runtime_info,
+            commands::node_runtime::install_browser_runtime,
             commands::plugins::list_plugin_catalog,
             commands::plugins::list_installed_plugins,
             commands::plugins::install_plugin,
@@ -197,7 +214,6 @@ pub fn run() {
             commands::plugins::set_plugin_config,
             commands::plugins::delete_plugin_config,
             commands::plugins::browser_runtime_status,
-            commands::plugins::install_browser_runtime,
             commands::plugins::run_plugin_action,
         ])
         .build(tauri::generate_context!())
