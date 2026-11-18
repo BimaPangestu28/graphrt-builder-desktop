@@ -70,6 +70,7 @@ pub fn node_registry() -> graphrt_core::Registry {
     let mut registry = graphrt_core::Registry::with_builtins();
     graphrt_llm::register(&mut registry);
     graphrt_http::register(&mut registry);
+    graphrt_rag::register(&mut registry);
     registry
 }
 

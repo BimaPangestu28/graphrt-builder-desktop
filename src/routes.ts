@@ -63,3 +63,19 @@ export function agentPath(routeKey: AgentRouteKey, agentId: string, query?: Reco
   const queryString = query ? new URLSearchParams(query).toString() : ''
   return queryString ? `${path}?${queryString}` : path
 }
+
+/** Knowledge detail (18) for any knowledge base; `routePaths.knowledgeDetail` is the sample one. */
+export const knowledgeDetailPattern = '/knowledge/:knowledgeBaseId'
+
+/** Knowledge base id used by the sample data (browser preview, tests). */
+export const sampleKnowledgeBaseId = 'menu-and-prices'
+
+/**
+ * Builds the URL of a knowledge base's detail screen.
+ *
+ * @example
+ * knowledgeDetailPath('kb_123') // "/knowledge/kb_123"
+ */
+export function knowledgeDetailPath(knowledgeBaseId: string): string {
+  return knowledgeDetailPattern.replace(':knowledgeBaseId', encodeURIComponent(knowledgeBaseId))
+}

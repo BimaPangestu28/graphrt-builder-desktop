@@ -42,6 +42,12 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
   condition and a failure policy per link. Chains are activated or paused, can be tested
   from their first agent, and never run an agent twice in one pass.
 - graphrt is used as a git dependency pinned to a commit until its crates are published.
+- **Knowledge bases**: add files (PDF, Word, PowerPoint, Excel, CSV, Markdown, text,
+  HTML, EPUB), whole folders or website links; they are indexed on this Mac in the
+  background with live status, re-synced without re-reading unchanged files, and
+  searchable from the Knowledge screen. Works without any API key (local embeddings
+  plus keyword search); uses OpenAI embeddings when an OpenAI key is set. Agents
+  search them with graphrt's `knowledge-retrieval` step, by knowledge base id or name.
 
 ### Changed
 
@@ -50,7 +56,7 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
 
 ### Known limitations
 
-- Inbox, Knowledge, Chain, Team and Connect WhatsApp still show sample data.
+- Inbox, Chain, Team and Connect WhatsApp still show sample data.
 - Run result and Home statistics fall back to sample content until workflows agree on
   output names.
 

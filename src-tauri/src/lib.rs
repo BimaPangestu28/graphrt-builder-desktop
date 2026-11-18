@@ -13,6 +13,7 @@
 //! - [`conversations`]: chatbot conversations, the bot's replies and hand-offs
 //! - [`agent_steps`]: agents used as steps and team members (the `agents` tool provider)
 //! - [`chains`]: starting the next agent of a chain when a run finishes
+//! - [`knowledge`]: knowledge bases (graphrt-rag) agents can search
 //! - [`commands`]: the Tauri commands the frontend calls
 
 pub mod agent_builder;
@@ -24,6 +25,7 @@ pub mod credentials;
 pub mod engine;
 pub mod error;
 pub mod flow;
+pub mod knowledge;
 pub mod run_summary;
 pub mod scheduler;
 pub mod state;
@@ -66,7 +68,13 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
     let conversation_sink = Arc::new(conversations::tauri_sink::TauriConversationEventSink::new(app.handle().clone()));
     let conversations =
         Arc::new(conversations::ConversationManager::new(db.clone(), credentials.clone(), conversation_sink));
-    Ok(AppState { db, credentials, runs, scheduler, conversations, chains: chain_runner })
+    let knowledge = Arc::new(knowledge::KnowledgeService::new(
+        db.clone(),
+        credentials.clone(),
+        data_dir.join(knowledge::KNOWLEDGE_DIR_NAME),
+        Arc::new(knowledge::events::TauriKnowledgeEventSink::new(app.handle().clone())),
+    ));
+    Ok(AppState { db, credentials, runs, scheduler, conversations, chains: chain_runner, knowledge })
 }
 
 /// Builds and runs the Tauri application.
@@ -76,6 +84,7 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(tauri_plugin_log::Builder::default().level(log::LevelFilter::Info).build())?;
@@ -142,6 +151,16 @@ pub fn run() {
             commands::agent_tools::get_team,
             commands::agent_tools::add_agent_step,
             commands::agent_tools::add_team_member,
+            commands::knowledge::list_knowledge_bases,
+            commands::knowledge::get_knowledge_base,
+            commands::knowledge::create_knowledge_base,
+            commands::knowledge::rename_knowledge_base,
+            commands::knowledge::delete_knowledge_base,
+            commands::knowledge::add_knowledge_source,
+            commands::knowledge::remove_knowledge_source,
+            commands::knowledge::sync_knowledge_base,
+            commands::knowledge::update_knowledge_settings,
+            commands::knowledge::search_knowledge,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start the graphrt desktop app");

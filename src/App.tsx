@@ -1,5 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
-import { agentRoutePatterns, routePaths } from './routes'
+import { agentRoutePatterns, knowledgeDetailPattern, routePaths } from './routes'
 import { ScreenIndexPage } from './pages/ScreenIndexPage'
 import { WelcomePage } from './pages/WelcomePage'
 import { NewAgentPage } from './pages/NewAgentPage'
@@ -46,7 +46,7 @@ const screenRoutes = [
   { path: routePaths.inbox, element: <InboxPage /> },
   { path: routePaths.chatDetail, element: <ChatDetailPage /> },
   { path: routePaths.knowledge, element: <KnowledgePage /> },
-  { path: routePaths.knowledgeDetail, element: <KnowledgeDetailPage /> },
+  { path: knowledgeDetailPattern, element: <KnowledgeDetailPage /> },
   { path: routePaths.batchApproval, element: <BatchApprovalPage /> },
   { path: routePaths.runs, element: <RunsPage /> },
   { path: routePaths.connections, element: <ConnectionsPage /> },

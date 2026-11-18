@@ -135,6 +135,49 @@ const MIGRATIONS: &[&str] = &[
     );
     CREATE INDEX chain_steps_by_agent ON chain_steps (agent_id);
     "#,
+    // Knowledge bases (see `knowledge::records`). Passages live in one graphrt-rag
+    // SQLite file per knowledge base (`store_path`); these tables hold what the UI
+    // shows and what a re-sync compares against.
+    r#"
+    CREATE TABLE knowledge_bases (
+        id                  TEXT PRIMARY KEY NOT NULL,
+        name                TEXT NOT NULL CHECK (length(trim(name)) > 0),
+        description         TEXT NOT NULL,
+        store_path          TEXT NOT NULL,
+        embedding           TEXT NOT NULL CHECK (embedding IN ('local', 'openai')),
+        passages_per_answer INTEGER NOT NULL CHECK (passages_per_answer BETWEEN 1 AND 20),
+        min_score           REAL NOT NULL CHECK (min_score BETWEEN 0 AND 1),
+        show_sources        INTEGER NOT NULL CHECK (show_sources IN (0, 1)),
+        last_synced_at      TEXT,
+        created_at          TEXT NOT NULL,
+        updated_at          TEXT NOT NULL
+    );
+
+    CREATE TABLE knowledge_sources (
+        id                TEXT PRIMARY KEY NOT NULL,
+        knowledge_base_id TEXT NOT NULL REFERENCES knowledge_bases (id) ON DELETE CASCADE,
+        kind              TEXT NOT NULL CHECK (kind IN ('file', 'folder', 'url')),
+        location          TEXT NOT NULL,
+        name              TEXT NOT NULL,
+        status            TEXT NOT NULL CHECK (status IN ('pending', 'reading', 'indexed', 'failed')),
+        status_message    TEXT,
+        document_count    INTEGER NOT NULL DEFAULT 0,
+        failed_count      INTEGER NOT NULL DEFAULT 0,
+        passage_count     INTEGER NOT NULL DEFAULT 0,
+        last_synced_at    TEXT,
+        created_at        TEXT NOT NULL,
+        UNIQUE (knowledge_base_id, location)
+    );
+    CREATE INDEX knowledge_sources_by_base ON knowledge_sources (knowledge_base_id, created_at);
+
+    CREATE TABLE knowledge_documents (
+        source_id     TEXT NOT NULL REFERENCES knowledge_sources (id) ON DELETE CASCADE,
+        document_id   TEXT NOT NULL,
+        fingerprint   TEXT NOT NULL,
+        passage_count INTEGER NOT NULL,
+        PRIMARY KEY (source_id, document_id)
+    );
+    "#,
 ];
 
 /// Applies every migration newer than the database's `user_version`.
@@ -189,6 +232,9 @@ mod tests {
                 "chains",
                 "conversation_messages",
                 "conversations",
+                "knowledge_bases",
+                "knowledge_documents",
+                "knowledge_sources",
                 "run_events",
                 "runs",
                 "settings",

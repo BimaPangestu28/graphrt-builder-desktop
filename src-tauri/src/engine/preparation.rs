@@ -41,6 +41,8 @@ pub(super) fn build_engine(
     let http_client = graphrt_http::HttpClient::new(graphrt_http::EgressPolicy::default())
         .map_err(|error| AppError::Internal(format!("could not set up the HTTP client: {error}")))?;
     let services = Services::new().with(model_source.build_registry(credentials, db)?).with(http_client).with(tools);
+    // Knowledge bases for the `knowledge-retrieval` node (stores open on first search).
+    let services = services.with(crate::knowledge::knowledge_service_for_runs(db, credentials)?);
     Ok(Engine::new(Arc::new(graph)).with_services(services).with_limits(run_limits()))
 }
 

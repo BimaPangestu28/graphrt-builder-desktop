@@ -8,6 +8,7 @@ pub mod builder;
 pub mod chains;
 pub mod conversations;
 pub mod credentials;
+pub mod knowledge;
 pub mod run_summary;
 pub mod runs;
 pub mod triggers;
