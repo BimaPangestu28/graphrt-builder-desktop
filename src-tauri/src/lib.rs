@@ -14,6 +14,7 @@
 //! - [`agent_steps`]: agents used as steps and team members (the `agents` tool provider)
 //! - [`chains`]: starting the next agent of a chain when a run finishes
 //! - [`knowledge`]: knowledge bases (graphrt-rag) agents can search
+//! - [`plugins`]: graphrt plugins from the catalog (node kinds and tools for every run)
 //! - [`desktop`]: menu bar icon, notifications, keep running when closed, launch at login
 //! - [`commands`]: the Tauri commands the frontend calls
 
@@ -27,8 +28,9 @@ pub mod desktop;
 pub mod engine;
 pub mod error;
 pub mod flow;
-pub mod node_runtime;
 pub mod knowledge;
+pub mod node_runtime;
+pub mod plugins;
 pub mod run_summary;
 pub mod scheduler;
 pub mod state;
@@ -83,7 +85,17 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         data_dir.join(knowledge::KNOWLEDGE_DIR_NAME),
         Arc::new(knowledge::events::TauriKnowledgeEventSink::new(app.handle().clone())),
     ));
-    Ok(AppState { db, credentials, runs, scheduler, conversations, chains: chain_runner, knowledge })
+    let plugins = Arc::new(plugins::PluginService::new(plugins::PluginServiceConfig {
+        app_data_dir: data_dir.clone(),
+        catalog_url: plugins::DEFAULT_CATALOG_URL.to_owned(),
+        db: db.clone(),
+        credentials: credentials.clone(),
+        node_runtime: Arc::new(node_runtime::NodeRuntime::new(data_dir.clone())),
+        downloader: Arc::new(plugins::download::HttpsDownloader::new()?),
+        events: Arc::new(plugins::events::TauriPluginEventSink::new(app.handle().clone())),
+    }));
+    plugins.activate();
+    Ok(AppState { db, credentials, runs, scheduler, conversations, chains: chain_runner, knowledge, plugins })
 }
 
 /// Builds and runs the Tauri application.
@@ -176,6 +188,17 @@ pub fn run() {
             commands::app_settings::update_app_settings,
             commands::app_settings::export_agents,
             commands::app_settings::delete_all_data,
+            commands::plugins::list_plugin_catalog,
+            commands::plugins::list_installed_plugins,
+            commands::plugins::install_plugin,
+            commands::plugins::update_plugin,
+            commands::plugins::remove_plugin,
+            commands::plugins::set_plugin_trusted,
+            commands::plugins::set_plugin_config,
+            commands::plugins::delete_plugin_config,
+            commands::plugins::browser_runtime_status,
+            commands::plugins::install_browser_runtime,
+            commands::plugins::run_plugin_action,
         ])
         .build(tauri::generate_context!())
         .expect("failed to start the graphrt desktop app")

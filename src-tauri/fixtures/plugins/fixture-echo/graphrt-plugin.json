@@ -1,0 +1,39 @@
+{
+  "name": "fixture-echo",
+  "version": "1.0.0",
+  "description": "Echoes text back (test fixture for the desktop plugin host)",
+  "runtime": "process",
+  "command": "node",
+  "args": ["plugin.mjs"],
+  "checksums": { "plugin.mjs": "39504d90e2a2f93dd9ae7a49c95d235befef9339d480a7c06ba4cd6880c0f051" },
+  "permissions": { "network": false, "secrets": true, "env": ["FIXTURE_ECHO_TOKEN"] },
+  "nodes": [
+    {
+      "kind": "fixture-echo.echo",
+      "title": "Echo text",
+      "description": "Returns the text it is given.",
+      "category": "integration",
+      "config_schema": {
+        "type": "object",
+        "properties": { "text": { "type": "string" }, "access_token": { "type": "string" }, "token": { "type": "string" } },
+        "required": ["text"]
+      },
+      "outputs": [{ "name": "data", "type": "object" }]
+    },
+    {
+      "kind": "fixture-echo.send_text",
+      "title": "Send echo text",
+      "description": "Pretends to send a message.",
+      "category": "integration",
+      "config_schema": { "type": "object", "properties": { "text": { "type": "string" } } },
+      "outputs": [{ "name": "data", "type": "object" }]
+    }
+  ],
+  "tools": [
+    {
+      "name": "echo",
+      "description": "Echo a text",
+      "parameters": { "type": "object", "properties": { "text": { "type": "string" } } }
+    }
+  ]
+}

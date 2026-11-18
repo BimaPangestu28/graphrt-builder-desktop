@@ -338,3 +338,18 @@ fn system_prompt_includes_the_chatbot_guide() {
         assert!(system_prompt.contains("{{#conversation.notes#}}"));
     }
 }
+
+#[tokio::test]
+async fn system_prompt_lists_installed_plugin_steps() {
+    let fixture = crate::plugins::tests::installed_fixture().await;
+    let _lock = crate::plugins::tests::ACTIVE_SNAPSHOT_LOCK.lock().await;
+    fixture.service.activate();
+    let choice = ModelChoice { provider: ModelProvider::Openai, name: "gpt-4o-mini".into() };
+    let with_plugin = prompt::build_system_prompt(&choice);
+    crate::plugins::active::publish(None);
+    let without_plugin = prompt::build_system_prompt(&choice);
+
+    assert!(with_plugin.contains("`fixture-echo.echo` (Echo text)"), "{with_plugin}");
+    assert!(with_plugin.contains("instead of a raw `http-request`"));
+    assert!(!without_plugin.contains("fixture-echo"));
+}

@@ -65,8 +65,16 @@ pub struct FlowSummary {
 /// agent builder's model prompt.
 const WORKFLOW_FORMAT_GUIDE: &str = include_str!("format_guide.md");
 
-/// Node kinds enabled in the desktop: graphrt builtins + `graphrt-llm` + `graphrt-http`.
+/// Node kinds enabled in the desktop: graphrt builtins + `graphrt-llm` + `graphrt-http`,
+/// plus the node kinds of the installed plugins (see `crate::plugins::active`).
 pub fn node_registry() -> graphrt_core::Registry {
+    let mut registry = builtin_node_registry();
+    crate::plugins::register_plugin_nodes(&mut registry);
+    registry
+}
+
+/// [`node_registry`] without plugins: what plugin kinds must never collide with.
+pub fn builtin_node_registry() -> graphrt_core::Registry {
     let mut registry = graphrt_core::Registry::with_builtins();
     graphrt_llm::register(&mut registry);
     graphrt_http::register(&mut registry);

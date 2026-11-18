@@ -32,6 +32,8 @@ graphrt-llm = { git = "https://github.com/BimaPangestu28/graphrt", rev = "32bcd7
 graphrt-http = { git = "https://github.com/BimaPangestu28/graphrt", rev = "32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088" }
 # Knowledge bases: SQLite vector store, document extractors and OpenAI-compatible embeddings
 graphrt-rag = { git = "https://github.com/BimaPangestu28/graphrt", rev = "32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088", default-features = false, features = ["sqlite", "doc", "http"] }
+# Plugins: node kinds and tools from external processes (graphrt-plugins catalog)
+graphrt-plugin = { git = "https://github.com/BimaPangestu28/graphrt", rev = "32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088", default-features = false, features = ["process", "http", "yaml"] }
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
 futures = "0.3"
@@ -45,6 +47,13 @@ cron = "0.15"
 chrono = { version = "0.4", features = ["serde"] }
 chrono-tz = "0.10"
 uuid = { version = "1", features = ["v4"] }
+# Plugin catalog and tarball downloads (HTTPS only), checksum and safe extraction.
+# Same reqwest / rustls setup as graphrt-http (ring provider, no default features).
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+sha2 = "0.10"
+tar = { version = "0.4", default-features = false }
+flate2 = "1"
 
 # Launch at login is desktop-only
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]

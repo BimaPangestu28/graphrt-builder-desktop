@@ -60,6 +60,8 @@ pub(crate) fn agent_tool_registry(dependencies: &EngineDependencies, agent_ids_a
     let runtime = AgentToolRuntime { dependencies: dependencies.clone(), agent_ids_above, timeout: NESTED_RUN_TIMEOUT };
     let mut registry = ToolRegistry::new();
     registry.add(AGENT_TOOL_PROVIDER, Arc::new(runtime));
+    // Installed plugins' tools (provider = plugin name), next to the `agents` provider.
+    crate::plugins::add_plugin_tools(&mut registry);
     registry
 }
 

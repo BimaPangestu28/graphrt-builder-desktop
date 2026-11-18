@@ -11,6 +11,12 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
 
 ### Added
 
+- **Plugins**: install graphrt plugins from the graphrt-plugins catalog (Connections > Plugins):
+  permissions shown before install, HTTPS download checked against the catalog's sha256 and
+  extracted safely, trust toggle, plugin settings in the keychain, browser runtime install.
+  Plugin steps and tools work in every run, the builder knows the installed plugins, and the
+  Needs panel lists the plugins a flow uses. Connect WhatsApp (screen 05) now sets up either
+  the official WhatsApp Business API or a personal WhatsApp through WhatsApp Web (QR login).
 - **Local storage**: agents with their version history, runs with every event and
   paused-run snapshots, schedules and settings, in one SQLite file in the app data folder.
 - **Keychain**: model provider keys (OpenAI, Anthropic, Gemini) and workflow secrets

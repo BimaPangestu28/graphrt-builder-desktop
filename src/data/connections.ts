@@ -113,14 +113,17 @@ export interface AdvancedConnection {
   id: string
   name: string
   description: string
-  /** Either a static "Connected" status or a Manage button. */
-  kind: 'status' | 'manage'
+  /**
+   * A static "Connected" status, a Manage button (to Settings), or the plugins row whose
+   * Manage button opens the Plugins panel (its installed count comes from the backend).
+   */
+  kind: 'status' | 'manage' | 'plugins'
 }
 
 export const advancedConnections: AdvancedConnection[] = [
   { id: 'google-places', name: 'Google Places API key', description: 'Used by Maps leads to WhatsApp', kind: 'status' },
   { id: 'mcp-servers', name: 'MCP servers', description: 'Give agents tools from any MCP server · 1 added', kind: 'manage' },
-  { id: 'plugins', name: 'Plugins', description: 'Steps written in Python, TypeScript, Rust or WebAssembly · 2 installed', kind: 'manage' },
+  { id: 'plugins', name: 'Plugins', description: 'Steps written in Python, TypeScript, Rust or WebAssembly', kind: 'plugins' },
 ]
 
 export const connectionCategoryTitles: Record<ConnectionCategory, string> = {

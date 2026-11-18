@@ -19,4 +19,6 @@ pub struct AppState {
     /// Starts the next agents of chains when runs finish.
     pub chains: Arc<ChainRunner>,
     pub knowledge: Arc<KnowledgeService>,
+    /// Installed graphrt plugins (and the Node runtime they run on).
+    pub plugins: Arc<crate::plugins::PluginService>,
 }
