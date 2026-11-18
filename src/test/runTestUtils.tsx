@@ -3,9 +3,9 @@ import { useLocation } from 'react-router-dom'
 import { sampleRunStepDelayMs } from '@/api/sampleBackend/runs'
 
 /** Steps the scripted sample test run plays before it pauses for approval. */
-export const stepsUntilApproval = 10
+export const stepsUntilApproval = 11
 /** Steps the scripted run plays after "Approve and send" until it succeeds. */
-export const stepsAfterApproval = 4
+export const stepsAfterApproval = 5
 
 /** Lets pending promises (backend calls) settle inside act. */
 export async function flushBackendCalls(): Promise<void> {

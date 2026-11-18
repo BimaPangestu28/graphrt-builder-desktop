@@ -68,7 +68,7 @@ describe('useRunLive', () => {
     expect(result.current.events).toHaveLength(0)
     await advanceSteps(3)
     expect(result.current.events.map(({ event }) => event.type)).toEqual(['run_started', 'node_started', 'node_succeeded'])
-    await advanceSteps(7)
+    await advanceSteps(8)
     expect(result.current.run?.status).toBe('paused')
     expect(result.current.run?.pauseReasons?.[0].node_id).toBe('approve_message')
   })

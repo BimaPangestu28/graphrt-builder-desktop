@@ -1,114 +1,203 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { answerApprovals, getRunReview } from '@/api/runReview'
+import type { ApprovalAnswer, PendingApproval, RunReview } from '@/api/runReviewTypes'
 import { AppShell } from '@/components/layout'
-import { batchMessages as initialBatchMessages, batchRunSummary, initiallyVisibleCount, lowScoreThreshold, type BatchMessage } from '@/data/batchApproval'
-import { routePaths } from '@/routes'
-import { BatchMessageRow } from './batch-approval/BatchMessageRow'
-import { SendPlanPanel } from './batch-approval/SendPlanPanel'
+import { toError, useLoadedData, useRunEventSubscription } from '@/hooks/useRunData'
+import { agentPath, routePaths } from '@/routes'
+import { buildApprovalAnswer, findMissingRequiredFields, initialApprovalValues, type ApprovalValues } from '@/pages/agent-run/approvalForm'
+import { RunErrorNotice } from '@/pages/agent-run/RunErrorNotice'
+import { RunReviewList } from './batch-approval/RunReviewList'
+import { buildRowTitle, describeReviewedRun } from './batch-approval/runReviewModel'
 
-const secondaryButtonClassNames =
-  'h-10 cursor-pointer rounded-[9px] border border-line-strong bg-surface px-4 text-[14px] font-medium text-ink hover:bg-subtle'
-const primaryButtonClassNames =
-  'h-10 cursor-pointer rounded-[9px] border-0 bg-ink px-[18px] text-[14px] font-semibold text-white hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-50'
+/** Run events after which the review is read again. */
+const reviewRefreshEventTypes = new Set(['status_changed', 'run_paused', 'run_succeeded', 'run_failed', 'run_aborted'])
 
-/** Low-scoring leads start unselected so the user opts in to them explicitly. */
-function selectDefaultMessageIds(messages: BatchMessage[]): Set<string> {
-  return new Set(messages.filter((batchMessage) => batchMessage.score >= lowScoreThreshold).map((batchMessage) => batchMessage.id))
+/** "Answer all remaining": the action to give every next question, and the values edited on screen. */
+interface AutoAnswer {
+  actionId: string
+  valuesByResumeKey: Record<string, ApprovalValues>
+}
+
+/** Loads the review and reloads it whenever the reviewed run changes status. */
+function useRunReview(runId: string | null) {
+  const loadedReview = useLoadedData(() => getRunReview(runId), [runId])
+  const reviewedRunId = loadedReview.data?.runId ?? runId
+  useRunEventSubscription((payload) => {
+    if (payload.runId === reviewedRunId && reviewRefreshEventTypes.has(payload.event.type)) loadedReview.reload()
+  })
+  return loadedReview
 }
 
 /**
- * Screen 19 · Review a scheduled run.
- * A scheduled run of "Maps leads to WhatsApp" wrote 12 messages and waits for approval.
- * The user can tick/untick each message (or all at once), edit any message inline,
- * reveal the rest of the batch, then send the selection or skip the whole run.
+ * Answers for every question with `actionId` and each one's values (edited or default);
+ * null when a question lacks the action or misses a required field.
+ */
+function buildAutoAnswers(pending: PendingApproval[], autoAnswer: AutoAnswer): { answers: Record<string, ApprovalAnswer> } | { blockedTitle: string } {
+  const answers: Record<string, ApprovalAnswer> = {}
+  for (const approval of pending) {
+    const values = autoAnswer.valuesByResumeKey[approval.resumeKey] ?? initialApprovalValues(approval)
+    const hasAction = approval.actions.some((action) => action.id === autoAnswer.actionId)
+    if (!hasAction || findMissingRequiredFields(approval, values).length > 0) return { blockedTitle: buildRowTitle(approval) }
+    answers[approval.resumeKey] = buildApprovalAnswer(approval, autoAnswer.actionId, values)
+  }
+  return { answers }
+}
+
+/** Sends answers, remembers which questions were answered, and runs "answer all remaining". */
+function useReviewAnswering(review: RunReview | null, reload: () => void) {
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<Error | null>(null)
+  const [autoAnswer, setAutoAnswer] = useState<AutoAnswer | null>(null)
+  const [autoStopNotice, setAutoStopNotice] = useState<string | null>(null)
+  const answeredKeysRef = useRef(new Set<string>())
+  const pending = review?.status === 'paused' ? review.pending.filter((approval) => !answeredKeysRef.current.has(approval.resumeKey)) : []
+
+  const submitAnswers = async (answersByResumeKey: Record<string, ApprovalAnswer>) => {
+    if (!review) return
+    setIsSubmitting(true)
+    setSubmitError(null)
+    try {
+      await answerApprovals(review.runId, answersByResumeKey)
+      Object.keys(answersByResumeKey).forEach((resumeKey) => answeredKeysRef.current.add(resumeKey))
+    } catch (answerFailure) {
+      setSubmitError(toError(answerFailure))
+      setAutoAnswer(null)
+    } finally {
+      setIsSubmitting(false)
+      reload()
+    }
+  }
+
+  useEffect(() => {
+    if (!autoAnswer || isSubmitting || pending.length === 0) return
+    const autoAnswers = buildAutoAnswers(pending, autoAnswer)
+    if ('blockedTitle' in autoAnswers) {
+      setAutoAnswer(null)
+      setAutoStopNotice(`Stopped answering automatically: ${autoAnswers.blockedTitle} needs you`)
+      return
+    }
+    void submitAnswers(autoAnswers.answers)
+    // Runs again when a new question arrives (pending changes) or an answer finished.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoAnswer, isSubmitting, pending.map((approval) => approval.resumeKey).join('\n')])
+
+  const startAutoAnswer = (actionId: string, valuesByResumeKey: Record<string, ApprovalValues>) => {
+    setAutoStopNotice(null)
+    setAutoAnswer({ actionId, valuesByResumeKey })
+  }
+
+  return { pending, isSubmitting, submitError, isAutoAnswering: autoAnswer !== null, autoStopNotice, submitAnswers, startAutoAnswer, stopAutoAnswer: () => setAutoAnswer(null) }
+}
+
+function PageHeader({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <header className="box-border flex min-h-[72px] flex-col justify-center gap-0.5 border-b border-line px-6 py-3.5">
+      <h1 className="m-0 text-[20px] font-semibold tracking-[-0.3px]">{title}</h1>
+      {subtitle && <span className="text-body">{subtitle}</span>}
+    </header>
+  )
+}
+
+/** What the run is doing when nothing waits for an answer right now. */
+function RunStateNotice({ review, isAutoAnswering }: { review: RunReview; isAutoAnswering: boolean }) {
+  if (review.status === 'running') {
+    return <p className="m-0 text-body">{isAutoAnswering ? 'Answering automatically. Waiting for the next item…' : 'The run is working. The next question shows here when it asks.'}</p>
+  }
+  if (review.status === 'paused') {
+    const kinds = review.otherPauseKinds.join(', ') || 'unknown'
+    return <p className="m-0 text-body">This run waits for something this screen cannot answer ({kinds}).</p>
+  }
+  const finishedText = { succeeded: 'The run finished.', failed: 'The run did not finish.', aborted: 'The run was stopped.' }[review.status]
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="m-0 text-body">
+        {finishedText} {review.answered.length > 0 && `You answered ${review.answered.length}.`}
+      </p>
+      <Link to={agentPath('runResult', review.agentId, { runId: review.runId })} className="self-start font-medium">
+        See what it did
+      </Link>
+    </div>
+  )
+}
+
+function NothingToReview() {
+  return (
+    <>
+      <PageHeader title="Nothing to review" />
+      <div className="flex flex-col gap-2 px-6 py-5">
+        <p className="m-0 text-body">No run is waiting for your answer right now.</p>
+        <Link to={routePaths.runs} className="self-start font-medium">
+          Open Runs
+        </Link>
+      </div>
+    </>
+  )
+}
+
+/**
+ * Screen 19 · Review a run (`/runs/review?runId=`; without `runId`, the latest run waiting for an
+ * answer). Lists the `human-input` questions the run waits on right now, each with its item
+ * (when the step runs inside an iteration), its form fields and its actions; the header sends
+ * every answer in one resume. graphrt asks about one item at a time in a sequential iteration,
+ * so the next question appears after answering; "all remaining" keeps answering each next one
+ * the same way while the screen is open.
  */
 export function BatchApprovalPage() {
-  const navigate = useNavigate()
-  const [messages, setMessages] = useState<BatchMessage[]>(initialBatchMessages)
-  const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(() => selectDefaultMessageIds(initialBatchMessages))
-  const [editingMessageId, setEditingMessageId] = useState<string | null>(initialBatchMessages[0]?.id ?? null)
-  const [isShowingAll, setIsShowingAll] = useState(false)
-  const [autoSendHighScores, setAutoSendHighScores] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const runId = searchParams.get('runId')
+  const { data: review, error, isLoading, reload } = useRunReview(runId)
+  const answering = useReviewAnswering(review, reload)
 
-  const selectedCount = selectedMessageIds.size
-  const visibleMessages = isShowingAll ? messages : messages.slice(0, initiallyVisibleCount)
-  const hiddenCount = messages.length - visibleMessages.length
+  useEffect(() => {
+    if (!runId && review) setSearchParams({ runId: review.runId }, { replace: true })
+  }, [runId, review, setSearchParams])
 
-  function toggleMessageSelected(messageId: string) {
-    setSelectedMessageIds((previousIds) => {
-      const nextIds = new Set(previousIds)
-      if (nextIds.has(messageId)) nextIds.delete(messageId)
-      else nextIds.add(messageId)
-      return nextIds
-    })
-  }
-
-  function toggleAllSelected() {
-    const isEverythingSelected = selectedCount === messages.length
-    setSelectedMessageIds(isEverythingSelected ? new Set() : new Set(messages.map((batchMessage) => batchMessage.id)))
-  }
-
-  function changeMessageText(messageId: string, message: string) {
-    setMessages((previousMessages) => previousMessages.map((batchMessage) => (batchMessage.id === messageId ? { ...batchMessage, message } : batchMessage)))
-  }
+  const notices = (
+    <>
+      {error && <RunErrorNotice title="Could not load this run" error={error} />}
+      {answering.submitError && <RunErrorNotice title="Could not send the answers" error={answering.submitError} />}
+      {answering.autoStopNotice && <p className="m-0 text-[13px] text-amber-strong">{answering.autoStopNotice}</p>}
+      {answering.isAutoAnswering && (
+        <button type="button" onClick={answering.stopAutoAnswer} className="self-start rounded-lg border border-line-strong bg-surface px-3 py-1.5 text-[13px] font-medium text-ink">
+          Stop answering automatically
+        </button>
+      )}
+    </>
+  )
 
   return (
     <AppShell mainClassName="flex flex-col">
-      <header className="box-border flex min-h-[72px] flex-wrap items-center justify-between gap-3 border-b border-line px-6 py-3.5">
-        <div className="flex flex-col gap-0.5">
-          <h1 className="m-0 text-[20px] font-semibold tracking-[-0.3px]">Review {messages.length} messages</h1>
-          <span className="text-body">{batchRunSummary}</span>
-        </div>
-        <div className="flex gap-2">
-          <button type="button" className={secondaryButtonClassNames} onClick={() => navigate(routePaths.runs)}>
-            Skip this run
-          </button>
-          <button type="button" className={primaryButtonClassNames} disabled={selectedCount === 0} onClick={() => navigate(routePaths.runs)}>
-            Send {selectedCount} selected
-          </button>
-        </div>
-      </header>
-
-      <div className="flex flex-auto flex-wrap">
-        <section aria-label="Messages" className="box-border flex min-w-0 flex-[3_1_520px] flex-col gap-3 px-6 py-5">
-          <div className="flex flex-wrap items-center justify-between gap-2.5">
-            <label className="flex cursor-pointer items-center gap-2.5 font-medium">
-              <input type="checkbox" checked={selectedCount > 0} onChange={toggleAllSelected} className="size-[18px] cursor-pointer accent-ink" />
-              {selectedCount} of {messages.length} selected
-            </label>
-            <span className="text-[13px] text-muted">Unselected ones are skipped and can be sent next run</span>
+      {review && answering.pending.length > 0 ? (
+        <>
+          <RunReviewList
+            key={answering.pending.map((approval) => approval.resumeKey).join('|')}
+            review={review}
+            pending={answering.pending}
+            isSubmitting={answering.isSubmitting || answering.isAutoAnswering}
+            onSubmit={(answers) => void answering.submitAnswers(answers)}
+            onAnswerAllRemaining={answering.startAutoAnswer}
+          />
+          <div className="flex flex-col gap-2 px-6 pb-5">{notices}</div>
+        </>
+      ) : review ? (
+        <>
+          <PageHeader title="Review a run" subtitle={describeReviewedRun(review)} />
+          <div className="flex flex-col gap-3 px-6 py-5">
+            {notices}
+            <RunStateNotice review={review} isAutoAnswering={answering.isAutoAnswering} />
           </div>
-          <ul className="m-0 list-none overflow-hidden rounded-[14px] border border-line p-0">
-            {visibleMessages.map((batchMessage, index) => (
-              <BatchMessageRow
-                key={batchMessage.id}
-                batchMessage={batchMessage}
-                position={index + 1}
-                isSelected={selectedMessageIds.has(batchMessage.id)}
-                isEditing={editingMessageId === batchMessage.id}
-                isLast={hiddenCount === 0 && index === visibleMessages.length - 1}
-                onToggleSelected={toggleMessageSelected}
-                onStartEditing={setEditingMessageId}
-                onChangeMessage={changeMessageText}
-              />
-            ))}
-            {hiddenCount > 0 && (
-              <li className="flex gap-3.5 px-4 py-3.5 text-muted">
-                <span className="w-[18px]" />
-                <button
-                  type="button"
-                  onClick={() => setIsShowingAll(true)}
-                  className="h-8 cursor-pointer rounded-lg border border-line-strong bg-surface px-3 text-[13px] font-medium text-ink hover:bg-subtle"
-                >
-                  Show {hiddenCount} more
-                </button>
-              </li>
-            )}
-          </ul>
-        </section>
-
-        <SendPlanPanel selectedCount={selectedCount} autoSendHighScores={autoSendHighScores} onAutoSendHighScoresChange={setAutoSendHighScores} />
-      </div>
+        </>
+      ) : isLoading ? (
+        <PageHeader title="Review a run" subtitle="Loading the run…" />
+      ) : error ? (
+        <>
+          <PageHeader title="Review a run" />
+          <div className="flex flex-col gap-3 px-6 py-5">{notices}</div>
+        </>
+      ) : (
+        <NothingToReview />
+      )}
     </AppShell>
   )
 }

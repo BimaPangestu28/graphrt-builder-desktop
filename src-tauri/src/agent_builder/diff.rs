@@ -155,7 +155,7 @@ mod tests {
     fn removed_steps_and_inputs_are_mentioned() {
         let before = summary(vec![step("a", "Find", ""), step("b", "Approve", "")]);
         let mut after = summary(vec![step("a", "Find", "")]);
-        after.inputs.push(FlowInput { name: "city".into(), label: "City".into(), required: true });
+        after.inputs.push(FlowInput::text("city", "City", true));
         let changes = compare_flows(&before, &after);
         assert!(changes.changed_step_ids.is_empty());
         assert_eq!(changes.summary, "Removed 1 step: Approve. Updated the inputs");

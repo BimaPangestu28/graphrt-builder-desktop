@@ -1,12 +1,12 @@
 import type { RunSummary } from '@/api/runSummaryTypes'
-import { hiddenPlaceCount, testRunPlaces, testRunStats, type RunResultStat } from '@/data/testRun'
+import type { RunResultStat } from '@/data/testRun'
 import type { StatusPillTone } from './StatusPill'
 import { formatCounterLabel, formatCounterValue } from './runCounters'
 
 /**
  * What screen 07 shows for a run, built from its {@link RunSummary} (run output convention:
- * `summary` headline, `items` table, numeric counters as stat tiles). Without a run the
- * mockup's content is shown.
+ * `summary` headline, `items` table, numeric counters as stat tiles). Only what the run
+ * reported is shown: no items means no table, no counters means no counter tiles.
  */
 
 export interface RunResultRow {
@@ -32,8 +32,8 @@ export interface RunResultView {
   table: RunResultTable | null
   /** "5 steps done · 1 skipped · You approved 1, skipped 1"; null when nothing ran. */
   activity: string | null
-  /** The `places_found` counter, when the run reports it (sizes the "run the rest" offer). */
-  placesFound: number | null
+  /** True when the run reported neither items nor counters. */
+  hasNoOutputs: boolean
   /** "Today 13:03 · on this Mac" */
   meta: string
   /** The run's headline, or a plain status sentence. */
@@ -187,41 +187,19 @@ function describeStatus(summary: RunSummary): string {
   }
 }
 
-function buildMockupView(): RunResultView {
-  return {
-    stats: testRunStats,
-    table: {
-      columns: ['Place', 'Phone', 'Status'],
-      rows: testRunPlaces.map((place) => ({
-        id: place.id,
-        cells: [place.name, place.phone],
-        status: place.outcome,
-        statusTone: place.outcome === 'Sent' ? 'ok' : 'neutral',
-      })),
-      moreLabel: `${hiddenPlaceCount} more places`,
-    },
-    activity: null,
-    placesFound: testRunPlaces.length + hiddenPlaceCount,
-    meta: 'Today 13:03 · on this Mac',
-    builderReply: 'The message reached [PLACE NAME] at 13:04. Everything worked',
-  }
-}
-
 /**
- * Builds screen 07's content from a run summary, or the mockup's content when there is no run.
+ * Builds screen 07's content from a run summary.
  *
- * @param summary - The run's summary, or null (RunSummary | null)
+ * @param summary - The run's summary (RunSummary)
  * @returns Tiles, table and texts (RunResultView)
  */
-export function buildRunResultView(summary: RunSummary | null): RunResultView {
-  if (!summary) return buildMockupView()
-  const placesFoundCounter = summary.counters.find((counter) => counter.name === 'places_found' || counter.name === 'placesFound')
+export function buildRunResultView(summary: RunSummary): RunResultView {
   const builderReply = summary.status === 'failed' ? describeStatus(summary) : summary.headline ?? describeStatus(summary)
   return {
     stats: buildStats(summary),
     table: buildItemTable(summary.items),
     activity: buildActivity(summary),
-    placesFound: placesFoundCounter?.value ?? null,
+    hasNoOutputs: summary.items.length === 0 && summary.counters.length === 0,
     meta: `${formatRunDay(summary.startedAt)} · on this Mac`,
     builderReply,
   }

@@ -10,6 +10,7 @@
 //! - [`engine`]: running agents on graphrt and streaming events to the UI
 //! - [`run_summary`]: plain-language run summaries and weekly agent stats
 //! - [`usage_summary`]: run and model-token totals since a date (Home "This month")
+//! - [`run_review`]: what a paused run waits for (review screen)
 //! - [`scheduler`]: starting scheduled runs while the app is running
 //! - [`conversations`]: chatbot conversations, the bot's replies and hand-offs
 //! - [`chatbot_setup`]: a chatbot's persona, hand-off rules, knowledge and channels
@@ -41,6 +42,7 @@ pub mod mcp;
 pub mod node_runtime;
 pub mod plugins;
 pub mod problems;
+pub mod run_review;
 pub mod run_summary;
 pub mod scheduler;
 pub mod state;
@@ -184,6 +186,9 @@ pub fn run() {
             commands::run_summary::get_run_summary,
             commands::run_summary::list_agent_run_stats,
             commands::usage_summary::get_usage_summary,
+            commands::run_review::get_run_review,
+            commands::run_review::get_run_inputs,
+            commands::run_review::get_last_run_inputs,
             commands::triggers::list_triggers,
             commands::triggers::create_trigger,
             commands::triggers::update_trigger,

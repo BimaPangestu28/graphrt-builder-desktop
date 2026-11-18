@@ -15,6 +15,7 @@ pub mod mcp;
 pub mod node_runtime;
 pub mod plugins;
 pub mod problems;
+pub mod run_review;
 pub mod run_summary;
 pub mod runs;
 pub mod schedule_rules;
