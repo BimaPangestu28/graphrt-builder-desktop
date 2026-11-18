@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite'
+import { configDefaults } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { fileURLToPath, URL } from 'node:url'
@@ -16,5 +17,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     css: false,
+    // Agent worktrees under .claude/ hold other copies of the repo
+    exclude: [...configDefaults.exclude, '.claude/**', 'src-tauri/**'],
   },
 })
