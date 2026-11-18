@@ -1,5 +1,6 @@
 import { callBackend, isDesktopApp } from './client'
 import type { WorkflowSecretOverview } from './connectionTypes'
+import type { ProviderModels } from './modelCatalogTypes'
 import { sampleCredentialsBackend } from './sampleBackend/credentials'
 import type { ModelChoice, ModelProvider, ProviderStatus, WorkflowSecretStatus } from './types'
 
@@ -62,4 +63,14 @@ export function setWorkflowSecret(name: string, value: string): Promise<void> {
 export function deleteWorkflowSecret(name: string): Promise<void> {
   if (!isDesktopApp()) return sampleCredentialsBackend.deleteWorkflowSecret(name)
   return callBackend('delete_workflow_secret', { name })
+}
+
+/**
+ * The chat models every connected provider offers, asked from the providers with the stored
+ * keys (cached for ten minutes in the backend; `refresh` asks again). A provider that could
+ * not be reached comes back with `error` and no models.
+ */
+export function listAvailableModels(refresh = false): Promise<ProviderModels[]> {
+  if (!isDesktopApp()) return sampleCredentialsBackend.listAvailableModels(refresh)
+  return callBackend('list_available_models', { refresh })
 }

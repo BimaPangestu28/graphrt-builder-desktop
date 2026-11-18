@@ -141,10 +141,14 @@ describe('SettingsPage', () => {
     renderSettingsPage()
     const modelSelect = await screen.findByRole('combobox', { name: /Default AI model for new agents/ })
     expect(modelSelect).toHaveValue('OpenAI gpt-4o-mini')
-    expect(Array.from((modelSelect as HTMLSelectElement).options, (option) => option.value)).toEqual(['OpenAI gpt-4o-mini', 'Anthropic claude-haiku-5-5'])
-    fireEvent.change(modelSelect, { target: { value: 'Anthropic claude-haiku-5-5' } })
-    await waitFor(() => expect(setDefaultSpy).toHaveBeenCalledWith({ provider: 'anthropic', name: 'claude-haiku-5-5' }))
-    await waitFor(() => expect(screen.getByRole('combobox', { name: /Default AI model for new agents/ })).toHaveValue('Anthropic claude-haiku-5-5'))
+    // Every model each connected provider reports, the default's provider first.
+    await waitFor(() => expect(Array.from((modelSelect as HTMLSelectElement).options, (option) => option.value)).toContain('Anthropic claude-opus-5-5'))
+    const optionValues = Array.from((modelSelect as HTMLSelectElement).options, (option) => option.value)
+    expect(optionValues.slice(0, 2)).toEqual(['OpenAI gpt-4.1', 'OpenAI gpt-4.1-mini'])
+    expect(optionValues).toContain('OpenAI gpt-4o-mini')
+    fireEvent.change(modelSelect, { target: { value: 'Anthropic claude-opus-5-5' } })
+    await waitFor(() => expect(setDefaultSpy).toHaveBeenCalledWith({ provider: 'anthropic', name: 'claude-opus-5-5' }))
+    await waitFor(() => expect(screen.getByRole('combobox', { name: /Default AI model for new agents/ })).toHaveValue('Anthropic claude-opus-5-5'))
   })
 
   it('opens the data folder and explains when it cannot', async () => {

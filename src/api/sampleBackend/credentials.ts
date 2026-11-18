@@ -1,5 +1,6 @@
 import { BackendError } from '../client'
 import type { WorkflowSecretOverview } from '../connectionTypes'
+import type { ProviderModels } from '../modelCatalogTypes'
 import type { ModelChoice, ModelProvider, ProviderStatus, WorkflowSecretStatus } from '../types'
 import { readSampleMcpServers } from './mcpServers'
 import { requireText, respondWith } from './sampleResponse'
@@ -127,6 +128,26 @@ export function isSampleWorkflowSecretConfigured(name: string): boolean {
   return credentialsState.configuredSecretNames.has(name)
 }
 
+/** What each provider's model list looks like, for the browser preview. */
+const sampleModelIdsByProvider: Record<ModelProvider, string[]> = {
+  openai: ['gpt-4.1', 'gpt-4.1-mini', 'gpt-4o', 'gpt-4o-mini', 'o3-mini'],
+  anthropic: ['claude-haiku-5-5', 'claude-opus-5-5', 'claude-sonnet-5-5'],
+  gemini: ['gemini-2.5-flash', 'gemini-2.5-pro'],
+  deepseek: ['deepseek-chat', 'deepseek-reasoner'],
+  ollama: ['llama3.2', 'qwen2.5:14b'],
+}
+
+/** Sample lists for every provider that is set up (Ollama included, as if it were running). */
+function listSampleAvailableModels(): ProviderModels[] {
+  return listStatuses()
+    .filter((status) => status.configured)
+    .map((status) => ({
+      provider: status.provider,
+      models: sampleModelIdsByProvider[status.provider].map((id) => ({ id, displayName: null })),
+      error: null,
+    }))
+}
+
 export const sampleCredentialsBackend = {
   setApiKey: (provider: ModelProvider, apiKey: string): Promise<void> => respondWith(() => storeApiKey(provider, apiKey)),
   deleteApiKey: (provider: ModelProvider): Promise<void> => respondWith(() => removeApiKey(provider)),
@@ -134,6 +155,7 @@ export const sampleCredentialsBackend = {
   getDefaultModel: (): Promise<ModelChoice> => respondWith(readSampleDefaultModel),
   setDefaultModel: (choice: ModelChoice): Promise<void> => respondWith(() => storeDefaultModel(choice)),
   setOllamaBaseUrl: (baseUrl: string): Promise<void> => respondWith(() => storeOllamaBaseUrl(baseUrl)),
+  listAvailableModels: (_refresh: boolean): Promise<ProviderModels[]> => respondWith(listSampleAvailableModels),
   listWorkflowSecrets: (agentId: string): Promise<WorkflowSecretStatus[]> => respondWith(() => listSampleWorkflowSecrets(agentId)),
   listAllWorkflowSecrets: (): Promise<WorkflowSecretOverview[]> => respondWith(listAllSampleWorkflowSecrets),
   setWorkflowSecret: (name: string, value: string): Promise<void> => respondWith(() => storeWorkflowSecret(name, value)),

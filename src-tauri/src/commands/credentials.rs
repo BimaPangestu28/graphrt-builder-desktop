@@ -10,12 +10,26 @@ use crate::state::AppState;
 
 #[tauri::command]
 pub fn set_api_key(state: State<'_, AppState>, provider: ModelProvider, api_key: String) -> AppResult<()> {
-    state.credentials.set_api_key(provider, api_key.trim())
+    state.credentials.set_api_key(provider, api_key.trim())?;
+    state.model_catalog.forget(provider);
+    Ok(())
 }
 
 #[tauri::command]
 pub fn delete_api_key(state: State<'_, AppState>, provider: ModelProvider) -> AppResult<()> {
-    state.credentials.delete_api_key(provider)
+    state.credentials.delete_api_key(provider)?;
+    state.model_catalog.forget(provider);
+    Ok(())
+}
+
+/// The chat models every connected provider offers, asked from the providers with the
+/// stored keys (cached for ten minutes; `refresh` asks again). Keys are never returned.
+#[tauri::command]
+pub async fn list_available_models(
+    state: State<'_, AppState>,
+    refresh: Option<bool>,
+) -> AppResult<Vec<crate::model_catalog::ProviderModels>> {
+    state.model_catalog.list(&state.credentials, &state.db, refresh.unwrap_or(false)).await
 }
 
 #[tauri::command]
