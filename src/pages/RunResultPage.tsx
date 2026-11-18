@@ -1,18 +1,18 @@
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { getRun } from '@/api/runs'
-import type { Run } from '@/api/types'
+import { getRunSummary } from '@/api/runSummary'
+import type { RunSummary } from '@/api/runSummaryTypes'
 import { AppShell } from '@/components/layout'
 import { useLoadedData } from '@/hooks/useRunData'
 import { agentPath, routePaths, sampleAgentId } from '@/routes'
-import { buildPlacesCsvHref } from '@/pages/agent-run/placesCsv'
+import { buildTableCsvHref } from '@/pages/agent-run/placesCsv'
 import { RunErrorNotice } from '@/pages/agent-run/RunErrorNotice'
-import { RunPlacesTable, RunStatTiles } from '@/pages/agent-run/RunResultDetails'
-import { buildRunResultSummary } from '@/pages/agent-run/runResultSummary'
+import { RunItemsTable, RunStatTiles } from '@/pages/agent-run/RunResultDetails'
+import { buildRunResultView } from '@/pages/agent-run/runResultSummary'
 import { BuildChatPanel, BuilderReply, RunPanel, RunTitleRow, RunWorkspace, UserChatBubble, runHeaderActionClassNames } from '@/pages/agent-run/RunWorkspace'
 import { StatusPill } from '@/pages/agent-run/StatusPill'
 
 /** "What next?" card offering a full run (goes to batch review) or a schedule (08). */
-function WhatNextCard({ agentId, remainingPlaceCount }: { agentId: string; remainingPlaceCount: number }) {
+function WhatNextCard({ agentId, remainingPlaceCount }: { agentId: string; remainingPlaceCount: number | null }) {
   const navigate = useNavigate()
   return (
     <div className="flex box-content max-w-[92%] flex-col gap-3 rounded-[14px] border border-line p-4">
@@ -23,7 +23,7 @@ function WhatNextCard({ agentId, remainingPlaceCount }: { agentId: string; remai
           onClick={() => navigate(routePaths.batchApproval)}
           className="h-11 cursor-pointer rounded-[10px] border border-line-strong bg-surface px-3.5 text-left text-[14px] font-medium text-ink hover:bg-subtle"
         >
-          Run now for the other {remainingPlaceCount} places
+          {remainingPlaceCount ? `Run now for the other ${remainingPlaceCount} places` : 'Run it now for everything'}
         </button>
         <button
           type="button"
@@ -37,7 +37,7 @@ function WhatNextCard({ agentId, remainingPlaceCount }: { agentId: string; remai
   )
 }
 
-function ResultStatusPill({ run, isLoading }: { run: Run | null; isLoading: boolean }) {
+function ResultStatusPill({ run, isLoading }: { run: RunSummary | null; isLoading: boolean }) {
   if (isLoading) return <StatusPill tone="neutral" size="title">Loading</StatusPill>
   if (!run || run.status === 'succeeded') return <StatusPill tone="ok" size="title">Succeeded</StatusPill>
   if (run.status === 'failed') return <StatusPill tone="danger" size="title">Failed</StatusPill>
@@ -45,45 +45,54 @@ function ResultStatusPill({ run, isLoading }: { run: Run | null; isLoading: bool
   return <StatusPill tone="neutral" size="title">{run.status === 'aborted' ? 'Stopped' : 'Running'}</StatusPill>
 }
 
-/** Loads the run named by `?runId=`; without one there is nothing to load and the mockup shows. */
-function useResultRun(runId: string | null) {
-  return useLoadedData<Run | null>(() => (runId ? getRun(runId) : Promise.resolve(null)), [runId])
+/** Loads the summary of the run named by `?runId=`; without one there is nothing to load and the mockup shows. */
+function useResultRunSummary(runId: string | null) {
+  return useLoadedData<RunSummary | null>(() => (runId ? getRunSummary(runId) : Promise.resolve(null)), [runId])
+}
+
+/** "Nothing was listed" note shown instead of the table for runs without `items`. */
+function NoItemsNotice() {
+  return <p className="m-0 rounded-xl border border-line bg-surface px-4 py-3 text-body">This run did not list the things it handled.</p>
 }
 
 /**
  * Screen 07 · Test run result (`/agents/:agentId/test-result?runId=`).
- * Shows the finished run's stats and places from its outputs (falling back to the mockup's
- * content for parts the backend does not provide), offers a CSV export, and asks what to do
- * next: run the rest now or put it on a schedule.
+ * Shows the run's summary (`getRunSummary`): its headline, counters as stat tiles, time,
+ * step and approval counts, and its `items` as a table with a CSV export. Without a run the
+ * mockup's content shows. Asks what to do next: run the rest now or put it on a schedule.
  */
 export function RunResultPage() {
   const { agentId = sampleAgentId } = useParams()
   const [searchParams] = useSearchParams()
   const runId = searchParams.get('runId')
-  const { data: run, error, isLoading } = useResultRun(runId)
-  const summary = buildRunResultSummary(run)
+  const { data: runSummary, error, isLoading } = useResultRunSummary(runId)
+  const view = buildRunResultView(runSummary)
   const isRunLoading = isLoading && runId !== null
+  const remainingPlaceCount = view.placesFound === null ? null : Math.max(0, view.placesFound - 1)
 
   return (
     <AppShell agents={{ kind: 'draft', name: 'Maps leads to WhatsApp', status: 'Tested · not scheduled' }} runnerStatus="Online · OpenAI connected">
       <RunWorkspace>
         <BuildChatPanel>
           <UserChatBubble>Test with 1 place</UserChatBubble>
-          <BuilderReply>{summary.builderReply}</BuilderReply>
-          <WhatNextCard agentId={agentId} remainingPlaceCount={Math.max(0, summary.placesFound - 1)} />
+          <BuilderReply>{view.builderReply}</BuilderReply>
+          <WhatNextCard agentId={agentId} remainingPlaceCount={remainingPlaceCount} />
         </BuildChatPanel>
 
         <RunPanel
           headerAction={
-            <a href={buildPlacesCsvHref(summary.places)} download="maps-leads-test-run.csv" className={runHeaderActionClassNames}>
-              Export CSV
-            </a>
+            view.table && (
+              <a href={buildTableCsvHref(view.table)} download="maps-leads-test-run.csv" className={runHeaderActionClassNames}>
+                Export CSV
+              </a>
+            )
           }
         >
-          <RunTitleRow meta={isRunLoading ? 'Loading the run…' : summary.meta} status={<ResultStatusPill run={run} isLoading={isRunLoading} />} />
+          <RunTitleRow meta={isRunLoading ? 'Loading the run…' : view.meta} status={<ResultStatusPill run={runSummary} isLoading={isRunLoading} />} />
           {error && <RunErrorNotice title="Could not load this run" error={error} />}
-          <RunStatTiles stats={summary.stats} />
-          <RunPlacesTable places={summary.places} hiddenPlaceCount={summary.hiddenPlaceCount} />
+          <RunStatTiles stats={view.stats} />
+          {view.activity && <p className="m-0 text-[13px] text-body">{view.activity}</p>}
+          {view.table ? <RunItemsTable table={view.table} /> : !isRunLoading && !error && <NoItemsNotice />}
           <Link to={routePaths.runs} className="self-start font-medium">
             Open the step by step log
           </Link>

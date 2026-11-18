@@ -1,8 +1,10 @@
-import type { RunResultStat, TestRunPlace } from '@/data/testRun'
+import type { RunResultStat } from '@/data/testRun'
+import type { RunResultTable } from './runResultSummary'
 import { StatusPill } from './StatusPill'
 
-/** Four stat tiles: places found, messages sent, time, AI cost. */
+/** Up to four stat tiles: the run's counters, time and AI tokens. */
 export function RunStatTiles({ stats }: { stats: RunResultStat[] }) {
+  if (stats.length === 0) return null
   return (
     <dl className="m-0 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
       {stats.map((stat) => (
@@ -18,33 +20,40 @@ export function RunStatTiles({ stats }: { stats: RunResultStat[] }) {
 const cellClassNames = 'px-4 py-3'
 const headerCellClassNames = 'border-b border-line px-4 py-3 font-medium'
 
-/** Table of places the test touched, with a trailing "N more places" row. */
-export function RunPlacesTable({ places, hiddenPlaceCount }: { places: TestRunPlace[]; hiddenPlaceCount: number }) {
+/** Table of the things the run handled (its `items`), with an optional trailing "N more" row. */
+export function RunItemsTable({ table }: { table: RunResultTable }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-line bg-surface">
       <table className="w-full border-collapse text-[13px]">
         <thead>
           <tr className="text-left text-muted">
-            <th scope="col" className={headerCellClassNames}>Place</th>
-            <th scope="col" className={headerCellClassNames}>Phone</th>
-            <th scope="col" className={headerCellClassNames}>Status</th>
+            {table.columns.map((column) => (
+              <th key={column} scope="col" className={headerCellClassNames}>
+                {column}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
-          {places.map((place) => (
-            <tr key={place.id} className="border-b border-chip">
-              <td className={`${cellClassNames} font-medium`}>{place.name}</td>
-              <td className={`${cellClassNames} text-body`}>{place.phone}</td>
+          {table.rows.map((row) => (
+            <tr key={row.id} className="border-b border-chip last:border-b-0">
+              {row.cells.map((cell, cellIndex) => (
+                <td key={`${row.id}-${cellIndex}`} className={cellIndex === 0 ? `${cellClassNames} font-medium` : `${cellClassNames} text-body`}>
+                  {cell}
+                </td>
+              ))}
               <td className={cellClassNames}>
-                <StatusPill tone={place.outcome === 'Sent' ? 'ok' : 'neutral'}>{place.outcome}</StatusPill>
+                <StatusPill tone={row.statusTone}>{row.status}</StatusPill>
               </td>
             </tr>
           ))}
-          <tr>
-            <td colSpan={3} className={`${cellClassNames} text-body`}>
-              {hiddenPlaceCount} more places
-            </td>
-          </tr>
+          {table.moreLabel && (
+            <tr className="border-t border-chip">
+              <td colSpan={table.columns.length} className={`${cellClassNames} text-body`}>
+                {table.moreLabel}
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
     </div>
