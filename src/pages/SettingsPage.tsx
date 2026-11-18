@@ -1,7 +1,11 @@
 import { useState } from 'react'
+import { getAppInfo } from '@/api/appInfo'
+import { isDesktopApp } from '@/api/client'
+import type { AppInfo } from '@/api/connectionTypes'
 import { AppShell } from '@/components/layout'
 import { joinClassNames } from '@/components/ui'
-import { settingsSections, type SettingsSectionKey } from '@/data/settings'
+import { previewOnlySettingsSections, settingsSections, type SettingsSectionKey } from '@/data/settings'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import {
   AboutSection,
   GeneralSection,
@@ -15,18 +19,19 @@ import { useAppSettings, type AppSettingsState } from './settings/useAppSettings
 import { useSettingsState, type SettingsValues, type UpdateSetting } from './settings/useSettingsState'
 
 interface SettingsSubNavProps {
+  sections: typeof settingsSections
   activeSection: SettingsSectionKey
   onSelectSection: (section: SettingsSectionKey) => void
 }
 
-function SettingsSubNav({ activeSection, onSelectSection }: SettingsSubNavProps) {
+function SettingsSubNav({ sections, activeSection, onSelectSection }: SettingsSubNavProps) {
   return (
     <nav
       aria-label="Settings sections"
       className="box-border flex min-w-0 flex-[0_1_200px] flex-col gap-0.5 border-r border-line px-3 py-7"
     >
       <h1 className="m-0 px-2.5 pb-3 text-[20px] font-semibold">Settings</h1>
-      {settingsSections.map((section) => {
+      {sections.map((section) => {
         const isActive = section.key === activeSection
         return (
           <button
@@ -51,7 +56,9 @@ interface SettingsSectionContentProps {
   activeSection: SettingsSectionKey
   settingsValues: SettingsValues
   updateSetting: UpdateSetting
+  showsPreviewOnlySettings: boolean
   appSettingsState: AppSettingsState
+  appInfo: AppInfo | null
   onSelectSection: (section: SettingsSectionKey) => void
 }
 
@@ -75,12 +82,14 @@ function AppSettingsPlaceholder({ appSettingsState }: { appSettingsState: AppSet
 }
 
 /**
- * The Runner tab is the overview from the design: runner options, privacy and the
- * remote runner promo. Every other tab shows only its own group.
+ * The Runner tab is the overview from the design: runner options, privacy and (in the
+ * browser preview) the remote runner promo. Every other tab shows only its own group.
  */
-function SettingsSectionContent({ activeSection, onSelectSection, appSettingsState, ...sectionProps }: SettingsSectionContentProps) {
+function SettingsSectionContent({ activeSection, onSelectSection, appSettingsState, appInfo, ...sectionProps }: SettingsSectionContentProps) {
   const { appSettings, updateAppSetting, reload } = appSettingsState
-  const privacySection = <PrivacySection {...sectionProps} onDataDeleted={() => void reload()} />
+  const privacySection = (
+    <PrivacySection {...sectionProps} appSettings={appSettings} updateAppSetting={updateAppSetting} appInfo={appInfo} onDataDeleted={() => void reload()} />
+  )
   switch (activeSection) {
     case 'general':
       return <GeneralSection {...sectionProps} />
@@ -92,7 +101,7 @@ function SettingsSectionContent({ activeSection, onSelectSection, appSettingsSta
     case 'remote':
       return <RemoteRunnerSection {...sectionProps} />
     case 'about':
-      return <AboutSection />
+      return <AboutSection appInfo={appInfo} />
     case 'runner':
       return (
         <>
@@ -102,7 +111,7 @@ function SettingsSectionContent({ activeSection, onSelectSection, appSettingsSta
             <AppSettingsPlaceholder appSettingsState={appSettingsState} />
           )}
           {privacySection}
-          <RemoteRunnerBanner onConnectServer={() => onSelectSection('remote')} />
+          {sectionProps.showsPreviewOnlySettings && <RemoteRunnerBanner onConnectServer={() => onSelectSection('remote')} />}
         </>
       )
   }
@@ -112,24 +121,31 @@ function SettingsSectionContent({ activeSection, onSelectSection, appSettingsSta
  * Screen 22 · Settings.
  * App-wide preferences with an inner sub-nav (General, Runner, Notifications, Privacy and data,
  * Remote runner, About). Opens on Runner, matching the design. Launch at login, menu bar,
- * keep awake, missed runs and the approval/failure notifications are saved by the backend on
- * every change; the other values are local state until they get a backend.
+ * keep awake, missed runs, notifications and run history retention are saved by the backend
+ * on every change; the default model through the credentials commands. Controls without a
+ * backend (appearance, language, model fallback, crash reports, remote runner) are shown
+ * only in the browser preview, so the desktop app never offers a switch that does nothing.
  */
 export function SettingsPage() {
   const [activeSection, setActiveSection] = useState<SettingsSectionKey>('runner')
   const { settingsValues, updateSetting } = useSettingsState()
   const appSettingsState = useAppSettings()
+  const { data: appInfo } = useAsyncData(getAppInfo, [])
+  const showsPreviewOnlySettings = !isDesktopApp()
+  const visibleSections = showsPreviewOnlySettings ? settingsSections : settingsSections.filter((section) => !previewOnlySettingsSections.includes(section.key))
 
   return (
     <AppShell activeNav="settings" agents={{ kind: 'list' }} mainClassName="flex flex-wrap">
-      <SettingsSubNav activeSection={activeSection} onSelectSection={setActiveSection} />
+      <SettingsSubNav sections={visibleSections} activeSection={activeSection} onSelectSection={setActiveSection} />
       <div className="box-border flex min-w-0 max-w-[760px] flex-[1_1_520px] flex-col gap-7 px-9 py-7">
         <SettingsSectionContent
           activeSection={activeSection}
           onSelectSection={setActiveSection}
           settingsValues={settingsValues}
           updateSetting={updateSetting}
+          showsPreviewOnlySettings={showsPreviewOnlySettings}
           appSettingsState={appSettingsState}
+          appInfo={appInfo}
         />
         {appSettingsState.saveError && (
           <p role="alert" className="m-0 text-[13px] text-danger">

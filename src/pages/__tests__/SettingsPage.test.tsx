@@ -1,7 +1,9 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { BackendError } from '@/api/client'
+import { sampleAppInfoBackend } from '@/api/sampleBackend/appInfo'
 import { resetSampleAppSettings, sampleAppSettingsBackend } from '@/api/sampleBackend/appSettings'
+import { resetSampleCredentials, sampleCredentialsBackend } from '@/api/sampleBackend/credentials'
 import { SettingsPage } from '@/pages/SettingsPage'
 
 function renderSettingsPage() {
@@ -13,7 +15,10 @@ function renderSettingsPage() {
 }
 
 describe('SettingsPage', () => {
-  beforeEach(() => resetSampleAppSettings())
+  beforeEach(() => {
+    resetSampleAppSettings()
+    resetSampleCredentials()
+  })
   afterEach(() => vi.restoreAllMocks())
 
   it('shows loading, then the Runner section with the saved preferences', async () => {
@@ -105,6 +110,60 @@ describe('SettingsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete everything' }))
     expect(await screen.findByRole('status')).not.toHaveTextContent('keys')
     expect(deleteSpy).toHaveBeenCalledWith(false)
+  })
+
+  it('saves the chat hand-off and daily summary notifications', async () => {
+    renderSettingsPage()
+    await screen.findByRole('checkbox', { name: /Start graphrt when I log in/ })
+    fireEvent.click(screen.getByRole('button', { name: 'Notifications' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /A chatbot conversation needs me/ }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /Daily summary at 18:00/ }))
+    await waitFor(async () => {
+      const savedSettings = await sampleAppSettingsBackend.getAppSettings()
+      expect(savedSettings.notifyOnChatHandoff).toBe(true)
+      expect(savedSettings.notifyDailySummary).toBe(true)
+    })
+  })
+
+  it('saves how long run history is kept, including forever', async () => {
+    renderSettingsPage()
+    const retentionSelect = await screen.findByRole('combobox', { name: /Keep run history for/ })
+    expect(retentionSelect).toHaveValue('30 days')
+    fireEvent.change(retentionSelect, { target: { value: 'Forever' } })
+    await waitFor(async () => expect((await sampleAppSettingsBackend.getAppSettings()).runHistoryRetentionDays).toBeNull())
+    fireEvent.change(screen.getByRole('combobox', { name: /Keep run history for/ }), { target: { value: '90 days' } })
+    await waitFor(async () => expect((await sampleAppSettingsBackend.getAppSettings()).runHistoryRetentionDays).toBe(90))
+  })
+
+  it('changes the default model among the providers that have a key', async () => {
+    const setDefaultSpy = vi.spyOn(sampleCredentialsBackend, 'setDefaultModel')
+    await sampleCredentialsBackend.setApiKey('anthropic', 'sk-ant')
+    renderSettingsPage()
+    const modelSelect = await screen.findByRole('combobox', { name: /Default AI model for new agents/ })
+    expect(modelSelect).toHaveValue('OpenAI gpt-4o-mini')
+    expect(Array.from((modelSelect as HTMLSelectElement).options, (option) => option.value)).toEqual(['OpenAI gpt-4o-mini', 'Anthropic claude-haiku-5-5'])
+    fireEvent.change(modelSelect, { target: { value: 'Anthropic claude-haiku-5-5' } })
+    await waitFor(() => expect(setDefaultSpy).toHaveBeenCalledWith({ provider: 'anthropic', name: 'claude-haiku-5-5' }))
+    await waitFor(() => expect(screen.getByRole('combobox', { name: /Default AI model for new agents/ })).toHaveValue('Anthropic claude-haiku-5-5'))
+  })
+
+  it('opens the data folder and explains when it cannot', async () => {
+    const revealSpy = vi.spyOn(sampleAppInfoBackend, 'revealDataFolder')
+    renderSettingsPage()
+    expect(await screen.findByText('~/Library/Application Support/graphrt')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Show in Finder' }))
+    expect(await screen.findByText('Opened the data folder in Finder')).toBeInTheDocument()
+    expect(revealSpy).toHaveBeenCalled()
+
+    revealSpy.mockRejectedValueOnce(new BackendError('not_found', 'the folder does not exist'))
+    fireEvent.click(screen.getByRole('button', { name: 'Show in Finder' }))
+    expect(await screen.findByText(/Could not open the data folder: the folder does not exist/)).toBeInTheDocument()
+  })
+
+  it('shows the app version in About', async () => {
+    renderSettingsPage()
+    fireEvent.click(screen.getByRole('button', { name: 'About' }))
+    expect(await screen.findByText('Version 0.9.0 · up to date')).toBeInTheDocument()
   })
 
   it('opens the remote runner section from the promo card', async () => {

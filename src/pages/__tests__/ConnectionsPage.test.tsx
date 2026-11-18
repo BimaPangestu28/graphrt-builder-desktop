@@ -3,6 +3,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { resetSampleAgents } from '@/api/sampleBackend/agents'
 import { resetSampleCredentials, sampleCredentialsBackend } from '@/api/sampleBackend/credentials'
+import { resetSampleMcpServers, sampleMcpServersBackend } from '@/api/sampleBackend/mcpServers'
 import { emitSamplePluginEvent, resetSamplePlugins, samplePluginsBackend } from '@/api/sampleBackend/plugins'
 import { connectionsPluginsPath } from '@/routes'
 import { ConnectionsPage } from '../ConnectionsPage'
@@ -24,13 +25,14 @@ describe('ConnectionsPage', () => {
     resetSampleCredentials()
     resetSampleAgents()
     resetSamplePlugins()
+    resetSampleMcpServers()
   })
   afterEach(() => vi.restoreAllMocks())
 
   it('shows apps, AI models and the Gmail sign-in warning', async () => {
     renderConnectionsPage()
     expect(screen.getByRole('heading', { level: 1, name: 'Connections' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Apps' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Apps' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'AI models' })).toBeInTheDocument()
     expect(screen.getByRole('alert')).toHaveTextContent('Gmail needs you to sign in again.')
     expect(screen.getByText('Signed out')).toBeInTheDocument()
@@ -45,9 +47,9 @@ describe('ConnectionsPage', () => {
     expect(within(getModelsSection()).getByRole('button', { name: 'Add key Google Gemini' })).toBeInTheDocument()
   })
 
-  it('reconnects Gmail from the banner', () => {
+  it('reconnects Gmail from the banner', async () => {
     renderConnectionsPage()
-    fireEvent.click(screen.getByRole('button', { name: 'Reconnect Gmail' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Reconnect Gmail' }))
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(screen.queryByText('Signed out')).not.toBeInTheDocument()
   })
@@ -100,12 +102,156 @@ describe('ConnectionsPage', () => {
   it('filters connections by search', async () => {
     renderConnectionsPage()
     await within(getModelsSection()).findByText('Default')
+    await screen.findByText('WhatsApp')
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search connections' }), { target: { value: 'ollama' } })
     expect(screen.getByText('Ollama')).toBeInTheDocument()
     expect(screen.queryByText('WhatsApp')).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Apps' })).not.toBeInTheDocument()
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search connections' }), { target: { value: 'zzz' } })
     expect(screen.getByText(/No connections match/)).toBeInTheDocument()
+  })
+})
+
+function getAdvancedSection() {
+  return screen.getByRole('region', { name: 'Advanced' })
+}
+
+describe('ConnectionsPage secrets', () => {
+  beforeEach(() => {
+    resetSampleCredentials()
+    resetSampleMcpServers()
+  })
+  afterEach(() => vi.restoreAllMocks())
+
+  it('lists every secret with who uses it and whether it is set', async () => {
+    renderConnectionsPage()
+    expect(await within(getAdvancedSection()).findByText('Google Places API key')).toBeInTheDocument()
+    expect(within(getAdvancedSection()).getByText('GOOGLE_PLACES_API_KEY · Used by Maps leads to WhatsApp')).toBeInTheDocument()
+    expect(within(getAdvancedSection()).getByText('Connected')).toBeInTheDocument()
+  })
+
+  it('replaces and removes a secret value with a password field', async () => {
+    const setSecretSpy = vi.spyOn(sampleCredentialsBackend, 'setWorkflowSecret')
+    const deleteSecretSpy = vi.spyOn(sampleCredentialsBackend, 'deleteWorkflowSecret')
+    renderConnectionsPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Replace GOOGLE_PLACES_API_KEY' }))
+    const valueInput = screen.getByLabelText('Value of GOOGLE_PLACES_API_KEY')
+    expect(valueInput).toHaveAttribute('type', 'password')
+    fireEvent.change(valueInput, { target: { value: '[PLACES KEY]' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByRole('button', { name: 'Remove GOOGLE_PLACES_API_KEY' })).toBeInTheDocument()
+    expect(setSecretSpy).toHaveBeenCalledWith('GOOGLE_PLACES_API_KEY', '[PLACES KEY]')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove GOOGLE_PLACES_API_KEY' }))
+    expect(await screen.findByRole('button', { name: 'Add GOOGLE_PLACES_API_KEY' })).toBeInTheDocument()
+    expect(within(getAdvancedSection()).getByText('Not set')).toBeInTheDocument()
+    expect(deleteSecretSpy).toHaveBeenCalledWith('GOOGLE_PLACES_API_KEY')
+  })
+
+  it('shows an honest empty state when no agent needs a secret', async () => {
+    vi.spyOn(sampleCredentialsBackend, 'listAllWorkflowSecrets').mockResolvedValue([])
+    renderConnectionsPage()
+    expect(await within(getAdvancedSection()).findByText(/No agent needs an API key or token yet/)).toBeInTheDocument()
+  })
+
+  it('finds secrets by name in the search', async () => {
+    renderConnectionsPage()
+    await within(getAdvancedSection()).findByText('Google Places API key')
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search connections' }), { target: { value: 'places' } })
+    expect(within(getAdvancedSection()).getByText('Google Places API key')).toBeInTheDocument()
+    expect(screen.queryByText('MCP servers')).not.toBeInTheDocument()
+  })
+})
+
+describe('ConnectionsPage MCP servers', () => {
+  beforeEach(() => {
+    resetSampleCredentials()
+    resetSampleMcpServers()
+    resetSamplePlugins()
+  })
+  afterEach(() => vi.restoreAllMocks())
+
+  async function openMcpPanel() {
+    renderConnectionsPage()
+    expect(await screen.findByText(/any MCP server · 1 added/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Manage MCP servers' }))
+    return screen.findByRole('article', { name: 'files' })
+  }
+
+  it('shows the added servers with their tools', async () => {
+    const filesCard = await openMcpPanel()
+    expect(within(filesCard).getByText(/npx -y @modelcontextprotocol\/server-filesystem/)).toBeInTheDocument()
+    expect(within(filesCard).getByText('Connected · 3 tools: read_file, list_directory, search_files')).toBeInTheDocument()
+  })
+
+  it('adds a command server whose secret then appears in the Secrets list, tests and removes it', async () => {
+    const addSpy = vi.spyOn(sampleMcpServersBackend, 'addMcpServer')
+    await openMcpPanel()
+    const addForm = screen.getByRole('form', { name: 'Add an MCP server' })
+    fireEvent.change(within(addForm).getByLabelText('Name'), { target: { value: 'github' } })
+    fireEvent.change(within(addForm).getByLabelText('Command'), { target: { value: 'npx' } })
+    fireEvent.change(within(addForm).getByLabelText('Arguments'), { target: { value: '-y  @modelcontextprotocol/server-github' } })
+    fireEvent.change(within(addForm).getByLabelText(/Secrets it needs/), { target: { value: 'GITHUB_TOKEN' } })
+    fireEvent.click(within(addForm).getByRole('button', { name: 'Add server' }))
+
+    const githubCard = await screen.findByRole('article', { name: 'github' })
+    expect(addSpy).toHaveBeenCalledWith({
+      name: 'github',
+      transport: { kind: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-github'] },
+      secretEnv: ['GITHUB_TOKEN'],
+      bearerTokenSecret: null,
+    })
+    expect(within(githubCard).getByText('Not tested yet')).toBeInTheDocument()
+    expect(await within(getAdvancedSection()).findByText('Used by MCP server github')).toBeInTheDocument()
+    expect(screen.getByText(/any MCP server · 2 added/)).toBeInTheDocument()
+
+    fireEvent.click(within(githubCard).getByRole('button', { name: 'Test github' }))
+    expect(await within(githubCard).findByText(/^Connected/)).toBeInTheDocument()
+    fireEvent.click(within(githubCard).getByRole('button', { name: 'Remove github' }))
+    await waitFor(() => expect(screen.queryByRole('article', { name: 'github' })).not.toBeInTheDocument())
+  })
+
+  it('adds a URL server with a bearer token secret and explains a rejected name', async () => {
+    await openMcpPanel()
+    const addForm = screen.getByRole('form', { name: 'Add an MCP server' })
+    fireEvent.change(within(addForm).getByLabelText('How graphrt reaches it'), { target: { value: 'http' } })
+    fireEvent.change(within(addForm).getByLabelText('Name'), { target: { value: 'Bad Name' } })
+    fireEvent.change(within(addForm).getByLabelText('Server URL'), { target: { value: 'https://mcp.example.com/mcp' } })
+    fireEvent.click(within(addForm).getByRole('button', { name: 'Add server' }))
+    expect(await within(addForm).findByRole('alert')).toHaveTextContent('lowercase letters')
+
+    fireEvent.change(within(addForm).getByLabelText('Name'), { target: { value: 'remote' } })
+    fireEvent.change(within(addForm).getByLabelText(/bearer token/), { target: { value: 'REMOTE_TOKEN' } })
+    fireEvent.click(within(addForm).getByRole('button', { name: 'Add server' }))
+    const remoteCard = await screen.findByRole('article', { name: 'remote' })
+    expect(within(remoteCard).getByText('https://mcp.example.com/mcp')).toBeInTheDocument()
+    expect(within(remoteCard).getByText('Secrets: REMOTE_TOKEN')).toBeInTheDocument()
+  })
+
+  it('shows why a connection test failed', async () => {
+    vi.spyOn(sampleMcpServersBackend, 'testMcpServer').mockImplementation(async (name) => ({
+      name,
+      transport: { kind: 'stdio', command: 'npx', args: [] },
+      secretEnv: [],
+      bearerTokenSecret: null,
+      knownTools: [],
+      lastCheck: { connected: false, error: 'failed to start process', checkedAt: '2026-11-18T10:00:00Z' },
+    }))
+    vi.spyOn(sampleMcpServersBackend, 'listMcpServers')
+      .mockResolvedValueOnce(await sampleMcpServersBackend.listMcpServers())
+      .mockResolvedValue([
+        {
+          name: 'files',
+          transport: { kind: 'stdio', command: 'npx', args: [] },
+          secretEnv: [],
+          bearerTokenSecret: null,
+          knownTools: [],
+          lastCheck: { connected: false, error: 'failed to start process', checkedAt: '2026-11-18T10:00:00Z' },
+        },
+      ])
+    const filesCard = await openMcpPanel()
+    fireEvent.click(within(filesCard).getByRole('button', { name: 'Test files' }))
+    expect(await within(screen.getByRole('article', { name: 'files' })).findByText('Could not connect: failed to start process')).toBeInTheDocument()
   })
 })
 
