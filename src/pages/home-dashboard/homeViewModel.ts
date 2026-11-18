@@ -5,7 +5,7 @@ import type { Run, RunStatus } from '@/api/types'
 import type { AgentSummaryStat, AttentionItem, RecentRun, RecentRunStatus } from '@/data/homeDashboard'
 import { formatCounterLabel, pickHeadlineCounter } from '@/pages/agent-run/runCounters'
 import { formatRunDay } from '@/pages/agent-run/runResultSummary'
-import { agentPath, routePaths } from '@/routes'
+import { agentPath, routePaths, runReviewPath } from '@/routes'
 
 /** Turns backend runs and run stats into what the Home screen (09) shows. */
 
@@ -76,7 +76,8 @@ export function buildPausedRunItems(pausedRuns: Run[], agentName: AgentNameLooku
       title: `${agentName(run.agentId)} is waiting for you`,
       detail: question ? `${question} · ${pausedAt}` : pausedAt,
       actionLabel: 'Review',
-      actionPath: agentPath('testRun', run.agentId, { runId: run.id }),
+      // Test runs continue on the test screen; scheduled and manual runs on the review screen.
+      actionPath: run.trigger === 'test' ? agentPath('testRun', run.agentId, { runId: run.id }) : runReviewPath(run.id),
       isPrimaryAction: index === 0,
     }
   })

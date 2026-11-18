@@ -6,7 +6,7 @@ import { sampleRunSummaryBackend } from '@/api/sampleBackend/runSummary'
 import { resetSampleConversations } from '@/api/sampleBackend/conversations'
 import { resetSampleRuns, sampleRunsBackend } from '@/api/sampleBackend/runs'
 import { resetSampleTriggers } from '@/api/sampleBackend/triggers'
-import { agentPath, agentRoutePatterns, routePaths } from '@/routes'
+import { agentPath, agentRoutePatterns, routePaths, runReviewPath } from '@/routes'
 import { HomePage } from '@/pages/HomePage'
 import { getGreetingForHour } from '@/pages/home-dashboard/greeting'
 
@@ -16,6 +16,7 @@ function renderHomePage() {
       <Routes>
         <Route path={routePaths.home} element={<HomePage />} />
         <Route path={agentRoutePatterns.testRun} element={<p>Test run screen</p>} />
+        <Route path={routePaths.batchApproval} element={<p>Review screen</p>} />
       </Routes>
     </MemoryRouter>,
   )
@@ -46,9 +47,10 @@ describe('HomePage', () => {
   it('opens a paused run from "Review"', async () => {
     renderHomePage()
     const reviewLink = await screen.findByRole('link', { name: 'Review' })
-    expect(reviewLink).toHaveAttribute('href', agentPath('testRun', 'catering-assistant', { runId: 'catering-assistant-0852' }))
+    // A run that is not a test run is answered on the review screen.
+    expect(reviewLink).toHaveAttribute('href', runReviewPath('catering-assistant-0852'))
     fireEvent.click(reviewLink)
-    expect(screen.getByText('Test run screen')).toBeInTheDocument()
+    expect(screen.getByText('Review screen')).toBeInTheDocument()
   })
 
   it('says when nothing needs the user', async () => {

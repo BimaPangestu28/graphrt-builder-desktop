@@ -3,7 +3,7 @@ import type { Run } from '@/api/types'
 import { formatCounterLabel, formatCounterValue, pickHeadlineCounter } from '@/pages/agent-run/runCounters'
 import { buildItemTable, buildRunResultView, formatDurationMs, toneForItemStatus } from '@/pages/agent-run/runResultSummary'
 import { buildPausedRunItems, buildRecentRunRows, describeAgentRunStats } from '@/pages/home-dashboard/homeViewModel'
-import { agentPath } from '@/routes'
+import { agentPath, runReviewPath } from '@/routes'
 
 const now = new Date('2026-11-18T12:00:00')
 const agentName = (agentId: string) => (agentId === 'agent-1' ? 'Cafe offers' : agentId)
@@ -153,9 +153,15 @@ describe('home view model', () => {
       title: 'Cafe offers is waiting for you',
       detail: 'Send this? · Today 09:00 run · paused for your review',
       actionLabel: 'Review',
-      actionPath: agentPath('testRun', 'agent-1', { runId: 'run-9' }),
+      actionPath: runReviewPath('run-9'),
       isPrimaryAction: true,
     })
+  })
+
+  it('sends paused test runs back to the test screen', () => {
+    const pausedTestRun = buildRun({ id: 'run-7', trigger: 'test', status: 'paused', pauseReasons: [] })
+    const [item] = buildPausedRunItems([pausedTestRun], agentName, now)
+    expect(item.actionPath).toBe(agentPath('testRun', 'agent-1', { runId: 'run-7' }))
   })
 
   it('uses the summary headline as the recent run result', () => {
