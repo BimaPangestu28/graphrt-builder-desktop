@@ -20,6 +20,8 @@
 //! - [`node_runtime`]: the bundled Node.js plugins run on and Playwright's browser
 //! - [`plugins`]: graphrt plugins from the catalog (node kinds and tools for every run)
 //! - [`problems`]: what went wrong (failed runs, missing keys, plugins, schedules) and retries
+//! - [`mcp`]: MCP servers the user adds; their tools for every run (graphrt-mcp)
+//! - [`workflow_secrets`]: every workflow secret across agents and MCP servers
 //! - [`desktop`]: menu bar icon, notifications, keep running when closed, launch at login
 //! - [`commands`]: the Tauri commands the frontend calls
 
@@ -35,6 +37,7 @@ pub mod engine;
 pub mod error;
 pub mod flow;
 pub mod knowledge;
+pub mod mcp;
 pub mod node_runtime;
 pub mod plugins;
 pub mod problems;
@@ -44,6 +47,7 @@ pub mod state;
 pub mod storage;
 pub mod teams;
 pub mod usage_summary;
+pub mod workflow_secrets;
 
 use std::sync::Arc;
 
@@ -70,14 +74,16 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         Ok(_) => {}
         Err(error) => log::warn!("could not clean up interrupted runs: {error}"),
     }
-    // Keep 30 days of event logs for finished runs; running / paused runs keep theirs.
-    if let Err(error) = db.prune_old_run_events(30) {
+    // Keep the event logs of finished runs for the chosen days (Settings > Privacy and
+    // data, 30 by default); running / paused runs keep theirs.
+    if let Err(error) = desktop::app_settings::AppSettings::load_or_default(&db).prune_run_history(&db) {
         log::warn!("could not prune old run events: {error}");
     }
     let credentials = Arc::new(CredentialStore::keychain());
     let tauri_sink: Arc<dyn RunEventSink> = Arc::new(TauriRunEventSink::new(app.handle().clone()));
     let notifier = Arc::new(TauriRunNotifier::install(app.handle().clone()));
-    let notifying_sink = Arc::new(NotifyingSink::new(tauri_sink, notifier, db.clone()));
+    let notifying_sink = Arc::new(NotifyingSink::new(tauri_sink, notifier.clone(), db.clone()));
+    desktop::daily_summary::spawn(db.clone(), notifier.clone());
     let status_listener = desktop::desktop_status_listener(app.handle().clone());
     let activity_sink = Arc::new(RunActivitySink::new(notifying_sink, status_listener));
     let chain_runner = Arc::new(ChainRunner::new(db.clone()));
@@ -85,7 +91,11 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
     let runs = Arc::new(RunManager::new(db.clone(), credentials.clone(), sink));
     chain_runner.attach(&runs);
     let scheduler = scheduler::spawn(db.clone(), runs.clone());
-    let conversation_sink = Arc::new(conversations::tauri_sink::TauriConversationEventSink::new(app.handle().clone()));
+    let conversation_sink = Arc::new(desktop::chat_notify::ChatNotifyingSink::new(
+        Arc::new(conversations::tauri_sink::TauriConversationEventSink::new(app.handle().clone())),
+        notifier.clone(),
+        db.clone(),
+    ));
     let conversations =
         Arc::new(conversations::ConversationManager::new(db.clone(), credentials.clone(), conversation_sink));
     let knowledge = Arc::new(knowledge::KnowledgeService::new(
@@ -108,6 +118,7 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         events: Arc::new(plugins::events::TauriPluginEventSink::new(app.handle().clone())),
     }));
     plugins.activate();
+    mcp::publish_from_database(&db);
     Ok(AppState {
         db,
         credentials,
@@ -156,6 +167,11 @@ pub fn run() {
             commands::credentials::list_workflow_secrets,
             commands::credentials::set_workflow_secret,
             commands::credentials::delete_workflow_secret,
+            commands::credentials::list_all_workflow_secrets,
+            commands::mcp::list_mcp_servers,
+            commands::mcp::add_mcp_server,
+            commands::mcp::remove_mcp_server,
+            commands::mcp::test_mcp_server,
             commands::builder::build_agent,
             commands::builder::revise_agent,
             commands::builder::get_flow_summary,
@@ -221,6 +237,8 @@ pub fn run() {
             commands::app_settings::update_app_settings,
             commands::app_settings::export_agents,
             commands::app_settings::delete_all_data,
+            commands::app_settings::get_data_folder_path,
+            commands::app_settings::reveal_data_folder,
             commands::node_runtime::node_runtime_info,
             commands::node_runtime::install_browser_runtime,
             commands::plugins::list_plugin_catalog,

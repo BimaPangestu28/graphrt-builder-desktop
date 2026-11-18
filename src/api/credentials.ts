@@ -1,4 +1,5 @@
 import { callBackend, isDesktopApp } from './client'
+import type { WorkflowSecretOverview } from './connectionTypes'
 import { sampleCredentialsBackend } from './sampleBackend/credentials'
 import type { ModelChoice, ModelProvider, ProviderStatus, WorkflowSecretStatus } from './types'
 
@@ -41,6 +42,15 @@ export function setOllamaBaseUrl(baseUrl: string): Promise<void> {
 export function listWorkflowSecrets(agentId: string): Promise<WorkflowSecretStatus[]> {
   if (!isDesktopApp()) return sampleCredentialsBackend.listWorkflowSecrets(agentId)
   return callBackend('list_workflow_secrets', { agentId })
+}
+
+/**
+ * Every secret name any agent declares or an MCP server needs, with whether it is stored
+ * and who uses it (Connections > Advanced > Secrets). Values are never returned.
+ */
+export function listAllWorkflowSecrets(): Promise<WorkflowSecretOverview[]> {
+  if (!isDesktopApp()) return sampleCredentialsBackend.listAllWorkflowSecrets()
+  return callBackend('list_all_workflow_secrets')
 }
 
 /** Saves or replaces a workflow secret, e.g. `setWorkflowSecret('MAPS_API_KEY', value)`. */

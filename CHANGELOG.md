@@ -34,6 +34,18 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
 - **Team** activity and coordinator chat come from real runs of the team and its members;
   a message to the coordinator starts a team run. The "agent calls per run" guardrail is
   saved and enforced when the coordinator calls members.
+- **Secrets** (Connections > Advanced): every `env.*` secret any agent declares or an MCP
+  server needs, with who uses it and whether it is set; add, replace or remove values
+  (password fields, stored in the keychain, never shown again).
+- **MCP servers** (Connections > Advanced): add a server started by a command or reached by
+  URL, with the secrets it needs; test the connection to list its tools. Every run can use
+  them in `tool` and `agent` nodes (`<name>/<tool>` or `mcp:<name>`); the app connects only
+  when a node uses a server. The builder knows the configured servers and their tools.
+- **Settings**: run history retention (30 days, 90 days or forever; applied at start-up and
+  when changed), a notification when a chatbot hands a conversation over, a daily summary
+  notification at 18:00, the default model for new agents, the real data folder with Show in
+  Finder, and the real app version.
+
 - **DeepSeek** as a model provider: add a key on Welcome or Connections and agents use
   `deepseek-chat` by default (`deepseek-reasoner` works too, with its reasoning streamed).
 - **Plugins**: install graphrt plugins from the graphrt-plugins catalog (Connections > Plugins):
@@ -94,6 +106,9 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
 
 - Agent screens are addressed by agent id (`/agents/<id>/steps`, `/test`, `/schedule`...).
 - Welcome and Connections save real provider keys; Home and the sidebar list real agents.
+- The desktop app no longer shows sample content on Connections and Settings: no sample
+  apps or "Connected" rows, and controls without a backend (appearance, language, model
+  fallback, crash reports, remote runner) are hidden. The browser preview still shows them.
 
 ### Known limitations
 

@@ -86,6 +86,16 @@ pub fn set_workflow_secret(state: State<'_, AppState>, name: String, value: Stri
     state.credentials.set_workflow_secret(name.trim(), &value)
 }
 
+/// Every secret name any agent declares or an MCP server needs, with its
+/// status and users (Connections > Advanced > Secrets). Never values.
+#[tauri::command]
+pub fn list_all_workflow_secrets(
+    state: State<'_, AppState>,
+) -> AppResult<Vec<crate::workflow_secrets::WorkflowSecretOverview>> {
+    let mcp_servers = crate::mcp::definitions::load_definitions(&state.db)?;
+    crate::workflow_secrets::list_all_workflow_secrets(&state.db, &state.credentials, &mcp_servers)
+}
+
 #[tauri::command]
 pub fn delete_workflow_secret(state: State<'_, AppState>, name: String) -> AppResult<()> {
     state.credentials.delete_workflow_secret(name.trim())

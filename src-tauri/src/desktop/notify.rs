@@ -48,6 +48,12 @@ pub trait RunNotifier: Send + Sync + fmt::Debug {
     fn notify(&self, notification: RunNotification);
 }
 
+/// Shows notifications that are not about one run (chat hand-offs, the daily
+/// summary). A click shows the main window.
+pub trait PlainNotifier: Send + Sync + fmt::Debug {
+    fn notify_plain(&self, title: String, body: String);
+}
+
 /// Forwards every run event to `inner` and notifies on runs that need the user.
 #[derive(Debug)]
 pub struct NotifyingSink {
@@ -200,6 +206,17 @@ impl RunNotifier for TauriRunNotifier {
             .title(notification.title)
             .body(notification.body)
             .show();
+        if let Err(error) = shown {
+            log::warn!("could not show a notification: {error}");
+        }
+    }
+}
+
+impl PlainNotifier for TauriRunNotifier {
+    /// The id is not remembered as a run target, so a click only shows the window.
+    fn notify_plain(&self, title: String, body: String) {
+        let notification_id = self.next_notification_id.fetch_add(1, Ordering::Relaxed);
+        let shown = self.app_handle.notification().builder().id(notification_id).title(title).body(body).show();
         if let Err(error) = shown {
             log::warn!("could not show a notification: {error}");
         }
