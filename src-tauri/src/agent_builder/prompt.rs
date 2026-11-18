@@ -75,6 +75,7 @@ fn system_prompt(model: &ModelChoice, reply_format: &str) -> String {
     let rules = SHARED_RULES.replace("{provider}", provider_name(model.provider)).replace("{model}", &model.name);
     let rules = append_domain_guides(rules);
     let rules = append_plugin_guide(rules);
+    let rules = append_mcp_guide(rules);
     format!(
         "{ROLE}\n\n# Rules\n{rules}\n\n# Reply format\n{reply_format}\n\n# Workflow format\n{guide}\n\n\
          # Example: answer one question\n```yaml\n{simple_answer}\n```\n\n\
@@ -97,6 +98,16 @@ fn append_domain_guides(rules: String) -> String {
 /// Adds the installed plugins' step types (dynamic, unlike [`DOMAIN_GUIDES`]).
 fn append_plugin_guide(rules: String) -> String {
     let guide = crate::plugins::installed_plugins_guide();
+    if guide.is_empty() {
+        rules
+    } else {
+        format!("{rules}\n{guide}")
+    }
+}
+
+/// Adds the configured MCP servers' tools (dynamic, like the plugin guide).
+fn append_mcp_guide(rules: String) -> String {
+    let guide = crate::mcp::prompt_guide::configured_servers_guide();
     if guide.is_empty() {
         rules
     } else {

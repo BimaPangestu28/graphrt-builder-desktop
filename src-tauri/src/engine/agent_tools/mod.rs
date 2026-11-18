@@ -62,6 +62,8 @@ pub(crate) fn agent_tool_registry(dependencies: &EngineDependencies, agent_ids_a
     registry.add(AGENT_TOOL_PROVIDER, Arc::new(runtime));
     // Installed plugins' tools (provider = plugin name), next to the `agents` provider.
     crate::plugins::add_plugin_tools(&mut registry);
+    // MCP servers from Connections > Advanced (connected only when a node uses them).
+    crate::mcp::add_mcp_tools(&mut registry, &dependencies.credentials);
     registry
 }
 

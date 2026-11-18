@@ -8,6 +8,9 @@
 //! - [`keep_awake`]: a `caffeinate` assertion while a run is active (macOS).
 //! - [`app_settings`]: the typed preferences behind all of the above.
 //! - [`data`]: export all agents / delete all data.
+//! - [`data_folder`]: where the data lives, and "Show in Finder".
+//! - [`chat_notify`]: a notification when a chatbot hands a conversation over.
+//! - [`daily_summary`]: one notification a day summarizing the runs.
 //!
 //! Run status changes reach this module through two small sink wrappers that
 //! [`crate::run`] chains around the Tauri sink: [`notify::NotifyingSink`]
@@ -15,7 +18,10 @@
 //! Launch at login uses `tauri-plugin-autostart` ([`apply_settings`]).
 
 pub mod app_settings;
+pub mod chat_notify;
+pub mod daily_summary;
 pub mod data;
+pub mod data_folder;
 pub mod keep_awake;
 pub mod notify;
 pub mod tray;

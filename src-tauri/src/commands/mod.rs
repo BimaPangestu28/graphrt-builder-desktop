@@ -10,6 +10,7 @@ pub mod chains;
 pub mod conversations;
 pub mod credentials;
 pub mod knowledge;
+pub mod mcp;
 pub mod node_runtime;
 pub mod plugins;
 pub mod run_summary;
