@@ -13,4 +13,5 @@ pub struct AppState {
     pub credentials: Arc<CredentialStore>,
     pub runs: Arc<RunManager>,
     pub scheduler: SchedulerHandle,
+    pub conversations: Arc<crate::conversations::ConversationManager>,
 }

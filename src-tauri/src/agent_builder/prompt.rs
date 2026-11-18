@@ -15,7 +15,9 @@ const EXAMPLE_APPROVAL_LOOP: &str = include_str!("../../fixtures/flows/approval_
 /// Extra guidance per feature area (run outputs, knowledge, chatbots, agents as
 /// tools...), each in its own Markdown file under `guides/` so features can be
 /// added without editing the shared rules. Rendered in this order.
-const DOMAIN_GUIDES: &[&str] = &[];
+const DOMAIN_GUIDES: &[&str] = &[
+    include_str!("guides/chatbot.md"), // chatbot conversations
+];
 
 /// Prefix of the line carrying the agent's display name in a build reply.
 pub(super) const AGENT_NAME_PREFIX: &str = "Agent name:";

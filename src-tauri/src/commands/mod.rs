@@ -4,6 +4,7 @@
 
 pub mod agents;
 pub mod builder;
+pub mod conversations;
 pub mod credentials;
 pub mod runs;
 pub mod triggers;

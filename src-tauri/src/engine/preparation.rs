@@ -133,3 +133,20 @@ pub(super) fn workflow_env(flow_yaml: &str, credentials: &CredentialStore) -> Ap
         Err(AppError::MissingCredentials(missing_names.join(", ")))
     }
 }
+
+/// The compiled engine and the `env.*` values for one run of `flow_yaml`,
+/// for hosts that drive graphrt themselves instead of through `RunManager`
+/// (chatbot conversations run one short workflow per customer message).
+///
+/// # Errors
+/// Everything [`build_engine`] and [`workflow_env`] report.
+pub(crate) fn prepare_engine_and_env(
+    flow_yaml: &str,
+    credentials: &CredentialStore,
+    db: &Database,
+    model_source: &dyn ModelRegistrySource,
+) -> AppResult<(Engine, IndexMap<String, Value>)> {
+    let engine = build_engine(flow_yaml, credentials, db, model_source)?;
+    let env = workflow_env(flow_yaml, credentials)?;
+    Ok((engine, env))
+}

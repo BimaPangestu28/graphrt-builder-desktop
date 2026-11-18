@@ -82,6 +82,38 @@ const MIGRATIONS: &[&str] = &[
         value TEXT NOT NULL
     );
     "#,
+    // Chatbot conversations and their messages (see `conversations::store`).
+    r#"
+    CREATE TABLE conversations (
+        id              TEXT PRIMARY KEY NOT NULL,
+        agent_id        TEXT NOT NULL REFERENCES agents (id) ON DELETE CASCADE,
+        channel         TEXT NOT NULL CHECK (length(trim(channel)) > 0),
+        customer_name   TEXT NOT NULL,
+        customer_handle TEXT NOT NULL,
+        status          TEXT NOT NULL
+                        CHECK (status IN ('bot_answering', 'waiting_for_you', 'you_replying', 'closed')),
+        origin          TEXT,
+        handoff_reason  TEXT,
+        summary         TEXT,
+        suggested_reply TEXT,
+        variables_json  TEXT NOT NULL DEFAULT '{}',
+        created_at      TEXT NOT NULL,
+        updated_at      TEXT NOT NULL
+    );
+    CREATE INDEX conversations_by_updated_at ON conversations (updated_at DESC);
+    CREATE INDEX conversations_by_status ON conversations (status, updated_at DESC);
+    CREATE INDEX conversations_by_customer ON conversations (agent_id, channel, customer_handle);
+
+    CREATE TABLE conversation_messages (
+        id              TEXT PRIMARY KEY NOT NULL,
+        conversation_id TEXT NOT NULL REFERENCES conversations (id) ON DELETE CASCADE,
+        author          TEXT NOT NULL CHECK (author IN ('customer', 'bot', 'operator', 'system')),
+        text            TEXT NOT NULL,
+        metadata_json   TEXT NOT NULL DEFAULT '{}',
+        created_at      TEXT NOT NULL
+    );
+    CREATE INDEX conversation_messages_by_conversation ON conversation_messages (conversation_id, created_at);
+    "#,
 ];
 
 /// Applies every migration newer than the database's `user_version`.
@@ -129,7 +161,16 @@ mod tests {
         apply(&connection).unwrap();
         assert_eq!(
             table_names(&connection),
-            ["agent_versions", "agents", "run_events", "runs", "settings", "triggers"]
+            [
+                "agent_versions",
+                "agents",
+                "conversation_messages",
+                "conversations",
+                "run_events",
+                "runs",
+                "settings",
+                "triggers"
+            ]
         );
         assert_eq!(read_schema_version(&connection).unwrap(), MIGRATIONS.len());
     }
