@@ -43,6 +43,10 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         Ok(_) => {}
         Err(error) => log::warn!("could not clean up interrupted runs: {error}"),
     }
+    // Keep 30 days of event logs for finished runs; running / paused runs keep theirs.
+    if let Err(error) = db.prune_old_run_events(30) {
+        log::warn!("could not prune old run events: {error}");
+    }
     let credentials = Arc::new(CredentialStore::keychain());
     let sink = Arc::new(TauriRunEventSink::new(app.handle().clone()));
     let runs = Arc::new(RunManager::new(db.clone(), credentials.clone(), sink));

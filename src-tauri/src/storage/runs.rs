@@ -177,6 +177,33 @@ impl Database {
         )?;
         Ok(failed_count)
     }
+
+    /// Deletes the event logs of runs that finished more than `older_than_days`
+    /// days ago; returns how many events were deleted. The run rows (status,
+    /// outputs, error) are kept.
+    ///
+    /// Only finished runs (`Succeeded`, `Failed`, `Aborted`) are pruned, and
+    /// always their whole log: running and paused runs keep every event however
+    /// old, since a paused run can be resumed at any time.
+    ///
+    /// # Errors
+    /// `InvalidInput` when `older_than_days` is 0.
+    pub fn prune_old_run_events(&self, older_than_days: u32) -> AppResult<usize> {
+        if older_than_days == 0 {
+            return Err(AppError::InvalidInput("run event retention must be at least 1 day".into()));
+        }
+        let cutoff = (chrono::Utc::now() - chrono::Duration::days(i64::from(older_than_days))).to_rfc3339();
+        let connection = self.lock()?;
+        // `finished_at` is RFC 3339 UTC like `cutoff`, so text order is time order.
+        let deleted_count = connection.execute(
+            "DELETE FROM run_events WHERE run_id IN (
+                 SELECT id FROM runs
+                 WHERE status IN (?1, ?2, ?3) AND finished_at IS NOT NULL AND finished_at < ?4
+             )",
+            params![RunStatus::Succeeded, RunStatus::Failed, RunStatus::Aborted, cutoff],
+        )?;
+        Ok(deleted_count)
+    }
 }
 
 fn is_terminal(status: RunStatus) -> bool {
@@ -412,6 +439,43 @@ mod tests {
         assert_eq!(database.get_run_snapshot(&paused.id).unwrap(), r#"{"keep": true}"#);
         assert_eq!(database.get_run(&succeeded.id).unwrap().status, RunStatus::Succeeded);
         assert_eq!(database.fail_interrupted_runs().unwrap(), 0);
+    }
+
+    fn set_finished_at(database: &Database, run_id: &str, days_ago: i64) {
+        let finished_at = (chrono::Utc::now() - chrono::Duration::days(days_ago)).to_rfc3339();
+        database
+            .lock()
+            .unwrap()
+            .execute("UPDATE runs SET finished_at = ?1 WHERE id = ?2", params![finished_at, run_id])
+            .unwrap();
+    }
+
+    #[test]
+    fn prune_deletes_only_logs_of_runs_finished_before_the_cutoff() {
+        let database = test_database();
+        let old_finished = start_run(&database);
+        let recent_finished = start_run(&database);
+        let old_paused = start_run(&database);
+        let running = start_run(&database);
+        for run in [&old_finished, &recent_finished, &old_paused, &running] {
+            database.append_run_event(&run.id, &json!({"type": "run_started"})).unwrap();
+            database.append_run_event(&run.id, &json!({"type": "node_started"})).unwrap();
+        }
+        database.finish_run(&old_finished.id, RunStatus::Succeeded, Some(&json!({})), None).unwrap();
+        set_finished_at(&database, &old_finished.id, 31);
+        database.finish_run(&recent_finished.id, RunStatus::Failed, None, Some("boom")).unwrap();
+        set_finished_at(&database, &recent_finished.id, 29);
+        database.mark_run_paused(&old_paused.id, "{}", &json!([])).unwrap();
+
+        assert_eq!(database.prune_old_run_events(30).unwrap(), 2);
+
+        assert!(database.list_run_events(&old_finished.id).unwrap().is_empty());
+        assert_eq!(database.get_run(&old_finished.id).unwrap().status, RunStatus::Succeeded);
+        for kept in [&recent_finished, &old_paused, &running] {
+            assert_eq!(database.list_run_events(&kept.id).unwrap().len(), 2);
+        }
+        assert_eq!(database.prune_old_run_events(30).unwrap(), 0);
+        assert!(matches!(database.prune_old_run_events(0), Err(AppError::InvalidInput(_))));
     }
 
     #[test]
