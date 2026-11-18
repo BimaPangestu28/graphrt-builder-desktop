@@ -17,10 +17,13 @@
 //! and locks the single connection for the duration of the call.
 
 pub mod agents;
+mod codec;
 mod migrations;
 pub mod models;
 pub mod runs;
 pub mod settings;
+#[cfg(test)]
+mod test_support;
 pub mod triggers;
 
 use std::path::Path;
@@ -50,12 +53,16 @@ impl Database {
     fn from_connection(connection: Connection) -> AppResult<Self> {
         connection.pragma_update(None, "foreign_keys", "ON")?;
         migrations::apply(&connection)?;
-        Ok(Self { connection: Mutex::new(connection) })
+        Ok(Self {
+            connection: Mutex::new(connection),
+        })
     }
 
     /// Locks the connection. A poisoned lock means a previous call panicked mid-write.
     pub(crate) fn lock(&self) -> AppResult<MutexGuard<'_, Connection>> {
-        self.connection.lock().map_err(|_| AppError::Internal("database lock poisoned".into()))
+        self.connection
+            .lock()
+            .map_err(|_| AppError::Internal("database lock poisoned".into()))
     }
 }
 
