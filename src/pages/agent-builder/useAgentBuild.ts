@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { buildAgent } from '@/api/builder'
-import type { Agent, BuildProgress, BuildRequest, BuildStage } from '@/api/types'
+import type { Agent, BuildProgress, BuildRequest, BuildStage, DraftPreview } from '@/api/types'
 
 /**
  * Checklist order on screen 03. Each backend stage marks its line as running; lines
@@ -14,11 +14,25 @@ export interface AgentBuildState {
   runningItemIndex: number
   /** Latest message the backend sent for each stage. */
   stageMessages: Partial<Record<BuildStage, string>>
+  /** Latest preview of what the model is writing (kept after the round ends so its steps stay on screen). */
+  draft: DraftPreview | null
+  /** Stage the latest preview belongs to (`drafting` or `repairing`). */
+  draftStage: BuildStage | null
+  /** The model's explanation per writing stage, as far as it has streamed. */
+  explanations: Partial<Record<BuildStage, string>>
   builtAgent: Agent | null
   buildError: Error | null
 }
 
-const initialBuildState: AgentBuildState = { runningItemIndex: 0, stageMessages: {}, builtAgent: null, buildError: null }
+const initialBuildState: AgentBuildState = {
+  runningItemIndex: 0,
+  stageMessages: {},
+  draft: null,
+  draftStage: null,
+  explanations: {},
+  builtAgent: null,
+  buildError: null,
+}
 
 /**
  * Folds one progress update into the build state (pure; exported for tests).
@@ -29,10 +43,17 @@ const initialBuildState: AgentBuildState = { runningItemIndex: 0, stageMessages:
  */
 export function applyBuildProgress(buildState: AgentBuildState, progress: BuildProgress): AgentBuildState {
   const stageIndex = buildChecklistStages.indexOf(progress.stage)
-  return {
+  const nextState = {
     ...buildState,
     runningItemIndex: Math.max(buildState.runningItemIndex, stageIndex),
     stageMessages: { ...buildState.stageMessages, [progress.stage]: progress.message },
+  }
+  if (!progress.draft) return nextState
+  return {
+    ...nextState,
+    draft: progress.draft,
+    draftStage: progress.stage,
+    explanations: { ...buildState.explanations, [progress.stage]: progress.draft.explanation },
   }
 }
 

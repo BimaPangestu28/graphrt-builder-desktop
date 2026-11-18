@@ -1,7 +1,9 @@
 import { useState, type FormEvent } from 'react'
 import type { Agent, FlowStep } from '@/api/types'
-import { StrokeIcon } from '@/components/ui'
+import { StrokeIcon, VisuallyHidden } from '@/components/ui'
 import { PanelHeader, UserChatBubble } from './ChatBubbles'
+import { describeDraftActivity } from './draftActivity'
+import { CompactDraftStepList } from './DraftPreviewParts'
 import type { ChatExchange, LatestRevision } from './useAgentRevisions'
 
 const assistantBlockClassNames = 'flex max-w-[92%] flex-col'
@@ -43,16 +45,54 @@ interface ChangeReplyProps {
   onToggleUndo: () => void
 }
 
-/** Reply to a change request: progress, the summary with changed steps, and Undo/Redo. */
+/**
+ * The builder's reply while a change runs: the model's explanation as it streams (or the
+ * stage message until text arrives), a quiet token count while it writes, and the step
+ * titles written so far. The chat column is a polite live region, so the streamed parts
+ * opt out of it (`aria-live="off"`) and screen readers hear stage changes and the final
+ * reply instead of every token.
+ */
+function LiveChangeReply({ exchange }: { exchange: ChatExchange }) {
+  const hasExplanation = exchange.explanation.trim().length > 0
+  const activity = exchange.writingStage && exchange.draft ? describeDraftActivity(exchange.writingStage, exchange.draft.outputTokens) : null
+  return (
+    <div className={`${assistantBlockClassNames} gap-2.5`}>
+      {hasExplanation ? <VisuallyHidden>{exchange.reply}</VisuallyHidden> : <p className="m-0 leading-[1.55] text-body">{exchange.reply}</p>}
+      {(hasExplanation || exchange.draft) && (
+        <div aria-live="off" className="flex flex-col gap-2.5">
+          {hasExplanation && <p className="m-0 leading-[1.55]">{exchange.explanation}</p>}
+          {activity && (
+            <span aria-hidden="true" className="text-[12px] text-muted tabular-nums">
+              {activity}
+            </span>
+          )}
+          <CompactDraftStepList stepTitles={exchange.draft?.stepTitles ?? []} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function describeUndone(undoableRevision: LatestRevision): string {
+  return `Undone. Back to v${undoableRevision.versionBefore}`
+}
+
+/** Reply to a change request: progress, the explanation and summary with changed steps, and Undo/Redo. */
 function ChangeReply({ exchange, steps, undoableRevision, isBusy, onToggleUndo }: ChangeReplyProps) {
-  if (exchange.status !== 'done') {
-    return <p className={`m-0 max-w-[92%] leading-[1.55] ${exchange.status === 'failed' ? 'text-danger' : 'text-body'}`}>{exchange.reply}</p>
-  }
+  if (exchange.status === 'pending') return <LiveChangeReply exchange={exchange} />
+  if (exchange.status === 'failed') return <p className="m-0 max-w-[92%] leading-[1.55] text-danger">{exchange.reply}</p>
   const changedSteps = steps.filter((flowStep) => exchange.changedStepIds.includes(flowStep.id))
   const isUndone = undoableRevision?.isUndone ?? false
   return (
     <div className={`${assistantBlockClassNames} gap-2.5`}>
-      <p className="m-0 leading-[1.55]">{isUndone ? `Undone. Back to v${undoableRevision?.versionBefore}` : exchange.reply}</p>
+      {undoableRevision && isUndone ? (
+        <p className="m-0 leading-[1.55]">{describeUndone(undoableRevision)}</p>
+      ) : (
+        <>
+          {exchange.explanation && <p className="m-0 leading-[1.55]">{exchange.explanation}</p>}
+          <p className="m-0 leading-[1.55]">{exchange.reply}</p>
+        </>
+      )}
       {!isUndone && changedSteps.length > 0 && (
         <div className="flex flex-col gap-1.5">
           {changedSteps.map((flowStep) => (
