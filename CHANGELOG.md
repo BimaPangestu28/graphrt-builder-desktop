@@ -7,6 +7,39 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ## [Unreleased]
 
+The desktop app now runs agents on the graphrt runtime instead of showing sample data.
+
+### Added
+
+- **Local storage**: agents with their version history, runs with every event and
+  paused-run snapshots, schedules and settings, in one SQLite file in the app data folder.
+- **Keychain**: model provider keys (OpenAI, Anthropic, Gemini) and workflow secrets
+  such as a Google Places key or a WhatsApp token are kept in the OS keychain. The
+  interface can set or remove them but never read them back. Ollama works without a key.
+- **Build an agent from a description**: the default model drafts a graphrt workflow,
+  graphrt validates it, and problems go back to the model to fix (up to three calls).
+  Drafts that would send messages or data without asking first are rejected.
+  Chat changes in the builder are saved as new versions and highlight the changed steps.
+- **Runs**: test runs stream each step live; runs pause for your approval and continue
+  after Approve or Skip; Stop aborts. Runs list, details and raw log read real data.
+- **Schedules**: weekday or custom schedules in your time zone, started by the app
+  while it is open. A run missed while the Mac slept runs once on wake or is skipped,
+  as you choose. Agents become Active or Paused with their schedules.
+- **Needs panel**: the builder lists the keys and secrets an agent needs, and missing
+  secrets can be added in place. A run will not start while one is missing.
+- graphrt is used as a git dependency pinned to a commit until its crates are published.
+
+### Changed
+
+- Agent screens are addressed by agent id (`/agents/<id>/steps`, `/test`, `/schedule`...).
+- Welcome and Connections save real provider keys; Home and the sidebar list real agents.
+
+### Known limitations
+
+- Inbox, Knowledge, Chain, Team and Connect WhatsApp still show sample data.
+- Run result and Home statistics fall back to sample content until workflows agree on
+  output names.
+
 ## [0.1.0] - 2026-11-18
 
 First public preview: the complete graphrt desktop interface, built from the
