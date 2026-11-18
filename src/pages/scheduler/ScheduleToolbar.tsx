@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { Button, Icon, StrokeIcon, joinClassNames } from '@/components/ui'
-import { routePaths } from '@/routes'
+import { useAgents } from '@/hooks/useAgents'
+import { agentPath, routePaths } from '@/routes'
 
 export type ScheduleViewMode = 'day' | 'week' | 'list'
 
@@ -22,7 +23,6 @@ const squareIconButtonClassNames =
 
 /** Page title with the Day / Week / List switch, week arrows and the "New trigger" action. */
 export function ScheduleToolbar({ subtitle, viewMode, onViewModeChange, onShiftWeek }: ScheduleToolbarProps) {
-  const navigate = useNavigate()
   return (
     <div className="flex flex-[1_1_100%] flex-wrap items-end justify-between gap-4">
       <div className="flex flex-col gap-1">
@@ -59,11 +59,46 @@ export function ScheduleToolbar({ subtitle, viewMode, onViewModeChange, onShiftW
             <path d="M9 5l7 7-7 7" />
           </StrokeIcon>
         </button>
-        <Button onClick={() => navigate(routePaths.scheduleAgent)}>
-          <Icon name="plus" size={16} />
-          New trigger
-        </Button>
+        <NewTriggerAction />
       </div>
     </div>
+  )
+}
+
+/**
+ * "New trigger" for a real agent: with one agent it opens that agent's schedule dialog,
+ * with several it asks which agent, and with none it goes to New agent.
+ */
+function NewTriggerAction() {
+  const navigate = useNavigate()
+  const { data: agents } = useAgents()
+  if (!agents || agents.length <= 1) {
+    const target = agents?.[0] ? agentPath('scheduleAgent', agents[0].id) : routePaths.newAgent
+    return (
+      <Button onClick={() => navigate(target)}>
+        <Icon name="plus" size={16} />
+        New trigger
+      </Button>
+    )
+  }
+  return (
+    <label className="flex h-10 items-center gap-2 rounded-[9px] bg-ink px-3 text-[14px] font-semibold text-white">
+      <Icon name="plus" size={16} />
+      <span className="sr-only">New trigger for</span>
+      <select
+        value=""
+        onChange={(event) => event.target.value && navigate(agentPath('scheduleAgent', event.target.value))}
+        className="cursor-pointer border-0 bg-transparent text-[14px] font-semibold text-white outline-none"
+      >
+        <option value="" disabled>
+          New trigger for…
+        </option>
+        {agents.map((agent) => (
+          <option key={agent.id} value={agent.id} className="text-ink">
+            {agent.name}
+          </option>
+        ))}
+      </select>
+    </label>
   )
 }

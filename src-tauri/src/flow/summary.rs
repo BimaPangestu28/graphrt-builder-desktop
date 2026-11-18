@@ -222,9 +222,11 @@ fn first_text(config: &Map<String, Json>, fields: &[&str]) -> Option<String> {
         .find(|text| !text.is_empty())
 }
 
-/// Collapses whitespace and truncates to [`EXCERPT_CHARS`] characters.
+/// Collapses whitespace, shows variable references in plain words and truncates
+/// to [`EXCERPT_CHARS`] characters.
 fn excerpt(text: &str) -> String {
-    let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let readable = readable_references(text);
+    let collapsed = readable.split_whitespace().collect::<Vec<_>>().join(" ");
     if collapsed.chars().count() <= EXCERPT_CHARS {
         return collapsed;
     }
@@ -300,4 +302,38 @@ fn collect_model_providers(graph: &Graph) -> Vec<String> {
         .map(str::to_owned)
         .collect();
     providers.into_iter().collect()
+}
+
+/// Replaces `{{#node.field#}}` references with a short readable label in ‹ ›, so the
+/// builder shows "Send this promotion to ‹name›?" instead of template syntax.
+pub(super) fn readable_references(text: &str) -> String {
+    let mut readable = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find("{{#") {
+        let Some(length) = rest[start + 3..].find("#}}") else {
+            break;
+        };
+        readable.push_str(&rest[..start]);
+        let selector = &rest[start + 3..start + 3 + length];
+        readable.push_str(&format!("‹{}›", reference_label(selector)));
+        rest = &rest[start + 3 + length + 3..];
+    }
+    readable.push_str(rest);
+    readable
+}
+
+/// A label for one selector: the field for inputs, loop items and env values
+/// (`start.city` → "city", `each.item.name` → "name", `env.MAPS_KEY` → "MAPS_KEY"),
+/// otherwise the producing step (`draft_message.text` → "draft message").
+fn reference_label(selector: &str) -> String {
+    let parts: Vec<&str> = selector.split('.').map(str::trim).filter(|part| !part.is_empty()).collect();
+    let label = match parts.as_slice() {
+        [] => return "value".to_owned(),
+        ["env", name, ..] => return (*name).to_owned(),
+        ["start" | "sys" | "conversation", field, ..] => field,
+        [_, "item", field, ..] => field,
+        [_, "item"] => "item",
+        [node, ..] => node,
+    };
+    label.replace('_', " ")
 }

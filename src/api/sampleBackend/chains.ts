@@ -117,7 +117,7 @@ function addSampleAgentStep(request: { targetAgentId: string; stepAgentId: strin
   }
   const steps = insertAgentStep(readCurrentSteps(request.targetAgentId), addedStep, request.placement)
   const agent = saveNewVersion(request.targetAgentId, steps, `Added ${addedStep.title}`)
-  return { agent, summary: `Added ${addedStep.title}`, changedStepIds: [addedStep.id] }
+  return { agent, summary: `Added ${addedStep.title}`, changedStepIds: [addedStep.id], explanation: '' }
 }
 
 function toTeamMember(agentStepInfo: AgentStepInfo): TeamMember {
@@ -151,7 +151,7 @@ function addSampleTeamMember(teamAgentId: string, memberAgentId: string, onProgr
   const teamAgent = readStoredAgent(teamAgentId)
   sampleRevisionProgress.forEach((progress) => onProgress({ ...progress }))
   if (teamAgentId === sampleTeamAgentId) teamMemberIds = [...teamMemberIds, memberAgentId]
-  return { agent: teamAgent, summary: `Added ${member.name} to the team`, changedStepIds: ['coordinator'] }
+  return { agent: teamAgent, summary: `Added ${member.name} to the team`, changedStepIds: ['coordinator'], explanation: '' }
 }
 
 export const sampleChainsBackend = {

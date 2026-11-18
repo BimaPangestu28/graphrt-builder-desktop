@@ -1,7 +1,7 @@
 import { BackendError } from '../client'
 import type { BuildProgress } from '../types'
 import { resetSampleAgents, sampleAgentsBackend } from './agents'
-import { resetSampleBuilder, sampleBuilderBackend, sampleBuildStages, sampleBuildTiming } from './builder'
+import { resetSampleBuilder, sampleBuildDrafts, sampleBuilderBackend, sampleBuildStages, sampleBuildTiming } from './builder'
 import { resetSampleCredentials, sampleCredentialsBackend } from './credentials'
 
 async function expectBackendError(promise: Promise<unknown>, code: BackendError['code']) {
@@ -76,8 +76,30 @@ describe('sample builder backend', () => {
   it('reports every build stage and resolves to the maps-leads agent', async () => {
     const progressUpdates: BuildProgress[] = []
     const builtAgent = await sampleBuilderBackend.buildAgent({ description: 'Find cafes', kind: 'task' }, (progress) => progressUpdates.push(progress))
-    expect(progressUpdates).toEqual(sampleBuildStages)
+    const reportedStages = progressUpdates
+      .map(({ stage, message }) => ({ stage, message }))
+      .filter((progress, updateIndex, allUpdates) => progress.stage !== allUpdates[updateIndex - 1]?.stage)
+    expect(reportedStages).toEqual(sampleBuildStages)
+    expect(progressUpdates[progressUpdates.length - 1].draft).toBeUndefined()
     expect(builtAgent.id).toBe('maps-leads')
+  })
+
+  it('streams the explanation, step titles and token count while drafting and repairing', async () => {
+    const progressUpdates: BuildProgress[] = []
+    await sampleBuilderBackend.buildAgent({ description: 'Find cafes', kind: 'task' }, (progress) => progressUpdates.push(progress))
+    const draftingPreviews = progressUpdates.filter((progress) => progress.stage === 'drafting').map((progress) => progress.draft!)
+    expect(draftingPreviews.length).toBeGreaterThan(3)
+    expect(draftingPreviews[0].explanation.length).toBeLessThan(draftingPreviews[draftingPreviews.length - 1].explanation.length)
+    expect(draftingPreviews[0].stepTitles).toEqual([])
+    expect(draftingPreviews.map((preview) => preview.outputTokens)).toEqual([...draftingPreviews.map((preview) => preview.outputTokens)].sort((first, second) => first - second))
+    expect(draftingPreviews[draftingPreviews.length - 1]).toEqual({
+      explanation: sampleBuildDrafts.drafting!.explanation,
+      stepTitles: sampleBuildDrafts.drafting!.stepTitles,
+      outputTokens: sampleBuildDrafts.drafting!.totalTokens,
+    })
+    const firstRepairPreview = progressUpdates.find((progress) => progress.stage === 'repairing')!.draft!
+    expect(firstRepairPreview.stepTitles).toEqual([])
+    expect(progressUpdates.filter((progress) => progress.stage === 'checking' || progress.stage === 'done').every((progress) => !progress.draft)).toBe(true)
   })
 
   it('needs a description and a usable model to build', async () => {
@@ -95,6 +117,11 @@ describe('sample builder backend', () => {
     expect(revision.changedStepIds).toEqual(['write_message', 'send_whatsapp'])
     expect(revision.summary).toBe('Changed 2 steps: Write a short message, Send WhatsApp')
     expect(progressUpdates[progressUpdates.length - 1]).toEqual({ stage: 'done', message: revision.summary })
+    expect(revision.explanation).toBe('I updated “Write a short message” and “Send WhatsApp” to do what you asked.')
+    const lastDraft = progressUpdates.filter((progress) => progress.draft).pop()!.draft!
+    expect(lastDraft.explanation).toBe(revision.explanation)
+    expect(lastDraft.stepTitles).toHaveLength(6)
+    expect(lastDraft.outputTokens).toBeGreaterThan(0)
     const flowSummary = await sampleBuilderBackend.getFlowSummary('maps-leads')
     expect(flowSummary.steps.find((flowStep) => flowStep.id === 'write_message')?.detail).toBe('Uses the place name · max 1 sentence')
     expect(flowSummary.steps.find((flowStep) => flowStep.id === 'send_whatsapp')?.detail).toBe('From your number on this Mac · 45s gap · max 40 per day')
@@ -103,6 +130,7 @@ describe('sample builder backend', () => {
   it('adds a review filter inside the loop', async () => {
     const revision = await sampleBuilderBackend.reviseAgent('maps-leads', 'Skip places with fewer than 80 reviews', () => {})
     expect(revision.changedStepIds).toEqual(['skip_few_reviews'])
+    expect(revision.explanation).toBe('I added “Skip places with fewer than 80 reviews” so the agent only goes on with the places you want.')
     const flowSummary = await sampleBuilderBackend.getFlowSummary('maps-leads')
     expect(flowSummary.steps[3]).toMatchObject({ title: 'Skip places with fewer than 80 reviews', depth: 1 })
   })

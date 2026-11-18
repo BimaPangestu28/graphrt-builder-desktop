@@ -18,11 +18,13 @@
 pub(crate) mod diff;
 mod extract;
 mod kind;
+mod live;
 mod prompt;
 #[cfg(test)]
 mod tests;
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use graphrt_llm::{ChatModel, ChatRequest, LlmError, Message};
 use serde::{Deserialize, Serialize};
@@ -32,6 +34,8 @@ use crate::error::{AppError, AppResult};
 use crate::flow::{self, FlowSummary};
 use crate::storage::models::{Agent, AgentKind, NewAgent};
 use crate::storage::Database;
+
+pub use live::DraftPreview;
 
 pub const MAX_REPAIR_ATTEMPTS: usize = 2;
 
@@ -62,6 +66,9 @@ pub enum BuildStage {
 pub struct BuildProgress {
     pub stage: BuildStage,
     pub message: String,
+    /// What the model has written so far, while it drafts or repairs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub draft: Option<DraftPreview>,
 }
 
 /// Result of a chat edit on screen 04.
@@ -73,6 +80,8 @@ pub struct RevisionResult {
     pub summary: String,
     /// Ids of steps that were added or changed, to highlight them.
     pub changed_step_ids: Vec<String>,
+    /// The model's own opening words about the change; may be empty.
+    pub explanation: String,
 }
 
 /// Progress callback shared by the builder functions.
@@ -157,7 +166,7 @@ pub(crate) async fn build_agent_with_model(
         Message::user(prompt::build_request(description, kind)),
     ];
     report(on_progress, BuildStage::Drafting, "Drafting the steps");
-    let draft = draft_until_valid(builder, messages, on_progress).await?;
+    let draft = draft_until_valid(builder, messages, on_progress, "Drafting the steps").await?;
     let name = extract::agent_name(&draft.reply)
         .or_else(|| extract::document_name(&draft.flow_yaml))
         .unwrap_or_else(|| extract::name_from_description(description));
@@ -187,14 +196,19 @@ pub(crate) async fn revise_agent_with_model(
         Message::user(prompt::revision_request(&agent.flow_yaml, instruction)),
     ];
     report(on_progress, BuildStage::Drafting, "Updating the steps");
-    let draft = draft_until_valid(builder, messages, on_progress).await?;
+    let draft = draft_until_valid(builder, messages, on_progress, "Updating the steps").await?;
     if extract::same_document(&draft.flow_yaml, &agent.flow_yaml) {
         return Err(AppError::InvalidInput("No changes were needed".into()));
     }
     let changes = diff::compare_flows(&before, &draft.summary);
     let updated_agent = db.update_agent_flow(agent_id, &draft.flow_yaml, &changes.summary)?;
     report(on_progress, BuildStage::Done, "Your change is ready");
-    Ok(RevisionResult { agent: updated_agent, summary: changes.summary, changed_step_ids: changes.changed_step_ids })
+    Ok(RevisionResult {
+        agent: updated_agent,
+        summary: changes.summary,
+        changed_step_ids: changes.changed_step_ids,
+        explanation: draft.explanation,
+    })
 }
 
 /// Summary of the stored flow; an unreadable stored flow counts as having no steps,
@@ -212,6 +226,8 @@ struct ValidDraft {
     reply: String,
     flow_yaml: String,
     summary: FlowSummary,
+    /// The reply's plain-language opening (the last round's, after repairs).
+    explanation: String,
 }
 
 /// Asks the model, then validates; on a problem sends the reply and the error
@@ -224,15 +240,19 @@ async fn draft_until_valid(
     builder: &BuilderModel,
     mut messages: Vec<Message>,
     on_progress: ProgressSink<'_>,
+    drafting_message: &str,
 ) -> AppResult<ValidDraft> {
-    let mut reply = ask_model(builder, &messages).await?;
+    let mut reply = ask_model(builder, &messages, on_progress, BuildStage::Drafting, drafting_message).await?;
     let mut repair_attempts = 0;
     loop {
         let check_message = if repair_attempts == 0 { "Checking the steps" } else { "Checking it again" };
         report(on_progress, BuildStage::Checking, check_message);
         let flow_yaml = extract::workflow_yaml(&reply);
         let problem = match validate_draft(&flow_yaml, builder) {
-            Ok(summary) => return Ok(ValidDraft { reply, flow_yaml, summary }),
+            Ok(summary) => {
+                let explanation = live::opening_text(&reply);
+                return Ok(ValidDraft { reply, flow_yaml, summary, explanation });
+            }
             Err(problem) => problem,
         };
         log::info!("drafted workflow is invalid (attempt {}): {problem}", repair_attempts + 1);
@@ -245,7 +265,8 @@ async fn draft_until_valid(
         report(on_progress, BuildStage::Repairing, "Fixing a problem in the draft");
         messages.push(Message::assistant(reply));
         messages.push(Message::user(prompt::repair_request(&problem)));
-        reply = ask_model(builder, &messages).await?;
+        reply =
+            ask_model(builder, &messages, on_progress, BuildStage::Repairing, "Fixing a problem in the draft").await?;
     }
 }
 
@@ -283,11 +304,29 @@ fn validate_draft(flow_yaml: &str, builder: &BuilderModel) -> Result<FlowSummary
     Ok(summary)
 }
 
-/// One model call; returns the reply text.
-async fn ask_model(builder: &BuilderModel, messages: &[Message]) -> AppResult<String> {
+/// One model call; returns the reply text. While it streams, `stage` progress
+/// carries a [`DraftPreview`] of what has been written so far.
+async fn ask_model(
+    builder: &BuilderModel,
+    messages: &[Message],
+    on_progress: ProgressSink<'_>,
+    stage: BuildStage,
+    message: &str,
+) -> AppResult<String> {
     let request = ChatRequest::new(builder.choice.name.clone(), messages.to_vec()).with_max_tokens(MAX_REPLY_TOKENS);
     let stream = builder.model.chat(request).await.map_err(|error| model_error(&error))?;
-    let response = graphrt_llm::collect(stream, |_| {}).await.map_err(|error| model_error(&error))?;
+    let mut watcher = live::DraftWatcher::new();
+    let send_preview = |draft: DraftPreview| {
+        on_progress(BuildProgress { stage, message: message.to_owned(), draft: Some(draft) });
+    };
+    let response = graphrt_llm::collect(stream, |delta| {
+        if let Some(preview) = watcher.push(delta, Instant::now()) {
+            send_preview(preview);
+        }
+    })
+    .await
+    .map_err(|error| model_error(&error))?;
+    send_preview(watcher.preview());
     log::debug!("builder model reply ({} chars):\n{}", response.text.len(), response.text);
     Ok(response.text)
 }
@@ -297,5 +336,5 @@ fn model_error(error: &LlmError) -> AppError {
 }
 
 fn report(on_progress: ProgressSink<'_>, stage: BuildStage, message: &str) {
-    on_progress(BuildProgress { stage, message: message.to_owned() });
+    on_progress(BuildProgress { stage, message: message.to_owned(), draft: None });
 }

@@ -260,3 +260,22 @@ fn approval_loop_declares_its_secrets() {
 fn flows_without_env_have_none() {
     assert!(summarize_flow(SIMPLE_ANSWER).unwrap().env.is_empty());
 }
+
+#[test]
+fn references_read_as_plain_words_in_step_details() {
+    use super::summary::readable_references;
+    assert_eq!(
+        readable_references("Send this promotion to {{#each_business.item.name#}}? {{#draft_message.text#}}"),
+        "Send this promotion to ‹name›? ‹draft message›"
+    );
+    assert_eq!(
+        readable_references("Cafes in {{#start.area#}} with {{#env.MAPS_API_KEY#}}"),
+        "Cafes in ‹area› with ‹MAPS_API_KEY›"
+    );
+    assert_eq!(readable_references("No references"), "No references");
+    assert_eq!(readable_references("Broken {{#start.area"), "Broken {{#start.area");
+
+    let summary = summarize_flow(APPROVAL_LOOP).unwrap();
+    let approval = find_step(&summary, "approve_message");
+    assert!(!approval.detail.contains("{{#"), "{}", approval.detail);
+}

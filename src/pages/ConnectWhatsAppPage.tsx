@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { Icon } from '@/components/ui'
 import { useBrowserRuntime } from '@/hooks/useBrowserRuntime'
 import { usePlugins } from '@/hooks/usePlugins'
-import { routePaths } from '@/routes'
+import { agentPath, routePaths } from '@/routes'
 import { BuilderBackdropSkeleton } from './connect-whatsapp/BuilderBackdropSkeleton'
 import { BusinessApiSetup } from './connect-whatsapp/BusinessApiSetup'
 import { PersonalWhatsAppSetup } from './connect-whatsapp/PersonalWhatsAppSetup'
@@ -33,9 +33,11 @@ function SelectedOptionSetup({ selectedOption }: { selectedOption: WhatsAppConne
  */
 export function ConnectWhatsAppPage() {
   const navigate = useNavigate()
+  const { agentId } = useParams()
   const closeButtonRef = useRef<HTMLButtonElement>(null)
   const [selectedOption, setSelectedOption] = useState<WhatsAppConnectionOption | null>(null)
-  const closeDialog = useCallback(() => navigate(routePaths.builder), [navigate])
+  // Back to the builder of the agent in the route (`/agents/:agentId/connect-whatsapp`).
+  const closeDialog = useCallback(() => navigate(agentId ? agentPath('builder', agentId) : routePaths.home), [navigate, agentId])
 
   useEffect(() => {
     closeButtonRef.current?.focus()

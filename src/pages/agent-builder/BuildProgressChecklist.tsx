@@ -32,6 +32,8 @@ export interface BuildChecklistItem {
   title: string
   detail?: string
   runningDetail?: string
+  /** Quiet live activity while this item runs ("Writing… 412 tokens"); hidden from screen readers so it is not read on every update. */
+  activity?: string
 }
 
 interface BuildProgressChecklistProps {
@@ -58,6 +60,11 @@ export function BuildProgressChecklist({ items, runningItemIndex }: BuildProgres
                   <VisuallyHidden>{`, ${stateLabels[state]}`}</VisuallyHidden>
                 </span>
                 {detail && <span className="text-[13px] text-body">{detail}</span>}
+                {state === 'running' && item.activity && (
+                  <span aria-hidden="true" className="text-[12px] text-muted tabular-nums">
+                    {item.activity}
+                  </span>
+                )}
               </span>
             </li>
           )

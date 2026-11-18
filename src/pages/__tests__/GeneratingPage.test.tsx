@@ -1,8 +1,8 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { resetSampleAgents } from '@/api/sampleBackend/agents'
-import { resetSampleBuilder, sampleBuilderBackend, sampleBuildTiming } from '@/api/sampleBackend/builder'
+import { resetSampleBuilder, sampleBuildDrafts, sampleBuilderBackend, sampleBuildTiming } from '@/api/sampleBackend/builder'
 import { resetSampleCredentials, sampleCredentialsBackend } from '@/api/sampleBackend/credentials'
 import { openBuilderDelayMs } from '@/data/mapsLeadsAgent'
 import { agentPath, routePaths } from '@/routes'
@@ -54,6 +54,64 @@ describe('GeneratingPage', () => {
     expect(screen.getByText(/Understood the job/)).toHaveTextContent('Done')
     expect(screen.getByText(/Fixed problems/)).toHaveTextContent('In progress')
     expect(screen.getByText('Step 4 read the wrong field for the place name')).toBeInTheDocument()
+  })
+
+  it('streams the explanation, step titles and token count while the model writes', async () => {
+    const draftingExplanation = sampleBuildDrafts.drafting!.explanation
+    renderGeneratingPage()
+    await advanceBy(sampleBuildTiming.buildStageDelayMs)
+    expect(screen.getByText(/Picked the steps/)).toHaveTextContent('In progress')
+    expect(screen.getByText(/^Writing… \d+ tokens$/)).toBeInTheDocument()
+    expect(screen.getByText(/^This agent searches/)).not.toHaveTextContent(draftingExplanation)
+    expect(screen.queryByRole('list', { name: 'Steps written so far' })).not.toBeInTheDocument()
+
+    await advanceBy(sampleBuildTiming.buildStageDelayMs - 1)
+    expect(screen.getByText(draftingExplanation)).toBeInTheDocument()
+    expect(screen.getByText('Writing… 1,184 tokens')).toBeInTheDocument()
+    const writtenSteps = screen.getByRole('list', { name: 'Steps written so far' })
+    expect(within(writtenSteps).getAllByRole('listitem').map((stepItem) => stepItem.textContent)).toEqual(
+      sampleBuildDrafts.drafting!.stepTitles.map((stepTitle, stepIndex) => `${stepIndex + 1}${stepTitle}`),
+    )
+
+    await advanceBy(1)
+    expect(screen.getByText(/Fixed problems/)).toHaveTextContent('In progress')
+    expect(screen.getByText(/^Fixing… \d+ tokens$/)).toBeInTheDocument()
+    expect(screen.queryByText(/^Writing…/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: 'Steps written so far' })).not.toBeInTheDocument()
+    // Shown under the checklist and, now that its round is over, announced once.
+    expect(screen.getAllByText(draftingExplanation)).toHaveLength(2)
+
+    await advanceBy(sampleBuildTiming.buildStageDelayMs)
+    expect(screen.getByText(/Checking it again/)).toHaveTextContent('In progress')
+    expect(screen.queryByText(/tokens$/)).not.toBeInTheDocument()
+    expect(screen.getByText(sampleBuildDrafts.repairing!.explanation)).toBeInTheDocument()
+    expect(within(screen.getByRole('list', { name: 'Steps written so far' })).getAllByRole('listitem')).toHaveLength(6)
+  })
+
+  it('announces the explanation once its round is over, not while it streams', async () => {
+    const buildAgentSpy = vi.spyOn(sampleBuilderBackend, 'buildAgent').mockImplementation(async (_request, onProgress) => {
+      onProgress({ stage: 'drafting', message: 'Writing the steps', draft: { explanation: 'This agent sends', stepTitles: ['Search places'], outputTokens: 12345 } })
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      onProgress({ stage: 'drafting', message: 'Writing the steps', draft: { explanation: 'This agent sends a daily summary.', stepTitles: ['Search places', 'Send'], outputTokens: 23456 } })
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      onProgress({ stage: 'checking', message: 'No problems found' })
+      return new Promise(() => {})
+    })
+    const { container } = renderGeneratingPage()
+    const liveRegion = () => container.querySelector('.sr-only[aria-live="polite"]')!
+    await advanceBy(0)
+    expect(buildAgentSpy).toHaveBeenCalled()
+    expect(screen.getByText('This agent sends')).toBeInTheDocument()
+    expect(screen.getByText('Writing… 12,345 tokens')).toHaveAttribute('aria-hidden', 'true')
+    expect(liveRegion()).toHaveTextContent(/^$/)
+
+    await advanceBy(100)
+    expect(screen.getByText('Writing… 23,456 tokens')).toBeInTheDocument()
+    expect(liveRegion()).toHaveTextContent(/^$/)
+
+    await advanceBy(100)
+    expect(liveRegion()).toHaveTextContent('This agent sends a daily summary.')
+    expect(screen.queryByText(/tokens$/)).not.toBeInTheDocument()
   })
 
   it('shows the saved agent and opens its builder', async () => {

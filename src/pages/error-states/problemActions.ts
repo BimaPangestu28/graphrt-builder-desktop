@@ -17,7 +17,7 @@ export function getProblemActionPath(action: ProblemAction): string | null {
     case 'open_plugins':
       return connectionsPluginsPath
     case 'open_builder':
-      return action.agentId ? agentPath('builder', action.agentId) : routePaths.builder
+      return action.agentId ? agentPath('builder', action.agentId) : routePaths.home
     case 'open_schedule':
       return action.agentId ? agentPath('scheduleAgent', action.agentId) : routePaths.scheduler
     case 'retry_run':

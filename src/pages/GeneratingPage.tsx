@@ -1,7 +1,7 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { BackendError } from '@/api/client'
-import type { BuildRequest, BuildStage } from '@/api/types'
+import type { BuildRequest, BuildStage, DraftPreview } from '@/api/types'
 import { AppShell } from '@/components/layout'
 import { joinClassNames } from '@/components/ui'
 import { openBuilderDelayMs } from '@/data/mapsLeadsAgent'
@@ -12,9 +12,14 @@ import { BuildProgressChecklist, type BuildChecklistItem } from './agent-builder
 import { readBuildRequest } from './agent-builder/buildRequestState'
 import { PanelHeader, UserChatBubble } from './agent-builder/ChatBubbles'
 import { StepNumberBadge } from './agent-builder/StepNumberBadge'
-import { buildChecklistStages, useAgentBuild } from './agent-builder/useAgentBuild'
+import { describeDraftActivity } from './agent-builder/draftActivity'
+import { DraftStepCards, PoliteAnnouncement } from './agent-builder/DraftPreviewParts'
+import { buildChecklistStages, useAgentBuild, type AgentBuildState } from './agent-builder/useAgentBuild'
 
 const placeholderStepCount = 4
+
+/** Stages in which the model writes a draft (and explains it). */
+const draftingStages: BuildStage[] = ['drafting', 'repairing']
 
 /** Checklist titles per backend stage, and what a line says if the backend skipped it. */
 const checklistTitles: Record<BuildStage, { title: string; skippedDetail: string }> = {
@@ -25,18 +30,54 @@ const checklistTitles: Record<BuildStage, { title: string; skippedDetail: string
   done: { title: 'Check what it needs to connect', skippedDetail: 'Ready to connect' },
 }
 
-function createChecklistItems(stageMessages: Partial<Record<BuildStage, string>>): BuildChecklistItem[] {
+/** The draft being written right now, if its stage is the one running (none once the round is over). */
+function readActiveDraft(buildState: AgentBuildState): { stage: BuildStage; draft: DraftPreview } | null {
+  const { draft, draftStage, runningItemIndex, builtAgent, buildError } = buildState
+  if (!draft || !draftStage || builtAgent || buildError) return null
+  return buildChecklistStages[runningItemIndex] === draftStage ? { stage: draftStage, draft } : null
+}
+
+function createChecklistItems(buildState: AgentBuildState): BuildChecklistItem[] {
+  const activeDraft = readActiveDraft(buildState)
   return buildChecklistStages.map((stage) => ({
     title: checklistTitles[stage].title,
-    detail: stageMessages[stage] ?? checklistTitles[stage].skippedDetail,
-    runningDetail: stageMessages[stage],
+    detail: buildState.stageMessages[stage] ?? checklistTitles[stage].skippedDetail,
+    runningDetail: buildState.stageMessages[stage],
+    activity: activeDraft?.stage === stage ? describeDraftActivity(stage, activeDraft.draft.outputTokens) : undefined,
   }))
 }
 
+/**
+ * The builder's own words under the checklist: what the agent does (drafting) and what it
+ * fixed (repairing), growing as the model writes. Screen readers hear each paragraph once
+ * its round is over instead of every streamed word.
+ */
+function BuilderExplanationReply({ buildState }: { buildState: AgentBuildState }) {
+  const paragraphs = draftingStages.map((stage) => ({ stage, text: buildState.explanations[stage]?.trim() ?? '' })).filter(({ text }) => text)
+  const finishedText = paragraphs
+    .filter(({ stage }) => buildState.runningItemIndex > buildChecklistStages.indexOf(stage))
+    .map(({ text }) => text)
+    .join(' ')
+  return (
+    <>
+      {paragraphs.length > 0 && (
+        <div className="flex max-w-[92%] flex-col gap-2">
+          {paragraphs.map(({ stage, text }) => (
+            <p key={stage} className="m-0 leading-[1.55]">
+              {text}
+            </p>
+          ))}
+        </div>
+      )}
+      <PoliteAnnouncement text={finishedText} />
+    </>
+  )
+}
+
 /** Steps of the saved agent, shown for a moment before the builder opens. */
-function BuiltStepsPreview({ agentId }: { agentId: string }) {
+function BuiltStepsPreview({ agentId, loadingFallback }: { agentId: string; loadingFallback: ReactNode }) {
   const { data: flowSummary } = useFlowSummary(agentId)
-  if (!flowSummary) return <StepPlaceholders count={placeholderStepCount} />
+  if (!flowSummary) return <>{loadingFallback}</>
   return (
     <ol className="m-0 flex list-none flex-col gap-2 p-0">
       {flowSummary.steps.map((flowStep, stepIndex) => (
@@ -47,16 +88,6 @@ function BuiltStepsPreview({ agentId }: { agentId: string }) {
           <StepNumberBadge number={stepIndex + 1} />
           <span className="font-semibold">{flowStep.title}</span>
         </li>
-      ))}
-    </ol>
-  )
-}
-
-function StepPlaceholders({ count }: { count: number }) {
-  return (
-    <ol aria-hidden="true" className="m-0 flex list-none flex-col gap-2 p-0">
-      {Array.from({ length: count }, (_, placeholderIndex) => (
-        <li key={`placeholder-${placeholderIndex}`} className="h-[54px] animate-pulse rounded-xl bg-selected motion-reduce:animate-none" />
       ))}
     </ol>
   )
@@ -115,7 +146,11 @@ function MissingBuildRequestNotice() {
 
 /** The build itself: chat column with the live checklist, agent column filling in. */
 function AgentBuildScreen({ buildRequest }: { buildRequest: BuildRequest }) {
-  const { runningItemIndex, stageMessages, builtAgent, buildError, retry } = useAgentBuild(buildRequest)
+  const { retry, ...buildState } = useAgentBuild(buildRequest)
+  const { runningItemIndex, builtAgent, buildError } = buildState
+  const draftStepCards = (
+    <DraftStepCards stepTitles={buildState.draft?.stepTitles ?? []} minimumCardCount={placeholderStepCount} isWriting={readActiveDraft(buildState) !== null} />
+  )
   useOpenBuilderWhenBuilt(builtAgent?.id ?? null)
   const sidebarStatus = buildError ? 'Build stopped' : builtAgent ? 'Ready' : 'Building…'
 
@@ -127,7 +162,8 @@ function AgentBuildScreen({ buildRequest }: { buildRequest: BuildRequest }) {
         </PanelHeader>
         <div className="flex flex-col gap-5 p-6">
           <UserChatBubble>{buildRequest.description}</UserChatBubble>
-          <BuildProgressChecklist items={createChecklistItems(stageMessages)} runningItemIndex={runningItemIndex} />
+          <BuildProgressChecklist items={createChecklistItems(buildState)} runningItemIndex={runningItemIndex} />
+          <BuilderExplanationReply buildState={buildState} />
           {buildError && <BuildErrorNotice buildError={buildError} onRetry={retry} />}
         </div>
       </section>
@@ -138,7 +174,7 @@ function AgentBuildScreen({ buildRequest }: { buildRequest: BuildRequest }) {
         </PanelHeader>
         <div className="flex flex-col gap-6 p-6">
           <h1 className="m-0 text-[22px] font-semibold">{builtAgent?.name ?? 'New agent'}</h1>
-          {builtAgent ? <BuiltStepsPreview agentId={builtAgent.id} /> : <StepPlaceholders count={placeholderStepCount} />}
+          {builtAgent ? <BuiltStepsPreview agentId={builtAgent.id} loadingFallback={draftStepCards} /> : draftStepCards}
         </div>
       </section>
     </AppShell>
