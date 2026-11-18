@@ -70,9 +70,10 @@ interface StepsTabContentProps {
   flowSummaryError: Error | null
   highlightedStepIds: Set<string>
   requirements: BuilderRequirement[]
+  onSaveSecret?: (secretName: string, value: string) => Promise<void>
 }
 
-function StepsTabContent({ flowSummary, flowSummaryError, highlightedStepIds, requirements }: StepsTabContentProps) {
+function StepsTabContent({ flowSummary, flowSummaryError, highlightedStepIds, requirements, onSaveSecret }: StepsTabContentProps) {
   if (flowSummaryError) return <p className="m-0 text-muted">Could not read the steps: {flowSummaryError.message}</p>
   if (!flowSummary) return <p className="m-0 text-muted">Loading steps…</p>
   return (
@@ -82,7 +83,7 @@ function StepsTabContent({ flowSummary, flowSummaryError, highlightedStepIds, re
           <BuilderStepCard key={flowStep.id} flowStep={flowStep} number={stepIndex + 1} isChanged={highlightedStepIds.has(flowStep.id)} />
         ))}
       </ol>
-      <AgentRequirementsList requirements={requirements} />
+      <AgentRequirementsList requirements={requirements} onSaveSecret={onSaveSecret} />
     </>
   )
 }
@@ -112,10 +113,12 @@ interface BuilderAgentPanelProps {
   flowSummaryError: Error | null
   highlightedStepIds: Set<string>
   requirements: BuilderRequirement[]
+  /** Saves a workflow secret pasted in the "Needs" box. */
+  onSaveSecret?: (secretName: string, value: string) => Promise<void>
 }
 
 /** Right column of screen 04: tabs, actions, the agent's steps and what it needs connected. */
-export function BuilderAgentPanel({ agent, flowSummary, flowSummaryError, highlightedStepIds, requirements }: BuilderAgentPanelProps) {
+export function BuilderAgentPanel({ agent, flowSummary, flowSummaryError, highlightedStepIds, requirements, onSaveSecret }: BuilderAgentPanelProps) {
   const [activeTab, setActiveTab] = useState<BuilderTabKey>('steps')
 
   return (
@@ -131,7 +134,13 @@ export function BuilderAgentPanel({ agent, flowSummary, flowSummaryError, highli
           <span className="text-body">Runs on this Mac · started by hand</span>
         </div>
         {activeTab === 'steps' && (
-          <StepsTabContent flowSummary={flowSummary} flowSummaryError={flowSummaryError} highlightedStepIds={highlightedStepIds} requirements={requirements} />
+          <StepsTabContent
+            flowSummary={flowSummary}
+            flowSummaryError={flowSummaryError}
+            highlightedStepIds={highlightedStepIds}
+            requirements={requirements}
+            onSaveSecret={onSaveSecret}
+          />
         )}
         {activeTab === 'runs' && <RunsTabContent agentId={agent.id} />}
         {activeTab === 'source' && <SourceTabContent flowYaml={agent.flowYaml} />}

@@ -11,7 +11,7 @@ use graphrt_core::graph::{GraphNode, NodeIx};
 use graphrt_core::Graph;
 use serde_json::{Map, Value as Json};
 
-use super::{FlowInput, FlowStep, FlowSummary};
+use super::{FlowEnvVar, FlowInput, FlowStep, FlowSummary};
 
 /// Bookkeeping node kinds that are not shown as steps.
 const HIDDEN_KINDS: &[&str] = &["start", "end", "iteration-start", "loop-start", "loop-end"];
@@ -26,7 +26,23 @@ pub(super) fn summarize_graph(graph: &Graph) -> FlowSummary {
         steps: collect_steps(graph),
         inputs: collect_inputs(graph),
         model_providers: collect_model_providers(graph),
+        env: collect_env(graph),
     }
+}
+
+/// The workflow's `env` declarations.
+fn collect_env(graph: &Graph) -> Vec<FlowEnvVar> {
+    graph
+        .workflow()
+        .env
+        .iter()
+        .map(|declaration| FlowEnvVar {
+            name: declaration.name.clone(),
+            description: declaration.description.clone().filter(|text| !text.trim().is_empty()),
+            is_secret: declaration.ty == graphrt_core::ValueType::Secret,
+            has_default: declaration.value.as_ref().is_some_and(|value| !value.is_null()),
+        })
+        .collect()
 }
 
 fn collect_steps(graph: &Graph) -> Vec<FlowStep> {

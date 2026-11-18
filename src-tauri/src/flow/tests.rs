@@ -235,3 +235,16 @@ fn approval_before_a_loop_covers_sending_steps_inside_it() {
         .replace("{{#each_cafe.item.name#}}?\\n\\n{{#draft_message.text#}}", "all cafes?");
     assert_eq!(find_unapproved_sending_steps(&approval_moved).unwrap(), Vec::<String>::new());
 }
+
+#[test]
+fn approval_loop_declares_its_secrets() {
+    let summary = summarize_flow(APPROVAL_LOOP).unwrap();
+    let names: Vec<&str> = summary.env.iter().map(|variable| variable.name.as_str()).collect();
+    assert_eq!(names, ["MAPS_API_KEY", "WHATSAPP_TOKEN"]);
+    assert!(summary.env.iter().all(|variable| variable.is_secret && !variable.has_default));
+}
+
+#[test]
+fn flows_without_env_have_none() {
+    assert!(summarize_flow(SIMPLE_ANSWER).unwrap().env.is_empty());
+}

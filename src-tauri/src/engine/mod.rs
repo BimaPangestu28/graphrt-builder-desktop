@@ -162,14 +162,15 @@ impl RunManager {
     /// # Errors
     /// - `NotFound` when the agent does not exist.
     /// - `InvalidInput` / `Workflow` when the flow does not compile or `inputs` is not an object.
-    /// - `MissingCredentials` when a model provider used by the flow has no key;
+    /// - `MissingCredentials` when a model provider used by the flow has no key,
+    ///   or an `env.*` value it declares has neither a stored value nor a default;
     ///   no run is recorded in that case.
     pub async fn start_run(&self, agent_id: &str, trigger: RunTrigger, inputs: serde_json::Value) -> AppResult<Run> {
         let agent = self.db.get_agent(agent_id)?;
         let engine = preparation::build_engine(&agent.flow_yaml, &self.credentials, &self.db, &*self.model_source)?;
         let mut run_input = RunInput::new();
         run_input.inputs = preparation::json_object_to_value_map(inputs, "run inputs")?;
-        run_input.env = preparation::workflow_env(&agent)?;
+        run_input.env = preparation::workflow_env(&agent.flow_yaml, &self.credentials)?;
 
         let run = self.db.insert_run(agent_id, agent.current_version, trigger)?;
         self.driver_for(&run).send_status(&run.id, RunStatus::Running);
@@ -198,7 +199,7 @@ impl RunManager {
         let snapshot = Snapshot::from_json(&self.db.get_run_snapshot(run_id)?)?;
         let resume_inputs = preparation::json_object_to_value_map(node_inputs, "node inputs")?;
         let mut run_input = RunInput::new().resume(snapshot, resume_inputs);
-        run_input.env = preparation::workflow_env(&agent)?;
+        run_input.env = preparation::workflow_env(&flow_yaml, &self.credentials)?;
 
         // Validates the Paused → Running transition atomically, so two
         // concurrent resumes cannot both start a task.

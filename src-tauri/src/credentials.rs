@@ -98,6 +98,8 @@ enum CredentialBackend {
 /// Where keys are kept. `Keychain` in the app, `InMemory` in tests.
 pub struct CredentialStore {
     backend: CredentialBackend,
+    /// Workflow secrets for the in-memory backend (unused with the keychain).
+    in_memory_workflow_secrets: Mutex<HashMap<String, String>>,
 }
 
 /// Shows the backend and which providers have keys, never the keys themselves.
@@ -143,12 +145,18 @@ impl CredentialStore {
 
     /// Store backed by the OS keychain under a custom service name.
     fn keychain_for_service(service: &str) -> Self {
-        Self { backend: CredentialBackend::Keychain { service: service.to_owned() } }
+        Self {
+            backend: CredentialBackend::Keychain { service: service.to_owned() },
+            in_memory_workflow_secrets: Mutex::new(HashMap::new()),
+        }
     }
 
     /// Store that keeps keys in memory only (tests).
     pub fn in_memory() -> Self {
-        Self { backend: CredentialBackend::InMemory(Mutex::new(HashMap::new())) }
+        Self {
+            backend: CredentialBackend::InMemory(Mutex::new(HashMap::new())),
+            in_memory_workflow_secrets: Mutex::new(HashMap::new()),
+        }
     }
 
     /// Saves or replaces a provider key. Rejects empty keys and `Ollama`.
@@ -208,6 +216,60 @@ impl CredentialStore {
         Ok(self.read_api_key(provider)?.is_some())
     }
 
+    /// Saves or replaces a workflow secret (`env.<NAME>` in workflow documents),
+    /// shared by every agent that declares the same name.
+    pub fn set_workflow_secret(&self, name: &str, value: &str) -> AppResult<()> {
+        validate_workflow_secret_name(name)?;
+        let value = value.trim();
+        if value.is_empty() {
+            return Err(AppError::InvalidInput(format!("the value for {name} is empty")));
+        }
+        match &self.backend {
+            CredentialBackend::Keychain { service } => workflow_secret_entry(service, name)?
+                .set_password(value)
+                .map_err(|error| secret_keychain_error("save", name, &error)),
+            CredentialBackend::InMemory(_) => {
+                lock_secrets(&self.in_memory_workflow_secrets)?.insert(name.to_owned(), value.to_owned());
+                Ok(())
+            }
+        }
+    }
+
+    /// Removes a workflow secret; succeeds if none was stored.
+    pub fn delete_workflow_secret(&self, name: &str) -> AppResult<()> {
+        validate_workflow_secret_name(name)?;
+        match &self.backend {
+            CredentialBackend::Keychain { service } => {
+                match workflow_secret_entry(service, name)?.delete_credential() {
+                    Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+                    Err(error) => Err(secret_keychain_error("delete", name, &error)),
+                }
+            }
+            CredentialBackend::InMemory(_) => {
+                lock_secrets(&self.in_memory_workflow_secrets)?.remove(name);
+                Ok(())
+            }
+        }
+    }
+
+    /// Backend-only access to a workflow secret. Never expose through a command.
+    pub(crate) fn read_workflow_secret(&self, name: &str) -> AppResult<Option<String>> {
+        validate_workflow_secret_name(name)?;
+        match &self.backend {
+            CredentialBackend::Keychain { service } => match workflow_secret_entry(service, name)?.get_password() {
+                Ok(value) => Ok(Some(value)),
+                Err(keyring::Error::NoEntry) => Ok(None),
+                Err(error) => Err(secret_keychain_error("read", name, &error)),
+            },
+            CredentialBackend::InMemory(_) => Ok(lock_secrets(&self.in_memory_workflow_secrets)?.get(name).cloned()),
+        }
+    }
+
+    /// Whether a workflow secret is stored, without reading it out.
+    pub fn has_workflow_secret(&self, name: &str) -> AppResult<bool> {
+        Ok(self.read_workflow_secret(name)?.is_some())
+    }
+
     pub fn provider_statuses(&self, db: &Database) -> AppResult<Vec<ProviderStatus>> {
         ALL_PROVIDERS
             .into_iter()
@@ -217,6 +279,40 @@ impl CredentialStore {
             })
             .collect()
     }
+}
+
+/// Keychain account prefix that keeps workflow secrets apart from provider keys.
+const WORKFLOW_SECRET_ACCOUNT_PREFIX: &str = "env:";
+const WORKFLOW_SECRET_NAME_MAX_LENGTH: usize = 64;
+
+/// Workflow secret names follow environment-variable style: `GOOGLE_PLACES_KEY`.
+fn validate_workflow_secret_name(name: &str) -> AppResult<()> {
+    let is_valid = !name.is_empty()
+        && name.len() <= WORKFLOW_SECRET_NAME_MAX_LENGTH
+        && name.chars().all(|character| character.is_ascii_alphanumeric() || character == '_')
+        && !name.starts_with(|character: char| character.is_ascii_digit());
+    if is_valid {
+        Ok(())
+    } else {
+        Err(AppError::InvalidInput(format!(
+            "secret names use letters, digits and underscores, start with a letter and are at most \
+             {WORKFLOW_SECRET_NAME_MAX_LENGTH} characters"
+        )))
+    }
+}
+
+fn workflow_secret_entry(service: &str, name: &str) -> AppResult<keyring::Entry> {
+    keyring::Entry::new(service, &format!("{WORKFLOW_SECRET_ACCOUNT_PREFIX}{name}"))
+        .map_err(|error| secret_keychain_error("open", name, &error))
+}
+
+/// Names the secret and operation only; `keyring::Error` never includes the value.
+fn secret_keychain_error(operation: &str, name: &str, error: &keyring::Error) -> AppError {
+    AppError::Credentials(format!("could not {operation} the secret {name}: {error}"))
+}
+
+fn lock_secrets(secrets: &Mutex<HashMap<String, String>>) -> AppResult<MutexGuard<'_, HashMap<String, String>>> {
+    secrets.lock().map_err(|_| AppError::Internal("secret store lock poisoned".into()))
 }
 
 fn keychain_entry(service: &str, provider: ModelProvider) -> AppResult<keyring::Entry> {
@@ -445,6 +541,44 @@ mod tests {
             assert_eq!(serde_name.as_str(), Some(provider.registry_name()));
         }
         assert_eq!(ModelProvider::from_registry_name("bedrock"), None);
+    }
+
+    #[test]
+    fn workflow_secret_round_trip_and_replace() {
+        let store = CredentialStore::in_memory();
+        assert!(!store.has_workflow_secret("MAPS_API_KEY").unwrap());
+        store.set_workflow_secret("MAPS_API_KEY", "  first  ").unwrap();
+        assert_eq!(store.read_workflow_secret("MAPS_API_KEY").unwrap().as_deref(), Some("first"));
+        store.set_workflow_secret("MAPS_API_KEY", "second").unwrap();
+        assert_eq!(store.read_workflow_secret("MAPS_API_KEY").unwrap().as_deref(), Some("second"));
+        store.delete_workflow_secret("MAPS_API_KEY").unwrap();
+        assert!(!store.has_workflow_secret("MAPS_API_KEY").unwrap());
+        store.delete_workflow_secret("MAPS_API_KEY").unwrap();
+    }
+
+    #[test]
+    fn workflow_secrets_are_separate_from_provider_keys() {
+        let store = CredentialStore::in_memory();
+        store.set_api_key(ModelProvider::Openai, "sk-model").unwrap();
+        assert!(!store.has_workflow_secret("openai").unwrap());
+        store.set_workflow_secret("OPENAI", "sk-other").unwrap();
+        assert_eq!(store.read_api_key(ModelProvider::Openai).unwrap().as_deref(), Some("sk-model"));
+    }
+
+    #[test]
+    fn invalid_workflow_secret_names_and_empty_values_are_rejected() {
+        let store = CredentialStore::in_memory();
+        for name in ["", "1KEY", "MY-KEY", "KEY NAME", "env:KEY", &"K".repeat(65)] {
+            assert!(matches!(store.set_workflow_secret(name, "value"), Err(AppError::InvalidInput(_))), "{name}");
+        }
+        assert!(matches!(store.set_workflow_secret("MAPS_API_KEY", "   "), Err(AppError::InvalidInput(_))));
+    }
+
+    #[test]
+    fn debug_output_never_contains_workflow_secret() {
+        let store = CredentialStore::in_memory();
+        store.set_workflow_secret("WHATSAPP_TOKEN", "super-secret-token").unwrap();
+        assert!(!format!("{store:?}").contains("super-secret-token"));
     }
 
     /// Touches the real OS keychain (may show a permission prompt); run with `--ignored`.

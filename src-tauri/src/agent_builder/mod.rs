@@ -201,7 +201,7 @@ pub(crate) async fn revise_agent_with_model(
 fn current_summary(agent: &Agent) -> FlowSummary {
     flow::summarize_flow(&agent.flow_yaml).unwrap_or_else(|error| {
         log::warn!("stored flow of agent {} does not compile: {error}", agent.id);
-        FlowSummary { steps: Vec::new(), inputs: Vec::new(), model_providers: Vec::new() }
+        FlowSummary { steps: Vec::new(), inputs: Vec::new(), model_providers: Vec::new(), env: Vec::new() }
     })
 }
 

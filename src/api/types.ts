@@ -138,10 +138,31 @@ export interface FlowInput {
   required: boolean
 }
 
+/** A value the workflow reads from `env.<name>` (API keys, tokens, account ids). */
+export interface FlowEnvVar {
+  name: string
+  description: string | null
+  /** Declared with `type: secret` (masked in logs and events). */
+  isSecret: boolean
+  /** The document has a default, so setting it is optional. */
+  hasDefault: boolean
+}
+
 export interface FlowSummary {
   steps: FlowStep[]
   inputs: FlowInput[]
   modelProviders: string[]
+  env: FlowEnvVar[]
+}
+
+/** Status of one `env.*` value an agent needs. The value itself is never sent to the UI. */
+export interface WorkflowSecretStatus {
+  name: string
+  description: string | null
+  isSecret: boolean
+  /** No default in the workflow, so runs cannot start until it is set. */
+  required: boolean
+  configured: boolean
 }
 
 export interface BuildRequest {

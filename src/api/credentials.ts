@@ -1,6 +1,6 @@
 import { callBackend, isDesktopApp } from './client'
 import { sampleCredentialsBackend } from './sampleBackend/credentials'
-import type { ModelChoice, ModelProvider, ProviderStatus } from './types'
+import type { ModelChoice, ModelProvider, ProviderStatus, WorkflowSecretStatus } from './types'
 
 /** Model provider keys (kept in the OS keychain; never readable from here) and the default model. */
 
@@ -32,4 +32,24 @@ export function setDefaultModel(choice: ModelChoice): Promise<void> {
 export function setOllamaBaseUrl(baseUrl: string): Promise<void> {
   if (!isDesktopApp()) return sampleCredentialsBackend.setOllamaBaseUrl(baseUrl)
   return callBackend('set_ollama_base_url', { baseUrl })
+}
+
+/**
+ * The `env.*` values (API keys, tokens) an agent's workflow needs and whether each is
+ * stored. Values live in the OS keychain and are shared by every agent using the same name.
+ */
+export function listWorkflowSecrets(agentId: string): Promise<WorkflowSecretStatus[]> {
+  if (!isDesktopApp()) return sampleCredentialsBackend.listWorkflowSecrets(agentId)
+  return callBackend('list_workflow_secrets', { agentId })
+}
+
+/** Saves or replaces a workflow secret, e.g. `setWorkflowSecret('MAPS_API_KEY', value)`. */
+export function setWorkflowSecret(name: string, value: string): Promise<void> {
+  if (!isDesktopApp()) return sampleCredentialsBackend.setWorkflowSecret(name, value)
+  return callBackend('set_workflow_secret', { name, value })
+}
+
+export function deleteWorkflowSecret(name: string): Promise<void> {
+  if (!isDesktopApp()) return sampleCredentialsBackend.deleteWorkflowSecret(name)
+  return callBackend('delete_workflow_secret', { name })
 }

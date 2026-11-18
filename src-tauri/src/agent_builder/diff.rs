@@ -73,7 +73,7 @@ mod tests {
     }
 
     fn summary(steps: Vec<FlowStep>) -> FlowSummary {
-        FlowSummary { steps, inputs: Vec::new(), model_providers: Vec::new() }
+        FlowSummary { steps, inputs: Vec::new(), model_providers: Vec::new(), env: Vec::new() }
     }
 
     #[test]

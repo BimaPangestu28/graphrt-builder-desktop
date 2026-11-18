@@ -4,7 +4,9 @@ import type { Agent } from '@/api/types'
 import { AppShell, type SidebarProps } from '@/components/layout'
 import { useAgent } from '@/hooks/useAgent'
 import { useFlowSummary } from '@/hooks/useFlowSummary'
+import { setWorkflowSecret } from '@/api/credentials'
 import { useProviderStatuses } from '@/hooks/useProviderStatuses'
+import { useWorkflowSecrets } from '@/hooks/useWorkflowSecrets'
 import { describeError } from '@/lib/agentDisplay'
 import { sampleAgentId } from '@/routes'
 import { BuilderAgentPanel } from './agent-builder/BuilderAgentPanel'
@@ -44,16 +46,31 @@ export function BuilderPage() {
   const agentState = useAgent(agentId)
   const flowSummaryState = useFlowSummary(agentId)
   const { data: providerSetup } = useProviderStatuses()
+  const workflowSecretsState = useWorkflowSecrets(agentId)
+  const reloadWorkflowSecrets = workflowSecretsState.reload
+  const saveWorkflowSecret = useCallback(
+    async (secretName: string, value: string) => {
+      await setWorkflowSecret(secretName, value)
+      await reloadWorkflowSecrets()
+    },
+    [reloadWorkflowSecrets],
+  )
   const reloadAgent = agentState.reload
   const reloadFlowSummary = flowSummaryState.reload
+  // A revision may add or drop `env.*` values, so secrets reload with the steps.
   const reloadAgentAndSteps = useCallback(async () => {
-    await Promise.all([reloadAgent(), reloadFlowSummary()])
-  }, [reloadAgent, reloadFlowSummary])
+    await Promise.all([reloadAgent(), reloadFlowSummary(), reloadWorkflowSecrets()])
+  }, [reloadAgent, reloadFlowSummary, reloadWorkflowSecrets])
   const revisions = useAgentRevisions({ agentId, currentVersion: agentState.data?.currentVersion ?? null, onAgentChanged: reloadAgentAndSteps })
 
   const agent = agentState.data
   const flowSummary = flowSummaryState.data
-  const requirements = listBuilderRequirements(agentId, flowSummary?.modelProviders ?? [], providerSetup?.statuses ?? null)
+  const requirements = listBuilderRequirements(
+    agentId,
+    flowSummary?.modelProviders ?? [],
+    providerSetup?.statuses ?? null,
+    workflowSecretsState.data,
+  )
 
   return (
     <AppShell agents={getSidebarAgents(agentId, agent)} runnerStatus="Online · OpenAI connected" mainClassName="flex flex-wrap">
@@ -75,6 +92,7 @@ export function BuilderPage() {
           flowSummaryError={flowSummaryState.error}
           highlightedStepIds={revisions.highlightedStepIds}
           requirements={requirements}
+          onSaveSecret={saveWorkflowSecret}
         />
       ) : (
         <AgentPanelMessage>{agentState.error ? `Could not load this agent: ${describeError(agentState.error)}` : 'Loading agent…'}</AgentPanelMessage>

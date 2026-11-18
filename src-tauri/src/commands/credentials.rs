@@ -5,6 +5,7 @@ use crate::credentials::{
     SETTING_OLLAMA_BASE_URL,
 };
 use crate::error::{AppError, AppResult};
+use crate::flow;
 use crate::state::AppState;
 
 #[tauri::command]
@@ -45,4 +46,47 @@ pub fn set_ollama_base_url(state: State<'_, AppState>, base_url: String) -> AppR
         return Err(AppError::InvalidInput("Ollama address must start with http:// or https://".into()));
     }
     state.db.set_setting(SETTING_OLLAMA_BASE_URL, trimmed)
+}
+
+/// One `env.*` value an agent's workflow needs, and whether it is set.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowSecretStatus {
+    pub name: String,
+    pub description: Option<String>,
+    pub is_secret: bool,
+    /// No default in the document, so a run cannot start without it.
+    pub required: bool,
+    pub configured: bool,
+}
+
+/// The `env.*` values the agent's current version declares, with their status.
+/// Values themselves are never returned.
+#[tauri::command]
+pub fn list_workflow_secrets(state: State<'_, AppState>, agent_id: String) -> AppResult<Vec<WorkflowSecretStatus>> {
+    let agent = state.db.get_agent(&agent_id)?;
+    let summary = flow::summarize_flow(&agent.flow_yaml)?;
+    summary
+        .env
+        .into_iter()
+        .map(|variable| {
+            Ok(WorkflowSecretStatus {
+                configured: state.credentials.has_workflow_secret(&variable.name)?,
+                required: !variable.has_default,
+                name: variable.name,
+                description: variable.description,
+                is_secret: variable.is_secret,
+            })
+        })
+        .collect()
+}
+
+#[tauri::command]
+pub fn set_workflow_secret(state: State<'_, AppState>, name: String, value: String) -> AppResult<()> {
+    state.credentials.set_workflow_secret(name.trim(), &value)
+}
+
+#[tauri::command]
+pub fn delete_workflow_secret(state: State<'_, AppState>, name: String) -> AppResult<()> {
+    state.credentials.delete_workflow_secret(name.trim())
 }

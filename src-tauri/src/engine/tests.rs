@@ -353,3 +353,60 @@ async fn resuming_a_running_run_is_rejected() {
     harness.runs.abort_run(&run.id).unwrap();
     wait_for_status_count(&harness.sink, &run.id, RunStatus::Aborted, 1).await;
 }
+
+/// One model call whose prompt reads two env values; `API_TOKEN` is a secret
+/// without a default, `SIGNATURE` a plain value and `TONE` has a default.
+const ENV_FLOW: &str = r#"
+version: "1"
+name: env-flow
+env:
+  - { name: API_TOKEN, type: secret }
+  - { name: SIGNATURE, type: string, description: Signature added to every message }
+  - { name: TONE, type: string, value: friendly }
+graph:
+  nodes:
+    - { id: start, type: start, variables: [] }
+    - id: write
+      type: llm
+      model: { provider: openai, name: gpt-4o-mini }
+      prompt_template:
+        - { role: user, text: "Write a {{#env.TONE#}} note signed {{#env.SIGNATURE#}}" }
+    - id: end
+      type: end
+      outputs:
+        - { variable: note, value_selector: [write, text] }
+  edges:
+    - { source: start, target: write }
+    - { source: write, target: end }
+"#;
+
+#[tokio::test]
+async fn missing_workflow_secrets_are_listed_and_no_run_is_recorded() {
+    let harness = harness_with_answers(&["unused"]);
+    let agent = create_agent(&harness.db, ENV_FLOW);
+
+    let error = harness.runs.start_run(&agent.id, RunTrigger::Test, json!({})).await.unwrap_err();
+
+    match error {
+        AppError::MissingCredentials(names) => assert_eq!(names, "API_TOKEN, SIGNATURE"),
+        other => panic!("expected missing credentials, got {other:?}"),
+    }
+    assert!(harness.db.list_runs(&RunFilter::default()).unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn stored_workflow_secrets_reach_the_flow_and_defaults_fill_the_rest() {
+    let model = Arc::new(MockModel::new(vec![MockModel::text("Hello!")]));
+    let harness = harness_with_model(model.clone());
+    harness.credentials.set_workflow_secret("API_TOKEN", "token-123").unwrap();
+    harness.credentials.set_workflow_secret("SIGNATURE", "Bima Catering").unwrap();
+    let agent = create_agent(&harness.db, ENV_FLOW);
+
+    let run = harness.runs.start_run(&agent.id, RunTrigger::Test, json!({})).await.unwrap();
+    wait_for_status(&harness.sink, &run.id, RunStatus::Succeeded).await;
+
+    let prompt = model.requests()[0].messages[0].text();
+    assert_eq!(prompt, "Write a friendly note signed Bima Catering");
+    let stored_events = serde_json::to_string(&harness.db.list_run_events(&run.id).unwrap()).unwrap();
+    assert!(!stored_events.contains("token-123"), "secret leaked into stored events");
+}

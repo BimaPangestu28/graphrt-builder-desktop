@@ -156,5 +156,5 @@ export function summarizeStoredAgent(agentId: string): FlowSummary {
   const storedAgent = findStoredAgent(agentId)
   const steps = copySteps(currentVersionOf(storedAgent).steps)
   const usesModel = steps.some((flowStep) => flowStep.nodeType === 'llm')
-  return { steps, inputs: storedAgent.inputs.map((input) => ({ ...input })), modelProviders: usesModel ? ['openai'] : [] }
+  return { steps, inputs: storedAgent.inputs.map((input) => ({ ...input })), modelProviders: usesModel ? ['openai'] : [], env: [] }
 }

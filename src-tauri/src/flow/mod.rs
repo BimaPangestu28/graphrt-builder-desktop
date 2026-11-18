@@ -36,6 +36,19 @@ pub struct FlowInput {
     pub required: bool,
 }
 
+/// A value the workflow reads from `env.<name>` (API keys, tokens, account ids).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FlowEnvVar {
+    pub name: String,
+    /// The declaration's description, if any.
+    pub description: Option<String>,
+    /// Declared with `type: secret` (masked in logs and events).
+    pub is_secret: bool,
+    /// The document provides a default, so the user does not have to set it.
+    pub has_default: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FlowSummary {
@@ -43,6 +56,9 @@ pub struct FlowSummary {
     pub inputs: Vec<FlowInput>,
     /// Provider names the flow's model nodes use, e.g. ["openai"].
     pub model_providers: Vec<String>,
+    /// `env.*` values the flow declares, in document order.
+    #[serde(default)]
+    pub env: Vec<FlowEnvVar>,
 }
 
 /// Compact description of the workflow document format, written for the

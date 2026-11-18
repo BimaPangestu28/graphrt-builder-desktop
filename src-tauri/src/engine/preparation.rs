@@ -99,13 +99,37 @@ pub(super) fn json_object_to_value_map(json: serde_json::Value, what: &str) -> A
     }
 }
 
-/// Workflow `env.*` values for a run of `agent`, supplied on start and resume
-/// (graphrt never stores them in snapshots).
+/// Workflow `env.*` values for a run of `flow_yaml`, read from the keychain and
+/// supplied on start and resume (graphrt never stores them in snapshots).
 ///
-/// Currently always empty: documents fall back to their declared defaults.
-/// This is the single place where an env/secret provider (e.g. per-agent
-/// secrets in the keychain) is meant to be plugged in.
-pub(super) fn workflow_env(agent: &Agent) -> AppResult<IndexMap<String, Value>> {
-    let _ = agent;
-    Ok(IndexMap::new())
+/// Variables declared as `type: secret` are passed as graphrt secrets, so they
+/// are masked in events and logs. A variable with no stored value falls back to
+/// its declared default; one with neither is reported as missing.
+///
+/// # Errors
+/// `MissingCredentials` listing every variable that has no value and no default,
+/// so the UI can ask for all of them at once.
+pub(super) fn workflow_env(flow_yaml: &str, credentials: &CredentialStore) -> AppResult<IndexMap<String, Value>> {
+    let summary = flow::summarize_flow(flow_yaml)?;
+    let mut env = IndexMap::new();
+    let mut missing_names = Vec::new();
+    for variable in summary.env {
+        match credentials.read_workflow_secret(&variable.name)? {
+            Some(stored_value) => {
+                let value = if variable.is_secret {
+                    Value::Secret(Arc::from(stored_value.as_str()))
+                } else {
+                    Value::String(Arc::from(stored_value.as_str()))
+                };
+                env.insert(variable.name, value);
+            }
+            None if variable.has_default => {}
+            None => missing_names.push(variable.name),
+        }
+    }
+    if missing_names.is_empty() {
+        Ok(env)
+    } else {
+        Err(AppError::MissingCredentials(missing_names.join(", ")))
+    }
 }
