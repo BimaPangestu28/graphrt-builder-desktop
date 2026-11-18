@@ -69,7 +69,7 @@ async function reviseSampleAgent(agentId: string, instruction: string, onProgres
   const plan = planSampleRevision(readCurrentSteps(agentId), trimmedInstruction)
   const agent = saveNewVersion(agentId, plan.steps, trimmedInstruction)
   onProgress({ stage: 'done', message: plan.summary })
-  return { agent, summary: plan.summary, changedStepIds: plan.changedStepIds }
+  return { agent, summary: plan.summary, changedStepIds: plan.changedStepIds, explanation: '' }
 }
 
 export const sampleBuilderBackend = {

@@ -180,15 +180,29 @@ export interface BuildRequest {
 
 export type BuildStage = 'understanding' | 'drafting' | 'checking' | 'repairing' | 'done'
 
+/** What the model has written so far, sent while it drafts (several times a second). */
+export interface DraftPreview {
+  /** The model's plain-language opening (what the agent does / what changed), growing as it streams. */
+  explanation: string
+  /** Titles of the steps written so far, in order (from the partial workflow document). */
+  stepTitles: string[]
+  /** Output tokens so far (the provider's count when it reports one, otherwise an estimate). */
+  outputTokens: number
+}
+
 export interface BuildProgress {
   stage: BuildStage
   message: string
+  /** Present while the model is writing a draft (stage `drafting` or `repairing`). */
+  draft?: DraftPreview | null
 }
 
 export interface RevisionResult {
   agent: Agent
   summary: string
   changedStepIds: string[]
+  /** The model's own words about the change ("I replaced the Maps search with…"); may be empty. */
+  explanation: string
 }
 
 /** Error returned by every command: `{ code, message }`. */
