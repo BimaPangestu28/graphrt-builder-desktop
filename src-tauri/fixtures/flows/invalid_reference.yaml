@@ -1,0 +1,25 @@
+# Invalid on purpose: the model prompt reads `search.text`, but there is no
+# node with id `search`, so compiling fails with an unknown-reference error.
+version: "1"
+name: invalid-reference
+graph:
+  nodes:
+    - id: start
+      type: start
+      variables:
+        - { variable: topic, type: text-input, required: true }
+
+    - id: summarize
+      type: llm
+      model: { provider: openai, name: gpt-4o-mini }
+      prompt_template:
+        - { role: user, text: "Summarize these search results about {{#start.topic#}}: {{#search.text#}}" }
+
+    - id: end
+      type: end
+      outputs:
+        - { variable: summary, value_selector: [summarize, text] }
+
+  edges:
+    - { source: start, target: summarize }
+    - { source: summarize, target: end }

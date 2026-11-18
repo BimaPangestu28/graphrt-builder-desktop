@@ -1,0 +1,35 @@
+# Answers one question with a single model call.
+version: "1"
+name: simple-answer
+description: Answers a question in a few sentences.
+graph:
+  nodes:
+    - id: start
+      type: start
+      variables:
+        - { variable: question, type: paragraph, required: true, label: Your question }
+
+    - id: answer_question
+      type: llm
+      title: Answer the question
+      model:
+        provider: openai
+        name: gpt-4o-mini
+        completion_params: { temperature: 0.2, max_tokens: 400 }
+      prompt_template:
+        - { role: system, text: "You answer clearly in at most three sentences." }
+        - { role: user, text: "{{#start.question#}}" }
+
+    - id: reply
+      type: answer
+      answer: "{{#answer_question.text#}}"
+
+    - id: end
+      type: end
+      outputs:
+        - { variable: answer, value_selector: [answer_question, text], value_type: string }
+
+  edges:
+    - { source: start, target: answer_question }
+    - { source: answer_question, target: reply }
+    - { source: reply, target: end }
