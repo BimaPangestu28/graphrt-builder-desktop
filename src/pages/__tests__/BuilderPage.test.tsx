@@ -1,11 +1,11 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { resetSampleAgents, sampleAgentsBackend } from '@/api/sampleBackend/agents'
 import { resetSampleBuilder, sampleBuilderBackend, sampleBuildTiming } from '@/api/sampleBackend/builder'
 import { isSampleWorkflowSecretConfigured, resetSampleCredentials, sampleCredentialsBackend } from '@/api/sampleBackend/credentials'
 import { resetSamplePlugins } from '@/api/sampleBackend/plugins'
-import type { WorkflowSecretStatus } from '@/api/types'
+import type { BuildProgress, WorkflowSecretStatus } from '@/api/types'
 import { agentPath, agentRoutePatterns, connectionsPluginsPath, routePaths } from '@/routes'
 import { BuilderPage } from '../BuilderPage'
 
@@ -84,6 +84,68 @@ describe('BuilderPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Redo' }))
     expect(await screen.findByText('Changed just now')).toBeInTheDocument()
     expect(restoreSpy).toHaveBeenLastCalledWith('maps-leads', 8)
+  })
+
+  it('shows a live builder reply while the change is written, then the explanation and summary', async () => {
+    const reviseAgent = sampleBuilderBackend.reviseAgent
+    let reportProgress: (progress: BuildProgress) => void = () => {}
+    let finishRevision: () => void = () => {}
+    vi.spyOn(sampleBuilderBackend, 'reviseAgent').mockImplementation((agentId, instruction, onProgress) => {
+      reportProgress = onProgress
+      const revisionDone = new Promise<void>((resolve) => (finishRevision = resolve))
+      return revisionDone.then(() => reviseAgent(agentId, instruction, () => {}))
+    })
+    renderBuilderPage()
+    await screen.findByText('Write a short message')
+    await sendChange('Make it shorter and wait 45 seconds')
+    const chat = screen.getByRole('region', { name: 'Chat' })
+
+    act(() => reportProgress({ stage: 'drafting', message: 'Updating the steps' }))
+    expect(within(chat).getByText('Updating the steps…')).toBeInTheDocument()
+    expect(within(chat).getByText('Updating the steps…').closest('[aria-live]')).toHaveAttribute('aria-live', 'polite')
+
+    act(() => reportProgress({ stage: 'drafting', message: 'Updating the steps', draft: { explanation: 'I made the message', stepTitles: ['Ask for keyword'], outputTokens: 98 } }))
+    act(() =>
+      reportProgress({
+        stage: 'drafting',
+        message: 'Updating the steps',
+        draft: { explanation: 'I made the message shorter.', stepTitles: ['Ask for keyword', 'Search Google Maps'], outputTokens: 1412 },
+      }),
+    )
+    expect(within(chat).getByText('I made the message shorter.')).toBeInTheDocument()
+    expect(within(chat).getByText('Writing… 1,412 tokens')).toBeInTheDocument()
+    expect(within(within(chat).getByRole('list', { name: 'Steps being written' })).getAllByRole('listitem')).toHaveLength(2)
+    // Streamed text stays out of the polite chat region; screen readers keep hearing the stage instead.
+    expect(within(chat).getByText('I made the message shorter.').closest('[aria-live]')).toHaveAttribute('aria-live', 'off')
+    expect(within(chat).getByText('Writing… 1,412 tokens')).toHaveAttribute('aria-hidden', 'true')
+    expect(within(chat).getByText('Updating the steps…')).toHaveClass('sr-only')
+
+    act(() => reportProgress({ stage: 'checking', message: 'Checking the steps again' }))
+    expect(within(chat).queryByText(/tokens$/)).not.toBeInTheDocument()
+    expect(within(chat).getByText('Checking the steps again…').closest('[aria-live]')).toHaveAttribute('aria-live', 'polite')
+    expect(within(chat).getByText('I made the message shorter.')).toBeInTheDocument()
+
+    act(() => finishRevision())
+    const explanation = 'I updated “Write a short message” and “Send WhatsApp” to do what you asked.'
+    expect(await within(chat).findByText(explanation)).toBeInTheDocument()
+    expect(within(chat).getByText('Changed 2 steps: Write a short message, Send WhatsApp')).toBeInTheDocument()
+    expect(within(chat).queryByRole('list', { name: 'Steps being written' })).not.toBeInTheDocument()
+    expect(within(chat).getByText(explanation).closest('[aria-live]')).toHaveAttribute('aria-live', 'polite')
+    expect(within(chat).getByRole('button', { name: 'Undo' })).toBeInTheDocument()
+  })
+
+  it('leaves out an empty explanation in the final reply', async () => {
+    const reviseAgent = sampleBuilderBackend.reviseAgent
+    vi.spyOn(sampleBuilderBackend, 'reviseAgent').mockImplementation(async (agentId, instruction, onProgress) => ({
+      ...(await reviseAgent(agentId, instruction, onProgress)),
+      explanation: '  ',
+    }))
+    renderBuilderPage()
+    await screen.findByText('Write a short message')
+    await sendChange('Make it shorter')
+    const chat = screen.getByRole('region', { name: 'Chat' })
+    expect(await within(chat).findByText('Changed 1 step: Write a short message')).toBeInTheDocument()
+    expect(within(chat).queryByText(/^I updated/)).not.toBeInTheDocument()
   })
 
   it('shows the stored workflow document in the Source tab', async () => {
