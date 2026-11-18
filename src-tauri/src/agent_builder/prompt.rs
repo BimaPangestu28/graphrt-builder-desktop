@@ -12,6 +12,11 @@ use crate::storage::models::AgentKind;
 const EXAMPLE_SIMPLE_ANSWER: &str = include_str!("../../fixtures/flows/simple_answer.yaml");
 const EXAMPLE_APPROVAL_LOOP: &str = include_str!("../../fixtures/flows/approval_loop.yaml");
 
+/// Extra guidance per feature area (run outputs, knowledge, chatbots, agents as
+/// tools...), each in its own Markdown file under `guides/` so features can be
+/// added without editing the shared rules. Rendered in this order.
+const DOMAIN_GUIDES: &[&str] = &[];
+
 /// Prefix of the line carrying the agent's display name in a build reply.
 pub(super) const AGENT_NAME_PREFIX: &str = "Agent name:";
 
@@ -61,6 +66,7 @@ pub(super) fn revision_system_prompt(model: &ModelChoice) -> String {
 
 fn system_prompt(model: &ModelChoice, reply_format: &str) -> String {
     let rules = SHARED_RULES.replace("{provider}", provider_name(model.provider)).replace("{model}", &model.name);
+    let rules = append_domain_guides(rules);
     format!(
         "{ROLE}\n\n# Rules\n{rules}\n\n# Reply format\n{reply_format}\n\n# Workflow format\n{guide}\n\n\
          # Example: answer one question\n```yaml\n{simple_answer}\n```\n\n\
@@ -69,6 +75,15 @@ fn system_prompt(model: &ModelChoice, reply_format: &str) -> String {
         simple_answer = EXAMPLE_SIMPLE_ANSWER.trim_end(),
         approval_loop = EXAMPLE_APPROVAL_LOOP.trim_end(),
     )
+}
+
+/// Adds every non-empty domain guide after the shared rules.
+fn append_domain_guides(rules: String) -> String {
+    DOMAIN_GUIDES
+        .iter()
+        .map(|guide| guide.trim())
+        .filter(|guide| !guide.is_empty())
+        .fold(rules, |combined, guide| format!("{combined}\n{guide}"))
 }
 
 /// First user message for a new agent.
