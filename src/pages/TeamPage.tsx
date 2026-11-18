@@ -5,10 +5,15 @@ import { joinClassNames } from '@/components/ui'
 import { setAgentStatus } from '@/api/agents'
 import { addTeamMember, getTeam, listAgentSteps } from '@/api/chains'
 import type { AgentStepInfo, TeamOverview } from '@/api/chainTypes'
-import { teamActivity, teamGuardrails } from '@/data/team'
+import { subscribeToRunEvents } from '@/api/runs'
+import { getTeamGuardrails, listCoordinatorChat, listTeamActivity, sendCoordinatorMessage, setTeamMaxAgentCalls } from '@/api/teams'
+import type { RunEventPayload } from '@/api/types'
 import { useAsyncData } from '@/hooks/useAsyncData'
+import { useBackendSubscription } from '@/hooks/useBackendSubscription'
 import { AddMemberForm } from './team/AddMemberForm'
 import { CoordinatorChat } from './team/CoordinatorChat'
+import { TeamActivityLog } from './team/TeamActivityLog'
+import { TeamGuardrailsPanel } from './team/TeamGuardrailsPanel'
 import { TeamMemberCard } from './team/TeamMemberCard'
 
 /** Team agent shown without `?agentId=` (the sample team). */
@@ -58,49 +63,18 @@ function TeamHeader({ team, isBusy, onAddMember, onTogglePaused }: TeamHeaderPro
   )
 }
 
-function TeamActivityLog() {
-  return (
-    <section aria-labelledby="team-activity-heading" className="flex min-w-0 flex-[3_1_320px] flex-col gap-3">
-      <h2 id="team-activity-heading" className="m-0 text-[15px] font-semibold">
-        Activity
-      </h2>
-      <ol className="m-0 flex list-none flex-col p-0">
-        {teamActivity.map((activity) => (
-          <li key={activity.time} className="flex gap-3 border-b border-chip py-2.5 last:border-b-0">
-            <span className="w-11 shrink-0 text-[12px] text-muted">{activity.time}</span>
-            <span className="leading-normal">
-              {activity.parts.map((part, partIndex) => (part.isMember ? <b key={partIndex} className="font-semibold">{part.text}</b> : <span key={partIndex}>{part.text}</span>))}
-            </span>
-          </li>
-        ))}
-      </ol>
-    </section>
-  )
-}
-
-function TeamGuardrails() {
-  return (
-    <section aria-labelledby="team-guardrails-heading" className="flex min-w-0 flex-[2_1_240px] flex-col gap-3">
-      <h2 id="team-guardrails-heading" className="m-0 text-[15px] font-semibold">
-        Guardrails
-      </h2>
-      <dl className="m-0 rounded-xl border border-line px-3.5 py-1">
-        {teamGuardrails.map((guardrail) => (
-          <div key={guardrail.label} className="flex justify-between gap-2 border-b border-chip py-2.5 last:border-b-0">
-            <dt className="text-body">{guardrail.label}</dt>
-            <dd className="m-0 text-right font-medium">{guardrail.value}</dd>
-          </div>
-        ))}
-      </dl>
-    </section>
-  )
+/** Run events that change what the team screen shows (a member call, a run ending). */
+function changesTeamView(payload: RunEventPayload): boolean {
+  const eventType = (payload.event as { type?: string }).type ?? ''
+  return eventType.startsWith('run_') || eventType === 'node_progress'
 }
 
 /**
  * Screen 13 · Team of agents.
  * A team is an agent whose coordinator `agent` step may call member agents as tools. Members, adding a
- * member and pausing (the team agent's status) come from the backend; the coordinator chat, activity
- * and guardrails are still sample content.
+ * member and pausing (the team agent's status) come from the backend. The coordinator chat shows the
+ * team agent's runs (a message starts one), the activity log reads those runs' member calls and the
+ * members' own runs, and the guardrails are the limits the app enforces. Run events refresh both.
  */
 export function TeamPage() {
   const [searchParams] = useSearchParams()
@@ -109,6 +83,36 @@ export function TeamPage() {
   const [isPickingMember, setIsPickingMember] = useState(false)
   const [isBusy, setIsBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const activity = useAsyncData(() => listTeamActivity(teamAgentId), [teamAgentId])
+  const chat = useAsyncData(() => listCoordinatorChat(teamAgentId), [teamAgentId])
+  const guardrails = useAsyncData(() => getTeamGuardrails(teamAgentId), [teamAgentId])
+  const [isSavingGuardrail, setIsSavingGuardrail] = useState(false)
+  const memberAgentIds = new Set(data?.team.members.map((member) => member.agentId))
+
+  useBackendSubscription(subscribeToRunEvents, (payload: RunEventPayload) => {
+    const isTeamRun = payload.agentId === teamAgentId || memberAgentIds.has(payload.agentId)
+    if (!isTeamRun || !changesTeamView(payload)) return
+    void activity.reload()
+    void chat.reload()
+  })
+
+  const sendToCoordinator = async (message: string) => {
+    await sendCoordinatorMessage(teamAgentId, message)
+    await Promise.all([chat.reload(), activity.reload()])
+  }
+
+  const saveAgentCallLimit = async (limit: number | null) => {
+    setIsSavingGuardrail(true)
+    setActionError(null)
+    try {
+      await setTeamMaxAgentCalls(teamAgentId, limit)
+      await guardrails.reload()
+    } catch (rawError) {
+      setActionError(rawError instanceof Error ? rawError.message : 'Could not save the guardrail')
+    } finally {
+      setIsSavingGuardrail(false)
+    }
+  }
 
   const runAction = async (action: () => Promise<unknown>) => {
     setIsBusy(true)
@@ -128,8 +132,8 @@ export function TeamPage() {
   const candidates = (data?.catalog ?? []).filter((agent) => agent.usableAsStep && agent.agentId !== teamAgentId && !memberIds.has(agent.agentId))
 
   return (
-    <AppShell agents={{ kind: 'list', activeAgentId: 'sales-team' }} mainClassName="flex flex-wrap">
-      <CoordinatorChat />
+    <AppShell agents={{ kind: 'list', activeAgentId: teamAgentId }} mainClassName="flex flex-wrap">
+      <CoordinatorChat teamAgentId={teamAgentId} exchanges={chat.data} onSend={sendToCoordinator} />
       <div className="box-border flex min-w-0 flex-[2_1_520px] flex-col gap-6 px-7 py-6">
         {error && (
           <p role="alert" className="m-0 text-amber-strong">
@@ -172,8 +176,8 @@ export function TeamPage() {
           </>
         )}
         <div className="flex flex-wrap gap-5">
-          <TeamActivityLog />
-          <TeamGuardrails />
+          <TeamActivityLog entries={activity.data} error={activity.error} />
+          <TeamGuardrailsPanel guardrails={guardrails.data} isSaving={isSavingGuardrail} onSaveLimit={(limit) => void saveAgentCallLimit(limit)} />
         </div>
       </div>
     </AppShell>

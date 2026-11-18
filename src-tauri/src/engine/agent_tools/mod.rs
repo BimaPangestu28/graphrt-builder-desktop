@@ -22,10 +22,14 @@
 //!   stopped and the call fails with [`APPROVAL_NOT_SUPPORTED_MESSAGE`]; the
 //!   paused state would have nowhere to be resumed from.
 //! - A paused agent (status `paused`, e.g. a paused team member) refuses calls.
+//! - Budget: the top-level agent's "agent calls per run" guardrail
+//!   (`teams::guardrails`) caps the calls of one run segment, nested calls
+//!   included; calls beyond it get an error result instead of running.
 
 #[cfg(test)]
 mod tests;
 
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -57,7 +61,44 @@ pub(crate) struct EngineDependencies {
 /// The tool registry for a run of `agent_ids_above.last()`: holds the `agents`
 /// provider, which knows the agents above it so it can refuse recursion.
 pub(crate) fn agent_tool_registry(dependencies: &EngineDependencies, agent_ids_above: Vec<String>) -> ToolRegistry {
-    let runtime = AgentToolRuntime { dependencies: dependencies.clone(), agent_ids_above, timeout: NESTED_RUN_TIMEOUT };
+    let limit = agent_ids_above
+        .first()
+        .and_then(|top_agent_id| crate::teams::guardrails::max_agent_calls_per_run(&dependencies.db, top_agent_id));
+    registry_with_budget(dependencies, agent_ids_above, Arc::new(AgentCallBudget::new(limit)))
+}
+
+/// Agent calls left in one run segment; shared by the run and its nested runs.
+#[derive(Debug)]
+struct AgentCallBudget {
+    limit: Option<u32>,
+    used: AtomicU32,
+}
+
+impl AgentCallBudget {
+    fn new(limit: Option<u32>) -> Self {
+        Self { limit, used: AtomicU32::new(0) }
+    }
+
+    /// Counts one call, or returns the refusal when the limit is reached.
+    fn take_one(&self) -> Result<(), String> {
+        let Some(limit) = self.limit else { return Ok(()) };
+        let previous = self.used.fetch_add(1, Ordering::SeqCst);
+        if previous < limit {
+            return Ok(());
+        }
+        Err(format!(
+            "the limit of {limit} agent calls per run is reached, so this call did not run; finish with what you have"
+        ))
+    }
+}
+
+fn registry_with_budget(
+    dependencies: &EngineDependencies,
+    agent_ids_above: Vec<String>,
+    budget: Arc<AgentCallBudget>,
+) -> ToolRegistry {
+    let runtime =
+        AgentToolRuntime { dependencies: dependencies.clone(), agent_ids_above, timeout: NESTED_RUN_TIMEOUT, budget };
     let mut registry = ToolRegistry::new();
     registry.add(AGENT_TOOL_PROVIDER, Arc::new(runtime));
     // Installed plugins' tools (provider = plugin name), next to the `agents` provider.
@@ -72,6 +113,7 @@ struct AgentToolRuntime {
     /// Agents whose runs are waiting on this one, top-level first; the last is the caller.
     agent_ids_above: Vec<String>,
     timeout: Duration,
+    budget: Arc<AgentCallBudget>,
 }
 
 /// Why a call cannot start; becomes an error result the caller's model can read.
@@ -128,6 +170,9 @@ impl AgentToolRuntime {
         if agent.status == AgentStatus::Paused {
             return Ok(ToolOutput::error(format!("{} is paused", agent.name)));
         }
+        if let Err(message) = self.budget.take_one() {
+            return Ok(ToolOutput::error(message));
+        }
         let stream = match self.start_nested_run(&agent, arguments) {
             Ok(stream) => stream,
             Err(error) => return Ok(ToolOutput::error(format!("could not start {}: {error}", agent.name))),
@@ -151,7 +196,7 @@ impl AgentToolRuntime {
             &self.dependencies.credentials,
             &self.dependencies.db,
             &*self.dependencies.model_source,
-            agent_tool_registry(&self.dependencies, agent_ids_below),
+            registry_with_budget(&self.dependencies, agent_ids_below, self.budget.clone()),
         )?;
         let mut run_input = RunInput::new();
         run_input.inputs = preparation::json_object_to_value_map(arguments, "step inputs")?;

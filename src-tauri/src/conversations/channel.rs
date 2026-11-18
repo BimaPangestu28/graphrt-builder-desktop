@@ -113,6 +113,11 @@ impl ChannelRegistry {
         self
     }
 
+    /// Whether an adapter is registered under `channel_name`.
+    pub fn contains(&self, channel_name: &str) -> bool {
+        self.adapters.contains_key(channel_name)
+    }
+
     /// # Errors
     /// `InvalidInput` when no adapter is registered under `channel_name`.
     pub fn get(&self, channel_name: &str) -> AppResult<Arc<dyn ChannelAdapter>> {

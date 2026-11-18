@@ -178,6 +178,17 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (source_id, document_id)
     );
     "#,
+    // Per-agent settings stored as JSON (see `storage::agent_settings`): the
+    // chatbot setup (persona, hand-off rules, knowledge) and team guardrails.
+    r#"
+    CREATE TABLE agent_settings (
+        agent_id   TEXT NOT NULL REFERENCES agents (id) ON DELETE CASCADE,
+        key        TEXT NOT NULL CHECK (length(trim(key)) > 0),
+        value_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (agent_id, key)
+    );
+    "#,
 ];
 
 /// Applies every migration newer than the database's `user_version`.
@@ -226,6 +237,7 @@ mod tests {
         assert_eq!(
             table_names(&connection),
             [
+                "agent_settings",
                 "agent_versions",
                 "agents",
                 "chain_steps",

@@ -13,10 +13,12 @@
 //!    inputs_json, last_fired_at, next_fire_at, created_at)`
 //! - `settings(key, value)`
 //! - `chains(...)`, `chain_steps(...)`: chains of agents (see `chains.rs`)
+//! - `agent_settings(agent_id, key, value_json, updated_at)`: per-agent JSON settings
 //!
 //! `Database` is cheap to share (`Arc<Database>`); every method takes `&self`
 //! and locks the single connection for the duration of the call.
 
+pub mod agent_settings;
 pub mod agents;
 pub mod chains;
 mod codec;
