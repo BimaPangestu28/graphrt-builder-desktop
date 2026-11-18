@@ -6,13 +6,15 @@ interface ApprovalCardProps {
   onMessageChange: (message: string) => void
   onApprove: () => void
   onSkip: () => void
+  /** True while the answer is being sent; both buttons are disabled. */
+  isSubmitting?: boolean
 }
 
 /**
  * The amber "Send this message?" card shown when a run pauses on an approval step.
  * The message is editable before approving; an empty message cannot be sent.
  */
-export function ApprovalCard({ recipientSummary, message, onMessageChange, onApprove, onSkip }: ApprovalCardProps) {
+export function ApprovalCard({ recipientSummary, message, onMessageChange, onApprove, onSkip, isSubmitting = false }: ApprovalCardProps) {
   const titleId = useId()
   const messageId = useId()
   const isMessageEmpty = message.trim().length === 0
@@ -39,7 +41,7 @@ export function ApprovalCard({ recipientSummary, message, onMessageChange, onApp
         <button
           type="button"
           onClick={onApprove}
-          disabled={isMessageEmpty}
+          disabled={isMessageEmpty || isSubmitting}
           className="h-10 cursor-pointer rounded-[9px] border-0 bg-ink px-[18px] text-[14px] font-semibold text-white hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Approve and send
@@ -47,7 +49,8 @@ export function ApprovalCard({ recipientSummary, message, onMessageChange, onApp
         <button
           type="button"
           onClick={onSkip}
-          className="h-10 cursor-pointer rounded-[10px] border border-line-strong bg-surface px-4 text-[14px] font-medium text-ink hover:bg-subtle"
+          disabled={isSubmitting}
+          className="h-10 cursor-pointer rounded-[10px] border border-line-strong bg-surface px-4 text-[14px] font-medium text-ink hover:bg-subtle disabled:cursor-not-allowed disabled:opacity-50"
         >
           Skip this place
         </button>

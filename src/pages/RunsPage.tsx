@@ -1,36 +1,38 @@
 import { useState } from 'react'
+import type { Run } from '@/api/types'
 import { AppShell } from '@/components/layout'
 import { joinClassNames } from '@/components/ui'
-import { defaultSelectedRunId, runRecords, type RunRecord, type RunStatus } from '@/data/runs'
+import { defaultSelectedRunId } from '@/data/runs'
+import { useAgentNames, type AgentNameLookup } from '@/hooks/useAgentNames'
+import { useRunEvents, useRuns } from '@/hooks/useRuns'
+import { RunErrorNotice } from '@/pages/agent-run/RunErrorNotice'
 import { RunDetailPanel } from './runs/RunDetailPanel'
 import { RunsTable } from './runs/RunsTable'
+import { allAgentsFilterValue, countRunsForFilter, toRunFilter, toRunRecord, withRunEvents, type RunsStatusFilter } from './runs/runViewModel'
 
-type StatusFilter = 'all' | Exclude<RunStatus, 'done'>
-
-const statusFilterOptions: Array<{ key: StatusFilter; label: string }> = [
+const statusFilterOptions: Array<{ key: RunsStatusFilter; label: string }> = [
   { key: 'all', label: 'All' },
   { key: 'needsYou', label: 'Needs you' },
   { key: 'running', label: 'Running' },
   { key: 'failed', label: 'Failed' },
 ]
 
-const allAgentsValue = 'all'
-const agentNames = Array.from(new Set(runRecords.map((run) => run.agentName)))
-
-function countRunsWithStatus(runs: RunRecord[], status: StatusFilter): number | null {
-  if (status === 'all') return null
-  return runs.filter((run) => run.status === status).length
+/** Agent ids in the order they first appear in the run list. */
+function listAgentIds(runs: Run[]): string[] {
+  return Array.from(new Set(runs.map((run) => run.agentId)))
 }
 
 interface RunsFilterBarProps {
   agentFilter: string
-  statusFilter: StatusFilter
-  agentRuns: RunRecord[]
-  onAgentFilterChange: (agentName: string) => void
-  onStatusFilterChange: (status: StatusFilter) => void
+  statusFilter: RunsStatusFilter
+  allRuns: Run[]
+  getAgentName: AgentNameLookup
+  onAgentFilterChange: (agentId: string) => void
+  onStatusFilterChange: (status: RunsStatusFilter) => void
 }
 
-function RunsFilterBar({ agentFilter, statusFilter, agentRuns, onAgentFilterChange, onStatusFilterChange }: RunsFilterBarProps) {
+function RunsFilterBar({ agentFilter, statusFilter, allRuns, getAgentName, onAgentFilterChange, onStatusFilterChange }: RunsFilterBarProps) {
+  const agentRuns = agentFilter === allAgentsFilterValue ? allRuns : allRuns.filter((run) => run.agentId === agentFilter)
   return (
     <div className="flex flex-wrap items-center gap-2">
       <select
@@ -39,16 +41,16 @@ function RunsFilterBar({ agentFilter, statusFilter, agentRuns, onAgentFilterChan
         onChange={(event) => onAgentFilterChange(event.target.value)}
         className="h-[34px] rounded-full border border-line-strong bg-surface px-3 text-[13px] font-medium text-ink"
       >
-        <option value={allAgentsValue}>All agents</option>
-        {agentNames.map((agentName) => (
-          <option key={agentName} value={agentName}>
-            {agentName}
+        <option value={allAgentsFilterValue}>All agents</option>
+        {listAgentIds(allRuns).map((agentId) => (
+          <option key={agentId} value={agentId}>
+            {getAgentName(agentId)}
           </option>
         ))}
       </select>
       {statusFilterOptions.map((option) => {
         const isActive = option.key === statusFilter
-        const runCount = countRunsWithStatus(agentRuns, option.key)
+        const runCount = countRunsForFilter(agentRuns, option.key)
         return (
           <button
             key={option.key}
@@ -69,19 +71,32 @@ function RunsFilterBar({ agentFilter, statusFilter, agentRuns, onAgentFilterChan
   )
 }
 
+/** Detail panel for the selected run, with steps and raw log from its events. */
+function SelectedRunPanel({ run, getAgentName, onClose }: { run: Run; getAgentName: AgentNameLookup; onClose: () => void }) {
+  const { data: events } = useRunEvents(run.id)
+  const record = withRunEvents(toRunRecord(run, getAgentName(run.agentId)), events ?? [])
+  return <RunDetailPanel key={run.id} run={record} onClose={onClose} />
+}
+
 /**
  * Screen 20 · Runs.
- * Everything the agents did, newest first: filter by agent and status, pick a run
- * to see its steps, output and raw log in the side panel.
+ * Everything the agents did, newest first, from `listRuns`: filter by agent and status (sent to the
+ * backend as a `RunFilter`), pick a run to see its steps, output and raw log from `listRunEvents`.
+ * The list refreshes when runs start or change status.
  */
 export function RunsPage() {
-  const [agentFilter, setAgentFilter] = useState(allAgentsValue)
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [agentFilter, setAgentFilter] = useState(allAgentsFilterValue)
+  const [statusFilter, setStatusFilter] = useState<RunsStatusFilter>('all')
   const [selectedRunId, setSelectedRunId] = useState<string | null>(defaultSelectedRunId)
+  const getAgentName = useAgentNames()
+  const allRunsData = useRuns()
+  const visibleRunsData = useRuns(toRunFilter(agentFilter, statusFilter))
 
-  const agentRuns = agentFilter === allAgentsValue ? runRecords : runRecords.filter((run) => run.agentName === agentFilter)
-  const visibleRuns = statusFilter === 'all' ? agentRuns : agentRuns.filter((run) => run.status === statusFilter)
-  const selectedRun = runRecords.find((run) => run.id === selectedRunId)
+  const allRuns = allRunsData.data ?? []
+  const visibleRecords = (visibleRunsData.data ?? []).map((run) => toRunRecord(run, getAgentName(run.agentId)))
+  const selectedRun = allRuns.find((run) => run.id === selectedRunId)
+  const loadError = allRunsData.error ?? visibleRunsData.error
+  const isFirstLoad = visibleRunsData.isLoading && visibleRunsData.data === null
 
   return (
     <AppShell activeNav="runs" mainClassName="flex flex-wrap">
@@ -93,13 +108,20 @@ export function RunsPage() {
         <RunsFilterBar
           agentFilter={agentFilter}
           statusFilter={statusFilter}
-          agentRuns={agentRuns}
+          allRuns={allRuns}
+          getAgentName={getAgentName}
           onAgentFilterChange={setAgentFilter}
           onStatusFilterChange={setStatusFilter}
         />
-        <RunsTable runs={visibleRuns} selectedRunId={selectedRunId} onSelectRun={setSelectedRunId} />
+        {loadError && <RunErrorNotice title="Could not load runs" error={loadError} />}
+        <RunsTable
+          runs={visibleRecords}
+          selectedRunId={selectedRunId}
+          onSelectRun={setSelectedRunId}
+          emptyMessage={isFirstLoad ? 'Loading runs…' : 'No runs match these filters'}
+        />
       </section>
-      {selectedRun && <RunDetailPanel key={selectedRun.id} run={selectedRun} onClose={() => setSelectedRunId(null)} />}
+      {selectedRun && <SelectedRunPanel key={selectedRun.id} run={selectedRun} getAgentName={getAgentName} onClose={() => setSelectedRunId(null)} />}
     </AppShell>
   )
 }

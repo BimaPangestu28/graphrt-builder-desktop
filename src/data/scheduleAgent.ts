@@ -27,6 +27,8 @@ export const approvalModeOptions: Array<{ value: ApprovalMode; label: string }> 
 export interface AgentScheduleSettings {
   frequency: ScheduleFrequency
   time: string
+  /** Weekdays for "Custom" (0 = Sunday … 6 = Saturday). */
+  customWeekdays: number[]
   timeZone: string
   searchKeyword: string
   city: string
@@ -37,6 +39,7 @@ export interface AgentScheduleSettings {
 export const defaultScheduleSettings: AgentScheduleSettings = {
   frequency: 'weekdays',
   time: '09:00',
+  customWeekdays: [1, 3, 5],
   timeZone: 'Asia/Jakarta',
   searchKeyword: 'cafe',
   city: 'Bandar Lampung',

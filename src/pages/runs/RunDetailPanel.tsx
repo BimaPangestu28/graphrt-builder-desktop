@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { StrokeIcon, joinClassNames } from '@/components/ui'
 import type { RunRecord, RunStep } from '@/data/runs'
-import { routePaths } from '@/routes'
+import { agentPath, routePaths } from '@/routes'
 
 interface RunDetailPanelProps {
   run: RunRecord
@@ -63,8 +63,8 @@ export function RunDetailPanel({ run, onClose }: RunDetailPanelProps) {
       </div>
 
       <ol className="m-0 flex list-none flex-col gap-0.5 p-0">
-        {run.steps.map((step) => (
-          <li key={step.label} className="flex items-center gap-2.5 py-2">
+        {run.steps.map((step, stepIndex) => (
+          <li key={`${stepIndex}-${step.label}`} className="flex items-center gap-2.5 py-2">
             <StepIndicator step={step} hasRunFailed={hasRunFailed} />
             <span className="flex-auto">{step.label}</span>
             <span className="text-[12px] text-muted">{step.detail}</span>
@@ -83,7 +83,7 @@ export function RunDetailPanel({ run, onClose }: RunDetailPanelProps) {
             {run.followUp.label}
           </Link>
         )}
-        <Link to={routePaths.testRun} className={outlineActionClassNames}>
+        <Link to={run.agentId ? agentPath('testRun', run.agentId) : routePaths.testRun} className={outlineActionClassNames}>
           Run again
         </Link>
         <a href={buildRunCsvHref(run)} download={`${run.id}.csv`} className={outlineActionClassNames}>
