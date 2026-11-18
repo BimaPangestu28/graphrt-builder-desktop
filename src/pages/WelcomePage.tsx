@@ -7,7 +7,7 @@ import { describeError } from '@/lib/agentDisplay'
 import { routePaths } from '@/routes'
 import { LockIcon } from './agent-builder/LockIcon'
 
-const aiProviders = ['OpenAI', 'Anthropic', 'Google Gemini', 'Ollama (local)'] as const
+const aiProviders = ['OpenAI', 'Anthropic', 'Google Gemini', 'DeepSeek', 'Ollama (local)'] as const
 type AiProvider = (typeof aiProviders)[number]
 
 /** Backend provider and the recommended small model for each option in the picker. */
@@ -15,6 +15,7 @@ const modelChoiceByProvider: Record<AiProvider, ModelChoice> = {
   OpenAI: { provider: 'openai', name: 'gpt-4o-mini' },
   Anthropic: { provider: 'anthropic', name: 'claude-haiku-5-5' },
   'Google Gemini': { provider: 'gemini', name: 'gemini-2.5-flash' },
+  DeepSeek: { provider: 'deepseek', name: 'deepseek-chat' },
   'Ollama (local)': { provider: 'ollama', name: 'llama3.2' },
 }
 
@@ -68,7 +69,7 @@ function ApiKeyOption({ provider, apiKey, onProviderChange, onApiKeyChange }: Ap
       <span className="flex flex-auto flex-col gap-3">
         <span className="flex flex-col gap-1">
           <span className="font-semibold">My own API key</span>
-          <span className="leading-normal text-body">OpenAI, Anthropic, Gemini, or a local model through Ollama. Free</span>
+          <span className="leading-normal text-body">OpenAI, Anthropic, Gemini, DeepSeek, or a local model through Ollama. Free</span>
         </span>
         <span className="grid grid-cols-2 gap-2.5">
           <span className="flex flex-col gap-1.5">

@@ -123,6 +123,7 @@ describe('sample credentials backend', () => {
       { provider: 'openai', configured: true, baseUrl: null },
       { provider: 'anthropic', configured: false, baseUrl: null },
       { provider: 'gemini', configured: false, baseUrl: null },
+      { provider: 'deepseek', configured: false, baseUrl: null },
       { provider: 'ollama', configured: true, baseUrl: 'http://localhost:11434' },
     ])
     expect(await sampleCredentialsBackend.getDefaultModel()).toEqual({ provider: 'openai', name: 'gpt-4o-mini' })
@@ -141,7 +142,7 @@ describe('sample credentials backend', () => {
   it('stores the Ollama address and default model', async () => {
     await sampleCredentialsBackend.setOllamaBaseUrl('http://studio.local:11434')
     await sampleCredentialsBackend.setDefaultModel({ provider: 'ollama', name: 'llama3.2' })
-    expect((await sampleCredentialsBackend.listProviderStatuses())[3].baseUrl).toBe('http://studio.local:11434')
+    expect((await sampleCredentialsBackend.listProviderStatuses()).at(-1)?.baseUrl).toBe('http://studio.local:11434')
     expect(await sampleCredentialsBackend.getDefaultModel()).toEqual({ provider: 'ollama', name: 'llama3.2' })
     await expectBackendError(sampleCredentialsBackend.setOllamaBaseUrl('studio.local'), 'invalid_input')
   })

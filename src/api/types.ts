@@ -110,7 +110,7 @@ export interface NewTrigger {
   inputs: Record<string, unknown>
 }
 
-export type ModelProvider = 'openai' | 'anthropic' | 'gemini' | 'ollama'
+export type ModelProvider = 'openai' | 'anthropic' | 'gemini' | 'deepseek' | 'ollama'
 
 export interface ProviderStatus {
   provider: ModelProvider
