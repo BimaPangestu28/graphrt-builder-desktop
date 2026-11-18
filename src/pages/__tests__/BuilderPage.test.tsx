@@ -4,8 +4,9 @@ import { BackendError } from '@/api/client'
 import { resetSampleAgents, sampleAgentsBackend } from '@/api/sampleBackend/agents'
 import { resetSampleBuilder, sampleBuilderBackend, sampleBuildTiming } from '@/api/sampleBackend/builder'
 import { isSampleWorkflowSecretConfigured, resetSampleCredentials, sampleCredentialsBackend } from '@/api/sampleBackend/credentials'
+import { resetSamplePlugins } from '@/api/sampleBackend/plugins'
 import type { WorkflowSecretStatus } from '@/api/types'
-import { agentPath, agentRoutePatterns, routePaths } from '@/routes'
+import { agentPath, agentRoutePatterns, connectionsPluginsPath, routePaths } from '@/routes'
 import { BuilderPage } from '../BuilderPage'
 
 function renderBuilderPage(agentId = 'maps-leads') {
@@ -32,6 +33,7 @@ describe('BuilderPage', () => {
     resetSampleAgents()
     resetSampleBuilder()
     resetSampleCredentials()
+    resetSamplePlugins()
     sampleBuildTiming.revisionStageDelayMs = 1
   })
   afterEach(() => vi.restoreAllMocks())
@@ -138,5 +140,18 @@ describe('BuilderPage', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Keychain is locked')
     expect(screen.getByLabelText(/Value for/)).toBeInTheDocument()
+  })
+  it('lists the plugin a whatsapp-api.send_text step needs and installs it from "Needs"', async () => {
+    const getFlowSummary = sampleBuilderBackend.getFlowSummary
+    vi.spyOn(sampleBuilderBackend, 'getFlowSummary').mockImplementation(async (agentId) => {
+      const flowSummary = await getFlowSummary(agentId)
+      return { ...flowSummary, steps: flowSummary.steps.map((flowStep) => (flowStep.id === 'send_whatsapp' ? { ...flowStep, nodeType: 'whatsapp-api.send_text' } : flowStep)) }
+    })
+    renderBuilderPage()
+    expect(await screen.findByText('whatsapp-api plugin')).toBeInTheDocument()
+    expect(screen.getByText('Not installed')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Install whatsapp-api plugin' }))
+    expect(await screen.findByText('Installed · not trusted yet')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Set up whatsapp-api plugin' })).toHaveAttribute('href', connectionsPluginsPath)
   })
 })

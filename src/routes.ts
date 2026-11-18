@@ -33,6 +33,9 @@ export const routePaths = {
 
 export type RouteKey = keyof typeof routePaths
 
+/** Connections (21) with the Plugins panel open (builder "Needs", screen 05). */
+export const connectionsPluginsPath = `${routePaths.connections}?section=plugins`
+
 /**
  * Screens that belong to one agent. App.tsx routes these patterns; `routePaths`
  * above holds the same screens for the sample agent ("maps-leads"), which is what

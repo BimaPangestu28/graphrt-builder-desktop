@@ -6,3 +6,4 @@ dist
 
 # Local agent tooling (worktrees, settings)
 .claude/
+src-tauri/binaries/

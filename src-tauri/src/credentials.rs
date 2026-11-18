@@ -281,6 +281,89 @@ impl CredentialStore {
     }
 }
 
+/// Plugin settings: the environment variables a plugin's manifest requests
+/// (`permissions.env`, e.g. `WHATSAPP_ACCESS_TOKEN`), one keychain entry per
+/// plugin and variable under the account `plugin:<plugin>:<VARIABLE>`.
+///
+/// They use their own account prefix rather than workflow secrets, so a
+/// workflow declaring `env.<NAME>` can never read a plugin's token, and two
+/// plugins requesting the same variable name keep separate values.
+impl CredentialStore {
+    /// Saves or replaces a plugin setting. Rejects empty values.
+    pub fn set_plugin_config(&self, plugin: &str, variable: &str, value: &str) -> AppResult<()> {
+        let account = plugin_config_account(plugin, variable)?;
+        let value = value.trim();
+        if value.is_empty() {
+            return Err(AppError::InvalidInput(format!("the value for {variable} is empty")));
+        }
+        match &self.backend {
+            CredentialBackend::Keychain { service } => keychain_account_entry(service, &account, variable)?
+                .set_password(value)
+                .map_err(|error| secret_keychain_error("save", variable, &error)),
+            CredentialBackend::InMemory(_) => {
+                lock_secrets(&self.in_memory_workflow_secrets)?.insert(account, value.to_owned());
+                Ok(())
+            }
+        }
+    }
+
+    /// Removes a plugin setting; succeeds if none was stored.
+    pub fn delete_plugin_config(&self, plugin: &str, variable: &str) -> AppResult<()> {
+        let account = plugin_config_account(plugin, variable)?;
+        match &self.backend {
+            CredentialBackend::Keychain { service } => {
+                match keychain_account_entry(service, &account, variable)?.delete_credential() {
+                    Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+                    Err(error) => Err(secret_keychain_error("delete", variable, &error)),
+                }
+            }
+            CredentialBackend::InMemory(_) => {
+                lock_secrets(&self.in_memory_workflow_secrets)?.remove(&account);
+                Ok(())
+            }
+        }
+    }
+
+    /// Backend-only access to a plugin setting (passed to the plugin process).
+    /// Never expose through a command.
+    pub(crate) fn read_plugin_config(&self, plugin: &str, variable: &str) -> AppResult<Option<String>> {
+        let account = plugin_config_account(plugin, variable)?;
+        match &self.backend {
+            CredentialBackend::Keychain { service } => {
+                match keychain_account_entry(service, &account, variable)?.get_password() {
+                    Ok(value) => Ok(Some(value)),
+                    Err(keyring::Error::NoEntry) => Ok(None),
+                    Err(error) => Err(secret_keychain_error("read", variable, &error)),
+                }
+            }
+            CredentialBackend::InMemory(_) => {
+                Ok(lock_secrets(&self.in_memory_workflow_secrets)?.get(&account).cloned())
+            }
+        }
+    }
+
+    /// Whether a plugin setting is stored, without handing it out.
+    pub fn has_plugin_config(&self, plugin: &str, variable: &str) -> AppResult<bool> {
+        Ok(self.read_plugin_config(plugin, variable)?.is_some())
+    }
+}
+
+/// Keychain account prefix of plugin settings (`plugin:<plugin>:<VARIABLE>`).
+const PLUGIN_CONFIG_ACCOUNT_PREFIX: &str = "plugin:";
+
+/// The keychain account of one plugin setting; validates both names.
+fn plugin_config_account(plugin: &str, variable: &str) -> AppResult<String> {
+    if !graphrt_plugin::is_valid_name(plugin) {
+        return Err(AppError::InvalidInput(format!("`{plugin}` is not a valid plugin name")));
+    }
+    validate_workflow_secret_name(variable)?;
+    Ok(format!("{PLUGIN_CONFIG_ACCOUNT_PREFIX}{plugin}:{variable}"))
+}
+
+fn keychain_account_entry(service: &str, account: &str, label: &str) -> AppResult<keyring::Entry> {
+    keyring::Entry::new(service, account).map_err(|error| secret_keychain_error("open", label, &error))
+}
+
 /// Keychain account prefix that keeps workflow secrets apart from provider keys.
 const WORKFLOW_SECRET_ACCOUNT_PREFIX: &str = "env:";
 const WORKFLOW_SECRET_NAME_MAX_LENGTH: usize = 64;

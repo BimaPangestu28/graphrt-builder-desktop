@@ -1,17 +1,15 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
 import { AppShell } from '@/components/layout'
 import { StrokeIcon } from '@/components/ui'
 import {
   advancedConnections,
   connectionCategoryTitles,
   initialConnections,
-  type AdvancedConnection,
   type Connection,
   type ConnectionCategory,
 } from '@/data/connections'
 import { useProviderStatuses } from '@/hooks/useProviderStatuses'
-import { routePaths } from '@/routes'
+import { AdvancedSection } from './connections/AdvancedSection'
 import { ConnectionCard } from './connections/ConnectionCard'
 import { buildModelConnections } from './connections/modelConnections'
 import { ModelProvidersSection } from './connections/ModelProvidersSection'
@@ -40,37 +38,6 @@ function ConnectionSection({ category, connections, onSetUp }: { category: Conne
   )
 }
 
-function AdvancedSection({ rows }: { rows: AdvancedConnection[] }) {
-  return (
-    <section aria-labelledby="connections-advanced-h" className="flex flex-col gap-2.5">
-      <h2 id="connections-advanced-h" className={sectionHeadingClassNames}>
-        Advanced
-      </h2>
-      <div className="rounded-xl border border-line">
-        {rows.map((row, index) => (
-          <div key={row.id} className={`flex items-center justify-between gap-3 px-4 py-3 ${index < rows.length - 1 ? 'border-b border-chip' : ''}`}>
-            <span className="flex flex-col gap-0.5">
-              <span className="font-medium">{row.name}</span>
-              <span className="text-[12px] text-muted">{row.description}</span>
-            </span>
-            {row.kind === 'status' ? (
-              <span className="text-[13px] text-ok-strong">Connected</span>
-            ) : (
-              <Link
-                to={routePaths.settings}
-                aria-label={`Manage ${row.name}`}
-                className="inline-flex h-8 shrink-0 items-center rounded-lg border border-line-strong bg-surface px-3 text-[13px] font-medium no-underline !text-ink hover:bg-subtle"
-              >
-                Manage
-              </Link>
-            )}
-          </div>
-        ))}
-      </div>
-    </section>
-  )
-}
-
 function matchesConnection(searchQuery: string, connection: Connection): boolean {
   return matchesSearch(searchQuery, connection.name, connection.connectedDescription, connection.availableDescription)
 }
@@ -82,7 +49,8 @@ const initialAppConnections = initialConnections.filter((connection) => connecti
  * Apps, AI models and keys the agents use. Search filters every section, the banner
  * reconnects a signed-out Gmail, and Connect sets up the remaining apps (mock data).
  * AI models come from `listProviderStatuses`; their keys are added, replaced and removed
- * through the keychain commands.
+ * through the keychain commands. Advanced → Plugins manages graphrt plugins (catalog,
+ * install, trust, settings, browser runtime).
  */
 export function ConnectionsPage() {
   const [connections, setConnections] = useState<Connection[]>(initialAppConnections)

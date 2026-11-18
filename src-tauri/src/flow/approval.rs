@@ -31,6 +31,10 @@ pub(super) fn unapproved_sending_steps(graph: &Graph) -> Vec<String> {
 }
 
 fn is_sending_step(node: &GraphNode) -> bool {
+    // Plugin steps that send or change something (`whatsapp-api.send_text`).
+    if crate::plugins::is_sending_plugin_kind(&node.kind) {
+        return true;
+    }
     if node.kind != "http-request" {
         return false;
     }

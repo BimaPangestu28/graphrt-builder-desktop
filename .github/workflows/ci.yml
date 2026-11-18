@@ -71,6 +71,8 @@ jobs:
           name: dist
           path: dist
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+      # No Node sidecar here on purpose: build.rs drops `externalBin` for debug
+      # builds without it, so fmt / clippy / tests stay network-free.
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 
   bundle:
@@ -100,4 +102,10 @@ jobs:
         with:
           workspaces: src-tauri -> target
       - run: pnpm install --frozen-lockfile
+      # The Node.js sidecar for the runner's target (checksum + signature verified).
+      - name: Fetch bundled Node.js
+        shell: bash
+        env:
+          GRAPHRT_REQUIRE_NODE_SIGNATURE: "1"
+        run: scripts/fetch-node.sh
       - run: pnpm tauri build --no-bundle

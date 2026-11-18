@@ -71,9 +71,10 @@ interface StepsTabContentProps {
   highlightedStepIds: Set<string>
   requirements: BuilderRequirement[]
   onSaveSecret?: (secretName: string, value: string) => Promise<void>
+  onInstallPlugin?: (pluginName: string) => Promise<void>
 }
 
-function StepsTabContent({ flowSummary, flowSummaryError, highlightedStepIds, requirements, onSaveSecret }: StepsTabContentProps) {
+function StepsTabContent({ flowSummary, flowSummaryError, highlightedStepIds, requirements, onSaveSecret, onInstallPlugin }: StepsTabContentProps) {
   if (flowSummaryError) return <p className="m-0 text-muted">Could not read the steps: {flowSummaryError.message}</p>
   if (!flowSummary) return <p className="m-0 text-muted">Loading steps…</p>
   return (
@@ -83,7 +84,7 @@ function StepsTabContent({ flowSummary, flowSummaryError, highlightedStepIds, re
           <BuilderStepCard key={flowStep.id} flowStep={flowStep} number={stepIndex + 1} isChanged={highlightedStepIds.has(flowStep.id)} />
         ))}
       </ol>
-      <AgentRequirementsList requirements={requirements} onSaveSecret={onSaveSecret} />
+      <AgentRequirementsList requirements={requirements} onSaveSecret={onSaveSecret} onInstallPlugin={onInstallPlugin} />
     </>
   )
 }
@@ -115,10 +116,12 @@ interface BuilderAgentPanelProps {
   requirements: BuilderRequirement[]
   /** Saves a workflow secret pasted in the "Needs" box. */
   onSaveSecret?: (secretName: string, value: string) => Promise<void>
+  /** Installs a plugin the steps use from the "Needs" box. */
+  onInstallPlugin?: (pluginName: string) => Promise<void>
 }
 
 /** Right column of screen 04: tabs, actions, the agent's steps and what it needs connected. */
-export function BuilderAgentPanel({ agent, flowSummary, flowSummaryError, highlightedStepIds, requirements, onSaveSecret }: BuilderAgentPanelProps) {
+export function BuilderAgentPanel({ agent, flowSummary, flowSummaryError, highlightedStepIds, requirements, onSaveSecret, onInstallPlugin }: BuilderAgentPanelProps) {
   const [activeTab, setActiveTab] = useState<BuilderTabKey>('steps')
 
   return (
@@ -140,6 +143,7 @@ export function BuilderAgentPanel({ agent, flowSummary, flowSummaryError, highli
             highlightedStepIds={highlightedStepIds}
             requirements={requirements}
             onSaveSecret={onSaveSecret}
+            onInstallPlugin={onInstallPlugin}
           />
         )}
         {activeTab === 'runs' && <RunsTabContent agentId={agent.id} />}

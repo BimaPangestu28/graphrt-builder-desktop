@@ -6,6 +6,7 @@ use crate::chains::ChainRunner;
 use crate::credentials::CredentialStore;
 use crate::engine::RunManager;
 use crate::knowledge::KnowledgeService;
+use crate::node_runtime::NodeRuntime;
 use crate::scheduler::SchedulerHandle;
 use crate::storage::Database;
 
@@ -19,4 +20,8 @@ pub struct AppState {
     /// Starts the next agents of chains when runs finish.
     pub chains: Arc<ChainRunner>,
     pub knowledge: Arc<KnowledgeService>,
+    /// The bundled Node plugins run on, and the Playwright browser cache.
+    pub node_runtime: Arc<NodeRuntime>,
+    /// Installed graphrt plugins (they run on `node_runtime`).
+    pub plugins: Arc<crate::plugins::PluginService>,
 }
