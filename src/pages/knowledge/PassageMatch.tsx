@@ -1,5 +1,6 @@
 import { joinClassNames } from '@/components/ui'
-import type { KnowledgePassage } from '@/data/knowledge'
+import type { KnowledgePassage } from '@/api/knowledgeTypes'
+import { passageCitation } from './knowledgeDisplay'
 
 interface PassageMatchProps {
   passage: KnowledgePassage
@@ -19,9 +20,7 @@ export function PassageMatch({ passage, isWeak = false }: PassageMatchProps) {
         <span className="shrink-0 text-[12px] font-semibold text-amber-strong">{scoreLabel}</span>
         <span className="flex flex-col gap-1">
           <span className="leading-normal">Best match is weak. {passage.text}</span>
-          <span className="text-[12px] text-amber-deep">
-            {passage.weakMatchHint ?? 'This may not answer the question. Add an answer so the chatbot stops passing it to you'}
-          </span>
+          <span className="text-[12px] text-amber-deep">Agents ignore matches this weak. Add a source that answers it so they stop guessing</span>
         </span>
       </div>
     )
@@ -29,9 +28,9 @@ export function PassageMatch({ passage, isWeak = false }: PassageMatchProps) {
   return (
     <div className="flex gap-3 rounded-[10px] border border-line bg-surface px-3.5 py-3">
       <span className={joinClassNames('shrink-0 text-[12px] font-semibold', passage.score >= 0.85 ? 'text-brand-strong' : 'text-ink-2')}>{scoreLabel}</span>
-      <span className="flex flex-col gap-1">
-        <span className="leading-normal">{passage.text}</span>
-        <span className="text-[12px] text-muted">{passage.citation}</span>
+      <span className="flex min-w-0 flex-col gap-1">
+        <span className="leading-normal whitespace-pre-line">{passage.text}</span>
+        <span className="text-[12px] text-muted">{passageCitation(passage)}</span>
       </span>
     </div>
   )
