@@ -1,15 +1,18 @@
 //! Runs agents on the graphrt engine and streams their events to the UI.
 //!
-//! A run is a task that drives the graphrt event stream, persists every
-//! event (`storage::runs`), and emits it to the frontend as the Tauri event
-//! [`RUN_EVENT`]. When graphrt pauses (approval / human input) the snapshot is
-//! stored and the task ends; `resume_run` continues it from the snapshot.
+//! A run is a task that drives the graphrt event stream, persists its events
+//! (`storage::runs`; streamed `node_chunk`s are coalesced first) and emits
+//! every event to the frontend as the Tauri event [`RUN_EVENT`]. When graphrt
+//! pauses (approval / human input) the snapshot is stored and the task ends;
+//! `resume_run` continues it from the snapshot.
 //!
 //! Layout:
 //! - [`RunManager`] (this file): the public start / resume / abort API.
 //! - `preparation`: everything checked and built before a run exists
 //!   (workflow, credentials, graphrt services, inputs).
 //! - `driver`: the task that consumes one graphrt stream and records it.
+//! - `chunk_buffer`: combines streamed chunks into few stored rows.
+//! - `active_runs`: handles of running tasks and abort requests.
 //! - [`ModelRegistrySource`]: where model clients come from (keychain in the
 //!   app, scripted mock models in tests).
 //!
@@ -18,19 +21,21 @@
 //! `preparation::workflow_env`, which currently returns an empty map; a future
 //! env/secret provider plugs in there and nowhere else.
 
+mod active_runs;
+mod chunk_buffer;
 mod driver;
 mod preparation;
 pub mod tauri_sink;
 #[cfg(test)]
 mod tests;
 
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::Arc;
 
-use graphrt_core::{RunHandle, RunInput, Snapshot};
+use graphrt_core::{RunInput, Snapshot};
 use serde::{Deserialize, Serialize};
 
+use self::active_runs::ActiveRuns;
+use self::chunk_buffer::ChunkBufferLimits;
 use self::driver::RunDriver;
 use crate::credentials::CredentialStore;
 use crate::error::{AppError, AppResult};
@@ -45,6 +50,15 @@ const USER_ABORT_REASON: &str = "Stopped by the user";
 
 /// Sent to the frontend for every graphrt event of a run, and once more when
 /// the run's status changes (then `event` is `{"type": "status_changed"}`).
+///
+/// `seq` is the stored row the event belongs to. Every streamed `node_chunk`
+/// is sent live, but chunks are stored coalesced (see `chunk_buffer`): a live
+/// chunk carries the seq its combined row gets (or got), so all live chunks
+/// of one combined row share a seq, and the row read back later with
+/// `list_run_events` holds their concatenated text (plus `coalesced`). This
+/// relies on the driver being the only writer of a running run's events; if
+/// storing an event fails, later seqs can be off by the failed rows.
+/// `status_changed` carries the seq of the latest stored event.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunEventPayload {
@@ -82,52 +96,6 @@ impl ModelRegistrySource for KeychainModelRegistrySource {
     }
 }
 
-/// Control handle of a run whose task is currently driving its stream.
-///
-/// `drive_id` identifies one task: after a pause and quick resume, the old
-/// task must not remove the handle the new task registered for the same run.
-#[derive(Debug, Clone)]
-struct ActiveRun {
-    drive_id: u64,
-    handle: RunHandle,
-}
-
-/// Runs in progress, keyed by run id. Shared with every driver task.
-#[derive(Debug, Default)]
-pub(crate) struct ActiveRuns {
-    runs: Mutex<HashMap<String, ActiveRun>>,
-    next_drive_id: AtomicU64,
-}
-
-impl ActiveRuns {
-    fn lock(&self) -> AppResult<MutexGuard<'_, HashMap<String, ActiveRun>>> {
-        self.runs.lock().map_err(|_| AppError::Internal("active run table lock poisoned".into()))
-    }
-
-    /// Registers the handle of a new driver task and returns its `drive_id`.
-    fn register(&self, run_id: &str, handle: RunHandle) -> AppResult<u64> {
-        let drive_id = self.next_drive_id.fetch_add(1, Ordering::Relaxed);
-        self.lock()?.insert(run_id.to_owned(), ActiveRun { drive_id, handle });
-        Ok(drive_id)
-    }
-
-    /// Removes the handle only if it still belongs to the task `drive_id`.
-    fn remove(&self, run_id: &str, drive_id: u64) {
-        match self.lock() {
-            Ok(mut runs) => {
-                if runs.get(run_id).is_some_and(|active| active.drive_id == drive_id) {
-                    runs.remove(run_id);
-                }
-            }
-            Err(error) => log::warn!("could not unregister run {run_id}: {error}"),
-        }
-    }
-
-    fn handle(&self, run_id: &str) -> AppResult<Option<RunHandle>> {
-        Ok(self.lock()?.get(run_id).map(|active| active.handle.clone()))
-    }
-}
-
 /// Starts, resumes and aborts agent runs. One per app, shared as `Arc<RunManager>`.
 #[derive(Debug)]
 pub struct RunManager {
@@ -136,6 +104,11 @@ pub struct RunManager {
     sink: Arc<dyn RunEventSink>,
     model_source: Arc<dyn ModelRegistrySource>,
     active_runs: Arc<ActiveRuns>,
+    chunk_buffer_limits: ChunkBufferLimits,
+}
+
+fn already_finished(run_id: &str, status: RunStatus) -> AppError {
+    AppError::InvalidInput(format!("run {run_id} has already finished ({})", status.as_db_text()))
 }
 
 impl RunManager {
@@ -146,7 +119,15 @@ impl RunManager {
             sink,
             model_source: Arc::new(KeychainModelRegistrySource),
             active_runs: Arc::new(ActiveRuns::default()),
+            chunk_buffer_limits: ChunkBufferLimits::default(),
         }
+    }
+
+    /// Replaces when buffered `node_chunk` events are stored (tests use tiny limits).
+    #[cfg(test)]
+    fn with_chunk_buffer_limits(mut self, chunk_buffer_limits: ChunkBufferLimits) -> Self {
+        self.chunk_buffer_limits = chunk_buffer_limits;
+        self
     }
 
     /// Replaces where model clients come from (tests use scripted mock models).
@@ -212,7 +193,24 @@ impl RunManager {
     /// Stops a running or paused run (status `Aborted`).
     ///
     /// A running run is aborted through its graphrt handle and its task records
-    /// the `run_aborted` event; a paused run (no task) is finished directly.
+    /// whatever terminal event graphrt then emits; a paused run (no task) is
+    /// finished directly.
+    ///
+    /// # Abort racing the end of a run
+    /// The run's status and its event log must agree, so the outcome graphrt
+    /// reports wins over an abort requested at the same moment:
+    /// - A task keeps its handle registered until it has stored the terminal
+    ///   event AND the status it implies. An abort meanwhile only signals
+    ///   graphrt (a no-op once graphrt has finished) and flags the request; a
+    ///   `run_succeeded` / `run_failed` is still recorded as `Succeeded` /
+    ///   `Failed`, never `Aborted`.
+    /// - If graphrt paused instead, the task honours the flagged request after
+    ///   storing the pause: `Paused → Aborted`, as when aborting a paused run.
+    /// - With no registered task, the run is finished here. That is refused
+    ///   ("already finished") when the task stored a terminal status first,
+    ///   since storage never changes a terminal run. A task that has not
+    ///   registered yet (start / resume in progress) finds the remembered abort
+    ///   when it registers and aborts graphrt, so its log ends with `run_aborted`.
     ///
     /// # Errors
     /// - `NotFound` for an unknown run.
@@ -221,17 +219,25 @@ impl RunManager {
         let run = self.db.get_run(run_id)?;
         match run.status {
             RunStatus::Running => {
-                if let Some(handle) = self.active_runs.handle(run_id)? {
-                    handle.abort(USER_ABORT_REASON);
+                if self.active_runs.request_abort(run_id)? {
                     return Ok(());
                 }
-                // No task owns it (it is just finishing): settle it here.
-                self.finish_aborted(&run)
+                let finished = self.finish_aborted(&run);
+                if finished.is_err() {
+                    self.active_runs.cancel_pending_abort(run_id);
+                }
+                finished.map_err(|error| self.already_finished_error(run_id).unwrap_or(error))
             }
             RunStatus::Paused => self.finish_aborted(&run),
-            finished => {
-                Err(AppError::InvalidInput(format!("run {run_id} has already finished ({})", finished.as_db_text())))
-            }
+            finished => Err(already_finished(run_id, finished)),
+        }
+    }
+
+    /// The "already finished" error when the run has reached a terminal status.
+    fn already_finished_error(&self, run_id: &str) -> Option<AppError> {
+        match self.db.get_run(run_id).ok()?.status {
+            RunStatus::Running | RunStatus::Paused => None,
+            finished => Some(already_finished(run_id, finished)),
         }
     }
 
@@ -248,6 +254,7 @@ impl RunManager {
             active_runs: self.active_runs.clone(),
             agent_id: run.agent_id.clone(),
             trigger: run.trigger,
+            chunk_buffer_limits: self.chunk_buffer_limits,
         }
     }
 

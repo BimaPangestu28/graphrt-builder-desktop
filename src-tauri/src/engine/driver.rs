@@ -1,7 +1,15 @@
 //! The task that consumes one graphrt event stream (a start or a resume).
 //!
-//! For every event: persist it, apply the status change a terminal event
-//! implies, send it to the UI, then send `status_changed` if the status moved.
+//! For every event other than `node_chunk`: store the chunk still buffered (so
+//! it precedes this event), persist the event, apply the status change a
+//! terminal event implies, send it to the UI, then send `status_changed` if the
+//! status moved. A `node_chunk` is sent to the UI at once but stored through
+//! the [`ChunkBuffer`]; the task also wakes up at the buffer's deadline while
+//! the stream is quiet. See [`super::RunEventPayload`] for the seq live chunks carry.
+//!
+//! The task unregisters from `active_runs` only after a terminal event and its
+//! status are stored; see [`super::RunManager::abort_run`] for why.
+//!
 //! Storage errors are logged, never fatal: the task always tries to leave the
 //! run `Paused` or terminal in the database.
 
@@ -10,7 +18,9 @@ use std::sync::Arc;
 use futures::StreamExt;
 use graphrt_core::{Event, RunStream};
 use serde_json::{json, Value as Json};
+use tokio::time::Instant;
 
+use super::chunk_buffer::{ChunkBuffer, ChunkBufferLimits, ChunkPosition};
 use super::{ActiveRuns, RunEventPayload, RunEventSink};
 use crate::storage::models::{AgentStatus, RunStatus, RunTrigger};
 use crate::storage::Database;
@@ -26,33 +36,131 @@ pub(super) struct RunDriver {
     pub(super) active_runs: Arc<ActiveRuns>,
     pub(super) agent_id: String,
     pub(super) trigger: RunTrigger,
+    pub(super) chunk_buffer_limits: ChunkBufferLimits,
+}
+
+/// State of one drive (one graphrt stream).
+#[derive(Debug)]
+struct DriveState {
+    run_id: String,
+    /// This task's entry in `active_runs`.
+    drive_id: u64,
+    /// Seq of the latest event this task stored (0 before the first). graphrt
+    /// emits `run_started` first, so it is set before any chunk needs it.
+    last_seq: i64,
+    chunk_buffer: ChunkBuffer,
+    reached_terminal_event: bool,
+}
+
+/// What the task does next.
+enum NextStep {
+    Handle(Box<Event>),
+    StoreDueChunk,
+    StreamEnded,
+}
+
+/// Waits for the next event, or for the buffered chunk's deadline if there is one.
+async fn next_step(stream: &mut RunStream, chunk_deadline: Option<Instant>) -> NextStep {
+    let into_step =
+        |event: Option<Event>| event.map_or(NextStep::StreamEnded, |event| NextStep::Handle(Box::new(event)));
+    let Some(chunk_deadline) = chunk_deadline else {
+        return into_step(stream.next().await);
+    };
+    tokio::select! {
+        event = stream.next() => into_step(event),
+        () = tokio::time::sleep_until(chunk_deadline) => NextStep::StoreDueChunk,
+    }
 }
 
 impl RunDriver {
     /// Drives `stream` to its end. `drive_id` is this task's entry in `active_runs`.
     pub(super) async fn drive(self, run_id: String, drive_id: u64, mut stream: RunStream) {
-        let mut last_seq = 0;
-        let mut reached_terminal_event = false;
-        while let Some(event) = stream.next().await {
-            if event.is_terminal() {
-                // Unregister before the status change so a quick resume's new handle
-                // is never removed, and an abort racing the end settles via the DB.
-                self.active_runs.remove(&run_id, drive_id);
-                reached_terminal_event = true;
-            }
-            let event_json = event_to_json(&event);
-            last_seq = self.persist_event(&run_id, &event_json).unwrap_or(last_seq);
-            let new_status = self.apply_terminal_event(&run_id, event);
-            let status = new_status.unwrap_or(RunStatus::Running);
-            self.sink.send(self.payload(&run_id, last_seq, status, event_json));
-            if let Some(status) = new_status {
-                self.send_status_with_seq(&run_id, last_seq, status);
+        let mut state = DriveState {
+            run_id,
+            drive_id,
+            last_seq: 0,
+            chunk_buffer: ChunkBuffer::new(self.chunk_buffer_limits),
+            reached_terminal_event: false,
+        };
+        loop {
+            match next_step(&mut stream, state.chunk_buffer.deadline()).await {
+                NextStep::Handle(event) => self.handle_event(&mut state, *event),
+                NextStep::StoreDueChunk => {
+                    let due_chunks = state.chunk_buffer.take_due(Instant::now());
+                    self.store_events(&mut state, &due_chunks);
+                }
+                NextStep::StreamEnded => break,
             }
         }
-        self.active_runs.remove(&run_id, drive_id);
-        if !reached_terminal_event {
-            self.fail_run(&run_id, MISSING_TERMINAL_EVENT_MESSAGE);
+        self.store_buffered_chunks(&mut state);
+        self.active_runs.remove(&state.run_id, drive_id);
+        if !state.reached_terminal_event {
+            self.fail_run(&state.run_id, MISSING_TERMINAL_EVENT_MESSAGE);
         }
+    }
+
+    fn handle_event(&self, state: &mut DriveState, event: Event) {
+        if matches!(event, Event::NodeChunk { .. }) {
+            self.handle_chunk(state, &event);
+            return;
+        }
+        self.store_buffered_chunks(state);
+        let is_terminal = event.is_terminal();
+        let event_json = event_to_json(&event);
+        self.store_event(state, &event_json);
+        let new_status = self.apply_terminal_event(&state.run_id, event);
+        let status = new_status.unwrap_or(RunStatus::Running);
+        self.sink.send(self.payload(&state.run_id, state.last_seq, status, event_json));
+        if let Some(status) = new_status {
+            self.send_status_with_seq(&state.run_id, state.last_seq, status);
+        }
+        if is_terminal {
+            state.reached_terminal_event = true;
+            self.unregister_after_terminal_event(state, new_status);
+        }
+    }
+
+    /// Sends the chunk live and buffers it for storage. The live payload carries
+    /// the seq of the row that holds (or will hold) the chunk's text.
+    fn handle_chunk(&self, state: &mut DriveState, event: &Event) {
+        let event_json = event_to_json(event);
+        let Some(pushed) = state.chunk_buffer.push(event, event_json.clone(), Instant::now()) else {
+            return;
+        };
+        let stored_seqs = self.store_events(state, &pushed.ready);
+        let chunk_seq = match pushed.position {
+            ChunkPosition::Ready(index) => stored_seqs.get(index).copied().flatten().unwrap_or(state.last_seq),
+            ChunkPosition::Pending(rows_ahead) => state.last_seq + 1 + i64::try_from(rows_ahead).unwrap_or(0),
+        };
+        self.sink.send(self.payload(&state.run_id, chunk_seq, RunStatus::Running, event_json));
+    }
+
+    /// Unregisters once the terminal event and its status are stored. An abort
+    /// requested meanwhile only overrides a pause; a graphrt success or failure wins.
+    fn unregister_after_terminal_event(&self, state: &DriveState, new_status: Option<RunStatus>) {
+        let abort_requested = self.active_runs.remove(&state.run_id, state.drive_id);
+        if abort_requested && new_status == Some(RunStatus::Paused) {
+            if let Some(status) = self.finish(&state.run_id, RunStatus::Aborted, None, None) {
+                self.send_status_with_seq(&state.run_id, state.last_seq, status);
+            }
+        }
+    }
+
+    fn store_buffered_chunks(&self, state: &mut DriveState) {
+        let buffered_chunks = state.chunk_buffer.take_all();
+        self.store_events(state, &buffered_chunks);
+    }
+
+    /// Persists the events in order; returns each one's seq (`None` when storage failed).
+    fn store_events(&self, state: &mut DriveState, events_json: &[Json]) -> Vec<Option<i64>> {
+        events_json.iter().map(|event_json| self.store_event(state, event_json)).collect()
+    }
+
+    /// Persists the event and advances `last_seq` (unchanged when storage failed).
+    fn store_event(&self, state: &mut DriveState, event_json: &Json) -> Option<i64> {
+        let seq = self.persist_event(&state.run_id, event_json);
+        state.last_seq = seq.unwrap_or(state.last_seq);
+        seq
     }
 
     /// Appends the event; returns its seq, or `None` (logged) when storage failed.
