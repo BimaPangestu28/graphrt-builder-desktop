@@ -15,4 +15,5 @@ pub mod plugins;
 pub mod run_summary;
 pub mod runs;
 pub mod triggers;
+pub mod usage_summary;
 pub mod versions;

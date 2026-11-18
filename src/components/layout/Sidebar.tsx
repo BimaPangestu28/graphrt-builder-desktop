@@ -1,9 +1,11 @@
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { Icon, LogoLockup, StatusDot, joinClassNames } from '@/components/ui'
+import { isDesktopApp } from '@/api/client'
 import type { Agent } from '@/api/types'
 import { useAgents } from '@/hooks/useAgents'
 import { useConversationCounts } from '@/hooks/useConversations'
-import { getKindLabel, getStatusDotTone } from '@/lib/agentDisplay'
+import { useRunnerStatus, type RunnerStatusFacts } from '@/hooks/useRunnerStatus'
+import { getKindLabel, getProviderName, getStatusDotTone } from '@/lib/agentDisplay'
 import { agentPath, routePaths, sampleAgentId } from '@/routes'
 
 export type MainNavKey = 'home' | 'inbox' | 'runs' | 'schedule' | 'knowledge' | 'connections' | 'settings'
@@ -22,7 +24,10 @@ export type SidebarAgentsState =
 export interface SidebarProps {
   activeNav?: MainNavKey
   agents?: SidebarAgentsState
-  /** Second line of the runner card, e.g. "Online · OpenAI connected". */
+  /**
+   * Second line of the runner card in the browser preview, e.g. "Online · OpenAI connected".
+   * Ignored in the desktop app, where the line comes from the default model and the schedules.
+   */
   runnerStatus?: string
   /** Shown next to Inbox until the live number of chats waiting for you has loaded. */
   inboxCount?: number
@@ -87,6 +92,37 @@ function SidebarAgentsSection({ agents }: { agents: SidebarAgentsState }) {
   return <SidebarAgentList activeAgentId={agents.activeAgentId} />
 }
 
+/**
+ * "DeepSeek connected · 2 agents scheduled". The scheduled part is left out when nothing is scheduled.
+ *
+ * @param facts - Default model and scheduled agent count (RunnerStatusFacts)
+ * @returns The line, or null when no model is connected (string | null)
+ */
+export function describeConnectedRunner(facts: RunnerStatusFacts): string | null {
+  if (!facts.defaultModel) return null
+  const providerLine = `${getProviderName(facts.defaultModel.provider)} connected`
+  if (facts.scheduledAgentCount === 0) return providerLine
+  const agentWord = facts.scheduledAgentCount === 1 ? 'agent' : 'agents'
+  return `${providerLine} · ${facts.scheduledAgentCount} ${agentWord} scheduled`
+}
+
+/** Runner card line in the desktop app, from the real default model and enabled schedules. */
+function DesktopRunnerStatusLine() {
+  const location = useLocation()
+  const { data: facts, error } = useRunnerStatus(location.pathname)
+  if (!facts) return <span className="text-[12px] text-muted">{error ? 'Could not check the runner' : 'Checking…'}</span>
+  const connectedLine = describeConnectedRunner(facts)
+  if (connectedLine) return <span className="text-[12px] text-muted">{connectedLine}</span>
+  return (
+    <span className="text-[12px] text-muted">
+      No model connected ·{' '}
+      <Link to={routePaths.connections} className="font-medium">
+        Add one
+      </Link>
+    </span>
+  )
+}
+
 /** Left navigation shared by every in-app screen. The Inbox badge is the live number of chats waiting for you. */
 export function Sidebar({ activeNav, agents = { kind: 'list' }, runnerStatus = 'Online · 2 agents scheduled', inboxCount = 0 }: SidebarProps) {
   const { data: conversationCounts } = useConversationCounts()
@@ -122,7 +158,7 @@ export function Sidebar({ activeNav, agents = { kind: 'list' }, runnerStatus = '
             <StatusDot tone="ok" />
             Runner on this Mac
           </span>
-          <span className="text-[12px] text-muted">{runnerStatus}</span>
+          {isDesktopApp() ? <DesktopRunnerStatusLine /> : <span className="text-[12px] text-muted">{runnerStatus}</span>}
         </div>
         <Link to={routePaths.connections} aria-current={activeNav === 'connections' ? 'page' : undefined} className={navLinkClassNames(activeNav === 'connections')}>
           Connections

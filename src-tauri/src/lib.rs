@@ -9,6 +9,7 @@
 //! - [`agent_builder`]: drafting an agent's workflow from plain language
 //! - [`engine`]: running agents on graphrt and streaming events to the UI
 //! - [`run_summary`]: plain-language run summaries and weekly agent stats
+//! - [`usage_summary`]: run and model-token totals since a date (Home "This month")
 //! - [`scheduler`]: starting scheduled runs while the app is running
 //! - [`conversations`]: chatbot conversations, the bot's replies and hand-offs
 //! - [`agent_steps`]: agents used as steps and team members (the `agents` tool provider)
@@ -36,6 +37,7 @@ pub mod run_summary;
 pub mod scheduler;
 pub mod state;
 pub mod storage;
+pub mod usage_summary;
 
 use std::sync::Arc;
 
@@ -159,6 +161,7 @@ pub fn run() {
             commands::runs::list_run_events,
             commands::run_summary::get_run_summary,
             commands::run_summary::list_agent_run_stats,
+            commands::usage_summary::get_usage_summary,
             commands::triggers::list_triggers,
             commands::triggers::create_trigger,
             commands::triggers::update_trigger,

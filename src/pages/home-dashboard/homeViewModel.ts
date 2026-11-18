@@ -1,9 +1,11 @@
+import type { ConnectionReminder } from '@/api/connectionReminderTypes'
+import type { Conversation } from '@/api/conversationTypes'
 import type { AgentRunStats } from '@/api/runSummaryTypes'
 import type { Run, RunStatus } from '@/api/types'
 import type { AgentSummaryStat, AttentionItem, RecentRun, RecentRunStatus } from '@/data/homeDashboard'
 import { formatCounterLabel, pickHeadlineCounter } from '@/pages/agent-run/runCounters'
 import { formatRunDay } from '@/pages/agent-run/runResultSummary'
-import { agentPath } from '@/routes'
+import { agentPath, routePaths } from '@/routes'
 
 /** Turns backend runs and run stats into what the Home screen (09) shows. */
 
@@ -104,5 +106,59 @@ export function buildRecentRunRows(runs: Run[], agentName: AgentNameLookup, now:
     startedAt: formatRunDay(run.startedAt, now),
     resultSummary: describeRunResult(run),
     status: recentRunStatuses[run.status],
+  }))
+}
+
+/** "9 minutes", "2 hours", "3 days" (at least one minute). */
+export function formatWaitingTime(sinceIsoTimestamp: string, now: Date = new Date()): string {
+  const waitedMinutes = Math.max(1, Math.floor((now.getTime() - new Date(sinceIsoTimestamp).getTime()) / 60_000))
+  const pluralize = (count: number, unit: string) => `${count} ${unit}${count === 1 ? '' : 's'}`
+  if (waitedMinutes < 60) return pluralize(waitedMinutes, 'minute')
+  const waitedHours = Math.floor(waitedMinutes / 60)
+  if (waitedHours < 24) return pluralize(waitedHours, 'hour')
+  return pluralize(Math.floor(waitedHours / 24), 'day')
+}
+
+function describeHandingAgents(waitingConversations: Conversation[], agentName: AgentNameLookup): string {
+  const agentNames = Array.from(new Set(waitingConversations.map((conversation) => agentName(conversation.agentId))))
+  if (agentNames.length === 1) return agentNames[0]
+  if (agentNames.length === 2) return `${agentNames[0]} and ${agentNames[1]}`
+  return 'Your chatbots'
+}
+
+/**
+ * The "customers are waiting in Inbox" row, from the chats a chatbot handed over.
+ *
+ * @param waitingConversations - Conversations with status `waiting_for_you` (Conversation[])
+ * @param agentName - Display name lookup (AgentNameLookup)
+ * @param now - Reference time (Date)
+ * @returns The row, or null when nobody is waiting (AttentionItem | null)
+ *
+ * @example
+ * buildInboxAttentionItem(chats, agentName) // { title: '2 customers are waiting in Inbox', detail: 'Catering assistant passed them to you · oldest 9 minutes', ... }
+ */
+export function buildInboxAttentionItem(waitingConversations: Conversation[], agentName: AgentNameLookup, now: Date = new Date()): AttentionItem | null {
+  if (waitingConversations.length === 0) return null
+  const isSingle = waitingConversations.length === 1
+  const oldestUpdate = waitingConversations.reduce((oldest, conversation) => (new Date(conversation.updatedAt) < new Date(oldest) ? conversation.updatedAt : oldest), waitingConversations[0].updatedAt)
+  return {
+    id: 'inbox-waiting',
+    title: isSingle ? '1 customer is waiting in Inbox' : `${waitingConversations.length} customers are waiting in Inbox`,
+    detail: `${describeHandingAgents(waitingConversations, agentName)} passed ${isSingle ? 'it' : 'them'} to you · ${isSingle ? 'waiting' : 'oldest'} ${formatWaitingTime(oldestUpdate, now)}`,
+    actionLabel: 'Open Inbox',
+    actionPath: routePaths.inbox,
+    isPrimaryAction: false,
+  }
+}
+
+/** "Needs you" rows for connected services that need attention, each opening Connections. */
+export function buildConnectionReminderItems(reminders: ConnectionReminder[]): AttentionItem[] {
+  return reminders.map((reminder) => ({
+    id: `connection-${reminder.id}`,
+    title: reminder.title,
+    detail: reminder.detail,
+    actionLabel: reminder.actionLabel,
+    actionPath: routePaths.connections,
+    isPrimaryAction: false,
   }))
 }
