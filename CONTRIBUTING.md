@@ -10,11 +10,33 @@ your platform (Xcode Command Line Tools on macOS). Then:
 
 ```sh
 pnpm install
+scripts/fetch-node.sh   # bundled Node.js sidecar (see below)
 pnpm dev:desktop   # desktop window with hot reload
 pnpm dev           # interface only, in the browser at http://localhost:5173
 ```
 
 Open `#/screens` to jump to any screen.
+
+### Bundled Node.js
+
+graphrt plugins are Node programs, so the app ships Node as a Tauri sidecar
+(`bundle.externalBin: ["binaries/node"]`). `scripts/fetch-node.sh [<target-triple>...]`
+downloads the version pinned in `scripts/node-version` from nodejs.org, checks it
+against `SHASUMS256.txt` (whose signature is verified against pinned Node.js
+release keys when `gpg` is installed; CI makes gpg mandatory with
+`GRAPHRT_REQUIRE_NODE_SIGNATURE=1`) and writes `src-tauri/binaries/node-<triple>[.exe]`
+(gitignored). The default target is the host; `universal-apple-darwin` fetches
+both macOS arches and lipo's them into `node-universal-apple-darwin`, which Tauri
+needs for `--target universal-apple-darwin`.
+
+- `pnpm dev:desktop` / `pnpm build:desktop` run `scripts/check-node-sidecar.mjs`
+  first and stop with the fetch command when the sidecar is missing or outdated.
+  Nothing is downloaded automatically, so builds never hit the network by surprise.
+- `cargo test` / `cargo clippy` / `cargo build` (debug) work without the sidecar:
+  `src-tauri/build.rs` then drops `externalBin` and warns; the app falls back to
+  a `node` on PATH in debug builds only. Release cargo builds fail without it.
+- To upgrade Node, change `scripts/node-version`, run `scripts/fetch-node.sh`
+  and commit `src-tauri/licenses/node-LICENSE.txt` if the script updated it.
 
 ## Before opening a pull request
 

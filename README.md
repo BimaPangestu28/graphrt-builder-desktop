@@ -27,6 +27,17 @@ Prebuilt apps for macOS (universal: Apple silicon and Intel), Windows and Linux 
 attached to each [GitHub Release](https://github.com/BimaPangestu28/graphrt-builder-desktop/releases),
 with a `SHA256SUMS` file to verify them (`shasum -a 256 -c SHA256SUMS --ignore-missing`).
 
+The app ships its own **Node.js 22 LTS** runtime, which graphrt plugins run on,
+so you do not need to install Node. It adds about 110 MB per architecture to the
+installed app (about 37 MB to the download); the universal macOS app carries both
+architectures (about +225 MB installed, +75 MB download). Plugins that drive a
+browser (Google Maps scraper, WhatsApp Web) download Chromium on first use into
+Playwright's usual cache (`~/Library/Caches/ms-playwright` on macOS,
+`%USERPROFILE%\AppData\Local\ms-playwright` on Windows, `~/.cache/ms-playwright`
+on Linux): roughly 250 MB to download and 600 MB on disk. Node's licence and the
+notices of the libraries it bundles ship inside the app at
+`licenses/node-LICENSE.txt` (in `graphrt.app/Contents/Resources` on macOS).
+
 > **macOS builds are not signed yet.** On first launch, right-click the app in
 > Applications and choose **Open**, then confirm. On macOS 15 or later, if there is
 > no Open button, go to System Settings > Privacy & Security and click **Open Anyway**.
@@ -34,7 +45,11 @@ with a `SHA256SUMS` file to verify them (`shasum -a 256 -c SHA256SUMS --ignore-m
 ### From source
 ```bash
 pnpm install
+scripts/fetch-node.sh   # bundled Node.js sidecar for this machine (once, ~40 MB download)
 ```
+`pnpm dev:desktop` and `pnpm build:desktop` stop with a message pointing at
+`scripts/fetch-node.sh` when the sidecar is missing or outdated. `cargo test` and
+`cargo clippy` do not need it.
 
 ## Quick Start
 ```bash
@@ -66,6 +81,7 @@ src-tauri/            Rust shell (Tauri 2): window, bundling, future local runne
 
 ## Configuration
 - Window size, app identifier and CSP: `src-tauri/tauri.conf.json`
+- Bundled Node.js version: `scripts/node-version` (fetched by `scripts/fetch-node.sh`)
 - Design tokens (colors, font): `src/index.css`
 
 ## Contributing
