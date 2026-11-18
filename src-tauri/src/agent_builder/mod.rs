@@ -133,6 +133,7 @@ fn provider_name(provider: ModelProvider) -> &'static str {
         ModelProvider::Openai => "openai",
         ModelProvider::Anthropic => "anthropic",
         ModelProvider::Gemini => "gemini",
+        ModelProvider::Deepseek => "deepseek",
         ModelProvider::Ollama => "ollama",
     }
 }

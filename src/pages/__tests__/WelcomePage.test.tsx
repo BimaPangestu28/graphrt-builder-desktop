@@ -56,6 +56,18 @@ describe('WelcomePage', () => {
     expect(setDefaultModelSpy).toHaveBeenCalledWith({ provider: 'anthropic', name: 'claude-haiku-5-5' })
   })
 
+  it('saves a DeepSeek key with deepseek-chat as the default model', async () => {
+    const setApiKeySpy = vi.spyOn(sampleCredentialsBackend, 'setApiKey')
+    const setDefaultModelSpy = vi.spyOn(sampleCredentialsBackend, 'setDefaultModel')
+    renderWelcomePage()
+    fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'DeepSeek' } })
+    typeApiKey('sk-deepseek-test')
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    expect(await screen.findByText('New agent screen')).toBeInTheDocument()
+    expect(setApiKeySpy).toHaveBeenCalledWith('deepseek', 'sk-deepseek-test')
+    expect(setDefaultModelSpy).toHaveBeenCalledWith({ provider: 'deepseek', name: 'deepseek-chat' })
+  })
+
   it('saves the Ollama address instead of a key for a local model', async () => {
     const setApiKeySpy = vi.spyOn(sampleCredentialsBackend, 'setApiKey')
     const setOllamaBaseUrlSpy = vi.spyOn(sampleCredentialsBackend, 'setOllamaBaseUrl')

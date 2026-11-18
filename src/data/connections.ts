@@ -107,6 +107,16 @@ export const initialConnections: Connection[] = [
     availableDescription: 'Gemini models',
     setupActionLabel: 'Add key',
   },
+  {
+    id: 'deepseek',
+    name: 'DeepSeek',
+    category: 'models',
+    state: 'available',
+    connectedLabel: 'Connected',
+    connectedDescription: 'Key in Keychain · not used yet',
+    availableDescription: 'DeepSeek V3 and R1 (deepseek-chat, deepseek-reasoner)',
+    setupActionLabel: 'Add key',
+  },
 ]
 
 export interface AdvancedConnection {

@@ -29,6 +29,7 @@ const providerNames: Record<ModelProvider, string> = {
   openai: 'OpenAI',
   anthropic: 'Anthropic',
   gemini: 'Google Gemini',
+  deepseek: 'DeepSeek',
   ollama: 'Ollama',
 }
 

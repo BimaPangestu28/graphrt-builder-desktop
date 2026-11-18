@@ -9,7 +9,7 @@ import { requireText, respondWith } from './sampleResponse'
  */
 
 const defaultOllamaBaseUrl = 'http://localhost:11434'
-const keyedProviders: ModelProvider[] = ['openai', 'anthropic', 'gemini']
+const keyedProviders: ModelProvider[] = ['openai', 'anthropic', 'gemini', 'deepseek']
 
 interface SampleCredentialsState {
   configuredProviders: Set<ModelProvider>

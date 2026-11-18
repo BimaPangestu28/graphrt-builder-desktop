@@ -11,6 +11,8 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
 
 ### Added
 
+- **DeepSeek** as a model provider: add a key on Welcome or Connections and agents use
+  `deepseek-chat` by default (`deepseek-reasoner` works too, with its reasoning streamed).
 - **Plugins**: install graphrt plugins from the graphrt-plugins catalog (Connections > Plugins):
   permissions shown before install, HTTPS download checked against the catalog's sha256 and
   extracted safely, trust toggle, plugin settings in the keychain, browser runtime install.
@@ -19,7 +21,7 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
   the official WhatsApp Business API or a personal WhatsApp through WhatsApp Web (QR login).
 - **Local storage**: agents with their version history, runs with every event and
   paused-run snapshots, schedules and settings, in one SQLite file in the app data folder.
-- **Keychain**: model provider keys (OpenAI, Anthropic, Gemini) and workflow secrets
+- **Keychain**: model provider keys (OpenAI, Anthropic, Gemini, DeepSeek) and workflow secrets
   such as a Google Places key or a WhatsApp token are kept in the OS keychain. The
   interface can set or remove them but never read them back. Ollama works without a key.
 - **Build an agent from a description**: the default model drafts a graphrt workflow,

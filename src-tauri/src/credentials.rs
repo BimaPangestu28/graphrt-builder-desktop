@@ -30,15 +30,25 @@ pub const SETTING_OLLAMA_BASE_URL: &str = "ollama_base_url";
 const DEFAULT_OLLAMA_BASE_URL: &str = "http://localhost:11434";
 
 /// Every provider, in the order the UI lists them.
-const ALL_PROVIDERS: [ModelProvider; 4] =
-    [ModelProvider::Openai, ModelProvider::Anthropic, ModelProvider::Gemini, ModelProvider::Ollama];
+const ALL_PROVIDERS: [ModelProvider; 5] = [
+    ModelProvider::Openai,
+    ModelProvider::Anthropic,
+    ModelProvider::Gemini,
+    ModelProvider::Deepseek,
+    ModelProvider::Ollama,
+];
 
 /// Key-based providers in fallback order, with the small model recommended for each.
-const RECOMMENDED_MODELS: [(ModelProvider, &str); 3] = [
+const RECOMMENDED_MODELS: [(ModelProvider, &str); 4] = [
     (ModelProvider::Openai, "gpt-4o-mini"),
     (ModelProvider::Anthropic, "claude-haiku-5-5"),
     (ModelProvider::Gemini, "gemini-2.5-flash"),
+    (ModelProvider::Deepseek, "deepseek-chat"),
 ];
+
+/// DeepSeek's OpenAI-compatible endpoint (graphrt's OpenAI client also reads
+/// `deepseek-reasoner`'s `reasoning_content`).
+const DEEPSEEK_BASE_URL: &str = "https://api.deepseek.com/v1";
 
 /// Providers offered on the Welcome and Connections screens. The serialized
 /// name is also the graphrt `model.provider` used in workflow documents.
@@ -48,6 +58,8 @@ pub enum ModelProvider {
     Openai,
     Anthropic,
     Gemini,
+    /// DeepSeek through its OpenAI-compatible API.
+    Deepseek,
     /// Local Ollama server; needs no key.
     Ollama,
 }
@@ -59,6 +71,7 @@ impl ModelProvider {
             Self::Openai => "openai",
             Self::Anthropic => "anthropic",
             Self::Gemini => "gemini",
+            Self::Deepseek => "deepseek",
             Self::Ollama => "ollama",
         }
     }
@@ -438,6 +451,11 @@ fn build_keyed_model(provider: ModelProvider, api_key: String) -> AppResult<Arc<
         ModelProvider::Gemini => {
             Arc::new(GeminiModel::new(GeminiConfig::new(api_key)).map_err(|error| model_error(provider, &error))?)
         }
+        ModelProvider::Deepseek => {
+            // Default config sends `max_tokens`, which DeepSeek expects.
+            let config = OpenAiConfig::new(DEEPSEEK_BASE_URL, Some(api_key));
+            Arc::new(OpenAiModel::new(config).map_err(|error| model_error(provider, &error))?)
+        }
         ModelProvider::Ollama => return Err(AppError::Internal("Ollama does not use an API key".into())),
     };
     Ok(model)
@@ -550,9 +568,9 @@ mod tests {
         let providers: Vec<ModelProvider> = statuses.iter().map(|status| status.provider).collect();
         assert_eq!(providers, ALL_PROVIDERS.to_vec());
         let configured: Vec<bool> = statuses.iter().map(|status| status.configured).collect();
-        assert_eq!(configured, vec![false, true, false, true]);
-        assert_eq!(statuses[3].base_url.as_deref(), Some(DEFAULT_OLLAMA_BASE_URL));
-        assert!(statuses[..3].iter().all(|status| status.base_url.is_none()));
+        assert_eq!(configured, vec![false, true, false, false, true]);
+        assert_eq!(statuses[4].base_url.as_deref(), Some(DEFAULT_OLLAMA_BASE_URL));
+        assert!(statuses[..4].iter().all(|status| status.base_url.is_none()));
     }
 
     #[test]
@@ -576,7 +594,7 @@ mod tests {
             store.set_api_key(provider, SECRET_KEY).unwrap();
         }
         let registry = build_model_registry(&store, &test_database()).unwrap();
-        assert_eq!(registry.names().collect::<Vec<_>>(), vec!["openai", "anthropic", "gemini", "ollama"]);
+        assert_eq!(registry.names().collect::<Vec<_>>(), vec!["openai", "anthropic", "gemini", "deepseek", "ollama"]);
     }
 
     #[test]
@@ -602,6 +620,10 @@ mod tests {
     fn default_model_falls_back_in_provider_order() {
         let store = CredentialStore::in_memory();
         let db = test_database();
+
+        store.set_api_key(ModelProvider::Deepseek, SECRET_KEY).unwrap();
+        let choice = default_model(&store, &db).unwrap();
+        assert_eq!(choice, ModelChoice { provider: ModelProvider::Deepseek, name: "deepseek-chat".into() });
 
         store.set_api_key(ModelProvider::Gemini, SECRET_KEY).unwrap();
         let choice = default_model(&store, &db).unwrap();

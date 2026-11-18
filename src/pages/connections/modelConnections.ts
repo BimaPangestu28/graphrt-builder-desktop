@@ -12,7 +12,7 @@ export interface ModelConnection extends Connection {
 const modelCardTemplates = initialConnections.filter((connection) => connection.category === 'models')
 
 function isModelProvider(connectionId: string): connectionId is ModelProvider {
-  return ['openai', 'anthropic', 'gemini', 'ollama'].includes(connectionId)
+  return ['openai', 'anthropic', 'gemini', 'deepseek', 'ollama'].includes(connectionId)
 }
 
 /**

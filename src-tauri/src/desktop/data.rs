@@ -25,7 +25,8 @@ pub const EXPORT_FORMAT: &str = "graphrt-agents";
 pub const EXPORT_FORMAT_VERSION: u32 = 1;
 
 /// Providers whose key may be in the keychain.
-const KEYED_PROVIDERS: [ModelProvider; 3] = [ModelProvider::Openai, ModelProvider::Anthropic, ModelProvider::Gemini];
+const KEYED_PROVIDERS: [ModelProvider; 4] =
+    [ModelProvider::Openai, ModelProvider::Anthropic, ModelProvider::Gemini, ModelProvider::Deepseek];
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -250,7 +251,7 @@ mod tests {
         credentials.set_api_key(ModelProvider::Openai, SECRET_VALUE).unwrap();
 
         let summary = delete_all_data(&db, &credentials, true).unwrap();
-        assert_eq!(summary.removed_keychain_item_count, 3);
+        assert_eq!(summary.removed_keychain_item_count, KEYED_PROVIDERS.len());
         assert_eq!(credentials.read_api_key(ModelProvider::Openai).unwrap(), None);
     }
 }
