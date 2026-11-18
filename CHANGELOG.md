@@ -11,6 +11,12 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
 
 ### Added
 
+- **Test run, run result and run review show only real run data**: the test run (06) starts
+  from a form built from the flow's inputs (prefilled from the last run, whose inputs are now
+  kept per run) and shows a paused `human-input` step exactly as graphrt sends it (prompt,
+  form fields, actions); the result (07) shows only what the run reported; Review a run (19)
+  lists the questions a paused run waits on (one per item for a parallel iteration, one at a
+  time for a sequential one, with "all remaining") and resumes with every answer at once.
 - **DeepSeek** as a model provider: add a key on Welcome or Connections and agents use
   `deepseek-chat` by default (`deepseek-reasoner` works too, with its reasoning streamed).
 - **Plugins**: install graphrt plugins from the graphrt-plugins catalog (Connections > Plugins):

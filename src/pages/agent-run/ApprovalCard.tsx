@@ -1,59 +1,63 @@
-import { useId } from 'react'
+import { useId, useState } from 'react'
+import type { ApprovalAnswer, PendingApproval } from '@/api/runReviewTypes'
+import { ApprovalFieldInput } from './ApprovalFieldInput'
+import { buildApprovalAnswer, findMissingRequiredFields, initialApprovalValues, splitApprovalPrompt, type ApprovalValues } from './approvalForm'
 
 interface ApprovalCardProps {
-  recipientSummary: string
-  message: string
-  onMessageChange: (message: string) => void
-  onApprove: () => void
-  onSkip: () => void
-  /** True while the answer is being sent; both buttons are disabled. */
+  approval: PendingApproval
+  onAnswer: (answer: ApprovalAnswer) => void
+  /** True while the answer is being sent; every button is disabled. */
   isSubmitting?: boolean
 }
 
+const primaryButtonClassNames =
+  'h-10 cursor-pointer rounded-[9px] border-0 bg-ink px-[18px] text-[14px] font-semibold text-white hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-50'
+const secondaryButtonClassNames =
+  'h-10 cursor-pointer rounded-[10px] border border-line-strong bg-surface px-4 text-[14px] font-medium text-ink hover:bg-subtle disabled:cursor-not-allowed disabled:opacity-50'
+
 /**
- * The amber "Send this message?" card shown when a run pauses on an approval step.
- * The message is editable before approving; an empty message cannot be sent.
+ * The amber card shown when a run pauses on a graphrt `human-input` step. It shows exactly
+ * what the pause carries: the rendered prompt (first line as the title), the form fields with
+ * their defaults (editable) and one button per action, the first one primary. Every action is
+ * disabled while a required field is empty, as graphrt would reject the answer.
  */
-export function ApprovalCard({ recipientSummary, message, onMessageChange, onApprove, onSkip, isSubmitting = false }: ApprovalCardProps) {
+export function ApprovalCard({ approval, onAnswer, isSubmitting = false }: ApprovalCardProps) {
   const titleId = useId()
-  const messageId = useId()
-  const isMessageEmpty = message.trim().length === 0
+  const [values, setValues] = useState<ApprovalValues>(() => initialApprovalValues(approval))
+  const { heading, description } = splitApprovalPrompt(approval)
+  const missingFields = findMissingRequiredFields(approval, values)
+  const isAnswerBlocked = missingFields.length > 0 || isSubmitting
 
   return (
     <section aria-labelledby={titleId} className="flex flex-col gap-3.5 rounded-2xl border-2 border-amber-line bg-surface p-5">
       <div className="flex flex-col gap-1">
         <h2 id={titleId} className="m-0 text-[18px] font-semibold">
-          Send this message?
+          {heading}
         </h2>
-        <span className="text-[13px] text-body">{recipientSummary}</span>
+        {description && <span className="whitespace-pre-line text-[13px] text-body">{description}</span>}
       </div>
-      <label htmlFor={messageId} className="text-[12px] font-medium text-ink-2">
-        Message, edit before sending if needed
-      </label>
-      <textarea
-        id={messageId}
-        rows={3}
-        value={message}
-        onChange={(event) => onMessageChange(event.target.value)}
-        className="resize-y rounded-xl border border-line-strong bg-[#F7FCF9] px-3.5 py-3 text-[14px] leading-[1.55] text-ink outline-brand"
-      />
+      {approval.fields.map((field) => (
+        <ApprovalFieldInput
+          key={field.name}
+          field={field}
+          value={values[field.name]}
+          onChange={(fieldValue) => setValues((currentValues) => ({ ...currentValues, [field.name]: fieldValue }))}
+        />
+      ))}
+      {missingFields.length > 0 && <p className="m-0 text-[12px] text-amber-strong">Fill in {missingFields.join(', ')} to answer</p>}
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={onApprove}
-          disabled={isMessageEmpty || isSubmitting}
-          className="h-10 cursor-pointer rounded-[9px] border-0 bg-ink px-[18px] text-[14px] font-semibold text-white hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Approve and send
-        </button>
-        <button
-          type="button"
-          onClick={onSkip}
-          disabled={isSubmitting}
-          className="h-10 cursor-pointer rounded-[10px] border border-line-strong bg-surface px-4 text-[14px] font-medium text-ink hover:bg-subtle disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Skip this place
-        </button>
+        {approval.actions.map((action, index) => (
+          <button
+            key={action.id}
+            type="button"
+            onClick={() => onAnswer(buildApprovalAnswer(approval, action.id, values))}
+            disabled={isAnswerBlocked}
+            className={index === 0 ? primaryButtonClassNames : secondaryButtonClassNames}
+          >
+            {action.title}
+          </button>
+        ))}
+        {approval.actions.length === 0 && <span className="text-[13px] text-body">This step offers no answer to choose</span>}
         <span className="ml-auto text-[12px] text-muted">Paused safely. You can close the app and come back</span>
       </div>
     </section>

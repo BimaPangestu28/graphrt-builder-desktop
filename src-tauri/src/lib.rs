@@ -9,6 +9,7 @@
 //! - [`agent_builder`]: drafting an agent's workflow from plain language
 //! - [`engine`]: running agents on graphrt and streaming events to the UI
 //! - [`run_summary`]: plain-language run summaries and weekly agent stats
+//! - [`run_review`]: what a paused run waits for (review screen)
 //! - [`scheduler`]: starting scheduled runs while the app is running
 //! - [`conversations`]: chatbot conversations, the bot's replies and hand-offs
 //! - [`agent_steps`]: agents used as steps and team members (the `agents` tool provider)
@@ -32,6 +33,7 @@ pub mod flow;
 pub mod knowledge;
 pub mod node_runtime;
 pub mod plugins;
+pub mod run_review;
 pub mod run_summary;
 pub mod scheduler;
 pub mod state;
@@ -159,6 +161,9 @@ pub fn run() {
             commands::runs::list_run_events,
             commands::run_summary::get_run_summary,
             commands::run_summary::list_agent_run_stats,
+            commands::run_review::get_run_review,
+            commands::run_review::get_run_inputs,
+            commands::run_review::get_last_run_inputs,
             commands::triggers::list_triggers,
             commands::triggers::create_trigger,
             commands::triggers::update_trigger,

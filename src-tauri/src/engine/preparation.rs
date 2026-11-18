@@ -78,7 +78,7 @@ fn ensure_providers_configured(providers: &[String], credentials: &CredentialSto
 ///
 /// # Errors
 /// `NotFound` when that version no longer exists.
-pub(super) fn flow_for_version(db: &Database, agent: &Agent, version: i64) -> AppResult<String> {
+pub(crate) fn flow_for_version(db: &Database, agent: &Agent, version: i64) -> AppResult<String> {
     if agent.current_version == version {
         return Ok(agent.flow_yaml.clone());
     }

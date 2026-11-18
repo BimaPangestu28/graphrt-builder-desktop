@@ -12,6 +12,7 @@ pub mod credentials;
 pub mod knowledge;
 pub mod node_runtime;
 pub mod plugins;
+pub mod run_review;
 pub mod run_summary;
 pub mod runs;
 pub mod triggers;

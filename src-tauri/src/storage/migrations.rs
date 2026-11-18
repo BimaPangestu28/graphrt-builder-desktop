@@ -178,6 +178,14 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (source_id, document_id)
     );
     "#,
+    // The inputs each run started with (see `run_inputs.rs`), so the next test
+    // can be prefilled and a run can be repeated with the same inputs.
+    r#"
+    CREATE TABLE run_inputs (
+        run_id      TEXT PRIMARY KEY NOT NULL REFERENCES runs (id) ON DELETE CASCADE,
+        inputs_json TEXT NOT NULL
+    );
+    "#,
 ];
 
 /// Applies every migration newer than the database's `user_version`.
@@ -236,6 +244,7 @@ mod tests {
                 "knowledge_documents",
                 "knowledge_sources",
                 "run_events",
+                "run_inputs",
                 "runs",
                 "settings",
                 "triggers"

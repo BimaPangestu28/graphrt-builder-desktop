@@ -9,6 +9,7 @@
 //! - `runs(id, agent_id, agent_version, trigger, status, started_at, finished_at,
 //!    outputs_json, error_message, pause_reasons_json, snapshot_json)`
 //! - `run_events(run_id, seq, event_json, created_at)`
+//! - `run_inputs(run_id, inputs_json)`: the inputs each run started with
 //! - `triggers(id, agent_id, cron_expression, timezone, enabled, missed_run_policy,
 //!    inputs_json, last_fired_at, next_fire_at, created_at)`
 //! - `settings(key, value)`
@@ -23,6 +24,7 @@ mod codec;
 mod maintenance;
 mod migrations;
 pub mod models;
+pub mod run_inputs;
 pub mod runs;
 pub mod settings;
 #[cfg(test)]

@@ -7,6 +7,7 @@ use crate::error::AppResult;
 /// A test checks that every table in the schema is listed here.
 const DELETE_ALL_DATA_SQL: &str = "
     DELETE FROM run_events;
+    DELETE FROM run_inputs;
     DELETE FROM runs;
     DELETE FROM triggers;
     DELETE FROM conversation_messages;

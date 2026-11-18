@@ -46,6 +46,8 @@ export interface Run {
 }
 
 export interface GraphrtPauseReason {
+  /** graphrt frame of the paused node: `""` at the top level, `each_place[3]` inside an iteration. */
+  frame?: string
   node_id: string | null
   kind: string
   data: unknown
@@ -136,6 +138,12 @@ export interface FlowInput {
   name: string
   label: string
   required: boolean
+  /** The start variable's graphrt `type` (`text-input`, `paragraph`, `select`, `number`, `checkbox`, `json`…). */
+  inputType?: string
+  /** Choices of a `select` input. */
+  options?: string[]
+  /** The workflow's `default`, if any. */
+  defaultValue?: unknown
 }
 
 /** A value the workflow reads from `env.<name>` (API keys, tokens, account ids). */

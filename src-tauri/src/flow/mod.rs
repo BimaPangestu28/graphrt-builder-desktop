@@ -28,12 +28,43 @@ pub struct FlowStep {
 }
 
 /// A workflow input the user fills before a run (from the `start` node).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FlowInput {
     pub name: String,
     pub label: String,
     pub required: bool,
+    /// The start variable's `type` (`text-input`, `paragraph`, `select`, `number`,
+    /// `checkbox`, `json`, ...); `text-input` when the document gives none.
+    #[serde(default = "default_input_type")]
+    pub input_type: String,
+    /// Choices of a `select` input, in document order (empty otherwise).
+    #[serde(default)]
+    pub options: Vec<String>,
+    /// The document's `default`, if any.
+    #[serde(default)]
+    pub default_value: Option<serde_json::Value>,
+}
+
+/// graphrt's start variable type when none is given.
+pub const DEFAULT_INPUT_TYPE: &str = "text-input";
+
+fn default_input_type() -> String {
+    DEFAULT_INPUT_TYPE.to_owned()
+}
+
+impl FlowInput {
+    /// A `text-input` with no options and no default (tests and simple callers).
+    pub fn text(name: &str, label: &str, required: bool) -> Self {
+        Self {
+            name: name.to_owned(),
+            label: label.to_owned(),
+            required,
+            input_type: default_input_type(),
+            options: Vec::new(),
+            default_value: None,
+        }
+    }
 }
 
 /// A value the workflow reads from `env.<name>` (API keys, tokens, account ids).

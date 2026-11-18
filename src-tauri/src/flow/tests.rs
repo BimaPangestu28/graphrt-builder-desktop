@@ -75,7 +75,10 @@ fn simple_answer_summary() {
     assert!(!model_step.needs_approval);
     assert_eq!(model_step.depth, 0);
     assert_eq!(find_step(&summary, "reply").title, "Reply");
-    assert_eq!(summary.inputs, [FlowInput { name: "question".into(), label: "Your question".into(), required: true }]);
+    assert_eq!(
+        summary.inputs,
+        [FlowInput { input_type: "paragraph".into(), ..FlowInput::text("question", "Your question", true) }]
+    );
     assert_eq!(summary.model_providers, ["openai"]);
 }
 
@@ -120,9 +123,13 @@ fn approval_loop_inputs_and_providers() {
     assert_eq!(
         summary.inputs,
         [
-            FlowInput { name: "area".into(), label: "Area to search".into(), required: true },
-            FlowInput { name: "offer".into(), label: "Offer to send".into(), required: true },
-            FlowInput { name: "max_cafes".into(), label: "Max cafes".into(), required: false },
+            FlowInput::text("area", "Area to search", true),
+            FlowInput { input_type: "paragraph".into(), ..FlowInput::text("offer", "Offer to send", true) },
+            FlowInput {
+                input_type: "number".into(),
+                default_value: Some(serde_json::json!(10)),
+                ..FlowInput::text("max_cafes", "Max cafes", false)
+            },
         ]
     );
     assert_eq!(summary.model_providers, ["anthropic"]);
