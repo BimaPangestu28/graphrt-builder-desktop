@@ -32,3 +32,34 @@ export const routePaths = {
 } as const
 
 export type RouteKey = keyof typeof routePaths
+
+/**
+ * Screens that belong to one agent. App.tsx routes these patterns; `routePaths`
+ * above holds the same screens for the sample agent ("maps-leads"), which is what
+ * the browser preview and tests use.
+ */
+export const agentRoutePatterns = {
+  builder: '/agents/:agentId/steps', // 04
+  connectWhatsApp: '/agents/:agentId/connect-whatsapp', // 05
+  testRun: '/agents/:agentId/test', // 06, optional ?runId= to reopen a run
+  runResult: '/agents/:agentId/test-result', // 07, ?runId= of the finished run
+  scheduleAgent: '/agents/:agentId/schedule', // 08
+  versionHistory: '/agents/:agentId/history', // 24
+} as const
+
+export type AgentRouteKey = keyof typeof agentRoutePatterns
+
+/** Agent id used by the sample data when no real agent exists (browser preview, tests). */
+export const sampleAgentId = 'maps-leads'
+
+/**
+ * Builds the URL of an agent screen.
+ *
+ * @example
+ * agentPath('testRun', agent.id, { runId: run.id }) // "/agents/abc/test?runId=r1"
+ */
+export function agentPath(routeKey: AgentRouteKey, agentId: string, query?: Record<string, string>): string {
+  const path = agentRoutePatterns[routeKey].replace(':agentId', encodeURIComponent(agentId))
+  const queryString = query ? new URLSearchParams(query).toString() : ''
+  return queryString ? `${path}?${queryString}` : path
+}
