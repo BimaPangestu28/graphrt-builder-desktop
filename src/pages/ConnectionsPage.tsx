@@ -10,8 +10,11 @@ import {
   type Connection,
   type ConnectionCategory,
 } from '@/data/connections'
+import { useProviderStatuses } from '@/hooks/useProviderStatuses'
 import { routePaths } from '@/routes'
 import { ConnectionCard } from './connections/ConnectionCard'
+import { buildModelConnections } from './connections/modelConnections'
+import { ModelProvidersSection } from './connections/ModelProvidersSection'
 
 const sectionHeadingClassNames = 'm-0 text-[13px] font-semibold text-muted'
 
@@ -68,22 +71,34 @@ function AdvancedSection({ rows }: { rows: AdvancedConnection[] }) {
   )
 }
 
+function matchesConnection(searchQuery: string, connection: Connection): boolean {
+  return matchesSearch(searchQuery, connection.name, connection.connectedDescription, connection.availableDescription)
+}
+
+const initialAppConnections = initialConnections.filter((connection) => connection.category === 'apps')
+
 /**
  * Screen 21 · Connections.
  * Apps, AI models and keys the agents use. Search filters every section, the banner
- * reconnects a signed-out Gmail, and Connect / Add key set up the remaining providers.
+ * reconnects a signed-out Gmail, and Connect sets up the remaining apps (mock data).
+ * AI models come from `listProviderStatuses`; their keys are added, replaced and removed
+ * through the keychain commands.
  */
 export function ConnectionsPage() {
-  const [connections, setConnections] = useState<Connection[]>(initialConnections)
+  const [connections, setConnections] = useState<Connection[]>(initialAppConnections)
   const [searchQuery, setSearchQuery] = useState('')
+  const providerSetupState = useProviderStatuses()
+  const providerSetup = providerSetupState.data
 
+  const modelConnections = providerSetup ? buildModelConnections(providerSetup.statuses, providerSetup.defaultModel) : null
+  const visibleModelConnections = modelConnections?.filter((connection) => matchesConnection(searchQuery, connection)) ?? null
+  const isSearching = searchQuery.trim().length > 0
+  const showsModelSection = visibleModelConnections ? visibleModelConnections.length > 0 : !isSearching
   const signedOutConnections = connections.filter((connection) => connection.state === 'signedOut')
-  const visibleConnections = connections.filter((connection) =>
-    matchesSearch(searchQuery, connection.name, connection.connectedDescription, connection.availableDescription),
-  )
+  const visibleConnections = connections.filter((connection) => matchesConnection(searchQuery, connection))
   const visibleAdvancedRows = advancedConnections.filter((row) => matchesSearch(searchQuery, row.name, row.description))
-  const categories: ConnectionCategory[] = ['apps', 'models']
-  const hasNoMatches = visibleConnections.length === 0 && visibleAdvancedRows.length === 0
+  const categories: ConnectionCategory[] = ['apps']
+  const hasNoMatches = visibleConnections.length === 0 && visibleAdvancedRows.length === 0 && !showsModelSection
 
   function markConnected(connectionId: string) {
     setConnections((previousConnections) =>
@@ -135,6 +150,10 @@ export function ConnectionsPage() {
         if (categoryConnections.length === 0) return null
         return <ConnectionSection key={category} category={category} connections={categoryConnections} onSetUp={markConnected} />
       })}
+
+      {showsModelSection && (
+        <ModelProvidersSection connections={visibleModelConnections} loadError={providerSetupState.error} onKeysChanged={providerSetupState.reload} />
+      )}
 
       {visibleAdvancedRows.length > 0 && <AdvancedSection rows={visibleAdvancedRows} />}
 

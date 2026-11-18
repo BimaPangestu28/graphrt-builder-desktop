@@ -1,39 +1,39 @@
+import type { FlowStep } from '@/api/types'
 import { joinClassNames } from '@/components/ui'
-import type { BuilderStep, BuilderStepTone } from '@/data/mapsLeadsAgent'
+import type { BuilderStepTone } from '@/data/mapsLeadsAgent'
 import { StepNumberBadge } from './StepNumberBadge'
 
 interface BuilderStepCardProps {
-  step: BuilderStep
-  /** False after Undo, so changed steps show their previous version without the highlight. */
-  showsLatestChange: boolean
+  flowStep: FlowStep
+  /** 1-based position in the flow. */
+  number: number
+  /** True right after a chat change touched this step (until it is undone). */
+  isChanged: boolean
 }
 
-function getStepTone(step: BuilderStep, isHighlightedAsChanged: boolean): BuilderStepTone {
-  if (isHighlightedAsChanged) return 'changed'
-  if (step.isApproval) return 'approval'
+function getStepTone(flowStep: FlowStep, isChanged: boolean): BuilderStepTone {
+  if (isChanged) return 'changed'
+  if (flowStep.needsApproval) return 'approval'
   return 'plain'
 }
 
-/** One step row in the builder's Steps tab (screen 04). */
-export function BuilderStepCard({ step, showsLatestChange }: BuilderStepCardProps) {
-  const isHighlightedAsChanged = Boolean(step.previousVersion) && showsLatestChange
-  const visibleVersion = !showsLatestChange && step.previousVersion ? step.previousVersion : step
-
+/** One step row in the builder's Steps tab (screen 04). Steps inside a loop (depth 1+) are indented. */
+export function BuilderStepCard({ flowStep, number, isChanged }: BuilderStepCardProps) {
   return (
     <li
       className={joinClassNames(
         'flex items-start gap-3.5 rounded-xl border bg-surface px-4 py-3.5',
-        isHighlightedAsChanged ? 'border-brand' : 'border-line',
-        step.isInsideLoop && 'ml-6',
+        isChanged ? 'border-brand' : 'border-line',
+        flowStep.depth > 0 && 'ml-6',
       )}
     >
-      <StepNumberBadge number={step.number} tone={getStepTone(step, isHighlightedAsChanged)} />
+      <StepNumberBadge number={number} tone={getStepTone(flowStep, isChanged)} />
       <div className="flex flex-auto flex-col gap-1">
-        <span className="font-semibold">{visibleVersion.title}</span>
-        <span className="text-[13px] text-body">{visibleVersion.detail}</span>
-        {isHighlightedAsChanged && <span className="text-[12px] font-medium text-brand-strong">Changed just now</span>}
+        <span className="font-semibold">{flowStep.title}</span>
+        {flowStep.detail && <span className="text-[13px] text-body">{flowStep.detail}</span>}
+        {isChanged && <span className="text-[12px] font-medium text-brand-strong">Changed just now</span>}
       </div>
-      {step.isApproval && <span className="rounded-full bg-amber-soft px-2 py-[3px] text-[12px] font-medium text-amber-strong">Approval</span>}
+      {flowStep.needsApproval && <span className="rounded-full bg-amber-soft px-2 py-[3px] text-[12px] font-medium text-amber-strong">Approval</span>}
     </li>
   )
 }

@@ -1,7 +1,9 @@
 import { Link } from 'react-router-dom'
 import { Icon, LogoLockup, StatusDot, joinClassNames } from '@/components/ui'
-import { sidebarAgents } from '@/data/agents'
-import { routePaths } from '@/routes'
+import type { Agent } from '@/api/types'
+import { useAgents } from '@/hooks/useAgents'
+import { getKindLabel, getStatusDotTone } from '@/lib/agentDisplay'
+import { agentPath, routePaths, sampleAgentId } from '@/routes'
 
 export type MainNavKey = 'home' | 'inbox' | 'runs' | 'schedule' | 'knowledge' | 'connections' | 'settings'
 
@@ -13,7 +15,7 @@ export type MainNavKey = 'home' | 'inbox' | 'runs' | 'schedule' | 'knowledge' | 
  */
 export type SidebarAgentsState =
   | { kind: 'empty' }
-  | { kind: 'draft'; name: string; status: string; statusTone?: 'brand' | 'amber' }
+  | { kind: 'draft'; name: string; status: string; statusTone?: 'brand' | 'amber'; agentId?: string }
   | { kind: 'list'; activeAgentId?: string }
 
 export interface SidebarProps {
@@ -38,37 +40,49 @@ function navLinkClassNames(isActive: boolean) {
   return joinClassNames(navLinkBase, isActive ? 'bg-selected font-semibold !text-ink' : 'font-medium !text-ink-2 hover:bg-selected/60')
 }
 
+function SidebarAgentLink({ agent, isActive }: { agent: Agent; isActive: boolean }) {
+  const kindLabel = getKindLabel(agent.kind)
+  return (
+    <Link
+      to={agentPath('builder', agent.id)}
+      aria-current={isActive ? 'page' : undefined}
+      className={joinClassNames('flex items-center gap-2 rounded-lg px-2.5 py-2 no-underline !text-ink', isActive ? 'bg-selected font-semibold' : 'hover:bg-selected/60')}
+    >
+      <StatusDot tone={getStatusDotTone(agent.status)} />
+      <span className="min-w-0 truncate">{agent.name}</span>
+      {kindLabel && <span className="ml-auto text-[11px] font-normal text-muted">{kindLabel}</span>}
+    </Link>
+  )
+}
+
+/** Every agent from the backend; quiet text while loading or when the list cannot be read. */
+function SidebarAgentList({ activeAgentId }: { activeAgentId?: string }) {
+  const { data: agents, error } = useAgents()
+  if (error) return <span className="px-2.5 py-2 leading-normal text-muted">Could not load agents</span>
+  if (!agents) return <span className="px-2.5 py-2 text-muted">Loading agents…</span>
+  if (agents.length === 0) return <span className="px-2.5 py-2 leading-normal text-muted">No agents yet. Your first one will show up here</span>
+  return (
+    <>
+      {agents.map((agent) => (
+        <SidebarAgentLink key={agent.id} agent={agent} isActive={agent.id === activeAgentId} />
+      ))}
+    </>
+  )
+}
+
 function SidebarAgentsSection({ agents }: { agents: SidebarAgentsState }) {
   if (agents.kind === 'empty') {
     return <span className="px-2.5 py-2 leading-normal text-muted">No agents yet. Your first one will show up here</span>
   }
   if (agents.kind === 'draft') {
     return (
-      <Link to={routePaths.builder} className="flex flex-col gap-0.5 rounded-[10px] bg-brand-soft px-3 py-2.5 no-underline !text-ink">
+      <Link to={agentPath('builder', agents.agentId ?? sampleAgentId)} className="flex flex-col gap-0.5 rounded-[10px] bg-brand-soft px-3 py-2.5 no-underline !text-ink">
         <span className="font-semibold">{agents.name}</span>
         <span className={joinClassNames('text-[12px]', agents.statusTone === 'amber' ? 'font-medium text-amber-strong' : 'text-brand-strong')}>{agents.status}</span>
       </Link>
     )
   }
-  return (
-    <>
-      {sidebarAgents.map((agent) => {
-        const isActive = agent.id === agents.activeAgentId
-        return (
-          <Link
-            key={agent.id}
-            to={agent.path}
-            aria-current={isActive ? 'page' : undefined}
-            className={joinClassNames('flex items-center gap-2 rounded-lg px-2.5 py-2 no-underline !text-ink', isActive ? 'bg-selected font-semibold' : 'hover:bg-selected/60')}
-          >
-            <StatusDot tone={agent.statusTone} />
-            <span className="min-w-0 truncate">{agent.name}</span>
-            {agent.kindLabel && <span className="ml-auto text-[11px] font-normal text-muted">{agent.kindLabel}</span>}
-          </Link>
-        )
-      })}
-    </>
-  )
+  return <SidebarAgentList activeAgentId={agents.activeAgentId} />
 }
 
 /** Left navigation shared by every in-app screen of the mockup. */

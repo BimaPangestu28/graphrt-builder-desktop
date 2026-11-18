@@ -1,5 +1,4 @@
 import { StrokeIcon, VisuallyHidden, joinClassNames } from '@/components/ui'
-import type { BuildProgressItem } from '@/data/mapsLeadsAgent'
 
 type BuildItemState = 'done' | 'running' | 'pending'
 
@@ -28,8 +27,15 @@ function BuildItemIndicator({ state }: { state: BuildItemState }) {
   return <span className="box-border size-5 flex-[0_0_20px] rounded-full border-2 border-line-strong" />
 }
 
+/** One checklist line: its title, plus what to show once done or while running. */
+export interface BuildChecklistItem {
+  title: string
+  detail?: string
+  runningDetail?: string
+}
+
 interface BuildProgressChecklistProps {
-  items: BuildProgressItem[]
+  items: BuildChecklistItem[]
   /** Index of the item currently running; equal to `items.length` once everything is done. */
   runningItemIndex: number
 }
