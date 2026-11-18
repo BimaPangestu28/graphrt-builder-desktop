@@ -27,7 +27,37 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
   as you choose. Agents become Active or Paused with their schedules.
 - **Needs panel**: the builder lists the keys and secrets an agent needs, and missing
   secrets can be added in place. A run will not start while one is missing.
+- **Chatbot conversations**: the chatbot's Try it panel chats with its real workflow,
+  which remembers the conversation between messages. When the workflow hands a chat
+  over (an order to confirm, a question it cannot answer), the bot stops and the chat
+  waits in the Inbox. You can take over, reply, hand it back or close it, and the
+  Inbox, chat and sidebar count update live. The Inbox switch pauses the bot.
+  WhatsApp and Telegram are not connected yet.
+- **Agents as steps and teams**: every agent can be called by another one as a graphrt
+  `tool` step (provider `agents`), getting back its outputs; a team is an `agent` step
+  whose tools are its member agents. "Add" on the step catalog and "Add member" ask the
+  builder for the change, saved as a new version. Calls refuse recursion, go at most three
+  agents deep, stop after ten minutes, and fail clearly if the called agent asks for approval.
+- **Chains**: "when this agent finishes, start that one" with input mapping, a run
+  condition and a failure policy per link. Chains are activated or paused, can be tested
+  from their first agent, and never run an agent twice in one pass.
 - graphrt is used as a git dependency pinned to a commit until its crates are published.
+- **Knowledge bases**: add files (PDF, Word, PowerPoint, Excel, CSV, Markdown, text,
+  HTML, EPUB), whole folders or website links; they are indexed on this Mac in the
+  background with live status, re-synced without re-reading unchanged files, and
+  searchable from the Knowledge screen. Works without any API key (local embeddings
+  plus keyword search); uses OpenAI embeddings when an OpenAI key is set. Agents
+  search them with graphrt's `knowledge-retrieval` step, by knowledge base id or name.
+- **Menu bar icon**: shows whether the runner is online, how many agents are scheduled
+  and how many runs wait for you, with Open graphrt, Pause all agents for 1 hour /
+  Resume agents, and Quit graphrt. Closing the window keeps graphrt running so
+  schedules still fire; quit from the menu bar or the app menu.
+- **Notifications** when a run waits for your approval or fails; clicking one opens the run.
+- **Settings › Runner, Notifications, Privacy and data** are saved: open at login, show in
+  the menu bar, keep the Mac awake while an agent runs (only while plugged in, if you
+  like), the default for missed runs, export all agents as JSON (never keys) and
+  delete all data (optionally with the saved keys).
+- The app opens on Welcome until a model provider is set up, and on Home afterwards.
 
 ### Changed
 
@@ -36,7 +66,7 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
 
 ### Known limitations
 
-- Inbox, Knowledge, Chain, Team and Connect WhatsApp still show sample data.
+- Inbox, Chain, Team and Connect WhatsApp still show sample data.
 - Run result and Home statistics fall back to sample content until workflows agree on
   output names.
 

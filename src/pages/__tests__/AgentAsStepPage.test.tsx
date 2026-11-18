@@ -1,35 +1,52 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { resetSampleAgents } from '@/api/sampleBackend/agents'
+import { resetSampleChains } from '@/api/sampleBackend/chains'
 import { AgentAsStepPage } from '../AgentAsStepPage'
 
-function renderAgentAsStepPage() {
+function renderAgentAsStepPage(initialEntry = '/agents/leads-recap/add-step') {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <AgentAsStepPage />
     </MemoryRouter>,
   )
 }
 
 describe('AgentAsStepPage', () => {
-  it('shows the agent steps with Lead qualifier inserted', () => {
-    renderAgentAsStepPage()
-    expect(screen.getByRole('heading', { level: 1, name: 'Maps leads to WhatsApp' })).toBeInTheDocument()
-    expect(screen.getByText('Qualify the lead')).toBeInTheDocument()
-    expect(screen.getByText('Runs your agent Lead qualifier · v3')).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'My agents' })).toHaveAttribute('aria-selected', 'true')
+  beforeEach(() => {
+    resetSampleAgents()
+    resetSampleChains()
   })
 
-  it('swaps the inserted step when another agent is added', () => {
+  it('shows the agent steps, where the step goes and the catalog of your agents', async () => {
     renderAgentAsStepPage()
-    fireEvent.click(screen.getByRole('button', { name: 'Add Translate to Bahasa' }))
-    expect(screen.getByText('Translate the message')).toBeInTheDocument()
-    expect(screen.queryByText('Qualify the lead')).not.toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Maps leads to WhatsApp' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Add the step after' })).toHaveDisplayValue('Search Google Maps')
+    expect(screen.getByText('Lead qualifier')).toBeInTheDocument()
+    expect(screen.getByText('In place · Out score, reason · used in 2 agents')).toBeInTheDocument()
+    // The target agent itself is not offered.
+    expect(screen.queryByRole('button', { name: 'Add Maps leads to WhatsApp' })).not.toBeInTheDocument()
   })
 
-  it('filters the catalog by search text', () => {
+  it('adds an agent as a tool step after the chosen step', async () => {
     renderAgentAsStepPage()
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search steps' }), { target: { value: 'indonesian' } })
-    expect(screen.getByText('Translate to Bahasa')).toBeInTheDocument()
-    expect(screen.queryByText('Morning email digest', { selector: 'aside span' })).not.toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: 'Add Lead qualifier' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Added Run Lead qualifier')
+    expect(await screen.findByText('Runs your agent Lead qualifier · v3')).toBeInTheDocument()
+    expect(within(screen.getByRole('list', { name: 'My agents' })).getByText('Added')).toBeInTheDocument()
+  })
+
+  it('filters the catalog by search text', async () => {
+    renderAgentAsStepPage()
+    fireEvent.change(await screen.findByRole('searchbox', { name: 'Search agents' }), { target: { value: 'indonesian' } })
+    const catalog = within(screen.getByRole('list', { name: 'My agents' }))
+    expect(catalog.getByText('Translate to Bahasa')).toBeInTheDocument()
+    expect(catalog.queryByText('Morning email digest')).not.toBeInTheDocument()
+  })
+
+  it('shows why the step could not be added', async () => {
+    renderAgentAsStepPage('/agents/leads-recap/add-step?agentId=morning-digest')
+    expect(await screen.findByRole('heading', { level: 1, name: 'Morning email digest' })).toBeInTheDocument()
+    expect(screen.getAllByText("Can't run as a step").length).toBeGreaterThan(0)
   })
 })

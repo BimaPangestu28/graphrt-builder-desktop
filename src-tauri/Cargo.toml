@@ -6,8 +6,8 @@ edition = "2021"
 license = "Apache-2.0"
 repository = "https://github.com/BimaPangestu28/graphrt-builder-desktop"
 publish = false
-# graphrt crates use edition 2024, which needs Rust 1.85
-rust-version = "1.85"
+# Tauri 2.12 and its plugins need Rust 1.90 (graphrt itself needs 1.85)
+rust-version = "1.90"
 
 [lib]
 # The `_lib` suffix avoids a name clash with the binary on Windows (cargo#8519)
@@ -21,24 +21,34 @@ tauri-build = { version = "2.0.2", features = [] }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
-tauri = { version = "2.12", features = [] }
+tauri = { version = "2.12", features = ["tray-icon", "image-png"] }
 tauri-plugin-log = "2.0.0"
+tauri-plugin-dialog = "2.4"
+tauri-plugin-notification = "2.8.1"
 
 # graphrt runtime, pinned to a commit until the crates are published on crates.io
 graphrt-core = { git = "https://github.com/BimaPangestu28/graphrt", rev = "32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088" }
 graphrt-llm = { git = "https://github.com/BimaPangestu28/graphrt", rev = "32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088", default-features = false, features = ["openai", "anthropic", "gemini", "mock"] }
 graphrt-http = { git = "https://github.com/BimaPangestu28/graphrt", rev = "32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088" }
+# Knowledge bases: SQLite vector store, document extractors and OpenAI-compatible embeddings
+graphrt-rag = { git = "https://github.com/BimaPangestu28/graphrt", rev = "32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088", default-features = false, features = ["sqlite", "doc", "http"] }
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
 futures = "0.3"
 indexmap = { version = "2", features = ["serde"] }
 thiserror = "2"
-rusqlite = { version = "0.32", features = ["bundled"] }
+# Same version as graphrt-rag's SqliteStore: a binary can link only one bundled SQLite.
+# `fallible_uint` keeps `usize`/`u64` parameters working as they did in 0.32.
+rusqlite = { version = "0.40", features = ["bundled", "fallible_uint"] }
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
 cron = "0.15"
 chrono = { version = "0.4", features = ["serde"] }
 chrono-tz = "0.10"
 uuid = { version = "1", features = ["v4"] }
+
+# Launch at login is desktop-only
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-autostart = "2.7.0"
 
 [dev-dependencies]
 tempfile = "3"

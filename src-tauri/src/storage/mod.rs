@@ -12,12 +12,15 @@
 //! - `triggers(id, agent_id, cron_expression, timezone, enabled, missed_run_policy,
 //!    inputs_json, last_fired_at, next_fire_at, created_at)`
 //! - `settings(key, value)`
+//! - `chains(...)`, `chain_steps(...)`: chains of agents (see `chains.rs`)
 //!
 //! `Database` is cheap to share (`Arc<Database>`); every method takes `&self`
 //! and locks the single connection for the duration of the call.
 
 pub mod agents;
+pub mod chains;
 mod codec;
+mod maintenance;
 mod migrations;
 pub mod models;
 pub mod runs;

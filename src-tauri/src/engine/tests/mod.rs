@@ -1,3 +1,5 @@
+mod event_storage;
+
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -10,7 +12,7 @@ use super::*;
 use crate::credentials::ModelProvider;
 use crate::storage::models::{Agent, AgentKind, AgentStatus, NewAgent, RunFilter};
 
-const SIMPLE_ANSWER: &str = include_str!("../../fixtures/flows/simple_answer.yaml");
+const SIMPLE_ANSWER: &str = include_str!("../../../fixtures/flows/simple_answer.yaml");
 
 /// llm + human-input: the approval part of `approval_loop.yaml` without HTTP nodes.
 const DRAFT_AND_APPROVE: &str = r#"
@@ -283,7 +285,7 @@ async fn aborting_a_running_run_records_the_abort() {
     assert_eq!(harness.db.get_run(&run.id).unwrap().status, RunStatus::Aborted);
     let types = stored_event_types(&harness.db, &run.id);
     assert_eq!(types.last().map(String::as_str), Some("run_aborted"));
-    assert!(harness.runs.active_runs.handle(&run.id).unwrap().is_none());
+    assert!(!harness.runs.active_runs.is_registered(&run.id));
 }
 
 #[tokio::test]

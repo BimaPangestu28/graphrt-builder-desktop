@@ -63,6 +63,12 @@ instruction: "You are ..."
 query: "{{#start.request#}}"
 max_iterations: 10
 require_approval: ["*"]                  # optional: ask the user before each tool call
+tools: [agents/<agent id>]               # optional: the user's agents it may call (a team)
+```
+
+`tool` - run another of the user's agents (tool = agent id); outputs `text`, `json` (its outputs):
+```yaml
+{ provider_id: agents, tool_name: <agent id>, timeout_ms: 600000, tool_parameters: { place: { type: variable, value: [find, json, first] } } }
 ```
 
 `question-classifier` (branch) - outputs `class_id`; edges use the class id as handle:
@@ -119,6 +125,10 @@ variable: [find, json, results]
 filter_by: { enabled: true, conditions: [{ key: rating, comparison_operator: ">", value: "4" }] }
 limit: { enabled: true, size: 10 }
 ```
+
+`knowledge-retrieval` - search knowledge bases; output `result` (list of `{content, title, score}`):
+`query_variable_selector: [start, question]`, `dataset_ids: [kb_...]`, `multiple_retrieval_config: { top_k: 4 }`.
+Feed an `llm` with `context: { enabled: true, variable_selector: [look_up, result] }` and `{{#context#}}`.
 
 `variable-aggregator` - first non-null: `variables: [[branch_a, text], [branch_b, text]]`
 

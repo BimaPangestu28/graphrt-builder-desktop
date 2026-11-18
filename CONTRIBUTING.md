@@ -67,7 +67,50 @@ rather than public issues. See [SECURITY.md](SECURITY.md).
 
 ## Releasing (maintainers)
 
-1. Move `Unreleased` in `CHANGELOG.md` into a new version section and bump the
-   version in `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`.
-2. Run the checks above and `pnpm build:desktop`.
-3. Tag `vX.Y.Z` and push the tag, then attach the built bundles to the GitHub Release.
+Releases are built by [`.github/workflows/release.yml`](.github/workflows/release.yml)
+when a `vX.Y.Z` tag is pushed.
+
+1. Bump the version in `package.json`, `src-tauri/Cargo.toml`,
+   `src-tauri/tauri.conf.json` and `src-tauri/Cargo.lock` in one go:
+   ```bash
+   scripts/bump-version.sh 0.2.0
+   ```
+2. In `CHANGELOG.md`, move the `Unreleased` notes under `## [0.2.0] - YYYY-MM-DD`
+   and update the compare links at the bottom. Check the release notes render:
+   ```bash
+   scripts/changelog-section.sh 0.2.0
+   ```
+3. Run the checks above and `pnpm build:desktop`, then commit
+   (`chore: release v0.2.0`) and merge to `main`.
+4. Tag the release commit and push the tag:
+   ```bash
+   git tag -a v0.2.0 -m "v0.2.0" && git push origin v0.2.0
+   ```
+5. The workflow checks that every version equals the tag
+   (`scripts/check-version.sh v0.2.0`), creates a **draft** release with the
+   CHANGELOG section as its body, builds macOS (universal `.dmg` and `.app.tar.gz`),
+   Windows (`.msi`, NSIS `.exe`) and Linux (`.AppImage`, `.deb`) bundles, and
+   attaches them with a `SHA256SUMS` file. Review the draft on GitHub and publish it.
+
+To rebuild an existing tag (for example after a failed job), run the Release
+workflow manually from the Actions tab with that tag; it reuses the draft and
+refuses to touch a release that is already published. CI runs
+`scripts/check-version.sh` on every push, so the three versions can never drift.
+
+### macOS signing and notarization
+
+Without signing secrets the macOS app is ad-hoc signed only, so Gatekeeper asks
+users to confirm the first launch. To ship a signed and notarized app, add these
+repository secrets (Settings > Secrets and variables > Actions):
+
+| Secret | Value |
+| --- | --- |
+| `APPLE_CERTIFICATE` | base64 of the exported "Developer ID Application" `.p12` (`base64 -i cert.p12`) |
+| `APPLE_CERTIFICATE_PASSWORD` | password of that `.p12` |
+| `APPLE_SIGNING_IDENTITY` | e.g. `Developer ID Application: Your Name (TEAMID)` |
+| `APPLE_ID` | Apple ID email used for notarization |
+| `APPLE_PASSWORD` | app-specific password for that Apple ID |
+| `APPLE_TEAM_ID` | 10-character Apple Developer team id |
+
+The first three enable signing; the last three also enable notarization. Any
+group left empty is skipped with a warning instead of failing the build.

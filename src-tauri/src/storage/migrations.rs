@@ -82,6 +82,102 @@ const MIGRATIONS: &[&str] = &[
         value TEXT NOT NULL
     );
     "#,
+    // Chatbot conversations and their messages (see `conversations::store`).
+    r#"
+    CREATE TABLE conversations (
+        id              TEXT PRIMARY KEY NOT NULL,
+        agent_id        TEXT NOT NULL REFERENCES agents (id) ON DELETE CASCADE,
+        channel         TEXT NOT NULL CHECK (length(trim(channel)) > 0),
+        customer_name   TEXT NOT NULL,
+        customer_handle TEXT NOT NULL,
+        status          TEXT NOT NULL
+                        CHECK (status IN ('bot_answering', 'waiting_for_you', 'you_replying', 'closed')),
+        origin          TEXT,
+        handoff_reason  TEXT,
+        summary         TEXT,
+        suggested_reply TEXT,
+        variables_json  TEXT NOT NULL DEFAULT '{}',
+        created_at      TEXT NOT NULL,
+        updated_at      TEXT NOT NULL
+    );
+    CREATE INDEX conversations_by_updated_at ON conversations (updated_at DESC);
+    CREATE INDEX conversations_by_status ON conversations (status, updated_at DESC);
+    CREATE INDEX conversations_by_customer ON conversations (agent_id, channel, customer_handle);
+
+    CREATE TABLE conversation_messages (
+        id              TEXT PRIMARY KEY NOT NULL,
+        conversation_id TEXT NOT NULL REFERENCES conversations (id) ON DELETE CASCADE,
+        author          TEXT NOT NULL CHECK (author IN ('customer', 'bot', 'operator', 'system')),
+        text            TEXT NOT NULL,
+        metadata_json   TEXT NOT NULL DEFAULT '{}',
+        created_at      TEXT NOT NULL
+    );
+    CREATE INDEX conversation_messages_by_conversation ON conversation_messages (conversation_id, created_at);
+    "#,
+    // Chains of agents: "when agent A finishes, start agent B" (screen 11).
+    r#"
+    CREATE TABLE chains (
+        id         TEXT PRIMARY KEY NOT NULL,
+        name       TEXT NOT NULL CHECK (length(trim(name)) > 0),
+        status     TEXT NOT NULL CHECK (status IN ('active', 'paused')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE chain_steps (
+        chain_id           TEXT NOT NULL REFERENCES chains (id) ON DELETE CASCADE,
+        position           INTEGER NOT NULL CHECK (position >= 0),
+        agent_id           TEXT NOT NULL REFERENCES agents (id) ON DELETE CASCADE,
+        input_mapping_json TEXT NOT NULL,
+        run_condition      TEXT NOT NULL CHECK (run_condition IN ('on_success', 'always')),
+        on_failure         TEXT NOT NULL CHECK (on_failure IN ('stop', 'continue')),
+        PRIMARY KEY (chain_id, position)
+    );
+    CREATE INDEX chain_steps_by_agent ON chain_steps (agent_id);
+    "#,
+    // Knowledge bases (see `knowledge::records`). Passages live in one graphrt-rag
+    // SQLite file per knowledge base (`store_path`); these tables hold what the UI
+    // shows and what a re-sync compares against.
+    r#"
+    CREATE TABLE knowledge_bases (
+        id                  TEXT PRIMARY KEY NOT NULL,
+        name                TEXT NOT NULL CHECK (length(trim(name)) > 0),
+        description         TEXT NOT NULL,
+        store_path          TEXT NOT NULL,
+        embedding           TEXT NOT NULL CHECK (embedding IN ('local', 'openai')),
+        passages_per_answer INTEGER NOT NULL CHECK (passages_per_answer BETWEEN 1 AND 20),
+        min_score           REAL NOT NULL CHECK (min_score BETWEEN 0 AND 1),
+        show_sources        INTEGER NOT NULL CHECK (show_sources IN (0, 1)),
+        last_synced_at      TEXT,
+        created_at          TEXT NOT NULL,
+        updated_at          TEXT NOT NULL
+    );
+
+    CREATE TABLE knowledge_sources (
+        id                TEXT PRIMARY KEY NOT NULL,
+        knowledge_base_id TEXT NOT NULL REFERENCES knowledge_bases (id) ON DELETE CASCADE,
+        kind              TEXT NOT NULL CHECK (kind IN ('file', 'folder', 'url')),
+        location          TEXT NOT NULL,
+        name              TEXT NOT NULL,
+        status            TEXT NOT NULL CHECK (status IN ('pending', 'reading', 'indexed', 'failed')),
+        status_message    TEXT,
+        document_count    INTEGER NOT NULL DEFAULT 0,
+        failed_count      INTEGER NOT NULL DEFAULT 0,
+        passage_count     INTEGER NOT NULL DEFAULT 0,
+        last_synced_at    TEXT,
+        created_at        TEXT NOT NULL,
+        UNIQUE (knowledge_base_id, location)
+    );
+    CREATE INDEX knowledge_sources_by_base ON knowledge_sources (knowledge_base_id, created_at);
+
+    CREATE TABLE knowledge_documents (
+        source_id     TEXT NOT NULL REFERENCES knowledge_sources (id) ON DELETE CASCADE,
+        document_id   TEXT NOT NULL,
+        fingerprint   TEXT NOT NULL,
+        passage_count INTEGER NOT NULL,
+        PRIMARY KEY (source_id, document_id)
+    );
+    "#,
 ];
 
 /// Applies every migration newer than the database's `user_version`.
@@ -129,7 +225,21 @@ mod tests {
         apply(&connection).unwrap();
         assert_eq!(
             table_names(&connection),
-            ["agent_versions", "agents", "run_events", "runs", "settings", "triggers"]
+            [
+                "agent_versions",
+                "agents",
+                "chain_steps",
+                "chains",
+                "conversation_messages",
+                "conversations",
+                "knowledge_bases",
+                "knowledge_documents",
+                "knowledge_sources",
+                "run_events",
+                "runs",
+                "settings",
+                "triggers"
+            ]
         );
         assert_eq!(read_schema_version(&connection).unwrap(), MIGRATIONS.len());
     }

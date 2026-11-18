@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use graphrt_core::engine::Limits;
+use graphrt_core::tool::ToolRegistry;
 use graphrt_core::{Engine, IndexMap, Services, Value};
 
 use super::ModelRegistrySource;
@@ -20,6 +21,9 @@ const DEFAULT_NODE_TIMEOUT_MS: u64 = 2 * 60 * 1000;
 
 /// Compiles the flow, checks provider keys and wires graphrt services.
 ///
+/// `tools` is the graphrt tool registry for `tool` / `agent` nodes (the
+/// `agents` provider, see `agent_tools`); other tool providers are added to it.
+///
 /// # Errors
 /// `InvalidInput` / `Workflow` for a bad flow, `MissingCredentials` when a model
 /// provider the flow uses is not configured, or whatever building the model
@@ -29,13 +33,16 @@ pub(super) fn build_engine(
     credentials: &CredentialStore,
     db: &Database,
     model_source: &dyn ModelRegistrySource,
+    tools: ToolRegistry,
 ) -> AppResult<Engine> {
     let summary = flow::summarize_flow(flow_yaml)?;
     ensure_providers_configured(&summary.model_providers, credentials, db)?;
     let graph = flow::compile_flow(flow_yaml)?;
     let http_client = graphrt_http::HttpClient::new(graphrt_http::EgressPolicy::default())
         .map_err(|error| AppError::Internal(format!("could not set up the HTTP client: {error}")))?;
-    let services = Services::new().with(model_source.build_registry(credentials, db)?).with(http_client);
+    let services = Services::new().with(model_source.build_registry(credentials, db)?).with(http_client).with(tools);
+    // Knowledge bases for the `knowledge-retrieval` node (stores open on first search).
+    let services = services.with(crate::knowledge::knowledge_service_for_runs(db, credentials)?);
     Ok(Engine::new(Arc::new(graph)).with_services(services).with_limits(run_limits()))
 }
 
@@ -132,4 +139,22 @@ pub(super) fn workflow_env(flow_yaml: &str, credentials: &CredentialStore) -> Ap
     } else {
         Err(AppError::MissingCredentials(missing_names.join(", ")))
     }
+}
+
+/// The compiled engine and the `env.*` values for one run of `flow_yaml`,
+/// for hosts that drive graphrt themselves instead of through `RunManager`
+/// (chatbot conversations run one short workflow per customer message).
+///
+/// # Errors
+/// Everything [`build_engine`] and [`workflow_env`] report.
+pub(crate) fn prepare_engine_and_env(
+    flow_yaml: &str,
+    credentials: &CredentialStore,
+    db: &Database,
+    model_source: &dyn ModelRegistrySource,
+    tools: ToolRegistry,
+) -> AppResult<(Engine, IndexMap<String, Value>)> {
+    let engine = build_engine(flow_yaml, credentials, db, model_source, tools)?;
+    let env = workflow_env(flow_yaml, credentials)?;
+    Ok((engine, env))
 }

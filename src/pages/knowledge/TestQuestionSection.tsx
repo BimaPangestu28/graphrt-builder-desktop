@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { searchKnowledgePassages } from '@/data/knowledge'
-import { SectionHeading, compactButtonClassNames } from './FormControls'
+import { useKnowledgeSearch } from '@/hooks/useKnowledge'
+import { SectionHeading } from './FormControls'
 import { PassageMatch, SearchFieldIcon } from './PassageMatch'
 
 /**
@@ -14,47 +14,23 @@ export function parseMatchThreshold(thresholdText: string): number {
   return Number.isFinite(threshold) ? Math.min(Math.max(threshold, 0), 1) : 0
 }
 
-function WriteAnswerForm({ onCancel }: { onCancel: () => void }) {
-  const [answerText, setAnswerText] = useState('')
-  const [isSaved, setIsSaved] = useState(false)
-
-  if (isSaved) {
-    return <p className="m-0 text-[13px] text-ok-strong">Saved to Delivery and FAQ. The chatbot will use it from now on</p>
-  }
-  return (
-    <div className="flex flex-col gap-2">
-      <label htmlFor="written-answer" className="text-[12px] font-medium text-ink-2">
-        Your answer
-      </label>
-      <textarea
-        id="written-answer"
-        rows={3}
-        value={answerText}
-        onChange={(event) => setAnswerText(event.target.value)}
-        className="resize-y rounded-[10px] border border-line-strong px-3 py-2.5 text-[14px] leading-[1.55] text-ink outline-none focus:border-brand"
-      />
-      <div className="flex gap-2">
-        <button type="button" disabled={answerText.trim() === ''} onClick={() => setIsSaved(true)} className={compactButtonClassNames('primary')}>
-          Save answer
-        </button>
-        <button type="button" onClick={onCancel} className={compactButtonClassNames('secondary')}>
-          Cancel
-        </button>
-      </div>
-    </div>
-  )
+interface TestQuestionSectionProps {
+  knowledgeBaseId: string
+  /** Matches scoring below this are shown as weak (agents never see them). */
+  matchThreshold: number
+  /** Question shown when the screen opens. */
+  initialQuestion?: string
 }
 
 /**
- * "Test a question" on screen 18: type what a customer would ask and see the best passage.
- * Matches scoring below `matchThreshold` are shown as weak, with a way to write a missing answer.
+ * "Test a question" on screen 18: type what a customer would ask and see the passage
+ * an agent would get from this knowledge base, searched by the backend.
  */
-export function TestQuestionSection({ matchThreshold }: { matchThreshold: number }) {
-  const [testQuestion, setTestQuestion] = useState('ada menu vegetarian?')
-  const [isWritingAnswer, setIsWritingAnswer] = useState(false)
-  const bestPassage = searchKnowledgePassages(testQuestion)[0]
+export function TestQuestionSection({ knowledgeBaseId, matchThreshold, initialQuestion = '' }: TestQuestionSectionProps) {
+  const [testQuestion, setTestQuestion] = useState(initialQuestion)
+  const { passages, isSearching, error } = useKnowledgeSearch(testQuestion, [knowledgeBaseId], 1)
+  const bestPassage = passages[0]
   const hasQuestion = testQuestion.trim() !== ''
-  const needsAnswer = hasQuestion && (!bestPassage || bestPassage.score < matchThreshold)
 
   return (
     <section aria-labelledby="try-h" className="flex flex-col gap-3">
@@ -64,29 +40,19 @@ export function TestQuestionSection({ matchThreshold }: { matchThreshold: number
         <input
           type="search"
           aria-label="Test a question"
-          lang="id"
           value={testQuestion}
-          onChange={(event) => {
-            setTestQuestion(event.target.value)
-            setIsWritingAnswer(false)
-          }}
+          placeholder="What would a customer ask?"
+          onChange={(event) => setTestQuestion(event.target.value)}
           className="min-w-0 flex-1 border-0 bg-transparent text-[14px] text-ink outline-none"
         />
       </label>
       <div aria-live="polite" className="flex flex-col gap-3">
-        {bestPassage && <PassageMatch passage={bestPassage} isWeak={bestPassage.score < matchThreshold} />}
-        {hasQuestion && !bestPassage && (
+        {error && <p className="m-0 text-[13px] text-danger">Could not search: {error.message}</p>}
+        {!error && bestPassage && <PassageMatch passage={bestPassage} isWeak={bestPassage.score < matchThreshold} />}
+        {!error && hasQuestion && !isSearching && !bestPassage && (
           <p className="m-0 rounded-[10px] border border-amber-line bg-amber-tint px-3.5 py-3 text-amber-deep">Nothing in this knowledge base answers that yet</p>
         )}
       </div>
-      {needsAnswer &&
-        (isWritingAnswer ? (
-          <WriteAnswerForm onCancel={() => setIsWritingAnswer(false)} />
-        ) : (
-          <button type="button" onClick={() => setIsWritingAnswer(true)} className={compactButtonClassNames('secondary', 'self-start')}>
-            Write an answer for this
-          </button>
-        ))}
     </section>
   )
 }

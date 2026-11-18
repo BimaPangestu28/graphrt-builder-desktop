@@ -1,27 +1,27 @@
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { closeConversation, handBack, sendOperatorReply, takeOver } from '@/api/conversations'
+import type { Conversation, ConversationDetail } from '@/api/conversationTypes'
 import { AppShell } from '@/components/layout'
 import { joinClassNames } from '@/components/ui'
-import { findConversation, inboxConversations, isWaitingForYou, type ChatMessage, type InboxConversation } from '@/data/inbox'
+import { useConversationDetail, useConversationList } from '@/hooks/useConversations'
 import { ChatMessageBubble } from './inbox/ChatMessageBubble'
 import { buildConversationPath } from './inbox/ConversationTable'
 import { CustomerPanel } from './inbox/CustomerPanel'
+import { formatTimeAgo, getChannelLabel, isOwnerReplying, previewLastMessage } from './inbox/conversationDisplay'
 import { ReplyComposer } from './inbox/ReplyComposer'
 
-const waitingConversations = inboxConversations.filter(isWaitingForYou)
+const waitingFilter = { status: 'waiting_for_you' } as const
 
-function formatClockTime(date: Date): string {
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
-}
-
-function WaitingConversationList({ activeConversationId }: { activeConversationId: string }) {
+function WaitingConversationList({ conversations, activeConversationId }: { conversations: Conversation[]; activeConversationId: string | null }) {
   return (
     <nav aria-label="Conversations" className="box-border flex max-w-full min-w-0 flex-[1_1_260px] flex-col border-r border-line">
       <div className="box-border flex h-16 items-center justify-between border-b border-line px-4">
         <span className="font-semibold">Waiting for you</span>
-        <span className="text-[12px] text-muted">{waitingConversations.length}</span>
+        <span className="text-[12px] text-muted">{conversations.length}</span>
       </div>
-      {waitingConversations.map((conversation) => {
+      {conversations.length === 0 && <span className="px-4 py-3.5 text-muted">Nothing is waiting for you</span>}
+      {conversations.map((conversation) => {
         const isActive = conversation.id === activeConversationId
         return (
           <Link
@@ -35,10 +35,10 @@ function WaitingConversationList({ activeConversationId }: { activeConversationI
           >
             <span className="flex justify-between">
               <b className="font-semibold">{conversation.customerName}</b>
-              <span className="text-[12px] text-muted">{conversation.timeAgo}</span>
+              <span className="text-[12px] text-muted">{formatTimeAgo(conversation.updatedAt)}</span>
             </span>
             <span className="text-[13px] text-body" lang="id">
-              {conversation.lastMessage}
+              {previewLastMessage(conversation)}
             </span>
           </Link>
         )
@@ -47,42 +47,71 @@ function WaitingConversationList({ activeConversationId }: { activeConversationI
   )
 }
 
-function TakeOverStatusPill({ isHumanReplying }: { isHumanReplying: boolean }) {
+const statusPillTexts: Record<Conversation['status'], string> = {
+  bot_answering: 'Bot is answering',
+  waiting_for_you: 'Bot paused · waiting for you',
+  you_replying: 'Bot paused · you are replying',
+  closed: 'Chat closed',
+}
+
+function ConversationStatusBadge({ conversation }: { conversation: Conversation }) {
   return (
     <span
       role="status"
       className={joinClassNames(
         'rounded-full px-2.5 py-1 text-[12px] font-semibold',
-        isHumanReplying ? 'bg-amber-soft text-amber-strong' : 'bg-brand-soft text-brand-strong',
+        isOwnerReplying(conversation) ? 'bg-amber-soft text-amber-strong' : conversation.status === 'closed' ? 'bg-canvas text-ink-2' : 'bg-brand-soft text-brand-strong',
       )}
     >
-      {isHumanReplying ? 'Bot paused · you are replying' : 'Bot is answering'}
+      {statusPillTexts[conversation.status]}
     </span>
   )
 }
 
-function buildNotice(text: string): ChatMessage {
-  return { id: `notice-${Date.now()}-${Math.random()}`, author: 'notice', text }
+/** The bot's suggestion, until you have replied after the hand-off. */
+function getSuggestedReply({ conversation, messages }: ConversationDetail): string | null {
+  const lastOwnMessage = [...messages].reverse().find((message) => message.author !== 'system')
+  return lastOwnMessage?.author === 'operator' ? null : conversation.suggestedReply
+}
+
+function useConversationActions(conversationId: string) {
+  const [isBusy, setIsBusy] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  async function runAction(action: () => Promise<unknown>): Promise<boolean> {
+    setIsBusy(true)
+    setActionError(null)
+    try {
+      await action()
+      return true
+    } catch (rawError) {
+      setActionError(rawError instanceof Error ? rawError.message : 'Something went wrong')
+      return false
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
+  return {
+    isBusy,
+    actionError,
+    takeOver: () => runAction(() => takeOver(conversationId)),
+    handBack: () => runAction(() => handBack(conversationId)),
+    close: () => runAction(() => closeConversation(conversationId)),
+    reply: (text: string) => runAction(() => sendOperatorReply(conversationId, text)),
+  }
 }
 
 /** Thread, composer and customer panel for one conversation. Keyed by conversation so state resets on switch. */
-function ConversationWorkspace({ conversation }: { conversation: InboxConversation }) {
-  const [messages, setMessages] = useState<ChatMessage[]>(conversation.messages)
-  const [isHumanReplying, setIsHumanReplying] = useState(isWaitingForYou(conversation))
+function ConversationWorkspace({ detail }: { detail: ConversationDetail }) {
+  const { conversation, messages } = detail
   const [draft, setDraft] = useState('')
   const [isOrderSaved, setIsOrderSaved] = useState(false)
-  const hasSentReply = messages.some((message) => message.author === 'you')
+  const actions = useConversationActions(conversation.id)
+  const canReply = isOwnerReplying(conversation)
 
-  function sendReply() {
-    const sentReply: ChatMessage = { id: `you-${Date.now()}`, author: 'you', text: draft.trim(), time: formatClockTime(new Date()) }
-    setMessages((previousMessages) => [...previousMessages, sentReply])
-    setDraft('')
-  }
-
-  function toggleTakeOver() {
-    const notice = isHumanReplying ? 'You handed this back to the bot' : 'You took over · bot paused'
-    setMessages((previousMessages) => [...previousMessages, buildNotice(notice)])
-    setIsHumanReplying(!isHumanReplying)
+  async function sendReply() {
+    if (await actions.reply(draft.trim())) setDraft('')
   }
 
   return (
@@ -91,52 +120,74 @@ function ConversationWorkspace({ conversation }: { conversation: InboxConversati
         <header className="box-border flex h-16 items-center justify-between gap-3 border-b border-line px-5">
           <span className="flex flex-col">
             <b className="font-semibold">{conversation.customerName}</b>
-            <span className="text-[12px] text-muted">WhatsApp · {conversation.phoneNumber}</span>
+            <span className="text-[12px] text-muted">
+              {getChannelLabel(conversation.channel)} · {conversation.customerHandle}
+            </span>
           </span>
-          <TakeOverStatusPill isHumanReplying={isHumanReplying} />
+          <ConversationStatusBadge conversation={conversation} />
         </header>
         <div className="flex flex-1 flex-col gap-2.5 bg-subtle p-5" lang="id" aria-live="polite">
-          <span className="self-center text-[12px] text-muted" lang="en">
-            Today
-          </span>
           {messages.map((message) => (
             <ChatMessageBubble key={message.id} message={message} />
           ))}
         </div>
+        {actions.actionError && (
+          <p role="alert" className="m-0 px-5 pt-3 text-[13px] text-amber-strong">
+            {actions.actionError}
+          </p>
+        )}
         <ReplyComposer
           draft={draft}
           onDraftChange={setDraft}
-          onSend={sendReply}
-          isHumanReplying={isHumanReplying}
-          suggestedReply={hasSentReply ? undefined : conversation.suggestedReply}
+          onSend={() => void sendReply()}
+          canReply={canReply}
+          disabledPlaceholder={conversation.status === 'closed' ? 'This chat is closed' : 'The bot is answering. Take over to reply yourself'}
+          suggestedReply={getSuggestedReply(detail)}
+          isSending={actions.isBusy}
         />
       </section>
       <CustomerPanel
-        summary={conversation.summary}
-        isHumanReplying={isHumanReplying}
-        onToggleTakeOver={toggleTakeOver}
+        conversation={conversation}
         isOrderSaved={isOrderSaved}
         onSaveOrder={() => setIsOrderSaved(true)}
+        onTakeOver={() => void actions.takeOver()}
+        onHandBack={() => void actions.handBack()}
+        onClose={() => void actions.close()}
+        isBusy={actions.isBusy}
       />
     </>
   )
 }
 
+function ConversationArea({ conversationId }: { conversationId: string | null }) {
+  const { data: detail, error } = useConversationDetail(conversationId)
+  if (!conversationId) return <p className="m-0 flex-[3_1_420px] p-8 text-muted">Pick a chat to read it here</p>
+  if (error) return <p className="m-0 flex-[3_1_420px] p-8 text-muted">Could not open this chat. {error.message}</p>
+  if (!detail) return <p className="m-0 flex-[3_1_420px] p-8 text-muted">Loading chat…</p>
+  return <ConversationWorkspace key={detail.conversation.id} detail={detail} />
+}
+
 /**
  * Screen 16 · Chat detail.
- * One WhatsApp conversation the chatbot handed over to a person. Left: chats waiting for you.
- * Middle: the thread and a reply composer (with the bot's suggested reply). Right: the bot's
- * summary of the order. "Hand back to bot" / "Take over from bot" toggles who answers; while the
- * bot answers, the composer is disabled. The conversation comes from `?id=` and defaults to the first waiting chat.
+ * One conversation a chatbot handed over to a person. Left: chats waiting for you. Middle: the thread
+ * and a reply composer (with the bot's suggested reply). Right: the bot's summary and memory.
+ * "Take over from bot" / "Hand back to bot" switch who answers; replying takes the chat over; "Close
+ * chat" ends it. Everything stays live through `conversation-event`s. The conversation comes from
+ * `?id=` and defaults to the first waiting chat.
  */
 export function ChatDetailPage() {
   const [searchParams] = useSearchParams()
-  const conversation = findConversation(searchParams.get('id')) ?? waitingConversations[0]
+  const { data: waitingConversations } = useConversationList(waitingFilter)
+  // The default chat stays open after you take it over, even though it leaves the waiting list.
+  const [defaultConversationId, setDefaultConversationId] = useState<string | null>(null)
+  const firstWaitingId = waitingConversations?.[0]?.id ?? null
+  if (defaultConversationId === null && firstWaitingId !== null) setDefaultConversationId(firstWaitingId)
+  const conversationId = searchParams.get('id') ?? defaultConversationId ?? firstWaitingId
 
   return (
     <AppShell activeNav="inbox" agents={{ kind: 'list' }} mainClassName="flex flex-wrap">
-      <WaitingConversationList activeConversationId={conversation.id} />
-      <ConversationWorkspace key={conversation.id} conversation={conversation} />
+      <WaitingConversationList conversations={waitingConversations ?? []} activeConversationId={conversationId} />
+      <ConversationArea conversationId={conversationId} />
     </AppShell>
   )
 }

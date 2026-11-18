@@ -15,7 +15,7 @@
 //! `*_with_model` functions hold the logic and take any [`ChatModel`], so tests
 //! drive them with `graphrt_llm::mock::MockModel`.
 
-mod diff;
+pub(crate) mod diff;
 mod extract;
 mod kind;
 mod prompt;

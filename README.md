@@ -21,6 +21,17 @@ The UI is implemented from the **graphrt Builder Mockup** design canvas (25 desk
 - Rust 1.77.2+ (stable) with Xcode Command Line Tools on macOS ([Tauri prerequisites](https://v2.tauri.app/start/prerequisites/))
 
 ## Installation
+
+### Download
+Prebuilt apps for macOS (universal: Apple silicon and Intel), Windows and Linux are
+attached to each [GitHub Release](https://github.com/BimaPangestu28/graphrt-builder-desktop/releases),
+with a `SHA256SUMS` file to verify them (`shasum -a 256 -c SHA256SUMS --ignore-missing`).
+
+> **macOS builds are not signed yet.** On first launch, right-click the app in
+> Applications and choose **Open**, then confirm. On macOS 15 or later, if there is
+> no Open button, go to System Settings > Privacy & Security and click **Open Anyway**.
+
+### From source
 ```bash
 pnpm install
 ```

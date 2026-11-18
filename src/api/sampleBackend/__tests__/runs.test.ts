@@ -67,7 +67,7 @@ describe('sample runs backend', () => {
     await playSteps(4)
     const finishedRun = await sampleRunsBackend.getRun(run.id)
     expect(finishedRun.status).toBe('succeeded')
-    expect(finishedRun.outputs).toMatchObject({ sentMessage: 'Edited', messagesSent: 1, placesFound: 18 })
+    expect(finishedRun.outputs).toMatchObject({ sent_message: 'Edited', messages_sent: 1, places_found: 18, summary: 'Sent the test message to [PLACE NAME 1].' })
     expect(finishedRun.finishedAt).not.toBeNull()
   })
 
@@ -78,7 +78,7 @@ describe('sample runs backend', () => {
     await playSteps(3)
     const finishedRun = await sampleRunsBackend.getRun(run.id)
     expect(finishedRun.status).toBe('succeeded')
-    expect(finishedRun.outputs).toMatchObject({ skipped: true, messagesSent: 0 })
+    expect(finishedRun.outputs).toMatchObject({ skipped: true, messages_sent: 0 })
     const events = await sampleRunsBackend.listRunEvents(run.id)
     expect(events.filter(({ event }) => event.type === 'node_skipped').map(({ event }) => event.node_id)).toEqual([sampleApprovalNodeId, 'send_whatsapp'])
   })

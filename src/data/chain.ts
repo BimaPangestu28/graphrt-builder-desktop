@@ -31,7 +31,6 @@ export interface ChainLink {
 }
 
 export const chainName = 'Leads to sales recap'
-export const chainTriggerLabel = 'Weekdays at 09:00'
 
 export const chainAgents: ChainAgent[] = [
   { id: 'maps-leads', name: 'Maps leads to WhatsApp', stepCount: 6, outputs: ['places', 'sent_count'] },
@@ -69,18 +68,3 @@ export const initialChainLinks: ChainLink[] = [
     failurePolicy: failurePolicyOptions[1],
   },
 ]
-
-const runConditionShortLabels: Record<string, string> = {
-  'Only if sent_count is more than 0': 'If sent_count is more than 0',
-  Always: 'Always',
-  'Only if the first agent failed': 'If the first agent failed',
-}
-
-/**
- * The short label shown on a link between two agents, e.g. "If sent_count is more than 0 · places → leads".
- */
-export function describeChainLink(link: ChainLink): string {
-  const conditionLabel = runConditionShortLabels[link.runCondition] ?? link.runCondition
-  const outputMappings = link.inputs.flatMap((input) => (input.kind === 'output' ? [`${input.selectedField} → ${input.name}`] : []))
-  return [conditionLabel, ...outputMappings].join(' · ')
-}

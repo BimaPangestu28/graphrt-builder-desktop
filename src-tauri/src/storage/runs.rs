@@ -165,6 +165,21 @@ impl Database {
         Ok(events)
     }
 
+    /// Every run started at or after `since` (RFC 3339, UTC as written by
+    /// [`now_rfc3339`]), optionally of one agent, newest first. Not limited:
+    /// callers pass a bounded window such as the last 7 days.
+    pub fn list_runs_started_since(&self, since: &str, agent_id: Option<&str>) -> AppResult<Vec<Run>> {
+        let connection = self.lock()?;
+        // Every `started_at` comes from `now_rfc3339` (same UTC format), so text order is time order.
+        let mut statement = connection.prepare(&format!(
+            "SELECT {RUN_COLUMNS} FROM runs
+             WHERE started_at >= ?1 AND (?2 IS NULL OR agent_id = ?2)
+             ORDER BY started_at DESC, rowid DESC"
+        ))?;
+        let runs = statement.query_map(params![since, agent_id], map_run_row)?.collect::<Result<Vec<_>, _>>()?;
+        Ok(runs)
+    }
+
     /// Runs left in `Running` by a crash or quit are marked `Failed` at start-up.
     ///
     /// Paused runs are left alone: their snapshot is persisted, so they remain resumable.
@@ -176,6 +191,33 @@ impl Database {
             params![RunStatus::Failed, now_rfc3339(), INTERRUPTED_RUN_MESSAGE, RunStatus::Running],
         )?;
         Ok(failed_count)
+    }
+
+    /// Deletes the event logs of runs that finished more than `older_than_days`
+    /// days ago; returns how many events were deleted. The run rows (status,
+    /// outputs, error) are kept.
+    ///
+    /// Only finished runs (`Succeeded`, `Failed`, `Aborted`) are pruned, and
+    /// always their whole log: running and paused runs keep every event however
+    /// old, since a paused run can be resumed at any time.
+    ///
+    /// # Errors
+    /// `InvalidInput` when `older_than_days` is 0.
+    pub fn prune_old_run_events(&self, older_than_days: u32) -> AppResult<usize> {
+        if older_than_days == 0 {
+            return Err(AppError::InvalidInput("run event retention must be at least 1 day".into()));
+        }
+        let cutoff = (chrono::Utc::now() - chrono::Duration::days(i64::from(older_than_days))).to_rfc3339();
+        let connection = self.lock()?;
+        // `finished_at` is RFC 3339 UTC like `cutoff`, so text order is time order.
+        let deleted_count = connection.execute(
+            "DELETE FROM run_events WHERE run_id IN (
+                 SELECT id FROM runs
+                 WHERE status IN (?1, ?2, ?3) AND finished_at IS NOT NULL AND finished_at < ?4
+             )",
+            params![RunStatus::Succeeded, RunStatus::Failed, RunStatus::Aborted, cutoff],
+        )?;
+        Ok(deleted_count)
     }
 }
 
@@ -414,6 +456,43 @@ mod tests {
         assert_eq!(database.fail_interrupted_runs().unwrap(), 0);
     }
 
+    fn set_finished_at(database: &Database, run_id: &str, days_ago: i64) {
+        let finished_at = (chrono::Utc::now() - chrono::Duration::days(days_ago)).to_rfc3339();
+        database
+            .lock()
+            .unwrap()
+            .execute("UPDATE runs SET finished_at = ?1 WHERE id = ?2", params![finished_at, run_id])
+            .unwrap();
+    }
+
+    #[test]
+    fn prune_deletes_only_logs_of_runs_finished_before_the_cutoff() {
+        let database = test_database();
+        let old_finished = start_run(&database);
+        let recent_finished = start_run(&database);
+        let old_paused = start_run(&database);
+        let running = start_run(&database);
+        for run in [&old_finished, &recent_finished, &old_paused, &running] {
+            database.append_run_event(&run.id, &json!({"type": "run_started"})).unwrap();
+            database.append_run_event(&run.id, &json!({"type": "node_started"})).unwrap();
+        }
+        database.finish_run(&old_finished.id, RunStatus::Succeeded, Some(&json!({})), None).unwrap();
+        set_finished_at(&database, &old_finished.id, 31);
+        database.finish_run(&recent_finished.id, RunStatus::Failed, None, Some("boom")).unwrap();
+        set_finished_at(&database, &recent_finished.id, 29);
+        database.mark_run_paused(&old_paused.id, "{}", &json!([])).unwrap();
+
+        assert_eq!(database.prune_old_run_events(30).unwrap(), 2);
+
+        assert!(database.list_run_events(&old_finished.id).unwrap().is_empty());
+        assert_eq!(database.get_run(&old_finished.id).unwrap().status, RunStatus::Succeeded);
+        for kept in [&recent_finished, &old_paused, &running] {
+            assert_eq!(database.list_run_events(&kept.id).unwrap().len(), 2);
+        }
+        assert_eq!(database.prune_old_run_events(30).unwrap(), 0);
+        assert!(matches!(database.prune_old_run_events(0), Err(AppError::InvalidInput(_))));
+    }
+
     #[test]
     fn list_runs_filters_orders_and_limits() {
         let database = test_database();
@@ -437,6 +516,27 @@ mod tests {
         assert_eq!(ids(database.list_runs(&both).unwrap()), [oldest.id]);
         let limited = RunFilter { limit: Some(1), ..RunFilter::default() };
         assert_eq!(ids(database.list_runs(&limited).unwrap()), [newest.id]);
+    }
+
+    #[test]
+    fn list_runs_started_since_filters_by_time_and_agent() {
+        let database = test_database();
+        let agent = create_test_agent(&database, "A");
+        let other_agent = create_test_agent(&database, "B");
+        let old_run = database.insert_run(&agent.id, 1, RunTrigger::Manual).unwrap();
+        let recent_run = database.insert_run(&agent.id, 1, RunTrigger::Manual).unwrap();
+        let other_run = database.insert_run(&other_agent.id, 1, RunTrigger::Manual).unwrap();
+        database
+            .lock()
+            .unwrap()
+            .execute("UPDATE runs SET started_at = '2020-01-01T00:00:00+00:00' WHERE id = ?1", [&old_run.id])
+            .unwrap();
+        let since = "2021-01-01T00:00:00+00:00";
+
+        let ids = |runs: Vec<Run>| runs.into_iter().map(|run| run.id).collect::<Vec<_>>();
+        assert_eq!(ids(database.list_runs_started_since(since, None).unwrap()), [other_run.id, recent_run.id.clone()]);
+        assert_eq!(ids(database.list_runs_started_since(since, Some(&agent.id)).unwrap()), [recent_run.id]);
+        assert!(database.list_runs_started_since(since, Some("ghost")).unwrap().is_empty());
     }
 
     #[test]

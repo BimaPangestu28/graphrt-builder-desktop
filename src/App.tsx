@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
-import { agentRoutePatterns, routePaths } from './routes'
+import { hasUsableModelProvider } from './lib/firstLaunch'
+import { agentRoutePatterns, knowledgeDetailPattern, routePaths } from './routes'
 import { ScreenIndexPage } from './pages/ScreenIndexPage'
 import { WelcomePage } from './pages/WelcomePage'
 import { NewAgentPage } from './pages/NewAgentPage'
@@ -46,7 +48,7 @@ const screenRoutes = [
   { path: routePaths.inbox, element: <InboxPage /> },
   { path: routePaths.chatDetail, element: <ChatDetailPage /> },
   { path: routePaths.knowledge, element: <KnowledgePage /> },
-  { path: routePaths.knowledgeDetail, element: <KnowledgeDetailPage /> },
+  { path: knowledgeDetailPattern, element: <KnowledgeDetailPage /> },
   { path: routePaths.batchApproval, element: <BatchApprovalPage /> },
   { path: routePaths.runs, element: <RunsPage /> },
   { path: routePaths.connections, element: <ConnectionsPage /> },
@@ -56,10 +58,26 @@ const screenRoutes = [
   { path: routePaths.menuBar, element: <MenuBarPage /> },
 ]
 
+/** `/`: Welcome until a model provider is set up (first launch), Home afterwards. */
+function StartRedirect() {
+  const [isProviderReady, setIsProviderReady] = useState<boolean | null>(null)
+  useEffect(() => {
+    let isMounted = true
+    void hasUsableModelProvider().then((isReady) => {
+      if (isMounted) setIsProviderReady(isReady)
+    })
+    return () => {
+      isMounted = false
+    }
+  }, [])
+  if (isProviderReady === null) return null
+  return <Navigate to={isProviderReady ? routePaths.home : routePaths.welcome} replace />
+}
+
 export function App() {
   return (
     <Routes>
-      <Route path="/" element={<Navigate to={routePaths.welcome} replace />} />
+      <Route path="/" element={<StartRedirect />} />
       {screenRoutes.map((screenRoute) => (
         <Route key={screenRoute.path} path={screenRoute.path} element={screenRoute.element} />
       ))}

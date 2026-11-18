@@ -1,0 +1,212 @@
+//! One bot turn: runs the chatbot's workflow for one customer message.
+//!
+//! Inputs: the start input `message`, `sys.query` (same text),
+//! `sys.conversation_id`, `sys.user_id` (the customer handle) and the stored
+//! `conversation.*` variables. graphrt does not keep conversation variables
+//! between runs; the host does, so the values the run writes (`variable_updated`
+//! events) are merged back and returned for storage.
+//!
+//! The reply is the answer text assembled in template order by graphrt's
+//! [`ResponseAssembler`], falling back to the `answer` output. End outputs
+//! `handoff`, `handoff_reason`, `summary` and `suggested_reply` follow the
+//! hand-off convention described in `guides/chatbot.md`.
+
+use futures::StreamExt;
+use graphrt_core::response::ResponseAssembler;
+use graphrt_core::{Engine, Event, IndexMap, RunInput, Selector, Value};
+use serde_json::{Map, Value as Json};
+
+use super::models::Conversation;
+use crate::error::{AppError, AppResult};
+
+/// Start input carrying the customer's message.
+pub const MESSAGE_INPUT: &str = "message";
+/// End output that hands the chat to the owner when truthy.
+pub const HANDOFF_OUTPUT: &str = "handoff";
+/// End output explaining the hand-off (`order_to_confirm`, `asked_for_person`, `not_sure` or plain words).
+pub const HANDOFF_REASON_OUTPUT: &str = "handoff_reason";
+/// Optional end output: a short summary of the customer and their order.
+pub const SUMMARY_OUTPUT: &str = "summary";
+/// Optional end output: a reply the owner can send with one click.
+pub const SUGGESTED_REPLY_OUTPUT: &str = "suggested_reply";
+
+/// What one bot turn produced.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BotTurn {
+    /// Text for the customer; empty when the workflow answered nothing.
+    pub reply_text: String,
+    /// `Some` when the workflow asked to hand the chat to the owner.
+    pub handoff: Option<Handoff>,
+    /// Every `conversation.*` variable after the run (JSON object).
+    pub variables: Json,
+    pub summary: Option<String>,
+    pub suggested_reply: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Handoff {
+    pub reason: Option<String>,
+}
+
+/// Runs `engine` for `message_text` and collects the reply.
+///
+/// # Errors
+/// `Workflow` when the run fails, is aborted, or pauses (a chatbot cannot wait
+/// for an approval in the middle of a chat).
+pub async fn run_bot_turn(
+    engine: &Engine,
+    env: IndexMap<String, Value>,
+    conversation: &Conversation,
+    message_text: &str,
+) -> AppResult<BotTurn> {
+    let mut variables = conversation.variables.as_object().cloned().unwrap_or_default();
+    let mut assembler = ResponseAssembler::new(engine.graph());
+    for (name, value) in &variables {
+        assembler = assembler.with_value(&Selector::of("conversation", name), Value::from_json(value.clone()));
+    }
+    let mut stream = engine.run(build_run_input(env, conversation, message_text, &variables));
+
+    let mut assembled_reply = String::new();
+    let mut outputs = None;
+    while let Some(event) = stream.next().await {
+        for chunk in assembler.push(&event) {
+            assembled_reply.push_str(&chunk.text);
+        }
+        match event {
+            Event::VariableUpdated { selector, value, .. } if selector.namespace() == "conversation" => {
+                apply_variable_update(&mut variables, &selector, value.to_json());
+            }
+            Event::RunSucceeded { outputs: run_outputs, .. } => outputs = Some(run_outputs),
+            Event::RunFailed { error, .. } => return Err(AppError::Workflow(error)),
+            Event::RunAborted { reason, .. } => {
+                return Err(AppError::Workflow(format!("the bot was stopped: {reason}")))
+            }
+            Event::RunPaused { .. } => {
+                return Err(AppError::Workflow(
+                    "the chatbot's steps wait for an approval, which a chat cannot give".into(),
+                ))
+            }
+            _ => {}
+        }
+    }
+    for chunk in assembler.finish() {
+        assembled_reply.push_str(&chunk.text);
+    }
+    let outputs = outputs.ok_or_else(|| AppError::Workflow("the bot stopped without an answer".into()))?;
+    Ok(collect_turn(assembled_reply, &outputs, Json::Object(variables)))
+}
+
+fn build_run_input(
+    env: IndexMap<String, Value>,
+    conversation: &Conversation,
+    message_text: &str,
+    variables: &Map<String, Json>,
+) -> RunInput {
+    let mut run_input = RunInput::new()
+        .input(MESSAGE_INPUT, message_text)
+        .sys("query", message_text)
+        .sys("conversation_id", conversation.id.as_str())
+        .sys("user_id", conversation.customer_handle.as_str());
+    run_input.env = env;
+    // Untrusted JSON conversion: stored values can never forge file references.
+    run_input.conversation =
+        variables.iter().map(|(name, value)| (name.clone(), Value::from_json(value.clone()))).collect();
+    run_input
+}
+
+fn collect_turn(assembled_reply: String, outputs: &IndexMap<String, Value>, variables: Json) -> BotTurn {
+    let reply_text = match assembled_reply.trim() {
+        "" => outputs.get("answer").map(Value::to_text).unwrap_or_default().trim().to_owned(),
+        reply => reply.to_owned(),
+    };
+    let handoff = outputs
+        .get(HANDOFF_OUTPUT)
+        .is_some_and(is_truthy)
+        .then(|| Handoff { reason: non_empty_text(outputs.get(HANDOFF_REASON_OUTPUT)) });
+    BotTurn {
+        reply_text,
+        handoff,
+        variables,
+        summary: non_empty_text(outputs.get(SUMMARY_OUTPUT)),
+        suggested_reply: non_empty_text(outputs.get(SUGGESTED_REPLY_OUTPUT)),
+    }
+}
+
+/// `true`, a non-zero number, or the text `true` / `yes` / `1` (model and
+/// template outputs are text, and graphrt never coerces text to boolean).
+fn is_truthy(value: &Value) -> bool {
+    match value {
+        Value::Bool(flag) => *flag,
+        Value::Int(number) => *number != 0,
+        Value::Float(number) => *number != 0.0,
+        Value::String(text) => matches!(text.trim().to_ascii_lowercase().as_str(), "true" | "yes" | "1"),
+        _ => false,
+    }
+}
+
+fn non_empty_text(value: Option<&Value>) -> Option<String> {
+    let text = value.filter(|value| !value.is_null())?.to_text();
+    let trimmed = text.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_owned())
+}
+
+/// Writes `value` at `conversation.<name>[.path...]`, creating objects on the way.
+fn apply_variable_update(variables: &mut Map<String, Json>, selector: &Selector, value: Json) {
+    let path = selector.path();
+    if path.is_empty() {
+        variables.insert(selector.name().to_owned(), value);
+        return;
+    }
+    let mut target = variables.entry(selector.name().to_owned()).or_insert_with(|| Json::Object(Map::new()));
+    for (index, key) in path.iter().enumerate() {
+        if !target.is_object() {
+            *target = Json::Object(Map::new());
+        }
+        let Json::Object(fields) = target else { return };
+        if index == path.len() - 1 {
+            fields.insert(key.to_string(), value);
+            return;
+        }
+        target = fields.entry(key.to_string()).or_insert_with(|| Json::Object(Map::new()));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn truthy_handoff_values() {
+        assert!(is_truthy(&Value::Bool(true)));
+        assert!(is_truthy(&Value::from(" Yes ")));
+        assert!(is_truthy(&Value::Int(1)));
+        assert!(!is_truthy(&Value::Bool(false)));
+        assert!(!is_truthy(&Value::from("false")));
+        assert!(!is_truthy(&Value::Null));
+    }
+
+    #[test]
+    fn variable_updates_replace_or_nest() {
+        let mut variables = Map::new();
+        apply_variable_update(&mut variables, &Selector::of("conversation", "turns"), json!(2));
+        apply_variable_update(&mut variables, &Selector::parse("conversation.order.boxes").unwrap(), json!(50));
+        assert_eq!(Json::Object(variables), json!({"turns": 2, "order": {"boxes": 50}}));
+    }
+
+    #[test]
+    fn turn_falls_back_to_the_answer_output_and_reads_handoff() {
+        let outputs: IndexMap<String, Value> = [
+            ("answer".to_owned(), Value::from(" Siap kak ")),
+            (HANDOFF_OUTPUT.to_owned(), Value::from("true")),
+            (HANDOFF_REASON_OUTPUT.to_owned(), Value::from("order_to_confirm")),
+            (SUMMARY_OUTPUT.to_owned(), Value::from("")),
+        ]
+        .into_iter()
+        .collect();
+        let turn = collect_turn(String::new(), &outputs, json!({}));
+        assert_eq!(turn.reply_text, "Siap kak");
+        assert_eq!(turn.handoff, Some(Handoff { reason: Some("order_to_confirm".into()) }));
+        assert_eq!(turn.summary, None);
+    }
+}

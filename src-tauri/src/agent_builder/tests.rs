@@ -329,3 +329,12 @@ async fn draft_that_sends_without_approval_is_sent_back_for_repair() {
     assert!(repair_text.contains("human-input"), "{repair_text}");
     assert!(progress.stages().contains(&BuildStage::Repairing));
 }
+
+#[test]
+fn system_prompt_includes_the_chatbot_guide() {
+    let choice = ModelChoice { provider: ModelProvider::Openai, name: "gpt-4o-mini".into() };
+    for system_prompt in [prompt::build_system_prompt(&choice), prompt::revision_system_prompt(&choice)] {
+        assert!(system_prompt.contains("`handoff_reason`"), "{system_prompt}");
+        assert!(system_prompt.contains("{{#conversation.notes#}}"));
+    }
+}
