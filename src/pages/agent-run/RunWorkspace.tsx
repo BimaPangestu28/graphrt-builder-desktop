@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { joinClassNames } from '@/components/ui'
-import { routePaths } from '@/routes'
+import { agentPath, routePaths } from '@/routes'
 
 /**
  * Two-column workspace used while testing an agent (screens 06 and 07):
@@ -36,11 +36,14 @@ export function BuilderReply({ children }: { children: ReactNode }) {
 
 type RunViewTab = 'steps' | 'runs' | 'source'
 
-const runViewTabs: Array<{ key: RunViewTab; label: string; path: string }> = [
-  { key: 'steps', label: 'Steps', path: routePaths.builder },
-  { key: 'runs', label: 'Runs', path: routePaths.runs },
-  { key: 'source', label: 'Source', path: routePaths.versionHistory },
-]
+/** Tab targets for the agent in the route (`/agents/:agentId/...`); Home when there is none. */
+function buildRunViewTabs(agentId: string | undefined): Array<{ key: RunViewTab; label: string; path: string }> {
+  return [
+    { key: 'steps', label: 'Steps', path: agentId ? agentPath('builder', agentId) : routePaths.home },
+    { key: 'runs', label: 'Runs', path: routePaths.runs },
+    { key: 'source', label: 'Source', path: agentId ? agentPath('versionHistory', agentId) : routePaths.home },
+  ]
+}
 
 /**
  * Steps / Runs / Source segmented control. "Runs" is the current view on these screens;
@@ -48,6 +51,7 @@ const runViewTabs: Array<{ key: RunViewTab; label: string; path: string }> = [
  */
 function RunViewTabs() {
   const navigate = useNavigate()
+  const runViewTabs = buildRunViewTabs(useParams().agentId)
   return (
     <div role="group" aria-label="Agent view" className="flex gap-1 rounded-[10px] bg-selected p-1">
       {runViewTabs.map((tab) => {

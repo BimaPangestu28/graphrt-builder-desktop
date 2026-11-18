@@ -1,8 +1,8 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useParams } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { resetSamplePlugins, samplePluginsBackend, setSampleBrowserRuntimeStatus } from '@/api/sampleBackend/plugins'
-import { routePaths } from '@/routes'
+import { agentPath, agentRoutePatterns, routePaths } from '@/routes'
 import { ConnectWhatsAppPage } from '../ConnectWhatsAppPage'
 
 /** Lets the plugin and browser runtime loads settle (tests that assert right away). */
@@ -14,8 +14,8 @@ function renderConnectWhatsAppPage() {
   return render(
     <MemoryRouter initialEntries={[routePaths.connectWhatsApp]}>
       <Routes>
-        <Route path={routePaths.connectWhatsApp} element={<ConnectWhatsAppPage />} />
-        <Route path={routePaths.builder} element={<p>Builder screen</p>} />
+        <Route path={agentRoutePatterns.connectWhatsApp} element={<ConnectWhatsAppPage />} />
+        <Route path={agentRoutePatterns.builder} element={<p>Builder screen</p>} />
       </Routes>
     </MemoryRouter>,
   )
@@ -146,3 +146,22 @@ describe('ConnectWhatsAppPage', () => {
     })
   })
 })
+
+describe('ConnectWhatsAppPage for a real agent', () => {
+  it('closes back to that agent, not the sample one', () => {
+    render(
+      <MemoryRouter initialEntries={[agentPath('connectWhatsApp', 'agent-42')]}>
+        <Routes>
+          <Route path={agentRoutePatterns.connectWhatsApp} element={<ConnectWhatsAppPage />} />
+          <Route path={agentRoutePatterns.builder} element={<BuilderAgentIdProbe />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Close/ }))
+    expect(screen.getByText('Builder for agent-42')).toBeInTheDocument()
+  })
+})
+
+function BuilderAgentIdProbe() {
+  return <p>Builder for {useParams().agentId}</p>
+}

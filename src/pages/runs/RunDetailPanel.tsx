@@ -83,7 +83,7 @@ export function RunDetailPanel({ run, onClose }: RunDetailPanelProps) {
             {run.followUp.label}
           </Link>
         )}
-        <Link to={run.agentId ? agentPath('testRun', run.agentId) : routePaths.testRun} className={outlineActionClassNames}>
+        <Link to={run.agentId ? agentPath('testRun', run.agentId) : routePaths.runs} className={outlineActionClassNames}>
           Run again
         </Link>
         <a href={buildRunCsvHref(run)} download={`${run.id}.csv`} className={outlineActionClassNames}>

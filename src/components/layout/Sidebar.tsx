@@ -6,7 +6,7 @@ import { useAgents } from '@/hooks/useAgents'
 import { useConversationCounts } from '@/hooks/useConversations'
 import { useRunnerStatus, type RunnerStatusFacts } from '@/hooks/useRunnerStatus'
 import { getKindLabel, getProviderName, getStatusDotTone } from '@/lib/agentDisplay'
-import { agentPath, routePaths, sampleAgentId } from '@/routes'
+import { agentPath, routePaths } from '@/routes'
 
 export type MainNavKey = 'home' | 'inbox' | 'runs' | 'schedule' | 'knowledge' | 'connections' | 'settings'
 
@@ -83,7 +83,7 @@ function SidebarAgentsSection({ agents }: { agents: SidebarAgentsState }) {
   }
   if (agents.kind === 'draft') {
     return (
-      <Link to={agentPath('builder', agents.agentId ?? sampleAgentId)} className="flex flex-col gap-0.5 rounded-[10px] bg-brand-soft px-3 py-2.5 no-underline !text-ink">
+      <Link to={agents.agentId ? agentPath('builder', agents.agentId) : routePaths.home} className="flex flex-col gap-0.5 rounded-[10px] bg-brand-soft px-3 py-2.5 no-underline !text-ink">
         <span className="font-semibold">{agents.name}</span>
         <span className={joinClassNames('text-[12px]', agents.statusTone === 'amber' ? 'font-medium text-amber-strong' : 'text-brand-strong')}>{agents.status}</span>
       </Link>
