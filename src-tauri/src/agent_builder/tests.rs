@@ -17,8 +17,16 @@ then send each one a WhatsApp message offering our catering menu";
 struct ProgressLog(Mutex<Vec<BuildProgress>>);
 
 impl ProgressLog {
+    /// Stage changes in order; draft previews repeat their stage, so repeats collapse.
     fn stages(&self) -> Vec<BuildStage> {
-        self.0.lock().unwrap().iter().map(|progress| progress.stage).collect()
+        let mut stages: Vec<BuildStage> = self.0.lock().unwrap().iter().map(|progress| progress.stage).collect();
+        stages.dedup();
+        stages
+    }
+
+    /// Draft previews in order.
+    fn previews(&self) -> Vec<DraftPreview> {
+        self.0.lock().unwrap().iter().filter_map(|progress| progress.draft.clone()).collect()
     }
 
     fn record(&self, progress: BuildProgress) {
@@ -352,4 +360,57 @@ async fn system_prompt_lists_installed_plugin_steps() {
     assert!(with_plugin.contains("`fixture-echo.echo` (Echo text)"), "{with_plugin}");
     assert!(with_plugin.contains("instead of a raw `http-request`"));
     assert!(!without_plugin.contains("fixture-echo"));
+}
+
+#[tokio::test]
+async fn drafting_streams_the_explanation_and_step_titles() {
+    let db = test_database();
+    let reply =
+        format!("I find cafes and ask you before each message.\n{}", fenced_reply("Cafe offers", APPROVAL_LOOP));
+    let (_mock, builder) = mock_builder(&[reply]);
+    let progress = ProgressLog::default();
+
+    build_agent_with_model(&db, &builder, request(CAFE_REQUEST, None), &|update| progress.record(update))
+        .await
+        .unwrap();
+
+    let previews = progress.previews();
+    let last = previews.last().expect("at least one draft preview");
+    assert_eq!(last.explanation, "I find cafes and ask you before each message.");
+    assert_eq!(
+        last.step_titles,
+        ["Find cafes on Google Maps", "For each cafe", "Send the WhatsApp message", "Write the run report"]
+    );
+    assert!(last.output_tokens > 0);
+    // Previews belong to the drafting stage; stage-only messages carry none.
+    let logged = progress.0.lock().unwrap();
+    assert!(logged.iter().filter(|update| update.draft.is_some()).all(|update| update.stage == BuildStage::Drafting));
+    assert!(logged.iter().any(|update| update.stage == BuildStage::Done && update.draft.is_none()));
+}
+
+#[tokio::test]
+async fn a_revision_returns_the_models_explanation() {
+    let db = test_database();
+    let agent = create_cafe_agent(&db);
+    let reply =
+        format!("I shortened the message and renamed the send step.\n```yaml\n{}```\n", revised_approval_loop());
+    let (_mock, builder) = mock_builder(&[reply]);
+
+    let result = revise_agent_with_model(&db, &builder, &agent.id, "Make the message shorter", &|_| {}).await.unwrap();
+
+    assert_eq!(result.explanation, "I shortened the message and renamed the send step.");
+}
+
+#[tokio::test]
+async fn the_name_line_is_not_part_of_the_explanation() {
+    let db = test_database();
+    let (_mock, builder) = mock_builder(&[fenced_reply("Cafe offers", APPROVAL_LOOP)]);
+    let progress = ProgressLog::default();
+
+    let agent = build_agent_with_model(&db, &builder, request(CAFE_REQUEST, None), &|update| progress.record(update))
+        .await
+        .unwrap();
+
+    assert_eq!(agent.name, "Cafe offers");
+    assert_eq!(progress.previews().last().unwrap().explanation, "");
 }

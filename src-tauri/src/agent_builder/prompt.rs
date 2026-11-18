@@ -51,14 +51,17 @@ Never write a real or made-up key into the document.
 
 const BUILD_REPLY_FORMAT: &str = "\
 Reply in exactly this format and nothing else:
+<one or two short sentences, in plain words for a non-programmer, saying what the agent will do and where it \
+will ask them first; no markdown>
 Agent name: <2 to 5 plain words naming the agent>
 ```yaml
 <the complete workflow document>
 ```";
 
 const REVISION_REPLY_FORMAT: &str = "\
-Reply with the complete updated workflow document inside one ```yaml fence and nothing else. Keep the ids of \
-steps you do not change, and change only what the request needs. Existing model nodes keep their model unless \
+Start with one or two short sentences, in plain words for a non-programmer, saying what you changed (no \
+markdown). Then reply with the complete updated workflow document inside one ```yaml fence and nothing else. \
+Keep the ids of steps you do not change, and change only what the request needs. Existing model nodes keep their model unless \
 the request is about the model; new model nodes follow the model rule above.";
 
 /// System prompt for drafting a new agent.
@@ -143,7 +146,8 @@ fn kind_guidance(kind: AgentKind) -> &'static str {
 pub(super) fn repair_request(problem: &str) -> String {
     format!(
         "graphrt could not use that document. The problem:\n\n{problem}\n\n\
-         Fix it and reply again in the same format, with the complete corrected document."
+         Fix it and reply again in the same format: one short plain sentence saying what you fixed, then the \
+         complete corrected document."
     )
 }
 
