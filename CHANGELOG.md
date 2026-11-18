@@ -27,6 +27,13 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
 - **Scheduler** (screen 10) draws past runs from the run history, and its rules are stored:
   the missed-run default and keep-awake are app settings, and a new limit on scheduled runs at
   the same time is enforced by the scheduler (a schedule due beyond it skips that run).
+- **Chatbot setup** is saved and used: the persona, tone, instructions and hand-off rules reach
+  every bot reply (switched-off rules are enforced by the app), the chatbot answers from the
+  knowledge bases attached on the setup screen, and WhatsApp/Telegram show as not connected
+  with a link to Connections > Plugins until a channel is connected.
+- **Team** activity and coordinator chat come from real runs of the team and its members;
+  a message to the coordinator starts a team run. The "agent calls per run" guardrail is
+  saved and enforced when the coordinator calls members.
 - **DeepSeek** as a model provider: add a key on Welcome or Connections and agents use
   `deepseek-chat` by default (`deepseek-reasoner` works too, with its reasoning streamed).
 - **Plugins**: install graphrt plugins from the graphrt-plugins catalog (Connections > Plugins):

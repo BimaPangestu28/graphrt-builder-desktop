@@ -1,5 +1,6 @@
 /**
- * Mock data for screen 13 (Team): a coordinator agent that splits a goal across member agents.
+ * Sample data for screen 13 (Team): a coordinator agent that splits a goal across member agents.
+ * Only `src/api/sampleBackend` reads it (browser preview, tests); the desktop app shows real runs.
  */
 
 export type TeamMemberState = 'done' | 'working' | 'needsYou' | 'waiting'
@@ -51,11 +52,7 @@ export const teamActivity: TeamActivity[] = [
   { time: '12:31', parts: [{ text: 'Researcher', isMember: true }, { text: ' finished with 64 places' }] },
 ]
 
-export const teamGuardrails: Array<{ label: string; value: string }> = [
-  { label: 'AI budget', value: '$5 per week' },
-  { label: 'Messages to people', value: 'Max 15 a day' },
-  { label: 'Sending', value: 'Always ask me' },
-  { label: 'New members', value: 'Coordinator can suggest, I add' },
-]
+/** Sample guardrail: most member-agent calls in one team run. */
+export const sampleMaxAgentCallsPerRun = 20
 
 export const coordinatorAcknowledgement = 'Got it. I will update the plan and tell the team'

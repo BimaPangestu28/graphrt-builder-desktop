@@ -12,6 +12,8 @@
 //! - [`usage_summary`]: run and model-token totals since a date (Home "This month")
 //! - [`scheduler`]: starting scheduled runs while the app is running
 //! - [`conversations`]: chatbot conversations, the bot's replies and hand-offs
+//! - [`chatbot_setup`]: a chatbot's persona, hand-off rules, knowledge and channels
+//! - [`teams`]: a team's activity, guardrails and coordinator chat
 //! - [`agent_steps`]: agents used as steps and team members (the `agents` tool provider)
 //! - [`chains`]: starting the next agent of a chain when a run finishes
 //! - [`knowledge`]: knowledge bases (graphrt-rag) agents can search
@@ -24,6 +26,7 @@
 pub mod agent_builder;
 pub mod agent_steps;
 pub mod chains;
+pub mod chatbot_setup;
 pub mod commands;
 pub mod conversations;
 pub mod credentials;
@@ -39,6 +42,7 @@ pub mod run_summary;
 pub mod scheduler;
 pub mod state;
 pub mod storage;
+pub mod teams;
 pub mod usage_summary;
 
 use std::sync::Arc;
@@ -194,6 +198,15 @@ pub fn run() {
             commands::agent_tools::get_team,
             commands::agent_tools::add_agent_step,
             commands::agent_tools::add_team_member,
+            commands::teams::list_team_activity,
+            commands::teams::get_team_guardrails,
+            commands::teams::set_team_max_agent_calls,
+            commands::teams::list_coordinator_chat,
+            commands::teams::send_coordinator_message,
+            commands::chatbot_setup::get_chatbot_setup,
+            commands::chatbot_setup::save_chatbot_settings,
+            commands::chatbot_setup::attach_chatbot_knowledge,
+            commands::chatbot_setup::detach_chatbot_knowledge,
             commands::knowledge::list_knowledge_bases,
             commands::knowledge::get_knowledge_base,
             commands::knowledge::create_knowledge_base,

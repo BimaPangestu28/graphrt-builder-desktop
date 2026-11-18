@@ -1,8 +1,9 @@
 //! One bot turn: runs the chatbot's workflow for one customer message.
 //!
 //! Inputs: the start input `message`, `sys.query` (same text),
-//! `sys.conversation_id`, `sys.user_id` (the customer handle) and the stored
-//! `conversation.*` variables. graphrt does not keep conversation variables
+//! `sys.conversation_id`, `sys.user_id` (the customer handle), the stored
+//! `conversation.*` variables and the chatbot setup's `sys` values
+//! (`crate::chatbot_setup::reply`). graphrt does not keep conversation variables
 //! between runs; the host does, so the values the run writes (`variable_updated`
 //! events) are merged back and returned for storage.
 //!
@@ -25,6 +26,14 @@ pub const MESSAGE_INPUT: &str = "message";
 pub const HANDOFF_OUTPUT: &str = "handoff";
 /// End output explaining the hand-off (`order_to_confirm`, `asked_for_person`, `not_sure` or plain words).
 pub const HANDOFF_REASON_OUTPUT: &str = "handoff_reason";
+/// Hand-off reason: the customer asked for a person.
+pub const ASKED_FOR_PERSON_REASON: &str = "asked_for_person";
+/// Hand-off reason: the answer is not in the knowledge.
+pub const NOT_SURE_REASON: &str = "not_sure";
+/// Hand-off reason: an order is ready for the owner to confirm.
+pub const ORDER_TO_CONFIRM_REASON: &str = "order_to_confirm";
+/// Hand-off reason: the customer sounds upset.
+pub const SOUNDS_UPSET_REASON: &str = "sounds_upset";
 /// Optional end output: a short summary of the customer and their order.
 pub const SUMMARY_OUTPUT: &str = "summary";
 /// Optional end output: a reply the owner can send with one click.
@@ -58,13 +67,18 @@ pub async fn run_bot_turn(
     env: IndexMap<String, Value>,
     conversation: &Conversation,
     message_text: &str,
+    extra_sys_values: &[(String, String)],
 ) -> AppResult<BotTurn> {
     let mut variables = conversation.variables.as_object().cloned().unwrap_or_default();
     let mut assembler = ResponseAssembler::new(engine.graph());
     for (name, value) in &variables {
         assembler = assembler.with_value(&Selector::of("conversation", name), Value::from_json(value.clone()));
     }
-    let mut stream = engine.run(build_run_input(env, conversation, message_text, &variables));
+    let mut run_input = build_run_input(env, conversation, message_text, &variables);
+    for (name, value) in extra_sys_values {
+        run_input = run_input.sys(name.as_str(), value.as_str());
+    }
+    let mut stream = engine.run(run_input);
 
     let mut assembled_reply = String::new();
     let mut outputs = None;

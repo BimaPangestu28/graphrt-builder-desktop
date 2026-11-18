@@ -1,8 +1,10 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { getTeam } from '@/api/chains'
 import { resetSampleAgents } from '@/api/sampleBackend/agents'
 import { resetSampleChains } from '@/api/sampleBackend/chains'
+import { resetSampleTeams } from '@/api/sampleBackend/teams'
+import { getTeamGuardrails } from '@/api/teams'
 import { TeamPage } from '../TeamPage'
 
 function renderTeamPage() {
@@ -17,6 +19,7 @@ describe('TeamPage', () => {
   beforeEach(() => {
     resetSampleAgents()
     resetSampleChains()
+    resetSampleTeams()
   })
 
   it('shows the team, its members and guardrails', async () => {
@@ -27,15 +30,40 @@ describe('TeamPage', () => {
     expect(members.getByText('Working')).toBeInTheDocument()
     expect(members.getByText('Needs you')).toBeInTheDocument()
     expect(members.getByText('Done')).toBeInTheDocument()
-    expect(screen.getByText('Coordinator can suggest, I add')).toBeInTheDocument()
+    expect(await screen.findByText('Always ask me')).toBeInTheDocument()
+    expect(screen.getByText('Max 20')).toBeInTheDocument()
+  })
+
+  it('shows the activity and the coordinator chat from the team runs', async () => {
+    renderTeamPage()
+    const activity = within(screen.getByRole('region', { name: 'Activity' }))
+    expect(await activity.findByText('13:05')).toBeInTheDocument()
+    expect(activity.getByText(/finished with 64 places/)).toBeInTheDocument()
+    const chat = within(screen.getByRole('region', { name: 'Talk to the coordinator' }))
+    expect(await chat.findByText('Plan for this week')).toBeInTheDocument()
+    expect(chat.getByText('Budget so far $0.42 of $5 this week')).toBeInTheDocument()
+  })
+
+  it('changes the agent-call guardrail', async () => {
+    renderTeamPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Change agent calls per run' }))
+    fireEvent.change(screen.getByLabelText('Most agent calls per run (empty for no limit)'), { target: { value: '5' } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    })
+    expect(await screen.findByText('Max 5')).toBeInTheDocument()
+    expect((await getTeamGuardrails('sales-team')).maxAgentCallsPerRun).toBe(5)
   })
 
   it('sends a message to the coordinator', async () => {
     renderTeamPage()
     await screen.findByRole('heading', { level: 1, name: 'Catering sales team' })
     fireEvent.change(screen.getByLabelText('Message the coordinator'), { target: { value: 'Skip offices this week' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
-    expect(screen.getByText('Skip offices this week')).toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    })
+    expect(await screen.findByText('Skip offices this week')).toBeInTheDocument()
+    expect(screen.getByText('Got it. I will update the plan and tell the team')).toBeInTheDocument()
     expect(screen.getByLabelText('Message the coordinator')).toHaveValue('')
   })
 
