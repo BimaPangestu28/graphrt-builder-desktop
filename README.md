@@ -68,6 +68,15 @@ notices of the libraries it bundles ship inside the app at
 > **Windows**: if SmartScreen says "Windows protected your PC", click **More info**,
 > then **Run anyway**.
 
+#### Updates
+graphrt checks for a new version on launch and every six hours, downloads it in the
+background and shows **graphrt X is ready — Restart** when it is ready. Nothing
+restarts on its own: if agents are running, Restart offers **Restart when idle**.
+Settings > Updates has **Check for updates**, the release notes and an
+**Automatically download updates** switch. Updates are signed; an update whose
+signature does not match is rejected. On Linux, in-app updates replace the
+`.AppImage`; `.deb` / `.rpm` installs update in-app too (the system asks for your password).
+
 #### Linux notes
 - **Tray icon**: graphrt keeps running agents from the system tray. GNOME hides tray
   icons unless the [AppIndicator extension](https://extensions.gnome.org/extension/615/appindicator-support/)
@@ -121,6 +130,7 @@ src-tauri/            Rust shell (Tauri 2): window, bundling, future local runne
 
 ## Configuration
 - Window size, app identifier and CSP: `src-tauri/tauri.conf.json`
+- Update endpoint and the updater's public key: `plugins.updater` in `src-tauri/tauri.conf.json`
 - Bundled Node.js version: `scripts/node-version` (fetched by `scripts/fetch-node.sh`)
 - Design tokens (colors, font): `src/index.css`
 

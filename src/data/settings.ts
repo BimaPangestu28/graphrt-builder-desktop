@@ -2,7 +2,7 @@
 
 import type { ModelChoice, ModelProvider } from '@/api/types'
 
-export type SettingsSectionKey = 'general' | 'runner' | 'notifications' | 'privacy' | 'remote' | 'about'
+export type SettingsSectionKey = 'general' | 'runner' | 'notifications' | 'privacy' | 'remote' | 'updates' | 'about'
 
 export const settingsSections: Array<{ key: SettingsSectionKey; label: string }> = [
   { key: 'general', label: 'General' },
@@ -10,6 +10,7 @@ export const settingsSections: Array<{ key: SettingsSectionKey; label: string }>
   { key: 'notifications', label: 'Notifications' },
   { key: 'privacy', label: 'Privacy and data' },
   { key: 'remote', label: 'Remote runner' },
+  { key: 'updates', label: 'Updates' },
   { key: 'about', label: 'About' },
 ]
 

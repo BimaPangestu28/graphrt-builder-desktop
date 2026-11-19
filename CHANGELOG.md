@@ -16,6 +16,12 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
   message per business, "Ask me before sending" with the exact message, sending from your own WhatsApp
   (linked by QR), a low-volume limit and a run report. Every template card now shows what it needs as
   chips plus a short "You'll need" note, and Home's describe box links to it and to all templates.
+- **Auto-update**: graphrt checks GitHub Releases on launch and every six hours, downloads a new
+  version in the background (Settings > Updates > "Automatically download updates", on by default)
+  and shows a small "graphrt X is ready — Restart" banner. Restarting while agents run asks first and
+  offers "Restart when idle". Settings > Updates shows the version, "Check for updates", the status
+  and release notes. Updates are signed (`tauri-plugin-updater`); releases attach `latest.json` and
+  `.sig` files and need the `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets.
 - **Windows and Linux, not just macOS**: the app and its copy work the same on all three. Text says
   "this computer"; where the system's own name helps it uses it: macOS Keychain, Windows Credential
   Manager or your system keyring for secrets, menu bar or system tray, Finder or File Explorer, and

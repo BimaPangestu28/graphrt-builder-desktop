@@ -151,12 +151,35 @@ when a `vX.Y.Z` tag is pushed.
    CHANGELOG section as its body, builds macOS (universal `.dmg` and `.app.tar.gz`),
    Windows x64 (`.msi`, NSIS `.exe`) and Linux x64 and arm64 (`.AppImage`, `.deb`,
    `.rpm`) bundles, and
-   attaches them with a `SHA256SUMS` file. Review the draft on GitHub and publish it.
+   attaches them with a `SHA256SUMS` file, the updater signatures (`.sig`) and
+   `latest.json`. Review the draft on GitHub and publish it: installed apps pick
+   the update up from `releases/latest/download/latest.json` within six hours
+   (or right away with Settings > Updates > Check for updates).
 
 To rebuild an existing tag (for example after a failed job), run the Release
 workflow manually from the Actions tab with that tag; it reuses the draft and
 refuses to touch a release that is already published. CI runs
 `scripts/check-version.sh` on every push, so the three versions can never drift.
+
+### Auto-update signing key (required)
+
+Installed apps only accept updates signed with the updater key whose public half
+is `plugins.updater.pubkey` in `src-tauri/tauri.conf.json`. The Release workflow
+fails early without these repository secrets (Settings > Secrets and variables > Actions):
+
+| Secret | Value |
+| --- | --- |
+| `TAURI_SIGNING_PRIVATE_KEY` | contents of the private key file (e.g. `~/.tauri/graphrt-updater.key`) |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | its password (empty if the key has none) |
+
+Keep a backup of the private key and its password somewhere safe (a password
+manager). **If the key is lost, apps already installed can never verify another
+update**: users would have to download and install a new build by hand. Never
+commit the key. To sign a local `pnpm build:desktop`, export the same two variables
+(or `TAURI_SIGNING_PRIVATE_KEY_PATH`); without them the build stops when it reaches
+the updater artifacts. A new key pair comes from
+`pnpm tauri signer generate -w ~/.tauri/graphrt-updater.key`; replacing the
+public key in `tauri.conf.json` cuts off updates for every existing install.
 
 ### macOS signing and notarization
 

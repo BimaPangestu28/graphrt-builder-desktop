@@ -1,6 +1,7 @@
 //! Typed view over the `settings` table for the desktop preferences on the
 //! Settings screen (22): launch at login, menu bar, notifications, keep awake,
-//! the default missed-run policy and how long run history is kept.
+//! the default missed-run policy, how long run history is kept and whether
+//! updates download by themselves.
 //!
 //! Each field is one row (`app.<name>`), stored as `true` / `false` or the
 //! serde name of the enum. Missing or unreadable rows fall back to
@@ -23,6 +24,7 @@ const KEY_MISSED_RUN_POLICY: &str = "app.missed_run_default_policy";
 const KEY_NOTIFY_ON_CHAT_HANDOFF: &str = "app.notify_on_chat_handoff";
 const KEY_NOTIFY_DAILY_SUMMARY: &str = "app.notify_daily_summary";
 const KEY_RUN_HISTORY_RETENTION_DAYS: &str = "app.run_history_retention_days";
+const KEY_AUTO_DOWNLOAD_UPDATES: &str = "app.auto_download_updates";
 
 /// Stored value of [`AppSettings::run_history_retention_days`] = `None`.
 const RETENTION_FOREVER: &str = "forever";
@@ -59,6 +61,9 @@ pub struct AppSettings {
     /// Days the event logs (step-by-step history) of finished runs are kept;
     /// `None` keeps them forever. Applied at start-up and when changed.
     pub run_history_retention_days: Option<u32>,
+    /// Download a new version in the background as soon as the update check finds one
+    /// (it is installed only when the user restarts). Off: the update is only announced.
+    pub auto_download_updates: bool,
 }
 
 impl Default for AppSettings {
@@ -75,6 +80,7 @@ impl Default for AppSettings {
             notify_on_chat_handoff: false,
             notify_daily_summary: false,
             run_history_retention_days: Some(DEFAULT_RUN_HISTORY_RETENTION_DAYS),
+            auto_download_updates: true,
         }
     }
 }
@@ -96,6 +102,7 @@ impl AppSettings {
             notify_on_chat_handoff: read_flag(db, KEY_NOTIFY_ON_CHAT_HANDOFF, defaults.notify_on_chat_handoff)?,
             notify_daily_summary: read_flag(db, KEY_NOTIFY_DAILY_SUMMARY, defaults.notify_daily_summary)?,
             run_history_retention_days: read_retention(db, defaults.run_history_retention_days)?,
+            auto_download_updates: read_flag(db, KEY_AUTO_DOWNLOAD_UPDATES, defaults.auto_download_updates)?,
         })
     }
 
@@ -125,6 +132,7 @@ impl AppSettings {
             (KEY_KEEP_AWAKE_ONLY_ON_POWER, self.keep_awake_only_on_power),
             (KEY_NOTIFY_ON_CHAT_HANDOFF, self.notify_on_chat_handoff),
             (KEY_NOTIFY_DAILY_SUMMARY, self.notify_daily_summary),
+            (KEY_AUTO_DOWNLOAD_UPDATES, self.auto_download_updates),
         ];
         for (key, value) in flags {
             db.set_setting(key, if value { "true" } else { "false" })?;
@@ -221,6 +229,7 @@ mod tests {
             notify_on_chat_handoff: true,
             notify_daily_summary: true,
             run_history_retention_days: None,
+            auto_download_updates: false,
         };
         changed.save(&database).unwrap();
         assert_eq!(AppSettings::load(&database).unwrap(), changed);
@@ -250,6 +259,7 @@ mod tests {
         .unwrap();
         assert!(settings.open_at_login);
         assert_eq!(settings.run_history_retention_days, Some(30));
+        assert!(settings.auto_download_updates);
     }
 
     #[test]
@@ -269,6 +279,15 @@ mod tests {
     }
 
     #[test]
+    fn updates_download_by_themselves_until_switched_off() {
+        let database = test_database();
+        assert!(AppSettings::load(&database).unwrap().auto_download_updates);
+        let manual = AppSettings { auto_download_updates: false, ..AppSettings::default() };
+        manual.save(&database).unwrap();
+        assert!(!AppSettings::load(&database).unwrap().auto_download_updates);
+    }
+
+    #[test]
     fn unreadable_values_fall_back_to_defaults() {
         let database = test_database();
         database.set_setting(KEY_SHOW_IN_MENU_BAR, "maybe").unwrap();
@@ -283,5 +302,6 @@ mod tests {
         assert_eq!(json["missedRunDefaultPolicy"], "run_once");
         assert_eq!(json["runHistoryRetentionDays"], 30);
         assert_eq!(json["notifyDailySummary"], false);
+        assert_eq!(json["autoDownloadUpdates"], true);
     }
 }
