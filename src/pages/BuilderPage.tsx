@@ -124,6 +124,7 @@ export function BuilderPage() {
           requirements={requirements}
           onSaveSecret={saveWorkflowSecret}
           onShowPluginSetup={showPluginSetup}
+          onPluginSessionChange={reloadPluginRequirements}
           arePluginsReady={pluginSetup.isReady !== false}
           onAgentRenamed={reloadAgent}
         />

@@ -48,6 +48,7 @@ export function describePluginGap(requirement: PluginRequirement): string {
   if (!requirement.trusted && !requirement.trustNotNeeded) return `${requirement.name} isn't trusted yet`
   if (requirement.missingConfig.length > 0) return `${requirement.name} needs ${requirement.missingConfig.join(', ')}`
   if (!requirement.browserReady) return `${requirement.name} needs the browser installed`
+  if (requirement.needsSession && !requirement.sessionLinked) return `${requirement.name} isn't linked yet`
   return `${requirement.name} isn't ready`
 }
 

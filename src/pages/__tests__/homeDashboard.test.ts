@@ -79,6 +79,8 @@ function buildRequirement(changes: Partial<PluginRequirement>): PluginRequiremen
     trustNotNeeded: false,
     missingConfig: [],
     browserReady: true,
+    needsSession: false,
+    sessionLinked: true,
     ready: true,
     ...changes,
   }
@@ -194,6 +196,7 @@ describe('Needs you', () => {
     expect(describePluginGap(buildRequirement({ installed: false }))).toBe("whatsapp-api isn't installed")
     expect(describePluginGap(buildRequirement({ trusted: false }))).toBe("whatsapp-api isn't trusted yet")
     expect(describePluginGap(buildRequirement({ trusted: false, trustNotNeeded: true, browserReady: false }))).toBe('whatsapp-api needs the browser installed')
+    expect(describePluginGap(buildRequirement({ name: 'whatsapp-web', needsSession: true, sessionLinked: false }))).toBe("whatsapp-web isn't linked yet")
   })
 })
 

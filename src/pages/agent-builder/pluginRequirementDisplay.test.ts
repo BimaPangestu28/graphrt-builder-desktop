@@ -14,6 +14,8 @@ function requirement(overrides: Partial<PluginRequirement> = {}): PluginRequirem
     trustNotNeeded: true,
     missingConfig: [],
     browserReady: false,
+    needsSession: false,
+    sessionLinked: true,
     ready: false,
     ...overrides,
   }
@@ -46,6 +48,7 @@ describe('plugin requirement display', () => {
     expect(describeRequirementState(requirement({ installed: true, trustNotNeeded: false }))).toBe('Needs your trust')
     expect(describeRequirementState(requirement({ installed: true, missingConfig: ['A', 'B'] }))).toBe('Needs 2 settings')
     expect(describeRequirementState(requirement({ installed: true }))).toBe('Needs the browser')
+    expect(describeRequirementState(requirement({ installed: true, browserReady: true, needsSession: true, sessionLinked: false }))).toBe('Not linked')
     expect(describeRequirementState(requirement({ ready: true }))).toBe('Ready')
   })
 })

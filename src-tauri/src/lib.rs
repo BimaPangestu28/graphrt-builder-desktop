@@ -266,6 +266,7 @@ pub fn run() {
             commands::plugins::delete_plugin_config,
             commands::plugins::browser_runtime_status,
             commands::plugins::run_plugin_action,
+            commands::plugins::check_plugin_session,
             commands::plugins::list_agent_plugin_requirements,
             commands::problems::list_problems,
             commands::problems::get_failed_run_report,

@@ -134,7 +134,7 @@ export function PluginRequirementCard({ requirement, setup }: PluginRequirementC
         ))}
       </ul>
       <RequirementActions requirement={requirement} setup={setup} />
-      {canLinkWhatsAppWeb(requirement) && <WhatsAppWebLinkPanel />}
+      {canLinkWhatsAppWeb(requirement) && <WhatsAppWebLinkPanel onSessionChange={setup.reload} />}
       {errorMessage && (
         <p role="alert" className="m-0 text-[13px] text-danger">
           {errorMessage}

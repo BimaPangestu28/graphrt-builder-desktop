@@ -60,5 +60,15 @@ export function describeRequirementState(requirement: PluginRequirement): string
   if (!requirement.installed) return 'Not installed'
   if (!requirement.trusted && !requirement.trustNotNeeded) return 'Needs your trust'
   if (requirement.missingConfig.length > 0) return `Needs ${pluralize(requirement.missingConfig.length, 'setting', 'settings')}`
-  return 'Needs the browser'
+  if (!requirement.browserReady) return 'Needs the browser'
+  return 'Not linked'
+}
+
+/**
+ * True when linking the account session (whatsapp-web: scanning the QR code) is all that is
+ * left: installed, trusted if needed, settings set and the browser ready, but not linked.
+ */
+export function needsOnlySessionLink(requirement: PluginRequirement): boolean {
+  if (!requirement.needsSession || requirement.sessionLinked) return false
+  return !needsPluginApproval(requirement) && requirement.missingConfig.length === 0 && requirement.browserReady
 }

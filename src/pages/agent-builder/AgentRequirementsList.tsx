@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { joinClassNames } from '@/components/ui'
+import { whatsAppWebPluginName } from '../connect-whatsapp/useWhatsAppActions'
+import { PluginSessionLinkAction } from './PluginSessionLinkAction'
 import { SecretRequirementForm } from './SecretRequirementForm'
 
 /** One thing the agent needs before it can run, with where to go to connect it. */
@@ -13,8 +15,11 @@ export interface BuilderRequirement {
   secretName?: string
   /** Set for plugins the steps use (`<plugin>.<kind>` node types). */
   pluginName?: string
-  /** not_installed / needs_setup: "Set up in chat" (or a link to Connections) · ready: "Ready". */
-  pluginState?: 'not_installed' | 'needs_setup' | 'ready'
+  /**
+   * not_installed / needs_setup: "Set up in chat" (or a link to Connections) · not_linked: only the
+   * account link is missing (whatsapp-web), "Not linked" with the QR link action · ready: "Ready".
+   */
+  pluginState?: 'not_installed' | 'needs_setup' | 'not_linked' | 'ready'
   /** Second line, e.g. "Installed · not trusted yet". */
   detail?: string
 }
@@ -25,6 +30,8 @@ interface AgentRequirementsListProps {
   onSaveSecret?: (secretName: string, value: string) => Promise<void>
   /** Shows the plugin setup card in the chat; without it, plugins not ready link to Connections. */
   onShowPluginSetup?: () => void
+  /** Called after a plugin account link (QR scan) ends, to reload the plugin requirements. */
+  onPluginSessionChange?: () => unknown
 }
 
 const actionClassNames = 'flex h-8 items-center rounded-lg bg-ink px-3 text-[13px] font-medium no-underline !text-white hover:bg-ink-2'
@@ -34,12 +41,16 @@ interface RequirementActionProps {
   isSecretFormOpen: boolean
   onOpenSecretForm: () => void
   onShowPluginSetup?: () => void
+  onPluginSessionChange?: () => unknown
 }
 
 /** Right side of a "Needs" row: status, or the action that fixes it. */
-function RequirementAction({ requirement, isSecretFormOpen, onOpenSecretForm, onShowPluginSetup }: RequirementActionProps) {
+function RequirementAction({ requirement, isSecretFormOpen, onOpenSecretForm, onShowPluginSetup, onPluginSessionChange }: RequirementActionProps) {
   if (requirement.isConnected) {
     return <span className="text-[13px] text-ok-strong">{requirement.pluginState === 'ready' ? 'Ready' : 'Connected'}</span>
+  }
+  if (requirement.pluginState === 'not_linked' && requirement.pluginName === whatsAppWebPluginName) {
+    return <PluginSessionLinkAction label={requirement.label} onSessionChange={onPluginSessionChange} />
   }
   if (requirement.secretName !== undefined) {
     if (isSecretFormOpen) return null
@@ -65,7 +76,7 @@ function RequirementAction({ requirement, isSecretFormOpen, onOpenSecretForm, on
 }
 
 /** The "Needs" box under the steps on screen 04: each connection with its status or a Connect action. */
-export function AgentRequirementsList({ requirements, onSaveSecret, onShowPluginSetup }: AgentRequirementsListProps) {
+export function AgentRequirementsList({ requirements, onSaveSecret, onShowPluginSetup, onPluginSessionChange }: AgentRequirementsListProps) {
   const [openSecretName, setOpenSecretName] = useState<string | null>(null)
   if (requirements.length === 0) return null
 
@@ -93,6 +104,7 @@ export function AgentRequirementsList({ requirements, onSaveSecret, onShowPlugin
                   isSecretFormOpen={isFormOpen}
                   onOpenSecretForm={() => secretName !== undefined && setOpenSecretName(secretName)}
                   onShowPluginSetup={onShowPluginSetup}
+                  onPluginSessionChange={onPluginSessionChange}
                 />
               </div>
               {isFormOpen && secretName !== undefined && (

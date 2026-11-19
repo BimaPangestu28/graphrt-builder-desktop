@@ -1,4 +1,4 @@
-import type { PluginRequirement } from '../pluginRequirementTypes'
+import type { PluginRequirement, PluginSessionState } from '../pluginRequirementTypes'
 import { BackendError } from '../client'
 import type {
   BrowserRuntimeEvent,
@@ -221,6 +221,16 @@ function linkSampleWhatsAppWeb(): PluginActionResult {
   return { outputs: { data: { status: 'logged_in' } } }
 }
 
+/** Plugins that need a linked account session, like `plugins::session` in the backend. */
+const sampleSessionPluginNames = ['whatsapp-web']
+
+/** @throws BackendError - `invalid_input` for a plugin without a session; like `runPluginAction` otherwise */
+function checkSamplePluginSession(name: string): PluginSessionState {
+  if (!sampleSessionPluginNames.includes(name)) throw new BackendError('invalid_input', `plugin ${name} has no account session to check`)
+  const statusData = runSamplePluginAction(name, 'whatsapp-web.get_status').outputs.data as { status: string }
+  return statusData.status === 'logged_in' ? 'linked' : 'not_linked'
+}
+
 function runSamplePluginAction(name: string, kind: string): PluginActionResult {
   const installedRecord = requireRunnablePlugin(name, kind)
   if (findSeed(name).needsBrowser) requireBrowserRuntime()
@@ -253,6 +263,8 @@ function toPluginRequirement(seed: SamplePluginSeed, usedBySteps: string[]): Plu
   const browserReady = !seed.needsBrowser || pluginsState.browserRuntimeStatus === 'installed'
   const installed = installedRecord !== undefined
   const trusted = installedRecord?.trusted ?? false
+  const needsSession = sampleSessionPluginNames.includes(seed.name)
+  const sessionLinked = !needsSession || pluginsState.isWhatsAppWebLoggedIn
   return {
     name: seed.name,
     description: seed.description,
@@ -265,7 +277,9 @@ function toPluginRequirement(seed: SamplePluginSeed, usedBySteps: string[]): Plu
     trustNotNeeded,
     missingConfig,
     browserReady,
-    ready: installed && (trusted || trustNotNeeded) && missingConfig.length === 0 && browserReady,
+    needsSession,
+    sessionLinked,
+    ready: installed && (trusted || trustNotNeeded) && missingConfig.length === 0 && browserReady && sessionLinked,
   }
 }
 
@@ -292,6 +306,7 @@ export const samplePluginsBackend = {
   installBrowserRuntime: (): Promise<void> => respondWith(installSampleBrowserRuntime),
   runPluginAction: (name: string, kind: string, _config: Record<string, unknown>): Promise<PluginActionResult> =>
     respondWith(() => runSamplePluginAction(name, kind)),
+  checkPluginSession: (name: string): Promise<PluginSessionState> => respondWith(() => checkSamplePluginSession(name)),
 }
 
 /** Subscribes to sample `plugin-event` payloads. Returns the unsubscribe function. */

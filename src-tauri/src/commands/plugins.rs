@@ -8,6 +8,7 @@ use crate::error::AppResult;
 use crate::node_runtime::BrowserRuntimeStatus;
 use crate::plugins::models::{InstalledPlugin, PluginActionResult, PluginCatalog};
 use crate::plugins::requirements::PluginRequirement;
+use crate::plugins::session::SessionState;
 use crate::state::AppState;
 
 #[tauri::command]
@@ -75,6 +76,13 @@ pub async fn run_plugin_action(
     config: Option<serde_json::Value>,
 ) -> AppResult<PluginActionResult> {
     state.plugins.run_action(name.trim(), kind.trim(), config.unwrap_or(serde_json::Value::Null)).await
+}
+
+/// Asks a session plugin (`whatsapp-web`) whether its account is linked, stores the
+/// answer for the readiness checks and returns it (`linked`, `not_linked` or `unknown`).
+#[tauri::command]
+pub async fn check_plugin_session(state: State<'_, AppState>, name: String) -> AppResult<SessionState> {
+    state.plugins.check_session(name.trim()).await
 }
 
 /// What the agent's current workflow needs from plugins (installed or not),

@@ -4,7 +4,7 @@ import { appRequirementsByAgentId } from '@/data/mapsLeadsAgent'
 import { getProviderName } from '@/lib/agentDisplay'
 import { agentPath, connectionsPluginsPath, routePaths } from '@/routes'
 import type { BuilderRequirement } from './AgentRequirementsList'
-import { describeRequirementState } from './pluginRequirementDisplay'
+import { describeRequirementState, needsOnlySessionLink } from './pluginRequirementDisplay'
 
 /**
  * Lists what an agent needs on screen 04: connected apps first, then the model keys its
@@ -49,7 +49,8 @@ export function listBuilderRequirements(
 /**
  * The "Needs" rows for the plugins the agent uses, from the same requirements the chat's
  * setup card shows (`listAgentPluginRequirements`), so both stay in sync. Plugins that are
- * not ready point to the card ("Set up in chat").
+ * not ready point to the card ("Set up in chat"); one that only needs its account linked
+ * (whatsapp-web) is "Not linked" with the QR link action right in the row.
  *
  * @param pluginRequirements - From `listAgentPluginRequirements`, or null while loading (no rows then)
  * @returns One row per plugin, in the backend's order (BuilderRequirement[])
@@ -60,7 +61,13 @@ export function listPluginSetupRequirements(pluginRequirements: PluginRequiremen
     pluginName: requirement.name,
     connectPath: connectionsPluginsPath,
     isConnected: requirement.ready,
-    pluginState: requirement.ready ? 'ready' : requirement.installed ? 'needs_setup' : 'not_installed',
-    detail: requirement.ready ? undefined : describeRequirementState(requirement),
+    pluginState: readPluginState(requirement),
+    detail: requirement.ready || needsOnlySessionLink(requirement) ? undefined : describeRequirementState(requirement),
   }))
+}
+
+function readPluginState(requirement: PluginRequirement): NonNullable<BuilderRequirement['pluginState']> {
+  if (requirement.ready) return 'ready'
+  if (needsOnlySessionLink(requirement)) return 'not_linked'
+  return requirement.installed ? 'needs_setup' : 'not_installed'
 }

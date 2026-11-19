@@ -200,28 +200,71 @@ async fn an_installed_trusted_configured_plugin_is_ready_once_the_browser_is() {
         crate::plugins::models::InstallRecord { version: "1.0.0".into(), needs_browser: true, readme_url: None },
     )]);
     let catalog = not_installed_catalog();
-    let report_with = |browser_ready: bool| {
+    // `echo_session`: the echo plugin's account session as the session store reports it
+    // (`None`: the plugin has no session, like most plugins).
+    let report_with = |browser_ready: bool, echo_session: Option<bool>| {
         let is_ready = move |_: &str| browser_ready;
+        let session_linked = move |plugin: &str| if plugin == PLUGIN { echo_session } else { None };
         let sources = RequirementSources {
             installed: &snapshot.plugins,
             install_records: &records,
             catalog: Some(&catalog),
             credentials: &fixture.credentials,
             browser_ready: &is_ready,
+            session_linked: &session_linked,
         };
         plugin_requirements(MAIL_FLOW, &sources).unwrap()
     };
 
-    let without_browser = report_with(false);
-    let with_browser = report_with(true);
+    let without_browser = report_with(false, None);
+    let with_browser = report_with(true, None);
 
     let echo = requirement(&without_browser, PLUGIN);
     assert!(echo.trusted && echo.missing_config.is_empty());
     assert!(!echo.browser_ready && !echo.ready);
+    assert!(!echo.needs_session && echo.session_linked, "no session needed counts as linked");
     assert!(requirement(&with_browser, PLUGIN).ready);
     // Not installed stays not ready, even with nothing else missing.
     assert!(!requirement(&with_browser, "fixture-browser").ready);
     assert!(requirement(&with_browser, "fixture-browser").browser_ready);
+
+    // A session plugin (whatsapp-web) is ready only once its session is linked.
+    let not_linked = report_with(true, Some(false));
+    let echo = requirement(&not_linked, PLUGIN);
+    assert!(echo.needs_session && !echo.session_linked);
+    assert!(echo.browser_ready && echo.trusted && echo.missing_config.is_empty());
+    assert!(!echo.ready, "installed, trusted and configured but not linked is not ready");
+    let linked = report_with(true, Some(true));
+    let echo = requirement(&linked, PLUGIN);
+    assert!(echo.needs_session && echo.session_linked && echo.ready);
+}
+
+#[tokio::test]
+async fn whatsapp_web_needs_a_linked_session_from_the_session_store() {
+    let fixture = fixture_with_catalog().await;
+    let flow = r#"
+version: "1"
+name: wa
+graph:
+  nodes:
+    - { id: start, type: start }
+    - { id: send, type: whatsapp-web.send_message, title: Send the reminder, phone: "+62 812 3456 789", text: Hi }
+  edges:
+    - { source: start, target: send }
+"#;
+    let report = fixture.service.requirements(flow).unwrap();
+    let whatsapp = requirement(&report, "whatsapp-web");
+    assert!(whatsapp.needs_session && !whatsapp.session_linked, "never checked is not linked");
+    assert!(!whatsapp.ready);
+
+    crate::plugins::session::save_session(&fixture.db, "whatsapp-web", crate::plugins::session::SessionState::Linked)
+        .unwrap();
+    let report = fixture.service.requirements(flow).unwrap();
+    assert!(requirement(&report, "whatsapp-web").session_linked);
+
+    crate::plugins::session::record_step_failure(&fixture.db, "whatsapp-web.send_message", "auth_error");
+    let report = fixture.service.requirements(flow).unwrap();
+    assert!(!requirement(&report, "whatsapp-web").session_linked);
 }
 
 #[tokio::test]

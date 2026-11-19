@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { readPluginActionData, runPluginAction } from '@/api/plugins'
 import { describeError } from '@/lib/agentDisplay'
 
@@ -56,12 +56,18 @@ type WebSessionAction = 'linking' | 'checking'
  * opens a browser window with the QR code and resolves once it is scanned or times out),
  * and "Refresh status" runs `whatsapp-web.get_status`.
  *
+ * The backend stores the state each action reports, so the plugin requirements (builder
+ * "Needs", Home chips) only call whatsapp-web ready once it is linked.
+ *
  * @param options.checksOnMount - Run `get_status` once when mounted, so the link status shows right away (boolean)
+ * @param options.onSessionChange - Called after each login or status check ends, e.g. to reload the requirements (() => void)
  */
-export function useWhatsAppWebSession({ checksOnMount = false }: { checksOnMount?: boolean } = {}) {
+export function useWhatsAppWebSession({ checksOnMount = false, onSessionChange }: { checksOnMount?: boolean; onSessionChange?: () => unknown } = {}) {
   const [pendingAction, setPendingAction] = useState<WebSessionAction | null>(checksOnMount ? 'checking' : null)
   const [sessionStatus, setSessionStatus] = useState<WhatsAppWebStatus | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const onSessionChangeRef = useRef(onSessionChange)
+  onSessionChangeRef.current = onSessionChange
 
   const runSessionAction = useCallback(async (action: WebSessionAction, kind: string, config: Record<string, unknown>) => {
     setPendingAction(action)
@@ -72,6 +78,7 @@ export function useWhatsAppWebSession({ checksOnMount = false }: { checksOnMount
       setErrorMessage(describeError(actionError))
     } finally {
       setPendingAction(null)
+      onSessionChangeRef.current?.()
     }
   }, [])
 

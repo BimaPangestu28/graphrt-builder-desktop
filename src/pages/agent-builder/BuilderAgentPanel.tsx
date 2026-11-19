@@ -94,9 +94,10 @@ interface StepsTabContentProps {
   requirements: BuilderRequirement[]
   onSaveSecret?: (secretName: string, value: string) => Promise<void>
   onShowPluginSetup?: () => void
+  onPluginSessionChange?: () => unknown
 }
 
-function StepsTabContent({ flowSummary, flowSummaryError, highlightedStepIds, requirements, onSaveSecret, onShowPluginSetup }: StepsTabContentProps) {
+function StepsTabContent({ flowSummary, flowSummaryError, highlightedStepIds, requirements, onSaveSecret, onShowPluginSetup, onPluginSessionChange }: StepsTabContentProps) {
   if (flowSummaryError) return <p className="m-0 text-muted">Could not read the steps: {flowSummaryError.message}</p>
   if (!flowSummary) return <p className="m-0 text-muted">Loading steps…</p>
   return (
@@ -106,7 +107,7 @@ function StepsTabContent({ flowSummary, flowSummaryError, highlightedStepIds, re
           <BuilderStepCard key={flowStep.id} flowStep={flowStep} number={stepIndex + 1} isChanged={highlightedStepIds.has(flowStep.id)} />
         ))}
       </ol>
-      <AgentRequirementsList requirements={requirements} onSaveSecret={onSaveSecret} onShowPluginSetup={onShowPluginSetup} />
+      <AgentRequirementsList requirements={requirements} onSaveSecret={onSaveSecret} onShowPluginSetup={onShowPluginSetup} onPluginSessionChange={onPluginSessionChange} />
     </>
   )
 }
@@ -140,6 +141,8 @@ interface BuilderAgentPanelProps {
   onSaveSecret?: (secretName: string, value: string) => Promise<void>
   /** Shows the plugin setup card in the chat ("Set up in chat" and Test while plugins are not ready). */
   onShowPluginSetup?: () => void
+  /** Reloads the plugin requirements after the WhatsApp QR link in the "Needs" box ends. */
+  onPluginSessionChange?: () => unknown
   /** False while a plugin the agent needs is not ready: Test then shows the setup card instead of starting. */
   arePluginsReady?: boolean
   /** Reloads the agent after it was renamed. */
@@ -155,6 +158,7 @@ export function BuilderAgentPanel({
   requirements,
   onSaveSecret,
   onShowPluginSetup,
+  onPluginSessionChange,
   arePluginsReady,
   onAgentRenamed,
 }: BuilderAgentPanelProps) {
@@ -180,6 +184,7 @@ export function BuilderAgentPanel({
             requirements={requirements}
             onSaveSecret={onSaveSecret}
             onShowPluginSetup={onShowPluginSetup}
+            onPluginSessionChange={onPluginSessionChange}
           />
         )}
         {activeTab === 'runs' && <RunsTabContent agentId={agent.id} />}

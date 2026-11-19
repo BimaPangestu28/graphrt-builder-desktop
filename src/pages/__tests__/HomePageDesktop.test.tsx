@@ -116,6 +116,8 @@ const whatsappRequirement: PluginRequirement = {
   trustNotNeeded: false,
   missingConfig: ['ACCESS_TOKEN'],
   browserReady: true,
+  needsSession: false,
+  sessionLinked: true,
   ready: false,
 }
 
