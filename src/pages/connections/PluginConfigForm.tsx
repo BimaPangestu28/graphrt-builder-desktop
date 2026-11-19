@@ -56,11 +56,11 @@ function PluginConfigRow({ pluginName, field, onSave, onClear }: PluginConfigRow
 
   return (
     <form onSubmit={handleSubmit} aria-label={`${pluginName} setting ${field.variable}`} className="flex flex-col gap-1">
-      <div className="flex items-center justify-between gap-2">
-        <label htmlFor={inputId} className="text-[12px] font-medium text-ink-2">
+      <div className="flex items-baseline justify-between gap-2">
+        <label htmlFor={inputId} className="min-w-0 text-[12px] font-medium text-ink-2 [overflow-wrap:anywhere]">
           {label}
         </label>
-        <span className={field.configured ? 'text-[12px] font-medium text-ok-strong' : 'text-[12px] text-muted'}>{field.configured ? 'Saved' : 'Not set'}</span>
+        <span className={field.configured ? 'shrink-0 text-[12px] font-medium text-ok-strong' : 'shrink-0 text-[12px] text-muted'}>{field.configured ? 'Saved' : 'Not set'}</span>
       </div>
       <div className="flex flex-wrap gap-2">
         <input

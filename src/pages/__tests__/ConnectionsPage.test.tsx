@@ -270,6 +270,13 @@ function getPluginCard(pluginName: string) {
   return screen.getByRole('article', { name: pluginName })
 }
 
+/** Opens a plugin row's details (Manage / Details) unless they are open already. */
+function openPluginDetails(pluginName: string) {
+  const toggle = within(getPluginCard(pluginName)).getByRole('button', { name: new RegExp(`^(Manage|Details for) ${pluginName}$`) })
+  if (toggle.getAttribute('aria-expanded') !== 'true') fireEvent.click(toggle)
+  return getPluginCard(pluginName)
+}
+
 async function openPluginsPanel(installedCount = 2) {
   renderConnectionsPage()
   expect(await screen.findByText(new RegExp(`WebAssembly · ${installedCount} installed`))).toBeInTheDocument()
@@ -294,6 +301,9 @@ describe('ConnectionsPage plugins', () => {
 
   it('shows what a plugin asks for before it is installed, then installs it', async () => {
     const whatsAppApiCard = await openPluginsPanel()
+    expect(within(whatsAppApiCard).getByRole('list', { name: 'whatsapp-api needs' })).toHaveTextContent(/Internet.*Secrets.*4 settings/)
+    expect(within(whatsAppApiCard).queryByRole('list', { name: 'What whatsapp-api asks for' })).not.toBeInTheDocument()
+    openPluginDetails('whatsapp-api')
     const permissions = within(whatsAppApiCard).getByRole('list', { name: 'What whatsapp-api asks for' })
     expect(permissions).toHaveTextContent('Connects to the internet')
     expect(permissions).toHaveTextContent('Receives secret values in plain text')
@@ -301,8 +311,10 @@ describe('ConnectionsPage plugins', () => {
     expect(within(whatsAppApiCard).getByText(/Send WhatsApp text/)).toBeInTheDocument()
 
     fireEvent.click(within(whatsAppApiCard).getByRole('button', { name: 'Install whatsapp-api' }))
-    expect(await within(getPluginCard('whatsapp-api')).findByText('Installed v0.3.0')).toBeInTheDocument()
+    await waitFor(() => expect(within(getPluginCard('whatsapp-api')).getByText('Installed v0.3.0')).toBeInTheDocument())
     expect(within(getPluginCard('whatsapp-api')).getByText('Not trusted')).toBeInTheDocument()
+    expect(within(getPluginCard('whatsapp-api')).getByRole('button', { name: 'Manage whatsapp-api' })).toHaveAttribute('aria-expanded', 'true')
+    expect(within(getPluginCard('whatsapp-api')).getByRole('checkbox', { name: 'Trust whatsapp-api' })).not.toBeChecked()
     expect(screen.getByText(/WebAssembly · 3 installed/)).toBeInTheDocument()
   })
 
@@ -318,7 +330,7 @@ describe('ConnectionsPage plugins', () => {
   it('trusts a plugin next to a clear warning', async () => {
     const setTrustedSpy = vi.spyOn(samplePluginsBackend, 'setPluginTrusted')
     await openPluginsPanel()
-    const websiteCheckCard = getPluginCard('website-check')
+    const websiteCheckCard = openPluginDetails('website-check')
     expect(within(websiteCheckCard).getByText(/Plugins run code on this computer: only trust plugins you know/)).toBeInTheDocument()
     fireEvent.click(within(websiteCheckCard).getByRole('checkbox', { name: 'Trust website-check' }))
     expect(await within(getPluginCard('website-check')).findByRole('checkbox', { name: 'Trust website-check' })).toBeChecked()
@@ -364,7 +376,7 @@ describe('ConnectionsPage plugins', () => {
 
   it('saves and clears a setting without ever showing its value', async () => {
     await openPluginsPanel()
-    const settingForm = within(getPluginCard('google-maps-scraper')).getByRole('form', { name: 'google-maps-scraper setting GOOGLE_MAPS_LANGUAGE' })
+    const settingForm = within(openPluginDetails('google-maps-scraper')).getByRole('form', { name: 'google-maps-scraper setting GOOGLE_MAPS_LANGUAGE' })
     expect(within(settingForm).getByText('Not set')).toBeInTheDocument()
     const settingInput = within(settingForm).getByLabelText('GOOGLE_MAPS_LANGUAGE')
     expect(settingInput).toHaveAttribute('type', 'password')
@@ -381,8 +393,38 @@ describe('ConnectionsPage plugins', () => {
     fireEvent.click(within(getPluginCard('google-maps-scraper')).getByRole('button', { name: 'Update google-maps-scraper' }))
     expect(await within(getPluginCard('google-maps-scraper')).findByText('Installed v1.1.0')).toBeInTheDocument()
     expect(within(getPluginCard('google-maps-scraper')).queryByRole('button', { name: 'Update google-maps-scraper' })).not.toBeInTheDocument()
-    fireEvent.click(within(getPluginCard('website-check')).getByRole('button', { name: 'Remove website-check' }))
-    expect(await within(getPluginCard('website-check')).findByRole('button', { name: 'Install website-check' })).toBeInTheDocument()
+    fireEvent.click(within(openPluginDetails('website-check')).getByRole('button', { name: 'Remove website-check' }))
+    await waitFor(() => expect(within(getPluginCard('website-check')).getByRole('button', { name: 'Install website-check' })).toBeInTheDocument())
+    expect(screen.getByRole('region', { name: 'Available · 3' })).toContainElement(getPluginCard('website-check'))
+  })
+
+  it('groups installed plugins before available ones, details collapsed until opened', async () => {
+    await openPluginsPanel()
+    const installedGroup = screen.getByRole('region', { name: 'Installed · 2' })
+    const availableGroup = screen.getByRole('region', { name: 'Available · 2' })
+    expect(within(installedGroup).getAllByRole('article').map((card) => card.getAttribute('aria-label'))).toEqual(['google-maps-scraper', 'website-check'])
+    expect(within(availableGroup).getAllByRole('article').map((card) => card.getAttribute('aria-label'))).toEqual(['whatsapp-api', 'whatsapp-web'])
+    // google-maps-scraper has a required setting without a value, so it opens on its own.
+    expect(within(getPluginCard('google-maps-scraper')).getByRole('button', { name: 'Manage google-maps-scraper' })).toHaveAttribute('aria-expanded', 'true')
+    const manageButton = within(getPluginCard('website-check')).getByRole('button', { name: 'Manage website-check' })
+    expect(manageButton).toHaveAttribute('aria-expanded', 'false')
+    expect(within(getPluginCard('website-check')).queryByRole('checkbox')).not.toBeInTheDocument()
+    fireEvent.click(manageButton)
+    expect(manageButton).toHaveAttribute('aria-expanded', 'true')
+    expect(within(getPluginCard('website-check')).getByRole('checkbox', { name: 'Trust website-check' })).not.toBeChecked()
+  })
+
+  it('filters plugins by name or description', async () => {
+    await openPluginsPanel()
+    const searchBox = screen.getByRole('searchbox', { name: 'Search plugins' })
+    fireEvent.change(searchBox, { target: { value: 'WHATSAPP' } })
+    expect(screen.queryByRole('article', { name: 'website-check' })).not.toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Available · 2' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: /^Installed/ })).not.toBeInTheDocument()
+    fireEvent.change(searchBox, { target: { value: 'no such plugin' } })
+    expect(screen.getByText('No plugins match “no such plugin”')).toBeInTheDocument()
+    fireEvent.change(searchBox, { target: { value: '' } })
+    expect(screen.getAllByRole('article')).toHaveLength(4)
   })
 
   it('installs the browser runtime when an installed plugin needs it', async () => {
@@ -396,7 +438,7 @@ describe('ConnectionsPage plugins', () => {
   it('shows the error when an action fails', async () => {
     vi.spyOn(samplePluginsBackend, 'removePlugin').mockRejectedValue(new BackendError('internal', 'The plugin folder is in use'))
     await openPluginsPanel()
-    fireEvent.click(within(getPluginCard('website-check')).getByRole('button', { name: 'Remove website-check' }))
+    fireEvent.click(within(openPluginDetails('website-check')).getByRole('button', { name: 'Remove website-check' }))
     expect(await within(getPluginCard('website-check')).findByRole('alert')).toHaveTextContent('Could not remove website-check: The plugin folder is in use')
   })
 
@@ -409,6 +451,7 @@ describe('ConnectionsPage plugins', () => {
     renderConnectionsPage(connectionsPluginsPath)
     const websiteCheckCard = await screen.findByRole('article', { name: 'website-check' })
     expect(within(websiteCheckCard).getByRole('alert')).toHaveTextContent('Could not load website-check: checksum mismatch')
+    expect(within(websiteCheckCard).getByRole('button', { name: 'Manage website-check' })).toHaveAttribute('aria-expanded', 'true')
   })
 
   it('keeps installed plugins when the catalog cannot be loaded', async () => {

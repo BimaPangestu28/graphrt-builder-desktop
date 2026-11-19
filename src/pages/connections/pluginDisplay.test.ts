@@ -1,6 +1,14 @@
 import type { InstalledPlugin, PluginCatalog } from '@/api/pluginTypes'
 import { describeBrowserRuntimeEvent } from '@/hooks/useBrowserRuntime'
-import { buildPluginListItems, describeInstallProgress, describePluginPermissions } from './pluginDisplay'
+import {
+  buildPluginListItems,
+  describeInstallProgress,
+  describePermissionChips,
+  describePluginPermissions,
+  describeStepCount,
+  filterPluginListItems,
+  pluginNeedsAttention,
+} from './pluginDisplay'
 
 const noPermissions = { network: false, secrets: false, env: [] }
 
@@ -77,5 +85,40 @@ describe('plugin display text', () => {
     expect(describeBrowserRuntimeEvent({ percent: 10 })).toBe('10%')
     expect(describeBrowserRuntimeEvent({ stage: 'other' })).toBeNull()
     expect(describeBrowserRuntimeEvent('text')).toBeNull()
+  })
+})
+
+describe('plugin row helpers', () => {
+  it('summarizes permissions as short chips', () => {
+    expect(describePermissionChips({ network: true, secrets: true, env: ['A', 'B'] }, true)).toEqual(['Internet', 'Secrets', '2 settings', 'Browser'])
+    expect(describePermissionChips({ network: false, secrets: false, env: ['A'] }, false)).toEqual(['1 setting'])
+    expect(describePermissionChips(noPermissions, false)).toEqual([])
+  })
+
+  it('counts the steps a plugin adds', () => {
+    expect(describeStepCount(1)).toBe('Adds 1 step')
+    expect(describeStepCount(14)).toBe('Adds 14 steps')
+  })
+
+  it('filters by name or description, ignoring case and surrounding spaces', () => {
+    const items = buildPluginListItems(catalogWith('alpha', 'beta'), [])
+    expect(filterPluginListItems(items, '  ALP ').map((item) => item.name)).toEqual(['alpha'])
+    expect(filterPluginListItems(items, '')).toBe(items)
+    expect(filterPluginListItems(items, 'gamma')).toEqual([])
+  })
+
+  it('flags installed plugins missing a required setting, but not an optional one', () => {
+    const trustedPlugin = { ...installed('configured'), trusted: true }
+    expect(pluginNeedsAttention({ ...trustedPlugin, config: [{ name: 'TOKEN', configured: false, optional: false }] })).toBe(true)
+    expect(pluginNeedsAttention({ ...trustedPlugin, config: [{ name: 'IDLE_MINUTES', configured: false, optional: true }] })).toBe(false)
+    expect(pluginNeedsAttention({ ...trustedPlugin, config: [{ name: 'TOKEN', configured: true, optional: false }] })).toBe(false)
+  })
+
+  it('flags plugins that failed to load, need trust, or have warnings', () => {
+    expect(pluginNeedsAttention(installed('ready'))).toBe(false)
+    expect(pluginNeedsAttention({ ...installed('broken'), loadError: 'checksum mismatch' })).toBe(true)
+    expect(pluginNeedsAttention({ ...installed('untrusted'), permissions: { network: false, secrets: false, env: ['TOKEN'] } })).toBe(true)
+    expect(pluginNeedsAttention({ ...installed('trusted'), trusted: true, permissions: { network: false, secrets: true, env: [] } })).toBe(false)
+    expect(pluginNeedsAttention({ ...installed('warned'), warnings: ['Read this first'] })).toBe(true)
   })
 })
