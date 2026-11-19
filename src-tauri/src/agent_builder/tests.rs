@@ -111,7 +111,7 @@ async fn chosen_kind_is_kept_and_name_falls_back_to_document_name() {
     .unwrap();
 
     assert_eq!(agent.kind, AgentKind::Chatbot);
-    assert_eq!(agent.name, "Simple answer");
+    assert_eq!(agent.name, "Simple Answer");
     assert!(message_text(&mock.requests()[0], 1).contains("Kind: chatbot"));
 }
 
@@ -127,7 +127,7 @@ async fn invalid_draft_is_repaired_with_graphrt_error() {
             .await
             .unwrap();
 
-    assert_eq!(agent.name, "Quick answers");
+    assert_eq!(agent.name, "Quick Answers");
     assert_eq!(
         progress.stages(),
         vec![
@@ -185,7 +185,7 @@ async fn unavailable_model_provider_is_sent_back_for_repair() {
 
     let agent = build_agent_with_model(&db, &builder, request(CAFE_REQUEST, None), &|_| {}).await.unwrap();
 
-    assert_eq!(agent.name, "Quick answers");
+    assert_eq!(agent.name, "Quick Answers");
     let repair_text = mock.requests()[1].messages[3].text();
     assert!(repair_text.contains("anthropic"), "{repair_text}");
     assert!(repair_text.contains("gpt-4o-mini"), "{repair_text}");
@@ -197,7 +197,7 @@ async fn reply_without_document_is_repaired() {
     let (_mock, builder) =
         mock_builder(&["Sorry, I cannot help.".to_owned(), fenced_reply("Quick answers", SIMPLE_ANSWER)]);
     let agent = build_agent_with_model(&db, &builder, request("Answer a question", None), &|_| {}).await.unwrap();
-    assert_eq!(agent.name, "Quick answers");
+    assert_eq!(agent.name, "Quick Answers");
 }
 
 #[tokio::test]
