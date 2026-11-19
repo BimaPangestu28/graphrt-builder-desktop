@@ -158,6 +158,8 @@ impl RunManager {
     /// # Errors
     /// - `NotFound` when the agent does not exist.
     /// - `InvalidInput` / `Workflow` when the flow does not compile or `inputs` is not an object.
+    /// - `MissingPlugins` when the flow uses plugins that are not installed
+    ///   (drafts may use catalog plugins); no run is recorded.
     /// - `MissingCredentials` when a model provider used by the flow has no key,
     ///   or an `env.*` value it declares has neither a stored value nor a default;
     ///   no run is recorded in that case.

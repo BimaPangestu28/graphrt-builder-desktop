@@ -1,7 +1,8 @@
 //! "Build agent" from a plain-language request (screens 02 → 03 → 04).
 //!
 //! Asks the default model for a graphrt workflow document, validates it with
-//! `flow::compile_flow`, and on failure sends graphrt's error back to the model
+//! `flow::compile_draft` (catalog plugins that are not installed are accepted;
+//! the user installs them afterwards), and on failure sends graphrt's error back to the model
 //! to repair it (up to [`MAX_REPAIR_ATTEMPTS`]). Progress goes to the caller so
 //! screen 03 can tick its checklist.
 //!
@@ -170,9 +171,10 @@ pub(crate) async fn build_agent_with_model(
     let name = extract::agent_name(&draft.reply)
         .or_else(|| extract::document_name(&draft.flow_yaml))
         .unwrap_or_else(|| extract::name_from_description(description));
+    let done_message = with_plugin_note("Your agent is ready", &draft.flow_yaml);
     let agent =
         db.create_agent(NewAgent { name, kind, description: description.to_owned(), flow_yaml: draft.flow_yaml })?;
-    report(on_progress, BuildStage::Done, "Your agent is ready");
+    report(on_progress, BuildStage::Done, &done_message);
     Ok(agent)
 }
 
@@ -202,7 +204,7 @@ pub(crate) async fn revise_agent_with_model(
     }
     let changes = diff::compare_flows(&before, &draft.summary);
     let updated_agent = db.update_agent_flow(agent_id, &draft.flow_yaml, &changes.summary)?;
-    report(on_progress, BuildStage::Done, "Your change is ready");
+    report(on_progress, BuildStage::Done, &with_plugin_note("Your change is ready", &draft.flow_yaml));
     Ok(RevisionResult {
         agent: updated_agent,
         summary: changes.summary,
@@ -296,7 +298,7 @@ fn validate_draft(flow_yaml: &str, builder: &BuilderModel) -> Result<FlowSummary
     if !placeholders.is_empty() {
         return Err(format!(
             "these steps call placeholder addresses that do not exist: {}. Use the real API of the service, or a \
-             plugin step if an installed plugin covers it; if neither is available, read the address from an \
+             plugin step if a listed plugin covers it; if neither is available, read the address from an \
              `env` value (e.g. `{{{{#env.SEND_URL#}}}}`) and say in your opening sentence which service or plugin \
              the user should connect",
             placeholders.join(", ")
@@ -344,6 +346,16 @@ async fn ask_model(
 
 fn model_error(error: &LlmError) -> AppError {
     AppError::Model(format!("the model could not draft the agent: {error}"))
+}
+
+/// "Your agent is ready · needs 2 plugins" when the flow uses plugins that are
+/// not installed yet (the build chat then asks to install them).
+fn with_plugin_note(message: &str, flow_yaml: &str) -> String {
+    match flow::find_missing_plugins(flow_yaml).len() {
+        0 => message.to_owned(),
+        1 => format!("{message} · needs 1 plugin"),
+        count => format!("{message} · needs {count} plugins"),
+    }
 }
 
 fn report(on_progress: ProgressSink<'_>, stage: BuildStage, message: &str) {

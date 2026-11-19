@@ -355,6 +355,7 @@ async fn system_prompt_lists_installed_plugin_steps() {
     let choice = ModelChoice { provider: ModelProvider::Openai, name: "gpt-4o-mini".into() };
     let with_plugin = prompt::build_system_prompt(&choice);
     crate::plugins::active::publish(None);
+    crate::plugins::active::publish_catalog(None);
     let without_plugin = prompt::build_system_prompt(&choice);
 
     assert!(with_plugin.contains("`fixture-echo.echo` (Echo text)"), "{with_plugin}");
@@ -432,4 +433,76 @@ async fn a_draft_calling_a_placeholder_address_is_sent_back_for_repair() {
     let repair_text = mock.requests()[1].messages[3].text();
     assert!(repair_text.contains("api.example.com"), "{repair_text}");
     assert!(repair_text.contains("placeholder"), "{repair_text}");
+}
+
+/// Approval, then a step of the catalog-only `fixture-mail` plugin.
+const CATALOG_PLUGIN_DRAFT: &str = r#"version: "1"
+name: mail-offer
+graph:
+  nodes:
+    - id: start
+      type: start
+      variables:
+        - { variable: email, type: text-input, required: true }
+    - id: approve
+      type: human-input
+      prompt: "Send the offer to {{#start.email#}}?"
+      actions:
+        - { id: send, title: Send }
+        - { id: skip, title: Skip }
+    - id: send_offer
+      type: fixture-mail.send_mail
+      title: Send the offer
+      to: "{{#start.email#}}"
+      body: Our catering menu
+    - id: end
+      type: end
+      outputs:
+        - { variable: result, value_selector: [send_offer, data] }
+  edges:
+    - { source: start, target: approve }
+    - { source: approve, target: send_offer, handle: send }
+    - { source: send_offer, target: end }
+"#;
+
+#[tokio::test]
+async fn drafts_may_use_catalog_plugins_that_are_not_installed() {
+    let _lock = crate::plugins::tests::ACTIVE_SNAPSHOT_LOCK.lock().await;
+    crate::plugins::active::publish_catalog(Some(Arc::new(crate::plugins::tests::not_installed_catalog())));
+    let choice = ModelChoice { provider: ModelProvider::Openai, name: "gpt-4o-mini".into() };
+    let system_prompt = prompt::build_system_prompt(&choice);
+    let unknown_kind = CATALOG_PLUGIN_DRAFT.replace("fixture-mail.send_mail", "fixture-mail.format_disk");
+    let db = test_database();
+    let (mock, builder) =
+        mock_builder(&[fenced_reply("Mail offer", &unknown_kind), fenced_reply("Mail offer", CATALOG_PLUGIN_DRAFT)]);
+    let progress = ProgressLog::default();
+
+    let built =
+        build_agent_with_model(&db, &builder, request("Email an offer", None), &|update| progress.record(update)).await;
+    crate::plugins::active::publish_catalog(None);
+
+    assert!(system_prompt.contains("Plugin `fixture-mail` (not installed yet)"), "{system_prompt}");
+    assert!(system_prompt.contains("installed or not"));
+    let agent = built.unwrap();
+    assert_eq!(agent.flow_yaml.trim(), CATALOG_PLUGIN_DRAFT.trim());
+    let repair_text = mock.requests()[1].messages[3].text();
+    assert!(repair_text.contains("fixture-mail.format_disk"), "{repair_text}");
+    let done = progress.0.lock().unwrap().last().cloned().unwrap();
+    assert_eq!(done.stage, BuildStage::Done);
+    assert_eq!(done.message, "Your agent is ready · needs 1 plugin");
+}
+
+#[tokio::test]
+async fn a_catalog_plugin_step_missing_a_required_field_is_sent_back() {
+    let _lock = crate::plugins::tests::ACTIVE_SNAPSHOT_LOCK.lock().await;
+    crate::plugins::active::publish_catalog(Some(Arc::new(crate::plugins::tests::not_installed_catalog())));
+    let without_body = CATALOG_PLUGIN_DRAFT.replace("      body: Our catering menu\n", "");
+    let (_, builder) = mock_builder(&[]);
+
+    let problem = validate_draft(&without_body, &builder);
+    let accepted = validate_draft(CATALOG_PLUGIN_DRAFT, &builder);
+    crate::plugins::active::publish_catalog(None);
+
+    assert!(problem.unwrap_err().contains("`body`"));
+    assert!(accepted.is_ok());
 }

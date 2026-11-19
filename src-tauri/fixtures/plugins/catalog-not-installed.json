@@ -1,0 +1,60 @@
+[
+  {
+    "name": "fixture-mail",
+    "version": "2.0.0",
+    "description": "Sends and reads mail (test fixture, never installed)",
+    "tarball_url": "https://plugins.example.test/fixture-mail-2.0.0.tar.gz",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "size_bytes": 1024,
+    "permissions": { "network": true, "secrets": true, "env": ["FIXTURE_MAIL_API_KEY", "FIXTURE_MAIL_PROFILE_DIR"] },
+    "needs_browser": false,
+    "node": ">=20",
+    "warning": "Sending bulk mail may get the account blocked.",
+    "operations_count": 2,
+    "nodes": [
+      {
+        "kind": "fixture-mail.send_mail",
+        "title": "Send mail",
+        "description": "Sends one email.",
+        "config_schema": {
+          "type": "object",
+          "properties": {
+            "to": { "type": "string" },
+            "subject": { "type": "string" },
+            "body": { "type": "string" },
+            "api_key": { "type": "string" },
+            "priority": { "type": "string", "enum": ["normal", "high"] }
+          },
+          "required": ["to", "body"]
+        },
+        "outputs": [{ "name": "data", "type": "object" }]
+      },
+      {
+        "kind": "fixture-mail.list_inbox",
+        "title": "List inbox",
+        "description": "Lists recent emails.",
+        "outputs": ["data", "next_cursor"]
+      }
+    ],
+    "tools": [],
+    "readme_url": "https://plugins.example.test/fixture-mail/README.md"
+  },
+  {
+    "name": "fixture-browser",
+    "version": "1.0.0",
+    "description": "Reads web pages in a browser (test fixture, never installed)",
+    "tarball_url": "https://plugins.example.test/fixture-browser-1.0.0.tar.gz",
+    "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "size_bytes": 2048,
+    "permissions": { "network": true, "secrets": false, "env": [] },
+    "needs_browser": true,
+    "nodes": [
+      {
+        "kind": "fixture-browser.scrape",
+        "title": "Read a page",
+        "description": "Opens a page and returns its text.",
+        "config_schema": { "type": "object", "properties": { "url": { "type": "string" } }, "required": ["url"] }
+      }
+    ]
+  }
+]
