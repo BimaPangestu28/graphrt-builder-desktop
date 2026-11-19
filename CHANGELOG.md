@@ -25,6 +25,10 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
   Kenangan" progress for loops, and rows you can open to see streamed model text, outputs and errors
   in plain words. The chat column narrates the run; finished runs offer Run again and Edit steps.
   The Runs detail panel uses the same list.
+- **Live browser view**: while a Google Maps search or web-browser step runs (also when an agent calls
+  them as tools), a small live picture of the headless browser appears under the running step in Test
+  and in the Runs detail panel. Frames stay on this Mac and are never saved with the run (needs
+  google-maps-scraper / web-browser 0.2.0 or later).
 - The builder rejects drafts that call placeholder addresses such as api.example.com.
 - **The builder streams its work**: while an agent is drafted or changed, Building and the builder chat
   show the model's explanation as it writes, the step titles as they appear and a live token count.

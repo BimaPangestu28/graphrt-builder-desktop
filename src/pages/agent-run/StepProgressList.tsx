@@ -1,6 +1,9 @@
 import { useId, useState } from 'react'
 import { StrokeIcon, VisuallyHidden, joinClassNames } from '@/components/ui'
 import type { TestRunStepState } from '@/data/testRun'
+import { useLiveBrowserFrames } from '@/hooks/useLiveBrowserFrames'
+import { LiveBrowserView } from './LiveBrowserView'
+import { pickStepLiveViews } from './liveBrowserFrames'
 import { formatDurationMs, formatElapsedClock } from './runProgress'
 import type { RunStepView } from './runSteps'
 import { StepDetails } from './StepDetails'
@@ -96,9 +99,11 @@ interface StepRowProps {
   isExpanded: boolean
   onToggle: () => void
   fixAgentId?: string | null
+  /** Live browser image under the running step; null = waiting for it; undefined = no live view. */
+  liveImage?: string | null
 }
 
-function StepRow({ step, now, isExpanded, onToggle, fixAgentId }: StepRowProps) {
+function StepRow({ step, now, isExpanded, onToggle, fixAgentId, liveImage }: StepRowProps) {
   const detailsId = useId()
   const meta = describeStepMeta(step, now)
   const isMuted = step.state === 'pending' || step.state === 'skipped'
@@ -125,6 +130,11 @@ function StepRow({ step, now, isExpanded, onToggle, fixAgentId }: StepRowProps) 
         </StrokeIcon>
       </button>
       <IterationBar step={step} />
+      {liveImage !== undefined && (
+        <div className="ml-[30px]">
+          <LiveBrowserView image={liveImage} />
+        </div>
+      )}
       {isExpanded && (
         <div className="ml-[30px]">
           <StepDetails step={step} id={detailsId} fixAgentId={step.state === 'failed' ? fixAgentId : null} />
@@ -146,10 +156,13 @@ interface StepProgressListProps {
  * Ordered list of the agent's steps with their progress in a run (screens 06 and 20). Steps
  * inside an iteration are indented under it. Each row expands (click or Enter) to show what the
  * step did; the model step that is writing and a failed step open by themselves, and close
- * again when they finish unless the user opened or closed them.
+ * again when they finish unless the user opened or closed them. A running browser step (and a
+ * running step whose browser tool is open) shows a live view of the page, never saved.
  */
 export function StepProgressList({ steps, now = Date.now(), fixAgentId }: StepProgressListProps) {
   const [expandedByUser, setExpandedByUser] = useState<Record<string, boolean>>({})
+  const liveFrames = useLiveBrowserFrames(steps.some((step) => step.state === 'running'))
+  const liveViews = pickStepLiveViews(steps, liveFrames)
   return (
     <ol aria-label="Steps" className="m-0 flex list-none flex-col gap-2 rounded-xl border border-line bg-surface p-4">
       {steps.map((step) => {
@@ -161,6 +174,7 @@ export function StepProgressList({ steps, now = Date.now(), fixAgentId }: StepPr
             now={now}
             isExpanded={isExpanded}
             fixAgentId={fixAgentId}
+            liveImage={liveViews.get(step.id)}
             onToggle={() => setExpandedByUser((current) => ({ ...current, [step.id]: !isExpanded }))}
           />
         )
