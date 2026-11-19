@@ -129,6 +129,27 @@ describe('RunsPage', () => {
     expect(within(table).getAllByText('Running')).toHaveLength(3)
   })
 
+  it('shows plain-language errors, stopped runs and paused questions in the table', async () => {
+    const rawError = 'connection: iteration item 0 failed: error sending request: dns error: failed to lookup address information: nodename nor servname provided, or not known'
+    const run = { agentId: 'maps-leads', agentVersion: 1, trigger: 'manual', startedAt: new Date().toISOString(), finishedAt: null, outputs: null, errorMessage: null, pauseReasons: null } as const
+    vi.spyOn(sampleRunsBackend, 'listRuns').mockResolvedValue([
+      { ...run, id: 'failed-run', status: 'failed', errorMessage: rawError },
+      { ...run, id: 'stopped-run', status: 'aborted' },
+      { ...run, id: 'paused-run', status: 'paused', pauseReasons: [{ node_id: 'approve', kind: 'human_input', data: { prompt: '## Send to\n**Kopi Kenangan**?' } }] },
+    ])
+    renderRunsPage()
+    const table = screen.getByRole('table')
+    const friendlyError = await within(table).findByText("Could not reach the server: that address doesn't exist")
+    expect(friendlyError.closest('td')).toHaveAttribute('title', rawError)
+    expect(within(table).queryByText(/dns error/)).not.toBeInTheDocument()
+    const [, , stoppedRow, pausedRow] = within(table).getAllByRole('row')
+    expect(within(stoppedRow).getAllByText('Stopped')).toHaveLength(2)
+    expect(within(stoppedRow).queryByText('Failed')).not.toBeInTheDocument()
+    expect(within(pausedRow).getByText('Send to Kopi Kenangan?')).toBeInTheDocument()
+    expect(within(pausedRow).getByText(/^Today \d\d:\d\d$/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Failed 1' })).toBeInTheDocument()
+  })
+
   it('shows an error when runs cannot be loaded', async () => {
     vi.spyOn(sampleRunsBackend, 'listRuns').mockRejectedValue(new BackendError('database', 'Database is locked'))
     renderRunsPage()

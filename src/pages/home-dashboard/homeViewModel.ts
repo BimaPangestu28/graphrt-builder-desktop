@@ -6,6 +6,7 @@ import type { AgentSummaryStat, AttentionItem, RecentRun, RecentRunStatus } from
 import { formatCounterLabel, pickHeadlineCounter } from '@/pages/agent-run/runCounters'
 import { formatRunDay } from '@/pages/agent-run/runResultSummary'
 import { humanizeRunError } from '@/pages/agent-run/runErrorText'
+import { readPauseQuestion } from '@/pages/agent-run/runPauseQuestion'
 import { formatRelativeTime, runPathFor } from './homeLinks'
 import { agentPath, routePaths, runReviewPath } from '@/routes'
 
@@ -50,16 +51,6 @@ export function describeAgentRunStats(stats: AgentRunStats | undefined, now: Dat
     : { count: stats.runsThisWeek, label: stats.runsThisWeek === 1 ? 'run this week' : 'runs this week' }
   if (!stats.lastRunStatus || !stats.lastRunAt) return [weekStat]
   return [weekStat, { label: `Last run ${lastRunWords[stats.lastRunStatus]} · ${formatRunDay(stats.lastRunAt, now)}` }]
-}
-
-/** The question a paused run asks (human-input `prompt`, or the sample data's `question`). */
-export function readPauseQuestion(run: Run): string | null {
-  const pauseData = run.pauseReasons?.[0]?.data
-  if (typeof pauseData === 'string') return pauseData
-  if (!pauseData || typeof pauseData !== 'object') return null
-  const { question, prompt } = pauseData as Record<string, unknown>
-  if (typeof question === 'string' && question.length > 0) return question
-  return typeof prompt === 'string' && prompt.length > 0 ? prompt : null
 }
 
 function groupRunsByAgent(runs: Run[]): Run[][] {

@@ -3,7 +3,8 @@ import { routePaths } from '@/routes'
 /**
  * Mock run history for screen 20 (Runs). Newest first, as the runner keeps them for 30 days.
  */
-export type RunStatus = 'running' | 'done' | 'needsYou' | 'failed'
+/** `stopped`: the user stopped the run (backend `aborted`); not a failure. */
+export type RunStatus = 'running' | 'done' | 'needsYou' | 'failed' | 'stopped'
 
 export interface RunStep {
   label: string
@@ -18,7 +19,10 @@ export interface RunRecord {
   agentName: string
   startedBy: string
   when: string
+  /** Plain-language result, possibly Markdown (shown as a clamped preview). */
   result: string
+  /** Full text behind the preview for the hover title, e.g. the raw error. Defaults to `result`. */
+  resultTitle?: string
   status: RunStatus
   /** Subtitle of the detail panel: date, duration and AI cost. */
   timing: string
@@ -34,6 +38,7 @@ export const runStatusLabels: Record<RunStatus, string> = {
   done: 'Done',
   needsYou: 'Needs you',
   failed: 'Failed',
+  stopped: 'Stopped',
 }
 
 export const runRecords: RunRecord[] = [

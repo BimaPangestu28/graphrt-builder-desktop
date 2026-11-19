@@ -62,6 +62,7 @@ const runStatusByRecordStatus: Record<RunRecord['status'], RunStatus> = {
   done: 'succeeded',
   needsYou: 'paused',
   failed: 'failed',
+  stopped: 'aborted',
 }
 
 function parseClockSeconds(clock: string): number {

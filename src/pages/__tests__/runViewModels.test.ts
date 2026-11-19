@@ -1,7 +1,7 @@
 import type { Run, RunEventRecord } from '@/api/types'
 import { readPendingApprovals } from '@/api/pauseReasons'
 import { buildRunStepViews } from '@/pages/agent-run/runSteps'
-import { toRunFilter, toRunRecord } from '@/pages/runs/runViewModel'
+import { countRunsForFilter, toRunFilter, toRunRecord } from '@/pages/runs/runViewModel'
 import { toScheduleTrigger } from '@/pages/scheduler/schedulerViewModel'
 
 function buildEvent(seq: number, type: string, nodeId: string, fields: Record<string, unknown> = {}): RunEventRecord {
@@ -87,6 +87,34 @@ describe('runs screen mapping', () => {
     const record = toRunRecord(baseRun, 'Maps leads to WhatsApp', new Date('2026-11-18T07:00:00Z'))
     expect(record).toMatchObject({ status: 'needsYou', startedBy: 'You', result: 'Waiting for you' })
     expect(record.followUp?.path).toBe('/agents/maps-leads/test?runId=run-1')
+  })
+
+  it('shows a stopped (aborted) run as a neutral "Stopped", not a failure', () => {
+    const stoppedRun: Run = { ...baseRun, status: 'aborted', pauseReasons: null, finishedAt: '2026-11-18T06:01:00Z' }
+    expect(toRunRecord(stoppedRun, 'Maps leads')).toMatchObject({ status: 'stopped', result: 'Stopped' })
+    const failedRun: Run = { ...stoppedRun, status: 'failed', errorMessage: 'boom' }
+    expect(toRunRecord(failedRun, 'Maps leads').status).toBe('failed')
+    expect(countRunsForFilter([stoppedRun, failedRun, stoppedRun], 'failed')).toBe(1)
+  })
+
+  it('explains a failed run in plain words and keeps the raw error as the title', () => {
+    const rawError =
+      'connection: iteration item 0 failed: error sending request: client error (Connect): dns error: error resolving DNS: failed to lookup address information: nodename nor servname provided, or not known'
+    const failedRun: Run = { ...baseRun, status: 'failed', pauseReasons: null, errorMessage: rawError }
+    expect(toRunRecord(failedRun, 'Maps leads')).toMatchObject({ result: "Could not reach the server: that address doesn't exist", resultTitle: rawError })
+  })
+
+  it('shows what a paused run waits for', () => {
+    const pausedRun: Run = { ...baseRun, pauseReasons: [{ node_id: 'approve', kind: 'human_input', data: { prompt: 'Send **this** to Kopi Kenangan?' } }] }
+    expect(toRunRecord(pausedRun, 'Maps leads').result).toBe('Send **this** to Kopi Kenangan?')
+  })
+
+  it('says which day a run started: Today, Yesterday or the date', () => {
+    const now = new Date(2026, 10, 19, 12, 0)
+    const startedAt = (day: number, hour: number, minute: number) => new Date(2026, 10, day, hour, minute).toISOString()
+    expect(toRunRecord({ ...baseRun, startedAt: startedAt(19, 9, 56) }, 'Maps leads', now).when).toBe('Today 09:56')
+    expect(toRunRecord({ ...baseRun, startedAt: startedAt(18, 18, 20) }, 'Maps leads', now).when).toBe('Yesterday 18:20')
+    expect(toRunRecord({ ...baseRun, startedAt: startedAt(12, 9, 56) }, 'Maps leads', now).when).toBe('12 Nov 09:56')
   })
 })
 
