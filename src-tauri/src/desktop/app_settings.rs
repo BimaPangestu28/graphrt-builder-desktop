@@ -39,16 +39,16 @@ pub const DEFAULT_RUN_HISTORY_RETENTION_DAYS: u32 = 30;
 pub struct AppSettings {
     /// Start graphrt when the user logs in (so schedules fire without opening the app).
     pub open_at_login: bool,
-    /// Show the tray / menu bar icon. On Windows and Linux closing the window
+    /// Show the menu bar (macOS) / system tray icon. On Windows and Linux closing the window
     /// quits the app when this is off, since nothing would bring it back.
     pub show_in_menu_bar: bool,
     /// Notify when a run pauses and waits for the user's approval.
     pub notify_on_approval: bool,
     /// Notify when a run fails.
     pub notify_on_failure: bool,
-    /// Keep the Mac from idle-sleeping while a run is active (macOS only).
+    /// Keep the computer from sleeping while a run is active (see `keep_awake`).
     pub keep_awake_while_running: bool,
-    /// Keep awake only while on AC power (macOS: `caffeinate -s`, ignored on battery).
+    /// Keep awake only while on AC power; on battery the computer sleeps as usual.
     pub keep_awake_only_on_power: bool,
     /// Policy the schedule dialog proposes for new schedules.
     pub missed_run_default_policy: MissedRunPolicy,

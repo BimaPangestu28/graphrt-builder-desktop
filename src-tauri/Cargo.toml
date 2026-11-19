@@ -1,7 +1,7 @@
 [package]
 name = "graphrt"
 version = "0.1.0"
-description = "graphrt desktop: build, test and run automation agents on your Mac"
+description = "graphrt desktop: build, test and run automation agents on your computer (macOS, Windows, Linux)"
 edition = "2021"
 license = "Apache-2.0"
 repository = "https://github.com/BimaPangestu28/graphrt-builder-desktop"
@@ -44,6 +44,8 @@ thiserror = "2"
 # Same version as graphrt-rag's SqliteStore: a binary can link only one bundled SQLite.
 # `fallible_uint` keeps `usize`/`u64` parameters working as they did in 0.32.
 rusqlite = { version = "0.40", features = ["bundled", "fallible_uint"] }
+# OS credential stores: macOS Keychain, Windows Credential Manager, and the
+# Secret Service on Linux (GNOME Keyring / KWallet over D-Bus; needs libdbus-1 to build).
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
 cron = "0.15"
 chrono = { version = "0.4", features = ["serde"] }
@@ -59,9 +61,16 @@ flate2 = "1"
 # Live view frames are sent to the UI as JPEG data URLs.
 base64 = "0.22"
 
-# Launch at login is desktop-only
+# Launch at login and one running instance are desktop-only
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-autostart = "2.7.0"
+# Starting graphrt again focuses the running window (the only way back on Linux
+# desktops that hide tray icons, e.g. GNOME without the AppIndicator extension).
+tauri-plugin-single-instance = "2"
+
+# "Keep the computer awake while an agent runs" on Windows (SetThreadExecutionState)
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.60", features = ["Win32_System_Power"] }
 
 [dev-dependencies]
 tempfile = "3"

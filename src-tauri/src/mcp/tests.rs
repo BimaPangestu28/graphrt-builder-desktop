@@ -4,7 +4,8 @@ use graphrt_core::tool::ToolRegistry;
 use graphrt_mcp::McpTransport;
 
 use super::definitions::{
-    add_definition, extended_path, load_definitions, record_check, remove_definition, runtime_config, validate_input,
+    add_definition, extended_path, find_command_with_extensions, load_definitions, record_check, remove_definition,
+    runtime_config, validate_input,
 };
 use super::prompt_guide::servers_guide;
 use super::*;
@@ -127,6 +128,22 @@ fn runtime_config_reads_the_named_secrets() {
         McpTransport::Http(http_config) => assert_eq!(http_config.bearer_token.as_deref(), Some("bearer-value")),
         other => panic!("unexpected {other:?}"),
     }
+}
+
+#[test]
+fn bare_commands_resolve_through_path_and_pathext() {
+    let first_dir = tempfile::tempdir().unwrap();
+    let node_dir = tempfile::tempdir().unwrap();
+    std::fs::write(node_dir.path().join("npx.cmd"), "@echo off\n").unwrap();
+    std::fs::write(node_dir.path().join("node.exe"), "").unwrap();
+    let search_path = std::env::join_paths([first_dir.path(), node_dir.path()]).unwrap();
+
+    let npx = find_command_with_extensions("npx", &search_path, ".COM;.EXE;.BAT;.CMD");
+    assert_eq!(npx, Some(node_dir.path().join("npx.cmd")));
+    assert_eq!(find_command_with_extensions("node", &search_path, ".EXE;.CMD"), Some(node_dir.path().join("node.exe")));
+    assert_eq!(find_command_with_extensions("uvx", &search_path, ".EXE;.CMD"), None, "not installed");
+    assert_eq!(find_command_with_extensions("npx.cmd", &search_path, ".EXE;.CMD"), None, "already has an extension");
+    assert_eq!(find_command_with_extensions("C:\\tools\\npx", &search_path, ".CMD"), None, "already a path");
 }
 
 #[test]

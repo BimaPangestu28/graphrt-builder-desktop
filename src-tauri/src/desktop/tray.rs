@@ -13,9 +13,11 @@
 //! ```
 //!
 //! The menu is rebuilt by [`refresh_tray`] whenever a run changes status, the
-//! pause is toggled or ends, or settings change. The icon is a template image
-//! (black + alpha, `icons/tray-template.png` from the mono logo) so macOS
-//! tints it for light and dark menu bars.
+//! pause is toggled or ends, or settings change. On macOS the icon is a
+//! template image (black + alpha, `icons/tray-template.png` from the mono logo)
+//! that macOS tints for light and dark menu bars. Windows and Linux do not tint
+//! tray icons, and a black one would vanish on a dark taskbar or panel, so
+//! they get the full-color app icon (`icons/32x32.png`).
 
 use chrono::{DateTime, Duration, Local, Utc};
 use tauri::image::Image;
@@ -42,7 +44,10 @@ pub const PAUSE_DURATION_MINUTES: i64 = 60;
 /// Upper bound when counting paused runs for the status line.
 const WAITING_RUN_COUNT_LIMIT: i64 = 1000;
 
+#[cfg(target_os = "macos")]
 static TRAY_ICON_PNG: &[u8] = include_bytes!("../../icons/tray-template.png");
+#[cfg(not(target_os = "macos"))]
+static TRAY_ICON_PNG: &[u8] = include_bytes!("../../icons/32x32.png");
 
 /// What the status lines of the menu show.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -94,20 +99,25 @@ fn count_phrase(count: usize, singular: &str, plural: &str) -> String {
     format!("{count} {}", if count == 1 { singular } else { plural })
 }
 
-/// Creates the tray icon. Hidden right away when "Show in the menu bar" is off.
+/// Creates the tray icon. Hidden right away when "Show in the menu bar / system tray" is off.
 ///
 /// @throws tauri::Error - when the icon or menu cannot be created
 pub fn create_tray(app_handle: &AppHandle, show_in_menu_bar: bool) -> tauri::Result<()> {
     let menu = build_menu(app_handle, &current_status(app_handle))?;
     let tray = TrayIconBuilder::with_id(TRAY_ID)
         .icon(Image::from_bytes(TRAY_ICON_PNG)?)
-        .icon_as_template(true)
+        .icon_as_template(cfg!(target_os = "macos"))
         .tooltip("graphrt")
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_menu_event(handle_menu_event)
         .build(app_handle)?;
     tray.set_visible(show_in_menu_bar)
+}
+
+/// Whether the tray icon exists (it may fail to be created on some Linux desktops).
+pub fn has_tray_icon(app_handle: &AppHandle) -> bool {
+    app_handle.tray_by_id(TRAY_ID).is_some()
 }
 
 /// Rebuilds the menu from storage and applies "Show in the menu bar". Never fails (logs).
@@ -118,12 +128,12 @@ pub fn refresh_tray(app_handle: &AppHandle) {
     let status = current_status(app_handle);
     let updated = build_menu(app_handle, &status).and_then(|menu| tray.set_menu(Some(menu)));
     if let Err(error) = updated {
-        log::warn!("could not update the menu bar menu: {error}");
+        log::warn!("could not update the tray menu: {error}");
     }
     let show_in_menu_bar =
         app_handle.try_state::<AppState>().is_none_or(|state| AppSettings::load_or_default(&state.db).show_in_menu_bar);
     if let Err(error) = tray.set_visible(show_in_menu_bar) {
-        log::warn!("could not show or hide the menu bar icon: {error}");
+        log::warn!("could not show or hide the tray icon: {error}");
     }
 }
 
@@ -133,7 +143,7 @@ fn current_status(app_handle: &AppHandle) -> TrayStatus {
         return empty;
     };
     TrayStatus::load(&state.db, Utc::now()).unwrap_or_else(|error| {
-        log::warn!("could not read the menu bar status: {error}");
+        log::warn!("could not read the tray status: {error}");
         empty
     })
 }

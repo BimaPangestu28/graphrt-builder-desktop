@@ -1,4 +1,4 @@
-//! The app data folder (Settings > Privacy and data): its path and "Show in Finder".
+//! The app data folder (Settings > Privacy and data): its path and "Show in Finder" (File Explorer on Windows, the default file manager on Linux).
 
 use std::path::{Path, PathBuf};
 use std::process::Command;

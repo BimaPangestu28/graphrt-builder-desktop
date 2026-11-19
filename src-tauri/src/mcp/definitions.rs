@@ -3,9 +3,11 @@
 //!
 //! Definitions are stored as one JSON array in the `settings` table
 //! ([`SETTING_MCP_SERVERS`]). They never hold secret values: a server names
-//! the workflow secrets it needs (keychain, see [`CredentialStore`]) and the
+//! the workflow secrets it needs (OS credential store, see [`CredentialStore`]) and the
 //! values are read only when a run actually connects to the server.
 
+use std::ffi::OsStr;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use graphrt_mcp::config::DEFAULT_TIMEOUT_MS;
@@ -280,7 +282,7 @@ pub fn record_check(
     })
 }
 
-/// The graphrt-mcp config for `definition`, with its secrets read from the keychain.
+/// The graphrt-mcp config for `definition`, with its secrets read from the credential store.
 ///
 /// Stdio servers get an empty environment except graphrt-mcp's launcher
 /// essentials, a `PATH` that also covers Homebrew, and the named secrets.
@@ -306,7 +308,7 @@ pub fn runtime_config(definition: &McpServerDefinition, credentials: &Credential
                 }
             }
             McpTransport::Stdio(StdioConfig {
-                command: command.clone(),
+                command: launch_command(command),
                 args: args.clone(),
                 env,
                 pass_env: Vec::new(),
@@ -331,6 +333,60 @@ pub fn runtime_config(definition: &McpServerDefinition, credentials: &Credential
         transport,
         timeout_ms: DEFAULT_TIMEOUT_MS,
         allowed_tools: None,
+    })
+}
+
+/// The program to start for a stdio server's `command`.
+///
+/// On Windows, starting `npx` only looks for `npx.exe`, while Node ships
+/// `npx.cmd` (likewise `uvx.cmd`, `pnpm.cmd`, ...). So a bare name is resolved
+/// through `PATH` and `PATHEXT` to its full path, which std can start (it runs
+/// `.cmd` / `.bat` through `cmd.exe` with safe quoting). Elsewhere, and when
+/// nothing matches, the command is used as written.
+fn launch_command(command: &str) -> String {
+    if !cfg!(windows) {
+        return command.to_owned();
+    }
+    let search_path = std::env::var_os("PATH").unwrap_or_default();
+    let path_extensions = std::env::var("PATHEXT").unwrap_or_else(|_| DEFAULT_WINDOWS_PATH_EXTENSIONS.to_owned());
+    find_command_with_extensions(command, &search_path, &path_extensions)
+        .map(|resolved| resolved.display().to_string())
+        .unwrap_or_else(|| command.to_owned())
+}
+
+/// `PATHEXT` when the variable is missing.
+const DEFAULT_WINDOWS_PATH_EXTENSIONS: &str = ".COM;.EXE;.BAT;.CMD";
+
+/// The first `<directory>/<command><extension>` that is a file, trying each
+/// `PATH` directory (in `search_path`, split the platform's way) with each
+/// `PATHEXT` extension. `None` for names with a directory part or one of those
+/// extensions already, which need no lookup.
+///
+/// @example
+/// // PATH=C:\Program Files\nodejs, PATHEXT=.EXE;.CMD → C:\Program Files\nodejs\npx.cmd
+/// find_command_with_extensions("npx", &search_path, ".EXE;.CMD");
+pub(crate) fn find_command_with_extensions(
+    command: &str,
+    search_path: &OsStr,
+    path_extensions: &str,
+) -> Option<PathBuf> {
+    let extensions: Vec<String> = path_extensions
+        .split(';')
+        .map(str::trim)
+        .filter(|extension| !extension.is_empty())
+        .map(str::to_ascii_lowercase)
+        .collect();
+    let already_has_extension = Path::new(command).extension().is_some_and(|extension| {
+        extensions.contains(&format!(".{}", extension.to_string_lossy().to_ascii_lowercase()))
+    });
+    if command.is_empty() || command.contains(['/', '\\']) || already_has_extension {
+        return None;
+    }
+    std::env::split_paths(search_path).filter(|directory| !directory.as_os_str().is_empty()).find_map(|directory| {
+        extensions
+            .iter()
+            .map(|extension| directory.join(format!("{command}{extension}")))
+            .find(|candidate| candidate.is_file())
     })
 }
 

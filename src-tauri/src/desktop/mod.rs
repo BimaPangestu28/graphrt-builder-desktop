@@ -1,14 +1,16 @@
 //! Operating-system integration: what lets graphrt keep running agents when
 //! its window is closed, and tell the user when a run needs them.
 //!
-//! - [`tray`]: the menu bar / tray icon and its menu (status, open, pause, quit).
+//! - [`tray`]: the menu bar (macOS) / system tray (Windows, Linux) icon and its
+//!   menu (status, open, pause, quit).
 //! - [`window`]: closing the main window hides it; quitting is explicit.
 //! - [`notify`]: [`notify::NotifyingSink`] shows a notification when a run
 //!   waits for approval or fails; a click opens the run.
-//! - [`keep_awake`]: a `caffeinate` assertion while a run is active (macOS).
+//! - [`keep_awake`]: the system's keep-awake assertion while a run is active
+//!   (`caffeinate` on macOS, `SetThreadExecutionState` on Windows, `systemd-inhibit` on Linux).
 //! - [`app_settings`]: the typed preferences behind all of the above.
 //! - [`data`]: export all agents / delete all data.
-//! - [`data_folder`]: where the data lives, and "Show in Finder".
+//! - [`data_folder`]: where the data lives, and "Show in Finder / File Explorer".
 //! - [`chat_notify`]: a notification when a chatbot hands a conversation over.
 //! - [`daily_summary`]: one notification a day summarizing the runs.
 //! - [`onboarding_tour`]: whether the onboarding tour was completed or skipped.
@@ -16,7 +18,10 @@
 //! Run status changes reach this module through two small sink wrappers that
 //! [`crate::run`] chains around the Tauri sink: [`notify::NotifyingSink`]
 //! and [`RunActivitySink`] (refreshes the tray and the keep-awake assertion).
-//! Launch at login uses `tauri-plugin-autostart` ([`apply_settings`]).
+//! Launch at login uses `tauri-plugin-autostart` ([`apply_settings`]): a
+//! LaunchAgent on macOS, the `Run` registry key on Windows, an XDG autostart
+//! entry on Linux. `tauri-plugin-single-instance` makes a second launch show
+//! the running window instead of starting another runner.
 
 pub mod app_settings;
 pub mod chat_notify;
@@ -128,19 +133,31 @@ fn apply_launch_at_login(_app_handle: &AppHandle, _open_at_login: bool) {}
 pub fn register_plugins(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wry> {
     let builder = builder.plugin(tauri_plugin_notification::init());
     #[cfg(desktop)]
-    let builder =
-        builder.plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None));
+    let builder = builder
+        .plugin(tauri_plugin_single_instance::init(|app_handle, _arguments, _working_dir| {
+            window::show_main_window(app_handle)
+        }))
+        .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None));
     builder
 }
 
 /// Creates the tray icon and keep-awake state. Call from `setup` after `AppState` is managed.
 ///
-/// @throws tauri::Error - when the tray icon cannot be created
+/// A tray icon that cannot be created (e.g. a Linux desktop without the
+/// AppIndicator library) is logged, not fatal: the window then quits on close
+/// ([`window::should_hide_on_close`]) since nothing could bring it back.
 pub fn setup(app: &tauri::App) -> tauri::Result<()> {
     app.manage(KeepAwake::default());
     let show_in_menu_bar =
         app.try_state::<AppState>().is_none_or(|state| AppSettings::load_or_default(&state.db).show_in_menu_bar);
-    tray::create_tray(app.handle(), show_in_menu_bar)?;
+    // The Linux tray backend panics instead of failing when libayatana-appindicator is missing.
+    let created =
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| tray::create_tray(app.handle(), show_in_menu_bar)));
+    match created {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => log::warn!("could not create the tray icon; closing the window will quit graphrt: {error}"),
+        Err(_) => log::warn!("the tray icon library is missing (libayatana-appindicator3 on Linux); closing the window will quit graphrt"),
+    }
     tray::resume_pause_timer(app.handle());
     Ok(())
 }
