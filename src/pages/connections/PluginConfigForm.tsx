@@ -1,4 +1,5 @@
 import { useId, useState, type FormEvent } from 'react'
+import { getCredentialStoreName } from '@/lib/platform'
 import { Button } from '@/components/ui'
 import { describeError } from '@/lib/agentDisplay'
 
@@ -107,7 +108,7 @@ export function PluginConfigForm({ pluginName, fields, onSave, onClear }: Plugin
           onClear={() => onClear(field.variable)}
         />
       ))}
-      <span className="text-[12px] text-muted">Saved in the keychain on this computer, never shown again</span>
+      <span className="text-[12px] text-muted">Saved in {getCredentialStoreName()}, never shown again</span>
     </div>
   )
 }

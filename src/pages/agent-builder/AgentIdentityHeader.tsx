@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
+import { getCredentialStoreName } from '@/lib/platform'
 import { useNavigate } from 'react-router-dom'
 import { deleteAgent, renameAgent } from '@/api/agents'
 import type { Agent } from '@/api/types'
@@ -166,7 +167,7 @@ export function DeleteConfirmation({ agent, onCancel, onDeleted }: { agent: Agen
       </span>
       <span id={detailId} className="text-[13px] leading-normal text-body">
         Its steps, every version, its run history and its schedules are deleted, and any run still going or waiting for you is
-        stopped. Keys and secrets in the Keychain stay. This can't be undone.
+        stopped. Keys and secrets in {getCredentialStoreName()} stay. This can't be undone.
       </span>
       <div className="flex flex-wrap gap-2">
         <Button variant="danger" size="sm" onClick={() => void confirmDelete()} disabled={isDeleting} className="bg-danger !text-white hover:bg-danger-deep">

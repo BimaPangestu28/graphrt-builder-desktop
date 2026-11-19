@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { getCredentialStoreName } from '@/lib/platform'
 import { listAppConnections } from '@/api/appConnections'
 import type { WorkflowSecretOverview } from '@/api/connectionTypes'
 import { listAllWorkflowSecrets } from '@/api/credentials'
@@ -87,7 +88,7 @@ export function ConnectionsPage() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1">
           <h1 className="m-0 text-[26px] font-semibold tracking-[-0.5px]">Connections</h1>
-          <span className="text-body">Apps, AI models and keys your agents use. Secrets stay in macOS Keychain</span>
+          <span className="text-body">Apps, AI models and keys your agents use. Secrets stay in {getCredentialStoreName()}</span>
         </div>
         <label className="box-border flex h-10 w-[260px] max-w-full items-center gap-2 rounded-[10px] border border-line-strong px-3 focus-within:border-ink">
           <StrokeIcon size={15} className="text-muted">

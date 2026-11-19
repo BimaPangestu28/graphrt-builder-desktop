@@ -28,7 +28,7 @@ const screenList: Array<{ number: string; title: string; routeKey: RouteKey }> =
   { number: '22', title: 'Settings', routeKey: 'settings' },
   { number: '23', title: 'When something goes wrong', routeKey: 'errorStates' },
   { number: '24', title: 'Version history and undo', routeKey: 'versionHistory' },
-  { number: '25', title: 'Menu bar and notifications', routeKey: 'menuBar' },
+  { number: '25', title: 'Menu bar or tray, and notifications', routeKey: 'menuBar' },
 ]
 
 export function ScreenIndexPage() {

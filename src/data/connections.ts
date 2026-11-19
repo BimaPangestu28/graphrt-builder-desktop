@@ -1,7 +1,9 @@
+import { getCredentialStoreShortName } from '@/lib/platform'
+
 /**
  * Connection shapes for screen 21 and the AI model card templates (names and descriptions;
  * their state comes from the backend). Sample app accounts live in
- * `api/sampleBackend/appConnections.ts`. Secrets themselves live in macOS Keychain, never here.
+ * `api/sampleBackend/appConnections.ts`. Secrets themselves live in the OS credential store (macOS Keychain, Windows Credential Manager, Secret Service on Linux), never here.
  */
 export type ConnectionCategory = 'apps' | 'models'
 
@@ -18,7 +20,7 @@ export interface Connection {
   name: string
   category: ConnectionCategory
   state: ConnectionState
-  /** Label shown top-right when connected, e.g. "Connected" or "Found on this Mac". */
+  /** Label shown top-right when connected, e.g. "Connected" or "Found on this computer". */
   connectedLabel: string
   /** Second line while connected or signed out. */
   connectedDescription: string
@@ -34,7 +36,7 @@ export const initialConnections: Connection[] = [
     category: 'models',
     state: 'default',
     connectedLabel: 'Default',
-    connectedDescription: 'Key in Keychain · $0.38 this month',
+    connectedDescription: `Key in ${getCredentialStoreShortName()} · $0.38 this month`,
     availableDescription: 'GPT models',
     setupActionLabel: 'Add key',
   },
@@ -43,7 +45,7 @@ export const initialConnections: Connection[] = [
     name: 'Ollama',
     category: 'models',
     state: 'connected',
-    connectedLabel: 'Found on this Mac',
+    connectedLabel: 'Found on this computer',
     connectedDescription: 'qwen2.5:14b · free, works offline',
     availableDescription: 'Local models',
     setupActionLabel: 'Add key',
@@ -54,7 +56,7 @@ export const initialConnections: Connection[] = [
     category: 'models',
     state: 'available',
     connectedLabel: 'Connected',
-    connectedDescription: 'Key in Keychain · not used yet',
+    connectedDescription: `Key in ${getCredentialStoreShortName()} · not used yet`,
     availableDescription: 'Claude models',
     setupActionLabel: 'Add key',
   },
@@ -64,7 +66,7 @@ export const initialConnections: Connection[] = [
     category: 'models',
     state: 'available',
     connectedLabel: 'Connected',
-    connectedDescription: 'Key in Keychain · not used yet',
+    connectedDescription: `Key in ${getCredentialStoreShortName()} · not used yet`,
     availableDescription: 'Gemini models',
     setupActionLabel: 'Add key',
   },
@@ -74,7 +76,7 @@ export const initialConnections: Connection[] = [
     category: 'models',
     state: 'available',
     connectedLabel: 'Connected',
-    connectedDescription: 'Key in Keychain · not used yet',
+    connectedDescription: `Key in ${getCredentialStoreShortName()} · not used yet`,
     availableDescription: 'DeepSeek V3 and R1 (deepseek-chat, deepseek-reasoner)',
     setupActionLabel: 'Add key',
   },

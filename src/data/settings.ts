@@ -21,7 +21,7 @@ export const settingsSections: Array<{ key: SettingsSectionKey; label: string }>
 export const previewOnlySettingsSections: readonly SettingsSectionKey[] = ['general', 'remote']
 
 export const modelFallbackOptions = ['Switch to Ollama', 'Pause and tell me'] as const
-export const appearanceOptions = ['Match the Mac', 'Light', 'Dark'] as const
+export const appearanceOptions = ['Match the system', 'Light', 'Dark'] as const
 export const languageOptions = ['English', 'Bahasa Indonesia'] as const
 
 /** Display names of the model providers. */
@@ -55,6 +55,6 @@ export function describeRetention(retentionDays: number | null): string {
 
 /** Labels of the missed-run policy select, by backend value. */
 export const missedRunPolicyLabels = {
-  run_once: 'Run it once when the Mac wakes',
+  run_once: 'Run it once when the computer wakes',
   skip: 'Skip it',
 } as const

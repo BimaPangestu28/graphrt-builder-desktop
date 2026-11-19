@@ -7,7 +7,7 @@ import { toError } from '@/hooks/useRunData'
 
 /** The rules the Scheduler's "Rules for every schedule" panel edits, and where each is stored. */
 export interface ScheduleRuleValues {
-  /** `AppSettings.missedRunDefaultPolicy`: what new schedules do after the Mac slept. */
+  /** `AppSettings.missedRunDefaultPolicy`: what new schedules do after the computer slept. */
   missedRunDefaultPolicy: AppSettings['missedRunDefaultPolicy']
   /** `AppSettings.keepAwakeWhileRunning`. */
   keepAwakeWhileRunning: boolean

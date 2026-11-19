@@ -100,7 +100,7 @@ export function ChannelsSection({ channels, disabledChannels, onToggle }: Channe
         <div className={listRowClassNames}>
           <span className="flex flex-auto flex-col">
             <span className="font-medium">Website chat bubble</span>
-            <span className="text-[12px] text-muted">Works when graphrt runs on a server, so it answers when the Mac is off</span>
+            <span className="text-[12px] text-muted">Works when graphrt runs on a server, so it answers when the computer is off</span>
           </span>
           <span className="shrink-0 rounded-full bg-selected px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap text-ink-2">Needs a server</span>
         </div>

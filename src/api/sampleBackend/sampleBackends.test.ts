@@ -124,7 +124,7 @@ describe('sample builder backend', () => {
     expect(lastDraft.outputTokens).toBeGreaterThan(0)
     const flowSummary = await sampleBuilderBackend.getFlowSummary('maps-leads')
     expect(flowSummary.steps.find((flowStep) => flowStep.id === 'write_message')?.detail).toBe('Uses the place name · max 1 sentence')
-    expect(flowSummary.steps.find((flowStep) => flowStep.id === 'send_whatsapp')?.detail).toBe('From your number on this Mac · 45s gap · max 40 per day')
+    expect(flowSummary.steps.find((flowStep) => flowStep.id === 'send_whatsapp')?.detail).toBe('From your number on this computer · 45s gap · max 40 per day')
   })
 
   it('adds a review filter inside the loop', async () => {

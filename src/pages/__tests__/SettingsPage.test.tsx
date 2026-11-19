@@ -28,7 +28,7 @@ describe('SettingsPage', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Loading settings')
     expect(await screen.findByRole('checkbox', { name: /Start graphrt when I log in/ })).toBeChecked()
     expect(screen.getByRole('heading', { name: 'Privacy and data' })).toBeInTheDocument()
-    expect(screen.getByRole('combobox', { name: /If a scheduled run was missed/ })).toHaveValue('Run it once when the Mac wakes')
+    expect(screen.getByRole('combobox', { name: /If a scheduled run was missed/ })).toHaveValue('Run it once when the computer wakes')
   })
 
   it('shows an error with a retry when the preferences cannot load', async () => {
@@ -62,9 +62,9 @@ describe('SettingsPage', () => {
   it('puts a toggle back and explains when saving fails', async () => {
     vi.spyOn(sampleAppSettingsBackend, 'updateAppSettings').mockRejectedValueOnce(new BackendError('database', 'disk is full'))
     renderSettingsPage()
-    fireEvent.click(await screen.findByRole('checkbox', { name: /Keep the Mac awake/ }))
+    fireEvent.click(await screen.findByRole('checkbox', { name: /Keep the computer awake/ }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not save the change: disk is full')
-    expect(screen.getByRole('checkbox', { name: /Keep the Mac awake/ })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: /Keep the computer awake/ })).toBeChecked()
   })
 
   it('keeps local-only values after switching sections', async () => {
@@ -162,6 +162,15 @@ describe('SettingsPage', () => {
     revealSpy.mockRejectedValueOnce(new BackendError('not_found', 'the folder does not exist'))
     fireEvent.click(screen.getByRole('button', { name: 'Show in Finder' }))
     expect(await screen.findByText(/Could not open the data folder: the folder does not exist/)).toBeInTheDocument()
+  })
+
+  it('names the system tray and File Explorer on Windows', async () => {
+    const userAgentSpy = vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue('Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
+    renderSettingsPage()
+    expect(await screen.findByRole('checkbox', { name: /Show in the system tray/ })).toBeChecked()
+    fireEvent.click(screen.getByRole('button', { name: 'Show in File Explorer' }))
+    expect(await screen.findByText('Opened the data folder in File Explorer')).toBeInTheDocument()
+    userAgentSpy.mockRestore()
   })
 
   it('shows the app version in About', async () => {

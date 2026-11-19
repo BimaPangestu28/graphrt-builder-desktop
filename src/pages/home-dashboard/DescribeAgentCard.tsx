@@ -1,4 +1,5 @@
 import { useState, type FormEvent, type KeyboardEvent } from 'react'
+import { formatShortcut } from '@/lib/platform'
 import { useNavigate } from 'react-router-dom'
 import { Button, Icon } from '@/components/ui'
 import { buildPathByAgentKind } from '@/data/newAgentTemplates'
@@ -56,7 +57,7 @@ export function DescribeAgentCard() {
           className="resize-none rounded-[10px] border border-line-strong bg-transparent px-3 py-2.5 text-[15px] leading-[1.5] text-ink outline-none placeholder:text-muted focus:border-ink"
         />
         <div className="flex flex-wrap items-center justify-between gap-2.5">
-          <span className="text-[13px] text-muted">You see every step before anything runs · ⌘/Ctrl+Enter to build</span>
+          <span className="text-[13px] text-muted">You see every step before anything runs · {formatShortcut('Enter')} to build</span>
           <Button type="submit" disabled={!canBuild}>
             Build agent
             <Icon name="arrowRight" size={16} />

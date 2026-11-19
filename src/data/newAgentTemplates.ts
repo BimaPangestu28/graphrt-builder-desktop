@@ -68,7 +68,7 @@ export const agentTemplates: AgentTemplate[] = [
   {
     id: 'ask-documents',
     title: 'Ask your documents',
-    description: 'Answer questions from a folder of PDFs on this Mac',
+    description: 'Answer questions from a folder of PDFs on this computer',
     kind: 'task',
     meta: 'Local files · 3 steps',
   },

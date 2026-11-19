@@ -28,6 +28,6 @@ export interface AgentRequirement {
 export const appRequirementsByAgentId: Record<string, AgentRequirement[]> = {
   'maps-leads': [
     { label: 'Google Places API key', isConnected: true },
-    { label: 'WhatsApp on this Mac', isConnected: false },
+    { label: 'WhatsApp on this computer', isConnected: false },
   ],
 }

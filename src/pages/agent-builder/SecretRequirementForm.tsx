@@ -1,4 +1,5 @@
 import { useId, useState, type FormEvent } from 'react'
+import { getCredentialStoreName } from '@/lib/platform'
 import { Button } from '@/components/ui'
 import { describeError } from '@/lib/agentDisplay'
 
@@ -33,7 +34,7 @@ export function SecretRequirementForm({ secretName, onSave, onCancel }: SecretRe
   return (
     <form onSubmit={(event) => void handleSubmit(event)} className="flex flex-col gap-2 px-4 pb-3">
       <label htmlFor={inputId} className="text-[12px] text-muted">
-        Value for <code className="font-mono">{secretName}</code> · saved in the Keychain on this Mac
+        Value for <code className="font-mono">{secretName}</code> · saved in {getCredentialStoreName()}
       </label>
       <div className="flex flex-wrap gap-2">
         <input

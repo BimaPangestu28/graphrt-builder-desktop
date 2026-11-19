@@ -65,7 +65,7 @@ describe('RunResultPage', () => {
 
   it('shows the latest finished test run of the agent without ?runId=', async () => {
     renderRunResultPage()
-    expect(await screen.findByText(/^Yesterday \d\d:\d\d · on this Mac$/)).toBeInTheDocument()
+    expect(await screen.findByText(/^Yesterday \d\d:\d\d · on this computer$/)).toBeInTheDocument()
     expect(screen.getByText('Succeeded')).toBeInTheDocument()
     expect(screen.getByText('Test with cafe · Bandar Lampung · catering menu')).toBeInTheDocument()
     expect(screen.getByText('Places found')).toBeInTheDocument()
@@ -114,7 +114,7 @@ describe('RunResultPage', () => {
     const runId = await finishSampleRun('approve')
     renderRunResultPage(agentPath('runResult', sampleAgentId, { runId }))
     expect(screen.getByText('Loading the run…')).toBeInTheDocument()
-    expect(await screen.findByText(/^Today \d\d:\d\d · on this Mac$/)).toBeInTheDocument()
+    expect(await screen.findByText(/^Today \d\d:\d\d · on this computer$/)).toBeInTheDocument()
     expect(screen.getByText('Succeeded')).toBeInTheDocument()
     expect(screen.getByText('Sent the test message to [PLACE NAME 1].')).toBeInTheDocument()
     expect(screen.getByText('Places found')).toBeInTheDocument()

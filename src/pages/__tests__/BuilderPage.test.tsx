@@ -52,7 +52,7 @@ describe('BuilderPage', () => {
     expect(screen.getByText('Write a short message').closest('li')).toHaveClass('ml-6')
     expect(screen.getByText('Search Google Maps').closest('li')).not.toHaveClass('ml-6')
     expect(screen.queryByText('Changed just now')).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Connect WhatsApp on this Mac' })).toHaveAttribute('href', routePaths.connectWhatsApp)
+    expect(screen.getByRole('link', { name: 'Connect WhatsApp on this computer' })).toHaveAttribute('href', routePaths.connectWhatsApp)
     expect(await screen.findByText('OpenAI · Keychain')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Test with 1 place/ })).toHaveAttribute('href', routePaths.testRun)
     expect(screen.getByRole('link', { name: 'History' })).toHaveAttribute('href', routePaths.versionHistory)

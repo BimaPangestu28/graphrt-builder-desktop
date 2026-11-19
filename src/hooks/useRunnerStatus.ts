@@ -3,7 +3,7 @@ import type { ModelChoice, Trigger } from '@/api/types'
 import { readDefaultModelOrNull } from './useDefaultModel'
 import { useLoadedData, useRunEventSubscription, type LoadedData } from './useRunData'
 
-/** What the sidebar's runner card says about this Mac. */
+/** What the sidebar's runner card says about this computer. */
 export interface RunnerStatusFacts {
   /** The model new agents use; null when no provider is connected. */
   defaultModel: ModelChoice | null

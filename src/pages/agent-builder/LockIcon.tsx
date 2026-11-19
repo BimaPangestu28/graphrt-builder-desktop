@@ -1,6 +1,6 @@
 import { StrokeIcon } from '@/components/ui'
 
-/** Padlock line icon used next to "stays on this Mac" privacy notes (screens 01 and 05). */
+/** Padlock line icon used next to "stays on this computer" privacy notes (screens 01 and 05). */
 export function LockIcon({ size = 14 }: { size?: number }) {
   return (
     <StrokeIcon size={size}>

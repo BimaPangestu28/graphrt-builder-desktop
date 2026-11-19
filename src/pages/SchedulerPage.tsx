@@ -19,7 +19,7 @@ import { ScheduleToolbar, type ScheduleViewMode } from './scheduler/ScheduleTool
 import { TriggersPanel } from './scheduler/TriggersPanel'
 import { getRunHistoryWindow, mockEventTriggers, sortLikeMockup, toPastRuns, toScheduleTrigger } from './scheduler/schedulerViewModel'
 
-/** Dark promo card pointing to moving schedules onto a server so they run with the Mac off. */
+/** Dark promo card pointing to moving schedules onto a server so they run with the computer off. */
 function RemoteRunnerPromo() {
   return (
     <Link to={routePaths.settings} className="flex items-center gap-3 rounded-[14px] bg-ink px-4 py-3.5 no-underline !text-white hover:bg-ink-2">
@@ -27,14 +27,14 @@ function RemoteRunnerPromo() {
         <path d="M7 18a4 4 0 0 1-.6-8 6 6 0 0 1 11.6 1.5A3.5 3.5 0 0 1 17.5 18z" />
       </StrokeIcon>
       <span className="flex flex-col gap-0.5">
-        <span className="font-semibold">Runs even when the Mac is off</span>
+        <span className="font-semibold">Runs even when the computer is off</span>
         <span className="text-[13px] text-line-strong">Move schedules to your own server or VPS, free</span>
       </span>
     </Link>
   )
 }
 
-/** The calendar's zone: the first schedule's, else this Mac's (the preview is pinned to the design's). */
+/** The calendar's zone: the first schedule's, else this computer's (the preview is pinned to the design's). */
 function resolveTimezone(triggers: Trigger[]): string {
   if (triggers[0]) return triggers[0].timezone
   if (!isDesktopApp()) return scheduleTimeZone

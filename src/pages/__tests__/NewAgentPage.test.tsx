@@ -43,7 +43,7 @@ describe('NewAgentPage', () => {
     expect(prompt).toHaveAttribute('placeholder', jobDescriptionPlaceholder)
     expect(screen.getByRole('button', { name: 'Build agent' })).toBeDisabled()
     expect(screen.getByRole('button', { name: /Customer chatbot/ })).toBeInTheDocument()
-    expect(screen.getByText('Runs on this Mac')).toBeInTheDocument()
+    expect(screen.getByText('Runs on this computer')).toBeInTheDocument()
     expect(await screen.findByRole('combobox', { name: 'Model for new agents' })).toHaveDisplayValue('gpt-4o-mini')
   })
 

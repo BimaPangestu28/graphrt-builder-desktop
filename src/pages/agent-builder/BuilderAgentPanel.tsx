@@ -174,7 +174,7 @@ export function BuilderAgentPanel({
       <div role="tabpanel" id={`builder-panel-${activeTab}`} aria-labelledby={`builder-tab-${activeTab}`} className={`flex flex-col gap-6 p-6 ${splitPaneScrollClassName}`}>
         <div className="flex flex-col gap-1">
           <AgentIdentityHeader agent={agent} onRenamed={onAgentRenamed ?? (() => undefined)} />
-          <span className="text-body">Runs on this Mac · started by hand</span>
+          <span className="text-body">Runs on this computer · started by hand</span>
         </div>
         {activeTab === 'steps' && (
           <StepsTabContent

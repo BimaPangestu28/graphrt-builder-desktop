@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { getFileManagerName, getTrayAreaName } from '@/lib/platform'
 import { Link } from 'react-router-dom'
 import { revealDataFolder } from '@/api/appInfo'
 import type { AppSettings } from '@/api/appSettingsTypes'
@@ -55,13 +56,13 @@ export function RunnerSection({ settingsValues, updateSetting, showsPreviewOnlyS
         onToggle={(isChecked) => void updateAppSetting('openAtLogin', isChecked)}
       />
       <ToggleRow
-        title="Show in the menu bar"
+        title={`Show in the ${getTrayAreaName()}`}
         description="Approve and check runs without opening the window"
         isChecked={appSettings.showInMenuBar}
         onToggle={(isChecked) => void updateAppSetting('showInMenuBar', isChecked)}
       />
       <ToggleRow
-        title="Keep the Mac awake while an agent runs"
+        title="Keep the computer awake while an agent runs"
         description={appSettings.keepAwakeOnlyOnPower ? 'Only while plugged in' : 'Also on battery'}
         isChecked={appSettings.keepAwakeWhileRunning}
         onToggle={(isChecked) => void updateAppSetting('keepAwakeWhileRunning', isChecked)}
@@ -69,14 +70,14 @@ export function RunnerSection({ settingsValues, updateSetting, showsPreviewOnlyS
       {appSettings.keepAwakeWhileRunning && (
         <ToggleRow
           title="Only while plugged in"
-          description="On battery the Mac sleeps as usual"
+          description="On battery the computer sleeps as usual"
           isChecked={appSettings.keepAwakeOnlyOnPower}
           onToggle={(isChecked) => void updateAppSetting('keepAwakeOnlyOnPower', isChecked)}
         />
       )}
       <SelectRow
         title="If a scheduled run was missed"
-        description="Default for new schedules, when the Mac was asleep or off"
+        description="Default for new schedules, when the computer was asleep or off"
         value={missedRunPolicyLabels[appSettings.missedRunDefaultPolicy]}
         options={missedRunPolicyOptions}
         onSelect={(label) => void updateAppSetting('missedRunDefaultPolicy', findMissedRunPolicy(label))}
@@ -141,7 +142,7 @@ export function PrivacySection({ settingsValues, updateSetting, showsPreviewOnly
         isMonospace
         action={
           <button type="button" onClick={() => void handleReveal()} className={`${settingsButtonClassNames} h-[34px] rounded-lg px-3`}>
-            Show in Finder
+            Show in {getFileManagerName()}
           </button>
         }
       />
@@ -164,7 +165,7 @@ export function PrivacySection({ settingsValues, updateSetting, showsPreviewOnly
       )}
       {folderAction.kind === 'revealed' && (
         <p role="status" className="m-0 text-[13px] text-body">
-          Opened the data folder in Finder
+          Opened the data folder in {getFileManagerName()}
         </p>
       )}
       {folderAction.kind === 'failed' && (
@@ -186,7 +187,7 @@ export function RemoteRunnerBanner({ onConnectServer }: { onConnectServer: () =>
           Free, no limits
         </h2>
         <span className="text-[13px] text-line-heavy">
-          Want agents running when the Mac is off? Install graphrt on your own server or VPS and connect it here
+          Want agents running when your computer is off? Install graphrt on your own server or VPS and connect it here
         </span>
       </span>
       <button
@@ -213,7 +214,7 @@ export function RemoteRunnerSection({ settingsValues, updateSetting }: SectionPr
   return (
     <SettingsGroup headingId="settings-remote-heading" title="Remote runner">
       <p className="m-0 leading-normal text-body">
-        Run <code className="font-mono text-[13px]">npx graphrt runner</code> on your server, then paste the address it prints. Agents keep running when this Mac is off
+        Run <code className="font-mono text-[13px]">npx graphrt runner</code> on your server, then paste the address it prints. Agents keep running when this computer is off
       </p>
       <form onSubmit={handleConnect} className="flex flex-wrap items-end gap-2 py-3.5">
         <label className="flex flex-[1_1_280px] flex-col gap-1.5">
@@ -265,7 +266,7 @@ export function GeneralSection({ settingsValues, updateSetting }: SectionProps) 
   )
 }
 
-/** Notifications group: which events show a Mac notification (all stored by the backend). */
+/** Notifications group: which events show a system notification (all stored by the backend). */
 export function NotificationsSection({ appSettings, updateAppSetting }: AppSettingsSectionProps) {
   return (
     <SettingsGroup headingId="settings-notifications-heading" title="Notifications">

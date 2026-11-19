@@ -55,7 +55,7 @@ describe('ErrorStatesPage', () => {
 
   it('maps problem actions to the screens that fix them', async () => {
     renderErrorStatesPage()
-    const scheduleCard = await screen.findByRole('article', { name: 'The Mac was asleep at 09:00' })
+    const scheduleCard = await screen.findByRole('article', { name: 'The computer was asleep at 09:00' })
     expect(within(scheduleCard).getByRole('link', { name: 'Change schedule rules' })).toHaveAttribute('href', '/agents/maps-leads/schedule')
     const stepCard = screen.getByRole('article', { name: 'A step kept timing out' })
     expect(within(stepCard).getByRole('link', { name: 'Ask chat to fix this step' })).toHaveAttribute('href', '/agents/maps-leads/steps')

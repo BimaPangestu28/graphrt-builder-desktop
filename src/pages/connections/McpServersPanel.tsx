@@ -144,7 +144,7 @@ function AddMcpServerForm({ onAdded }: { onAdded: () => Promise<void> }) {
         <label className="flex flex-[1_1_160px] flex-col gap-1 text-[13px] font-medium">
           How graphrt reaches it
           <select value={formValues.transportKind} onChange={(event) => updateField('transportKind', event.target.value === 'http' ? 'http' : 'stdio')} className={inputClassNames}>
-            <option value="stdio">Start a command on this Mac</option>
+            <option value="stdio">Start a command on this computer</option>
             <option value="http">Connect to a URL</option>
           </select>
         </label>

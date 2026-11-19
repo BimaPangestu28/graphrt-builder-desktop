@@ -283,7 +283,7 @@ export function formatZonedIsoDate(instant: Date, timezone: string): string {
   return `${zoned.year}-${String(zoned.month).padStart(2, '0')}-${String(zoned.day).padStart(2, '0')}`
 }
 
-/** The scheduler's "If the Mac was asleep" choices and the backend policy each one means. */
+/** The scheduler's "If the computer was asleep" choices and the backend policy each one means. */
 export const missedRunPolicyByOption: Record<string, MissedRunPolicy> = {
   'Run once when it wakes up': 'run_once',
   'Skip the missed run': 'skip',

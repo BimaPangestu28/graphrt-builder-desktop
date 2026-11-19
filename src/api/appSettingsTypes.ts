@@ -14,7 +14,7 @@ export interface AppSettings {
   notifyOnApproval: boolean
   /** Notify when a run fails. */
   notifyOnFailure: boolean
-  /** Keep the Mac from sleeping while a run is active (macOS only). */
+  /** Keep the computer from sleeping while a run is active. */
   keepAwakeWhileRunning: boolean
   /** Keep awake only on AC power. */
   keepAwakeOnlyOnPower: boolean

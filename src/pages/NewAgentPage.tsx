@@ -106,7 +106,7 @@ export function NewAgentPage() {
             <div className="flex flex-wrap gap-2">
               <PromptChip>
                 <Icon name="monitor" size={14} />
-                Runs on this Mac
+                Runs on this computer
               </PromptChip>
               <ModelPickerChip />
             </div>

@@ -18,7 +18,7 @@ export interface SettingsValues {
 const initialSettingsValues: SettingsValues = {
   modelFallback: 'Switch to Ollama',
   shareCrashReports: false,
-  appearance: 'Match the Mac',
+  appearance: 'Match the system',
   language: 'English',
   remoteServerUrl: '',
 }

@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { getCredentialStoreName, getTrayAreaName } from '@/lib/platform'
 import { Link, useNavigate } from 'react-router-dom'
 import { setApiKey, setDefaultModel, setOllamaBaseUrl } from '@/api/credentials'
 import type { ModelChoice, ModelProvider } from '@/api/types'
@@ -95,7 +96,7 @@ function ApiKeyOption({ provider, apiKey, onProviderChange, onApiKeyChange }: Ap
         </span>
         <span className="flex items-center gap-1.5 text-[12px] text-ink-2">
           <LockIcon />
-          Saved in macOS Keychain, never sent to graphrt
+          Saved in {getCredentialStoreName()}, never sent to graphrt
         </span>
       </span>
     </label>
@@ -141,7 +142,7 @@ export function WelcomePage() {
       <form onSubmit={handleSubmit} className="box-border flex w-full max-w-[600px] flex-col gap-7 rounded-[20px] border border-line bg-surface p-10">
         <div className="flex flex-col gap-2">
           <span className="text-[12px] font-semibold text-brand-strong">Takes about a minute</span>
-          <h1 className="m-0 text-[30px] font-semibold tracking-[-0.5px]">Agents that run on your Mac</h1>
+          <h1 className="m-0 text-[30px] font-semibold tracking-[-0.5px]">Agents that run on your computer</h1>
           <p className="m-0 text-[15px] leading-[1.6] text-body">Describe a job, review the steps, then let it run. Your files, sessions and keys stay on this machine</p>
         </div>
 
@@ -159,7 +160,7 @@ export function WelcomePage() {
             className="mt-0.5 size-[18px] accent-brand"
           />
           <span className="flex flex-col gap-0.5">
-            <span className="font-medium">Keep agents running from the menu bar</span>
+            <span className="font-medium">Keep agents running from the {getTrayAreaName()}</span>
             <span className="text-body">Scheduled agents still run after you close this window</span>
           </span>
         </label>

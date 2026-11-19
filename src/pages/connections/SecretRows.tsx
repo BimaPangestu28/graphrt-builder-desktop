@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { getCredentialStoreName } from '@/lib/platform'
 import type { WorkflowSecretOverview } from '@/api/connectionTypes'
 import { deleteWorkflowSecret, setWorkflowSecret } from '@/api/credentials'
 import { joinClassNames } from '@/components/ui'
@@ -57,7 +58,7 @@ function SecretValueForm({ secret, onSave, onCancel }: SecretValueFormProps) {
       <button type="button" onClick={onCancel} className={secondaryButtonClassNames}>
         Cancel
       </button>
-      <span className="w-full text-[12px] text-muted">Saved in the keychain, never shown again</span>
+      <span className="w-full text-[12px] text-muted">Saved in {getCredentialStoreName()}, never shown again</span>
       {errorMessage && (
         <span aria-live="polite" className="w-full text-[13px] text-danger">
           {errorMessage}
@@ -83,7 +84,7 @@ function RemoveConfirmation({ secret, isRemoving, onConfirm, onCancel }: RemoveC
   return (
     <div role="alertdialog" aria-label={`Remove ${secret.name}?`} className="flex w-full flex-wrap items-center gap-2 rounded-lg bg-danger-tint px-3 py-2">
       <span className="flex-auto text-[13px] text-danger-deep">
-        Remove {secret.name} from the keychain? {consequence}
+        Remove {secret.name} from {getCredentialStoreName()}? {consequence}
       </span>
       <button type="button" disabled={isRemoving} onClick={onConfirm} className={`${smallButtonClassNames} border-0 bg-danger text-white`}>
         {isRemoving ? 'Removing…' : `Yes, remove ${secret.name}`}

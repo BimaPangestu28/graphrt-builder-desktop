@@ -101,7 +101,7 @@ function useKnowledgeBaseActions(knowledgeBaseId: string, live: ReturnType<typeo
       }),
     deleteBase: (name: string) =>
       runAction(async () => {
-        if (!window.confirm(`Delete "${name}"? Its passages are removed from this Mac; your files stay where they are.`)) return
+        if (!window.confirm(`Delete "${name}"? Its passages are removed from this computer; your files stay where they are.`)) return
         await deleteKnowledgeBase(knowledgeBaseId)
         navigate(routePaths.knowledge)
       }),
