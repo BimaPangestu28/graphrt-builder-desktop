@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { BackendError } from '@/api/client'
 import { readPendingApprovals } from '@/api/pauseReasons'
 import { answerApprovals, getLastRunInputs, getRunInputs } from '@/api/runReview'
 import type { ApprovalAnswer, PendingApproval, RunInputs } from '@/api/runReviewTypes'
@@ -11,6 +12,7 @@ import { useNow } from '@/hooks/useNow'
 import { toError, useLoadedData } from '@/hooks/useRunData'
 import { useRunLive } from '@/hooks/useRunLive'
 import { agentPath, runReviewPath, sampleAgentId } from '@/routes'
+import { AgentPluginSetupMessage } from '@/pages/agent-builder/PluginRequirementsMessage'
 import { ApprovalCard } from '@/pages/agent-run/ApprovalCard'
 import { RunErrorNotice } from '@/pages/agent-run/RunErrorNotice'
 import { RunInputsForm } from '@/pages/agent-run/RunInputsForm'
@@ -231,7 +233,15 @@ interface TestSetupScreenProps {
   isFlowSummaryLoading: boolean
 }
 
-/** Before a test: the flow's inputs as a form (prefilled from the last run) and a Start button. */
+/** `start_run` refused because plugins the agent uses are not installed, trusted or set up. */
+function isMissingPluginsError(startError: Error | null): boolean {
+  return startError instanceof BackendError && startError.code === 'missing_plugins'
+}
+
+/**
+ * Before a test: the flow's inputs as a form (prefilled from the last run) and a Start button.
+ * When the start is refused for missing plugins, the chat shows their setup card.
+ */
 function TestSetupScreen({ agentId, agent, flowSummary, flowSummaryError, isFlowSummaryLoading }: TestSetupScreenProps) {
   const lastInputs = useLoadedData(() => getLastRunInputs(agentId), [agentId])
   const { startTest, startError, isStarting } = useStartTestRun(agentId)
@@ -243,6 +253,7 @@ function TestSetupScreen({ agentId, agent, flowSummary, flowSummaryError, isFlow
       <RunWorkspace>
         <BuildChatPanel>
           <BuilderReply>Fill in what the test should use on the right, then start it. Anything that sends something out asks you first</BuilderReply>
+          {isMissingPluginsError(startError) && <AgentPluginSetupMessage agentId={agentId} />}
         </BuildChatPanel>
 
         <RunPanel
@@ -254,7 +265,9 @@ function TestSetupScreen({ agentId, agent, flowSummary, flowSummaryError, isFlow
         >
           <RunTitleRow meta="Not started" status={<StatusPill tone="neutral" size="title">Ready</StatusPill>} />
           {flowSummaryError && <RunErrorNotice title="Could not read this agent's steps" error={flowSummaryError} />}
-          {startError && <RunErrorNotice title="Could not start the test" error={startError} />}
+          {startError && (
+            <RunErrorNotice title={isMissingPluginsError(startError) ? 'Set up its plugins in the chat, then start again' : 'Could not start the test'} error={startError} />
+          )}
           {isReady ? (
             <RunInputsForm inputs={flowSummary.inputs} lastInputs={lastInputs.data} isStarting={isStarting} onStart={(inputs) => void startTest(inputs)} />
           ) : (

@@ -1,10 +1,11 @@
-import { useState, type FormEvent } from 'react'
+import { useState, type FormEvent, type ReactNode } from 'react'
 import type { Agent, FlowStep } from '@/api/types'
 import { StrokeIcon, VisuallyHidden } from '@/components/ui'
 import { PanelHeader, UserChatBubble } from './ChatBubbles'
 import { describeDraftActivity } from './draftActivity'
 import { CompactDraftStepList } from './DraftPreviewParts'
 import type { ChatExchange, LatestRevision } from './useAgentRevisions'
+import type { PluginSetupAnchor } from './usePluginSetupPlacement'
 
 const assistantBlockClassNames = 'flex max-w-[92%] flex-col'
 const outlineButtonClassNames =
@@ -164,11 +165,15 @@ interface BuilderChatPanelProps {
   undoErrorMessage: string | null
   onSubmitRequest: (request: string) => void
   onToggleUndo: () => void
+  /** The plugin setup message, shown at `pluginSetupAnchor`. */
+  pluginSetupMessage?: ReactNode
+  /** "opening": first builder message · exchange id: under that revision's reply · null: not shown. */
+  pluginSetupAnchor?: PluginSetupAnchor | null
 }
 
 /** Left column of screen 04: the build conversation plus a box to ask for more changes. */
 export function BuilderChatPanel(props: BuilderChatPanelProps) {
-  const { agent, steps, modelName, exchanges, latestRevision, isBusy, undoErrorMessage, onSubmitRequest, onToggleUndo } = props
+  const { agent, steps, modelName, exchanges, latestRevision, isBusy, undoErrorMessage, onSubmitRequest, onToggleUndo, pluginSetupMessage, pluginSetupAnchor } = props
   return (
     <section aria-label="Chat" className="box-border flex min-w-0 flex-[1_1_380px] flex-col border-r border-line bg-surface">
       <PanelHeader className="justify-between">
@@ -180,6 +185,7 @@ export function BuilderChatPanel(props: BuilderChatPanelProps) {
           <>
             <UserChatBubble>{agent.description}</UserChatBubble>
             <AgentSummaryReply agentName={agent.name} steps={steps} />
+            {pluginSetupAnchor === 'opening' && pluginSetupMessage}
           </>
         )}
         {exchanges.map((exchange) => (
@@ -192,6 +198,7 @@ export function BuilderChatPanel(props: BuilderChatPanelProps) {
               isBusy={isBusy}
               onToggleUndo={onToggleUndo}
             />
+            {pluginSetupAnchor === exchange.id && exchange.status !== 'pending' && pluginSetupMessage}
           </div>
         ))}
         {undoErrorMessage && (

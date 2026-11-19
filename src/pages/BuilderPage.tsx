@@ -1,20 +1,21 @@
-import { useCallback } from 'react'
+import { useCallback, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import type { Agent } from '@/api/types'
 import { AppShell, type SidebarProps } from '@/components/layout'
 import { useAgent } from '@/hooks/useAgent'
 import { useFlowSummary } from '@/hooks/useFlowSummary'
 import { setWorkflowSecret } from '@/api/credentials'
-import { installPlugin } from '@/api/plugins'
-import { useInstalledPlugins } from '@/hooks/useInstalledPlugins'
 import { useProviderStatuses } from '@/hooks/useProviderStatuses'
 import { useWorkflowSecrets } from '@/hooks/useWorkflowSecrets'
 import { describeError } from '@/lib/agentDisplay'
 import { sampleAgentId } from '@/routes'
 import { BuilderAgentPanel } from './agent-builder/BuilderAgentPanel'
 import { BuilderChatPanel } from './agent-builder/BuilderChatPanel'
-import { listBuilderRequirements, listPluginRequirements } from './agent-builder/builderRequirements'
+import { listBuilderRequirements, listPluginSetupRequirements } from './agent-builder/builderRequirements'
+import { focusPluginSetupMessage, PluginRequirementsMessage } from './agent-builder/PluginRequirementsMessage'
 import { useAgentRevisions } from './agent-builder/useAgentRevisions'
+import { usePluginSetup } from './agent-builder/usePluginSetup'
+import { usePluginSetupPlacement } from './agent-builder/usePluginSetupPlacement'
 
 const draftStatusLabels: Partial<Record<Agent['status'], string>> = {
   draft: 'Draft · not tested yet',
@@ -38,10 +39,12 @@ function AgentPanelMessage({ children }: { children: string }) {
 }
 
 /**
- * Screen 04 · Builder for the agent in the `:agentId` route. Loads the agent and its flow
- * summary and installed plugins: chat on the left sends changes through `reviseAgent` (with Undo / Redo for the
+ * Screen 04 · Builder for the agent in the `:agentId` route. Loads the agent, its flow
+ * summary and the plugins it needs: chat on the left sends changes through `reviseAgent` (with Undo / Redo for the
  * last one, highlighting the steps it changed), and on the right the steps, the
- * connections and plugins it needs, and the History / Schedule / Test actions.
+ * connections and plugins it needs, and the History / Schedule / Test actions. Plugins are
+ * approved, downloaded and set up in the chat (a card on open and after revisions that add
+ * them); while they are not ready, Test brings that card up instead of starting.
  */
 export function BuilderPage() {
   const agentId = useParams().agentId ?? sampleAgentId
@@ -57,28 +60,37 @@ export function BuilderPage() {
     },
     [reloadWorkflowSecrets],
   )
-  const installedPluginsState = useInstalledPlugins()
-  const reloadInstalledPlugins = installedPluginsState.reload
-  const installStepPlugin = useCallback(
-    async (pluginName: string) => {
-      await installPlugin(pluginName)
-      await reloadInstalledPlugins()
-    },
-    [reloadInstalledPlugins],
-  )
+  const pluginSetup = usePluginSetup(agentId)
+  const pluginSetupPlacement = usePluginSetupPlacement(agentId, pluginSetup)
+  const { placeAfterRevision, ensurePlaced } = pluginSetupPlacement
+  const reloadPluginRequirements = pluginSetup.reload
+  const pluginSetupMessageRef = useRef<HTMLDivElement>(null)
+  const showPluginSetup = useCallback(() => {
+    if (pluginSetupMessageRef.current) {
+      focusPluginSetupMessage(pluginSetupMessageRef.current)
+      return
+    }
+    // The card mounts on this click; focus it once it is in the chat.
+    ensurePlaced()
+    window.setTimeout(() => focusPluginSetupMessage(pluginSetupMessageRef.current), 0)
+  }, [ensurePlaced])
   const reloadAgent = agentState.reload
   const reloadFlowSummary = flowSummaryState.reload
-  // A revision may add or drop `env.*` values, so secrets reload with the steps.
-  const reloadAgentAndSteps = useCallback(async () => {
-    await Promise.all([reloadAgent(), reloadFlowSummary(), reloadWorkflowSecrets()])
-  }, [reloadAgent, reloadFlowSummary, reloadWorkflowSecrets])
+  // A revision may add or drop `env.*` values and plugin steps, so secrets and plugins reload with the steps.
+  const reloadAgentAndSteps = useCallback(
+    async (savedExchangeId: number | null) => {
+      const reloadPlugins = savedExchangeId === null ? reloadPluginRequirements() : placeAfterRevision(savedExchangeId)
+      await Promise.all([reloadAgent(), reloadFlowSummary(), reloadWorkflowSecrets(), reloadPlugins])
+    },
+    [reloadAgent, reloadFlowSummary, reloadWorkflowSecrets, reloadPluginRequirements, placeAfterRevision],
+  )
   const revisions = useAgentRevisions({ agentId, currentVersion: agentState.data?.currentVersion ?? null, onAgentChanged: reloadAgentAndSteps })
 
   const agent = agentState.data
   const flowSummary = flowSummaryState.data
   const requirements = [
     ...listBuilderRequirements(agentId, flowSummary?.modelProviders ?? [], providerSetup?.statuses ?? null, workflowSecretsState.data),
-    ...listPluginRequirements(flowSummary?.steps ?? [], installedPluginsState.data),
+    ...listPluginSetupRequirements(pluginSetup.requirements),
   ]
 
   return (
@@ -93,6 +105,8 @@ export function BuilderPage() {
         undoErrorMessage={revisions.undoErrorMessage}
         onSubmitRequest={(request) => void revisions.sendChangeRequest(request)}
         onToggleUndo={() => void revisions.toggleUndo()}
+        pluginSetupAnchor={pluginSetupPlacement.anchor}
+        pluginSetupMessage={<PluginRequirementsMessage ref={pluginSetupMessageRef} setup={pluginSetup} />}
       />
       {agent ? (
         <BuilderAgentPanel
@@ -102,7 +116,8 @@ export function BuilderPage() {
           highlightedStepIds={revisions.highlightedStepIds}
           requirements={requirements}
           onSaveSecret={saveWorkflowSecret}
-          onInstallPlugin={installStepPlugin}
+          onShowPluginSetup={showPluginSetup}
+          arePluginsReady={pluginSetup.isReady !== false}
         />
       ) : (
         <AgentPanelMessage>{agentState.error ? `Could not load this agent: ${describeError(agentState.error)}` : 'Loading agent…'}</AgentPanelMessage>

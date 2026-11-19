@@ -32,8 +32,11 @@ interface UseAgentRevisionsOptions {
   agentId: string
   /** Version the agent is on before the next change. */
   currentVersion: number | null
-  /** Called after any change is saved, to reload the agent and its steps. */
-  onAgentChanged: () => Promise<void>
+  /**
+   * Called after any change is saved, to reload the agent and its steps. Gets the chat
+   * exchange of a new revision, or null after Undo / Redo.
+   */
+  onAgentChanged: (savedExchangeId: number | null) => Promise<void>
 }
 
 /**
@@ -70,7 +73,7 @@ export function useAgentRevisions({ agentId, currentVersion, onAgentChanged }: U
     setIsBusy(true)
     try {
       const revision = await reviseAgent(agentId, request, (progress) => applyRevisionProgress(exchangeId, progress))
-      await onAgentChanged()
+      await onAgentChanged(exchangeId)
       updateExchange(exchangeId, {
         status: 'done',
         reply: revision.summary,
@@ -94,7 +97,7 @@ export function useAgentRevisions({ agentId, currentVersion, onAgentChanged }: U
     setUndoErrorMessage(null)
     try {
       await restoreAgentVersion(agentId, restoredVersion)
-      await onAgentChanged()
+      await onAgentChanged(null)
       setLatestRevision({ ...latestRevision, isUndone: !latestRevision.isUndone })
     } catch (undoError) {
       setUndoErrorMessage(`Could not restore v${restoredVersion}: ${describeError(undoError)}`)

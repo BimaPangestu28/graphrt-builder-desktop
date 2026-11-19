@@ -1,6 +1,6 @@
 import { BackendError } from '../../client'
 import type { PluginEvent } from '../../pluginTypes'
-import { resetSamplePlugins, samplePluginsBackend, setSampleBrowserRuntimeStatus, subscribeToSampleBrowserRuntimeEvents, subscribeToSamplePluginEvents } from '../plugins'
+import { resetSamplePlugins, samplePluginsBackend, setSampleAgentPluginNeeds, setSampleBrowserRuntimeStatus, subscribeToSampleBrowserRuntimeEvents, subscribeToSamplePluginEvents } from '../plugins'
 
 async function expectBackendError(promise: Promise<unknown>, code: BackendError['code']) {
   await expect(promise).rejects.toBeInstanceOf(BackendError)
@@ -113,5 +113,33 @@ describe('sample plugins backend', () => {
     resetSamplePlugins()
     expect(await readInstalled('website-check')).toBeDefined()
     expect(await samplePluginsBackend.getBrowserRuntimeStatus()).toBe('not_installed')
+  })
+
+  it('lists what the maps-leads agent needs and updates it as plugins are set up', async () => {
+    const readRequirement = async (name: string) => (await samplePluginsBackend.listAgentPluginRequirements('maps-leads')).find((requirement) => requirement.name === name)
+    expect((await samplePluginsBackend.listAgentPluginRequirements('maps-leads')).map((requirement) => requirement.name)).toEqual(['google-maps-scraper', 'whatsapp-api'])
+    expect(await readRequirement('google-maps-scraper')).toMatchObject({ usedBySteps: ['Search Google Maps'], installed: true, needsBrowser: true, browserReady: false, ready: false })
+    expect(await readRequirement('whatsapp-api')).toMatchObject({
+      usedBySteps: ['Send WhatsApp'],
+      installed: false,
+      trustNotNeeded: false,
+      missingConfig: ['WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID'],
+      warning: null,
+      ready: false,
+    })
+
+    await installTrusted('whatsapp-api')
+    await samplePluginsBackend.setPluginConfig('whatsapp-api', 'WHATSAPP_ACCESS_TOKEN', 'token')
+    await samplePluginsBackend.setPluginConfig('whatsapp-api', 'WHATSAPP_PHONE_NUMBER_ID', '123')
+    await samplePluginsBackend.installBrowserRuntime()
+    expect((await samplePluginsBackend.listAgentPluginRequirements('maps-leads')).every((requirement) => requirement.ready)).toBe(true)
+  })
+
+  it('reads plugin steps from dotted node types and carries the README warning', async () => {
+    setSampleAgentPluginNeeds('maps-leads', [{ pluginName: 'whatsapp-web', stepId: 'send_whatsapp' }])
+    const [requirement] = await samplePluginsBackend.listAgentPluginRequirements('maps-leads')
+    expect(requirement).toMatchObject({ name: 'whatsapp-web', trustNotNeeded: true, missingConfig: [] })
+    expect(requirement.warning).toMatch(/Terms of Service/)
+    await expectBackendError(samplePluginsBackend.listAgentPluginRequirements('missing-agent'), 'not_found')
   })
 })

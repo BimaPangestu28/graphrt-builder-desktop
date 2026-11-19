@@ -1,9 +1,9 @@
-import { useEffect, useMemo, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import type { BuildRequest, BuildStage, DraftPreview } from '@/api/types'
 import { AppShell } from '@/components/layout'
-import { joinClassNames } from '@/components/ui'
+import { Button, joinClassNames } from '@/components/ui'
 import { openBuilderDelayMs } from '@/data/mapsLeadsAgent'
 import { useFlowSummary } from '@/hooks/useFlowSummary'
 import { describeError } from '@/lib/agentDisplay'
@@ -14,6 +14,8 @@ import { PanelHeader, UserChatBubble } from './agent-builder/ChatBubbles'
 import { StepNumberBadge } from './agent-builder/StepNumberBadge'
 import { describeDraftActivity } from './agent-builder/draftActivity'
 import { DraftStepCards, PoliteAnnouncement } from './agent-builder/DraftPreviewParts'
+import { PluginRequirementsMessage } from './agent-builder/PluginRequirementsMessage'
+import { usePluginSetup, type PluginSetupState } from './agent-builder/usePluginSetup'
 import { buildChecklistStages, useAgentBuild, type AgentBuildState } from './agent-builder/useAgentBuild'
 
 const placeholderStepCount = 4
@@ -117,14 +119,47 @@ function BuildErrorNotice({ buildError, onRetry }: { buildError: Error; onRetry:
   )
 }
 
-/** Opens the builder for the saved agent shortly after the build finishes. */
-function useOpenBuilderWhenBuilt(builtAgentId: string | null) {
+/**
+ * Opens the builder for the saved agent shortly after the build finishes, unless a plugin
+ * it needs is not ready: then the chat holds on the setup cards until the user continues.
+ * If the requirements cannot be read, the builder opens as before.
+ *
+ * @returns Whether the screen holds for plugin setup (boolean)
+ */
+function useOpenBuilderWhenReady(builtAgentId: string | null, pluginSetup: PluginSetupState): boolean {
   const navigate = useNavigate()
+  const [isHeldForPlugins, setIsHeldForPlugins] = useState(false)
+  const { isReady, loadError } = pluginSetup
+  const opensAtOnce = builtAgentId !== null && !isHeldForPlugins && (isReady === true || loadError !== null)
+
   useEffect(() => {
-    if (!builtAgentId) return
+    if (builtAgentId && isReady === false) setIsHeldForPlugins(true)
+  }, [builtAgentId, isReady])
+
+  useEffect(() => {
+    if (!opensAtOnce || !builtAgentId) return
     const timeoutId = window.setTimeout(() => navigate(agentPath('builder', builtAgentId)), openBuilderDelayMs)
     return () => window.clearTimeout(timeoutId)
-  }, [builtAgentId, navigate])
+  }, [opensAtOnce, builtAgentId, navigate])
+
+  return isHeldForPlugins
+}
+
+/** Under the setup cards on screen 03: always lets the user go on to the steps. */
+function ContinueToStepsButton({ agentId, isReady }: { agentId: string; isReady: boolean }) {
+  const navigate = useNavigate()
+  return (
+    <div className="flex">
+      <Button size="sm" variant={isReady ? 'primary' : 'secondary'} onClick={() => navigate(agentPath('builder', agentId))}>
+        {isReady ? 'Continue to steps' : 'Continue without them'}
+      </Button>
+    </div>
+  )
+}
+
+function describeAgentColumnStatus(isBuilt: boolean, isHeldForPlugins: boolean): string {
+  if (!isBuilt) return 'Steps appear here as they are ready'
+  return isHeldForPlugins ? 'All steps ready. Set up its plugins in the chat' : 'All steps ready. Opening the builder'
 }
 
 /** Screen 03 opened without a request (screen index, reload): nothing to build, so point back to 02. */
@@ -151,7 +186,8 @@ function AgentBuildScreen({ buildRequest }: { buildRequest: BuildRequest }) {
   const draftStepCards = (
     <DraftStepCards stepTitles={buildState.draft?.stepTitles ?? []} minimumCardCount={placeholderStepCount} isWriting={readActiveDraft(buildState) !== null} />
   )
-  useOpenBuilderWhenBuilt(builtAgent?.id ?? null)
+  const pluginSetup = usePluginSetup(builtAgent?.id ?? null)
+  const isHeldForPlugins = useOpenBuilderWhenReady(builtAgent?.id ?? null, pluginSetup)
   const sidebarStatus = buildError ? 'Build stopped' : builtAgent ? 'Ready' : 'Building…'
 
   return (
@@ -165,12 +201,18 @@ function AgentBuildScreen({ buildRequest }: { buildRequest: BuildRequest }) {
           <BuildProgressChecklist items={createChecklistItems(buildState)} runningItemIndex={runningItemIndex} />
           <BuilderExplanationReply buildState={buildState} />
           {buildError && <BuildErrorNotice buildError={buildError} onRetry={retry} />}
+          {builtAgent && (
+            <PluginRequirementsMessage
+              setup={pluginSetup}
+              footer={isHeldForPlugins && <ContinueToStepsButton agentId={builtAgent.id} isReady={pluginSetup.isReady === true} />}
+            />
+          )}
         </div>
       </section>
 
       <section aria-label="Agent" className="box-border flex min-w-0 flex-[1_1_440px] flex-col bg-subtle">
         <PanelHeader>
-          <span className="text-body">{builtAgent ? 'All steps ready. Opening the builder' : 'Steps appear here as they are ready'}</span>
+          <span className="text-body">{describeAgentColumnStatus(builtAgent !== null, isHeldForPlugins)}</span>
         </PanelHeader>
         <div className="flex flex-col gap-6 p-6">
           <h1 className="m-0 text-[22px] font-semibold">{builtAgent?.name ?? 'New agent'}</h1>
@@ -184,7 +226,9 @@ function AgentBuildScreen({ buildRequest }: { buildRequest: BuildRequest }) {
 /**
  * Screen 03 · Generating. Shown right after "Build agent": the chat column replays the job
  * and a live checklist driven by `buildAgent` progress, while the agent column fills in
- * once the agent is saved. Then it opens the builder (04) for that agent. A missing key
+ * once the agent is saved. Then the chat shows the plugins the agent needs with their
+ * approvals, downloads and settings; when they are all ready it opens the builder (04),
+ * otherwise it waits for "Continue to steps" / "Continue without them". A missing key
  * links to Connections; other failures offer Try again. Opened without a build request
  * (`{ buildRequest }` router state), it builds nothing and links back to New agent.
  */
