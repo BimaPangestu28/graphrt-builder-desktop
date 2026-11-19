@@ -45,7 +45,7 @@ export function ScheduleRulesPanel() {
         Rules for every schedule
       </h2>
       <label className="flex flex-col gap-1.5">
-        <span className={fieldLabelClassNames}>If the Mac was asleep</span>
+        <span className={fieldLabelClassNames}>If the computer was asleep</span>
         <select
           value={findMissedRunOption(values?.missedRunDefaultPolicy ?? 'run_once')}
           disabled={!values}
@@ -89,7 +89,7 @@ export function ScheduleRulesPanel() {
           onChange={(event) => void saveRule('keepAwakeWhileRunning', event.target.checked)}
           className="size-[18px] accent-brand"
         />
-        Keep the Mac awake while an agent runs
+        Keep the computer awake while an agent runs
       </label>
       {error && (
         <p role="alert" className="m-0 text-[13px] text-danger">

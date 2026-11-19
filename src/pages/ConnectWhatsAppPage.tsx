@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { getCredentialStoreName } from '@/lib/platform'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Icon } from '@/components/ui'
 import { useBrowserRuntime } from '@/hooks/useBrowserRuntime'
@@ -19,7 +20,7 @@ function SelectedOptionSetup({ selectedOption }: { selectedOption: WhatsAppConne
   return (
     <div className="flex items-center gap-2 text-[13px] text-ink-2">
       <LockIcon />
-      Tokens stay in the keychain and the WhatsApp session stays on this computer
+      Tokens stay in {getCredentialStoreName()} and the WhatsApp session stays on this computer
     </div>
   )
 }

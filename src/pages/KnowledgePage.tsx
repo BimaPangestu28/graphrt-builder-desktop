@@ -128,7 +128,7 @@ export function KnowledgePage() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1">
           <h1 className="m-0 text-[26px] font-semibold tracking-[-0.5px]">Knowledge</h1>
-          <span className="text-body">What your agents and chatbots can look things up in. Everything is indexed and stored on this Mac</span>
+          <span className="text-body">What your agents and chatbots can look things up in. Everything is indexed and stored on this computer</span>
         </div>
         <button
           type="button"

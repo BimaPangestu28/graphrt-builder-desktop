@@ -13,7 +13,7 @@ pub enum AppError {
     InvalidInput(String),
     #[error("database error: {0}")]
     Database(#[from] rusqlite::Error),
-    #[error("keychain error: {0}")]
+    #[error("credential store error: {0}")]
     Credentials(String),
     #[error("no API key is set for {0}")]
     MissingCredentials(String),

@@ -1,4 +1,4 @@
-//! What an agent's workflow needs from the Mac: model providers, `env.*`
+//! What an agent's workflow needs from this computer: model providers, `env.*`
 //! values and plugins.
 //!
 //! Read from the raw document instead of the compiled graph, because a flow

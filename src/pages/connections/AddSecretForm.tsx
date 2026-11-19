@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { getCredentialStoreName } from '@/lib/platform'
 import { addWorkflowSecret } from '@/api/credentials'
 import { describeError } from '@/lib/agentDisplay'
 import { describeSecretNameProblem, normalizeSecretName } from './secretDisplay'
@@ -55,7 +56,7 @@ export function AddSecretForm({ onAdded }: AddSecretFormProps) {
     <form onSubmit={handleSubmit} aria-label="Add a secret" className="flex flex-col gap-3 border-b border-chip px-4 py-3.5">
       <span className="flex flex-col gap-0.5">
         <span className="font-medium">Add secret</span>
-        <span className="text-[12px] text-muted">Server logins, API tokens, database passwords. Saved in the keychain, never shown again</span>
+        <span className="text-[12px] text-muted">Server logins, API tokens, database passwords. Saved in {getCredentialStoreName()}, never shown again</span>
       </span>
       <div className="flex flex-wrap gap-3">
         <label className={`${fieldLabelClassNames} flex-[1_1_200px]`}>
@@ -107,7 +108,7 @@ export function AddSecretForm({ onAdded }: AddSecretFormProps) {
       )}
       {savedName && !errorMessage && (
         <span aria-live="polite" className="text-[13px] text-ok-strong">
-          {savedName} is saved in the keychain. Agents read it as {`{{#env.${savedName}#}}`}
+          {savedName} is saved in {getCredentialStoreName()}. Agents read it as {`{{#env.${savedName}#}}`}
         </span>
       )}
       <span>

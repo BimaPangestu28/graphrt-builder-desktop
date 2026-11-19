@@ -161,7 +161,7 @@ pub(super) fn explain_failure(run: &Run, facts: &FailureFacts) -> FailureExplana
         return FailureExplanation {
             title: "The app closed during this run".into(),
             explanation: format!(
-                "graphrt was closed or the Mac restarted while {} was running. {nothing_after}",
+                "graphrt was closed or the computer restarted while {} was running. {nothing_after}",
                 step.to_lowercase()
             ),
             fix_steps: vec!["Retry from the start".into()],

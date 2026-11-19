@@ -60,6 +60,8 @@ const problems = targetsToCheck.map(sidecarProblem).filter(Boolean);
 if (problems.length > 0) {
   console.error(`\nThe bundled Node.js runtime (v${pinnedVersion}) is not ready:`);
   for (const problem of problems) console.error(`  - ${problem}`);
-  console.error(`\nFetch it (needs network, about 30-50 MB per target) with:\n  scripts/fetch-node.sh ${requestedTarget}\n`);
+  // fetch-node.sh is a bash script; on Windows it runs in Git Bash.
+  const fetchCommand = process.platform === "win32" ? "bash scripts/fetch-node.sh" : "scripts/fetch-node.sh";
+  console.error(`\nFetch it (needs network, about 30-50 MB per target) with:\n  ${fetchCommand} ${requestedTarget}\n`);
   process.exit(1);
 }

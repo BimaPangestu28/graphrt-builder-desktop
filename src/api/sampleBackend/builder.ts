@@ -29,7 +29,7 @@ export const sampleBuildStages: BuildProgress[] = [
   { stage: 'drafting', message: 'Picked 6 steps. Added an approval step because it sends messages to other people' },
   { stage: 'repairing', message: 'Step 4 read the wrong field for the place name' },
   { stage: 'checking', message: 'No problems found' },
-  { stage: 'done', message: 'WhatsApp needs to be linked on this Mac' },
+  { stage: 'done', message: 'WhatsApp needs to be linked on this computer' },
 ]
 
 /** What the sample model "writes" in one drafting or repairing round. */

@@ -26,7 +26,7 @@ describe('WelcomePage', () => {
 
   it('shows the onboarding heading with the credits option disabled', () => {
     renderWelcomePage()
-    expect(screen.getByRole('heading', { name: 'Agents that run on your Mac' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Agents that run on your computer' })).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: /graphrt credits/ })).toBeDisabled()
     expect(screen.getByRole('radio', { name: /My own API key/ })).toBeChecked()
   })

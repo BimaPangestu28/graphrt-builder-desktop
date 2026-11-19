@@ -11,6 +11,18 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
 
 ### Added
 
+- **Windows and Linux, not just macOS**: the app and its copy work the same on all three. Text says
+  "this computer"; where the system's own name helps it uses it: macOS Keychain, Windows Credential
+  Manager or your system keyring for secrets, menu bar or system tray, Finder or File Explorer, and
+  ⌘+Enter or Ctrl+Enter.
+- **Keep the computer awake while an agent runs** now works on Windows (`SetThreadExecutionState`,
+  re-checking the power source every minute for "only while plugged in") and Linux
+  (`systemd-inhibit`), not only on macOS.
+- Starting graphrt while it is already running shows the existing window instead of a second runner.
+- Releases add Linux arm64 and `.rpm` packages; CI runs clippy and the Rust tests on macOS, Windows
+  and Ubuntu. `scripts/fetch-node.sh` fetches Node for `aarch64-unknown-linux-gnu` and
+  `aarch64-pc-windows-msvc` too. README and CONTRIBUTING list prerequisites and install steps per system.
+
 - **Plugins are set up in the build chat**: the builder knows every plugin in the graphrt-plugins catalog
   (with each step's settings), so drafts use plugin steps even before they're installed. Right after a
   draft, the chat shows what each plugin needs — permissions, warnings, **Install & trust**, settings and
@@ -27,7 +39,7 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
   The Runs detail panel uses the same list.
 - **Live browser view**: while a Google Maps search or web-browser step runs (also when an agent calls
   them as tools), a small live picture of the headless browser appears under the running step in Test
-  and in the Runs detail panel. Frames stay on this Mac and are never saved with the run (needs
+  and in the Runs detail panel. Frames stay on this computer and are never saved with the run (needs
   google-maps-scraper / web-browser 0.2.0 or later).
 - The builder rejects drafts that call placeholder addresses such as api.example.com.
 - **The builder streams its work**: while an agent is drafted or changed, Building and the builder chat
@@ -118,7 +130,7 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
   from their first agent, and never run an agent twice in one pass.
 - graphrt is used as a git dependency pinned to a commit until its crates are published.
 - **Knowledge bases**: add files (PDF, Word, PowerPoint, Excel, CSV, Markdown, text,
-  HTML, EPUB), whole folders or website links; they are indexed on this Mac in the
+  HTML, EPUB), whole folders or website links; they are indexed on this computer in the
   background with live status, re-synced without re-reading unchanged files, and
   searchable from the Knowledge screen. Works without any API key (local embeddings
   plus keyword search); uses OpenAI embeddings when an OpenAI key is set. Agents
@@ -135,6 +147,13 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
 - The app opens on Welcome until a model provider is set up, and on Home afterwards.
 
 ### Changed
+
+- Windows and Linux: the tray icon uses the color app icon (the black macOS template icon vanished on
+  dark taskbars); if the tray icon cannot be created (a Linux desktop without AppIndicator) graphrt
+  logs it and closing the window quits instead of hiding it where nothing could bring it back.
+- Windows: MCP servers started with `npx`, `uvx` and other `.cmd` launchers now start (the bare name is
+  resolved through `PATH` and `PATHEXT`), and checking the Node version no longer flashes a console window.
+- Credential errors say "credential store error" instead of "keychain error".
 
 - Fixed: the Steps/Source tabs on test runs, Close on Connect WhatsApp and the scheduler's New trigger
   opened the sample agent ("agent maps-leads not found"); they now use the agent you are on.

@@ -34,7 +34,7 @@ export function LiveBrowserView({ image }: LiveBrowserViewProps) {
       </div>
       <figcaption className="flex items-center gap-1.5 text-[12px] text-muted">
         <span aria-hidden="true" className="size-1.5 rounded-full bg-danger motion-safe:animate-pulse" />
-        Live · stays on this Mac, not saved
+        Live · stays on this computer, not saved
       </figcaption>
     </figure>
   )

@@ -44,9 +44,18 @@
       "licenses/node-LICENSE.txt": "licenses/node-LICENSE.txt"
     },
     "category": "DeveloperTool",
-    "shortDescription": "Build and run automation agents on your Mac",
+    "shortDescription": "Build and run automation agents on your computer",
+    "longDescription": "graphrt desktop: build, test and run automation agents on your own computer. Agents, runs and documents stay on the machine; keys and secrets go to the system credential store.",
     "macOS": {
       "entitlements": "Entitlements.plist"
+    },
+    "linux": {
+      "deb": {
+        "depends": ["libayatana-appindicator3-1"]
+      },
+      "rpm": {
+        "depends": ["libayatana-appindicator-gtk3"]
+      }
     }
   }
 }

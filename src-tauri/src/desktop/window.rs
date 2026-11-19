@@ -1,10 +1,12 @@
 //! The main window outlives its close button: closing hides it, so the
 //! scheduler keeps running. The app quits only from "Quit graphrt" in the
-//! menu bar menu or the app menu (Cmd+Q on macOS).
+//! tray menu or the app menu (Cmd+Q on macOS).
 //!
 //! - macOS: the Dock icon stays; clicking it (`RunEvent::Reopen`) shows the window.
 //! - Windows / Linux: the tray icon brings the window back. When the user has
-//!   hidden the tray icon, closing quits instead, since nothing could reopen it.
+//!   hidden the tray icon, or it could not be created, closing quits instead,
+//!   since nothing could reopen it. Starting graphrt again also shows the
+//!   window (single instance).
 
 use tauri::{AppHandle, Manager, Window, WindowEvent};
 
@@ -26,9 +28,10 @@ pub fn show_main_window(app_handle: &AppHandle) {
     }
 }
 
-/// Whether closing the main window should hide it rather than quit the app.
-pub fn should_hide_on_close(show_in_menu_bar: bool) -> bool {
-    cfg!(target_os = "macos") || show_in_menu_bar
+/// Whether closing the main window should hide it rather than quit the app:
+/// always on macOS (the Dock reopens it), elsewhere only with a visible tray icon.
+pub fn should_hide_on_close(show_in_menu_bar: bool, has_tray_icon: bool) -> bool {
+    cfg!(target_os = "macos") || (show_in_menu_bar && has_tray_icon)
 }
 
 /// `on_window_event` handler: turns a close of the main window into a hide.
@@ -44,7 +47,8 @@ pub fn handle_window_event(window: &Window, event: &WindowEvent) {
         .try_state::<AppState>()
         .map(|state| AppSettings::load_or_default(&state.db).show_in_menu_bar)
         .unwrap_or(true);
-    if !should_hide_on_close(show_in_menu_bar) {
+    let has_tray_icon = super::tray::has_tray_icon(window.app_handle());
+    if !should_hide_on_close(show_in_menu_bar, has_tray_icon) {
         return;
     }
     api.prevent_close();
@@ -59,11 +63,12 @@ mod tests {
 
     #[test]
     fn closing_hides_when_the_tray_icon_is_shown() {
-        assert!(should_hide_on_close(true));
+        assert!(should_hide_on_close(true, true));
     }
 
     #[test]
     fn closing_without_tray_icon_quits_except_on_macos() {
-        assert_eq!(should_hide_on_close(false), cfg!(target_os = "macos"));
+        assert_eq!(should_hide_on_close(false, true), cfg!(target_os = "macos"));
+        assert_eq!(should_hide_on_close(true, false), cfg!(target_os = "macos"), "the tray icon could not be created");
     }
 }

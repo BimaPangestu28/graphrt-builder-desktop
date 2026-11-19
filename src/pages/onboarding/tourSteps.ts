@@ -1,4 +1,5 @@
 import { connectionsPluginsPath, routePaths } from '@/routes'
+import { getCredentialStoreName } from '@/lib/platform'
 
 /**
  * Content of the onboarding tour, one entry per step, in order. Each line describes
@@ -26,7 +27,7 @@ export const tourSteps: readonly TourStep[] = [
     id: 'how-it-works',
     title: 'Welcome to graphrt',
     explanation:
-      'Describe a job in plain words. The builder turns it into steps you can read, you test it, then put it on a schedule. Every agent runs right here on your Mac.',
+      'Describe a job in plain words. The builder turns it into steps you can read, you test it, then put it on a schedule. Every agent runs right here on your computer.',
     tryLink: { label: 'Describe an agent', path: routePaths.newAgent },
   },
   {
@@ -52,7 +53,7 @@ export const tourSteps: readonly TourStep[] = [
     id: 'secrets',
     title: 'Your own secrets',
     explanation:
-      'Add server logins and API tokens your agents need under Connections, Advanced, Secrets. Values stay in the macOS Keychain; the builder only ever sees their names.',
+      `Add server logins and API tokens your agents need under Connections, Advanced, Secrets. Values stay in ${getCredentialStoreName()}; the builder only ever sees their names.`,
     tryLink: { label: 'Open Connections', path: routePaths.connections },
   },
   {
@@ -70,8 +71,8 @@ export const tourSteps: readonly TourStep[] = [
   },
   {
     id: 'privacy',
-    title: 'It stays on your Mac',
+    title: 'It stays on your computer',
     explanation:
-      'Agents, runs and documents are stored on this Mac, keys and secrets in the Keychain. graphrt only connects to the AI providers you set up, the sites and apps your agents use, and the plugin catalog.',
+      `Agents, runs and documents are stored on this computer, keys and secrets in ${getCredentialStoreName()}. graphrt only connects to the AI providers you set up, the sites and apps your agents use, and the plugin catalog.`,
   },
 ]

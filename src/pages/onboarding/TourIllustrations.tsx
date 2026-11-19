@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { getCredentialStoreName, getCredentialStoreShortName } from '@/lib/platform'
 import { Icon, LogoMark, StatusDot, joinClassNames } from '@/components/ui'
 import type { TourStepId } from './tourSteps'
 
@@ -88,7 +89,7 @@ function SecretsIllustration() {
       <span className="font-mono font-semibold">CRM_API_TOKEN</span>
       <span className="flex items-center justify-between text-muted">
         <span className="tracking-[2px]">••••••••••</span>
-        <span>macOS Keychain</span>
+        <span>{getCredentialStoreName()}</span>
       </span>
     </MiniCard>
   )
@@ -139,7 +140,7 @@ function PrivacyIllustration() {
       </svg>
       <span className="flex flex-col gap-1">
         <span className={chipClassNames}>Agents and runs</span>
-        <span className={chipClassNames}>Keys in Keychain</span>
+        <span className={chipClassNames}>Keys in {getCredentialStoreShortName()}</span>
       </span>
     </div>
   )

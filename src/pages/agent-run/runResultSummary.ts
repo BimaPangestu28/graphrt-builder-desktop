@@ -34,7 +34,7 @@ export interface RunResultView {
   activity: string | null
   /** True when the run reported neither items nor counters. */
   hasNoOutputs: boolean
-  /** "Today 13:03 · on this Mac" */
+  /** "Today 13:03 · on this computer" */
   meta: string
   /** The run's headline, or a plain status sentence. */
   builderReply: string
@@ -200,7 +200,7 @@ export function buildRunResultView(summary: RunSummary): RunResultView {
     table: buildItemTable(summary.items),
     activity: buildActivity(summary),
     hasNoOutputs: summary.items.length === 0 && summary.counters.length === 0,
-    meta: `${formatRunDay(summary.startedAt)} · on this Mac`,
+    meta: `${formatRunDay(summary.startedAt)} · on this computer`,
     builderReply,
   }
 }

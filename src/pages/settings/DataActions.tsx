@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { getCredentialStoreName } from '@/lib/platform'
 import { defaultExportPath, deleteAllData, exportAgents } from '@/api/appSettings'
 import { describeError } from '@/lib/agentDisplay'
 import { settingsButtonClassNames } from './SettingRows'
@@ -35,7 +36,7 @@ function DeleteConfirmation({ shouldRemoveKeys, onRemoveKeysChange, onConfirm, o
       </span>
       <label className="flex cursor-pointer items-center gap-2 text-[13px] text-danger-deep">
         <input type="checkbox" checked={shouldRemoveKeys} onChange={(event) => onRemoveKeysChange(event.target.checked)} className="size-4 accent-danger" />
-        Also remove saved API keys and secrets from the Keychain
+        Also remove saved API keys and secrets from {getCredentialStoreName()}
       </label>
     </div>
   )
@@ -44,7 +45,7 @@ function DeleteConfirmation({ shouldRemoveKeys, onRemoveKeysChange, onConfirm, o
 function describeDeletion(deletedAgentCount: number, removedKeychainItemCount: number): string {
   const agentsText = `${deletedAgentCount} ${deletedAgentCount === 1 ? 'agent' : 'agents'}`
   const keysText = removedKeychainItemCount > 0 ? ' and the saved keys' : ''
-  return `Deleted ${agentsText}, their runs and schedules${keysText} from this Mac`
+  return `Deleted ${agentsText}, their runs and schedules${keysText} from this computer`
 }
 
 /**

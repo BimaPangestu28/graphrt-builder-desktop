@@ -654,10 +654,24 @@ fn playwright_version_in(dir: &Path) -> Option<Vec<u64>> {
     Some(version.split(['.', '-']).take(3).map(|part| part.parse().unwrap_or(0)).collect())
 }
 
+/// Windows: start console programs (node) without flashing a console window
+/// over the app (the release build is a GUI-subsystem program). No-op elsewhere.
+fn hide_console_window(command: &mut Command) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    #[cfg(not(windows))]
+    let _ = command;
+}
+
 fn read_node_version(node_executable: &Path) -> AppResult<String> {
-    let output = Command::new(node_executable)
-        .arg("--version")
-        .stdin(Stdio::null())
+    let mut command = Command::new(node_executable);
+    command.arg("--version").stdin(Stdio::null());
+    hide_console_window(&mut command);
+    let output = command
         .output()
         .map_err(|error| AppError::Internal(format!("cannot run {}: {error}", node_executable.display())))?;
     if !output.status.success() {
@@ -676,12 +690,7 @@ fn run_playwright_install(request: &BrowserInstallRequest, on_progress: &Progres
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        command.creation_flags(CREATE_NO_WINDOW);
-    }
+    hide_console_window(&mut command);
     let mut child = command
         .spawn()
         .map_err(|error| AppError::Internal(format!("cannot start the Playwright installer: {error}")))?;

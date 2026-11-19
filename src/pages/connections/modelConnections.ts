@@ -1,4 +1,5 @@
 import { isDesktopApp } from '@/api/client'
+import { getCredentialStoreShortName } from '@/lib/platform'
 import type { ModelChoice, ModelProvider, ProviderStatus } from '@/api/types'
 import { initialConnections, type Connection } from '@/data/connections'
 
@@ -21,7 +22,7 @@ function isModelProvider(connectionId: string): connectionId is ModelProvider {
  * where the key or local server is. No usage or cost (there is no pricing data).
  */
 function describeConnectedProvider(status: ProviderStatus, defaultModel: ModelChoice, isDefault: boolean): string {
-  const location = status.provider === 'ollama' ? (status.baseUrl ?? 'Local server') : 'Key in Keychain'
+  const location = status.provider === 'ollama' ? (status.baseUrl ?? 'Local server') : `Key in ${getCredentialStoreShortName()}`
   return isDefault ? `${location} · default model ${defaultModel.name}` : location
 }
 
@@ -49,7 +50,7 @@ export function buildModelConnections(
         provider: status.provider,
         usesApiKey: status.provider !== 'ollama',
         state,
-        connectedLabel: isDefault ? 'Default' : template.id === 'ollama' ? 'Found on this Mac' : 'Connected',
+        connectedLabel: isDefault ? 'Default' : template.id === 'ollama' ? 'Found on this computer' : 'Connected',
         connectedDescription: useDesignText ? template.connectedDescription : describeConnectedProvider(status, defaultModel, isDefault),
       },
     ]

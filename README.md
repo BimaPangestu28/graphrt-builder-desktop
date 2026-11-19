@@ -4,9 +4,9 @@
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 ## Overview
-Desktop app for building, testing and running automation agents on your Mac. Describe a job in plain words, review the steps graphrt drafts, approve test runs, then schedule the agent to run on its own.
+Desktop app for building, testing and running automation agents on your own computer: macOS, Windows or Linux. Describe a job in plain words, review the steps graphrt drafts, approve test runs, then schedule the agent to run on its own.
 
-The UI is implemented from the **graphrt Builder Mockup** design canvas (25 desktop screens, 01 Welcome to 25 Menu bar). The three "Mobile (later)" boards are not implemented yet.
+The UI is implemented from the **graphrt Builder Mockup** design canvas (25 desktop screens, 01 Welcome to 25 Menu bar / tray). The three "Mobile (later)" boards are not implemented yet.
 
 > **Status: preview.** Every screen works with sample data, but the app is not yet connected to the [graphrt runtime](https://github.com/BimaPangestu28/graphrt), so no agent actually runs. See [CHANGELOG.md](CHANGELOG.md).
 
@@ -17,15 +17,39 @@ The UI is implemented from the **graphrt Builder Mockup** design canvas (25 desk
 - Connections, settings, error states, version history
 
 ## Prerequisites
+Running a prebuilt app needs nothing else (it ships its own Node.js). The supported systems:
+
+| System | Versions | Notes |
+| --- | --- | --- |
+| macOS | Apple silicon and Intel (one universal app) | Keys and secrets go to the macOS Keychain |
+| Windows | 10 (1803+) and 11, x64 | Uses WebView2 (preinstalled on Windows 11; the installer adds it on Windows 10). Keys go to Windows Credential Manager |
+| Linux | x64 and arm64, glibc 2.35+ (Ubuntu 22.04, Debian 12, Fedora 36 or newer) | Needs WebKitGTK 4.1, a Secret Service keyring (GNOME Keyring or KWallet, running on most desktops) and AppIndicator for the tray icon |
+
+Building from source needs:
 - Node.js 22+ and pnpm 10+
-- Rust 1.77.2+ (stable) with Xcode Command Line Tools on macOS ([Tauri prerequisites](https://v2.tauri.app/start/prerequisites/))
+- Rust 1.90+ (stable)
+- The [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your system:
+  - **macOS**: Xcode Command Line Tools (`xcode-select --install`)
+  - **Windows**: Microsoft C++ Build Tools ("Desktop development with C++"), WebView2, and Git for Windows (its Git Bash runs `scripts/fetch-node.sh`)
+  - **Linux** (Debian / Ubuntu; see the Tauri page for Fedora, Arch, openSUSE):
+    ```bash
+    sudo apt install build-essential pkg-config file patchelf libwebkit2gtk-4.1-dev \
+      libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev libdbus-1-dev
+    ```
 
 ## Installation
 
 ### Download
-Prebuilt apps for macOS (universal: Apple silicon and Intel), Windows and Linux are
-attached to each [GitHub Release](https://github.com/BimaPangestu28/graphrt-builder-desktop/releases),
-with a `SHA256SUMS` file to verify them (`shasum -a 256 -c SHA256SUMS --ignore-missing`).
+Prebuilt apps are attached to each [GitHub Release](https://github.com/BimaPangestu28/graphrt-builder-desktop/releases),
+with a `SHA256SUMS` file to verify them (`shasum -a 256 -c SHA256SUMS --ignore-missing`
+on macOS, `sha256sum -c SHA256SUMS --ignore-missing` on Linux,
+`Get-FileHash <file>` in PowerShell on Windows):
+
+| System | Download | Install |
+| --- | --- | --- |
+| macOS (universal) | `graphrt_<version>_universal.dmg` | Open the `.dmg` and drag graphrt to Applications |
+| Windows x64 | `graphrt_<version>_x64-setup.exe` (NSIS) or `graphrt_<version>_x64_en-US.msi` | Run the installer; the `.exe` installs for your user only, without admin rights |
+| Linux x64 / arm64 | `.AppImage`, `.deb` or `.rpm` (`amd64` / `x86_64` or `arm64` / `aarch64`) | `.deb`: `sudo apt install ./graphrt_<version>_amd64.deb`; `.rpm`: `sudo dnf install ./graphrt-<version>-1.x86_64.rpm`; `.AppImage`: `chmod +x` it and run it (needs FUSE 2, `libfuse2` on Ubuntu) |
 
 The app ships its own **Node.js 22 LTS** runtime, which graphrt plugins run on,
 so you do not need to install Node. It adds about 110 MB per architecture to the
@@ -38,14 +62,30 @@ on Linux): roughly 250 MB to download and 600 MB on disk. Node's licence and the
 notices of the libraries it bundles ship inside the app at
 `licenses/node-LICENSE.txt` (in `graphrt.app/Contents/Resources` on macOS).
 
-> **macOS builds are not signed yet.** On first launch, right-click the app in
+> **Builds are not signed yet.** **macOS**: on first launch, right-click the app in
 > Applications and choose **Open**, then confirm. On macOS 15 or later, if there is
 > no Open button, go to System Settings > Privacy & Security and click **Open Anyway**.
+> **Windows**: if SmartScreen says "Windows protected your PC", click **More info**,
+> then **Run anyway**.
+
+#### Linux notes
+- **Tray icon**: graphrt keeps running agents from the system tray. GNOME hides tray
+  icons unless the [AppIndicator extension](https://extensions.gnome.org/extension/615/appindicator-support/)
+  is on (Ubuntu enables it by default). Without a tray icon, closing the window quits
+  graphrt; with one, starting graphrt again brings the window back.
+- **Keys and secrets** are stored through the Secret Service (GNOME Keyring, KWallet).
+  On a minimal window manager without one, install and start `gnome-keyring`, or
+  saving a key fails with a "credential store error".
+- **Keep the computer awake while an agent runs** uses `systemd-inhibit` (systemd-logind).
+- **Browser plugins**: if Chromium fails to start, install its system libraries once,
+  e.g. `sudo npx playwright install-deps chromium` (needs Node), or your distribution's
+  `libnss3`, `libgbm1`, `libasound2` packages.
 
 ### From source
 ```bash
 pnpm install
 scripts/fetch-node.sh   # bundled Node.js sidecar for this machine (once, ~40 MB download)
+                        # Windows: run it in Git Bash, or `bash scripts/fetch-node.sh`
 ```
 `pnpm dev:desktop` and `pnpm build:desktop` stop with a message pointing at
 `scripts/fetch-node.sh` when the sidecar is missing or outdated. `cargo test` and
@@ -62,7 +102,7 @@ Open `#/screens` to jump to any screen from the design.
 | Command | What it does |
 | --- | --- |
 | `pnpm dev:desktop` | Run the desktop app in development |
-| `pnpm build:desktop` | Build the desktop bundle (`.app` / `.dmg` on macOS) into `src-tauri/target/release/bundle` |
+| `pnpm build:desktop` | Build the desktop bundles for this system into `src-tauri/target/release/bundle` (`.app` / `.dmg` on macOS, `.msi` / NSIS `.exe` on Windows, `.AppImage` / `.deb` / `.rpm` on Linux) |
 | `pnpm build` | Typecheck and build the web UI into `dist/` |
 | `pnpm test` | Run the Vitest suite |
 | `pnpm typecheck` | TypeScript only |

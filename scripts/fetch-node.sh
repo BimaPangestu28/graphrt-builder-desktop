@@ -5,7 +5,11 @@
 #
 # Targets: aarch64-apple-darwin, x86_64-apple-darwin, universal-apple-darwin
 # (both macOS arches plus a lipo'd universal binary), x86_64-pc-windows-msvc,
-# x86_64-unknown-linux-gnu. Default: the host's target (from `rustc -vV`).
+# aarch64-pc-windows-msvc, x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu.
+# Default: the host's target (from `rustc -vV`).
+#
+# Runs on macOS, Linux and Windows. On Windows use Git Bash (bundled with Git
+# for Windows, which also ships curl, unzip and gpg): `bash scripts/fetch-node.sh`.
 #
 # For each target it downloads the official archive of the version pinned in
 # scripts/node-version from nodejs.org, checks it against SHASUMS256.txt and
@@ -53,7 +57,7 @@ for argument in "$@"; do
   case "$argument" in
     --force) force_download=true ;;
     -h | --help)
-      sed -n '2,26p' "$0"
+      sed -n '2,29p' "$0"
       exit 0
       ;;
     -*)
@@ -84,7 +88,9 @@ node_platform_for() {
     aarch64-apple-darwin) echo "darwin-arm64" ;;
     x86_64-apple-darwin) echo "darwin-x64" ;;
     x86_64-pc-windows-msvc) echo "win-x64" ;;
+    aarch64-pc-windows-msvc) echo "win-arm64" ;;
     x86_64-unknown-linux-gnu) echo "linux-x64" ;;
+    aarch64-unknown-linux-gnu) echo "linux-arm64" ;;
     *) fail "unsupported target triple: $1" ;;
   esac
 }

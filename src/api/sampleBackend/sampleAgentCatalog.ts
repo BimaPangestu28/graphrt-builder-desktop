@@ -53,7 +53,7 @@ function sendWhatsApp(detail: string): FlowStep {
   return step('send_whatsapp', 'http-request', 'Send WhatsApp', detail, { depth: 1 })
 }
 
-const firstMapsLeadsSteps = [askForInput, searchMaps, forEachPlace, writeMessage('Write a message', 'Uses the place name and your offer'), sendWhatsApp('From your number on this Mac')]
+const firstMapsLeadsSteps = [askForInput, searchMaps, forEachPlace, writeMessage('Write a message', 'Uses the place name and your offer'), sendWhatsApp('From your number on this computer')]
 
 const mapsLeadsAgent: SampleAgentSeed = {
   id: 'maps-leads',
@@ -74,13 +74,13 @@ const mapsLeadsAgent: SampleAgentSeed = {
       version: 2,
       changeSummary: 'Added an approval step',
       createdAt: sampleTimestamp(1, 10, 9),
-      steps: [askForInput, searchMaps, forEachPlace, writeMessage('Write a message', 'Uses the place name and your offer'), approveMessage, sendWhatsApp('From your number on this Mac')],
+      steps: [askForInput, searchMaps, forEachPlace, writeMessage('Write a message', 'Uses the place name and your offer'), approveMessage, sendWhatsApp('From your number on this computer')],
     },
     {
       version: 3,
       changeSummary: 'Fixed the place name field',
       createdAt: sampleTimestamp(1, 10, 15),
-      steps: [askForInput, searchMaps, forEachPlace, writeMessage('Write a message', 'Uses the place name and your offer'), approveMessage, sendWhatsApp('From your number on this Mac')],
+      steps: [askForInput, searchMaps, forEachPlace, writeMessage('Write a message', 'Uses the place name and your offer'), approveMessage, sendWhatsApp('From your number on this computer')],
     },
     {
       version: 4,
@@ -92,7 +92,7 @@ const mapsLeadsAgent: SampleAgentSeed = {
         forEachPlace,
         writeMessage('Write a message', 'Uses the place name and your offer'),
         approveMessage,
-        sendWhatsApp('From your number on this Mac · max 40 per day'),
+        sendWhatsApp('From your number on this computer · max 40 per day'),
       ],
     },
     {
@@ -107,7 +107,7 @@ const mapsLeadsAgent: SampleAgentSeed = {
         skipLowScores,
         writeMessage('Write a short message', 'Uses the place name · max 4 sentences'),
         approveMessage,
-        sendWhatsApp('From your number on this Mac · max 40 per day'),
+        sendWhatsApp('From your number on this computer · max 40 per day'),
       ],
     },
     {
@@ -120,7 +120,7 @@ const mapsLeadsAgent: SampleAgentSeed = {
         forEachPlace,
         writeMessage('Write a short message', 'Uses the place name · max 4 sentences'),
         approveMessage,
-        sendWhatsApp('From your number on this Mac · max 40 per day'),
+        sendWhatsApp('From your number on this computer · max 40 per day'),
       ],
     },
     {
@@ -133,7 +133,7 @@ const mapsLeadsAgent: SampleAgentSeed = {
         forEachPlace,
         writeMessage('Write a short message', 'Uses the place name · max 2 sentences'),
         approveMessage,
-        sendWhatsApp('From your number on this Mac · 30s gap · max 40 per day'),
+        sendWhatsApp('From your number on this computer · 30s gap · max 40 per day'),
       ],
     },
   ],

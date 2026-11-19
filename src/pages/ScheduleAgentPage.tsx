@@ -25,7 +25,7 @@ function RunnerAwakeNotice() {
     <div className="flex items-start gap-3 rounded-xl bg-canvas px-4 py-3.5">
       <Icon name="monitor" size={18} className="mt-px shrink-0 text-ink-2" />
       <span className="flex flex-col gap-1 leading-normal">
-        <span>Runs while this Mac is awake. A missed run starts when it wakes up</span>
+        <span>Runs while this computer is awake. A missed run starts when it wakes up</span>
         <Link to={routePaths.settings} className="font-medium">
           Want it always on? Run it on your own server, free
         </Link>

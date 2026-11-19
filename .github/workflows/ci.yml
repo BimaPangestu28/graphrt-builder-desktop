@@ -16,6 +16,12 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # Tauri 2 on Ubuntu 22.04+: WebKitGTK 4.1, the tray (AppIndicator), SVG icons,
+  # AppImage tooling, and D-Bus for the Secret Service credential store.
+  LINUX_BUILD_PACKAGES: >-
+    build-essential pkg-config file patchelf
+    libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+    libxdo-dev libssl-dev libdbus-1-dev
 
 jobs:
   version:
@@ -53,11 +59,20 @@ jobs:
           retention-days: 1
 
   rust:
-    name: fmt + clippy
+    name: fmt + clippy + test (${{ matrix.platform }})
     needs: frontend
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [macos-latest, windows-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ env.LINUX_BUILD_PACKAGES }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -70,10 +85,15 @@ jobs:
         with:
           name: dist
           path: dist
-      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+      - name: cargo fmt
+        if: runner.os == 'macOS'
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
       # No Node sidecar here on purpose: build.rs drops `externalBin` for debug
       # builds without it, so fmt / clippy / tests stay network-free.
+      # Each OS compiles its own `cfg` code (keep awake, tray icon, credential store).
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+      # Tests that touch the real OS credential store are #[ignore]d.
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
 
   bundle:
     name: desktop bundle (${{ matrix.platform }})
@@ -86,10 +106,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Linux dependencies
-        if: matrix.platform == 'ubuntu-22.04'
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y ${{ env.LINUX_BUILD_PACKAGES }}
       - uses: pnpm/action-setup@v4
         with:
           version: 10

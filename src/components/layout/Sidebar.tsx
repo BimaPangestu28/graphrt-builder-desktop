@@ -162,7 +162,7 @@ export function Sidebar({ activeNav, agents = { kind: 'list' }, runnerStatus = '
         <div className="flex flex-col gap-1 rounded-[10px] border border-line bg-surface p-3">
           <span className="flex items-center gap-2 font-medium">
             <StatusDot tone="ok" />
-            Runner on this Mac
+            Runner on this computer
           </span>
           {isDesktopApp() ? <DesktopRunnerStatusLine /> : <span className="text-[12px] text-muted">{runnerStatus}</span>}
         </div>

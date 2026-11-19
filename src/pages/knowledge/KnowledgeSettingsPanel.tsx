@@ -4,7 +4,7 @@ import { CheckboxRow, LabeledField, SectionHeading, compactButtonClassNames, fie
 import { parseMatchThreshold } from './TestQuestionSection'
 
 const embeddingOptions: { value: EmbeddingChoice; label: string }[] = [
-  { value: 'local', label: 'On this Mac (free, private)' },
+  { value: 'local', label: 'On this computer (free, private)' },
   { value: 'openai', label: 'OpenAI text-embedding-3-small' },
 ]
 const passagesPerAnswerOptions = [2, 4, 6, 8, 10]

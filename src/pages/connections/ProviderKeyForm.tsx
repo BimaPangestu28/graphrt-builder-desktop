@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { getCredentialStoreName } from '@/lib/platform'
 import { describeError } from '@/lib/agentDisplay'
 
 interface ProviderKeyFormProps {
@@ -57,7 +58,7 @@ export function ProviderKeyForm({ providerName, isReplacing, onSave, onCancel }:
           Cancel
         </button>
       </div>
-      <span className="text-[12px] text-muted">Saved in macOS Keychain, never shown again</span>
+      <span className="text-[12px] text-muted">Saved in {getCredentialStoreName()}, never shown again</span>
     </form>
   )
 }

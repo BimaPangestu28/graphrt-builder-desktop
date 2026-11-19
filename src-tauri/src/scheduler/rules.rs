@@ -2,7 +2,7 @@
 //! schedule") and that the scheduler itself enforces.
 //!
 //! Only rules the tick can enforce live here. The missed-run default and
-//! "keep the Mac awake" are desktop preferences already stored by
+//! "keep the computer awake" are desktop preferences already stored by
 //! [`crate::desktop::app_settings::AppSettings`] (`app.missed_run_default_policy`,
 //! `app.keep_awake_while_running`); the Scheduler screen edits those through
 //! the app settings commands instead of keeping a second copy.

@@ -9,7 +9,7 @@
 //! starts a single run now, however many slots were missed; `Skip` only moves
 //! `next_fire_at` on. Either way the next fire time is computed from *now*.
 //!
-//! The tick timer is monotonic and on macOS does not advance while the Mac is
+//! The tick timer is monotonic and (on macOS, Windows and Linux) does not advance while the computer is
 //! asleep, so after a wake-up the first tick arrives within one tick of awake
 //! time. [`SchedulerHandle::request_tick`] lets the app tick right away (for
 //! example from a system wake notification).

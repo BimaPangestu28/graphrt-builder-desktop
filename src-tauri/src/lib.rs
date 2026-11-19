@@ -4,7 +4,7 @@
 //! the operating system or the graphrt runtime:
 //!
 //! - [`storage`]: agents, versions, runs, events and schedules in SQLite
-//! - [`credentials`]: provider API keys in the OS keychain
+//! - [`credentials`]: provider API keys in the OS credential store
 //! - [`flow`]: graphrt workflow validation and step summaries
 //! - [`agent_builder`]: drafting an agent's workflow from plain language
 //! - [`engine`]: running agents on graphrt and streaming events to the UI
@@ -24,7 +24,7 @@
 //! - [`problems`]: what went wrong (failed runs, missing keys, plugins, schedules) and retries
 //! - [`mcp`]: MCP servers the user adds; their tools for every run (graphrt-mcp)
 //! - [`workflow_secrets`]: every workflow secret across agents and MCP servers
-//! - [`desktop`]: menu bar icon, notifications, keep running when closed, launch at login
+//! - [`desktop`]: menu bar / tray icon, notifications, keep running when closed, launch at login
 //! - [`commands`]: the Tauri commands the frontend calls
 
 pub mod agent_builder;

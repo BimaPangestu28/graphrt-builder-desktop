@@ -1,4 +1,5 @@
 import type { PluginRequirement } from '@/api/pluginRequirementTypes'
+import { getCredentialStoreShortName } from '@/lib/platform'
 import type { ProviderStatus, WorkflowSecretStatus } from '@/api/types'
 import { appRequirementsByAgentId } from '@/data/mapsLeadsAgent'
 import { getProviderName } from '@/lib/agentDisplay'
@@ -28,7 +29,7 @@ export function listBuilderRequirements(
     connectPath: agentPath('connectWhatsApp', agentId),
   }))
   const modelRequirements = modelProviders.map((provider) => ({
-    label: `${getProviderName(provider)} · Keychain`,
+    label: `${getProviderName(provider)} · ${getCredentialStoreShortName()}`,
     isConnected: providerStatuses?.some((status) => status.provider === provider && status.configured) ?? true,
     connectPath: routePaths.connections,
   }))

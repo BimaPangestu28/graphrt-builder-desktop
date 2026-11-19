@@ -23,7 +23,7 @@ use crate::error::{AppError, AppResult};
 use crate::storage::now_rfc3339;
 
 const MISSING_OPENAI_KEY: &str =
-    "add an OpenAI key in Settings, or switch this knowledge base to embeddings on this Mac";
+    "add an OpenAI key in Settings, or switch this knowledge base to embeddings on this computer";
 
 /// What happened to one document.
 enum DocumentResult {

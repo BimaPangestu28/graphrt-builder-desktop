@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { getTrayAreaName } from '@/lib/platform'
 import { systemNotifications } from '@/data/menuBar'
 import { MenuBarPopover } from '@/pages/menu-bar/MenuBarPopover'
 import { SystemNotificationCard } from '@/pages/menu-bar/SystemNotificationCard'
@@ -25,7 +26,7 @@ export function MenuBarPage() {
     <div className="min-h-screen overflow-auto bg-[#E9E9EC]">
       <div className="mx-auto box-border flex h-[900px] w-[1440px] gap-16 p-16 text-[14px] text-ink">
         <div className="flex flex-[0_0_380px] flex-col gap-3">
-          <CanvasColumnLabel>Menu bar popover</CanvasColumnLabel>
+          <CanvasColumnLabel>{getTrayAreaName() === 'menu bar' ? 'Menu bar popover' : 'System tray menu'}</CanvasColumnLabel>
           <MenuBarPopover areAgentsPaused={areAgentsPaused} onTogglePause={() => setAreAgentsPaused((isPaused) => !isPaused)} />
         </div>
 

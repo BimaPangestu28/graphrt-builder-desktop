@@ -115,11 +115,11 @@ describe('SchedulerPage', () => {
   it('stores the missed-run default and keep-awake in the app settings', async () => {
     const updateSettingsSpy = vi.spyOn(sampleAppSettingsBackend, 'updateAppSettings')
     renderSchedulerPage()
-    const missedRunSelect = screen.getByRole('combobox', { name: 'If the Mac was asleep' })
+    const missedRunSelect = screen.getByRole('combobox', { name: 'If the computer was asleep' })
     await vi.waitFor(() => expect(missedRunSelect).toBeEnabled())
     fireEvent.change(missedRunSelect, { target: { value: 'Skip the missed run' } })
     await vi.waitFor(() => expect(updateSettingsSpy).toHaveBeenCalledWith(expect.objectContaining({ missedRunDefaultPolicy: 'skip' })))
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Keep the Mac awake while an agent runs' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Keep the computer awake while an agent runs' }))
     await vi.waitFor(() =>
       expect(updateSettingsSpy).toHaveBeenLastCalledWith(expect.objectContaining({ missedRunDefaultPolicy: 'skip', keepAwakeWhileRunning: false })),
     )
