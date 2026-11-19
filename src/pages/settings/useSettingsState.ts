@@ -4,12 +4,11 @@ import { appearanceOptions, languageOptions, modelFallbackOptions } from '@/data
 /**
  * Settings that have no backend yet and live in memory only. The desktop app hides their
  * controls; the browser preview shows them so it matches the design. Everything else
- * (login, menu bar, keep awake, notifications, retention, default model) is stored by
+ * (login, menu bar, keep awake, notifications, retention, default model, crash reports) is stored by
  * the backend through `useAppSettings` and the credentials commands.
  */
 export interface SettingsValues {
   modelFallback: (typeof modelFallbackOptions)[number]
-  shareCrashReports: boolean
   appearance: (typeof appearanceOptions)[number]
   language: (typeof languageOptions)[number]
   remoteServerUrl: string
@@ -17,7 +16,6 @@ export interface SettingsValues {
 
 const initialSettingsValues: SettingsValues = {
   modelFallback: 'Switch to Ollama',
-  shareCrashReports: false,
   appearance: 'Match the system',
   language: 'English',
   remoteServerUrl: '',

@@ -134,6 +134,18 @@ src-tauri/            Rust shell (Tauri 2): window, bundling, future local runne
 - Bundled Node.js version: `scripts/node-version` (fetched by `scripts/fetch-node.sh`)
 - Design tokens (colors, font): `src/index.css`
 
+## Privacy
+graphrt sends no telemetry. Agents, runs, keys and settings stay on your computer.
+
+**Crash reports are local.** When graphrt crashes (a backend panic) or a screen hits an error it cannot handle, a report is saved to `crash-reports/` in the app data folder (Settings > Privacy and data shows where), one JSON file per crash, at most 50 (the oldest are deleted) and 64 KB each. A report holds the app version, the system and architecture, the time, the error message, where it happened (file and line, or the screen's route without its query string), the thread and the backtrace or stack. Before it is written, graphrt removes:
+- your home folder (shown as `~`) and your account name
+- keys and tokens: `Bearer …`, `sk-…` and other provider key formats, `api_key=`, `token:`, `password=` and similar values, and long random-looking strings
+- email addresses
+
+Reports never contain your secrets, workflow inputs, run outputs or file contents.
+
+Nothing is sent anywhere. In **Settings > Privacy and data > Crash reports** you can view each report exactly as stored, export them all to one `.json` file or delete them. After a crash, the next launch shows a small notice with **View** and **Dismiss**. If you turn on **Help improve graphrt: offer to share crash reports** (off by default), the notice also offers **Open a GitHub issue**: it opens a new issue in your browser with a title and a short summary filled in, which you can edit before you submit it, or close.
+
 ## Contributing
 Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, checks and commit style, and follow the [Code of Conduct](CODE_OF_CONDUCT.md). Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
 

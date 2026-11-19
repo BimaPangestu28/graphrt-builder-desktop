@@ -69,12 +69,11 @@ describe('SettingsPage', () => {
 
   it('keeps local-only values after switching sections', async () => {
     renderSettingsPage()
-    const crashReportsToggle = await screen.findByRole('checkbox', { name: /Share anonymous crash reports/ })
-    fireEvent.click(crashReportsToggle)
+    fireEvent.change(await screen.findByRole('combobox', { name: /If the main model fails/ }), { target: { value: 'Pause and tell me' } })
     fireEvent.click(screen.getByRole('button', { name: 'Notifications' }))
     expect(screen.queryByRole('heading', { name: 'Runner' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Privacy and data' }))
-    expect(screen.getByRole('checkbox', { name: /Share anonymous crash reports/ })).toBeChecked()
+    fireEvent.click(screen.getByRole('button', { name: 'Runner' }))
+    expect(await screen.findByRole('combobox', { name: /If the main model fails/ })).toHaveValue('Pause and tell me')
   })
 
   it('exports every agent to the Downloads folder', async () => {

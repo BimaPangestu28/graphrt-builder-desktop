@@ -125,8 +125,9 @@ function SettingsSectionContent({ activeSection, onSelectSection, appSettingsSta
  * App-wide preferences with an inner sub-nav (General, Runner, Notifications, Privacy and data,
  * Remote runner, Updates, About). Opens on Runner, matching the design. Launch at login, menu bar,
  * keep awake, missed runs, notifications and run history retention are saved by the backend
- * on every change; the default model through the credentials commands. Controls without a
- * backend (appearance, language, model fallback, crash reports, remote runner) are shown
+ * on every change; the default model through the credentials commands; crash reports and
+ * their sharing opt-in through the crash report commands. Controls without a
+ * backend (appearance, language, model fallback, remote runner) are shown
  * only in the browser preview, so the desktop app never offers a switch that does nothing.
  */
 export function SettingsPage() {
