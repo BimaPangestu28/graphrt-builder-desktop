@@ -7,6 +7,7 @@ use tauri::State;
 use crate::error::AppResult;
 use crate::node_runtime::BrowserRuntimeStatus;
 use crate::plugins::models::{InstalledPlugin, PluginActionResult, PluginCatalog};
+use crate::plugins::requirements::PluginRequirement;
 use crate::state::AppState;
 
 #[tauri::command]
@@ -74,4 +75,17 @@ pub async fn run_plugin_action(
     config: Option<serde_json::Value>,
 ) -> AppResult<PluginActionResult> {
     state.plugins.run_action(name.trim(), kind.trim(), config.unwrap_or(serde_json::Value::Null)).await
+}
+
+/// What the agent's current workflow needs from plugins (installed or not),
+/// for the build chat. Fetches the catalog first when this session has not
+/// (bounded wait; the saved copy is used offline).
+#[tauri::command]
+pub async fn list_agent_plugin_requirements(
+    state: State<'_, AppState>,
+    agent_id: String,
+) -> AppResult<Vec<PluginRequirement>> {
+    let agent = state.db.get_agent(agent_id.trim())?;
+    state.plugins.refresh_catalog_for_builder().await;
+    state.plugins.requirements(&agent.flow_yaml)
 }

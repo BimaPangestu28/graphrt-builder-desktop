@@ -21,6 +21,8 @@ pub async fn build_agent(
         // A closed channel only means the screen was left; building continues.
         let _ = on_progress.send(progress);
     };
+    // The builder lists catalog plugins too; a slow network only delays this briefly.
+    state.plugins.refresh_catalog_for_builder().await;
     agent_builder::build_agent(&state.db, &state.credentials, request, &report).await
 }
 
@@ -37,6 +39,7 @@ pub async fn revise_agent(
     let report = move |progress: BuildProgress| {
         let _ = on_progress.send(progress);
     };
+    state.plugins.refresh_catalog_for_builder().await;
     agent_builder::revise_agent(&state.db, &state.credentials, &agent_id, &instruction, &report).await
 }
 

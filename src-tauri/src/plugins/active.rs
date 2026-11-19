@@ -11,8 +11,12 @@ use std::sync::{Arc, RwLock};
 use graphrt_core::tool::ToolRegistry;
 
 use super::host::{PluginSnapshot, SharedSnapshot};
+use super::models::CatalogIndex;
 
 static ACTIVE_SNAPSHOT: RwLock<Option<SharedSnapshot>> = RwLock::new(None);
+/// The last catalog the app's service fetched or read from its saved copy:
+/// the builder prompt lists its plugins and drafts may use their node kinds.
+static ACTIVE_CATALOG: RwLock<Option<Arc<CatalogIndex>>> = RwLock::new(None);
 
 /// Replaces the published snapshot (`None` clears it).
 pub(crate) fn publish(snapshot: Option<SharedSnapshot>) {
@@ -42,5 +46,29 @@ pub fn register_plugin_nodes(registry: &mut graphrt_core::Registry) {
 pub fn add_plugin_tools(tools: &mut ToolRegistry) {
     if let Some(snapshot) = current() {
         snapshot.add_tools(tools);
+    }
+}
+
+/// Replaces the published catalog (`None` clears it).
+pub(crate) fn publish_catalog(catalog: Option<Arc<CatalogIndex>>) {
+    match ACTIVE_CATALOG.write() {
+        Ok(mut slot) => *slot = catalog,
+        Err(poisoned) => *poisoned.into_inner() = catalog,
+    }
+}
+
+/// The published catalog, if the app has one (fetched or saved).
+pub(crate) fn current_catalog() -> Option<Arc<CatalogIndex>> {
+    match ACTIVE_CATALOG.read() {
+        Ok(slot) => slot.clone(),
+        Err(poisoned) => poisoned.into_inner().clone(),
+    }
+}
+
+/// Adds placeholder node kinds for catalog plugins that are not installed to
+/// `registry` (called by `flow::draft_node_registry`; never used to run).
+pub fn register_catalog_placeholders(registry: &mut graphrt_core::Registry) {
+    if let Some(catalog) = current_catalog() {
+        super::placeholder::register_placeholders(registry, &catalog);
     }
 }

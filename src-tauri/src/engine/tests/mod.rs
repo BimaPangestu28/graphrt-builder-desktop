@@ -413,3 +413,43 @@ async fn stored_workflow_secrets_reach_the_flow_and_defaults_fill_the_rest() {
     let stored_events = serde_json::to_string(&harness.db.list_run_events(&run.id).unwrap()).unwrap();
     assert!(!stored_events.contains("token-123"), "secret leaked into stored events");
 }
+
+#[tokio::test]
+async fn an_agent_using_plugins_that_are_not_installed_does_not_run() {
+    let harness = harness_with_answers(&["unused"]);
+    let flow = r#"
+version: "1"
+name: mail-offer
+graph:
+  nodes:
+    - id: start
+      type: start
+    - id: send_offer
+      type: fixture-mail.send_mail
+      title: Send the offer
+      to: someone@shop.test
+      body: hi
+    - id: page
+      type: fixture-browser.scrape
+      url: https://shop.test
+    - id: end
+      type: end
+  edges:
+    - { source: start, target: send_offer }
+    - { source: send_offer, target: page }
+    - { source: page, target: end }
+"#;
+    let agent = create_agent(&harness.db, flow);
+
+    let result = harness.runs.start_run(&agent.id, RunTrigger::Manual, json!({})).await;
+
+    match result {
+        Err(error @ AppError::MissingPlugins(_)) => {
+            assert_eq!(error.code(), "missing_plugins");
+            assert!(error.to_string().contains("fixture-browser, fixture-mail"), "{error}");
+        }
+        other => panic!("expected MissingPlugins, got {other:?}"),
+    }
+    assert!(harness.db.list_runs(&RunFilter::default()).unwrap().is_empty());
+    assert!(harness.sink.payloads.lock().unwrap().is_empty());
+}

@@ -45,8 +45,8 @@ Never write a real or made-up key into the document.
 - Every `llm`, `agent`, `question-classifier` and `parameter-extractor` node uses \
 `model: { provider: {provider}, name: {model} }`. The examples use other models; do not copy those.
 - Give every step a short `title` in plain words, e.g. \"Find cafes on Google Maps\", \"Write a short message\".
-- Use the best-known public API for each outside service and keep requests simple. Prefer an installed plugin \
-step when one covers the service. Never use placeholder addresses such as example.com or your-domain.com: the \
+- Use the best-known public API for each outside service and keep requests simple. Prefer a plugin step \
+(installed or not yet installed) when one covers the service. Never use placeholder addresses such as example.com or your-domain.com: the \
 URLs in the examples below are placeholders and must not be copied. If no real API or plugin is available, read \
 the address from an `env` value and say in your opening sentence what the user needs to connect.
 - Every node must be reachable from `start`, and every reference must name an existing node and output.
@@ -101,7 +101,7 @@ fn append_domain_guides(rules: String) -> String {
         .fold(rules, |combined, guide| format!("{combined}\n{guide}"))
 }
 
-/// Adds the installed plugins' step types (dynamic, unlike [`DOMAIN_GUIDES`]).
+/// Adds the plugins' step types, installed and from the catalog (dynamic, unlike [`DOMAIN_GUIDES`]).
 fn append_plugin_guide(rules: String) -> String {
     let guide = crate::plugins::installed_plugins_guide();
     if guide.is_empty() {

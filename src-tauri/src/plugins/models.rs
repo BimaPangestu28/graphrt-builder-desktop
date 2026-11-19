@@ -60,11 +60,54 @@ pub struct CatalogPlugin {
     #[serde(default)]
     pub node: Option<String>,
     #[serde(default)]
-    pub nodes: Vec<PluginNodeInfo>,
+    pub nodes: Vec<CatalogNode>,
     #[serde(default)]
     pub tools: Vec<String>,
     #[serde(default)]
     pub readme_url: Option<String>,
+    /// Terms-of-service / ban warning from the plugin's README (e.g. whatsapp-web).
+    #[serde(default)]
+    pub warning: Option<String>,
+    /// How many operations (node kinds) the plugin offers.
+    #[serde(default)]
+    pub operations_count: Option<u32>,
+}
+
+/// One node kind as published in the catalog (snake_case on the wire).
+/// `config_schema` and `outputs` are optional: older catalogs only list
+/// kind, title and description.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct CatalogNode {
+    pub kind: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub description: String,
+    /// JSON Schema of the node's config object, when published.
+    #[serde(default)]
+    pub config_schema: Option<serde_json::Value>,
+    /// Declared outputs: `[{ "name": "data", ... }]` or `["data"]`.
+    #[serde(default)]
+    pub outputs: Option<serde_json::Value>,
+}
+
+impl CatalogNode {
+    /// The kind, title and description shown on the Plugins screen.
+    pub fn info(&self) -> PluginNodeInfo {
+        PluginNodeInfo { kind: self.kind.clone(), title: self.title.clone(), description: self.description.clone() }
+    }
+
+    /// Output names, from either published form of `outputs`.
+    pub fn output_names(&self) -> Vec<String> {
+        let Some(serde_json::Value::Array(outputs)) = &self.outputs else { return Vec::new() };
+        outputs
+            .iter()
+            .filter_map(|output| match output {
+                serde_json::Value::String(name) => Some(name.clone()),
+                other => other.get("name").and_then(serde_json::Value::as_str).map(str::to_owned),
+            })
+            .collect()
+    }
 }
 
 /// Catalog permissions (snake_case wire form of [`PluginPermissions`]).

@@ -217,3 +217,4 @@ export type BackendErrorCode =
   | 'schedule'
   | 'serialization'
   | 'internal'
+  | 'missing_plugins'

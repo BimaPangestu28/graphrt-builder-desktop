@@ -93,7 +93,7 @@ pub(super) fn catalog_view(index: &CatalogIndex, installed: &[PluginState], from
                 description: plugin.description.clone(),
                 permissions: PluginPermissions::from(&plugin.permissions),
                 needs_browser: plugin.needs_browser,
-                nodes: plugin.nodes.clone(),
+                nodes: plugin.nodes.iter().map(super::models::CatalogNode::info).collect(),
                 tools: plugin.tools.clone(),
                 readme_url: plugin.readme_url.clone(),
                 size_bytes: plugin.size_bytes,
