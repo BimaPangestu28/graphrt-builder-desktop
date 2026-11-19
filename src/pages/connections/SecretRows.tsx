@@ -49,6 +49,7 @@ function SecretValueForm({ secret, onSave, onCancel }: SecretValueFormProps) {
         onChange={setSecretValue}
         placeholder={secret.configured ? 'Paste the new value' : 'Paste the value'}
         autoFocus
+        className="flex-[1_1_240px]"
       />
       <button type="submit" disabled={!canSave} className={primaryButtonClassNames}>
         {isSaving ? 'Saving…' : 'Save'}
