@@ -115,6 +115,38 @@ pub(super) fn document_name(flow_yaml: &str) -> Option<String> {
     clean_name(&words).map(|name| capitalize_first(&name))
 }
 
+/// Small words kept lower-case inside a title ("Leads to WhatsApp", "Find Cafes in Bandar Lampung").
+const LOWERCASE_TITLE_WORDS: &[&str] =
+    &["a", "an", "and", "as", "at", "by", "for", "from", "in", "into", "of", "on", "or", "the", "to", "via", "with"];
+
+/// Makes a model- or document-style name read like a person wrote it:
+/// `find_business_promotions` / `find-business-promotions` → "Find Business Promotions".
+/// Names that already have capitals ("WhatsApp leads", "Morning email digest") keep them;
+/// only separators are turned into spaces.
+pub(super) fn humanize_name(raw: &str) -> String {
+    let spaced = raw.replace(['_', '-'], " ");
+    let words: Vec<&str> = spaced.split_whitespace().collect();
+    if words.is_empty() {
+        return raw.trim().to_owned();
+    }
+    let is_all_lowercase = !spaced.chars().any(char::is_uppercase);
+    if !is_all_lowercase {
+        return words.join(" ");
+    }
+    words
+        .iter()
+        .enumerate()
+        .map(|(index, word)| {
+            if index > 0 && LOWERCASE_TITLE_WORDS.contains(word) {
+                (*word).to_owned()
+            } else {
+                capitalize_first(word)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// Fallback name: the first words of the description's first sentence.
 pub(super) fn name_from_description(description: &str) -> String {
     let first_sentence = description.split(['.', '\n', ',', ';', ':']).next().unwrap_or(description);
@@ -252,5 +284,29 @@ mod tests {
     fn same_document_ignores_trailing_whitespace_and_blank_lines() {
         assert!(same_document("a: 1\n\nb: 2\n", "a: 1   \nb: 2"));
         assert!(!same_document("a: 1\nb: 2\n", "a: 1\nb: 3\n"));
+    }
+}
+
+#[cfg(test)]
+mod humanize_tests {
+    use super::humanize_name;
+
+    #[test]
+    fn identifier_style_names_become_titles() {
+        assert_eq!(humanize_name("find_business_promotions"), "Find Business Promotions");
+        assert_eq!(humanize_name("cafe-offers-in-bandar-lampung"), "Cafe Offers in Bandar Lampung");
+        assert_eq!(humanize_name("leads to sales recap"), "Leads to Sales Recap");
+    }
+
+    #[test]
+    fn names_with_capitals_keep_them() {
+        assert_eq!(humanize_name("Morning email digest"), "Morning email digest");
+        assert_eq!(humanize_name("WhatsApp_cafe_offers"), "WhatsApp cafe offers");
+        assert_eq!(humanize_name("Find Business Promotions"), "Find Business Promotions");
+    }
+
+    #[test]
+    fn blank_names_stay_blank() {
+        assert_eq!(humanize_name("  "), "");
     }
 }

@@ -69,7 +69,7 @@ function AgentSummaryCard(cardData: AgentCardData) {
     <article aria-label={agent.name} className="flex flex-col gap-3 rounded-[14px] border border-line bg-surface p-[18px]">
       {cardMode === 'rename' ? (
         // The agent list reloads after a rename (notifyAgentsChanged), so nothing else to refresh here.
-        <RenameForm agent={agent} onDone={() => setCardMode('view')} onRenamed={() => undefined} />
+        <RenameForm agent={agent} variant="card" onDone={() => setCardMode('view')} onRenamed={() => undefined} />
       ) : (
         <div className="flex items-start justify-between gap-2">
           <Link to={agentPath('builder', agent.id)} className="min-w-0 font-semibold !text-ink no-underline hover:underline">
