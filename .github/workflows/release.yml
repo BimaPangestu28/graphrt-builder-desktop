@@ -1,7 +1,8 @@
 name: Release
 
 # Push a tag like `v0.2.0` to build the desktop app for macOS (universal),
-# Windows and Linux and attach the bundles plus SHA256SUMS to a DRAFT GitHub
+# Windows (x64: .msi + NSIS .exe) and Linux (x64 and arm64: .AppImage, .deb,
+# .rpm) and attach the bundles plus SHA256SUMS to a DRAFT GitHub
 # Release whose body is the matching CHANGELOG.md section. A maintainer reviews
 # the draft and publishes it by hand. See CONTRIBUTING.md > Releasing.
 #
@@ -32,6 +33,11 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # Same list as ci.yml (Tauri 2 on Ubuntu 22.04 + D-Bus for the Secret Service).
+  LINUX_BUILD_PACKAGES: >-
+    build-essential pkg-config file patchelf
+    libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+    libxdo-dev libssl-dev libdbus-1-dev
   RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
@@ -94,11 +100,18 @@ jobs:
             rust-targets: ""
             node-targets: x86_64-pc-windows-msvc
             args: --bundles msi,nsis
-          - name: Linux
+          # Built on the oldest supported Ubuntu so the AppImage / .deb run on
+          # newer glibc distributions too.
+          - name: Linux x64
             platform: ubuntu-22.04
             rust-targets: ""
             node-targets: x86_64-unknown-linux-gnu
-            args: --bundles appimage,deb
+            args: --bundles appimage,deb,rpm
+          - name: Linux arm64
+            platform: ubuntu-22.04-arm
+            rust-targets: ""
+            node-targets: aarch64-unknown-linux-gnu
+            args: --bundles appimage,deb,rpm
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -108,7 +121,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y ${{ env.LINUX_BUILD_PACKAGES }}
       - uses: pnpm/action-setup@v4
         with:
           version: 10
