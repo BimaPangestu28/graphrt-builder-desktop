@@ -1,3 +1,4 @@
+import type { PluginRequirement } from '../pluginRequirementTypes'
 import { BackendError } from '../client'
 import type {
   BrowserRuntimeEvent,
@@ -213,6 +214,8 @@ function runSamplePluginAction(name: string, kind: string): PluginActionResult {
 }
 
 export const samplePluginsBackend = {
+  // Filled in by the build-chat work; the sample agents use no plugin steps yet.
+  listAgentPluginRequirements: (_agentId: string): Promise<PluginRequirement[]> => respondWith(() => []),
   listPluginCatalog: (_refresh: boolean): Promise<PluginCatalog> => respondWith(readCatalog),
   listInstalledPlugins: (): Promise<InstalledPlugin[]> => respondWith(() => [...pluginsState.installedByName.values()].map(toInstalledPlugin)),
   installPlugin: (name: string): Promise<InstalledPlugin> => respondWith(() => installSamplePlugin(name)),

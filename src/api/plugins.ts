@@ -9,6 +9,7 @@ import {
   type PluginCatalog,
   type PluginEvent,
 } from './pluginTypes'
+import type { PluginRequirement } from './pluginRequirementTypes'
 import { samplePluginsBackend, subscribeToSampleBrowserRuntimeEvents, subscribeToSamplePluginEvents } from './sampleBackend/plugins'
 
 /**
@@ -118,4 +119,13 @@ export function listenToBrowserRuntimeEvents(onEvent: (runtimeEvent: BrowserRunt
 export function readPluginActionData(result: PluginActionResult): Record<string, unknown> {
   const actionData = result.outputs.data
   return actionData && typeof actionData === 'object' ? (actionData as Record<string, unknown>) : {}
+}
+
+/**
+ * The plugins an agent's current workflow uses, with what is still missing (install, trust,
+ * settings, browser). Empty when the workflow uses no plugin steps.
+ */
+export function listAgentPluginRequirements(agentId: string): Promise<PluginRequirement[]> {
+  if (!isDesktopApp()) return samplePluginsBackend.listAgentPluginRequirements(agentId)
+  return callBackend('list_agent_plugin_requirements', { agentId })
 }

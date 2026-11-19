@@ -27,6 +27,7 @@ mod host;
 mod install;
 pub mod models;
 mod prompt_guide;
+pub mod requirements;
 mod settings;
 
 #[cfg(test)]
