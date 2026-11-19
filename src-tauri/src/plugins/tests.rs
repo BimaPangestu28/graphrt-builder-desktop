@@ -17,7 +17,11 @@ use crate::error::{AppError, AppResult};
 use crate::node_runtime::NodeRuntime;
 use crate::storage::Database;
 
+mod catalog_plugins;
+
 const PLUGIN: &str = "fixture-echo";
+/// Catalog entries of plugins the tests never install.
+const NOT_INSTALLED_ENTRIES: &str = include_str!("../../fixtures/plugins/catalog-not-installed.json");
 const CATALOG_URL: &str = "https://plugins.example.test/index.json";
 const TARBALL_URL: &str = "https://plugins.example.test/fixture-echo-1.0.0.tar.gz";
 
@@ -158,6 +162,22 @@ fn catalog_json(version: &str, tarball_url: &str, sha256: &str, size_bytes: usiz
     .unwrap()
 }
 
+/// `catalog_json` plus the never-installed fixture plugins.
+fn catalog_json_with_extras(version: &str, tarball_url: &str, sha256: &str, size_bytes: usize) -> Vec<u8> {
+    let mut catalog: serde_json::Value =
+        serde_json::from_slice(&catalog_json(version, tarball_url, sha256, size_bytes)).unwrap();
+    let extras: Vec<serde_json::Value> = serde_json::from_str(NOT_INSTALLED_ENTRIES).unwrap();
+    catalog["plugins"].as_array_mut().unwrap().extend(extras);
+    serde_json::to_vec(&catalog).unwrap()
+}
+
+/// A catalog of only the never-installed fixture plugins (`fixture-mail`, `fixture-browser`).
+pub(crate) fn not_installed_catalog() -> super::models::CatalogIndex {
+    let extras: Vec<serde_json::Value> = serde_json::from_str(NOT_INSTALLED_ENTRIES).unwrap();
+    let catalog = serde_json::json!({ "schema": 1, "plugins": extras });
+    super::catalog::parse_catalog(&serde_json::to_vec(&catalog).unwrap()).unwrap()
+}
+
 pub(crate) struct Fixture {
     pub app_data: tempfile::TempDir,
     pub service: PluginService,
@@ -182,6 +202,13 @@ impl Fixture {
     fn publish(&self, version: &str, tarball: Vec<u8>) {
         let sha = super::archive::sha256_hex(&tarball);
         self.downloader.serve(CATALOG_URL, catalog_json(version, TARBALL_URL, &sha, tarball.len()));
+        self.downloader.serve(TARBALL_URL, tarball);
+    }
+
+    /// Like [`Fixture::publish`], with the never-installed fixture plugins in the catalog too.
+    fn publish_with_extras(&self, version: &str, tarball: Vec<u8>) {
+        let sha = super::archive::sha256_hex(&tarball);
+        self.downloader.serve(CATALOG_URL, catalog_json_with_extras(version, TARBALL_URL, &sha, tarball.len()));
         self.downloader.serve(TARBALL_URL, tarball);
     }
 
@@ -525,6 +552,7 @@ async fn the_published_snapshot_feeds_compiles_tools_and_the_approval_check() {
     fixture.service.remove(PLUGIN).await.unwrap();
     let after_remove = crate::flow::node_registry().contains("fixture-echo.echo");
     super::active::publish(None);
+    super::active::publish_catalog(None);
 
     assert!(compiled.is_ok(), "{:?}", compiled.err());
     assert_eq!(unapproved.unwrap(), vec!["Send it".to_owned()]);

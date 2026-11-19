@@ -2,7 +2,7 @@ import { LinkButton, joinClassNames } from '@/components/ui'
 import type { AttentionItem } from '@/data/homeDashboard'
 
 interface NeedsYouSectionProps {
-  /** Null while paused runs are loading. */
+  /** Null while runs are loading. */
   items: AttentionItem[] | null
   loadError: Error | null
 }
@@ -31,13 +31,13 @@ function NeedsYouList({ items }: { items: AttentionItem[] }) {
 }
 
 function NeedsYouBody({ items, loadError }: NeedsYouSectionProps) {
-  if (loadError) return <p className="m-0 text-muted">Could not check for paused runs: {loadError.message}</p>
+  if (loadError) return <p className="m-0 text-muted">Could not check what needs you: {loadError.message}</p>
   if (!items) return <p className="m-0 text-muted">Checking what needs you…</p>
   if (items.length === 0) return <p className="m-0 text-muted">Nothing needs you right now</p>
   return <NeedsYouList items={items} />
 }
 
-/** Amber-bordered list of things waiting on the user (paused runs first), each with one action button. */
+/** Amber-bordered list of things waiting on the user (most urgent first), each with one action button. */
 export function NeedsYouSection({ items, loadError }: NeedsYouSectionProps) {
   return (
     <section aria-labelledby="home-needs-you" className="flex flex-col gap-3">

@@ -25,6 +25,7 @@ const DEFAULT_NODE_TIMEOUT_MS: u64 = 2 * 60 * 1000;
 /// `agents` provider, see `agent_tools`); other tool providers are added to it.
 ///
 /// # Errors
+/// `MissingPlugins` when the flow uses plugins that are not installed,
 /// `InvalidInput` / `Workflow` for a bad flow, `MissingCredentials` when a model
 /// provider the flow uses is not configured, or whatever building the model
 /// registry / HTTP client reports.
@@ -35,6 +36,7 @@ pub(super) fn build_engine(
     model_source: &dyn ModelRegistrySource,
     tools: ToolRegistry,
 ) -> AppResult<Engine> {
+    ensure_plugins_installed(flow_yaml)?;
     let summary = flow::summarize_flow(flow_yaml)?;
     ensure_providers_configured(&summary.model_providers, credentials, db)?;
     let graph = flow::compile_flow(flow_yaml)?;
@@ -51,6 +53,17 @@ fn run_limits() -> Limits {
         max_duration_ms: Some(MAX_RUN_DURATION_MS),
         default_node_timeout_ms: Some(DEFAULT_NODE_TIMEOUT_MS),
         ..Limits::default()
+    }
+}
+
+/// `MissingPlugins` naming every plugin the flow uses that is not installed.
+/// Drafts may use catalog plugins before they are installed; they never run.
+fn ensure_plugins_installed(flow_yaml: &str) -> AppResult<()> {
+    let missing_plugins = flow::find_missing_plugins(flow_yaml);
+    if missing_plugins.is_empty() {
+        Ok(())
+    } else {
+        Err(AppError::MissingPlugins(missing_plugins))
     }
 }
 

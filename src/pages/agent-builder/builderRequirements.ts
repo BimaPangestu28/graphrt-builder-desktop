@@ -1,10 +1,10 @@
-import type { InstalledPlugin } from '@/api/pluginTypes'
-import type { FlowStep, ProviderStatus, WorkflowSecretStatus } from '@/api/types'
+import type { PluginRequirement } from '@/api/pluginRequirementTypes'
+import type { ProviderStatus, WorkflowSecretStatus } from '@/api/types'
 import { appRequirementsByAgentId } from '@/data/mapsLeadsAgent'
 import { getProviderName } from '@/lib/agentDisplay'
 import { agentPath, connectionsPluginsPath, routePaths } from '@/routes'
-import { isPluginReady, listMissingSettings } from '../connections/pluginDisplay'
 import type { BuilderRequirement } from './AgentRequirementsList'
+import { describeRequirementState } from './pluginRequirementDisplay'
 
 /**
  * Lists what an agent needs on screen 04: connected apps first, then the model keys its
@@ -47,45 +47,20 @@ export function listBuilderRequirements(
 }
 
 /**
- * Plugin names the flow's steps use, in step order. Plugin node types look like
- * `<plugin>.<kind>` (e.g. `whatsapp-api.send_text`); built-in ones have no dot.
+ * The "Needs" rows for the plugins the agent uses, from the same requirements the chat's
+ * setup card shows (`listAgentPluginRequirements`), so both stay in sync. Plugins that are
+ * not ready point to the card ("Set up in chat").
  *
- * @example
- * listStepPluginNames([{ nodeType: 'llm' }, { nodeType: 'whatsapp-api.send_text' }]) // ["whatsapp-api"]
+ * @param pluginRequirements - From `listAgentPluginRequirements`, or null while loading (no rows then)
+ * @returns One row per plugin, in the backend's order (BuilderRequirement[])
  */
-export function listStepPluginNames(steps: Pick<FlowStep, 'nodeType'>[]): string[] {
-  const pluginNames = steps.flatMap((flowStep) => {
-    const separatorIndex = flowStep.nodeType.indexOf('.')
-    return separatorIndex > 0 ? [flowStep.nodeType.slice(0, separatorIndex)] : []
-  })
-  return [...new Set(pluginNames)]
-}
-
-function describeSetupGap(installedPlugin: InstalledPlugin): string {
-  if (installedPlugin.loadError) return `Could not load: ${installedPlugin.loadError}`
-  return 'Installed · not trusted yet'
-}
-
-function toPluginRequirement(pluginName: string, installedPlugin: InstalledPlugin | undefined): BuilderRequirement {
-  const base = { label: `${pluginName} plugin`, pluginName, connectPath: connectionsPluginsPath }
-  if (!installedPlugin) return { ...base, isConnected: false, pluginState: 'not_installed', detail: 'Not installed' }
-  if (!isPluginReady(installedPlugin)) return { ...base, isConnected: false, pluginState: 'needs_setup', detail: describeSetupGap(installedPlugin) }
-  const missingSettings = listMissingSettings(installedPlugin)
-  if (missingSettings.length === 0) return { ...base, isConnected: true, pluginState: 'ready' }
-  return { ...base, isConnected: true, pluginState: 'ready', detail: `Ready · not set (optional?): ${missingSettings.join(', ')}` }
-}
-
-/**
- * One requirement per plugin the flow's steps use: not installed (Install), installed but
- * untrusted or missing settings (Set up in Connections → Plugins), or ready.
- *
- * @param steps - `FlowSummary.steps` (FlowStep[])
- * @param installedPlugins - From `listInstalledPlugins`, or null while loading (no rows then)
- * @returns Plugin requirements in step order (BuilderRequirement[])
- */
-export function listPluginRequirements(steps: FlowStep[], installedPlugins: InstalledPlugin[] | null): BuilderRequirement[] {
-  if (!installedPlugins) return []
-  return listStepPluginNames(steps).map((pluginName) =>
-    toPluginRequirement(pluginName, installedPlugins.find((installedPlugin) => installedPlugin.name === pluginName)),
-  )
+export function listPluginSetupRequirements(pluginRequirements: PluginRequirement[] | null): BuilderRequirement[] {
+  return (pluginRequirements ?? []).map((requirement) => ({
+    label: `${requirement.name} plugin`,
+    pluginName: requirement.name,
+    connectPath: connectionsPluginsPath,
+    isConnected: requirement.ready,
+    pluginState: requirement.ready ? 'ready' : requirement.installed ? 'needs_setup' : 'not_installed',
+    detail: requirement.ready ? undefined : describeRequirementState(requirement),
+  }))
 }

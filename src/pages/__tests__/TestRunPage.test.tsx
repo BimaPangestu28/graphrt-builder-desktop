@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { sampleBuilderBackend } from '@/api/sampleBackend/builder'
+import { resetSamplePlugins } from '@/api/sampleBackend/plugins'
 import { resetSampleRuns, sampleRunsBackend } from '@/api/sampleBackend/runs'
 import { sampleDraftMessage } from '@/api/sampleBackend/sampleTestRun'
 import type { FlowSummary, Run } from '@/api/types'
@@ -57,6 +58,7 @@ describe('TestRunPage', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     resetSampleRuns()
+    resetSamplePlugins()
   })
 
   afterEach(() => {
@@ -311,6 +313,16 @@ describe('TestRunPage', () => {
     await startTestFromForm()
     expect(screen.getByRole('alert')).toHaveTextContent('Add an OpenAI key first')
     expect(screen.getByRole('button', { name: 'Start the test' })).toBeEnabled()
+  })
+
+  it('shows the plugin setup card in the chat when the start is refused for missing plugins', async () => {
+    vi.spyOn(sampleRunsBackend, 'startRun').mockRejectedValue(new BackendError('missing_plugins', 'Install whatsapp-api first'))
+    await startTestFromForm()
+    await flushBackendCalls()
+    expect(screen.getByRole('alert')).toHaveTextContent('Set up its plugins in the chat, then start again')
+    const chat = screen.getByRole('region', { name: 'Chat' })
+    const setupMessage = within(chat).getByRole('group', { name: 'This agent needs 2 plugins · 0 ready' })
+    expect(within(setupMessage).getByRole('button', { name: 'Install & trust whatsapp-api' })).toBeInTheDocument()
   })
 
   it('keeps the approval card and shows the error when resuming fails', async () => {

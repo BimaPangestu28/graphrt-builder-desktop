@@ -2,13 +2,14 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { resetSampleAgents, sampleAgentsBackend } from '@/api/sampleBackend/agents'
-import { sampleRunSummaryBackend } from '@/api/sampleBackend/runSummary'
 import { resetSampleConversations } from '@/api/sampleBackend/conversations'
 import { resetSampleRuns, sampleRunsBackend } from '@/api/sampleBackend/runs'
+import { sampleRunSummaryBackend } from '@/api/sampleBackend/runSummary'
 import { resetSampleTriggers } from '@/api/sampleBackend/triggers'
-import { agentPath, agentRoutePatterns, routePaths, runReviewPath } from '@/routes'
-import { HomePage } from '@/pages/HomePage'
+import { gettingStartedDismissedKey } from '@/pages/home-dashboard/gettingStarted'
 import { getGreetingForHour } from '@/pages/home-dashboard/greeting'
+import { HomePage } from '@/pages/HomePage'
+import { agentPath, agentRoutePatterns, routePaths, runReviewPath } from '@/routes'
 
 function renderHomePage() {
   return render(
@@ -17,6 +18,7 @@ function renderHomePage() {
         <Route path={routePaths.home} element={<HomePage />} />
         <Route path={agentRoutePatterns.testRun} element={<p>Test run screen</p>} />
         <Route path={routePaths.batchApproval} element={<p>Review screen</p>} />
+        <Route path={routePaths.runs} element={<p>Runs screen</p>} />
       </Routes>
     </MemoryRouter>,
   )
@@ -28,20 +30,31 @@ describe('HomePage', () => {
     resetSampleRuns()
     resetSampleConversations()
     resetSampleTriggers()
+    window.localStorage.removeItem(gettingStartedDismissedKey)
   })
   afterEach(() => vi.restoreAllMocks())
 
-  it('greets the user and lists paused runs plus the preview reminders', async () => {
+  it('lists everything that needs the user, most urgent first', async () => {
     renderHomePage()
     expect(screen.getByRole('heading', { level: 1, name: /^Good (morning|afternoon|evening)$/ })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page')
     const needsYou = screen.getByRole('region', { name: /Needs you/ })
     expect(within(needsYou).getByText('Checking what needs you…')).toBeInTheDocument()
     expect(await within(needsYou).findByText('Catering assistant is waiting for you')).toBeInTheDocument()
-    expect(within(needsYou).getByText(/An order for 40 nasi box is waiting for your confirmation/)).toBeInTheDocument()
-    expect(await within(needsYou).findByText('Gmail sign-in expired')).toBeInTheDocument()
     expect(await within(needsYou).findByText('3 customers are waiting in Inbox')).toBeInTheDocument()
-    expect(await screen.findByText(/^4 things need you · next run (today|tomorrow|\w{3} \d+ \w{3}) \d\d:\d\d$/)).toBeInTheDocument()
+    expect(await within(needsYou).findByText("Maps leads to WhatsApp isn't ready to run")).toBeInTheDocument()
+    // One row per agent: its connection problem and its plugin setup together.
+    const mapsRow = within(needsYou).getByText("Maps leads to WhatsApp isn't ready to run").closest('li')
+    expect(mapsRow).toHaveTextContent('WhatsApp was logged out')
+    expect(mapsRow).toHaveTextContent("whatsapp-api isn't installed")
+    expect(within(needsYou).getByText('Gmail sign-in expired')).toBeInTheDocument()
+    const titles = within(needsYou)
+      .getAllByRole('listitem')
+      .map((row) => row.querySelector('.font-semibold')?.textContent)
+    expect(titles[0]).toBe('Catering assistant is waiting for you')
+    expect(titles[1]).toBe('3 customers are waiting in Inbox')
+    expect(within(needsYou).getAllByRole('link', { name: 'Set up' })[0]).toHaveAttribute('href', agentPath('builder', 'maps-leads'))
+    expect(await screen.findByText(/^5 things need you · next run (today|tomorrow|\w{3} \d+ \w{3}) \d\d:\d\d$/)).toBeInTheDocument()
   })
 
   it('opens a paused run from "Review"', async () => {
@@ -53,37 +66,48 @@ describe('HomePage', () => {
     expect(screen.getByText('Review screen')).toBeInTheDocument()
   })
 
-  it('says when nothing needs the user', async () => {
-    vi.spyOn(sampleRunsBackend, 'listRuns').mockResolvedValue([])
-    renderHomePage()
-    const needsYou = screen.getByRole('region', { name: /Needs you/ })
-    // The preview reminders still show; no paused runs are listed.
-    expect(await within(needsYou).findByText('Gmail sign-in expired')).toBeInTheDocument()
-    expect(within(needsYou).queryByRole('link', { name: 'Review' })).not.toBeInTheDocument()
-    expect(await screen.findByText('No runs yet. Test an agent to see it here')).toBeInTheDocument()
-  })
-
-  it('loads agent cards with this week\'s run stats', async () => {
+  it('gives each agent card a status chip and one next step', async () => {
     const listAgentsSpy = vi.spyOn(sampleAgentsBackend, 'listAgents')
     const listStatsSpy = vi.spyOn(sampleRunSummaryBackend, 'listAgentRunStats')
     renderHomePage()
     const agentsSection = screen.getByRole('region', { name: 'Agents' })
     expect(within(agentsSection).getByText('Loading agents…')).toBeInTheDocument()
-    const invoiceCard = await within(agentsSection).findByRole('link', { name: /Invoice reminders/ })
-    expect(invoiceCard).toHaveTextContent('Paused')
-    expect(invoiceCard).toHaveAttribute('href', agentPath('builder', 'invoice-reminders'))
-    const mapsCard = within(agentsSection).getByRole('link', { name: /^Maps leads to WhatsApp/ })
-    expect(await within(mapsCard).findByText(/messages sent this week/)).toBeInTheDocument()
-    expect(mapsCard).toHaveTextContent('12 messages sent this week')
-    expect(mapsCard).toHaveTextContent(/Last run ok · (Today|Yesterday) \d\d:\d\d/)
-    expect(within(agentsSection).getByRole('link', { name: /Morning email digest/ })).toHaveTextContent('8 emails summarized this week')
-    expect(invoiceCard).toHaveTextContent('No runs yet')
-    expect(within(agentsSection).getByRole('link', { name: /Catering assistant/ })).toHaveTextContent('Chatbot')
+    const mapsCard = await within(agentsSection).findByRole('article', { name: 'Maps leads to WhatsApp' })
+    expect(within(mapsCard).getByText(/^Active · next run /)).toBeInTheDocument()
+    expect(within(mapsCard).getByRole('button', { name: 'Run now' })).toBeInTheDocument()
+    expect(within(mapsCard).getByRole('link', { name: 'Edit steps' })).toHaveAttribute('href', agentPath('builder', 'maps-leads'))
+    expect(await within(mapsCard).findByText(/12 messages sent this week/)).toBeInTheDocument()
+    const invoiceCard = within(agentsSection).getByRole('article', { name: 'Invoice reminders' })
+    expect(within(invoiceCard).getByText('Paused')).toBeInTheDocument()
+    expect(within(invoiceCard).getByRole('link', { name: 'Resume' })).toHaveAttribute('href', agentPath('scheduleAgent', 'invoice-reminders'))
+    const chatbotCard = within(agentsSection).getByRole('article', { name: 'Catering assistant' })
+    expect(within(chatbotCard).getByRole('link', { name: 'Open Inbox' })).toHaveAttribute('href', routePaths.inbox)
+    const description = within(chatbotCard).getByText('Answer WhatsApp questions from our menu and price list, and pass orders to me')
+    expect(description).toHaveAttribute('title', 'Answer WhatsApp questions from our menu and price list, and pass orders to me')
     expect(listAgentsSpy).toHaveBeenCalled()
     expect(listStatsSpy).toHaveBeenCalled()
   })
 
-  it('lists recent runs with their summary headline', async () => {
+  it('starts a manual run with the last inputs from "Run now"', async () => {
+    const startRunSpy = vi.spyOn(sampleRunsBackend, 'startRun')
+    renderHomePage()
+    const mapsCard = await screen.findByRole('article', { name: 'Maps leads to WhatsApp' })
+    fireEvent.click(within(mapsCard).getByRole('button', { name: 'Run now' }))
+    expect(await within(mapsCard).findByText('Run started')).toBeInTheDocument()
+    expect(startRunSpy).toHaveBeenCalledWith('maps-leads', 'manual', expect.objectContaining({ keyword: expect.any(String) }))
+  })
+
+  it('shows the getting started checklist until it is hidden', async () => {
+    renderHomePage()
+    const checklist = await screen.findByRole('region', { name: /Getting started/ })
+    expect(within(checklist).getByText('4 of 5 done')).toBeInTheDocument()
+    expect(within(checklist).getByRole('link', { name: 'Set up its plugins' })).toHaveAttribute('href', agentPath('builder', 'maps-leads'))
+    fireEvent.click(within(checklist).getByRole('button', { name: 'Hide getting started' }))
+    expect(screen.queryByRole('region', { name: /Getting started/ })).not.toBeInTheDocument()
+    expect(window.localStorage.getItem(gettingStartedDismissedKey)).toBe('true')
+  })
+
+  it('lists recent runs in plain words and opens a run from its row', async () => {
     renderHomePage()
     const recentRunsSection = screen.getByRole('region', { name: 'Recent runs' })
     expect(within(recentRunsSection).getByText('Loading runs…')).toBeInTheDocument()
@@ -91,23 +115,18 @@ describe('HomePage', () => {
     expect(within(recentRunsTable).getAllByRole('row')).toHaveLength(6)
     expect(within(recentRunsTable).getByText('11 sent · 1 skipped')).toBeInTheDocument()
     expect(within(recentRunsTable).getByText('Needs you')).toBeInTheDocument()
+    expect(within(recentRunsTable).getAllByRole('link', { name: 'Maps leads to WhatsApp' })[0]).toHaveAttribute('href', agentPath('builder', 'maps-leads'))
+    fireEvent.click(within(recentRunsTable).getByText('11 sent · 1 skipped').closest('tr') as HTMLElement)
+    expect(screen.getByText('Runs screen')).toBeInTheDocument()
   })
 
-  it('shows this month\'s runs and AI tokens from the sample backend, with no invented cost', async () => {
+  it('shows this month\'s results and AI tokens, without filler', async () => {
     renderHomePage()
     const thisMonth = screen.getByRole('region', { name: 'This month' })
-    expect(await within(thisMonth).findByText('64')).toBeInTheDocument()
-    expect(within(thisMonth).getByText('AI tokens')).toBeInTheDocument()
-    expect(within(thisMonth).getByText('412K')).toBeInTheDocument()
-    expect(within(thisMonth).queryByText(/cost|Time saved/)).not.toBeInTheDocument()
-  })
-
-  it('shows each agent\'s schedule from its triggers', async () => {
-    renderHomePage()
-    const agentsSection = screen.getByRole('region', { name: 'Agents' })
-    expect(await within(agentsSection).findByText('Weekdays 09:00')).toBeInTheDocument()
-    expect(within(agentsSection).getByText('Every day 07:00')).toBeInTheDocument()
-    expect(within(agentsSection).getByText('Schedule off · Mondays 10:00')).toBeInTheDocument()
+    expect(await within(thisMonth).findByText('Runs succeeded')).toBeInTheDocument()
+    expect(within(thisMonth).getByText('Runs failed')).toBeInTheDocument()
+    expect(await within(thisMonth).findByText('412K')).toBeInTheDocument()
+    expect(within(thisMonth).queryByText(/cost|Time saved|Free and open source|own server/)).not.toBeInTheDocument()
   })
 
   it('shows quiet messages when agents or runs cannot be loaded', async () => {
@@ -115,7 +134,7 @@ describe('HomePage', () => {
     vi.spyOn(sampleRunsBackend, 'listRuns').mockRejectedValue(new BackendError('database', 'runs are locked'))
     renderHomePage()
     expect(await screen.findByText('Could not load your agents: database is locked')).toBeInTheDocument()
-    expect(await screen.findByText('Could not check for paused runs: runs are locked')).toBeInTheDocument()
+    expect(await screen.findByText('Could not check what needs you: runs are locked')).toBeInTheDocument()
     expect(screen.getByText('Could not load recent runs: runs are locked')).toBeInTheDocument()
   })
 

@@ -1,3 +1,4 @@
+import type { PluginRequirement } from '../pluginRequirementTypes'
 import { BackendError } from '../client'
 import type {
   BrowserRuntimeEvent,
@@ -9,8 +10,18 @@ import type {
   PluginEvent,
   PluginInstallStage,
 } from '../pluginTypes'
+import type { FlowStep } from '../types'
+import { readCurrentSteps } from './sampleAgentStore'
 import { requireText, respondWith } from './sampleResponse'
-import { initiallyInstalledSamplePlugins, samplePluginSeeds, type SamplePluginSeed } from './samplePluginSeeds'
+import {
+  initiallyInstalledSamplePlugins,
+  samplePluginNeedsByAgentId,
+  samplePluginSeeds,
+  samplePluginWarnings,
+  sampleRequiredPluginSettings,
+  type SamplePluginNeed,
+  type SamplePluginSeed,
+} from './samplePluginSeeds'
 
 /**
  * Sample plugins backend for the browser preview and tests. Keeps the install state,
@@ -31,6 +42,8 @@ interface SamplePluginsState {
   browserRuntimeStatus: BrowserRuntimeStatus
   /** Whether the sample personal WhatsApp session is linked (after `whatsapp-web.login`). */
   isWhatsAppWebLoggedIn: boolean
+  /** Plugins each agent uses besides `<plugin>.<kind>` steps (tests may change them). */
+  pluginNeedsByAgentId: Record<string, SamplePluginNeed[]>
 }
 
 function createInitialState(): SamplePluginsState {
@@ -38,7 +51,7 @@ function createInitialState(): SamplePluginsState {
   for (const installedPlugin of initiallyInstalledSamplePlugins) {
     installedByName.set(installedPlugin.name, { ...installedPlugin, configuredVariables: new Set<string>() })
   }
-  return { installedByName, browserRuntimeStatus: 'not_installed', isWhatsAppWebLoggedIn: false }
+  return { installedByName, browserRuntimeStatus: 'not_installed', isWhatsAppWebLoggedIn: false, pluginNeedsByAgentId: { ...samplePluginNeedsByAgentId } }
 }
 
 let pluginsState = createInitialState()
@@ -212,7 +225,56 @@ function runSamplePluginAction(name: string, kind: string): PluginActionResult {
   return { outputs: { data: {} } }
 }
 
+/** Plugin name per step: `<plugin>.<kind>` node types, plus the agent's seeded needs. */
+function collectStepTitlesByPlugin(agentId: string, steps: FlowStep[]): Map<string, string[]> {
+  const stepTitlesByPlugin = new Map<string, string[]>()
+  const addStep = (pluginName: string, stepTitle: string) => stepTitlesByPlugin.set(pluginName, [...(stepTitlesByPlugin.get(pluginName) ?? []), stepTitle])
+  for (const flowStep of steps) {
+    const separatorIndex = flowStep.nodeType.indexOf('.')
+    if (separatorIndex > 0) addStep(flowStep.nodeType.slice(0, separatorIndex), flowStep.title)
+  }
+  for (const need of pluginsState.pluginNeedsByAgentId[agentId] ?? []) {
+    const neededStep = steps.find((flowStep) => flowStep.id === need.stepId)
+    if (neededStep && !stepTitlesByPlugin.get(need.pluginName)?.includes(neededStep.title)) addStep(need.pluginName, neededStep.title)
+  }
+  return stepTitlesByPlugin
+}
+
+function toPluginRequirement(seed: SamplePluginSeed, usedBySteps: string[]): PluginRequirement {
+  const installedRecord = pluginsState.installedByName.get(seed.name)
+  const trustNotNeeded = !seed.permissions.secrets
+  const requiredSettings = sampleRequiredPluginSettings[seed.name] ?? []
+  const missingConfig = requiredSettings.filter((variable) => !installedRecord?.configuredVariables.has(variable))
+  const browserReady = !seed.needsBrowser || pluginsState.browserRuntimeStatus === 'installed'
+  const installed = installedRecord !== undefined
+  const trusted = installedRecord?.trusted ?? false
+  return {
+    name: seed.name,
+    description: seed.description,
+    usedBySteps,
+    permissions: { ...seed.permissions, env: [...seed.permissions.env] },
+    needsBrowser: seed.needsBrowser,
+    warning: samplePluginWarnings[seed.name] ?? null,
+    installed,
+    trusted,
+    trustNotNeeded,
+    missingConfig,
+    browserReady,
+    ready: installed && (trusted || trustNotNeeded) && missingConfig.length === 0 && browserReady,
+  }
+}
+
+/** @throws BackendError - `not_found` for an unknown agent */
+function listSampleAgentPluginRequirements(agentId: string): PluginRequirement[] {
+  const stepTitlesByPlugin = collectStepTitlesByPlugin(agentId, readCurrentSteps(agentId))
+  return [...stepTitlesByPlugin].flatMap(([pluginName, usedBySteps]) => {
+    const seed = samplePluginSeeds.find((candidate) => candidate.name === pluginName)
+    return seed ? [toPluginRequirement(seed, usedBySteps)] : []
+  })
+}
+
 export const samplePluginsBackend = {
+  listAgentPluginRequirements: (agentId: string): Promise<PluginRequirement[]> => respondWith(() => listSampleAgentPluginRequirements(agentId)),
   listPluginCatalog: (_refresh: boolean): Promise<PluginCatalog> => respondWith(readCatalog),
   listInstalledPlugins: (): Promise<InstalledPlugin[]> => respondWith(() => [...pluginsState.installedByName.values()].map(toInstalledPlugin)),
   installPlugin: (name: string): Promise<InstalledPlugin> => respondWith(() => installSamplePlugin(name)),
@@ -249,7 +311,20 @@ export function setSampleBrowserRuntimeStatus(status: BrowserRuntimeStatus): voi
   pluginsState.browserRuntimeStatus = status
 }
 
+/**
+ * Sets which plugins a sample agent uses besides `<plugin>.<kind>` steps (tests that need
+ * an agent without plugins, or with other ones). Undone by {@link resetSamplePlugins}.
+ */
+export function setSampleAgentPluginNeeds(agentId: string, needs: SamplePluginNeed[]): void {
+  pluginsState.pluginNeedsByAgentId[agentId] = needs
+}
+
 /** Restores the two installed sample plugins and clears trust, settings and sessions (use in test `beforeEach`). */
 export function resetSamplePlugins(): void {
   pluginsState = createInitialState()
+}
+
+/** Sends a sample `node-runtime-event` to every subscriber (tests that show browser download progress). */
+export function emitSampleBrowserRuntimeEvent(runtimeEvent: BrowserRuntimeEvent): void {
+  browserRuntimeListeners.forEach((listener) => listener(runtimeEvent))
 }

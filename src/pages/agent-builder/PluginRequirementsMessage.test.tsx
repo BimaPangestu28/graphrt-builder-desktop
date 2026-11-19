@@ -1,0 +1,147 @@
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { resetSampleAgents } from '@/api/sampleBackend/agents'
+import {
+  emitSampleBrowserRuntimeEvent,
+  emitSamplePluginEvent,
+  resetSamplePlugins,
+  samplePluginsBackend,
+  setSampleAgentPluginNeeds,
+  setSampleBrowserRuntimeStatus,
+} from '@/api/sampleBackend/plugins'
+import { AgentPluginSetupMessage } from './PluginRequirementsMessage'
+
+function renderSetupMessage() {
+  return render(<AgentPluginSetupMessage agentId="maps-leads" />)
+}
+
+async function findCard(pluginName: string) {
+  return screen.findByRole('article', { name: pluginName })
+}
+
+describe('plugin setup message in the build chat', () => {
+  beforeEach(() => {
+    resetSampleAgents()
+    resetSamplePlugins()
+  })
+  afterEach(() => vi.restoreAllMocks())
+
+  it('shows each plugin with its steps, permissions in plain words, warning and state', async () => {
+    setSampleAgentPluginNeeds('maps-leads', [
+      { pluginName: 'whatsapp-api', stepId: 'send_whatsapp' },
+      { pluginName: 'whatsapp-web', stepId: 'send_whatsapp' },
+    ])
+    renderSetupMessage()
+    const whatsAppApiCard = await findCard('whatsapp-api')
+    expect(screen.getByRole('group', { name: 'This agent needs 2 plugins · 0 ready' })).toBeInTheDocument()
+    expect(whatsAppApiCard).toHaveTextContent('Used by: Send WhatsApp')
+    expect(whatsAppApiCard).toHaveTextContent('Not installed')
+    const permissions = within(whatsAppApiCard).getByRole('list', { name: 'What whatsapp-api asks for' })
+    expect(permissions).toHaveTextContent('Uses the internet')
+    expect(permissions).toHaveTextContent('Asks for secrets or tokens: WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID')
+    expect(within(whatsAppApiCard).queryByRole('note')).not.toBeInTheDocument()
+
+    const whatsAppWebCard = screen.getByRole('article', { name: 'whatsapp-web' })
+    expect(within(whatsAppWebCard).getByRole('note', { name: 'Warning about whatsapp-web' })).toHaveTextContent(/against the WhatsApp Terms of Service/)
+    expect(within(whatsAppWebCard).getByRole('list', { name: 'What whatsapp-web asks for' })).toHaveTextContent('Opens web pages in a browser (Chromium)')
+    expect(within(whatsAppWebCard).getByRole('button', { name: 'Install whatsapp-web' })).toBeInTheDocument()
+    expect(within(whatsAppWebCard).getByRole('button', { name: 'Download browser' })).toBeInTheDocument()
+    expect(whatsAppWebCard).toHaveTextContent('about 150 MB download')
+  })
+
+  it('installs then trusts on one click, shows the download progress, then asks for the missing settings', async () => {
+    setSampleAgentPluginNeeds('maps-leads', [{ pluginName: 'whatsapp-api', stepId: 'send_whatsapp' }])
+    const installPlugin = samplePluginsBackend.installPlugin
+    let finishInstall: () => void = () => {}
+    const installSpy = vi.spyOn(samplePluginsBackend, 'installPlugin').mockImplementation((name) => new Promise<void>((resolve) => (finishInstall = resolve)).then(() => installPlugin(name)))
+    const trustSpy = vi.spyOn(samplePluginsBackend, 'setPluginTrusted')
+    const configSpy = vi.spyOn(samplePluginsBackend, 'setPluginConfig')
+    renderSetupMessage()
+    const card = await findCard('whatsapp-api')
+
+    fireEvent.click(within(card).getByRole('button', { name: 'Install & trust whatsapp-api' }))
+    act(() => emitSamplePluginEvent({ type: 'install_progress', name: 'whatsapp-api', stage: 'downloading', receivedBytes: 12_000, totalBytes: 48_000, message: null }))
+    expect(within(card).getByRole('status')).toHaveTextContent('Downloading · 25%')
+    act(() => emitSamplePluginEvent({ type: 'install_progress', name: 'whatsapp-api', stage: 'verifying', receivedBytes: 48_000, totalBytes: 48_000, message: null }))
+    expect(within(card).getByRole('status')).toHaveTextContent('Checking the download…')
+
+    await act(async () => finishInstall())
+    expect(await within(card).findByLabelText('WHATSAPP_ACCESS_TOKEN')).toHaveAttribute('type', 'password')
+    expect(installSpy).toHaveBeenCalledWith('whatsapp-api')
+    expect(trustSpy).toHaveBeenCalledWith('whatsapp-api', true)
+    expect(installSpy.mock.invocationCallOrder[0]).toBeLessThan(trustSpy.mock.invocationCallOrder[0])
+    expect(card).toHaveTextContent('Needs 2 settings')
+
+    fireEvent.change(within(card).getByLabelText('WHATSAPP_ACCESS_TOKEN'), { target: { value: 'token-123' } })
+    fireEvent.click(within(card).getByRole('button', { name: 'Save WHATSAPP_ACCESS_TOKEN' }))
+    expect(await within(card).findByText('Needs 1 setting')).toBeInTheDocument()
+    expect(configSpy).toHaveBeenCalledWith('whatsapp-api', 'WHATSAPP_ACCESS_TOKEN', 'token-123')
+    expect(within(card).queryByLabelText('WHATSAPP_ACCESS_TOKEN')).not.toBeInTheDocument()
+
+    fireEvent.change(within(card).getByLabelText('WHATSAPP_PHONE_NUMBER_ID'), { target: { value: '1234' } })
+    fireEvent.click(within(card).getByRole('button', { name: 'Save WHATSAPP_PHONE_NUMBER_ID' }))
+    expect(await within(card).findByText('Ready', { selector: 'span.font-medium' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'This agent needs 1 plugin · 1 ready' })).toBeInTheDocument()
+  })
+
+  it('downloads the browser with progress from the runtime events', async () => {
+    let finishDownload: () => void = () => {}
+    vi.spyOn(samplePluginsBackend, 'installBrowserRuntime').mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishDownload = () => {
+            setSampleBrowserRuntimeStatus('installed')
+            resolve()
+          }
+        }),
+    )
+    renderSetupMessage()
+    const card = await findCard('google-maps-scraper')
+    expect(card).toHaveTextContent('Needs the browser')
+
+    fireEvent.click(within(card).getByRole('button', { name: 'Download browser' }))
+    expect(within(card).getByRole('button', { name: 'Downloading…' })).toBeDisabled()
+    act(() => emitSampleBrowserRuntimeEvent({ message: 'Downloading Chromium', percent: 40 }))
+    expect(within(card).getAllByRole('status').some((status) => status.textContent === 'Downloading Chromium · 40%')).toBe(true)
+
+    await act(async () => finishDownload())
+    expect(await within(card).findByText('Ready', { selector: 'span.font-medium' })).toBeInTheDocument()
+    expect(within(card).queryByRole('button', { name: 'Download browser' })).not.toBeInTheDocument()
+  })
+
+  it('approves every pending plugin with "Install all & trust", trusting only those that ask for secrets', async () => {
+    setSampleBrowserRuntimeStatus('installed')
+    setSampleAgentPluginNeeds('maps-leads', [
+      { pluginName: 'whatsapp-api', stepId: 'send_whatsapp' },
+      { pluginName: 'whatsapp-web', stepId: 'send_whatsapp' },
+    ])
+    const installSpy = vi.spyOn(samplePluginsBackend, 'installPlugin')
+    const trustSpy = vi.spyOn(samplePluginsBackend, 'setPluginTrusted')
+    renderSetupMessage()
+    await findCard('whatsapp-api')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Install all & trust' }))
+    expect(await screen.findByRole('group', { name: 'This agent needs 2 plugins · 1 ready' })).toBeInTheDocument()
+    expect(installSpy.mock.calls).toEqual([['whatsapp-api'], ['whatsapp-web']])
+    expect(trustSpy.mock.calls).toEqual([['whatsapp-api', true]])
+    expect(screen.queryByRole('button', { name: 'Install all & trust' })).not.toBeInTheDocument()
+    expect(within(screen.getByRole('article', { name: 'whatsapp-web' })).getByText('Ready', { selector: 'span.font-medium' })).toBeInTheDocument()
+  })
+
+  it('shows why an approval failed on the card', async () => {
+    setSampleAgentPluginNeeds('maps-leads', [{ pluginName: 'whatsapp-api', stepId: 'send_whatsapp' }])
+    vi.spyOn(samplePluginsBackend, 'installPlugin').mockRejectedValue(new Error('Checksum mismatch'))
+    renderSetupMessage()
+    const card = await findCard('whatsapp-api')
+    fireEvent.click(within(card).getByRole('button', { name: 'Install & trust whatsapp-api' }))
+    expect(await within(card).findByRole('alert')).toHaveTextContent('Could not set up whatsapp-api: Checksum mismatch')
+  })
+
+  it('renders nothing for an agent without plugins', async () => {
+    setSampleAgentPluginNeeds('maps-leads', [])
+    const listSpy = vi.spyOn(samplePluginsBackend, 'listAgentPluginRequirements')
+    const { container } = renderSetupMessage()
+    await act(async () => {})
+    expect(listSpy).toHaveBeenCalledWith('maps-leads')
+    expect(container).toBeEmptyDOMElement()
+  })
+})

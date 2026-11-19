@@ -79,3 +79,34 @@ export const initiallyInstalledSamplePlugins: Array<{ name: string; version: str
   { name: 'google-maps-scraper', version: '1.0.0', trusted: true },
   { name: 'website-check', version: '0.4.0', trusted: false },
 ]
+
+/**
+ * The ToS / ban warning a plugin's README carries, shown in the build chat before it is
+ * installed (the catalog itself does not list it; the backend reads the README).
+ */
+export const samplePluginWarnings: Record<string, string> = {
+  'whatsapp-web':
+    'Automating a personal WhatsApp account is against the WhatsApp Terms of Service. WhatsApp may ban the number, so send few messages, only to people who expect them.',
+}
+
+/**
+ * Settings a plugin cannot work without (the rest of `permissions.env` is optional), so
+ * the build chat asks for these and nothing more.
+ */
+export const sampleRequiredPluginSettings: Record<string, string[]> = {
+  'whatsapp-api': ['WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID'],
+}
+
+/** A plugin a sample agent's step uses although its node type is a built-in one (the preview's maps-leads agent). */
+export interface SamplePluginNeed {
+  pluginName: string
+  stepId: string
+}
+
+/** Plugins the sample agents use, by agent id: maps-leads scrapes Google Maps and sends through the WhatsApp Cloud API. */
+export const samplePluginNeedsByAgentId: Record<string, SamplePluginNeed[]> = {
+  'maps-leads': [
+    { pluginName: 'google-maps-scraper', stepId: 'search_maps' },
+    { pluginName: 'whatsapp-api', stepId: 'send_whatsapp' },
+  ],
+}

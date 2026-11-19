@@ -26,7 +26,9 @@ pub mod events;
 mod host;
 mod install;
 pub mod models;
+mod placeholder;
 mod prompt_guide;
+pub mod requirements;
 mod settings;
 
 #[cfg(test)]
@@ -37,7 +39,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
-pub use active::{add_plugin_tools, register_plugin_nodes};
+pub use active::{add_plugin_tools, register_catalog_placeholders, register_plugin_nodes};
 pub use catalog::DEFAULT_CATALOG_URL;
 use download::{require_https, Downloader, ProgressCallback};
 use events::PluginEventSink;
@@ -62,6 +64,8 @@ const CATALOG_CACHE_FILE_NAME: &str = "plugin-catalog.json";
 /// Largest plugin tarball accepted.
 const MAX_TARBALL_BYTES: u64 = 256 * 1024 * 1024;
 const CATALOG_TIMEOUT: Duration = Duration::from_secs(20);
+/// How long building an agent waits for the catalog before using the saved copy.
+const BUILDER_CATALOG_TIMEOUT: Duration = Duration::from_secs(5);
 const TARBALL_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 /// Download progress is reported at most every this many bytes.
 const PROGRESS_STEP_BYTES: u64 = 256 * 1024;
@@ -137,6 +141,7 @@ impl PluginService {
     pub fn activate(&self) {
         self.publishes_globally.store(true, Ordering::SeqCst);
         active::publish(Some(self.snapshot()));
+        active::publish_catalog(self.known_catalog().map(Arc::new));
     }
 
     /// The Node runtime plugin processes run on.
@@ -158,9 +163,50 @@ impl PluginService {
         registry
     }
 
-    /// The builder prompt section for this service's plugins.
+    /// [`PluginService::node_registry`] plus placeholders for the node kinds of
+    /// catalog plugins that are not installed: validates drafts, never runs.
+    pub fn draft_node_registry(&self) -> graphrt_core::Registry {
+        let mut registry = self.node_registry();
+        if let Some(catalog) = self.known_catalog() {
+            placeholder::register_placeholders(&mut registry, &catalog);
+        }
+        registry
+    }
+
+    /// The builder prompt section for this service's plugins (installed ones,
+    /// then catalog plugins not installed yet).
     pub fn prompt_guide(&self) -> String {
-        prompt_guide::plugin_guide(&self.snapshot().plugins)
+        prompt_guide::plugin_guide(&self.snapshot().plugins, self.known_catalog().as_ref())
+    }
+
+    /// What `flow_yaml` needs from plugins (see [`requirements`]).
+    ///
+    /// # Errors
+    /// `Database` / `Credentials` when install records or the keychain cannot be read.
+    pub fn requirements(&self, flow_yaml: &str) -> AppResult<Vec<requirements::PluginRequirement>> {
+        let snapshot = self.snapshot();
+        let records = settings::install_records(&self.db)?;
+        let catalog = self.known_catalog();
+        let browser_ready = |plugin: &str| self.browser_ready_for(plugin);
+        let sources = requirements::RequirementSources {
+            installed: &snapshot.plugins,
+            install_records: &records,
+            catalog: catalog.as_ref(),
+            credentials: &self.credentials,
+            browser_ready: &browser_ready,
+        };
+        requirements::plugin_requirements(flow_yaml, &sources)
+    }
+
+    /// Whether Chromium is ready for `plugin`: the build its own Playwright
+    /// expects when it is installed, any Chromium otherwise.
+    fn browser_ready_for(&self, plugin: &str) -> bool {
+        let plugin_dir = self.plugins_dir.join(plugin);
+        let status = match self.node_runtime.browser_runtime_status_for(&plugin_dir) {
+            Ok(status) => status,
+            Err(_) => self.node_runtime.browser_runtime_status(),
+        };
+        status == BrowserRuntimeStatus::Installed
     }
 
     /// Rebuilds the graphrt host from the plugin folder, trust and settings.
@@ -275,6 +321,26 @@ impl PluginService {
         self.catalog.lock().ok().and_then(|catalog| catalog.clone())
     }
 
+    /// The catalog fetched in this session, else the saved copy, else `None`.
+    fn known_catalog(&self) -> Option<CatalogIndex> {
+        self.cached_catalog().or_else(|| catalog::read_cached(&self.catalog_cache_file))
+    }
+
+    /// Makes sure the builder sees the catalog: fetches it when this session
+    /// has not yet, waiting at most [`BUILDER_CATALOG_TIMEOUT`]; offline, the
+    /// saved copy stays in use, and without either only installed plugins are listed.
+    pub async fn refresh_catalog_for_builder(&self) {
+        if self.cached_catalog().is_some() {
+            return;
+        }
+        let download = self.download_catalog_within(BUILDER_CATALOG_TIMEOUT);
+        match tokio::time::timeout(BUILDER_CATALOG_TIMEOUT, download).await {
+            Ok(Ok(_)) => {}
+            Ok(Err(error)) => log::warn!("the builder uses the saved plugin catalog: {error}"),
+            Err(_) => log::warn!("the plugin catalog took too long; the builder uses the saved copy"),
+        }
+    }
+
     async fn fetch_catalog(&self) -> AppResult<(CatalogIndex, bool)> {
         match self.download_catalog().await {
             Ok(index) => Ok((index, false)),
@@ -289,12 +355,19 @@ impl PluginService {
     }
 
     async fn download_catalog(&self) -> AppResult<CatalogIndex> {
+        self.download_catalog_within(CATALOG_TIMEOUT).await
+    }
+
+    async fn download_catalog_within(&self, timeout: Duration) -> AppResult<CatalogIndex> {
         require_https(&self.catalog_url)?;
-        let bytes = self.downloader.fetch(&self.catalog_url, catalog::MAX_CATALOG_BYTES, CATALOG_TIMEOUT, None).await?;
+        let bytes = self.downloader.fetch(&self.catalog_url, catalog::MAX_CATALOG_BYTES, timeout, None).await?;
         let index = catalog::parse_catalog(&bytes)?;
         catalog::write_cache(&self.catalog_cache_file, &bytes);
         if let Ok(mut slot) = self.catalog.lock() {
             *slot = Some(index.clone());
+        }
+        if self.publishes_globally.load(Ordering::SeqCst) {
+            active::publish_catalog(Some(Arc::new(index.clone())));
         }
         Ok(index)
     }

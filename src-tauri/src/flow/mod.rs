@@ -105,6 +105,15 @@ pub fn node_registry() -> graphrt_core::Registry {
     registry
 }
 
+/// [`node_registry`] plus placeholder kinds for catalog plugins that are not
+/// installed (see `crate::plugins::register_catalog_placeholders`). Validates
+/// drafts and summarizes saved agents; never used to run.
+pub fn draft_node_registry() -> graphrt_core::Registry {
+    let mut registry = node_registry();
+    crate::plugins::register_catalog_placeholders(&mut registry);
+    registry
+}
+
 /// [`node_registry`] without plugins: what plugin kinds must never collide with.
 pub fn builtin_node_registry() -> graphrt_core::Registry {
     let mut registry = graphrt_core::Registry::with_builtins();
@@ -121,23 +130,58 @@ pub fn builtin_node_registry() -> graphrt_core::Registry {
 /// - `AppError::Workflow` when graphrt rejects the document (syntax, unknown
 ///   node type, bad config, missing reference, cycles...).
 pub fn compile_flow(flow_yaml: &str) -> AppResult<graphrt_core::Graph> {
+    compile_with(flow_yaml, &node_registry())
+}
+
+/// Compiles the document with [`draft_node_registry`]: catalog plugin steps
+/// that are not installed are accepted (their config checked against the
+/// catalog's schema). For validation and display only; runs use [`compile_flow`].
+///
+/// # Errors
+/// Same as [`compile_flow`].
+pub fn compile_draft(flow_yaml: &str) -> AppResult<graphrt_core::Graph> {
+    compile_with(flow_yaml, &draft_node_registry())
+}
+
+fn compile_with(flow_yaml: &str, registry: &graphrt_core::Registry) -> AppResult<graphrt_core::Graph> {
     if is_blank_document(flow_yaml) {
         return Err(AppError::InvalidInput("the workflow document is empty".into()));
     }
-    let graph = graphrt_core::Graph::from_text(flow_yaml, &node_registry())
-        .map_err(|error| AppError::Workflow(error.to_string()))?;
+    let graph =
+        graphrt_core::Graph::from_text(flow_yaml, registry).map_err(|error| AppError::Workflow(error.to_string()))?;
     for warning in graph.warnings() {
         log::debug!("workflow warning: {warning}");
     }
     Ok(graph)
 }
 
-/// Validates and summarizes a document for the UI.
+/// Plugins whose node kinds the document uses but that are not installed (or
+/// failed to load), sorted by name. Read from the raw document, so it works
+/// without the catalog too. An unreadable document yields none.
+pub fn find_missing_plugins(flow_yaml: &str) -> Vec<String> {
+    let Ok(workflow) = graphrt_core::Workflow::parse(flow_yaml) else { return Vec::new() };
+    let registry = node_registry();
+    let mut missing: Vec<String> = workflow
+        .graph
+        .nodes
+        .iter()
+        .filter(|node| !registry.contains(&node.kind))
+        .filter_map(|node| node.kind.split_once('.').map(|(plugin, _)| plugin.to_owned()))
+        .filter(|plugin| graphrt_plugin::is_valid_name(plugin))
+        .collect();
+    missing.sort();
+    missing.dedup();
+    missing
+}
+
+/// Validates and summarizes a document for the UI. Compiled with
+/// [`draft_node_registry`], so agents using catalog plugins that are not
+/// installed yet still show their steps.
 ///
 /// # Errors
 /// Same as [`compile_flow`]: the document is compiled first.
 pub fn summarize_flow(flow_yaml: &str) -> AppResult<FlowSummary> {
-    let graph = compile_flow(flow_yaml)?;
+    let graph = compile_draft(flow_yaml)?;
     Ok(summary::summarize_graph(&graph))
 }
 
@@ -148,7 +192,7 @@ pub fn summarize_flow(flow_yaml: &str) -> AppResult<FlowSummary> {
 /// # Errors
 /// Same as [`compile_flow`]: the document is compiled first.
 pub fn find_unapproved_sending_steps(flow_yaml: &str) -> AppResult<Vec<String>> {
-    let graph = compile_flow(flow_yaml)?;
+    let graph = compile_draft(flow_yaml)?;
     Ok(approval::unapproved_sending_steps(&graph))
 }
 
@@ -158,7 +202,7 @@ pub fn find_unapproved_sending_steps(flow_yaml: &str) -> AppResult<Vec<String>> 
 /// # Errors
 /// Same as [`compile_flow`]: the document is compiled first.
 pub fn find_placeholder_http_steps(flow_yaml: &str) -> AppResult<Vec<String>> {
-    let graph = compile_flow(flow_yaml)?;
+    let graph = compile_draft(flow_yaml)?;
     Ok(placeholders::placeholder_http_steps(&graph))
 }
 

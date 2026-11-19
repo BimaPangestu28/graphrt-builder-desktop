@@ -4,9 +4,9 @@ import { BackendError } from '@/api/client'
 import { resetSampleAgents, sampleAgentsBackend } from '@/api/sampleBackend/agents'
 import { resetSampleBuilder, sampleBuilderBackend, sampleBuildTiming } from '@/api/sampleBackend/builder'
 import { isSampleWorkflowSecretConfigured, resetSampleCredentials, sampleCredentialsBackend } from '@/api/sampleBackend/credentials'
-import { resetSamplePlugins } from '@/api/sampleBackend/plugins'
+import { resetSamplePlugins, samplePluginsBackend, setSampleAgentPluginNeeds, setSampleBrowserRuntimeStatus } from '@/api/sampleBackend/plugins'
 import type { BuildProgress, WorkflowSecretStatus } from '@/api/types'
-import { agentPath, agentRoutePatterns, connectionsPluginsPath, routePaths } from '@/routes'
+import { agentPath, agentRoutePatterns, routePaths } from '@/routes'
 import { BuilderPage } from '../BuilderPage'
 
 function renderBuilderPage(agentId = 'maps-leads') {
@@ -39,6 +39,7 @@ describe('BuilderPage', () => {
   afterEach(() => vi.restoreAllMocks())
 
   it('loads the agent from the route and shows its steps and what it needs', async () => {
+    setSampleAgentPluginNeeds('maps-leads', [])
     renderBuilderPage()
     expect(screen.getByText('Loading agent…')).toBeInTheDocument()
     expect(await screen.findByRole('heading', { name: 'Maps leads to WhatsApp' })).toBeInTheDocument()
@@ -203,17 +204,71 @@ describe('BuilderPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Keychain is locked')
     expect(screen.getByLabelText(/Value for/)).toBeInTheDocument()
   })
-  it('lists the plugin a whatsapp-api.send_text step needs and installs it from "Needs"', async () => {
-    const getFlowSummary = sampleBuilderBackend.getFlowSummary
-    vi.spyOn(sampleBuilderBackend, 'getFlowSummary').mockImplementation(async (agentId) => {
-      const flowSummary = await getFlowSummary(agentId)
-      return { ...flowSummary, steps: flowSummary.steps.map((flowStep) => (flowStep.id === 'send_whatsapp' ? { ...flowStep, nodeType: 'whatsapp-api.send_text' } : flowStep)) }
-    })
+
+  it('opens with the plugin setup card as the first builder message when plugins are not ready', async () => {
     renderBuilderPage()
-    expect(await screen.findByText('whatsapp-api plugin')).toBeInTheDocument()
-    expect(screen.getByText('Not installed')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Install whatsapp-api plugin' }))
-    expect(await screen.findByText('Installed · not trusted yet')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Set up whatsapp-api plugin' })).toHaveAttribute('href', connectionsPluginsPath)
+    const chat = screen.getByRole('region', { name: 'Chat' })
+    const setupMessage = await within(chat).findByRole('group', { name: 'This agent needs 2 plugins · 0 ready' })
+    expect(within(setupMessage).getByRole('article', { name: 'whatsapp-api' })).toBeInTheDocument()
+    expect(within(setupMessage).getByRole('button', { name: 'Install all & trust' })).toBeInTheDocument()
+    expect(within(chat).getByText(/^Your agent has 6 steps/).compareDocumentPosition(setupMessage) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    // The "Needs" panel lists the same plugins compactly and points to the card.
+    const needsRow = screen.getByText('whatsapp-api plugin').closest('li')!
+    expect(needsRow).toHaveTextContent('Not installed')
+    fireEvent.click(screen.getByRole('button', { name: 'Set up whatsapp-api plugin in chat' }))
+    expect(setupMessage).toHaveFocus()
+  })
+
+  it('keeps the "Needs" panel in sync with what is set up in the chat', async () => {
+    setSampleBrowserRuntimeStatus('installed')
+    setSampleAgentPluginNeeds('maps-leads', [{ pluginName: 'whatsapp-web', stepId: 'send_whatsapp' }])
+    renderBuilderPage()
+    const card = await screen.findByRole('article', { name: 'whatsapp-web' })
+    fireEvent.click(within(card).getByRole('button', { name: 'Install whatsapp-web' }))
+    const needsRow = (await screen.findByText('whatsapp-web plugin')).closest('li')!
+    expect(await within(needsRow).findByText('Ready')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Test with 1 place/ })).toHaveAttribute('href', routePaths.testRun)
+  })
+
+  it('brings the setup card up instead of starting a test while plugins are not ready', async () => {
+    renderBuilderPage()
+    const setupMessage = await screen.findByRole('group', { name: 'This agent needs 2 plugins · 0 ready' })
+    expect(screen.queryByRole('link', { name: /Test with 1 place/ })).not.toBeInTheDocument()
+    const testButton = screen.getByRole('button', { name: 'Test with 1 place' })
+    expect(testButton).toHaveAccessibleDescription('Set up the plugins it needs in the chat first')
+    fireEvent.click(testButton)
+    expect(setupMessage).toHaveFocus()
+  })
+
+  it('shows the setup card under the reply of a revision that adds plugins', async () => {
+    setSampleAgentPluginNeeds('maps-leads', [])
+    renderBuilderPage()
+    await screen.findByText('Write a short message')
+    const chat = screen.getByRole('region', { name: 'Chat' })
+    expect(within(chat).queryByRole('group')).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Test with 1 place/ })).toBeInTheDocument()
+
+    // The revision makes the send step use the personal WhatsApp plugin.
+    setSampleAgentPluginNeeds('maps-leads', [{ pluginName: 'whatsapp-web', stepId: 'send_whatsapp' }])
+    await sendChange('Send from my personal WhatsApp')
+    const setupMessage = await within(chat).findByRole('group', { name: 'This agent needs 1 plugin · 0 ready' })
+    const reply = await within(chat).findByText(/^Changed/, { selector: 'p' })
+    expect(reply.compareDocumentPosition(setupMessage) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(within(setupMessage).getByRole('note', { name: 'Warning about whatsapp-web' })).toBeInTheDocument()
+    expect(within(chat).getAllByRole('group')).toHaveLength(1)
+    expect(screen.getByRole('button', { name: 'Test with 1 place' })).toBeInTheDocument()
+  })
+
+  it('shows no setup card when a revision leaves the ready plugins alone', async () => {
+    setSampleBrowserRuntimeStatus('installed')
+    setSampleAgentPluginNeeds('maps-leads', [{ pluginName: 'google-maps-scraper', stepId: 'search_maps' }])
+    const listSpy = vi.spyOn(samplePluginsBackend, 'listAgentPluginRequirements')
+    renderBuilderPage()
+    await screen.findByText('Write a short message')
+    await sendChange('Make it shorter')
+    expect(await screen.findByRole('button', { name: 'Undo' })).toBeInTheDocument()
+    expect(listSpy).toHaveBeenCalledTimes(2)
+    expect(within(screen.getByRole('region', { name: 'Chat' })).queryByRole('group')).not.toBeInTheDocument()
   })
 })

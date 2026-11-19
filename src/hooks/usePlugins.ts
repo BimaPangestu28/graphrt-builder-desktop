@@ -64,7 +64,8 @@ async function loadPluginInventory(): Promise<PluginInventory> {
   return { installed, ...catalogResult }
 }
 
-function toInstallProgress(pluginEvent: Extract<PluginEvent, { type: 'install_progress' }>): PluginInstallProgress {
+/** Turns an `install_progress` event into the progress shown next to a plugin (percent when the size is known). */
+export function toInstallProgress(pluginEvent: Extract<PluginEvent, { type: 'install_progress' }>): PluginInstallProgress {
   const { receivedBytes, totalBytes } = pluginEvent
   const percent = receivedBytes !== null && totalBytes ? Math.min(100, Math.round((receivedBytes / totalBytes) * 100)) : null
   return { stage: pluginEvent.stage, percent, message: pluginEvent.message }

@@ -4,6 +4,7 @@ import { BackendError } from '@/api/client'
 import { resetSampleAgents } from '@/api/sampleBackend/agents'
 import { resetSampleBuilder, sampleBuildDrafts, sampleBuilderBackend, sampleBuildTiming } from '@/api/sampleBackend/builder'
 import { resetSampleCredentials, sampleCredentialsBackend } from '@/api/sampleBackend/credentials'
+import { resetSamplePlugins, samplePluginsBackend, setSampleAgentPluginNeeds } from '@/api/sampleBackend/plugins'
 import { openBuilderDelayMs } from '@/data/mapsLeadsAgent'
 import { agentPath, routePaths } from '@/routes'
 import { GeneratingPage } from '../GeneratingPage'
@@ -34,6 +35,7 @@ describe('GeneratingPage', () => {
     resetSampleAgents()
     resetSampleBuilder()
     resetSampleCredentials()
+    resetSamplePlugins()
   })
   afterEach(() => {
     vi.useRealTimers()
@@ -114,13 +116,44 @@ describe('GeneratingPage', () => {
     expect(screen.queryByText(/tokens$/)).not.toBeInTheDocument()
   })
 
-  it('shows the saved agent and opens its builder', async () => {
+  it('shows the saved agent and opens its builder when its plugins are ready', async () => {
+    setSampleAgentPluginNeeds('maps-leads', [])
     renderGeneratingPage()
     await advanceBy(sampleBuildTiming.buildStageDelayMs * 5)
     expect(screen.getByText('Your agent is ready')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Maps leads to WhatsApp' })).toBeInTheDocument()
     expect(screen.getByText('Send WhatsApp')).toBeInTheDocument()
     await advanceBy(openBuilderDelayMs)
+    expect(screen.getByText('Builder screen')).toBeInTheDocument()
+  })
+
+  it('holds on the plugin cards in the chat while plugins are not ready, until the user continues', async () => {
+    renderGeneratingPage()
+    await advanceBy(sampleBuildTiming.buildStageDelayMs * 5)
+    await advanceBy(openBuilderDelayMs * 2)
+    expect(screen.queryByText('Builder screen')).not.toBeInTheDocument()
+
+    const chat = screen.getByRole('region', { name: 'Chat' })
+    const setupMessage = within(chat).getByRole('group', { name: 'This agent needs 2 plugins · 0 ready' })
+    expect(within(setupMessage).getByRole('article', { name: 'google-maps-scraper' })).toHaveTextContent('Used by: Search Google Maps')
+    expect(within(setupMessage).getByRole('article', { name: 'whatsapp-api' })).toHaveTextContent('Used by: Send WhatsApp')
+    expect(screen.getByText('All steps ready. Set up its plugins in the chat')).toBeInTheDocument()
+
+    fireEvent.click(within(setupMessage).getByRole('button', { name: 'Continue without them' }))
+    expect(screen.getByText('Builder screen')).toBeInTheDocument()
+  })
+
+  it('says "Continue to steps" once the plugins are set up, and still waits for the click', async () => {
+    setSampleAgentPluginNeeds('maps-leads', [{ pluginName: 'website-check', stepId: 'search_maps' }])
+    await samplePluginsBackend.removePlugin('website-check')
+    renderGeneratingPage()
+    await advanceBy(sampleBuildTiming.buildStageDelayMs * 5)
+    fireEvent.click(screen.getByRole('button', { name: 'Install website-check' }))
+    await advanceBy(0)
+    expect(screen.getByRole('group', { name: 'This agent needs 1 plugin · 1 ready' })).toBeInTheDocument()
+    await advanceBy(openBuilderDelayMs * 2)
+    expect(screen.queryByText('Builder screen')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Continue to steps' }))
     expect(screen.getByText('Builder screen')).toBeInTheDocument()
   })
 

@@ -27,6 +27,9 @@ pub enum AppError {
     Serialization(#[from] serde_json::Error),
     #[error("{0}")]
     Internal(String),
+    /// The agent uses plugins that are not installed (names, sorted).
+    #[error("this agent needs plugins that are not installed: {}", .0.join(", "))]
+    MissingPlugins(Vec<String>),
 }
 
 impl AppError {
@@ -43,6 +46,7 @@ impl AppError {
             Self::Schedule(_) => "schedule",
             Self::Serialization(_) => "serialization",
             Self::Internal(_) => "internal",
+            Self::MissingPlugins(_) => "missing_plugins",
         }
     }
 }

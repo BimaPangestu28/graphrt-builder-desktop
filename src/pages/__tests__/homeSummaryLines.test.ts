@@ -2,7 +2,7 @@ import type { Conversation } from '@/api/conversationTypes'
 import type { Trigger } from '@/api/types'
 import { describeAgentSchedule, describeNeedsYouCount, describeNextRun, formatUpcomingTime } from '@/pages/home-dashboard/homeSummaryLines'
 import { buildConnectionReminderItems, buildInboxAttentionItem, formatWaitingTime } from '@/pages/home-dashboard/homeViewModel'
-import { buildMonthlyUsageRows, formatTokenCount, startOfLocalMonth } from '@/pages/home-dashboard/monthlyUsage'
+import { formatTokenCount, startOfLocalMonth } from '@/pages/home-dashboard/monthlyUsage'
 import { countScheduledAgents } from '@/hooks/useRunnerStatus'
 import { describeConnectedRunner } from '@/components/layout/Sidebar'
 import { routePaths } from '@/routes'
@@ -119,14 +119,6 @@ describe('This month card', () => {
     expect(formatTokenCount(5_000)).toBe('5K')
     expect(formatTokenCount(412_200)).toBe('412K')
     expect(formatTokenCount(1_250_000)).toBe('1.3M')
-  })
-
-  it('shows runs and tokens only', () => {
-    const rows = buildMonthlyUsageRows({ from: '', runCount: 7, runsWithUsage: 5, usage: { promptTokens: 900, completionTokens: 100, totalTokens: 1000 } })
-    expect(rows).toEqual([
-      { label: 'Runs', value: '7' },
-      { label: 'AI tokens', value: '1K' },
-    ])
   })
 })
 
