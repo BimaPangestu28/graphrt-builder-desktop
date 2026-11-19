@@ -59,6 +59,14 @@ describe('BuilderPage', () => {
     expect(within(screen.getByRole('region', { name: 'Agent' })).getByRole('link', { name: 'Schedule' })).toHaveAttribute('href', routePaths.scheduleAgent)
   })
 
+  it('lets you pick the model the builder uses from the chat header', async () => {
+    renderBuilderPage()
+    const chat = await screen.findByRole('region', { name: 'Chat' })
+    const modelPicker = await within(chat).findByRole('combobox', { name: 'Model the builder uses' })
+    expect(modelPicker).toBeEnabled()
+    expect(within(modelPicker).getAllByRole('option').length).toBeGreaterThan(0)
+  })
+
   it('builds header links for the agent in the route', async () => {
     renderBuilderPage('invoice-reminders')
     expect(await screen.findByRole('heading', { name: 'Invoice reminders' })).toBeInTheDocument()
@@ -288,7 +296,7 @@ describe('BuilderPage', () => {
     renderBuilderPage()
     await screen.findByText('Write a short message')
     const chat = screen.getByRole('region', { name: 'Chat' })
-    expect(within(chat).queryByRole('group')).not.toBeInTheDocument()
+    expect(within(chat).queryByRole('group', { name: /This agent needs/ })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Test with 1 place/ })).toBeInTheDocument()
 
     // The revision makes the send step use the personal WhatsApp plugin.
@@ -298,7 +306,7 @@ describe('BuilderPage', () => {
     const reply = await within(chat).findByText(/^Changed/, { selector: 'p' })
     expect(reply.compareDocumentPosition(setupMessage) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(within(setupMessage).getByRole('note', { name: 'Warning about whatsapp-web' })).toBeInTheDocument()
-    expect(within(chat).getAllByRole('group')).toHaveLength(1)
+    expect(within(chat).getAllByRole('group', { name: /This agent needs/ })).toHaveLength(1)
     expect(screen.getByRole('button', { name: 'Test with 1 place' })).toBeInTheDocument()
   })
 
@@ -311,7 +319,7 @@ describe('BuilderPage', () => {
     await sendChange('Make it shorter')
     expect(await screen.findByRole('button', { name: 'Undo' })).toBeInTheDocument()
     expect(listSpy).toHaveBeenCalledTimes(2)
-    expect(within(screen.getByRole('region', { name: 'Chat' })).queryByRole('group')).not.toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Chat' })).queryByRole('group', { name: /This agent needs/ })).not.toBeInTheDocument()
   })
 
   it('prefills the chat box from the ask param without sending it, and drops the param', async () => {

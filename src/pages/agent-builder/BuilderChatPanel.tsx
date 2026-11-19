@@ -1,3 +1,4 @@
+import { ModelPickerChip } from '@/pages/new-agent/ModelPickerChip'
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { splitPaneColumnClassName, splitPaneScrollClassName } from '@/components/layout'
 import { useFollowNewContent } from '@/hooks/useFollowNewContent'
@@ -184,7 +185,6 @@ function ChangeRequestForm({ isBusy, onSubmitRequest, askDraft }: ChangeRequestF
 interface BuilderChatPanelProps {
   agent: Agent | null
   steps: FlowStep[]
-  modelName: string | null
   /** The build's explanation saved on an earlier visit, shown in the first reply. */
   openingExplanation: string | null
   /** Builder chat saved on earlier visits, shown before this visit's exchanges. */
@@ -205,13 +205,13 @@ interface BuilderChatPanelProps {
 
 /** Left column of screen 04: the build conversation plus a box to ask for more changes. */
 export function BuilderChatPanel(props: BuilderChatPanelProps) {
-  const { agent, steps, modelName, openingExplanation, savedMessages, exchanges, latestRevision, isBusy, undoErrorMessage, onSubmitRequest, onToggleUndo, pluginSetupMessage, pluginSetupAnchor, askDraft } = props
+  const { agent, steps, openingExplanation, savedMessages, exchanges, latestRevision, isBusy, undoErrorMessage, onSubmitRequest, onToggleUndo, pluginSetupMessage, pluginSetupAnchor, askDraft } = props
   const chatBodyRef = useFollowNewContent()
   return (
     <section aria-label="Chat" className={`box-border flex min-w-0 flex-[1_1_380px] flex-col border-r border-line bg-surface ${splitPaneColumnClassName}`}>
       <PanelHeader className="justify-between">
         <span className="font-semibold">Build with chat</span>
-        {modelName && <span className="text-[12px] text-muted">{modelName}</span>}
+        <ModelPickerChip label="Model the builder uses" />
       </PanelHeader>
       <div ref={chatBodyRef} aria-live="polite" className={`flex flex-auto flex-col gap-5 p-6 ${splitPaneScrollClassName}`}>
         {agent && (
