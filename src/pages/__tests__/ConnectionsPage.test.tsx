@@ -404,8 +404,8 @@ describe('ConnectionsPage plugins', () => {
     const availableGroup = screen.getByRole('region', { name: 'Available · 2' })
     expect(within(installedGroup).getAllByRole('article').map((card) => card.getAttribute('aria-label'))).toEqual(['google-maps-scraper', 'website-check'])
     expect(within(availableGroup).getAllByRole('article').map((card) => card.getAttribute('aria-label'))).toEqual(['whatsapp-api', 'whatsapp-web'])
-    // google-maps-scraper has a required setting without a value, so it opens on its own.
-    expect(within(getPluginCard('google-maps-scraper')).getByRole('button', { name: 'Manage google-maps-scraper' })).toHaveAttribute('aria-expanded', 'true')
+    // google-maps-scraper only has an optional setting (GOOGLE_MAPS_LANGUAGE), so nothing needs attention.
+    expect(within(getPluginCard('google-maps-scraper')).getByRole('button', { name: 'Manage google-maps-scraper' })).toHaveAttribute('aria-expanded', 'false')
     const manageButton = within(getPluginCard('website-check')).getByRole('button', { name: 'Manage website-check' })
     expect(manageButton).toHaveAttribute('aria-expanded', 'false')
     expect(within(getPluginCard('website-check')).queryByRole('checkbox')).not.toBeInTheDocument()

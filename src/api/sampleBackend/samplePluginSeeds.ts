@@ -98,7 +98,7 @@ export const sampleRequiredPluginSettings: Record<string, string[]> = {
 }
 
 /** Name endings of tuning settings the plugins default themselves, as in `src-tauri/src/plugins/optional_settings.rs`. */
-const optionalSettingSuffixes = ['_VERSION', '_MINUTES', '_SECONDS', '_LIMIT', '_DIR', '_DIRS', '_INTERVAL']
+const optionalSettingSuffixes = ['_VERSION', '_MINUTES', '_SECONDS', '_LIMIT', '_DIR', '_DIRS', '_INTERVAL', '_LANGUAGE']
 
 /** Whether a plugin works without `variable` set (same rule as the desktop backend). */
 export function isOptionalSampleSetting(variable: string): boolean {
