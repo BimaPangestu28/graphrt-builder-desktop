@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { resetSampleAgents, sampleAgentsBackend } from '@/api/sampleBackend/agents'
 import { resetSampleBuilder, sampleBuilderBackend } from '@/api/sampleBackend/builder'
@@ -13,6 +13,12 @@ import { GeneratingPage } from '@/pages/GeneratingPage'
 import { HomePage } from '@/pages/HomePage'
 import { agentPath, agentRoutePatterns, routePaths, runReviewPath } from '@/routes'
 
+/** Stand-in for the New agent screen that shows the query it was opened with. */
+function NewAgentStandIn() {
+  const location = useLocation()
+  return <p>New agent screen {location.search}</p>
+}
+
 function renderHomePage() {
   return render(
     <MemoryRouter initialEntries={[routePaths.home]}>
@@ -22,6 +28,7 @@ function renderHomePage() {
         <Route path={routePaths.batchApproval} element={<p>Review screen</p>} />
         <Route path={routePaths.runs} element={<p>Runs screen</p>} />
         <Route path={routePaths.generating} element={<GeneratingPage />} />
+        <Route path={routePaths.newAgent} element={<NewAgentStandIn />} />
       </Routes>
     </MemoryRouter>,
   )
@@ -201,5 +208,19 @@ describe('HomePage', () => {
     fireEvent.click(buildButton)
     expect(await screen.findByText('Find cafes and message them')).toBeInTheDocument()
     await waitFor(() => expect(buildAgentSpy).toHaveBeenCalledWith({ description: 'Find cafes and message them', kind: 'task' }, expect.any(Function)))
+  })
+
+  it('offers the Maps → WhatsApp template and the template gallery under the describe box', () => {
+    renderHomePage()
+    const describeBox = screen.getByRole('region', { name: 'Describe a new agent' })
+    expect(within(describeBox).getByText('Start from a template:')).toBeInTheDocument()
+    fireEvent.click(within(describeBox).getByRole('link', { name: 'Find businesses on Maps and message them on WhatsApp' }))
+    expect(screen.getByText('New agent screen ?template=maps-whatsapp')).toBeInTheDocument()
+  })
+
+  it('links "All templates" to the New agent screen', () => {
+    renderHomePage()
+    fireEvent.click(within(screen.getByRole('region', { name: 'Describe a new agent' })).getByRole('link', { name: 'All templates' }))
+    expect(screen.getByText(/New agent screen/)).toBeInTheDocument()
   })
 })

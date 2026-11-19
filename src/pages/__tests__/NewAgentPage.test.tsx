@@ -2,7 +2,8 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { resetSampleCredentials, sampleCredentialsBackend } from '@/api/sampleBackend/credentials'
-import { jobDescriptionPlaceholder } from '@/data/newAgentTemplates'
+import mapsWhatsAppTemplate from '@/data/mapsWhatsAppTemplate.json'
+import { agentTemplates, jobDescriptionPlaceholder, newAgentTemplatePath } from '@/data/newAgentTemplates'
 import { routePaths } from '@/routes'
 import { NewAgentPage } from '../NewAgentPage'
 
@@ -17,9 +18,11 @@ function ChatbotSetupStandIn() {
   return <p>Chatbot setup screen {JSON.stringify(location.state)}</p>
 }
 
-function renderNewAgentPage() {
+const mapsWhatsAppTitle = 'Find businesses on Maps and message them on WhatsApp'
+
+function renderNewAgentPage(initialEntry: string = routePaths.newAgent) {
   return render(
-    <MemoryRouter initialEntries={[routePaths.newAgent]}>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
         <Route path={routePaths.newAgent} element={<NewAgentPage />} />
         <Route path={routePaths.generating} element={<GeneratingStandIn />} />
@@ -111,5 +114,55 @@ describe('NewAgentPage', () => {
     fireEvent.change(screen.getByLabelText('Describe the job'), { target: { value: 'Answer menu questions' } })
     fireEvent.click(screen.getByRole('button', { name: 'Build agent' }))
     expect(screen.getByText(/Chatbot setup screen/)).toBeInTheDocument()
+  })
+
+  it('lists the Maps → WhatsApp template first, with what it needs', () => {
+    renderNewAgentPage()
+    const gallery = screen.getByRole('region', { name: 'Templates' })
+    const cards = within(gallery).getAllByRole('button')
+    expect(cards).toHaveLength(agentTemplates.length)
+    expect(cards[0]).toHaveAccessibleName(expect.stringContaining(mapsWhatsAppTitle))
+    expect(within(cards[0]).getByText('Google Maps scraper')).toBeInTheDocument()
+    expect(within(cards[0]).getByText('WhatsApp (personal)')).toBeInTheDocument()
+    expect(within(cards[0]).getByText(/You'll need: WhatsApp linked by QR/)).toBeInTheDocument()
+    expect(within(cards[0]).getByText('Google Maps · WhatsApp · Approval')).toBeInTheDocument()
+  })
+
+  it('gives every template need chips and a setup note', () => {
+    renderNewAgentPage()
+    for (const card of within(screen.getByRole('region', { name: 'Templates' })).getAllByRole('button')) {
+      expect(within(card).getByText(/^You'll need: /)).toBeInTheDocument()
+    }
+    expect(agentTemplates.every((template) => template.needs.length > 0)).toBe(true)
+  })
+
+  it('fills the editable prompt with the full Maps → WhatsApp brief and keeps the task kind', () => {
+    renderNewAgentPage()
+    fireEvent.click(screen.getByRole('radio', { name: 'Agent team' }))
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(mapsWhatsAppTitle) }))
+    const prompt = screen.getByLabelText('Describe the job')
+    expect(prompt).toHaveValue(mapsWhatsAppTemplate.prompt)
+    expect(screen.getByRole('radio', { name: 'Do a task' })).toBeChecked()
+
+    fireEvent.change(prompt, { target: { value: `${mapsWhatsAppTemplate.prompt} Only on weekdays.` } })
+    fireEvent.click(screen.getByRole('button', { name: 'Build agent' }))
+    expect(screen.getByText(/Generating screen/)).toHaveTextContent('Only on weekdays.')
+  })
+
+  it('asks for the steps the builder needs in the Maps → WhatsApp brief', () => {
+    for (const phrase of ['google-maps-scraper', 'whatsapp-web', 'Ask me before sending', 'no spam', 'run report', 'never more than 20']) {
+      expect(mapsWhatsAppTemplate.prompt).toContain(phrase)
+    }
+  })
+
+  it('opens with a template picked from ?template=', () => {
+    renderNewAgentPage(newAgentTemplatePath('maps-whatsapp'))
+    expect(screen.getByLabelText('Describe the job')).toHaveValue(mapsWhatsAppTemplate.prompt)
+    expect(screen.getByRole('radio', { name: 'Do a task' })).toBeChecked()
+  })
+
+  it('ignores an unknown ?template=', () => {
+    renderNewAgentPage(newAgentTemplatePath('no-such-template'))
+    expect(screen.getByLabelText('Describe the job')).toHaveValue('')
   })
 })
