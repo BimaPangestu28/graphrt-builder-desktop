@@ -79,13 +79,14 @@ function groupRunsByAgent(runs: Run[]): Run[][] {
 export function buildPausedRunItems(pausedRuns: Run[], agentName: AgentNameLookup, now: Date = new Date()): AttentionItem[] {
   return groupRunsByAgent(pausedRuns).map(([newestRun, ...olderRuns], index) => {
     const question = readPauseQuestion(newestRun)
-    const pausedAt = `${formatRunDay(newestRun.startedAt, now)} run · paused for your review`
     const moreWaiting = olderRuns.length > 0 ? ` · ${olderRuns.length} more waiting` : ''
+    const pausedAtLine = `${formatRunDay(newestRun.startedAt, now)} run · paused for your review${moreWaiting}`
     return {
       id: `paused-${newestRun.id}`,
       kind: 'approval',
       title: `${agentName(newestRun.agentId)} is waiting for you`,
-      detail: `${question ? `${question} · ${pausedAt}` : pausedAt}${moreWaiting}`,
+      // The question can be a whole message to send, so it gets its own (clamped) line.
+      ...(question ? { detail: question, meta: pausedAtLine } : { detail: pausedAtLine }),
       actionLabel: 'Review',
       actionPath: newestRun.trigger === 'test' ? agentPath('testRun', newestRun.agentId, { runId: newestRun.id }) : runReviewPath(newestRun.id),
       isPrimaryAction: index === 0,

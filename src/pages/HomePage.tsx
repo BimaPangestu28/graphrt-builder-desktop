@@ -41,11 +41,12 @@ function buildThisMonth({ runs, monthlyUsage }: HomeData): MonthlyNumbers | null
 
 /**
  * Screen 09 · Home.
- * The daily landing page: a greeting with how many things need the user and the next
- * scheduled run; a box to describe a new agent and start building it; "Getting started" until the first agent is tested and scheduled; "Needs you"
- * (approvals, waiting chats, failed latest runs, agents not set up, broken schedules, each with
- * one action); agent cards with their status and next step; the last few runs in plain words;
- * and this month's results.
+ * The daily landing page, in a centred column of at most 1100px: a greeting with how many
+ * things need the user and the next scheduled run; "Needs you" (approvals, waiting chats,
+ * failed latest runs, agents not set up, broken schedules, each with one action) first while
+ * anything is waiting; a box to describe a new agent and start building it; a compact
+ * "Getting started" until the first agent is tested and scheduled; agent cards with their
+ * status and next step; the last few runs in plain words beside this month's results.
  */
 export function HomePage() {
   const greeting = getGreetingForHour(new Date().getHours())
@@ -55,20 +56,26 @@ export function HomePage() {
 
   const attentionItems = buildNeedsYouItems({ ...homeData, agentName })
   const nextRunLine = areTriggersLoading || triggersError ? null : describeNextRun(triggers)
+  // Things waiting on the user come first; once nothing is waiting the list drops below "describe".
+  const isNeedsYouFirst = attentionItems === null || attentionItems.length > 0 || runsError !== null
+  const needsYouSection = <NeedsYouSection items={attentionItems} loadError={runsError} />
 
   return (
-    <AppShell activeNav="home" agents={{ kind: 'list' }} mainClassName="box-border flex flex-col gap-7 p-8">
-      <div className="flex flex-col gap-1">
-        <h1 className="m-0 text-[28px] font-semibold tracking-[-0.5px]">{greeting}</h1>
-        <GreetingSubtitle needsYouCount={attentionItems ? attentionItems.length : null} nextRunLine={nextRunLine} />
-      </div>
-      <DescribeAgentCard />
-      <GettingStartedCard steps={buildGettingStartedSteps(homeData)} />
-      <NeedsYouSection items={attentionItems} loadError={runsError} />
-      <AgentSummaryCards agents={agents} loadError={agentsError} runs={runs} runStats={runStats} triggers={triggers} pluginRequirements={pluginRequirements} />
-      <div className="flex flex-wrap gap-4">
-        <RecentRunsTable runs={runs ? buildRecentRunRows(runs.slice(0, recentRunLimit), agentName) : null} loadError={runsError} />
-        <MonthlyUsageCard monthlyNumbers={buildThisMonth(homeData)} loadError={runsError ?? homeData.monthlyUsageError} />
+    <AppShell activeNav="home" agents={{ kind: 'list' }} mainClassName="box-border p-8">
+      <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-8">
+        <div className="flex flex-col gap-1">
+          <h1 className="m-0 text-[28px] font-semibold tracking-[-0.5px]">{greeting}</h1>
+          <GreetingSubtitle needsYouCount={attentionItems ? attentionItems.length : null} nextRunLine={nextRunLine} />
+        </div>
+        {isNeedsYouFirst && needsYouSection}
+        <DescribeAgentCard />
+        <GettingStartedCard steps={buildGettingStartedSteps(homeData)} />
+        {!isNeedsYouFirst && needsYouSection}
+        <AgentSummaryCards agents={agents} loadError={agentsError} runs={runs} runStats={runStats} triggers={triggers} pluginRequirements={pluginRequirements} />
+        <div className="flex flex-wrap items-start gap-x-6 gap-y-8">
+          <RecentRunsTable runs={runs ? buildRecentRunRows(runs.slice(0, recentRunLimit), agentName) : null} loadError={runsError} />
+          <MonthlyUsageCard monthlyNumbers={buildThisMonth(homeData)} loadError={runsError ?? homeData.monthlyUsageError} />
+        </div>
       </div>
     </AppShell>
   )

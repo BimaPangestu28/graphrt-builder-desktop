@@ -11,7 +11,10 @@ export interface AttentionItem {
   id: string
   kind: AttentionKind
   title: string
+  /** What it is about; may be long (a whole message), so it is shown clamped. */
   detail: string
+  /** Small line under the detail: when, why and how many more (e.g. "Today 09:56 run · paused for your review"). */
+  meta?: string
   actionLabel: string
   actionPath: string
   /** The most urgent item gets the filled ink button; the rest are outlined. */
