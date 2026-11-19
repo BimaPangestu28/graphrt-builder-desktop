@@ -50,8 +50,30 @@ export function AgentIdentityHeader({ agent, onRenamed }: AgentIdentityHeaderPro
   )
 }
 
+interface RenameFormProps {
+  agent: Agent
+  onDone: () => void
+  onRenamed: () => Promise<void> | void
+  /** `title` sits in a page header (large text); `card` fits a Home agent card (compact, one row). */
+  variant?: 'title' | 'card'
+}
+
+const renameFormStyles = {
+  title: {
+    form: 'flex min-w-0 flex-[1_1_320px] flex-col gap-1.5',
+    row: 'flex flex-wrap items-center gap-2',
+    input: 'h-10 min-w-0 flex-[1_1_220px] rounded-lg border border-line-strong px-3 text-[18px] font-semibold outline-none focus:border-brand',
+  },
+  card: {
+    form: 'flex w-full min-w-0 flex-col gap-1.5',
+    row: 'flex items-center gap-1.5',
+    input: 'h-9 min-w-0 flex-1 rounded-lg border border-line-strong px-2.5 text-[15px] font-semibold outline-none focus:border-brand',
+  },
+} as const
+
 /** Rename in place: Enter or Save stores the trimmed name, Escape or Cancel closes. */
-export function RenameForm({ agent, onDone, onRenamed }: { agent: Agent; onDone: () => void; onRenamed: () => Promise<void> | void }) {
+export function RenameForm({ agent, onDone, onRenamed, variant = 'title' }: RenameFormProps) {
+  const styles = renameFormStyles[variant]
   const inputId = useId()
   const inputRef = useRef<HTMLInputElement>(null)
   const [name, setName] = useState(agent.name)
@@ -81,11 +103,11 @@ export function RenameForm({ agent, onDone, onRenamed }: { agent: Agent; onDone:
   }
 
   return (
-    <form onSubmit={(event) => void handleSubmit(event)} className="flex min-w-0 flex-[1_1_320px] flex-col gap-1.5">
+    <form onSubmit={(event) => void handleSubmit(event)} className={styles.form}>
       <label htmlFor={inputId} className="sr-only">
         Agent name
       </label>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className={styles.row}>
         <input
           id={inputId}
           ref={inputRef}
@@ -94,7 +116,7 @@ export function RenameForm({ agent, onDone, onRenamed }: { agent: Agent; onDone:
           onKeyDown={(event) => event.key === 'Escape' && onDone()}
           maxLength={120}
           disabled={isSaving}
-          className="h-10 min-w-0 flex-[1_1_220px] rounded-lg border border-line-strong px-3 text-[18px] font-semibold outline-none focus:border-brand"
+          className={styles.input}
         />
         <Button type="submit" size="sm" disabled={isSaving || name.trim() === ''}>
           {isSaving ? 'Saving…' : 'Save'}

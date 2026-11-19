@@ -56,7 +56,8 @@ const BUILD_REPLY_FORMAT: &str = "\
 Reply in exactly this format and nothing else:
 <one or two short sentences, in plain words for a non-programmer, saying what the agent will do and where it \
 will ask them first; no markdown>
-Agent name: <2 to 5 plain words naming the agent>
+Agent name: <2 to 5 plain words naming the agent, written like a title for a person, e.g. \
+Cafe Offers in Bandar Lampung; never snake_case or kebab-case>
 ```yaml
 <the complete workflow document>
 ```";

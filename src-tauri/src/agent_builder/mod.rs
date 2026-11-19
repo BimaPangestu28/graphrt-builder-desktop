@@ -171,6 +171,7 @@ pub(crate) async fn build_agent_with_model(
     let name = extract::agent_name(&draft.reply)
         .or_else(|| extract::document_name(&draft.flow_yaml))
         .unwrap_or_else(|| extract::name_from_description(description));
+    let name = extract::humanize_name(&name);
     let done_message = with_plugin_note("Your agent is ready", &draft.flow_yaml);
     let agent =
         db.create_agent(NewAgent { name, kind, description: description.to_owned(), flow_yaml: draft.flow_yaml })?;
