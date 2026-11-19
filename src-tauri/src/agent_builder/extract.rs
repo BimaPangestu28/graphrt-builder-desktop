@@ -119,26 +119,19 @@ pub(super) fn document_name(flow_yaml: &str) -> Option<String> {
 const LOWERCASE_TITLE_WORDS: &[&str] =
     &["a", "an", "and", "as", "at", "by", "for", "from", "in", "into", "of", "on", "or", "the", "to", "via", "with"];
 
-/// Makes a model- or document-style name read like a person wrote it:
-/// `find_business_promotions` / `find-business-promotions` → "Find Business Promotions".
-/// Names that already have capitals ("WhatsApp leads", "Morning email digest") keep them;
-/// only separators are turned into spaces.
+/// Makes a generated name read like a title a person wrote:
+/// `find_business_promotions` → "Find Business Promotions", "Morning email digest" →
+/// "Morning Email Digest". Small joining words stay lower-case after the first word, and
+/// words that already have capitals ("WhatsApp", "API") are kept as written.
 pub(super) fn humanize_name(raw: &str) -> String {
     let spaced = raw.replace(['_', '-'], " ");
-    let words: Vec<&str> = spaced.split_whitespace().collect();
-    if words.is_empty() {
-        return raw.trim().to_owned();
-    }
-    let is_all_lowercase = !spaced.chars().any(char::is_uppercase);
-    if !is_all_lowercase {
-        return words.join(" ");
-    }
-    words
-        .iter()
+    spaced
+        .split_whitespace()
         .enumerate()
         .map(|(index, word)| {
-            if index > 0 && LOWERCASE_TITLE_WORDS.contains(word) {
-                (*word).to_owned()
+            let is_lowercase_word = !word.chars().any(char::is_uppercase);
+            if index > 0 && is_lowercase_word && LOWERCASE_TITLE_WORDS.contains(&word) {
+                word.to_owned()
             } else {
                 capitalize_first(word)
             }
@@ -299,9 +292,10 @@ mod humanize_tests {
     }
 
     #[test]
-    fn names_with_capitals_keep_them() {
-        assert_eq!(humanize_name("Morning email digest"), "Morning email digest");
-        assert_eq!(humanize_name("WhatsApp_cafe_offers"), "WhatsApp cafe offers");
+    fn sentence_case_names_become_title_case_and_keep_brand_capitals() {
+        assert_eq!(humanize_name("Morning email digest"), "Morning Email Digest");
+        assert_eq!(humanize_name("WhatsApp_cafe_offers"), "WhatsApp Cafe Offers");
+        assert_eq!(humanize_name("Send leads to CRM via API"), "Send Leads to CRM via API");
         assert_eq!(humanize_name("Find Business Promotions"), "Find Business Promotions");
     }
 
