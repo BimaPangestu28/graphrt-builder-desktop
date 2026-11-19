@@ -9,7 +9,7 @@ const PROFILE_DIR_SUFFIX: &str = "_PROFILE_DIR";
 /// Tuning settings the plugins default themselves (API version, idle minutes, send interval,
 /// daily limit, allowed folders). They never block "ready" and stay editable in Connections.
 const OPTIONAL_SETTING_SUFFIXES: &[&str] =
-    &["_VERSION", "_MINUTES", "_SECONDS", "_LIMIT", "_DIR", "_DIRS", "_INTERVAL"];
+    &["_VERSION", "_MINUTES", "_SECONDS", "_LIMIT", "_DIR", "_DIRS", "_INTERVAL", "_LANGUAGE"];
 
 /// Whether a plugin works without `variable` set (it has a default).
 pub(crate) fn is_optional_setting(variable: &str) -> bool {
@@ -30,6 +30,7 @@ mod tests {
             "WHATSAPP_WEB_ALLOWED_FILE_DIRS",
             "WHATSAPP_WEB_PROFILE_DIR",
             "META_GRAPH_VERSION",
+            "GOOGLE_MAPS_LANGUAGE",
         ] {
             assert!(is_optional_setting(optional), "{optional}");
         }
