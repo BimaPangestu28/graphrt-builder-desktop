@@ -103,7 +103,6 @@ export function BuilderPage() {
       <BuilderChatPanel
         agent={agent}
         steps={flowSummary?.steps ?? []}
-        modelName={providerSetup?.defaultModel.name ?? null}
         openingExplanation={builderHistory.openingExplanation}
         savedMessages={builderHistory.laterMessages}
         exchanges={revisions.exchanges}

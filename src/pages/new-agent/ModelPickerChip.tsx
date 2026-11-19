@@ -16,7 +16,7 @@ const chipClassNames = 'flex h-[30px] items-center gap-1.5 rounded-lg bg-canvas 
  * (asked from the provider; the recommended model while loading or if that fails). Changing it updates the default
  * (the same setting as Settings › Default AI model). With no provider it links to Connections.
  */
-export function ModelPickerChip() {
+export function ModelPickerChip({ label = 'Model for new agents' }: { label?: string }) {
   const defaultModelState = useDefaultModel()
   const statusesState = useAsyncData(listProviderStatuses, [])
   const availableModelsState = useAvailableModels()
@@ -56,7 +56,7 @@ export function ModelPickerChip() {
   return (
     <span className="flex items-center gap-2">
       <label className={`${chipClassNames} cursor-pointer pr-1`}>
-        <span className="sr-only">Model for new agents</span>
+        <span className="sr-only">{label}</span>
         <select
           value={modelChoiceKey(defaultModel)}
           onChange={(event) => void selectModel(event.target.value)}
