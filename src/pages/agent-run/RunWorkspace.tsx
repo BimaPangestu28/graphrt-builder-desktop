@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { splitPaneColumnClassName, splitPaneScrollClassName } from '@/components/layout'
 import { joinClassNames } from '@/components/ui'
+import { useFollowNewContent } from '@/hooks/useFollowNewContent'
 import { agentPath, routePaths } from '@/routes'
 
 /**
@@ -9,17 +11,20 @@ import { agentPath, routePaths } from '@/routes'
  * Both columns wrap under each other on narrow windows.
  */
 export function RunWorkspace({ children }: { children: ReactNode }) {
-  return <div className="flex min-h-full flex-wrap">{children}</div>
+  return <div className="flex min-h-full flex-wrap lg:h-full lg:flex-nowrap">{children}</div>
 }
 
 /** Left column: chat with the builder. */
 export function BuildChatPanel({ children }: { children: ReactNode }) {
+  const chatBodyRef = useFollowNewContent()
   return (
-    <section aria-label="Chat" className="box-border flex min-w-0 flex-[1_1_380px] flex-col border-r border-line bg-surface">
+    <section aria-label="Chat" className={`box-border flex min-w-0 flex-[1_1_380px] flex-col border-r border-line bg-surface ${splitPaneColumnClassName}`}>
       <header className="box-border flex h-16 items-center border-b border-line px-6">
         <span className="font-semibold">Build with chat</span>
       </header>
-      <div className="flex flex-col gap-5 p-6">{children}</div>
+      <div ref={chatBodyRef} className={`flex flex-col gap-5 p-6 ${splitPaneScrollClassName}`}>
+        {children}
+      </div>
     </section>
   )
 }
@@ -78,12 +83,12 @@ function RunViewTabs() {
 /** Right column: view tabs and a page-specific action in the header, run details below. */
 export function RunPanel({ headerAction, children }: { headerAction: ReactNode; children: ReactNode }) {
   return (
-    <section aria-label="Run" className="box-border flex min-w-0 flex-[1_1_440px] flex-col bg-subtle">
+    <section aria-label="Run" className={`box-border flex min-w-0 flex-[1_1_440px] flex-col bg-subtle ${splitPaneColumnClassName}`}>
       <header className="box-border flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-line px-6 py-3">
         <RunViewTabs />
         {headerAction}
       </header>
-      <div className="flex flex-col gap-5 p-6">{children}</div>
+      <div className={`flex flex-col gap-5 p-6 ${splitPaneScrollClassName}`}>{children}</div>
     </section>
   )
 }

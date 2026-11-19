@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import type { BuildRequest, BuildStage, DraftPreview } from '@/api/types'
-import { AppShell } from '@/components/layout'
+import { AppShell, splitPaneColumnClassName, splitPaneMainClassName, splitPaneScrollClassName } from '@/components/layout'
 import { Button, joinClassNames } from '@/components/ui'
 import { openBuilderDelayMs } from '@/data/mapsLeadsAgent'
 import { useFlowSummary } from '@/hooks/useFlowSummary'
+import { useFollowNewContent } from '@/hooks/useFollowNewContent'
 import { describeError } from '@/lib/agentDisplay'
 import { agentPath, routePaths } from '@/routes'
 import { BuildProgressChecklist, type BuildChecklistItem } from './agent-builder/BuildProgressChecklist'
@@ -181,6 +182,7 @@ function MissingBuildRequestNotice() {
 
 /** The build itself: chat column with the live checklist, agent column filling in. */
 function AgentBuildScreen({ buildRequest }: { buildRequest: BuildRequest }) {
+  const chatBodyRef = useFollowNewContent()
   const { retry, ...buildState } = useAgentBuild(buildRequest)
   const { runningItemIndex, builtAgent, buildError } = buildState
   const draftStepCards = (
@@ -191,12 +193,12 @@ function AgentBuildScreen({ buildRequest }: { buildRequest: BuildRequest }) {
   const sidebarStatus = buildError ? 'Build stopped' : builtAgent ? 'Ready' : 'Building…'
 
   return (
-    <AppShell agents={{ kind: 'draft', name: builtAgent?.name ?? 'New agent', status: sidebarStatus, agentId: builtAgent?.id }} runnerStatus="Online · OpenAI connected" mainClassName="flex flex-wrap">
-      <section aria-label="Chat" className="box-border flex min-w-0 flex-[1_1_380px] flex-col border-r border-line bg-surface">
+    <AppShell agents={{ kind: 'draft', name: builtAgent?.name ?? 'New agent', status: sidebarStatus, agentId: builtAgent?.id }} runnerStatus="Online · OpenAI connected" mainClassName={splitPaneMainClassName}>
+      <section aria-label="Chat" className={`box-border flex min-w-0 flex-[1_1_380px] flex-col border-r border-line bg-surface ${splitPaneColumnClassName}`}>
         <PanelHeader>
           <span className="font-semibold">Build with chat</span>
         </PanelHeader>
-        <div className="flex flex-col gap-5 p-6">
+        <div ref={chatBodyRef} className={`flex flex-col gap-5 p-6 ${splitPaneScrollClassName}`}>
           <UserChatBubble>{buildRequest.description}</UserChatBubble>
           <BuildProgressChecklist items={createChecklistItems(buildState)} runningItemIndex={runningItemIndex} />
           <BuilderExplanationReply buildState={buildState} />
@@ -210,11 +212,11 @@ function AgentBuildScreen({ buildRequest }: { buildRequest: BuildRequest }) {
         </div>
       </section>
 
-      <section aria-label="Agent" className="box-border flex min-w-0 flex-[1_1_440px] flex-col bg-subtle">
+      <section aria-label="Agent" className={`box-border flex min-w-0 flex-[1_1_440px] flex-col bg-subtle ${splitPaneColumnClassName}`}>
         <PanelHeader>
           <span className="text-body">{describeAgentColumnStatus(builtAgent !== null, isHeldForPlugins)}</span>
         </PanelHeader>
-        <div className="flex flex-col gap-6 p-6">
+        <div className={`flex flex-col gap-6 p-6 ${splitPaneScrollClassName}`}>
           <h1 className="m-0 text-[22px] font-semibold">{builtAgent?.name ?? 'New agent'}</h1>
           {builtAgent ? <BuiltStepsPreview agentId={builtAgent.id} loadingFallback={draftStepCards} /> : draftStepCards}
         </div>

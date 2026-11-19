@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import type { Agent } from '@/api/types'
-import { AppShell, type SidebarProps } from '@/components/layout'
+import { AppShell, splitPaneMainClassName, type SidebarProps } from '@/components/layout'
 import { useAgent } from '@/hooks/useAgent'
 import { useFlowSummary } from '@/hooks/useFlowSummary'
 import { setWorkflowSecret } from '@/api/credentials'
@@ -97,7 +97,7 @@ export function BuilderPage() {
   ]
 
   return (
-    <AppShell agents={getSidebarAgents(agentId, agent)} runnerStatus="Online · OpenAI connected" mainClassName="flex flex-wrap">
+    <AppShell agents={getSidebarAgents(agentId, agent)} runnerStatus="Online · OpenAI connected" mainClassName={splitPaneMainClassName}>
       <BuilderChatPanel
         agent={agent}
         steps={flowSummary?.steps ?? []}
