@@ -49,6 +49,47 @@ fn is_optional_setting(variable: &str) -> bool {
     variable.ends_with(PROFILE_DIR_SUFFIX) || OPTIONAL_SETTING_SUFFIXES.iter().any(|suffix| variable.ends_with(suffix))
 }
 
+/// A setting a plugin reads only in some of its node kinds.
+struct NodeScopedSetting {
+    variable: &'static str,
+    /// The node kinds that cannot run without it.
+    needed_by_kinds: &'static [&'static str],
+}
+
+/// Settings that block "ready" only when the agent uses a node kind that needs them. Plugin
+/// manifests and the catalog declare one flat `permissions.env` list with no required/optional
+/// marker, so the known cases are listed here (taken from each plugin's README and operation
+/// code). Every setting still shows and stays editable in Connections.
+const NODE_SCOPED_SETTINGS: &[NodeScopedSetting] = &[NodeScopedSetting {
+    // Sending, media and the business profile use the phone number id; only template
+    // management and listing phone numbers address the WhatsApp Business Account.
+    variable: "WHATSAPP_BUSINESS_ACCOUNT_ID",
+    needed_by_kinds: &[
+        "whatsapp-api.list_templates",
+        "whatsapp-api.create_template",
+        "whatsapp-api.delete_template",
+        "whatsapp-api.list_phone_numbers",
+    ],
+}];
+
+/// Whether `variable` must be set before an agent using `used_kinds` can run.
+fn is_required_setting(variable: &str, used_kinds: &[String]) -> bool {
+    if is_optional_setting(variable) {
+        return false;
+    }
+    match NODE_SCOPED_SETTINGS.iter().find(|setting| setting.variable == variable) {
+        Some(setting) => used_kinds.iter().any(|kind| setting.needed_by_kinds.contains(&kind.as_str())),
+        None => true,
+    }
+}
+
+/// The steps and node kinds of one plugin that a workflow uses.
+struct PluginUsage {
+    plugin_name: String,
+    step_titles: Vec<String>,
+    node_kinds: Vec<String>,
+}
+
 /// Where [`plugin_requirements`] reads plugin state from.
 pub(crate) struct RequirementSources<'a> {
     /// Installed plugin folders (loaded or not).
@@ -73,16 +114,24 @@ pub(crate) fn plugin_requirements(
     sources: &RequirementSources<'_>,
 ) -> AppResult<Vec<PluginRequirement>> {
     let Ok(workflow) = graphrt_core::Workflow::parse(flow_yaml) else { return Ok(Vec::new()) };
-    let mut steps_by_plugin: Vec<(String, Vec<String>)> = Vec::new();
+    let mut usages: Vec<PluginUsage> = Vec::new();
     for node in &workflow.graph.nodes {
         let Some(plugin_name) = plugin_of_kind(&node.kind, sources) else { continue };
         let step_title = node.title.as_deref().map(str::trim).filter(|title| !title.is_empty()).unwrap_or(&node.id);
-        match steps_by_plugin.iter_mut().find(|(name, _)| *name == plugin_name) {
-            Some((_, steps)) => steps.push(step_title.to_owned()),
-            None => steps_by_plugin.push((plugin_name, vec![step_title.to_owned()])),
+        let usage_index = match usages.iter().position(|usage| usage.plugin_name == plugin_name) {
+            Some(index) => index,
+            None => {
+                usages.push(PluginUsage { plugin_name, step_titles: Vec::new(), node_kinds: Vec::new() });
+                usages.len() - 1
+            }
+        };
+        let usage = &mut usages[usage_index];
+        usage.step_titles.push(step_title.to_owned());
+        if !usage.node_kinds.contains(&node.kind) {
+            usage.node_kinds.push(node.kind.clone());
         }
     }
-    steps_by_plugin.into_iter().map(|(name, used_by_steps)| requirement(&name, used_by_steps, sources)).collect()
+    usages.into_iter().map(|usage| requirement(usage, sources)).collect()
 }
 
 /// The plugin a node kind belongs to; `None` for the app's own kinds.
@@ -100,11 +149,9 @@ fn plugin_of_kind(kind: &str, sources: &RequirementSources<'_>) -> Option<String
     graphrt_plugin::is_valid_name(prefix).then(|| prefix.to_owned())
 }
 
-fn requirement(
-    name: &str,
-    used_by_steps: Vec<String>,
-    sources: &RequirementSources<'_>,
-) -> AppResult<PluginRequirement> {
+fn requirement(usage: PluginUsage, sources: &RequirementSources<'_>) -> AppResult<PluginRequirement> {
+    let PluginUsage { plugin_name, step_titles: used_by_steps, node_kinds } = usage;
+    let name = plugin_name.as_str();
     let state = sources.installed.iter().find(|plugin| plugin.name == name && plugin.is_loaded());
     let entry = sources.catalog.and_then(|catalog| catalog.plugins.iter().find(|entry| entry.name == name));
     let permissions = match (state, entry) {
@@ -119,7 +166,7 @@ fn requirement(
         .unwrap_or_default();
     let recorded_browser = sources.install_records.get(name).is_some_and(|record| record.needs_browser);
     let needs_browser = recorded_browser || entry.is_some_and(|entry| entry.needs_browser);
-    let missing_config = missing_settings(name, &permissions.env, sources.credentials)?;
+    let missing_config = missing_settings(name, &permissions.env, &node_kinds, sources.credentials)?;
     let installed = state.is_some();
     let trusted = state.is_some_and(|state| state.trusted);
     // Settings and plaintext secrets only reach trusted plugins (see `host.rs`).
@@ -146,11 +193,15 @@ fn requirement(
     })
 }
 
-/// Requested variables with no value in the keychain (browser profile folders
-/// default to the app's own, so they are never missing).
-fn missing_settings(plugin: &str, requested: &[String], credentials: &CredentialStore) -> AppResult<Vec<String>> {
+/// Required variables (see [`is_required_setting`]) with no value in the keychain.
+fn missing_settings(
+    plugin: &str,
+    requested: &[String],
+    used_kinds: &[String],
+    credentials: &CredentialStore,
+) -> AppResult<Vec<String>> {
     let mut missing = Vec::new();
-    for variable in requested.iter().filter(|variable| !is_optional_setting(variable)) {
+    for variable in requested.iter().filter(|variable| is_required_setting(variable, used_kinds)) {
         if !credentials.has_plugin_config(plugin, variable)? {
             missing.push(variable.clone());
         }
@@ -160,7 +211,34 @@ fn missing_settings(plugin: &str, requested: &[String], credentials: &Credential
 
 #[cfg(test)]
 mod optional_setting_tests {
-    use super::is_optional_setting;
+    use super::{is_optional_setting, is_required_setting};
+
+    fn kinds(names: &[&str]) -> Vec<String> {
+        names.iter().map(|name| (*name).to_owned()).collect()
+    }
+
+    #[test]
+    fn whatsapp_business_account_id_is_required_only_by_template_and_account_nodes() {
+        let sending = kinds(&["whatsapp-api.send_text", "whatsapp-api.send_template", "whatsapp-api.send_media"]);
+        assert!(!is_required_setting("WHATSAPP_BUSINESS_ACCOUNT_ID", &sending));
+        assert!(is_required_setting("WHATSAPP_ACCESS_TOKEN", &sending));
+        assert!(is_required_setting("WHATSAPP_PHONE_NUMBER_ID", &sending));
+        assert!(!is_required_setting("WHATSAPP_GRAPH_VERSION", &sending));
+
+        for management in
+            ["whatsapp-api.list_templates", "whatsapp-api.create_template", "whatsapp-api.list_phone_numbers"]
+        {
+            let used = kinds(&["whatsapp-api.send_text", management]);
+            assert!(is_required_setting("WHATSAPP_BUSINESS_ACCOUNT_ID", &used), "{management}");
+        }
+    }
+
+    #[test]
+    fn unlisted_settings_stay_required_whatever_nodes_are_used() {
+        assert!(is_required_setting("META_PAGE_ID", &[]));
+        assert!(is_required_setting("X_CLIENT_SECRET", &kinds(&["x-api.create_post"])));
+        assert!(!is_required_setting("META_GRAPH_VERSION", &[]));
+    }
 
     #[test]
     fn tuning_settings_are_optional_and_credentials_are_not() {
