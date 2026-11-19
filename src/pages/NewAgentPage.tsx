@@ -1,8 +1,17 @@
 import { useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { AppShell } from '@/components/layout'
 import { Icon, joinClassNames } from '@/components/ui'
-import { agentKindOptions, agentTemplates, buildPathByAgentKind, jobDescriptionPlaceholder, type AgentKind, type AgentTemplate } from '@/data/newAgentTemplates'
+import {
+  agentKindOptions,
+  agentTemplates,
+  buildPathByAgentKind,
+  findAgentTemplate,
+  jobDescriptionPlaceholder,
+  templatePromptText,
+  type AgentKind,
+  type AgentTemplate,
+} from '@/data/newAgentTemplates'
 import type { BuildRequestLocationState } from './agent-builder/buildRequestState'
 import { ModelPickerChip } from './new-agent/ModelPickerChip'
 
@@ -35,23 +44,40 @@ function PromptChip({ children }: { children: ReactNode }) {
   return <span className="flex h-[30px] items-center gap-1.5 rounded-lg bg-canvas px-2.5 text-[13px] text-ink-2">{children}</span>
 }
 
-/** A starter: picking it fills the prompt and the kind; it builds nothing by itself. */
+/** Small grey chip naming one plugin or connection a template needs. */
+function TemplateNeedChip({ label }: { label: string }) {
+  return (
+    <span role="listitem" className="rounded-md bg-canvas px-2 py-0.5 text-[12px] font-medium text-ink-2">
+      {label}
+    </span>
+  )
+}
+
+/**
+ * A starter: picking it fills the prompt and the kind; it builds nothing by itself.
+ * Every card has the same rows: title (and kind tag), what it does, what it needs (chips),
+ * a short setup note, and the services/size line at the bottom.
+ */
 function TemplateCard({ template, onPick }: { template: AgentTemplate; onPick: (template: AgentTemplate) => void }) {
   return (
     <button
       type="button"
       onClick={() => onPick(template)}
-      className="flex cursor-pointer flex-col gap-2 rounded-[14px] border border-line bg-surface p-[18px] text-left text-ink hover:border-line-heavy"
+      className="flex h-full cursor-pointer flex-col gap-2 rounded-[14px] border border-line bg-surface p-[18px] text-left text-ink hover:border-line-heavy"
     >
-      {template.kindLabel ? (
-        <span className="flex items-center justify-between gap-2">
-          <span className="font-semibold">{template.title}</span>
-          <span className="text-[11px] font-semibold text-brand-strong">{template.kindLabel}</span>
-        </span>
-      ) : (
+      <span className="flex items-start justify-between gap-2">
         <span className="font-semibold">{template.title}</span>
-      )}
+        {template.kindLabel ? <span className="shrink-0 text-[11px] font-semibold text-brand-strong">{template.kindLabel}</span> : null}
+      </span>
       <span className="leading-normal text-body">{template.description}</span>
+      <span className="mt-auto flex flex-col gap-1.5 pt-1">
+        <span role="list" aria-label={`${template.title} needs`} className="flex flex-wrap gap-1.5">
+          {template.needs.map((need) => (
+            <TemplateNeedChip key={need} label={need} />
+          ))}
+        </span>
+        <span className="text-[12px] text-ink-2">You'll need: {template.setupNote}</span>
+      </span>
       <span className="text-[12px] text-muted">{template.meta}</span>
     </button>
   )
@@ -60,20 +86,23 @@ function TemplateCard({ template, onPick }: { template: AgentTemplate; onPick: (
 /**
  * Screen 02 · New agent. The empty-state home before any agent exists:
  * pick a kind, describe the job in plain words and press "Build agent",
- * or pick a template below to fill in the description and kind as a starting point.
+ * or pick a template below to fill in the description and kind as a starting point
+ * (`?template=<id>` opens it with that template already picked, e.g. from Home).
  * The chip under the prompt shows the real default model. "Build agent" hands the request
  * (`{ buildRequest }` router state) to the screen that builds it.
  */
 export function NewAgentPage() {
   const navigate = useNavigate()
-  const [selectedKind, setSelectedKind] = useState<AgentKind>('task')
-  const [jobDescription, setJobDescription] = useState('')
+  const [searchParams] = useSearchParams()
+  const [initialTemplate] = useState(() => findAgentTemplate(searchParams.get('template')))
+  const [selectedKind, setSelectedKind] = useState<AgentKind>(initialTemplate?.kind ?? 'task')
+  const [jobDescription, setJobDescription] = useState(initialTemplate ? templatePromptText(initialTemplate) : '')
   const jobDescriptionRef = useRef<HTMLTextAreaElement>(null)
   const canBuild = jobDescription.trim().length > 0
 
   function handleTemplatePick(template: AgentTemplate) {
     setSelectedKind(template.kind)
-    setJobDescription(template.description)
+    setJobDescription(templatePromptText(template))
     jobDescriptionRef.current?.focus()
   }
 

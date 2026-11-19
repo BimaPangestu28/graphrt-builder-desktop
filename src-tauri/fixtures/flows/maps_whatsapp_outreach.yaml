@@ -1,0 +1,115 @@
+# What the builder should produce for the "Find businesses on Maps and message
+# them on WhatsApp" template (src/data/mapsWhatsAppTemplate.json): a Google Maps
+# search with the google-maps-scraper plugin, one short message per business,
+# an approval before each send, sending through the personal WhatsApp
+# (whatsapp-web plugin), and a run report.
+version: "1"
+name: maps-whatsapp-outreach
+description: Find businesses on Google Maps and send each a short WhatsApp message, asking me before each one.
+graph:
+  nodes:
+    - id: start
+      type: start
+      variables:
+        - { variable: area, type: text-input, required: true, label: Area to search }
+        - { variable: business_type, type: text-input, required: true, label: Kind of business }
+        - { variable: offer, type: paragraph, required: true, label: What you offer }
+        - { variable: max_results, type: number, required: false, default: 10, label: Most businesses to contact (up to 20) }
+
+    - id: search_maps
+      type: google-maps-scraper.search
+      title: Find businesses on Google Maps
+      query: "{{#start.business_type#}} in {{#start.area#}}"
+      max_results: "{{#start.max_results#}}"
+
+    - id: each_place
+      type: iteration
+      title: For each business
+      iterator_selector: [search_maps, results]
+      output_selector: [send_message, data]
+      is_parallel: false
+      error_handle_mode: continue-on-error
+
+    - id: each_place_start
+      type: iteration-start
+      parent: each_place
+
+    - id: draft_message
+      type: llm
+      title: Write a short message
+      parent: each_place
+      model:
+        provider: openai
+        name: gpt-4o-mini
+        completion_params: { temperature: 0.7, max_tokens: 300 }
+      prompt_template:
+        - role: system
+          text: "You write short, friendly, personal WhatsApp messages to small businesses. Greet the business by name, no more than 60 words, no pressure and no follow-up promises."
+        - role: user
+          text: "Write a message to {{#each_place.item.name#}} ({{#each_place.item.address#}}) about this offer: {{#start.offer#}}"
+
+    - id: approve_message
+      type: human-input
+      title: Ask me before sending
+      parent: each_place
+      prompt: "Send this message to {{#each_place.item.name#}} ({{#each_place.item.phone#}})?\n\n{{#draft_message.text#}}"
+      actions:
+        - { id: send, title: Send }
+        - { id: skip, title: Skip }
+
+    - id: send_message
+      type: whatsapp-web.send_message
+      title: Send it on WhatsApp
+      parent: each_place
+      phone: "{{#each_place.item.phone#}}"
+      text: "{{#draft_message.text#}}"
+
+    - id: write_report
+      type: llm
+      title: Write the run report
+      model:
+        provider: openai
+        name: gpt-4o-mini
+        completion_params: { temperature: 0, max_tokens: 800 }
+      prompt_template:
+        - role: system
+          text: "You report what an automation run did, in plain words. A send result with data means the message was sent; an empty result means the person skipped it."
+        - role: user
+          text: "Businesses found: {{#search_maps.results#}}\n\nSend result per business, in the same order: {{#each_place.output#}}"
+      structured_output_enabled: true
+      structured_output:
+        schema:
+          type: object
+          properties:
+            summary: { type: string, description: "One plain sentence, e.g. Sent the offer to 4 of 6 cafes in Rajabasa." }
+            items:
+              type: array
+              items:
+                type: object
+                properties:
+                  name: { type: string }
+                  phone: { type: string }
+                  status: { type: string, enum: [sent, skipped, failed] }
+            places_found: { type: number }
+            messages_sent: { type: number }
+            messages_skipped: { type: number }
+            messages_failed: { type: number }
+
+    - id: end
+      type: end
+      outputs:
+        - { variable: summary, value_selector: [write_report, structured_output, summary] }
+        - { variable: items, value_selector: [write_report, structured_output, items] }
+        - { variable: places_found, value_selector: [write_report, structured_output, places_found] }
+        - { variable: messages_sent, value_selector: [write_report, structured_output, messages_sent] }
+        - { variable: messages_skipped, value_selector: [write_report, structured_output, messages_skipped] }
+        - { variable: messages_failed, value_selector: [write_report, structured_output, messages_failed] }
+
+  edges:
+    - { source: start, target: search_maps }
+    - { source: search_maps, target: each_place }
+    - { source: each_place_start, target: draft_message }
+    - { source: draft_message, target: approve_message }
+    - { source: approve_message, target: send_message, handle: send }
+    - { source: each_place, target: write_report }
+    - { source: write_report, target: end }

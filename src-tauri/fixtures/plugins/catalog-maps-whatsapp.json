@@ -1,0 +1,161 @@
+[
+  {
+    "name": "google-maps-scraper",
+    "version": "0.2.1",
+    "description": "Search Google Maps with a headless browser and extract business phone numbers (free, no API key)",
+    "tarball_url": "https://plugins.example.test/google-maps-scraper-0.2.1.tar.gz",
+    "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "size_bytes": 4096,
+    "permissions": {
+      "network": true
+    },
+    "needs_browser": true,
+    "node": ">=20",
+    "nodes": [
+      {
+        "kind": "google-maps-scraper.search",
+        "title": "Google Maps search",
+        "description": "Searches Google Maps and returns places with their phone numbers",
+        "config_schema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "What to search on Google Maps (templates allowed)"
+            },
+            "max_results": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "description": "Maximum places to return"
+            },
+            "language": {
+              "type": "string",
+              "default": "id",
+              "description": "Google Maps interface language code"
+            },
+            "headless": {
+              "type": "boolean",
+              "default": true,
+              "description": "Run the browser without a window"
+            }
+          },
+          "required": [
+            "query"
+          ]
+        },
+        "outputs": [
+          {
+            "name": "results",
+            "type": "array[object]",
+            "description": "Places: {name, phone, address, website, website_label, rating, maps_url}"
+          },
+          {
+            "name": "phones",
+            "type": "array[string]",
+            "description": "Unique phone numbers found"
+          },
+          {
+            "name": "count",
+            "type": "integer",
+            "description": "Number of places returned"
+          }
+        ]
+      }
+    ],
+    "tools": []
+  },
+  {
+    "name": "whatsapp-web",
+    "version": "0.1.0",
+    "description": "Your personal WhatsApp through WhatsApp Web in a headless browser: read chats and messages, send text and files (low volume, rate limited)",
+    "tarball_url": "https://plugins.example.test/whatsapp-web-0.1.0.tar.gz",
+    "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "size_bytes": 4096,
+    "permissions": {
+      "network": true,
+      "secrets": true,
+      "env": [
+        "WHATSAPP_WEB_PROFILE_DIR",
+        "WHATSAPP_WEB_IDLE_MINUTES",
+        "WHATSAPP_WEB_MIN_SEND_INTERVAL_SECONDS",
+        "WHATSAPP_WEB_DAILY_SEND_LIMIT",
+        "WHATSAPP_WEB_ALLOWED_FILE_DIRS"
+      ]
+    },
+    "needs_browser": true,
+    "node": ">=20",
+    "nodes": [
+      {
+        "kind": "whatsapp-web.get_status",
+        "title": "WhatsApp Web status",
+        "description": "Report whether WhatsApp Web is logged_in, needs_login (QR code shown) or loading, plus today's send count.",
+        "config_schema": {
+          "type": "object",
+          "properties": {
+            "access_token": {
+              "type": "string",
+              "description": "Overrides the plugin's default token for this node (use a secret; needs --trust-plugin)"
+            }
+          }
+        },
+        "outputs": [
+          {
+            "name": "data",
+            "type": "any",
+            "description": "API result"
+          },
+          {
+            "name": "next_cursor",
+            "type": "string",
+            "description": "Cursor for the next page, empty when there is none"
+          }
+        ]
+      },
+      {
+        "kind": "whatsapp-web.send_message",
+        "title": "Send WhatsApp message",
+        "description": "Send a text message from your personal WhatsApp to a phone number or an existing chat (exact name). Rate limited; confirms the message appears as sent.",
+        "config_schema": {
+          "type": "object",
+          "properties": {
+            "phone": {
+              "type": "string",
+              "description": "Phone number starting with + or 00 and the country code, e.g. \"+62 812 3456 789\" (a national number such as \"0812...\" is refused). Works for numbers not in the chat list. Pass this or chat_name."
+            },
+            "chat_name": {
+              "type": "string",
+              "description": "Exact chat name as shown in WhatsApp (saved contact name or group name); refused when two chats share the name. Pass this or phone."
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Message text; line breaks are kept"
+            },
+            "access_token": {
+              "type": "string",
+              "description": "Overrides the plugin's default token for this node (use a secret; needs --trust-plugin)"
+            }
+          },
+          "required": [
+            "text"
+          ]
+        },
+        "outputs": [
+          {
+            "name": "data",
+            "type": "any",
+            "description": "API result"
+          },
+          {
+            "name": "next_cursor",
+            "type": "string",
+            "description": "Cursor for the next page, empty when there is none"
+          }
+        ]
+      }
+    ],
+    "tools": []
+  }
+]

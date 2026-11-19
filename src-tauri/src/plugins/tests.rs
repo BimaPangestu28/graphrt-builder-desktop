@@ -173,8 +173,18 @@ fn catalog_json_with_extras(version: &str, tarball_url: &str, sha256: &str, size
 
 /// A catalog of only the never-installed fixture plugins (`fixture-mail`, `fixture-browser`).
 pub(crate) fn not_installed_catalog() -> super::models::CatalogIndex {
-    let extras: Vec<serde_json::Value> = serde_json::from_str(NOT_INSTALLED_ENTRIES).unwrap();
-    let catalog = serde_json::json!({ "schema": 1, "plugins": extras });
+    catalog_of_entries(NOT_INSTALLED_ENTRIES)
+}
+
+/// A catalog of the real `google-maps-scraper` and `whatsapp-web` entries (node kinds and
+/// fields copied from their manifests in graphrt-plugins), never installed.
+pub(crate) fn maps_whatsapp_catalog() -> super::models::CatalogIndex {
+    catalog_of_entries(include_str!("../../fixtures/plugins/catalog-maps-whatsapp.json"))
+}
+
+fn catalog_of_entries(entries_json: &str) -> super::models::CatalogIndex {
+    let entries: Vec<serde_json::Value> = serde_json::from_str(entries_json).unwrap();
+    let catalog = serde_json::json!({ "schema": 1, "plugins": entries });
     super::catalog::parse_catalog(&serde_json::to_vec(&catalog).unwrap()).unwrap()
 }
 

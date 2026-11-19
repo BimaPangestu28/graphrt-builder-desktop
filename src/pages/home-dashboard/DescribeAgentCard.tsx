@@ -1,12 +1,36 @@
 import { useState, type FormEvent, type KeyboardEvent } from 'react'
 import { formatShortcut } from '@/lib/platform'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Button, Icon } from '@/components/ui'
-import { buildPathByAgentKind } from '@/data/newAgentTemplates'
+import { agentTemplates, buildPathByAgentKind, mapsWhatsAppTemplateId, newAgentTemplatePath } from '@/data/newAgentTemplates'
+import { routePaths } from '@/routes'
 import type { BuildRequestLocationState } from '@/pages/agent-builder/buildRequestState'
 
 /** Greyed-out example in the empty box (never submitted). */
 export const describeAgentPlaceholder = 'Every weekday at 9, find new cafes in Bandar Lampung on Google Maps and send them a WhatsApp offer'
+
+/** The flagship template, offered as a one-click start under the box. */
+const featuredTemplate = agentTemplates.find((template) => template.id === mapsWhatsAppTemplateId)
+
+/**
+ * "Start from a template" row: the flagship template opens the New agent screen with it
+ * picked; "All templates" opens the gallery.
+ */
+function StartFromTemplateLinks() {
+  return (
+    <p className="m-0 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted">
+      <span>Start from a template:</span>
+      {featuredTemplate ? (
+        <Link to={newAgentTemplatePath(featuredTemplate.id)} className="font-medium !text-ink">
+          {featuredTemplate.title}
+        </Link>
+      ) : null}
+      <Link to={routePaths.newAgent} className="font-medium !text-ink">
+        All templates
+      </Link>
+    </p>
+  )
+}
 
 /** ⌘+Enter on macOS, Ctrl+Enter elsewhere. */
 function isSubmitShortcut(event: KeyboardEvent<HTMLTextAreaElement>): boolean {
@@ -16,7 +40,8 @@ function isSubmitShortcut(event: KeyboardEvent<HTMLTextAreaElement>): boolean {
 /**
  * "Describe a new agent" box on Home. "Build agent" (or ⌘/Ctrl+Enter) starts the same
  * build as the New agent screen: it opens the Generating screen with `{ buildRequest }`
- * router state for a task agent, which runs `buildAgent` with the description.
+ * router state for a task agent, which runs `buildAgent` with the description. Links under
+ * it start from a template instead.
  */
 export function DescribeAgentCard() {
   const navigate = useNavigate()
@@ -63,6 +88,7 @@ export function DescribeAgentCard() {
             <Icon name="arrowRight" size={16} />
           </Button>
         </div>
+        <StartFromTemplateLinks />
       </form>
     </section>
   )

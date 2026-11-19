@@ -11,6 +11,11 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
 
 ### Added
 
+- **"Find businesses on Maps and message them on WhatsApp" template**, first in the gallery: it asks the
+  builder for a Google Maps search (area, kind of business and how many as run inputs), a short personal
+  message per business, "Ask me before sending" with the exact message, sending from your own WhatsApp
+  (linked by QR), a low-volume limit and a run report. Every template card now shows what it needs as
+  chips plus a short "You'll need" note, and Home's describe box links to it and to all templates.
 - **Windows and Linux, not just macOS**: the app and its copy work the same on all three. Text says
   "this computer"; where the system's own name helps it uses it: macOS Keychain, Windows Credential
   Manager or your system keyring for secrets, menu bar or system tray, Finder or File Explorer, and

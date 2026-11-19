@@ -632,3 +632,73 @@ fn a_restore_that_adds_a_version_is_noted_in_the_chat() {
     assert_eq!(messages[0].text, "Restored version 1");
     assert_eq!((messages[0].version_before, messages[0].version_after), (Some(2), Some(3)));
 }
+
+/// What the builder should reply for the "Find businesses on Maps and message them on
+/// WhatsApp" template: plugin steps from the real catalog, an approval before each send.
+const MAPS_WHATSAPP_OUTREACH: &str = include_str!("../../fixtures/flows/maps_whatsapp_outreach.yaml");
+
+/// The template's prompt, from the same file the New agent screen reads.
+fn maps_whatsapp_template_prompt() -> String {
+    let template: serde_json::Value =
+        serde_json::from_str(include_str!("../../../src/data/mapsWhatsAppTemplate.json")).unwrap();
+    template["prompt"].as_str().unwrap().to_owned()
+}
+
+#[tokio::test]
+async fn the_maps_whatsapp_template_builds_with_the_real_plugin_kinds() {
+    let _lock = crate::plugins::tests::ACTIVE_SNAPSHOT_LOCK.lock().await;
+    crate::plugins::active::publish_catalog(Some(Arc::new(crate::plugins::tests::maps_whatsapp_catalog())));
+    let template_prompt = maps_whatsapp_template_prompt();
+    let db = test_database();
+    let reply = format!(
+        "I search Google Maps and ask you before every WhatsApp message.\n{}",
+        fenced_reply("Maps WhatsApp Outreach", MAPS_WHATSAPP_OUTREACH)
+    );
+    let (mock, builder) = mock_builder(&[reply]);
+    let progress = ProgressLog::default();
+
+    let built = build_agent_with_model(&db, &builder, request(&template_prompt, Some(AgentKind::Task)), &|update| {
+        progress.record(update)
+    })
+    .await;
+    let summary = validate_draft(MAPS_WHATSAPP_OUTREACH, &builder);
+    let unapproved = flow::find_unapproved_sending_steps(MAPS_WHATSAPP_OUTREACH);
+    crate::plugins::active::publish_catalog(None);
+
+    let agent = built.unwrap();
+    assert_eq!(agent.flow_yaml.trim(), MAPS_WHATSAPP_OUTREACH.trim());
+    assert_eq!(mock.requests().len(), 1, "the fixture is accepted without a repair round");
+    let system_prompt = message_text(&mock.requests()[0], 0);
+    assert!(system_prompt.contains("`google-maps-scraper.search`"), "{system_prompt}");
+    assert!(system_prompt.contains("`whatsapp-web.send_message`"), "{system_prompt}");
+    assert!(message_text(&mock.requests()[0], 1).contains(&template_prompt));
+    let done = progress.0.lock().unwrap().last().cloned().unwrap();
+    assert_eq!(done.message, "Your agent is ready · needs 2 plugins");
+
+    let summary = summary.unwrap();
+    let input_names: Vec<&str> = summary.inputs.iter().map(|input| input.name.as_str()).collect();
+    assert_eq!(input_names, ["area", "business_type", "offer", "max_results"]);
+    assert!(unapproved.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_maps_whatsapp_draft_that_sends_without_asking_is_rejected() {
+    let _lock = crate::plugins::tests::ACTIVE_SNAPSHOT_LOCK.lock().await;
+    crate::plugins::active::publish_catalog(Some(Arc::new(crate::plugins::tests::maps_whatsapp_catalog())));
+    let without_approval = MAPS_WHATSAPP_OUTREACH
+        .replace(
+            "    - { source: draft_message, target: approve_message }\n",
+            "    - { source: draft_message, target: send_message }\n",
+        )
+        .replace("    - { source: approve_message, target: send_message, handle: send }\n", "");
+    let unknown_kind = MAPS_WHATSAPP_OUTREACH.replace("whatsapp-web.send_message", "whatsapp-web.send_text");
+    let (_, builder) = mock_builder(&[]);
+
+    let unapproved = validate_draft(&without_approval, &builder);
+    let unknown = validate_draft(&unknown_kind, &builder);
+    crate::plugins::active::publish_catalog(None);
+
+    assert_ne!(without_approval, MAPS_WHATSAPP_OUTREACH, "fixture edges changed; update this test");
+    assert!(unapproved.unwrap_err().contains("Send it on WhatsApp"));
+    assert!(unknown.unwrap_err().contains("whatsapp-web.send_text"));
+}
