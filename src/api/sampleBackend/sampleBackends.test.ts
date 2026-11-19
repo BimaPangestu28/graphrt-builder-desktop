@@ -174,4 +174,29 @@ describe('sample credentials backend', () => {
     expect(await sampleCredentialsBackend.getDefaultModel()).toEqual({ provider: 'ollama', name: 'llama3.2' })
     await expectBackendError(sampleCredentialsBackend.setOllamaBaseUrl('studio.local'), 'invalid_input')
   })
+
+  it('adds, lists without values, replaces and removes a user secret', async () => {
+    await sampleCredentialsBackend.addWorkflowSecret({ name: 'MY_SERVER_TOKEN', value: 'token-value', note: ' Home server ' })
+    const listed = await sampleCredentialsBackend.listAllWorkflowSecrets()
+    const serverToken = listed.find((secret) => secret.name === 'MY_SERVER_TOKEN')
+    expect(serverToken).toMatchObject({ configured: true, required: false, agents: [], note: 'Home server' })
+    expect(JSON.stringify(listed)).not.toContain('token-value')
+    const createdAt = serverToken?.createdAt
+
+    await sampleCredentialsBackend.setWorkflowSecret('MY_SERVER_TOKEN', 'new-value')
+    const replaced = (await sampleCredentialsBackend.listAllWorkflowSecrets()).find((secret) => secret.name === 'MY_SERVER_TOKEN')
+    expect(replaced).toMatchObject({ note: 'Home server', createdAt })
+
+    await sampleCredentialsBackend.deleteWorkflowSecret('MY_SERVER_TOKEN')
+    expect((await sampleCredentialsBackend.listAllWorkflowSecrets()).map((secret) => secret.name)).toEqual(['GOOGLE_PLACES_API_KEY'])
+  })
+
+  it('rejects malformed names, empty or huge values and names already saved', async () => {
+    for (const badName of ['', 'my_token', '1TOKEN', 'MY-TOKEN', 'A'.repeat(65)]) {
+      await expectBackendError(sampleCredentialsBackend.addWorkflowSecret({ name: badName, value: 'v', note: null }), 'invalid_input')
+    }
+    await expectBackendError(sampleCredentialsBackend.addWorkflowSecret({ name: 'API_TOKEN', value: '  ', note: null }), 'invalid_input')
+    await expectBackendError(sampleCredentialsBackend.addWorkflowSecret({ name: 'API_TOKEN', value: 'x'.repeat(16 * 1024 + 1), note: null }), 'invalid_input')
+    await expectBackendError(sampleCredentialsBackend.addWorkflowSecret({ name: 'GOOGLE_PLACES_API_KEY', value: 'v', note: null }), 'invalid_input')
+  })
 })

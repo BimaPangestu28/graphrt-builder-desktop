@@ -1,5 +1,5 @@
 import { callBackend, isDesktopApp } from './client'
-import type { WorkflowSecretOverview } from './connectionTypes'
+import type { NewWorkflowSecret, WorkflowSecretOverview } from './connectionTypes'
 import type { ProviderModels } from './modelCatalogTypes'
 import { sampleCredentialsBackend } from './sampleBackend/credentials'
 import type { ModelChoice, ModelProvider, ProviderStatus, WorkflowSecretStatus } from './types'
@@ -58,6 +58,18 @@ export function listAllWorkflowSecrets(): Promise<WorkflowSecretOverview[]> {
 export function setWorkflowSecret(name: string, value: string): Promise<void> {
   if (!isDesktopApp()) return sampleCredentialsBackend.setWorkflowSecret(name, value)
   return callBackend('set_workflow_secret', { name, value })
+}
+
+/**
+ * Adds a secret the user names themselves; agents read it as `{{#env.NAME#}}`.
+ *
+ * @param secret - Name (UPPER_SNAKE_CASE), value and optional note (NewWorkflowSecret)
+ * @throws BackendError - `invalid_input` for a malformed name, empty or too large value,
+ *   or a name that already has a value
+ */
+export function addWorkflowSecret(secret: NewWorkflowSecret): Promise<void> {
+  if (!isDesktopApp()) return sampleCredentialsBackend.addWorkflowSecret(secret)
+  return callBackend('add_workflow_secret', { secret })
 }
 
 export function deleteWorkflowSecret(name: string): Promise<void> {

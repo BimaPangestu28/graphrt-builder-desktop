@@ -11,7 +11,7 @@ import { AdvancedSection } from './connections/AdvancedSection'
 import { ConnectionCard } from './connections/ConnectionCard'
 import { buildModelConnections } from './connections/modelConnections'
 import { ModelProvidersSection } from './connections/ModelProvidersSection'
-import { describeSecretUsers } from './connections/SecretRows'
+import { describeSecretUsers } from './connections/secretDisplay'
 
 const sectionHeadingClassNames = 'm-0 text-[13px] font-semibold text-muted'
 
@@ -42,7 +42,7 @@ function matchesConnection(searchQuery: string, connection: Connection): boolean
 }
 
 function matchesSecret(searchQuery: string, secret: WorkflowSecretOverview): boolean {
-  return matchesSearch(searchQuery, secret.name, secret.description ?? '', describeSecretUsers(secret), 'secret')
+  return matchesSearch(searchQuery, secret.name, secret.description ?? '', secret.note ?? '', describeSecretUsers(secret), 'secret')
 }
 
 /**
@@ -134,7 +134,7 @@ export function ConnectionsPage() {
       {showsAdvancedSection && (
         <AdvancedSection
           rows={visibleAdvancedRows}
-          secretsState={{ visibleSecrets, loadError: secretsLoadState.error, isSearching, reload: secretsLoadState.reload }}
+          secretsState={{ allSecrets: secretsLoadState.data, visibleSecrets, loadError: secretsLoadState.error, isSearching, reload: secretsLoadState.reload }}
         />
       )}
 

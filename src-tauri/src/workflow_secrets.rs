@@ -1,8 +1,13 @@
 //! Every workflow secret the app knows about (Connections > Advanced > Secrets):
 //! the `env.*` values any agent's current workflow declares, plus the secrets
-//! configured MCP servers need, each with whether it is stored and who uses it.
+//! configured MCP servers need, plus the ones the user saved themselves
+//! ([`saved`]), each with whether it is stored and who uses it.
 //!
-//! Values never leave the keychain; this only reports names and status.
+//! Secrets are global by name: every agent that declares `env.NAME` reads the
+//! same keychain entry. Values never leave the keychain; this only reports
+//! names and status.
+
+pub mod saved;
 
 use std::collections::BTreeMap;
 
@@ -38,6 +43,12 @@ pub struct WorkflowSecretOverview {
     pub agents: Vec<SecretAgentUse>,
     /// MCP servers that need it.
     pub mcp_servers: Vec<String>,
+    /// The user's note, for a secret saved in the app.
+    pub note: Option<String>,
+    /// RFC 3339 time of the first save in the app; `None` when not recorded.
+    pub created_at: Option<String>,
+    /// RFC 3339 time of the latest save in the app; `None` when not recorded.
+    pub updated_at: Option<String>,
 }
 
 #[derive(Default)]
@@ -61,6 +72,10 @@ pub fn list_all_workflow_secrets(
 ) -> AppResult<Vec<WorkflowSecretOverview>> {
     let mut uses_by_name: BTreeMap<String, SecretUses> = BTreeMap::new();
     collect_agent_uses(db, &mut uses_by_name)?;
+    let saved_by_name = saved::saved_secrets(db)?;
+    for name in saved_by_name.keys() {
+        uses_by_name.entry(name.clone()).or_default().is_secret = true;
+    }
     for server in mcp_servers {
         for secret_name in server.secret_names() {
             let uses = uses_by_name.entry(secret_name.to_owned()).or_default();
@@ -72,8 +87,12 @@ pub fn list_all_workflow_secrets(
     uses_by_name
         .into_iter()
         .map(|(name, uses)| {
+            let saved_record = saved_by_name.get(&name);
             Ok(WorkflowSecretOverview {
                 configured: credentials.has_workflow_secret(&name)?,
+                note: saved_record.and_then(|record| record.note.clone()),
+                created_at: saved_record.map(|record| record.created_at.clone()),
+                updated_at: saved_record.map(|record| record.updated_at.clone()),
                 name,
                 description: uses.description,
                 is_secret: uses.is_secret,
@@ -174,6 +193,32 @@ mod tests {
         assert_eq!(github.agents.len(), 1);
         let city = &secrets[0];
         assert!(!city.is_secret && !city.required, "a plain value with a default");
+    }
+
+    #[test]
+    fn lists_secrets_the_user_saved_even_when_no_agent_uses_them() {
+        let db = Database::open_in_memory().unwrap();
+        let credentials = CredentialStore::in_memory();
+        create_agent(&db, "Deploy", flow_with_env(&["{ name: DEPLOY_KEY, type: secret }"]));
+        let new_secret = saved::NewWorkflowSecret {
+            name: "MY_SERVER_TOKEN".into(),
+            value: "value".into(),
+            note: Some("home server".into()),
+        };
+        saved::add_workflow_secret(&db, &credentials, new_secret).unwrap();
+
+        let secrets = list_all_workflow_secrets(&db, &credentials, &[]).unwrap();
+
+        let names: Vec<&str> = secrets.iter().map(|secret| secret.name.as_str()).collect();
+        assert_eq!(names, ["DEPLOY_KEY", "MY_SERVER_TOKEN"]);
+        let deploy = &secrets[0];
+        assert!(!deploy.configured, "declared by an agent but missing");
+        assert!(deploy.created_at.is_none());
+        let server_token = &secrets[1];
+        assert!(server_token.configured && server_token.is_secret && !server_token.required);
+        assert!(server_token.agents.is_empty() && server_token.mcp_servers.is_empty());
+        assert_eq!(server_token.note.as_deref(), Some("home server"));
+        assert!(server_token.created_at.is_some() && server_token.updated_at.is_some());
     }
 
     #[test]
