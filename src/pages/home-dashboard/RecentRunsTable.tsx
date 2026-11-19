@@ -5,7 +5,7 @@ import type { RecentRun, RecentRunStatus } from '@/data/homeDashboard'
 import { StatusPill, type StatusPillTone } from '@/pages/agent-run/StatusPill'
 import { routePaths } from '@/routes'
 import { HomeSectionHeader } from './HomeSectionHeader'
-import { toPreviewText } from './previewText'
+import { toPreviewText } from '@/lib/previewText'
 
 const runStatusTones: Record<RecentRunStatus, StatusPillTone> = {
   'Needs you': 'amber',

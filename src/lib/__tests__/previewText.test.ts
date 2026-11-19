@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { toPreviewText } from '@/pages/home-dashboard/previewText'
+import { toPreviewText } from '@/lib/previewText'
 
 describe('toPreviewText', () => {
   it('leaves plain one-line text as it is', () => {

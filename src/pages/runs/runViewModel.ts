@@ -1,6 +1,8 @@
 import type { Run, RunEventRecord, RunFilter, RunStatus as BackendRunStatus, RunTrigger } from '@/api/types'
 import type { RunRecord, RunStatus as RunsScreenStatus, RunStep } from '@/data/runs'
 import { agentPath, routePaths, runReviewPath } from '@/routes'
+import { humanizeRunError } from '@/pages/agent-run/runErrorText'
+import { readPauseQuestion } from '@/pages/agent-run/runPauseQuestion'
 import { buildRunStepViews } from '@/pages/agent-run/runSteps'
 import { formatAiCost, formatClockTime, formatRunDay, formatRunDuration } from '@/pages/agent-run/runResultSummary'
 
@@ -10,7 +12,7 @@ import { formatAiCost, formatClockTime, formatRunDay, formatRunDuration } from '
  */
 
 /** Status filter chips of the Runs screen. */
-export type RunsStatusFilter = 'all' | Exclude<RunsScreenStatus, 'done'>
+export type RunsStatusFilter = 'all' | Exclude<RunsScreenStatus, 'done' | 'stopped'>
 
 const backendStatusByFilter: Record<Exclude<RunsStatusFilter, 'all'>, BackendRunStatus> = {
   needsYou: 'paused',
@@ -23,7 +25,8 @@ const screenStatusByBackendStatus: Record<BackendRunStatus, RunsScreenStatus> = 
   paused: 'needsYou',
   succeeded: 'done',
   failed: 'failed',
-  aborted: 'failed',
+  // The user stopped it: neutral "Stopped", not a failure.
+  aborted: 'stopped',
 }
 
 const startedByLabels: Record<RunTrigger, string> = {
@@ -67,16 +70,6 @@ function readOutputText(run: Run, key: string): string | null {
   return typeof outputValue === 'string' && outputValue.length > 0 ? outputValue : null
 }
 
-function readPauseQuestion(run: Run): string | null {
-  const pauseData = run.pauseReasons?.[0]?.data
-  if (typeof pauseData === 'string') return pauseData
-  if (pauseData && typeof pauseData === 'object') {
-    const question = (pauseData as Record<string, unknown>).question
-    if (typeof question === 'string') return question
-  }
-  return null
-}
-
 function buildTiming(run: Run, now: Date): string {
   const dayLabel = formatRunDay(run.startedAt, now)
   if (run.status === 'running') return `${dayLabel} · ${formatRunDuration(run.startedAt, now.toISOString())} so far`
@@ -97,6 +90,24 @@ function buildFollowUp(run: Run): RunRecord['followUp'] {
 }
 
 /**
+ * What the Result column says: the run's summary headline; else, for a failed run, the error in
+ * plain words (as on Home) with the raw text as the title; else the question a paused run asks;
+ * else a word for its status.
+ *
+ * @example
+ * describeRunResult(dnsFailedRun)
+ * // { result: "Could not reach the server: that address doesn't exist", resultTitle: 'connection: iteration item 0 failed: …' }
+ */
+export function describeRunResult(run: Run): Pick<RunRecord, 'result' | 'resultTitle'> {
+  const summary = readOutputText(run, 'summary')
+  if (summary) return { result: summary, resultTitle: summary }
+  if (run.status === 'failed' && run.errorMessage) return { result: humanizeRunError(run.errorMessage).summary, resultTitle: run.errorMessage }
+  const question = run.status === 'paused' ? readPauseQuestion(run) : null
+  if (question) return { result: question, resultTitle: question }
+  return { result: fallbackResultByStatus[run.status] }
+}
+
+/**
  * One table row (and the detail panel's header) for a backend run. Steps and the raw log come
  * from {@link withRunEvents}.
  *
@@ -105,14 +116,15 @@ function buildFollowUp(run: Run): RunRecord['followUp'] {
  * @param now - Reference time for "Today", "Yesterday" and "so far" (Date)
  */
 export function toRunRecord(run: Run, agentName: string, now: Date = new Date()): RunRecord {
-  const result = readOutputText(run, 'summary') ?? (run.status === 'failed' ? run.errorMessage : null) ?? fallbackResultByStatus[run.status]
+  const { result, resultTitle } = describeRunResult(run)
   return {
     id: run.id,
     agentId: run.agentId,
     agentName,
     startedBy: startedByLabels[run.trigger],
-    when: formatRunDay(run.startedAt, now).replace(/^Today /, ''),
+    when: formatRunDay(run.startedAt, now),
     result,
+    resultTitle,
     status: screenStatusByBackendStatus[run.status],
     timing: buildTiming(run, now),
     steps: [],

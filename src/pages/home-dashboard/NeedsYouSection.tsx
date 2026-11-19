@@ -1,7 +1,7 @@
 import { LinkButton, joinClassNames } from '@/components/ui'
 import type { AttentionItem } from '@/data/homeDashboard'
 import { HomeSectionHeader } from './HomeSectionHeader'
-import { toPreviewText } from './previewText'
+import { toPreviewText } from '@/lib/previewText'
 
 interface NeedsYouSectionProps {
   /** Null while runs are loading. */
