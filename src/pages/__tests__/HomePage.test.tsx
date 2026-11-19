@@ -2,12 +2,14 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { resetSampleAgents, sampleAgentsBackend } from '@/api/sampleBackend/agents'
+import { resetSampleBuilder, sampleBuilderBackend } from '@/api/sampleBackend/builder'
 import { resetSampleConversations } from '@/api/sampleBackend/conversations'
 import { resetSampleRuns, sampleRunsBackend } from '@/api/sampleBackend/runs'
 import { sampleRunSummaryBackend } from '@/api/sampleBackend/runSummary'
 import { resetSampleTriggers } from '@/api/sampleBackend/triggers'
 import { gettingStartedDismissedKey } from '@/pages/home-dashboard/gettingStarted'
 import { getGreetingForHour } from '@/pages/home-dashboard/greeting'
+import { GeneratingPage } from '@/pages/GeneratingPage'
 import { HomePage } from '@/pages/HomePage'
 import { agentPath, agentRoutePatterns, routePaths, runReviewPath } from '@/routes'
 
@@ -19,6 +21,7 @@ function renderHomePage() {
         <Route path={agentRoutePatterns.testRun} element={<p>Test run screen</p>} />
         <Route path={routePaths.batchApproval} element={<p>Review screen</p>} />
         <Route path={routePaths.runs} element={<p>Runs screen</p>} />
+        <Route path={routePaths.generating} element={<GeneratingPage />} />
       </Routes>
     </MemoryRouter>,
   )
@@ -27,6 +30,7 @@ function renderHomePage() {
 describe('HomePage', () => {
   beforeEach(() => {
     resetSampleAgents()
+    resetSampleBuilder()
     resetSampleRuns()
     resetSampleConversations()
     resetSampleTriggers()
@@ -185,5 +189,17 @@ describe('HomePage', () => {
     fireEvent.keyDown(within(mapsCard).getByRole('menu'), { key: 'Escape' })
     expect(within(mapsCard).queryByRole('menu')).not.toBeInTheDocument()
     expect(menuButton).toHaveFocus()
+  })
+
+  it('builds a new agent described on Home with the same flow as New agent', async () => {
+    const buildAgentSpy = vi.spyOn(sampleBuilderBackend, 'buildAgent')
+    renderHomePage()
+    const describeBox = screen.getByRole('region', { name: 'Describe a new agent' })
+    const buildButton = within(describeBox).getByRole('button', { name: 'Build agent' })
+    expect(buildButton).toBeDisabled()
+    fireEvent.change(within(describeBox).getByLabelText('What should your agent do?'), { target: { value: 'Find cafes and message them' } })
+    fireEvent.click(buildButton)
+    expect(await screen.findByText('Find cafes and message them')).toBeInTheDocument()
+    await waitFor(() => expect(buildAgentSpy).toHaveBeenCalledWith({ description: 'Find cafes and message them', kind: 'task' }, expect.any(Function)))
   })
 })

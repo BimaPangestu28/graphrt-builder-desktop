@@ -2,6 +2,7 @@ import type { Problem } from '@/api/problemTypes'
 import { AppShell } from '@/components/layout'
 import { useAgentNames } from '@/hooks/useAgentNames'
 import { AgentSummaryCards } from '@/pages/home-dashboard/AgentSummaryCards'
+import { DescribeAgentCard } from '@/pages/home-dashboard/DescribeAgentCard'
 import { deriveGettingStartedSteps, type GettingStartedStep } from '@/pages/home-dashboard/gettingStarted'
 import { GettingStartedCard } from '@/pages/home-dashboard/GettingStartedCard'
 import { getGreetingForHour } from '@/pages/home-dashboard/greeting'
@@ -41,7 +42,7 @@ function buildThisMonth({ runs, monthlyUsage }: HomeData): MonthlyNumbers | null
 /**
  * Screen 09 · Home.
  * The daily landing page: a greeting with how many things need the user and the next
- * scheduled run; "Getting started" until the first agent is tested and scheduled; "Needs you"
+ * scheduled run; a box to describe a new agent and start building it; "Getting started" until the first agent is tested and scheduled; "Needs you"
  * (approvals, waiting chats, failed latest runs, agents not set up, broken schedules, each with
  * one action); agent cards with their status and next step; the last few runs in plain words;
  * and this month's results.
@@ -61,6 +62,7 @@ export function HomePage() {
         <h1 className="m-0 text-[28px] font-semibold tracking-[-0.5px]">{greeting}</h1>
         <GreetingSubtitle needsYouCount={attentionItems ? attentionItems.length : null} nextRunLine={nextRunLine} />
       </div>
+      <DescribeAgentCard />
       <GettingStartedCard steps={buildGettingStartedSteps(homeData)} />
       <NeedsYouSection items={attentionItems} loadError={runsError} />
       <AgentSummaryCards agents={agents} loadError={agentsError} runs={runs} runStats={runStats} triggers={triggers} pluginRequirements={pluginRequirements} />
