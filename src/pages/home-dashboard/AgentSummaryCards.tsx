@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { PluginRequirement } from '@/api/pluginRequirementTypes'
 import type { AgentRunStats } from '@/api/runSummaryTypes'
@@ -10,6 +11,8 @@ import { describeAgentCardState, type AgentCardAction } from './agentCardState'
 import { describeAgentSchedule } from './homeSummaryLines'
 import { describeAgentRunStats } from './homeViewModel'
 import { describePluginGap } from './needsYou'
+import { DeleteConfirmation, RenameForm } from '@/pages/agent-builder/AgentIdentityHeader'
+import { AgentCardMenu } from './AgentCardMenu'
 import { RunNowButton } from './RunNowButton'
 
 interface AgentCardData {
@@ -61,16 +64,29 @@ function AgentSummaryCard(cardData: AgentCardData) {
   const { agent, agentTriggers, latestRun, pluginRequirements } = cardData
   const cardState = describeAgentCardState(agent, agentTriggers, latestRun)
   const facts = describeFacts(cardData)
+  const [cardMode, setCardMode] = useState<'view' | 'rename' | 'delete'>('view')
   return (
     <article aria-label={agent.name} className="flex flex-col gap-3 rounded-[14px] border border-line bg-surface p-[18px]">
-      <div className="flex items-start justify-between gap-2">
-        <Link to={agentPath('builder', agent.id)} className="font-semibold !text-ink no-underline hover:underline">
-          {agent.name}
-        </Link>
-        <StatusPill tone={cardState.chipTone} size="card">
-          {cardState.chipLabel}
-        </StatusPill>
-      </div>
+      {cardMode === 'rename' ? (
+        // The agent list reloads after a rename (notifyAgentsChanged), so nothing else to refresh here.
+        <RenameForm agent={agent} onDone={() => setCardMode('view')} onRenamed={() => undefined} />
+      ) : (
+        <div className="flex items-start justify-between gap-2">
+          <Link to={agentPath('builder', agent.id)} className="min-w-0 font-semibold !text-ink no-underline hover:underline">
+            {agent.name}
+          </Link>
+          <div className="flex shrink-0 items-center gap-1">
+            <StatusPill tone={cardState.chipTone} size="card">
+              {cardState.chipLabel}
+            </StatusPill>
+            <AgentCardMenu agent={agent} onRename={() => setCardMode('rename')} onDelete={() => setCardMode('delete')} />
+          </div>
+        </div>
+      )}
+      {cardMode === 'delete' && (
+        // The card disappears once the agent list reloads after deleting.
+        <DeleteConfirmation agent={agent} onCancel={() => setCardMode('view')} onDeleted={() => setCardMode('view')} />
+      )}
       {agent.description && (
         <p title={agent.description} className="m-0 line-clamp-2 text-body">
           {agent.description}
