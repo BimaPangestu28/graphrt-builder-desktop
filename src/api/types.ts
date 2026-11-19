@@ -212,6 +212,8 @@ export type BackendErrorCode =
   | 'database'
   | 'credentials'
   | 'missing_credentials'
+  /** start_run: the workflow uses plugins that are not installed, trusted or set up yet. */
+  | 'missing_plugins'
   | 'workflow'
   | 'model'
   | 'schedule'
