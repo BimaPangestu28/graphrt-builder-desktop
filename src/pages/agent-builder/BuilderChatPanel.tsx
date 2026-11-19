@@ -1,8 +1,9 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import type { Agent, FlowStep } from '@/api/types'
 import { StrokeIcon, VisuallyHidden } from '@/components/ui'
 import { PanelHeader, UserChatBubble } from './ChatBubbles'
 import { describeDraftActivity } from './draftActivity'
+import type { BuilderAskDraft } from './useBuilderAskDraft'
 import { CompactDraftStepList } from './DraftPreviewParts'
 import type { ChatExchange, LatestRevision } from './useAgentRevisions'
 import type { PluginSetupAnchor } from './usePluginSetupPlacement'
@@ -114,9 +115,23 @@ function ChangeReply({ exchange, steps, undoableRevision, isBusy, onToggleUndo }
   )
 }
 
+interface ChangeRequestFormProps {
+  isBusy: boolean
+  onSubmitRequest: (request: string) => void
+  /** Request to put in the box for the user to review and send (never sent by itself). */
+  askDraft?: BuilderAskDraft | null
+}
+
 /** Prompt box at the bottom of the chat column. */
-function ChangeRequestForm({ isBusy, onSubmitRequest }: { isBusy: boolean; onSubmitRequest: (request: string) => void }) {
+function ChangeRequestForm({ isBusy, onSubmitRequest, askDraft }: ChangeRequestFormProps) {
   const [draftRequest, setDraftRequest] = useState('')
+  const promptRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    if (!askDraft) return
+    setDraftRequest(askDraft.text)
+    promptRef.current?.focus()
+  }, [askDraft])
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -133,6 +148,7 @@ function ChangeRequestForm({ isBusy, onSubmitRequest }: { isBusy: boolean; onSub
       </label>
       <div className="flex items-end gap-3 rounded-[14px] border border-line-strong py-3 pr-3 pl-4">
         <textarea
+          ref={promptRef}
           id="prompt"
           rows={2}
           value={draftRequest}
@@ -169,11 +185,13 @@ interface BuilderChatPanelProps {
   pluginSetupMessage?: ReactNode
   /** "opening": first builder message · exchange id: under that revision's reply · null: not shown. */
   pluginSetupAnchor?: PluginSetupAnchor | null
+  /** Request to prefill in the prompt box (from the `ask` search param), left for the user to send. */
+  askDraft?: BuilderAskDraft | null
 }
 
 /** Left column of screen 04: the build conversation plus a box to ask for more changes. */
 export function BuilderChatPanel(props: BuilderChatPanelProps) {
-  const { agent, steps, modelName, exchanges, latestRevision, isBusy, undoErrorMessage, onSubmitRequest, onToggleUndo, pluginSetupMessage, pluginSetupAnchor } = props
+  const { agent, steps, modelName, exchanges, latestRevision, isBusy, undoErrorMessage, onSubmitRequest, onToggleUndo, pluginSetupMessage, pluginSetupAnchor, askDraft } = props
   return (
     <section aria-label="Chat" className="box-border flex min-w-0 flex-[1_1_380px] flex-col border-r border-line bg-surface">
       <PanelHeader className="justify-between">
@@ -207,7 +225,7 @@ export function BuilderChatPanel(props: BuilderChatPanelProps) {
           </p>
         )}
       </div>
-      <ChangeRequestForm isBusy={isBusy || !agent} onSubmitRequest={onSubmitRequest} />
+      <ChangeRequestForm isBusy={isBusy || !agent} onSubmitRequest={onSubmitRequest} askDraft={askDraft} />
     </section>
   )
 }

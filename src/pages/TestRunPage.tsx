@@ -173,7 +173,7 @@ function TestRunScreen({ agentId, agent, runId, flowSummary }: TestRunScreenProp
         >
           <RunTitleRow meta={buildRunHeaderMeta(run, steps, now)} status={<RunStatusPill run={run} />} />
           {visibleError && <RunErrorNotice title="Something went wrong with this test" error={visibleError} />}
-          <StepProgressList steps={steps} now={now} fixPath={agentPath('builder', agentId)} />
+          <StepProgressList steps={steps} now={now} fixAgentId={agentId} />
           {firstApproval && (
             <div ref={approvalCardRef} id="approval-card" tabIndex={-1} className="rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-amber">
               <ApprovalCard

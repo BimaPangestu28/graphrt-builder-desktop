@@ -44,7 +44,7 @@ export function RunDetailPanel({ run, stepViews, now, onClose }: RunDetailPanelP
         </button>
       </div>
 
-      {stepViews.length > 0 && <StepProgressList steps={stepViews} now={now} fixPath={run.agentId ? agentPath('builder', run.agentId) : null} />}
+      {stepViews.length > 0 && <StepProgressList steps={stepViews} now={now} fixAgentId={run.agentId} />}
 
       <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface p-3.5">
         <span className="text-[12px] font-medium text-muted">Output</span>

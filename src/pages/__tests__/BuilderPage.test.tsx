@@ -6,15 +6,17 @@ import { resetSampleBuilder, sampleBuilderBackend, sampleBuildTiming } from '@/a
 import { isSampleWorkflowSecretConfigured, resetSampleCredentials, sampleCredentialsBackend } from '@/api/sampleBackend/credentials'
 import { resetSamplePlugins, samplePluginsBackend, setSampleAgentPluginNeeds, setSampleBrowserRuntimeStatus } from '@/api/sampleBackend/plugins'
 import type { BuildProgress, WorkflowSecretStatus } from '@/api/types'
-import { agentPath, agentRoutePatterns, routePaths } from '@/routes'
+import { agentPath, agentRoutePatterns, builderAskParam, routePaths } from '@/routes'
+import { LocationProbe } from '@/test/runTestUtils'
 import { BuilderPage } from '../BuilderPage'
 
-function renderBuilderPage(agentId = 'maps-leads') {
+function renderBuilderPage(agentId = 'maps-leads', query?: Record<string, string>) {
   return render(
-    <MemoryRouter initialEntries={[agentPath('builder', agentId)]}>
+    <MemoryRouter initialEntries={[agentPath('builder', agentId, query)]}>
       <Routes>
         <Route path={agentRoutePatterns.builder} element={<BuilderPage />} />
       </Routes>
+      <LocationProbe />
     </MemoryRouter>,
   )
 }
@@ -270,5 +272,29 @@ describe('BuilderPage', () => {
     expect(await screen.findByRole('button', { name: 'Undo' })).toBeInTheDocument()
     expect(listSpy).toHaveBeenCalledTimes(2)
     expect(within(screen.getByRole('region', { name: 'Chat' })).queryByRole('group')).not.toBeInTheDocument()
+  })
+
+  it('prefills the chat box from the ask param without sending it, and drops the param', async () => {
+    const reviseAgentSpy = vi.spyOn(sampleBuilderBackend, 'reviseAgent')
+    const fixRequest = 'The step "Search Google Maps" (search_maps) failed with: http: 403 Forbidden. Please fix this step.'
+    renderBuilderPage('maps-leads', { [builderAskParam]: fixRequest })
+    await screen.findByText('Write a short message')
+
+    const prompt = screen.getByLabelText('Describe a change')
+    expect(prompt).toHaveValue(fixRequest)
+    expect(prompt).toHaveFocus()
+    expect(screen.getByLabelText('Current location')).toHaveTextContent(/^\/agents\/maps-leads\/steps$/)
+    expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled()
+    expect(reviseAgentSpy).not.toHaveBeenCalled()
+    expect(screen.queryByText(fixRequest, { selector: 'div' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    expect(reviseAgentSpy).toHaveBeenCalledWith('maps-leads', fixRequest, expect.any(Function))
+  })
+
+  it('leaves the chat box empty without an ask param', async () => {
+    renderBuilderPage()
+    await screen.findByText('Write a short message')
+    expect(screen.getByLabelText('Describe a change')).toHaveValue('')
   })
 })

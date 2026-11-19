@@ -14,6 +14,7 @@ import { BuilderChatPanel } from './agent-builder/BuilderChatPanel'
 import { listBuilderRequirements, listPluginSetupRequirements } from './agent-builder/builderRequirements'
 import { focusPluginSetupMessage, PluginRequirementsMessage } from './agent-builder/PluginRequirementsMessage'
 import { useAgentRevisions } from './agent-builder/useAgentRevisions'
+import { useBuilderAskDraft } from './agent-builder/useBuilderAskDraft'
 import { usePluginSetup } from './agent-builder/usePluginSetup'
 import { usePluginSetupPlacement } from './agent-builder/usePluginSetupPlacement'
 
@@ -44,7 +45,8 @@ function AgentPanelMessage({ children }: { children: string }) {
  * last one, highlighting the steps it changed), and on the right the steps, the
  * connections and plugins it needs, and the History / Schedule / Test actions. Plugins are
  * approved, downloaded and set up in the chat (a card on open and after revisions that add
- * them); while they are not ready, Test brings that card up instead of starting.
+ * them); while they are not ready, Test brings that card up instead of starting. An `?ask=`
+ * request ("Ask the builder to fix this step") is prefilled in the chat box, not sent.
  */
 export function BuilderPage() {
   const agentId = useParams().agentId ?? sampleAgentId
@@ -60,6 +62,7 @@ export function BuilderPage() {
     },
     [reloadWorkflowSecrets],
   )
+  const askDraft = useBuilderAskDraft()
   const pluginSetup = usePluginSetup(agentId)
   const pluginSetupPlacement = usePluginSetupPlacement(agentId, pluginSetup)
   const { placeAfterRevision, ensurePlaced } = pluginSetupPlacement
@@ -106,6 +109,7 @@ export function BuilderPage() {
         onSubmitRequest={(request) => void revisions.sendChangeRequest(request)}
         onToggleUndo={() => void revisions.toggleUndo()}
         pluginSetupAnchor={pluginSetupPlacement.anchor}
+        askDraft={askDraft}
         pluginSetupMessage={<PluginRequirementsMessage ref={pluginSetupMessageRef} setup={pluginSetup} />}
       />
       {agent ? (
