@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import type { Agent, FlowSummary } from '@/api/types'
 import { joinClassNames } from '@/components/ui'
 import { agentPath } from '@/routes'
+import { AgentIdentityHeader } from './AgentIdentityHeader'
 import { AgentRequirementsList, type BuilderRequirement } from './AgentRequirementsList'
 import { BuilderStepCard } from './BuilderStepCard'
 
@@ -118,10 +119,21 @@ interface BuilderAgentPanelProps {
   onSaveSecret?: (secretName: string, value: string) => Promise<void>
   /** Installs a plugin the steps use from the "Needs" box. */
   onInstallPlugin?: (pluginName: string) => Promise<void>
+  /** Reloads the agent after it was renamed. */
+  onAgentRenamed?: () => Promise<void> | void
 }
 
 /** Right column of screen 04: tabs, actions, the agent's steps and what it needs connected. */
-export function BuilderAgentPanel({ agent, flowSummary, flowSummaryError, highlightedStepIds, requirements, onSaveSecret, onInstallPlugin }: BuilderAgentPanelProps) {
+export function BuilderAgentPanel({
+  agent,
+  flowSummary,
+  flowSummaryError,
+  highlightedStepIds,
+  requirements,
+  onSaveSecret,
+  onInstallPlugin,
+  onAgentRenamed,
+}: BuilderAgentPanelProps) {
   const [activeTab, setActiveTab] = useState<BuilderTabKey>('steps')
 
   return (
@@ -133,7 +145,7 @@ export function BuilderAgentPanel({ agent, flowSummary, flowSummaryError, highli
 
       <div role="tabpanel" id={`builder-panel-${activeTab}`} aria-labelledby={`builder-tab-${activeTab}`} className="flex flex-col gap-6 p-6">
         <div className="flex flex-col gap-1">
-          <h1 className="m-0 text-[22px] font-semibold">{agent.name}</h1>
+          <AgentIdentityHeader agent={agent} onRenamed={onAgentRenamed ?? (() => undefined)} />
           <span className="text-body">Runs on this Mac · started by hand</span>
         </div>
         {activeTab === 'steps' && (

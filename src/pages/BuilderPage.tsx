@@ -103,6 +103,7 @@ export function BuilderPage() {
           requirements={requirements}
           onSaveSecret={saveWorkflowSecret}
           onInstallPlugin={installStepPlugin}
+          onAgentRenamed={reloadAgent}
         />
       ) : (
         <AgentPanelMessage>{agentState.error ? `Could not load this agent: ${describeError(agentState.error)}` : 'Loading agent…'}</AgentPanelMessage>
