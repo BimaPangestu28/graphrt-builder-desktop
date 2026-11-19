@@ -205,6 +205,23 @@ export interface RevisionResult {
   explanation: string
 }
 
+/** One saved message of an agent's builder chat (mirrors `storage::models::BuilderMessage`). */
+export interface BuilderMessage {
+  id: string
+  agentId: string
+  /** `user`: a change request · `builder`: a reply (a finished change, a restore, or why a change failed). */
+  role: 'user' | 'builder'
+  /** The request, the change summary, or the error message of a failed change. */
+  text: string
+  /** The model's own words about the change; null when it said nothing. */
+  explanation: string | null
+  status: 'done' | 'failed'
+  versionBefore: number | null
+  versionAfter: number | null
+  changedStepIds: string[]
+  createdAt: string
+}
+
 /** Error returned by every command: `{ code, message }`. */
 export type BackendErrorCode =
   | 'not_found'

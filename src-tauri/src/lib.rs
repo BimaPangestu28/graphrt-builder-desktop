@@ -179,6 +179,7 @@ pub fn run() {
             commands::mcp::test_mcp_server,
             commands::builder::build_agent,
             commands::builder::revise_agent,
+            commands::builder::list_builder_messages,
             commands::builder::get_flow_summary,
             commands::runs::start_run,
             commands::runs::resume_run,

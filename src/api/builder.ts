@@ -1,6 +1,6 @@
 import { callBackend, createProgressChannel, isDesktopApp } from './client'
 import { sampleBuilderBackend } from './sampleBackend/builder'
-import type { Agent, BuildProgress, BuildRequest, FlowSummary, RevisionResult } from './types'
+import type { Agent, BuilderMessage, BuildProgress, BuildRequest, FlowSummary, RevisionResult } from './types'
 
 /** Drafting agents from plain language and reading their steps. */
 
@@ -26,4 +26,16 @@ export async function reviseAgent(agentId: string, instruction: string, onProgre
 export function getFlowSummary(agentId: string): Promise<FlowSummary> {
   if (!isDesktopApp()) return sampleBuilderBackend.getFlowSummary(agentId)
   return callBackend('get_flow_summary', { agentId })
+}
+
+/**
+ * The agent's saved builder chat (change requests and the builder's replies), oldest first.
+ *
+ * @param agentId - Agent whose chat to read (string)
+ * @returns Saved messages, oldest first (BuilderMessage[])
+ * @throws BackendError - `not_found` for an unknown agent
+ */
+export function listBuilderMessages(agentId: string): Promise<BuilderMessage[]> {
+  if (!isDesktopApp()) return sampleBuilderBackend.listBuilderMessages(agentId)
+  return callBackend('list_builder_messages', { agentId })
 }

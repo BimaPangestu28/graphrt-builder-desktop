@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { resetSampleAgents, sampleAgentsBackend } from '@/api/sampleBackend/agents'
 import { resetSampleBuilder, sampleBuilderBackend, sampleBuildTiming } from '@/api/sampleBackend/builder'
+import { appendStoredBuilderMessages } from '@/api/sampleBackend/sampleAgentStore'
 import { isSampleWorkflowSecretConfigured, resetSampleCredentials, sampleCredentialsBackend } from '@/api/sampleBackend/credentials'
 import { resetSamplePlugins, samplePluginsBackend, setSampleAgentPluginNeeds, setSampleBrowserRuntimeStatus } from '@/api/sampleBackend/plugins'
 import type { BuildProgress, WorkflowSecretStatus } from '@/api/types'
@@ -166,6 +167,45 @@ describe('BuilderPage', () => {
     await sendChange('Make it friendlier')
     expect(await screen.findByText('Could not change the agent: The model is not reachable')).toBeInTheDocument()
     expect(screen.queryByText('Changed just now')).not.toBeInTheDocument()
+  })
+
+  it('shows the saved chat again after reopening the builder, without Undo on old changes', async () => {
+    const firstVisit = renderBuilderPage()
+    await screen.findByText('Write a short message')
+    await sendChange('Skip places with fewer than 50 reviews')
+    expect(await screen.findByText('Changed just now')).toBeInTheDocument()
+    const liveExplanation = within(screen.getByRole('region', { name: 'Chat' })).getByText(/^I added/).textContent
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+    expect(await screen.findByRole('button', { name: 'Redo' })).toBeInTheDocument()
+    firstVisit.unmount()
+
+    renderBuilderPage()
+    await screen.findByText('Write a short message')
+    const chat = screen.getByRole('region', { name: 'Chat' })
+    expect(await within(chat).findByText('Skip places with fewer than 50 reviews')).toBeInTheDocument()
+    expect(within(chat).getByText(liveExplanation!)).toBeInTheDocument()
+    expect(within(chat).getByText('Restored version 7')).toBeInTheDocument()
+    expect(within(chat).getAllByText('Skip places with fewer than 50 reviews')).toHaveLength(1)
+    expect(within(chat).queryByRole('button', { name: /Undo|Redo/ })).not.toBeInTheDocument()
+
+    await sendChange('Make it shorter')
+    expect(await within(chat).findByRole('button', { name: 'Undo' })).toBeInTheDocument()
+    expect(within(chat).getAllByText('Skip places with fewer than 50 reviews')).toHaveLength(1)
+    expect(within(chat).getAllByText('Make it shorter')).toHaveLength(1)
+  })
+
+  it('shows a saved build explanation and saved failed changes when the builder opens', async () => {
+    appendStoredBuilderMessages('maps-leads', [
+      { role: 'builder', text: 'Your agent is ready', explanation: 'This agent finds places on Google Maps.', status: 'done', versionBefore: null, versionAfter: 1, changedStepIds: [] },
+      { role: 'user', text: 'Make it friendlier', explanation: null, status: 'done', versionBefore: 7, versionAfter: null, changedStepIds: [] },
+      { role: 'builder', text: 'model error: the model is not reachable', explanation: null, status: 'failed', versionBefore: 7, versionAfter: null, changedStepIds: [] },
+    ])
+    renderBuilderPage()
+    const chat = screen.getByRole('region', { name: 'Chat' })
+    expect(await within(chat).findByText('This agent finds places on Google Maps.')).toBeInTheDocument()
+    expect(within(chat).queryByText('Your agent is ready')).not.toBeInTheDocument()
+    expect(within(chat).getByText('Make it friendlier')).toBeInTheDocument()
+    expect(within(chat).getByText('Could not change the agent: model error: the model is not reachable')).toHaveClass('text-danger')
   })
 
   it('shows a quiet message for an unknown agent', async () => {

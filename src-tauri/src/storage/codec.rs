@@ -8,7 +8,9 @@
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef};
 use rusqlite::{Row, ToSql};
 
-use super::models::{AgentKind, AgentStatus, MissedRunPolicy, RunStatus, RunTrigger};
+use super::models::{
+    AgentKind, AgentStatus, BuilderMessageRole, BuilderMessageStatus, MissedRunPolicy, RunStatus, RunTrigger,
+};
 
 /// Implements `ToSql`/`FromSql` for a fieldless enum as a TEXT column, with
 /// an `as_db_text` helper so SQL literals can be built from the same table.
@@ -75,6 +77,16 @@ text_enum_column!(MissedRunPolicy {
     Skip => "skip",
 });
 
+text_enum_column!(BuilderMessageRole {
+    User => "user",
+    Builder => "builder",
+});
+
+text_enum_column!(BuilderMessageStatus {
+    Done => "done",
+    Failed => "failed",
+});
+
 /// Serializes a JSON value for a TEXT column.
 pub(crate) fn json_to_text(value: &serde_json::Value) -> String {
     value.to_string()
@@ -126,6 +138,12 @@ mod tests {
         }
         for policy in [MissedRunPolicy::RunOnce, MissedRunPolicy::Skip] {
             assert_matches_serde(policy, policy.as_db_text());
+        }
+        for role in [BuilderMessageRole::User, BuilderMessageRole::Builder] {
+            assert_matches_serde(role, role.as_db_text());
+        }
+        for status in [BuilderMessageStatus::Done, BuilderMessageStatus::Failed] {
+            assert_matches_serde(status, status.as_db_text());
         }
     }
 

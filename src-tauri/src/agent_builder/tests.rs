@@ -506,3 +506,100 @@ async fn a_catalog_plugin_step_missing_a_required_field_is_sent_back() {
     assert!(problem.unwrap_err().contains("`body`"));
     assert!(accepted.is_ok());
 }
+
+/// [`revise_agent_from_chat`] with an explicit model.
+async fn revise_from_chat(
+    db: &Database,
+    builder: &BuilderModel,
+    agent_id: &str,
+    instruction: &str,
+) -> AppResult<RevisionResult> {
+    let revision = revise_agent_with_model(db, builder, agent_id, instruction, &|_| {});
+    history::revise_with_chat_history(db, agent_id, instruction, revision).await
+}
+
+#[tokio::test]
+async fn a_chat_revision_saves_the_request_and_the_builders_reply() {
+    use crate::storage::models::{BuilderMessageRole, BuilderMessageStatus};
+    let db = test_database();
+    let agent = create_cafe_agent(&db);
+    let reply = format!("I shortened the message.\n```yaml\n{}```\n", revised_approval_loop());
+    let (_mock, builder) = mock_builder(&[reply]);
+
+    let result = revise_from_chat(&db, &builder, &agent.id, "  Make the messages shorter ").await.unwrap();
+
+    let messages = db.list_builder_messages(&agent.id).unwrap();
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].role, BuilderMessageRole::User);
+    assert_eq!(messages[0].text, "Make the messages shorter");
+    assert_eq!(messages[0].version_before, Some(1));
+    assert_eq!(messages[1].role, BuilderMessageRole::Builder);
+    assert_eq!(messages[1].status, BuilderMessageStatus::Done);
+    assert_eq!(messages[1].text, result.summary);
+    assert_eq!(messages[1].explanation.as_deref(), Some("I shortened the message."));
+    assert_eq!(messages[1].changed_step_ids, result.changed_step_ids);
+    assert_eq!((messages[1].version_before, messages[1].version_after), (Some(1), Some(2)));
+}
+
+#[tokio::test]
+async fn a_failed_chat_revision_saves_the_request_and_the_error() {
+    use crate::storage::models::BuilderMessageStatus;
+    let db = test_database();
+    let agent = create_cafe_agent(&db);
+    let (mock, builder) = mock_builder(&[]);
+    mock.push_error(LlmError::Config("offline".into()));
+
+    let result = revise_from_chat(&db, &builder, &agent.id, "Make it friendlier").await;
+
+    let error = result.unwrap_err();
+    let messages = db.list_builder_messages(&agent.id).unwrap();
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].text, "Make it friendlier");
+    assert_eq!(messages[1].status, BuilderMessageStatus::Failed);
+    assert_eq!(messages[1].text, error.to_string());
+    assert_eq!((messages[1].version_before, messages[1].version_after), (Some(1), None));
+    assert_eq!(db.get_agent(&agent.id).unwrap().current_version, 1);
+}
+
+#[tokio::test]
+async fn revisions_outside_the_chat_save_no_messages() {
+    let db = test_database();
+    let agent = create_cafe_agent(&db);
+    let (_mock, builder) = mock_builder(&[format!("```yaml\n{}```", revised_approval_loop())]);
+
+    revise_agent_with_model(&db, &builder, &agent.id, "Add a step", &|_| {}).await.unwrap();
+
+    assert!(db.list_builder_messages(&agent.id).unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_build_saves_the_builders_explanation() {
+    let db = test_database();
+    let reply = format!("This agent answers questions.\n{}", fenced_reply("Quick answers", SIMPLE_ANSWER));
+    let (_mock, builder) = mock_builder(&[reply]);
+
+    let agent = build_agent_with_model(&db, &builder, request("Answer a question", None), &|_| {}).await.unwrap();
+
+    let messages = db.list_builder_messages(&agent.id).unwrap();
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].text, history::BUILD_REPLY_TEXT);
+    assert_eq!(messages[0].explanation.as_deref(), Some("This agent answers questions."));
+    assert_eq!((messages[0].version_before, messages[0].version_after), (None, Some(1)));
+}
+
+#[test]
+fn a_restore_that_adds_a_version_is_noted_in_the_chat() {
+    let db = test_database();
+    let agent = create_cafe_agent(&db);
+    let revised = db.update_agent_flow(&agent.id, &revised_approval_loop(), "Changed").unwrap();
+
+    let restored = db.restore_agent_version(&agent.id, 1).unwrap();
+    history::record_restore(&db, &revised, &restored, 1);
+    let unchanged = db.restore_agent_version(&agent.id, 1).unwrap();
+    history::record_restore(&db, &restored, &unchanged, 1);
+
+    let messages = db.list_builder_messages(&agent.id).unwrap();
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].text, "Restored version 1");
+    assert_eq!((messages[0].version_before, messages[0].version_after), (Some(2), Some(3)));
+}
