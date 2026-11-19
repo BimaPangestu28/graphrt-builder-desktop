@@ -4,16 +4,51 @@ Thanks for helping improve graphrt desktop.
 
 ## Setup
 
-You need Node.js 22+, pnpm 10+ and a stable Rust toolchain (1.77.2 or newer),
-plus the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for
-your platform (Xcode Command Line Tools on macOS). Then:
+graphrt desktop runs on macOS, Windows and Linux, and every change should keep
+working on all three. You need Node.js 22+, pnpm 10+ and a stable Rust toolchain
+(1.90 or newer), plus the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
+for your system:
+
+- **macOS**: Xcode Command Line Tools (`xcode-select --install`).
+- **Windows**: Microsoft C++ Build Tools with "Desktop development with C++",
+  WebView2 (preinstalled on Windows 11) and Git for Windows. Run
+  `scripts/fetch-node.sh` from Git Bash (it needs bash, curl, unzip or
+  PowerShell, and gpg, all included); `pnpm` commands work in any shell.
+- **Linux** (Debian / Ubuntu 22.04+; package names for other distributions are on
+  the Tauri page; add the D-Bus headers for the Secret Service keyring):
+  ```sh
+  sudo apt install build-essential pkg-config file patchelf libwebkit2gtk-4.1-dev \
+    libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev libdbus-1-dev
+  ```
+  Running the app (and the ignored keyring test) needs a Secret Service such as
+  GNOME Keyring; the tray icon needs AppIndicator support in your desktop.
+
+Then:
 
 ```sh
 pnpm install
-scripts/fetch-node.sh   # bundled Node.js sidecar (see below)
+scripts/fetch-node.sh   # bundled Node.js sidecar (see below); Windows: in Git Bash
 pnpm dev:desktop   # desktop window with hot reload
 pnpm dev           # interface only, in the browser at http://localhost:5173
 ```
+
+### Writing cross-platform code
+
+- **Copy**: say "this computer", not "this Mac". Where the system's own name
+  helps, use `src/lib/platform.ts` (`getCredentialStoreName()` for macOS Keychain /
+  Windows Credential Manager / your system keyring, `getTrayAreaName()` for menu
+  bar / system tray, `getFileManagerName()`, `formatShortcut('Enter')` for
+  ⌘+Enter / Ctrl+Enter). Tests run with a macOS user agent (`src/test/setup.ts`);
+  spy on `navigator.userAgent` to check another system.
+- **Rust**: put OS-specific code behind `cfg(target_os = ...)` / `cfg(windows)`
+  with a working fallback for the other systems (see `src-tauri/src/desktop/keep_awake.rs`),
+  build paths with `Path::join` and Tauri's path API (never hard-coded `/` or
+  `~/Library`), and start console programs on Windows without a console window.
+- CI runs clippy and `cargo test` on macOS, Windows and Ubuntu, so `cfg` code for
+  each system is compiled there even if you only have one machine. Locally you
+  can at least check std-only code for another target with
+  `rustup target add x86_64-pc-windows-msvc` and `cargo check --target ...` on a
+  small crate; the full app needs the target's system libraries.
 
 Open `#/screens` to jump to any screen.
 
@@ -25,7 +60,9 @@ downloads the version pinned in `scripts/node-version` from nodejs.org, checks i
 against `SHASUMS256.txt` (whose signature is verified against pinned Node.js
 release keys when `gpg` is installed; CI makes gpg mandatory with
 `GRAPHRT_REQUIRE_NODE_SIGNATURE=1`) and writes `src-tauri/binaries/graphrt-node-<triple>[.exe]`
-(gitignored). The default target is the host; `universal-apple-darwin` fetches
+(gitignored). Supported targets: `aarch64-apple-darwin`, `x86_64-apple-darwin`,
+`universal-apple-darwin`, `x86_64-pc-windows-msvc`, `aarch64-pc-windows-msvc`,
+`x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu`. The default target is the host; `universal-apple-darwin` fetches
 both macOS arches and lipo's them into `node-universal-apple-darwin`, which Tauri
 needs for `--target universal-apple-darwin`.
 
@@ -46,6 +83,7 @@ pnpm test
 pnpm build
 cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
 ## Project layout
@@ -111,7 +149,8 @@ when a `vX.Y.Z` tag is pushed.
 5. The workflow checks that every version equals the tag
    (`scripts/check-version.sh v0.2.0`), creates a **draft** release with the
    CHANGELOG section as its body, builds macOS (universal `.dmg` and `.app.tar.gz`),
-   Windows (`.msi`, NSIS `.exe`) and Linux (`.AppImage`, `.deb`) bundles, and
+   Windows x64 (`.msi`, NSIS `.exe`) and Linux x64 and arm64 (`.AppImage`, `.deb`,
+   `.rpm`) bundles, and
    attaches them with a `SHA256SUMS` file. Review the draft on GitHub and publish it.
 
 To rebuild an existing tag (for example after a failed job), run the Release
