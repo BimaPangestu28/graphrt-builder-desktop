@@ -61,16 +61,32 @@ pub(super) fn action_document(
     Ok(serde_json::to_string(&document)?)
 }
 
-/// Compiles and runs the action document with the snapshot's plugins and
-/// returns the action node's outputs.
+/// How an action ended: the action node's outputs, plus the error kind the node failed
+/// with (e.g. `auth_error`) so callers can tell why it failed.
+pub(super) struct ActionOutcome {
+    pub result: AppResult<serde_json::Map<String, serde_json::Value>>,
+    pub failure_type: Option<String>,
+}
+
+/// Compiles and runs the action document with the snapshot's plugins.
 ///
-/// # Errors
-/// `Workflow` when graphrt rejects the settings, `Internal` when the step fails
-/// or takes longer than [`ACTION_TIMEOUT`].
+/// `result` is `Workflow` when graphrt rejects the settings, `Internal` when the
+/// step fails or takes longer than [`ACTION_TIMEOUT`].
 pub(super) async fn run_action(
     snapshot: &PluginSnapshot,
     base_registry: graphrt_core::Registry,
     document: &str,
+) -> ActionOutcome {
+    let mut failure_type = None;
+    let result = run_action_graph(snapshot, base_registry, document, &mut failure_type).await;
+    ActionOutcome { result, failure_type }
+}
+
+async fn run_action_graph(
+    snapshot: &PluginSnapshot,
+    base_registry: graphrt_core::Registry,
+    document: &str,
+    failure_type: &mut Option<String>,
 ) -> AppResult<serde_json::Map<String, serde_json::Value>> {
     let mut registry = base_registry;
     snapshot.register_nodes(&mut registry);
@@ -91,6 +107,9 @@ pub(super) async fn run_action(
             match event {
                 Event::NodeSucceeded { node_id, outputs: node_outputs, .. } if node_id == ACTION_NODE_ID => {
                     outputs = Some(node_outputs);
+                }
+                Event::NodeFailed { node_id, error_type, .. } if node_id == ACTION_NODE_ID => {
+                    *failure_type = Some(error_type);
                 }
                 Event::RunSucceeded { .. } => break,
                 Event::RunFailed { error, .. } => return Err(AppError::Internal(error)),

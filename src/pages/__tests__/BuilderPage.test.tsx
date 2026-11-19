@@ -277,8 +277,27 @@ describe('BuilderPage', () => {
     const card = await screen.findByRole('article', { name: 'whatsapp-web' })
     fireEvent.click(within(card).getByRole('button', { name: 'Install & trust whatsapp-web' }))
     const needsRow = (await screen.findByText('whatsapp-web plugin')).closest('li')!
+    // Installed and trusted is not enough: WhatsApp still has to be linked by QR code.
+    const linkButton = await within(needsRow).findByRole('button', { name: 'Link WhatsApp (scan QR code) for whatsapp-web plugin' })
+    expect(within(needsRow).getByText('Not linked')).toBeInTheDocument()
+    expect(within(needsRow).queryByText('Ready')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Test with 1 place/ })).not.toBeInTheDocument()
+
+    fireEvent.click(linkButton)
     expect(await within(needsRow).findByText('Ready')).toBeInTheDocument()
+    expect(within(needsRow).queryByText('Not linked')).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Test with 1 place/ })).toHaveAttribute('href', routePaths.testRun)
+  })
+
+  it('recognizes a WhatsApp session linked earlier without a new QR scan', async () => {
+    setSampleBrowserRuntimeStatus('installed')
+    setSampleAgentPluginNeeds('maps-leads', [{ pluginName: 'whatsapp-web', stepId: 'send_whatsapp' }])
+    await samplePluginsBackend.installPlugin('whatsapp-web')
+    await samplePluginsBackend.setPluginTrusted('whatsapp-web', true)
+    await samplePluginsBackend.runPluginAction('whatsapp-web', 'whatsapp-web.login', {})
+    renderBuilderPage()
+    const needsRow = (await screen.findByText('whatsapp-web plugin')).closest('li')!
+    expect(await within(needsRow).findByText('Ready')).toBeInTheDocument()
   })
 
   it('brings the setup card up instead of starting a test while plugins are not ready', async () => {

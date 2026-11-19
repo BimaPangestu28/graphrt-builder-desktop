@@ -51,6 +51,8 @@ function pluginRequirement(overrides: Partial<PluginRequirement> = {}): PluginRe
     trustNotNeeded: false,
     missingConfig: [],
     browserReady: true,
+    needsSession: false,
+    sessionLinked: true,
     ready: true,
     ...overrides,
   }
@@ -73,6 +75,16 @@ describe('listPluginSetupRequirements', () => {
   it('says what an installed plugin still misses', () => {
     expect(listPluginSetupRequirements([pluginRequirement({ trusted: false, ready: false })])[0]).toMatchObject({ pluginState: 'needs_setup', detail: 'Needs your trust' })
     expect(listPluginSetupRequirements([pluginRequirement({ missingConfig: ['WHATSAPP_ACCESS_TOKEN'], ready: false })])[0]).toMatchObject({ detail: 'Needs 1 setting' })
+  })
+
+  it('offers the QR link when an account link is all whatsapp-web still needs', () => {
+    const notLinked = pluginRequirement({ name: 'whatsapp-web', needsSession: true, sessionLinked: false, ready: false })
+    expect(listPluginSetupRequirements([notLinked])[0]).toMatchObject({ pluginName: 'whatsapp-web', pluginState: 'not_linked', isConnected: false, detail: undefined })
+    // Something else still missing comes first.
+    const untrusted = { ...notLinked, trusted: false }
+    expect(listPluginSetupRequirements([untrusted])[0]).toMatchObject({ pluginState: 'needs_setup', detail: 'Needs your trust' })
+    const linked = pluginRequirement({ name: 'whatsapp-web', needsSession: true, sessionLinked: true, ready: true })
+    expect(listPluginSetupRequirements([linked])[0]).toMatchObject({ pluginState: 'ready', isConnected: true })
   })
 
   it('is ready when the backend says so, and empty while loading', () => {

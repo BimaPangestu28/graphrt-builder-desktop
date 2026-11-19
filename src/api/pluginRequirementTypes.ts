@@ -3,6 +3,9 @@
  * user approves, installs and configures plugins right where the agent is being built.
  * Mirrors `plugins::requirements::PluginRequirement` in the backend.
  */
+/** Last known state of a session plugin's account (`check_plugin_session`). */
+export type PluginSessionState = 'linked' | 'not_linked' | 'unknown'
+
 export interface PluginRequirement {
   /** Plugin name, e.g. "whatsapp-api". */
   name: string
@@ -25,6 +28,10 @@ export interface PluginRequirement {
   missingConfig: string[]
   /** Chromium installed (always true when not needed). */
   browserReady: boolean
-  /** Installed, trusted if needed, settings set and browser ready: the agent can run. */
+  /** Only works with a linked account session (whatsapp-web: linked by scanning a QR code). */
+  needsSession: boolean
+  /** The session is known to be linked (always true when not needed). Never checked counts as not linked. */
+  sessionLinked: boolean
+  /** Installed, trusted if needed, settings set, browser ready and session linked: the agent can run. */
   ready: boolean
 }

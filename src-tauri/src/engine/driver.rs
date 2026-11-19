@@ -108,6 +108,7 @@ impl RunDriver {
         let is_terminal = event.is_terminal();
         let event_json = event_to_json(&event);
         self.store_event(state, &event_json);
+        self.note_plugin_session_failure(&event);
         let new_status = self.apply_terminal_event(&state.run_id, event);
         let status = new_status.unwrap_or(RunStatus::Running);
         self.sink.send(self.payload(&state.run_id, state.last_seq, status, event_json));
@@ -233,6 +234,25 @@ impl RunDriver {
     pub(super) fn fail_run(&self, run_id: &str, message: &str) {
         if let Some(status) = self.finish(run_id, RunStatus::Failed, None, Some(message)) {
             self.send_status(run_id, status);
+        }
+    }
+
+    /// A plugin step that failed because its account session is not linked (WhatsApp Web
+    /// before the QR scan) marks that session not linked, so the builder asks to link it.
+    fn note_plugin_session_failure(&self, event: &Event) {
+        let Event::NodeFailed { node_id, error_type, .. } = event else { return };
+        if !crate::plugins::session::is_session_error(error_type) {
+            return;
+        }
+        let flow_yaml = match self.db.get_agent(&self.agent_id) {
+            Ok(agent) => agent.flow_yaml,
+            Err(error) => {
+                log::warn!("could not read agent {} to check a failed step: {error}", self.agent_id);
+                return;
+            }
+        };
+        if let Some(node_kind) = crate::plugins::session::node_kind_in_flow(&flow_yaml, node_id) {
+            crate::plugins::session::record_step_failure(&self.db, &node_kind, error_type);
         }
     }
 

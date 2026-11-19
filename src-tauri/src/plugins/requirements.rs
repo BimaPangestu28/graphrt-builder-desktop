@@ -34,6 +34,11 @@ pub struct PluginRequirement {
     pub trust_not_needed: bool,
     pub missing_config: Vec<String>,
     pub browser_ready: bool,
+    /// The plugin only works with a linked account session (WhatsApp Web by QR code).
+    pub needs_session: bool,
+    /// The session is known to be linked (always true when not needed). A session never
+    /// checked counts as not linked.
+    pub session_linked: bool,
     pub ready: bool,
 }
 
@@ -88,6 +93,9 @@ pub(crate) struct RequirementSources<'a> {
     pub credentials: &'a CredentialStore,
     /// Whether Chromium is ready for the named plugin.
     pub browser_ready: &'a dyn Fn(&str) -> bool,
+    /// For plugins that need a linked account session (see `session.rs`): whether it is
+    /// known to be linked. `None` for plugins without a session.
+    pub session_linked: &'a dyn Fn(&str) -> Option<bool>,
 }
 
 /// One requirement per plugin whose node kinds `flow_yaml` uses, in the order
@@ -160,7 +168,11 @@ fn requirement(usage: PluginUsage, sources: &RequirementSources<'_>) -> AppResul
     // Settings and plaintext secrets only reach trusted plugins (see `host.rs`).
     let trust_not_needed = !permissions.secrets && permissions.env.is_empty();
     let browser_ready = !needs_browser || (sources.browser_ready)(name);
-    let ready = installed && (trusted || trust_not_needed) && missing_config.is_empty() && browser_ready;
+    let session_state = (sources.session_linked)(name);
+    let needs_session = session_state.is_some();
+    let session_linked = session_state.unwrap_or(true);
+    let ready =
+        installed && (trusted || trust_not_needed) && missing_config.is_empty() && browser_ready && session_linked;
     Ok(PluginRequirement {
         name: name.to_owned(),
         description,
@@ -177,6 +189,8 @@ fn requirement(usage: PluginUsage, sources: &RequirementSources<'_>) -> AppResul
         trust_not_needed,
         missing_config,
         browser_ready,
+        needs_session,
+        session_linked,
         ready,
     })
 }

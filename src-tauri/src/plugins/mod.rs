@@ -30,6 +30,7 @@ mod optional_settings;
 mod placeholder;
 mod prompt_guide;
 pub mod requirements;
+pub(crate) mod session;
 mod settings;
 
 #[cfg(test)]
@@ -192,14 +193,24 @@ impl PluginService {
         let records = settings::install_records(&self.db)?;
         let catalog = self.known_catalog();
         let browser_ready = |plugin: &str| self.browser_ready_for(plugin);
+        let session_linked = |plugin: &str| session::needs_session(plugin).then(|| self.session_linked(plugin));
         let sources = requirements::RequirementSources {
             installed: &snapshot.plugins,
             install_records: &records,
             catalog: catalog.as_ref(),
             credentials: &self.credentials,
             browser_ready: &browser_ready,
+            session_linked: &session_linked,
         };
         requirements::plugin_requirements(flow_yaml, &sources)
+    }
+
+    /// Whether `plugin`'s account session is known to be linked; an unreadable setting counts as not linked.
+    fn session_linked(&self, plugin: &str) -> bool {
+        session::is_linked(&self.db, plugin).unwrap_or_else(|error| {
+            log::warn!("could not read the session state of plugin {plugin}: {error}");
+            false
+        })
     }
 
     /// Whether Chromium is ready for `plugin`: the build its own Playwright
@@ -566,8 +577,35 @@ impl PluginService {
     pub async fn run_action(&self, name: &str, kind: &str, config: serde_json::Value) -> AppResult<PluginActionResult> {
         let snapshot = self.snapshot();
         let document = action::action_document(&snapshot, name, kind, config)?;
-        let outputs = action::run_action(&snapshot, crate::flow::builtin_node_registry(), &document).await?;
-        Ok(PluginActionResult { outputs })
+        let outcome = action::run_action(&snapshot, crate::flow::builtin_node_registry(), &document).await;
+        self.record_session_report(name, kind, &outcome);
+        Ok(PluginActionResult { outputs: outcome.result? })
+    }
+
+    /// Runs the status action of a session plugin (`whatsapp-web.get_status`), which also
+    /// stores the state it reports, and returns that state.
+    ///
+    /// # Errors
+    /// `InvalidInput` when `name` has no session; the action's errors otherwise.
+    pub async fn check_session(&self, name: &str) -> AppResult<session::SessionState> {
+        let kind = session::status_kind(name)
+            .ok_or_else(|| AppError::InvalidInput(format!("plugin {name} has no account session to check")))?;
+        let result = self.run_action(name, kind, serde_json::Value::Null).await?;
+        Ok(session::state_from_outputs(name, kind, &result.outputs).unwrap_or(session::SessionState::Unknown))
+    }
+
+    /// Stores the session state a session plugin's action reported (or failed with).
+    fn record_session_report(&self, name: &str, kind: &str, outcome: &action::ActionOutcome) {
+        let reported = match &outcome.result {
+            Ok(outputs) => session::state_from_outputs(name, kind, outputs),
+            Err(_) => {
+                outcome.failure_type.as_deref().and_then(|error_type| session::state_from_failure(name, error_type))
+            }
+        };
+        let Some(state) = reported else { return };
+        if let Err(error) = session::save_session(&self.db, name, state) {
+            log::warn!("could not record the session state of plugin {name}: {error}");
+        }
     }
 
     pub fn browser_runtime_status(&self) -> BrowserRuntimeStatus {

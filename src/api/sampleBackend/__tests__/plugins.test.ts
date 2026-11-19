@@ -149,4 +149,18 @@ describe('sample plugins backend', () => {
     expect(requirement.warning).toMatch(/Terms of Service/)
     await expectBackendError(samplePluginsBackend.listAgentPluginRequirements('missing-agent'), 'not_found')
   })
+
+  it('keeps whatsapp-web not ready until its session is linked', async () => {
+    setSampleAgentPluginNeeds('maps-leads', [{ pluginName: 'whatsapp-web', stepId: 'send_whatsapp' }])
+    setSampleBrowserRuntimeStatus('installed')
+    await installTrusted('whatsapp-web')
+    const readWhatsAppWeb = async () => (await samplePluginsBackend.listAgentPluginRequirements('maps-leads'))[0]
+    expect(await readWhatsAppWeb()).toMatchObject({ installed: true, trusted: true, browserReady: true, needsSession: true, sessionLinked: false, ready: false })
+    expect(await samplePluginsBackend.checkPluginSession('whatsapp-web')).toBe('not_linked')
+
+    await samplePluginsBackend.runPluginAction('whatsapp-web', 'whatsapp-web.login', {})
+    expect(await samplePluginsBackend.checkPluginSession('whatsapp-web')).toBe('linked')
+    expect(await readWhatsAppWeb()).toMatchObject({ sessionLinked: true, ready: true })
+    await expectBackendError(samplePluginsBackend.checkPluginSession('whatsapp-api'), 'invalid_input')
+  })
 })

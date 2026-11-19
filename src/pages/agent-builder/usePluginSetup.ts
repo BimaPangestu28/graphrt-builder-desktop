@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { installPlugin, listAgentPluginRequirements, listenToPluginEvents, setPluginConfig, setPluginTrusted } from '@/api/plugins'
+import { checkPluginSession, installPlugin, listAgentPluginRequirements, listenToPluginEvents, setPluginConfig, setPluginTrusted } from '@/api/plugins'
 import type { PluginRequirement } from '@/api/pluginRequirementTypes'
 import type { PluginEvent } from '@/api/pluginTypes'
 import { useBackendSubscription } from '@/hooks/useBackendSubscription'
@@ -7,7 +7,7 @@ import { useBrowserRuntime } from '@/hooks/useBrowserRuntime'
 import { toInstallProgress } from '@/hooks/usePlugins'
 import { describeError } from '@/lib/agentDisplay'
 import { describeInstallProgress } from '../connections/pluginDisplay'
-import { arePluginRequirementsReady, needsPluginApproval } from './pluginRequirementDisplay'
+import { arePluginRequirementsReady, needsOnlySessionLink, needsPluginApproval } from './pluginRequirementDisplay'
 
 /** Browser runtime download as the setup card shows it. */
 export interface BrowserDownloadState {
@@ -77,6 +77,25 @@ function usePluginRequirementsLoader(agentId: string | null) {
   }, [reload])
 
   return { requirements, loadError, reload }
+}
+
+/**
+ * Asks each plugin that only lacks its account link (whatsapp-web) once whether it is linked
+ * after all: the stored state may be stale or never checked (linked before this app version,
+ * or on Connections). Reloads the requirements when one turns out linked. Failures are logged:
+ * the "Needs" row keeps offering the QR link.
+ */
+function useStaleSessionCheck(requirements: PluginRequirement[] | null, reload: () => Promise<unknown>) {
+  const checkedNamesRef = useRef(new Set<string>())
+  useEffect(() => {
+    const uncheckedNames = (requirements ?? []).filter(needsOnlySessionLink).map((requirement) => requirement.name).filter((name) => !checkedNamesRef.current.has(name))
+    for (const pluginName of uncheckedNames) {
+      checkedNamesRef.current.add(pluginName)
+      checkPluginSession(pluginName)
+        .then((sessionState) => (sessionState === 'linked' ? reload() : undefined))
+        .catch((checkError: unknown) => console.error(`Could not check the ${pluginName} session`, checkError))
+    }
+  }, [requirements, reload])
 }
 
 function withoutKey<Value>(record: Record<string, Value>, key: string): Record<string, Value> {
@@ -164,6 +183,7 @@ function usePluginApprovals(requirements: PluginRequirement[] | null, reload: ()
  */
 export function usePluginSetup(agentId: string | null): PluginSetupState {
   const { requirements, loadError, reload } = usePluginRequirementsLoader(agentId)
+  useStaleSessionCheck(requirements, reload)
   const { progressByName, clearProgress } = useInstallProgressLines(reload)
   const approvals = usePluginApprovals(requirements, reload, clearProgress)
   const browserRuntime = useBrowserRuntime()

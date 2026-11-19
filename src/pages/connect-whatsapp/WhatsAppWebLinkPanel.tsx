@@ -36,9 +36,11 @@ function describeSessionDetails(sessionStatus: WhatsAppWebStatus | null): string
  * (checked on mount), "Link WhatsApp (scan QR code)" which opens the plugin's QR window,
  * and "Refresh status". Render only once the plugin is installed and trusted and the
  * browser runtime is ready. Used on screen 05, the Connections plugin card and the build chat.
+ *
+ * @param props.onSessionChange - Called after each link or status check, e.g. to reload the plugin requirements (() => void)
  */
-export function WhatsAppWebLinkPanel() {
-  const session = useWhatsAppWebSession({ checksOnMount: true })
+export function WhatsAppWebLinkPanel({ onSessionChange }: { onSessionChange?: () => unknown } = {}) {
+  const session = useWhatsAppWebSession({ checksOnMount: true, onSessionChange })
   const isBusy = session.pendingAction !== null
   const linkState = readLinkState(session.pendingAction, session.sessionStatus)
   const sessionDetails = describeSessionDetails(session.sessionStatus)

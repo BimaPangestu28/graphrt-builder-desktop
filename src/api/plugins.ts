@@ -9,7 +9,7 @@ import {
   type PluginCatalog,
   type PluginEvent,
 } from './pluginTypes'
-import type { PluginRequirement } from './pluginRequirementTypes'
+import type { PluginRequirement, PluginSessionState } from './pluginRequirementTypes'
 import { samplePluginsBackend, subscribeToSampleBrowserRuntimeEvents, subscribeToSamplePluginEvents } from './sampleBackend/plugins'
 
 /**
@@ -101,6 +101,22 @@ export function installBrowserRuntime(): Promise<void> {
 export function runPluginAction(name: string, kind: string, config: Record<string, unknown> = {}): Promise<PluginActionResult> {
   if (!isDesktopApp()) return samplePluginsBackend.runPluginAction(name, kind, config)
   return callBackend('run_plugin_action', { name, kind, config })
+}
+
+/**
+ * Asks a session plugin (whatsapp-web) whether its account is linked. The backend stores
+ * the answer, so the requirements' `sessionLinked` follows it on the next load.
+ *
+ * @param name - Plugin name, e.g. "whatsapp-web" (string)
+ * @returns The session state (PluginSessionState)
+ * @throws BackendError - `invalid_input` for a plugin without a session; the action's errors otherwise
+ *
+ * @example
+ * const sessionState = await checkPluginSession('whatsapp-web') // "linked"
+ */
+export function checkPluginSession(name: string): Promise<PluginSessionState> {
+  if (!isDesktopApp()) return samplePluginsBackend.checkPluginSession(name)
+  return callBackend('check_plugin_session', { name })
 }
 
 /** Subscribes to `plugin-event` (install progress, load errors, list changes). Resolves to the unsubscribe function. */
