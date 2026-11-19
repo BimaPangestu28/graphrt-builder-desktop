@@ -6,6 +6,14 @@ name: Release
 # Release whose body is the matching CHANGELOG.md section. A maintainer reviews
 # the draft and publishes it by hand. See CONTRIBUTING.md > Releasing.
 #
+# Auto-update (required repository secrets): every bundle is also signed for
+# tauri-plugin-updater, and `latest.json` plus the `.sig` files are attached.
+# Installed apps read `releases/latest/download/latest.json`, so an update
+# reaches users once the draft is published.
+#   TAURI_SIGNING_PRIVATE_KEY           contents of the minisign private key
+#                                       (its public key is in tauri.conf.json)
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  its password
+#
 # Optional macOS signing and notarization (repository secrets). When they are
 # absent the app is ad-hoc signed and users open it with right-click > Open:
 #   APPLE_CERTIFICATE           base64 of the "Developer ID Application" .p12
@@ -180,13 +188,31 @@ jobs:
             export_variable APPLE_SIGNING_IDENTITY "-"
             echo "::warning::Apple signing secrets not set: building an unsigned (ad-hoc) macOS app."
           fi
+      # `createUpdaterArtifacts` is on, so the build fails without the key: say why first.
+      - name: Updater signing key is set
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::Repository secret TAURI_SIGNING_PRIVATE_KEY is not set: updater bundles cannot be signed (CONTRIBUTING.md > Releasing)."
+            exit 1
+          fi
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          # Signs the updater bundles (.app.tar.gz, NSIS / MSI, AppImage, deb, rpm) -> .sig
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           releaseId: ${{ needs.prepare.outputs.release-id }}
           tauriScript: pnpm tauri
           args: ${{ matrix.args }}
+          # Each job adds its platforms to the release's latest.json (the universal
+          # macOS build is listed for both darwin-aarch64 and darwin-x86_64).
+          includeUpdaterJson: true
+          # Windows updates install through the NSIS installer (same as a fresh install).
+          updaterJsonPreferNsis: true
 
   checksums:
     name: SHA256SUMS

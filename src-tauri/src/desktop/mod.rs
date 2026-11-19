@@ -14,6 +14,7 @@
 //! - [`chat_notify`]: a notification when a chatbot hands a conversation over.
 //! - [`daily_summary`]: one notification a day summarizing the runs.
 //! - [`onboarding_tour`]: whether the onboarding tour was completed or skipped.
+//! - [`updater`]: auto-update from GitHub Releases (signed bundles) and relaunch.
 //!
 //! Run status changes reach this module through two small sink wrappers that
 //! [`crate::run`] chains around the Tauri sink: [`notify::NotifyingSink`]
@@ -32,6 +33,7 @@ pub mod keep_awake;
 pub mod notify;
 pub mod onboarding_tour;
 pub mod tray;
+pub mod updater;
 pub mod window;
 
 use std::fmt;
@@ -138,7 +140,7 @@ pub fn register_plugins(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<t
             window::show_main_window(app_handle)
         }))
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None));
-    builder
+    updater::register_plugins(builder)
 }
 
 /// Creates the tray icon and keep-awake state. Call from `setup` after `AppState` is managed.

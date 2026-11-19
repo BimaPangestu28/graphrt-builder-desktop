@@ -23,6 +23,7 @@ function createStoredSettings(): AppSettings {
     notifyOnChatHandoff: false,
     notifyDailySummary: false,
     runHistoryRetentionDays: 30,
+    autoDownloadUpdates: true,
   }
 }
 

@@ -20,6 +20,7 @@ function createInitialSettings(): AppSettings {
     notifyOnChatHandoff: false,
     notifyDailySummary: false,
     runHistoryRetentionDays: 30,
+    autoDownloadUpdates: true,
   }
 }
 

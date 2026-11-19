@@ -4,6 +4,7 @@ import { HashRouter } from 'react-router-dom'
 import { App } from './App'
 import { OpenRunNavigation } from './hooks/useOpenRunNavigation'
 import { OnboardingTourProvider } from './pages/onboarding/OnboardingTourProvider'
+import { AppUpdateProvider } from './pages/updates/AppUpdateProvider'
 import './index.css'
 
 const rootElement = document.getElementById('root')
@@ -13,9 +14,11 @@ createRoot(rootElement).render(
   <StrictMode>
     <HashRouter>
       <OpenRunNavigation />
-      <OnboardingTourProvider>
-        <App />
-      </OnboardingTourProvider>
+      <AppUpdateProvider>
+        <OnboardingTourProvider>
+          <App />
+        </OnboardingTourProvider>
+      </AppUpdateProvider>
     </HashRouter>
   </StrictMode>,
 )

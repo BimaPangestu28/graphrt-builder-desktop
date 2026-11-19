@@ -67,6 +67,10 @@ tauri-plugin-autostart = "2.7.0"
 # Starting graphrt again focuses the running window (the only way back on Linux
 # desktops that hide tray icons, e.g. GNOME without the AppIndicator extension).
 tauri-plugin-single-instance = "2"
+# Auto-update from GitHub Releases (signed `latest.json`, see `desktop::updater`) and
+# the relaunch after installing. rustls-tls only, like the rest of the app.
+tauri-plugin-updater = { version = "=2.14.1", default-features = false, features = ["rustls-tls", "zip"] }
+tauri-plugin-process = "=2.4.0"
 
 # "Keep the computer awake while an agent runs" on Windows (SetThreadExecutionState)
 [target.'cfg(windows)'.dependencies]

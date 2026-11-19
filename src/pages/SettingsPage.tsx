@@ -15,6 +15,7 @@ import {
   RemoteRunnerSection,
   RunnerSection,
 } from './settings/SettingsSections'
+import { UpdatesSection } from './settings/UpdatesSection'
 import { useAppSettings, type AppSettingsState } from './settings/useAppSettings'
 import { useSettingsState, type SettingsValues, type UpdateSetting } from './settings/useSettingsState'
 
@@ -100,6 +101,8 @@ function SettingsSectionContent({ activeSection, onSelectSection, appSettingsSta
       return privacySection
     case 'remote':
       return <RemoteRunnerSection {...sectionProps} />
+    case 'updates':
+      return <UpdatesSection appSettings={appSettings} updateAppSetting={updateAppSetting} fallbackVersion={appInfo?.version ?? null} />
     case 'about':
       return <AboutSection appInfo={appInfo} />
     case 'runner':
@@ -120,7 +123,7 @@ function SettingsSectionContent({ activeSection, onSelectSection, appSettingsSta
 /**
  * Screen 22 · Settings.
  * App-wide preferences with an inner sub-nav (General, Runner, Notifications, Privacy and data,
- * Remote runner, About). Opens on Runner, matching the design. Launch at login, menu bar,
+ * Remote runner, Updates, About). Opens on Runner, matching the design. Launch at login, menu bar,
  * keep awake, missed runs, notifications and run history retention are saved by the backend
  * on every change; the default model through the credentials commands. Controls without a
  * backend (appearance, language, model fallback, crash reports, remote runner) are shown

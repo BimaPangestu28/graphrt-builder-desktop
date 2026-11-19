@@ -26,6 +26,8 @@ export interface AppSettings {
   notifyDailySummary: boolean
   /** Days the step-by-step logs of finished runs are kept; null keeps them forever. */
   runHistoryRetentionDays: number | null
+  /** Download a new version in the background as soon as it is found (installed on restart). */
+  autoDownloadUpdates: boolean
 }
 
 export interface ExportSummary {
