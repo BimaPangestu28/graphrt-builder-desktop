@@ -7,16 +7,18 @@ interface SecretValueInputProps {
   onChange: (value: string) => void
   placeholder?: string
   autoFocus?: boolean
+  /** Sizing from the parent: `flex-[1_1_240px]` in a row, `w-full` under a label. */
+  className?: string
 }
 
 /**
  * A password field with a Show / Hide toggle for typing a secret value. The value only
  * lives here until it is saved; it is never read back from the keychain.
  */
-export function SecretValueInput({ label, value, onChange, placeholder, autoFocus }: SecretValueInputProps) {
+export function SecretValueInput({ label, value, onChange, placeholder, autoFocus, className = 'w-full' }: SecretValueInputProps) {
   const [isValueVisible, setIsValueVisible] = useState(false)
   return (
-    <span className="flex min-w-0 flex-[1_1_240px] items-center rounded-[9px] border border-line-strong bg-surface focus-within:border-ink">
+    <span className={`box-border flex h-9 min-w-0 items-center rounded-[9px] border border-line-strong bg-surface focus-within:border-ink ${className}`}>
       <input
         type={isValueVisible ? 'text' : 'password'}
         aria-label={label}
@@ -26,7 +28,7 @@ export function SecretValueInput({ label, value, onChange, placeholder, autoFocu
         autoComplete="off"
         spellCheck={false}
         onChange={(event) => onChange(event.target.value)}
-        className="box-border h-9 min-w-0 flex-auto rounded-[9px] border-0 bg-transparent px-3 text-[14px] text-ink outline-none"
+        className="box-border h-full min-w-0 flex-auto rounded-[9px] border-0 bg-transparent px-3 text-[14px] text-ink outline-none"
       />
       <button
         type="button"
