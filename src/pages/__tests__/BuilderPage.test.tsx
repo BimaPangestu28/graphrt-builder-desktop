@@ -267,7 +267,7 @@ describe('BuilderPage', () => {
     setSampleAgentPluginNeeds('maps-leads', [{ pluginName: 'whatsapp-web', stepId: 'send_whatsapp' }])
     renderBuilderPage()
     const card = await screen.findByRole('article', { name: 'whatsapp-web' })
-    fireEvent.click(within(card).getByRole('button', { name: 'Install whatsapp-web' }))
+    fireEvent.click(within(card).getByRole('button', { name: 'Install & trust whatsapp-web' }))
     const needsRow = (await screen.findByText('whatsapp-web plugin')).closest('li')!
     expect(await within(needsRow).findByText('Ready')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Test with 1 place/ })).toHaveAttribute('href', routePaths.testRun)

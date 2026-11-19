@@ -15,6 +15,7 @@ import { readCurrentSteps } from './sampleAgentStore'
 import { requireText, respondWith } from './sampleResponse'
 import {
   initiallyInstalledSamplePlugins,
+  isOptionalSampleSetting,
   samplePluginNeedsByAgentId,
   samplePluginSeeds,
   samplePluginWarnings,
@@ -92,7 +93,11 @@ function toInstalledPlugin(installedRecord: SampleInstalledRecord): InstalledPlu
     needsBrowser: seed.needsBrowser,
     nodes: seed.nodes.map((node) => ({ ...node })),
     tools: [...seed.tools],
-    config: seed.permissions.env.map((variable) => ({ name: variable, configured: installedRecord.configuredVariables.has(variable) })),
+    config: seed.permissions.env.map((variable) => ({
+      name: variable,
+      configured: installedRecord.configuredVariables.has(variable),
+      optional: isOptionalSampleSetting(variable),
+    })),
     loadError: null,
     warnings: listWarnings(seed, installedRecord),
     readmeUrl: seed.readmeUrl,

@@ -4,7 +4,7 @@ import { BackendError } from '@/api/client'
 import { resetSampleAgents } from '@/api/sampleBackend/agents'
 import { resetSampleCredentials, sampleCredentialsBackend } from '@/api/sampleBackend/credentials'
 import { resetSampleMcpServers, sampleMcpServersBackend } from '@/api/sampleBackend/mcpServers'
-import { emitSamplePluginEvent, resetSamplePlugins, samplePluginsBackend } from '@/api/sampleBackend/plugins'
+import { emitSamplePluginEvent, resetSamplePlugins, samplePluginsBackend, setSampleBrowserRuntimeStatus } from '@/api/sampleBackend/plugins'
 import { connectionsPluginsPath } from '@/routes'
 import { ConnectionsPage } from '../ConnectionsPage'
 
@@ -270,9 +270,9 @@ function getPluginCard(pluginName: string) {
   return screen.getByRole('article', { name: pluginName })
 }
 
-async function openPluginsPanel() {
+async function openPluginsPanel(installedCount = 2) {
   renderConnectionsPage()
-  expect(await screen.findByText(/WebAssembly · 2 installed/)).toBeInTheDocument()
+  expect(await screen.findByText(new RegExp(`WebAssembly · ${installedCount} installed`))).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Manage Plugins' }))
   return screen.findByRole('article', { name: 'whatsapp-api' })
 }
@@ -324,6 +324,42 @@ describe('ConnectionsPage plugins', () => {
     expect(await within(getPluginCard('website-check')).findByRole('checkbox', { name: 'Trust website-check' })).toBeChecked()
     await waitFor(() => expect(within(getPluginCard('website-check')).queryByText('Not trusted')).not.toBeInTheDocument())
     expect(setTrustedSpy).toHaveBeenCalledWith('website-check', true)
+  })
+
+  it('folds optional settings away and shows only required ones', async () => {
+    await samplePluginsBackend.installPlugin('whatsapp-api')
+    await samplePluginsBackend.installPlugin('whatsapp-web')
+    await openPluginsPanel(4)
+
+    const whatsAppApiCard = getPluginCard('whatsapp-api')
+    expect(within(whatsAppApiCard).getByLabelText('WHATSAPP_ACCESS_TOKEN')).toBeVisible()
+    expect(within(whatsAppApiCard).getByLabelText('WHATSAPP_GRAPH_VERSION')).not.toBeVisible()
+
+    const whatsAppWebCard = getPluginCard('whatsapp-web')
+    // No required settings: no inputs until "Optional settings" is opened.
+    for (const input of within(whatsAppWebCard).getAllByLabelText(/^WHATSAPP_WEB_/)) expect(input).not.toBeVisible()
+    const optionalToggle = within(whatsAppWebCard).getByText('Optional settings (5)')
+    expect(within(whatsAppWebCard).getByText('Defaults work for most people')).not.toBeVisible()
+    fireEvent.click(optionalToggle)
+    expect(within(whatsAppWebCard).getByText('Defaults work for most people')).toBeVisible()
+    expect(within(whatsAppWebCard).getByLabelText('WHATSAPP_WEB_DAILY_SEND_LIMIT')).toBeVisible()
+  })
+
+  it('links whatsapp-web by QR code from its card once trusted and the browser is ready', async () => {
+    setSampleBrowserRuntimeStatus('installed')
+    await samplePluginsBackend.installPlugin('whatsapp-web')
+    await openPluginsPanel(3)
+    const card = getPluginCard('whatsapp-web')
+    expect(card).toHaveTextContent('Trust the plugin, then link WhatsApp by scanning a QR code')
+    expect(within(card).queryByRole('button', { name: 'Link WhatsApp (scan QR code)' })).not.toBeInTheDocument()
+
+    fireEvent.click(within(card).getByRole('checkbox', { name: 'Trust whatsapp-web' }))
+    const linkPanel = await within(getPluginCard('whatsapp-web')).findByRole('region', { name: 'Link WhatsApp' })
+    expect(await within(linkPanel).findByRole('status')).toHaveTextContent('WhatsApp: Not linked')
+    expect(linkPanel).toHaveTextContent('A window with a QR code opens. On your phone: WhatsApp → Settings → Linked devices → Link a device')
+
+    fireEvent.click(within(linkPanel).getByRole('button', { name: 'Link WhatsApp (scan QR code)' }))
+    expect(await within(linkPanel).findByText('Linked')).toBeInTheDocument()
   })
 
   it('saves and clears a setting without ever showing its value', async () => {

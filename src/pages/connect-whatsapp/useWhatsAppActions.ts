@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { readPluginActionData, runPluginAction } from '@/api/plugins'
 import { describeError } from '@/lib/agentDisplay'
 
@@ -52,12 +52,14 @@ function toWhatsAppWebStatus(statusData: Record<string, unknown>): WhatsAppWebSt
 type WebSessionAction = 'linking' | 'checking'
 
 /**
- * The personal WhatsApp session: "Show QR code" runs `whatsapp-web.login` (the plugin
+ * The personal WhatsApp session: "Link WhatsApp" runs `whatsapp-web.login` (the plugin
  * opens a browser window with the QR code and resolves once it is scanned or times out),
  * and "Refresh status" runs `whatsapp-web.get_status`.
+ *
+ * @param options.checksOnMount - Run `get_status` once when mounted, so the link status shows right away (boolean)
  */
-export function useWhatsAppWebSession() {
-  const [pendingAction, setPendingAction] = useState<WebSessionAction | null>(null)
+export function useWhatsAppWebSession({ checksOnMount = false }: { checksOnMount?: boolean } = {}) {
+  const [pendingAction, setPendingAction] = useState<WebSessionAction | null>(checksOnMount ? 'checking' : null)
   const [sessionStatus, setSessionStatus] = useState<WhatsAppWebStatus | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
@@ -73,11 +75,12 @@ export function useWhatsAppWebSession() {
     }
   }, [])
 
-  return {
-    pendingAction,
-    sessionStatus,
-    errorMessage,
-    showQrCode: () => runSessionAction('linking', webLoginKind, { timeout_seconds: qrLoginTimeoutSeconds }),
-    refreshStatus: () => runSessionAction('checking', webStatusKind, {}),
-  }
+  const showQrCode = useCallback(() => runSessionAction('linking', webLoginKind, { timeout_seconds: qrLoginTimeoutSeconds }), [runSessionAction])
+  const refreshStatus = useCallback(() => runSessionAction('checking', webStatusKind, {}), [runSessionAction])
+
+  useEffect(() => {
+    if (checksOnMount) void refreshStatus()
+  }, [checksOnMount, refreshStatus])
+
+  return { pendingAction, sessionStatus, errorMessage, showQrCode, refreshStatus }
 }

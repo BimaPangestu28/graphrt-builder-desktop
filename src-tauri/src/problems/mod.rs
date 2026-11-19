@@ -144,7 +144,7 @@ fn missing_items(sources: &ProblemSources<'_>, needs: &FlowNeeds) -> AppResult<M
     }
     let other_count = labels.len();
     for plugin in sources.plugins.iter().filter(|plugin| needs.plugins.contains(&plugin.name)) {
-        for setting in plugin.config.iter().filter(|setting| !setting.configured) {
+        for setting in plugin.config.iter().filter(|setting| !setting.configured && !setting.optional) {
             labels.push(format!("{} setting {}", plugin.name, setting.name));
         }
     }

@@ -26,6 +26,7 @@ pub mod events;
 mod host;
 mod install;
 pub mod models;
+mod optional_settings;
 mod placeholder;
 mod prompt_guide;
 pub mod requirements;
@@ -274,6 +275,7 @@ impl PluginService {
                     .map(|variable| {
                         Ok(PluginConfigStatus {
                             configured: self.credentials.has_plugin_config(&plugin.name, variable)?,
+                            optional: optional_settings::is_optional_setting(variable),
                             name: variable.clone(),
                         })
                     })

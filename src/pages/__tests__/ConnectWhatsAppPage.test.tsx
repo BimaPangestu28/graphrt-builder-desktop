@@ -123,15 +123,18 @@ describe('ConnectWhatsAppPage', () => {
       await installAndTrust('whatsapp-web')
 
       fireEvent.click(await screen.findByRole('button', { name: 'Install browser runtime' }))
-      expect(await screen.findByRole('button', { name: 'Refresh status' })).toBeInTheDocument()
-      expect(screen.getByText(/A browser window opens with the QR code/)).toBeInTheDocument()
+      const linkPanel = await screen.findByRole('region', { name: 'Link WhatsApp' })
+      expect(linkPanel).toHaveTextContent('A window with a QR code opens. On your phone: WhatsApp → Settings → Linked devices → Link a device')
+      // The link status is checked as soon as the panel shows.
+      expect(await within(linkPanel).findByRole('status')).toHaveTextContent('WhatsApp: Not linked')
+      expect(runActionSpy).toHaveBeenCalledWith('whatsapp-web', 'whatsapp-web.get_status', {})
 
-      fireEvent.click(screen.getByRole('button', { name: 'Refresh status' }))
-      expect(await screen.findByText(/Not linked yet/)).toBeInTheDocument()
-
-      fireEvent.click(screen.getByRole('button', { name: 'Show QR code' }))
-      expect(await screen.findByText(/Linked: WhatsApp is ready/)).toBeInTheDocument()
+      fireEvent.click(within(linkPanel).getByRole('button', { name: 'Link WhatsApp (scan QR code)' }))
+      expect(await within(linkPanel).findByText('Linked')).toBeInTheDocument()
       expect(runActionSpy).toHaveBeenCalledWith('whatsapp-web', 'whatsapp-web.login', { timeout_seconds: 180 })
+
+      fireEvent.click(within(linkPanel).getByRole('button', { name: 'Refresh status' }))
+      expect(await within(linkPanel).findByRole('status')).toHaveTextContent('WhatsApp: Linked · 0 sent today')
     })
 
     it('skips the browser runtime step when it is installed already, and shows a failed login', async () => {
@@ -141,7 +144,7 @@ describe('ConnectWhatsAppPage', () => {
       fireEvent.click(screen.getByRole('radio', { name: /Personal WhatsApp/ }))
       await installAndTrust('whatsapp-web')
       expect(screen.queryByRole('button', { name: 'Install browser runtime' })).not.toBeInTheDocument()
-      fireEvent.click(await screen.findByRole('button', { name: 'Show QR code' }))
+      fireEvent.click(await screen.findByRole('button', { name: 'Link WhatsApp (scan QR code)' }))
       expect(await screen.findByRole('alert')).toHaveTextContent('Timed out waiting for the QR scan')
     })
   })

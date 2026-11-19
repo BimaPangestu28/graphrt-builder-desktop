@@ -43,7 +43,7 @@ describe('plugin setup message in the build chat', () => {
     const whatsAppWebCard = screen.getByRole('article', { name: 'whatsapp-web' })
     expect(within(whatsAppWebCard).getByRole('note', { name: 'Warning about whatsapp-web' })).toHaveTextContent(/against the WhatsApp Terms of Service/)
     expect(within(whatsAppWebCard).getByRole('list', { name: 'What whatsapp-web asks for' })).toHaveTextContent('Opens web pages in a browser (Chromium)')
-    expect(within(whatsAppWebCard).getByRole('button', { name: 'Install whatsapp-web' })).toBeInTheDocument()
+    expect(within(whatsAppWebCard).getByRole('button', { name: 'Install & trust whatsapp-web' })).toBeInTheDocument()
     expect(within(whatsAppWebCard).getByRole('button', { name: 'Download browser' })).toBeInTheDocument()
     expect(whatsAppWebCard).toHaveTextContent('about 150 MB download')
   })
@@ -110,9 +110,10 @@ describe('plugin setup message in the build chat', () => {
 
   it('approves every pending plugin with "Install all & trust", trusting only those that ask for secrets', async () => {
     setSampleBrowserRuntimeStatus('installed')
+    await samplePluginsBackend.removePlugin('website-check')
     setSampleAgentPluginNeeds('maps-leads', [
       { pluginName: 'whatsapp-api', stepId: 'send_whatsapp' },
-      { pluginName: 'whatsapp-web', stepId: 'send_whatsapp' },
+      { pluginName: 'website-check', stepId: 'send_whatsapp' },
     ])
     const installSpy = vi.spyOn(samplePluginsBackend, 'installPlugin')
     const trustSpy = vi.spyOn(samplePluginsBackend, 'setPluginTrusted')
@@ -121,10 +122,28 @@ describe('plugin setup message in the build chat', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Install all & trust' }))
     expect(await screen.findByRole('group', { name: 'This agent needs 2 plugins · 1 ready' })).toBeInTheDocument()
-    expect(installSpy.mock.calls).toEqual([['whatsapp-api'], ['whatsapp-web']])
+    expect(installSpy.mock.calls).toEqual([['whatsapp-api'], ['website-check']])
     expect(trustSpy.mock.calls).toEqual([['whatsapp-api', true]])
     expect(screen.queryByRole('button', { name: 'Install all & trust' })).not.toBeInTheDocument()
-    expect(within(screen.getByRole('article', { name: 'whatsapp-web' })).getByText('Ready', { selector: 'span.font-medium' })).toBeInTheDocument()
+    expect(within(screen.getByRole('article', { name: 'website-check' })).getByText('Ready', { selector: 'span.font-medium' })).toBeInTheDocument()
+  })
+
+  it('links personal WhatsApp by QR code from the card once whatsapp-web is installed and trusted', async () => {
+    setSampleBrowserRuntimeStatus('installed')
+    setSampleAgentPluginNeeds('maps-leads', [{ pluginName: 'whatsapp-web', stepId: 'send_whatsapp' }])
+    const runActionSpy = vi.spyOn(samplePluginsBackend, 'runPluginAction')
+    renderSetupMessage()
+    const card = await findCard('whatsapp-web')
+    expect(within(card).queryByRole('button', { name: 'Link WhatsApp (scan QR code)' })).not.toBeInTheDocument()
+
+    fireEvent.click(within(card).getByRole('button', { name: 'Install & trust whatsapp-web' }))
+    const linkPanel = await within(card).findByRole('region', { name: 'Link WhatsApp' })
+    expect(await within(linkPanel).findByRole('status')).toHaveTextContent('WhatsApp: Not linked')
+    expect(linkPanel).toHaveTextContent('On your phone: WhatsApp → Settings → Linked devices → Link a device')
+
+    fireEvent.click(within(linkPanel).getByRole('button', { name: 'Link WhatsApp (scan QR code)' }))
+    expect(await within(linkPanel).findByText('Linked')).toBeInTheDocument()
+    expect(runActionSpy).toHaveBeenCalledWith('whatsapp-web', 'whatsapp-web.login', { timeout_seconds: 180 })
   })
 
   it('shows why an approval failed on the card', async () => {

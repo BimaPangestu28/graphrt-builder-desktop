@@ -58,11 +58,18 @@ describe('sample plugins backend', () => {
     await expectBackendError(samplePluginsBackend.removePlugin('whatsapp-api'), 'not_found')
   })
 
+  it('marks tuning settings optional with the same rule as the desktop backend', async () => {
+    const whatsAppApi = await samplePluginsBackend.installPlugin('whatsapp-api')
+    expect(whatsAppApi.config.filter((setting) => setting.optional).map((setting) => setting.name)).toEqual(['WHATSAPP_GRAPH_VERSION'])
+    const whatsAppWeb = await samplePluginsBackend.installPlugin('whatsapp-web')
+    expect(whatsAppWeb.config.every((setting) => setting.optional)).toBe(true)
+  })
+
   it('toggles trust and flips configured without keeping values', async () => {
     await samplePluginsBackend.installPlugin('whatsapp-api')
     expect((await samplePluginsBackend.setPluginTrusted('whatsapp-api', true)).trusted).toBe(true)
     const configured = await samplePluginsBackend.setPluginConfig('whatsapp-api', 'WHATSAPP_ACCESS_TOKEN', '[ACCESS TOKEN]')
-    expect(configured.config.find((setting) => setting.name === 'WHATSAPP_ACCESS_TOKEN')).toEqual({ name: 'WHATSAPP_ACCESS_TOKEN', configured: true })
+    expect(configured.config.find((setting) => setting.name === 'WHATSAPP_ACCESS_TOKEN')).toEqual({ name: 'WHATSAPP_ACCESS_TOKEN', configured: true, optional: false })
     expect(JSON.stringify(configured)).not.toContain('[ACCESS TOKEN]')
     const cleared = await samplePluginsBackend.deletePluginConfig('whatsapp-api', 'WHATSAPP_ACCESS_TOKEN')
     expect(cleared.config.find((setting) => setting.name === 'WHATSAPP_ACCESS_TOKEN')?.configured).toBe(false)
@@ -138,7 +145,7 @@ describe('sample plugins backend', () => {
   it('reads plugin steps from dotted node types and carries the README warning', async () => {
     setSampleAgentPluginNeeds('maps-leads', [{ pluginName: 'whatsapp-web', stepId: 'send_whatsapp' }])
     const [requirement] = await samplePluginsBackend.listAgentPluginRequirements('maps-leads')
-    expect(requirement).toMatchObject({ name: 'whatsapp-web', trustNotNeeded: true, missingConfig: [] })
+    expect(requirement).toMatchObject({ name: 'whatsapp-web', trustNotNeeded: false, missingConfig: [] })
     expect(requirement.warning).toMatch(/Terms of Service/)
     await expectBackendError(samplePluginsBackend.listAgentPluginRequirements('missing-agent'), 'not_found')
   })
