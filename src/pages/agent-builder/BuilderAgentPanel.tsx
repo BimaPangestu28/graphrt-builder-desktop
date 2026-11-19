@@ -1,3 +1,4 @@
+import { splitPaneColumnClassName, splitPaneScrollClassName } from '@/components/layout'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { Agent, FlowSummary } from '@/api/types'
@@ -160,13 +161,13 @@ export function BuilderAgentPanel({
   const [activeTab, setActiveTab] = useState<BuilderTabKey>('steps')
 
   return (
-    <section aria-label="Agent" className="box-border flex min-w-0 flex-[1_1_440px] flex-col bg-subtle">
+    <section aria-label="Agent" className={`box-border flex min-w-0 flex-[1_1_440px] flex-col bg-subtle ${splitPaneColumnClassName}`}>
       <header className="box-border flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-line px-6 py-3">
         <BuilderTabList activeTab={activeTab} onSelect={setActiveTab} />
         <BuilderHeaderActions agentId={agent.id} onTestBlocked={arePluginsReady === false ? onShowPluginSetup : undefined} />
       </header>
 
-      <div role="tabpanel" id={`builder-panel-${activeTab}`} aria-labelledby={`builder-tab-${activeTab}`} className="flex flex-col gap-6 p-6">
+      <div role="tabpanel" id={`builder-panel-${activeTab}`} aria-labelledby={`builder-tab-${activeTab}`} className={`flex flex-col gap-6 p-6 ${splitPaneScrollClassName}`}>
         <div className="flex flex-col gap-1">
           <AgentIdentityHeader agent={agent} onRenamed={onAgentRenamed ?? (() => undefined)} />
           <span className="text-body">Runs on this Mac · started by hand</span>

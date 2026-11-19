@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { splitPaneColumnClassName, splitPaneScrollClassName } from '@/components/layout'
+import { useFollowNewContent } from '@/hooks/useFollowNewContent'
 import type { Agent, FlowStep } from '@/api/types'
 import { StrokeIcon, VisuallyHidden } from '@/components/ui'
 import { PanelHeader, UserChatBubble } from './ChatBubbles'
@@ -192,13 +194,14 @@ interface BuilderChatPanelProps {
 /** Left column of screen 04: the build conversation plus a box to ask for more changes. */
 export function BuilderChatPanel(props: BuilderChatPanelProps) {
   const { agent, steps, modelName, exchanges, latestRevision, isBusy, undoErrorMessage, onSubmitRequest, onToggleUndo, pluginSetupMessage, pluginSetupAnchor, askDraft } = props
+  const chatBodyRef = useFollowNewContent()
   return (
-    <section aria-label="Chat" className="box-border flex min-w-0 flex-[1_1_380px] flex-col border-r border-line bg-surface">
+    <section aria-label="Chat" className={`box-border flex min-w-0 flex-[1_1_380px] flex-col border-r border-line bg-surface ${splitPaneColumnClassName}`}>
       <PanelHeader className="justify-between">
         <span className="font-semibold">Build with chat</span>
         {modelName && <span className="text-[12px] text-muted">{modelName}</span>}
       </PanelHeader>
-      <div aria-live="polite" className="flex flex-auto flex-col gap-5 p-6">
+      <div ref={chatBodyRef} aria-live="polite" className={`flex flex-auto flex-col gap-5 p-6 ${splitPaneScrollClassName}`}>
         {agent && (
           <>
             <UserChatBubble>{agent.description}</UserChatBubble>

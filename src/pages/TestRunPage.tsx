@@ -6,7 +6,7 @@ import { answerApprovals, getLastRunInputs, getRunInputs } from '@/api/runReview
 import type { ApprovalAnswer, PendingApproval, RunInputs } from '@/api/runReviewTypes'
 import { abortRun, startRun } from '@/api/runs'
 import type { Agent, FlowSummary, Run } from '@/api/types'
-import { AppShell } from '@/components/layout'
+import { AppShell, splitPaneMainClassName } from '@/components/layout'
 import { joinClassNames } from '@/components/ui'
 import { useNow } from '@/hooks/useNow'
 import { toError, useLoadedData } from '@/hooks/useRunData'
@@ -153,7 +153,7 @@ function TestRunScreen({ agentId, agent, runId, flowSummary }: TestRunScreenProp
   }
 
   return (
-    <AppShell agents={buildRunSidebarAgents(agentId, agent, buildSidebarRunStatus(run))}>
+    <AppShell agents={buildRunSidebarAgents(agentId, agent, buildSidebarRunStatus(run))} mainClassName={splitPaneMainClassName}>
       <RunWorkspace>
         <BuildChatPanel>
           <UserChatBubble>{describeTestRequest(runInputs)}</UserChatBubble>
@@ -249,7 +249,7 @@ function TestSetupScreen({ agentId, agent, flowSummary, flowSummaryError, isFlow
   const stepTemplate = toRunStepTemplate(flowSummary)
 
   return (
-    <AppShell agents={buildRunSidebarAgents(agentId, agent)}>
+    <AppShell agents={buildRunSidebarAgents(agentId, agent)} mainClassName={splitPaneMainClassName}>
       <RunWorkspace>
         <BuildChatPanel>
           <BuilderReply>Fill in what the test should use on the right, then start it. Anything that sends something out asks you first</BuilderReply>
