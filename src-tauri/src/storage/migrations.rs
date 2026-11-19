@@ -197,6 +197,23 @@ const MIGRATIONS: &[&str] = &[
         inputs_json TEXT NOT NULL
     );
     "#,
+    // The builder chat of each agent (see `builder_messages.rs`): change requests,
+    // the builder's replies and failed changes, so the chat survives a restart.
+    r#"
+    CREATE TABLE builder_messages (
+        id               TEXT PRIMARY KEY NOT NULL,
+        agent_id         TEXT NOT NULL REFERENCES agents (id) ON DELETE CASCADE,
+        role             TEXT NOT NULL CHECK (role IN ('user', 'builder')),
+        text             TEXT NOT NULL,
+        explanation      TEXT,
+        status           TEXT NOT NULL CHECK (status IN ('done', 'failed')),
+        version_before   INTEGER,
+        version_after    INTEGER,
+        changed_step_ids TEXT NOT NULL DEFAULT '[]',
+        created_at       TEXT NOT NULL
+    );
+    CREATE INDEX builder_messages_by_agent_created_at ON builder_messages (agent_id, created_at);
+    "#,
 ];
 
 /// Applies every migration newer than the database's `user_version`.
@@ -248,6 +265,7 @@ mod tests {
                 "agent_settings",
                 "agent_versions",
                 "agents",
+                "builder_messages",
                 "chain_steps",
                 "chains",
                 "conversation_messages",

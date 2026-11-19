@@ -11,6 +11,7 @@
 //! - `extract`: pulls the YAML document and the agent name out of a model reply.
 //! - `kind`: infers the agent kind when the user did not pick one.
 //! - `diff`: compares two flow summaries for the revision summary.
+//! - `history`: saves the builder chat (requests and replies) per agent.
 //!
 //! The public functions resolve the model from the user's credentials; the
 //! `*_with_model` functions hold the logic and take any [`ChatModel`], so tests
@@ -18,6 +19,7 @@
 
 pub(crate) mod diff;
 mod extract;
+pub mod history;
 mod kind;
 mod live;
 mod prompt;
@@ -121,6 +123,19 @@ pub async fn revise_agent(
     revise_agent_with_model(db, &builder, agent_id, instruction, on_progress).await
 }
 
+/// [`revise_agent`] for a request typed in the builder chat: the request and the
+/// builder's reply (or the failure) are saved to the agent's chat history.
+pub async fn revise_agent_from_chat(
+    db: &Database,
+    credentials: &CredentialStore,
+    agent_id: &str,
+    instruction: &str,
+    on_progress: &(dyn Fn(BuildProgress) + Send + Sync),
+) -> AppResult<RevisionResult> {
+    let revision = revise_agent(db, credentials, agent_id, instruction, on_progress);
+    history::revise_with_chat_history(db, agent_id, instruction, revision).await
+}
+
 /// Picks the default model and its client from the user's stored keys.
 ///
 /// # Errors
@@ -175,6 +190,7 @@ pub(crate) async fn build_agent_with_model(
     let done_message = with_plugin_note("Your agent is ready", &draft.flow_yaml);
     let agent =
         db.create_agent(NewAgent { name, kind, description: description.to_owned(), flow_yaml: draft.flow_yaml })?;
+    history::record_build(db, &agent, &draft.explanation);
     report(on_progress, BuildStage::Done, &done_message);
     Ok(agent)
 }

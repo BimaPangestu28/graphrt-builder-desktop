@@ -1,5 +1,5 @@
 import { BackendError } from '../client'
-import type { Agent, AgentStatus, AgentVersion, FlowInput, FlowStep, FlowSummary } from '../types'
+import type { Agent, AgentStatus, AgentVersion, BuilderMessage, FlowInput, FlowStep, FlowSummary } from '../types'
 import { sampleAgentSeeds, type SampleAgentSeed, type SampleVersionSeed } from './sampleAgentCatalog'
 import { renderSampleFlowYaml } from './sampleFlowYaml'
 
@@ -20,7 +20,12 @@ interface StoredAgent {
   updatedAt: string
   /** Oldest first; the last one is current. */
   versions: SampleVersionSeed[]
+  /** The saved builder chat, oldest first. */
+  builderMessages: BuilderMessage[]
 }
+
+/** Fields of a builder chat message to save; id, agent and timestamp are filled in. */
+export type NewSampleBuilderMessage = Omit<BuilderMessage, 'id' | 'agentId' | 'createdAt'>
 
 let storedAgents: StoredAgent[] = []
 
@@ -40,6 +45,7 @@ function toStoredAgent(seed: SampleAgentSeed): StoredAgent {
     createdAt: seed.createdAt,
     updatedAt: versions[versions.length - 1].createdAt,
     versions,
+    builderMessages: [],
   }
 }
 
@@ -151,6 +157,23 @@ export function restoreStoredVersion(agentId: string, versionNumber: number): Ag
   // Like the desktop backend: restoring the current steps again adds no version.
   if (renderVersionYaml(storedAgent, restoredVersion) === renderVersionYaml(storedAgent, currentVersionOf(storedAgent))) return toAgent(storedAgent)
   return saveNewVersion(agentId, restoredVersion.steps, `Restored v${versionNumber}`)
+}
+
+let nextBuilderMessageNumber = 1
+
+/** Saves builder chat messages in order, like the desktop `add_builder_messages`. @throws BackendError - `not_found` */
+export function appendStoredBuilderMessages(agentId: string, messages: NewSampleBuilderMessage[]): void {
+  const storedAgent = findStoredAgent(agentId)
+  const createdAt = new Date().toISOString()
+  for (const message of messages) {
+    storedAgent.builderMessages.push({ ...message, changedStepIds: [...message.changedStepIds], id: `sample-message-${nextBuilderMessageNumber}`, agentId, createdAt })
+    nextBuilderMessageNumber += 1
+  }
+}
+
+/** The agent's builder chat, oldest first. @throws BackendError - `not_found` */
+export function listStoredBuilderMessages(agentId: string): BuilderMessage[] {
+  return findStoredAgent(agentId).builderMessages.map((message) => ({ ...message, changedStepIds: [...message.changedStepIds] }))
 }
 
 function summarizeVersion(storedAgent: StoredAgent, version: SampleVersionSeed): FlowSummary {

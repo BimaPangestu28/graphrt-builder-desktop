@@ -15,6 +15,7 @@ import { listBuilderRequirements, listPluginSetupRequirements } from './agent-bu
 import { focusPluginSetupMessage, PluginRequirementsMessage } from './agent-builder/PluginRequirementsMessage'
 import { useAgentRevisions } from './agent-builder/useAgentRevisions'
 import { useBuilderAskDraft } from './agent-builder/useBuilderAskDraft'
+import { useBuilderHistory } from './agent-builder/useBuilderHistory'
 import { usePluginSetup } from './agent-builder/usePluginSetup'
 import { usePluginSetupPlacement } from './agent-builder/usePluginSetupPlacement'
 
@@ -87,6 +88,7 @@ export function BuilderPage() {
     },
     [reloadAgent, reloadFlowSummary, reloadWorkflowSecrets, reloadPluginRequirements, placeAfterRevision],
   )
+  const builderHistory = useBuilderHistory(agentId)
   const revisions = useAgentRevisions({ agentId, currentVersion: agentState.data?.currentVersion ?? null, onAgentChanged: reloadAgentAndSteps })
 
   const agent = agentState.data
@@ -102,6 +104,8 @@ export function BuilderPage() {
         agent={agent}
         steps={flowSummary?.steps ?? []}
         modelName={providerSetup?.defaultModel.name ?? null}
+        openingExplanation={builderHistory.openingExplanation}
+        savedMessages={builderHistory.laterMessages}
         exchanges={revisions.exchanges}
         latestRevision={revisions.latestRevision}
         isBusy={revisions.isBusy}

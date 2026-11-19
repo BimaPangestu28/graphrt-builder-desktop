@@ -1,5 +1,6 @@
 use tauri::State;
 
+use crate::agent_builder;
 use crate::error::AppResult;
 use crate::state::AppState;
 use crate::storage::models::{Agent, AgentStatus, AgentVersion, RunFilter, RunStatus};
@@ -47,5 +48,8 @@ pub fn list_agent_versions(state: State<'_, AppState>, agent_id: String) -> AppR
 
 #[tauri::command]
 pub fn restore_agent_version(state: State<'_, AppState>, agent_id: String, version: i64) -> AppResult<Agent> {
-    state.db.restore_agent_version(&agent_id, version)
+    let agent_before = state.db.get_agent(&agent_id)?;
+    let restored_agent = state.db.restore_agent_version(&agent_id, version)?;
+    agent_builder::history::record_restore(&state.db, &agent_before, &restored_agent, version);
+    Ok(restored_agent)
 }

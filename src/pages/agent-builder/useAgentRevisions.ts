@@ -3,6 +3,7 @@ import { restoreAgentVersion } from '@/api/agents'
 import { reviseAgent } from '@/api/builder'
 import type { BuildProgress, BuildStage, DraftPreview } from '@/api/types'
 import { describeError } from '@/lib/agentDisplay'
+import { describeFailedChange } from './ChatBubbles'
 
 /** One change request typed in the builder chat and what came of it. */
 export interface ChatExchange {
@@ -84,7 +85,7 @@ export function useAgentRevisions({ agentId, currentVersion, onAgentChanged }: U
       })
       setLatestRevision({ exchangeId, versionBefore: currentVersion, versionAfter: revision.agent.currentVersion, isUndone: false })
     } catch (revisionError) {
-      updateExchange(exchangeId, { status: 'failed', reply: `Could not change the agent: ${describeError(revisionError)}`, draft: null, writingStage: null })
+      updateExchange(exchangeId, { status: 'failed', reply: describeFailedChange(describeError(revisionError)), draft: null, writingStage: null })
     } finally {
       setIsBusy(false)
     }

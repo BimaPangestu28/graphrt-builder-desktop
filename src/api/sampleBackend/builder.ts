@@ -1,7 +1,8 @@
 import { BackendError } from '../client'
-import type { Agent, BuildProgress, BuildRequest, DraftPreview, FlowStep, FlowSummary, RevisionResult } from '../types'
+import type { Agent, BuilderMessage, BuildProgress, BuildRequest, DraftPreview, FlowStep, FlowSummary, RevisionResult } from '../types'
 import { isSampleProviderConfigured, readSampleDefaultModel } from './credentials'
-import { readCurrentSteps, readStoredAgent, resetSampleAgentStore, saveNewVersion, summarizeStoredAgent } from './sampleAgentStore'
+import { listStoredBuilderMessages, readCurrentSteps, readStoredAgent, resetSampleAgentStore, saveNewVersion, summarizeStoredAgent } from './sampleAgentStore'
+import { reviseWithSampleHistory } from './sampleBuilderHistory'
 import { planSampleRevision, type SampleRevisionPlan } from './sampleRevision'
 import { requireText, respondWith, waitFor } from './sampleResponse'
 
@@ -163,8 +164,10 @@ async function reviseSampleAgent(agentId: string, instruction: string, onProgres
 
 export const sampleBuilderBackend = {
   buildAgent: buildSampleAgent,
-  reviseAgent: reviseSampleAgent,
+  reviseAgent: (agentId: string, instruction: string, onProgress: (progress: BuildProgress) => void): Promise<RevisionResult> =>
+    reviseWithSampleHistory(agentId, instruction, () => reviseSampleAgent(agentId, instruction, onProgress)),
   getFlowSummary: (agentId: string): Promise<FlowSummary> => respondWith(() => summarizeStoredAgent(agentId)),
+  listBuilderMessages: (agentId: string): Promise<BuilderMessage[]> => respondWith(() => listStoredBuilderMessages(agentId)),
 }
 
 /** Restores the build timing and the sample agents the builder edits (use in test `beforeEach`). */

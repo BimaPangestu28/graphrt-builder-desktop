@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { splitPaneColumnClassName, splitPaneScrollClassName } from '@/components/layout'
 import { useFollowNewContent } from '@/hooks/useFollowNewContent'
-import type { Agent, FlowStep } from '@/api/types'
+import type { Agent, BuilderMessage, FlowStep } from '@/api/types'
 import { StrokeIcon, VisuallyHidden } from '@/components/ui'
-import { PanelHeader, UserChatBubble } from './ChatBubbles'
+import { assistantBlockClassNames, PanelHeader, UserChatBubble } from './ChatBubbles'
 import { describeDraftActivity } from './draftActivity'
 import type { BuilderAskDraft } from './useBuilderAskDraft'
 import { CompactDraftStepList } from './DraftPreviewParts'
+import { SavedChatMessages } from './SavedChatMessages'
 import type { ChatExchange, LatestRevision } from './useAgentRevisions'
 import type { PluginSetupAnchor } from './usePluginSetupPlacement'
 
-const assistantBlockClassNames = 'flex max-w-[92%] flex-col'
 const outlineButtonClassNames =
   'h-8 cursor-pointer rounded-lg border border-line-strong bg-surface px-3 text-[13px] font-medium text-ink hover:bg-subtle disabled:cursor-not-allowed disabled:opacity-50'
 
@@ -18,12 +18,20 @@ function pluralize(count: number, singular: string, plural: string): string {
   return `${count} ${count === 1 ? singular : plural}`
 }
 
-/** First assistant reply: summary of the agent's current steps. */
-function AgentSummaryReply({ agentName, steps }: { agentName: string; steps: FlowStep[] }) {
+interface AgentSummaryReplyProps {
+  agentName: string
+  steps: FlowStep[]
+  /** The model's explanation of the agent when it was built, saved with the chat. */
+  openingExplanation: string | null
+}
+
+/** First assistant reply: the build's explanation (when saved) and a summary of the agent's current steps. */
+function AgentSummaryReply({ agentName, steps, openingExplanation }: AgentSummaryReplyProps) {
   const approvalCount = steps.filter((flowStep) => flowStep.needsApproval).length
   const stepCountLabel = pluralize(steps.length, 'step', 'steps')
   return (
     <div className={`${assistantBlockClassNames} gap-3`}>
+      {openingExplanation && <p className="m-0 leading-[1.55]">{openingExplanation}</p>}
       <p className="m-0 leading-[1.55]">
         Your agent has {stepCountLabel}.{approvalCount > 0 ? ' It asks you before anything that needs your approval' : ' It runs without stopping for approval'}
       </p>
@@ -177,6 +185,10 @@ interface BuilderChatPanelProps {
   agent: Agent | null
   steps: FlowStep[]
   modelName: string | null
+  /** The build's explanation saved on an earlier visit, shown in the first reply. */
+  openingExplanation: string | null
+  /** Builder chat saved on earlier visits, shown before this visit's exchanges. */
+  savedMessages: BuilderMessage[]
   exchanges: ChatExchange[]
   latestRevision: LatestRevision | null
   isBusy: boolean
@@ -193,7 +205,7 @@ interface BuilderChatPanelProps {
 
 /** Left column of screen 04: the build conversation plus a box to ask for more changes. */
 export function BuilderChatPanel(props: BuilderChatPanelProps) {
-  const { agent, steps, modelName, exchanges, latestRevision, isBusy, undoErrorMessage, onSubmitRequest, onToggleUndo, pluginSetupMessage, pluginSetupAnchor, askDraft } = props
+  const { agent, steps, modelName, openingExplanation, savedMessages, exchanges, latestRevision, isBusy, undoErrorMessage, onSubmitRequest, onToggleUndo, pluginSetupMessage, pluginSetupAnchor, askDraft } = props
   const chatBodyRef = useFollowNewContent()
   return (
     <section aria-label="Chat" className={`box-border flex min-w-0 flex-[1_1_380px] flex-col border-r border-line bg-surface ${splitPaneColumnClassName}`}>
@@ -205,8 +217,9 @@ export function BuilderChatPanel(props: BuilderChatPanelProps) {
         {agent && (
           <>
             <UserChatBubble>{agent.description}</UserChatBubble>
-            <AgentSummaryReply agentName={agent.name} steps={steps} />
+            <AgentSummaryReply agentName={agent.name} steps={steps} openingExplanation={openingExplanation} />
             {pluginSetupAnchor === 'opening' && pluginSetupMessage}
+            <SavedChatMessages messages={savedMessages} />
           </>
         )}
         {exchanges.map((exchange) => (

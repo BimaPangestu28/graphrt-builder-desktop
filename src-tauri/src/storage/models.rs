@@ -153,3 +153,94 @@ pub struct NewTrigger {
     pub missed_run_policy: MissedRunPolicy,
     pub inputs: serde_json::Value,
 }
+
+/// Who wrote a message in the builder chat (screen 04).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BuilderMessageRole {
+    /// A change the user asked for.
+    User,
+    /// The builder's reply: a finished change, a restore, or why a change failed.
+    Builder,
+}
+
+/// Whether a builder chat message stands for a saved change or a failed one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BuilderMessageStatus {
+    Done,
+    Failed,
+}
+
+/// One saved message of an agent's builder chat, so the conversation survives leaving the screen.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuilderMessage {
+    pub id: String,
+    pub agent_id: String,
+    pub role: BuilderMessageRole,
+    /// The user's request, the change summary, or the error message of a failed change.
+    pub text: String,
+    /// The model's own words about the change (builder replies only).
+    pub explanation: Option<String>,
+    pub status: BuilderMessageStatus,
+    /// Agent version before and after the change, when known.
+    pub version_before: Option<i64>,
+    pub version_after: Option<i64>,
+    /// Steps the change added or edited.
+    pub changed_step_ids: Vec<String>,
+    pub created_at: String,
+}
+
+/// Fields of a builder chat message to save; id and timestamp are assigned by storage.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NewBuilderMessage {
+    pub role: BuilderMessageRole,
+    pub text: String,
+    pub explanation: Option<String>,
+    pub status: BuilderMessageStatus,
+    pub version_before: Option<i64>,
+    pub version_after: Option<i64>,
+    pub changed_step_ids: Vec<String>,
+}
+
+impl NewBuilderMessage {
+    /// What the user asked for, on the version it was asked against.
+    pub fn user_request(text: &str, version_before: Option<i64>) -> Self {
+        Self {
+            role: BuilderMessageRole::User,
+            text: text.to_owned(),
+            explanation: None,
+            status: BuilderMessageStatus::Done,
+            version_before,
+            version_after: None,
+            changed_step_ids: Vec::new(),
+        }
+    }
+
+    /// A builder reply about a saved change from `version_before` to `version_after`.
+    pub fn builder_reply(text: &str, explanation: Option<String>, versions: (Option<i64>, i64)) -> Self {
+        Self {
+            role: BuilderMessageRole::Builder,
+            text: text.to_owned(),
+            explanation: explanation.filter(|words| !words.trim().is_empty()),
+            status: BuilderMessageStatus::Done,
+            version_before: versions.0,
+            version_after: Some(versions.1),
+            changed_step_ids: Vec::new(),
+        }
+    }
+
+    /// A builder reply saying a change failed, with the (secret-free) error message.
+    pub fn builder_failure(error_message: &str, version_before: Option<i64>) -> Self {
+        Self {
+            role: BuilderMessageRole::Builder,
+            text: error_message.to_owned(),
+            explanation: None,
+            status: BuilderMessageStatus::Failed,
+            version_before,
+            version_after: None,
+            changed_step_ids: Vec::new(),
+        }
+    }
+}

@@ -5,7 +5,7 @@ use crate::agent_builder::{self, BuildProgress, BuildRequest, RevisionResult};
 use crate::error::{AppError, AppResult};
 use crate::flow::{self, FlowSummary};
 use crate::state::AppState;
-use crate::storage::models::Agent;
+use crate::storage::models::{Agent, BuilderMessage};
 
 /// Progress arrives on `on_progress` while the agent is drafted (screen 03).
 #[tauri::command]
@@ -40,7 +40,13 @@ pub async fn revise_agent(
         let _ = on_progress.send(progress);
     };
     state.plugins.refresh_catalog_for_builder().await;
-    agent_builder::revise_agent(&state.db, &state.credentials, &agent_id, &instruction, &report).await
+    agent_builder::revise_agent_from_chat(&state.db, &state.credentials, &agent_id, &instruction, &report).await
+}
+
+/// The agent's saved builder chat, oldest first, shown before new changes on screen 04.
+#[tauri::command]
+pub fn list_builder_messages(state: State<'_, AppState>, agent_id: String) -> AppResult<Vec<BuilderMessage>> {
+    state.db.list_builder_messages(&agent_id)
 }
 
 /// Steps and inputs of an agent's current version, for the builder and run screens.
