@@ -11,7 +11,7 @@ import { agentPath, routePaths } from '@/routes'
  * Both columns wrap under each other on narrow windows.
  */
 export function RunWorkspace({ children }: { children: ReactNode }) {
-  return <div className="flex min-h-full flex-wrap lg:h-full lg:flex-nowrap">{children}</div>
+  return <div className="flex min-h-full w-full flex-wrap lg:h-full lg:flex-nowrap">{children}</div>
 }
 
 /** Left column: chat with the builder. */
