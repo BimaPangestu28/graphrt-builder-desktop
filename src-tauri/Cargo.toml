@@ -56,6 +56,8 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 sha2 = "0.10"
 tar = { version = "0.4", default-features = false }
 flate2 = "1"
+# Live view frames are sent to the UI as JPEG data URLs.
+base64 = "0.22"
 
 # Launch at login is desktop-only
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]

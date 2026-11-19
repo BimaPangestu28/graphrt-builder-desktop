@@ -87,6 +87,8 @@ pub struct PluginServiceConfig {
 pub struct PluginService {
     plugins_dir: PathBuf,
     plugin_data_dir: PathBuf,
+    /// Where browser plugins write live view frames (`crate::live_view`).
+    live_view_dir: PathBuf,
     catalog_cache_file: PathBuf,
     catalog_url: String,
     db: Arc<Database>,
@@ -121,6 +123,7 @@ impl PluginService {
         let service = Self {
             catalog_cache_file: config.app_data_dir.join(CATALOG_CACHE_FILE_NAME),
             plugin_data_dir: config.app_data_dir.join(PLUGIN_DATA_DIR_NAME),
+            live_view_dir: config.app_data_dir.join(crate::live_view::LIVE_VIEW_DIR_NAME),
             plugins_dir,
             catalog_url: config.catalog_url,
             db: config.db,
@@ -219,7 +222,8 @@ impl PluginService {
             }
         };
         let base_registry = crate::flow::builtin_node_registry();
-        let process_env = self.node_runtime.plugin_process_env();
+        let mut process_env = self.node_runtime.plugin_process_env();
+        process_env.push(crate::live_view::plugin_env_entry(&self.live_view_dir));
         let node_executable = match self.node_runtime.node_executable() {
             Ok(path) => Some(path),
             Err(error) => {

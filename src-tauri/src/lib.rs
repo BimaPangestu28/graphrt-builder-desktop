@@ -20,6 +20,7 @@
 //! - [`knowledge`]: knowledge bases (graphrt-rag) agents can search
 //! - [`node_runtime`]: the bundled Node.js plugins run on and Playwright's browser
 //! - [`plugins`]: graphrt plugins from the catalog (node kinds and tools for every run)
+//! - [`live_view`]: live frames of the headless browser a plugin step drives
 //! - [`problems`]: what went wrong (failed runs, missing keys, plugins, schedules) and retries
 //! - [`mcp`]: MCP servers the user adds; their tools for every run (graphrt-mcp)
 //! - [`workflow_secrets`]: every workflow secret across agents and MCP servers
@@ -38,6 +39,7 @@ pub mod engine;
 pub mod error;
 pub mod flow;
 pub mod knowledge;
+pub mod live_view;
 pub mod mcp;
 pub mod model_catalog;
 pub mod node_runtime;
@@ -121,6 +123,10 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         events: Arc::new(plugins::events::TauriPluginEventSink::new(app.handle().clone())),
     }));
     plugins.activate();
+    live_view::spawn(
+        data_dir.join(live_view::LIVE_VIEW_DIR_NAME),
+        Arc::new(live_view::TauriLiveViewSink::new(app.handle().clone())),
+    );
     mcp::publish_from_database(&db);
     Ok(AppState {
         db,
