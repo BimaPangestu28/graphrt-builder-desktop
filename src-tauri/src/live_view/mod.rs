@@ -5,12 +5,13 @@
 //! - every plugin process gets [`LIVE_VIEW_DIR_ENV`] = `<app data>/live-view`
 //!   (see `plugins::PluginService::reload`); a plugin that knows it writes the
 //!   latest screen of its page as `<dir>/<frame name>.jpg` (temp file + rename,
-//!   at most ~2 per second) and deletes it when the page closes;
+//!   about 6 per second) and deletes it when the page closes;
 //! - frame names are `node.<hex node id>.<random>` for a workflow node and
 //!   `page.<random>` when the node is unknown (tool calls).
 //!
 //! A watcher thread polls the folder every [`POLL_INTERVAL`] and emits each
-//! changed frame as the Tauri event [`LIVE_VIEW_EVENT`] (a JPEG data URL), and
+//! changed frame (a file is read only when its modification time or size
+//! changed since the last scan) as the Tauri event [`LIVE_VIEW_EVENT`] (a JPEG data URL), and
 //! `image: null` once a frame file is gone or stale. Frames are live only: they
 //! are never stored with the run, never logged, and the folder is emptied when
 //! the app starts. The plugin process is shared by runs and does not know the
@@ -36,11 +37,13 @@ pub const LIVE_VIEW_DIR_NAME: &str = "live-view";
 /// Name of the Tauri event carrying [`LiveViewFrame`].
 pub const LIVE_VIEW_EVENT: &str = "run-live-view";
 
-/// How often the folder is checked (so at most 2 frames per second per page).
-const POLL_INTERVAL: Duration = Duration::from_millis(500);
+/// How often the folder is checked. Plugins write ~6 frames per second; polling
+/// faster than that keeps the shown rate close to it. A scan with no change only
+/// lists the folder (no file is read), so this is cheap.
+const POLL_INTERVAL: Duration = Duration::from_millis(100);
 /// A frame not rewritten for this long belongs to a plugin that stopped without cleaning up.
 const STALE_AFTER: Duration = Duration::from_secs(20);
-/// Larger files are not frames the plugins write (640x480 JPEGs are ~10-60 KB).
+/// Larger files are not frames the plugins write (960x720 JPEGs are ~30-120 KB).
 const MAX_FRAME_BYTES: u64 = 1024 * 1024;
 const FRAME_EXTENSION: &str = ".jpg";
 const NODE_FRAME_PREFIX: &str = "node";
@@ -131,11 +134,20 @@ pub(crate) fn to_data_url(jpeg_bytes: &[u8]) -> String {
     format!("data:image/jpeg;base64,{}", base64::engine::general_purpose::STANDARD.encode(jpeg_bytes))
 }
 
+/// What the folder listing says about a frame file, compared before reading it.
+/// The size is checked too: on file systems with coarse timestamps two frames
+/// written within the same tick share a modification time but rarely a size.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FileStamp {
+    modified: SystemTime,
+    byte_len: u64,
+}
+
 /// What the watcher last sent for one frame file.
 #[derive(Debug, Clone)]
 struct SentFrame {
     source: FrameSource,
-    modified: SystemTime,
+    stamp: FileStamp,
     content_hash: u64,
 }
 
@@ -156,13 +168,13 @@ impl FrameWatcher {
     pub fn scan(&mut self, now: SystemTime) -> Vec<LiveViewFrame> {
         let mut updates = Vec::new();
         let mut present = Vec::new();
-        for (source, path, modified) in self.frame_files() {
-            if is_stale(modified, now) {
+        for (source, path, stamp) in self.frame_files() {
+            if is_stale(stamp.modified, now) {
                 remove_frame_file(&path);
                 continue;
             }
             present.push(source.frame_key.clone());
-            if let Some(update) = self.read_if_changed(source, &path, modified) {
+            if let Some(update) = self.read_if_changed(source, &path, stamp) {
                 updates.push(update);
             }
         }
@@ -170,8 +182,8 @@ impl FrameWatcher {
         updates
     }
 
-    /// Frame files in the folder with their modification time.
-    fn frame_files(&self) -> Vec<(FrameSource, PathBuf, SystemTime)> {
+    /// Frame files in the folder with their modification time and size.
+    fn frame_files(&self) -> Vec<(FrameSource, PathBuf, FileStamp)> {
         let Ok(entries) = std::fs::read_dir(&self.directory) else { return Vec::new() };
         entries
             .filter_map(Result::ok)
@@ -181,20 +193,21 @@ impl FrameWatcher {
                 if metadata.len() > MAX_FRAME_BYTES {
                     return None;
                 }
-                Some((source, entry.path(), metadata.modified().ok()?))
+                let stamp = FileStamp { modified: metadata.modified().ok()?, byte_len: metadata.len() };
+                Some((source, entry.path(), stamp))
             })
             .collect()
     }
 
-    fn read_if_changed(&mut self, source: FrameSource, path: &Path, modified: SystemTime) -> Option<LiveViewFrame> {
-        if self.sent.get(&source.frame_key).is_some_and(|sent| sent.modified == modified) {
+    fn read_if_changed(&mut self, source: FrameSource, path: &Path, stamp: FileStamp) -> Option<LiveViewFrame> {
+        if self.sent.get(&source.frame_key).is_some_and(|sent| sent.stamp == stamp) {
             return None;
         }
         // The plugin may have deleted the file since the folder was listed.
         let jpeg_bytes = std::fs::read(path).ok().filter(|bytes| !bytes.is_empty())?;
         let content_hash = hash_bytes(&jpeg_bytes);
         let previous_hash = self.sent.get(&source.frame_key).map(|sent| sent.content_hash);
-        self.sent.insert(source.frame_key.clone(), SentFrame { source: source.clone(), modified, content_hash });
+        self.sent.insert(source.frame_key.clone(), SentFrame { source: source.clone(), stamp, content_hash });
         if previous_hash == Some(content_hash) {
             return None;
         }

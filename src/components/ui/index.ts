@@ -5,3 +5,4 @@ export { Button, LinkButton, buttonClassNames, type ButtonVariant, type ButtonSi
 export { Badge, StatusDot, type BadgeTone, type StatusDotTone } from './Badge'
 export { Card } from './Card'
 export { VisuallyHidden } from './VisuallyHidden'
+export { Spinner } from './Spinner'

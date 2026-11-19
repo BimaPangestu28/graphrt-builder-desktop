@@ -1,5 +1,5 @@
 import { useId, useState } from 'react'
-import { StrokeIcon, VisuallyHidden, joinClassNames } from '@/components/ui'
+import { Spinner, StrokeIcon, VisuallyHidden, joinClassNames } from '@/components/ui'
 import type { TestRunStepState } from '@/data/testRun'
 import { useLiveBrowserFrames } from '@/hooks/useLiveBrowserFrames'
 import { LiveBrowserView } from './LiveBrowserView'
@@ -28,7 +28,7 @@ function StepStateMarker({ state }: { state: TestRunStepState }) {
     )
   }
   if (state === 'running') {
-    return <span aria-hidden="true" className="box-border size-5 shrink-0 rounded-full border-2 border-brand bg-brand-soft motion-safe:animate-pulse" />
+    return <Spinner />
   }
   if (state === 'failed') {
     return (

@@ -95,3 +95,18 @@ describe('StepProgressList live browser view', () => {
     expect(screen.queryByRole('figure', { name: 'Live view of the browser' })).not.toBeInTheDocument()
   })
 })
+
+describe('StepProgressList status markers', () => {
+  it('spins a ring on the running step and keeps "Running" for screen readers', () => {
+    render(<StepProgressList steps={[buildMapsStep('running')]} />)
+    const stepButton = screen.getByRole('button', { name: /Find places on Google Maps\s*, Running/ })
+    const spinner = stepButton.querySelector('[data-spinner]')
+    expect(spinner).toHaveClass('motion-safe:animate-spin')
+    expect(spinner).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('does not spin for a step that is not running', () => {
+    render(<StepProgressList steps={[buildMapsStep('pending'), { ...buildMapsStep('done'), id: 'other', label: 'Other' }]} />)
+    expect(document.querySelector('[data-spinner]')).toBeNull()
+  })
+})
