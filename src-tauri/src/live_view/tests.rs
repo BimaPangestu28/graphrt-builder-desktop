@@ -84,6 +84,38 @@ fn scan_sends_new_frames_once_and_again_only_when_the_image_changes() {
 }
 
 #[test]
+fn scan_does_not_read_a_file_whose_time_and_size_are_unchanged() {
+    let folder = tempfile::tempdir().unwrap();
+    let modified = SystemTime::now() - Duration::from_secs(1);
+    write_frame(folder.path(), "page.abc", b"aaaa");
+    set_modified(folder.path(), "page.abc", modified);
+    let mut watcher = FrameWatcher::new(folder.path().to_path_buf());
+    assert_eq!(watcher.scan(SystemTime::now()).len(), 1);
+
+    // Same size and time: the listing alone says nothing changed, so the new bytes are not read.
+    write_frame(folder.path(), "page.abc", b"bbbb");
+    set_modified(folder.path(), "page.abc", modified);
+    assert!(watcher.scan(SystemTime::now()).is_empty());
+}
+
+#[test]
+fn scan_sends_a_frame_whose_size_changed_within_the_same_timestamp() {
+    let folder = tempfile::tempdir().unwrap();
+    let modified = SystemTime::now() - Duration::from_secs(1);
+    write_frame(folder.path(), "page.abc", b"first");
+    set_modified(folder.path(), "page.abc", modified);
+    let mut watcher = FrameWatcher::new(folder.path().to_path_buf());
+    assert_eq!(watcher.scan(SystemTime::now()).len(), 1);
+
+    // Coarse file system clocks: the next frame can carry the same modification time.
+    write_frame(folder.path(), "page.abc", b"second frame");
+    set_modified(folder.path(), "page.abc", modified);
+    let updates = watcher.scan(SystemTime::now());
+    assert_eq!(updates.len(), 1);
+    assert_eq!(updates[0].image.as_deref(), Some(to_data_url(b"second frame").as_str()));
+}
+
+#[test]
 fn scan_ends_a_page_when_its_file_is_deleted() {
     let folder = tempfile::tempdir().unwrap();
     write_frame(folder.path(), "page.abc", b"frame");

@@ -1,4 +1,4 @@
-import { StrokeIcon, VisuallyHidden, joinClassNames } from '@/components/ui'
+import { Spinner, StrokeIcon, VisuallyHidden, joinClassNames } from '@/components/ui'
 
 type BuildItemState = 'done' | 'running' | 'pending'
 
@@ -22,7 +22,7 @@ function BuildItemIndicator({ state }: { state: BuildItemState }) {
     )
   }
   if (state === 'running') {
-    return <span className="box-border size-5 flex-[0_0_20px] animate-spin rounded-full border-2 border-brand border-r-brand-line motion-reduce:animate-none" />
+    return <Spinner className="flex-[0_0_20px]" />
   }
   return <span className="box-border size-5 flex-[0_0_20px] rounded-full border-2 border-line-strong" />
 }
