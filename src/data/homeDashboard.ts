@@ -1,11 +1,15 @@
 /**
  * Shapes shown on screen 09, the Home dashboard. Everything on Home comes from the backend
- * (paused runs, waiting chats, triggers, run stats, recent runs, this month's usage); sample
- * content for the browser preview lives in `src/api/sampleBackend/`.
+ * (runs, waiting chats, problems, plugin requirements, triggers, run stats, this month's
+ * usage); sample content for the browser preview lives in `src/api/sampleBackend/`.
  */
+
+/** What a "Needs you" row is about, most urgent first (see `needsYouKindOrder`). */
+export type AttentionKind = 'approval' | 'chat' | 'failed_run' | 'setup' | 'schedule' | 'connection'
 
 export interface AttentionItem {
   id: string
+  kind: AttentionKind
   title: string
   detail: string
   actionLabel: string
@@ -24,8 +28,17 @@ export type RecentRunStatus = 'Needs you' | 'Done' | 'Failed' | 'Running' | 'Sto
 
 export interface RecentRun {
   id: string
+  agentId: string
   agentName: string
+  /** Where the agent name links to. */
+  agentPath: string
+  /** Relative start time, e.g. "5 min ago", "Yesterday 07:00". */
   startedAt: string
+  /** Full start time for the tooltip. */
+  startedAtTitle: string
+  /** Plain-language result: the summary headline, or the humanized error. */
   resultSummary: string
   status: RecentRunStatus
+  /** The screen that shows this run. */
+  runPath: string
 }

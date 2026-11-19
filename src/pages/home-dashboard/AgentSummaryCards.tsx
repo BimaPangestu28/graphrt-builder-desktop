@@ -1,77 +1,118 @@
 import { Link } from 'react-router-dom'
+import type { PluginRequirement } from '@/api/pluginRequirementTypes'
 import type { AgentRunStats } from '@/api/runSummaryTypes'
-import type { Agent, Trigger } from '@/api/types'
-import type { AgentSummaryStat } from '@/data/homeDashboard'
-import { getKindLabel, getStatusLabel } from '@/lib/agentDisplay'
+import type { Agent, Run, Trigger } from '@/api/types'
+import { LinkButton, StatusDot } from '@/components/ui'
+import { getKindLabel } from '@/lib/agentDisplay'
 import { StatusPill } from '@/pages/agent-run/StatusPill'
-import { agentPath } from '@/routes'
+import { agentPath, routePaths } from '@/routes'
+import { describeAgentCardState, type AgentCardAction } from './agentCardState'
 import { describeAgentSchedule } from './homeSummaryLines'
 import { describeAgentRunStats } from './homeViewModel'
+import { describePluginGap } from './needsYou'
+import { RunNowButton } from './RunNowButton'
 
-/** What one Home card shows for an agent. */
-interface AgentCardContent {
-  subtitle: string
-  stats: AgentSummaryStat[]
-}
-
-/**
- * Card content for an agent: its schedule line from its triggers when it has one, otherwise
- * its kind and description, plus this week's run stats.
- */
-function describeAgentCard(agent: Agent, agentTriggers: Trigger[], runStats: AgentRunStats | undefined): AgentCardContent {
-  const stats = describeAgentRunStats(runStats)
-  const scheduleSummary = describeAgentSchedule(agentTriggers)
-  if (scheduleSummary) return { subtitle: scheduleSummary, stats }
-  const kindLabel = getKindLabel(agent.kind)
-  return { subtitle: kindLabel ? `${kindLabel} · ${agent.description}` : agent.description, stats }
-}
-
-interface AgentSummaryCardProps {
+interface AgentCardData {
   agent: Agent
   agentTriggers: Trigger[]
+  latestRun: Run | undefined
   runStats: AgentRunStats | undefined
+  /** Undefined while unknown. */
+  pluginRequirements: PluginRequirement[] | undefined
 }
 
-function AgentSummaryCard({ agent, agentTriggers, runStats }: AgentSummaryCardProps) {
-  const { subtitle, stats } = describeAgentCard(agent, agentTriggers, runStats)
+/** "Chatbot · Weekdays 09:00 · 12 messages sent this week": kind, schedule and this week. */
+function describeFacts({ agent, agentTriggers, runStats }: AgentCardData): string[] {
+  const statsLine = describeAgentRunStats(runStats)
+    .map((stat) => (stat.count === undefined ? stat.label : `${stat.count} ${stat.label}`))
+    .slice(0, 1)
+  return [getKindLabel(agent.kind), describeAgentSchedule(agentTriggers), ...statsLine].filter((fact): fact is string => Boolean(fact))
+}
+
+function PluginChips({ requirements }: { requirements: PluginRequirement[] }) {
+  if (requirements.length === 0) return null
   return (
-    <Link
-      to={agentPath('builder', agent.id)}
-      className="flex flex-col gap-3 rounded-[14px] border border-line bg-surface p-[18px] no-underline !text-ink hover:border-line-heavy"
-    >
-      <div className="flex items-center justify-between gap-2">
-        <span className="font-semibold">{agent.name}</span>
-        <StatusPill tone={agent.status === 'active' ? 'ok' : 'neutral'} size="card">
-          {getStatusLabel(agent.status)}
+    <ul aria-label="Plugins" className="m-0 flex list-none flex-wrap gap-1.5 p-0">
+      {requirements.map((requirement) => (
+        <li
+          key={requirement.name}
+          title={requirement.ready ? `${requirement.name} is ready` : describePluginGap(requirement)}
+          className="flex items-center gap-1.5 rounded-full bg-canvas px-2 py-0.5 text-[12px] text-ink-2"
+        >
+          <StatusDot tone={requirement.ready ? 'ok' : 'amber'} />
+          {requirement.name}
+          <span className="sr-only">{requirement.ready ? ' (ready)' : ' (not ready)'}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function PrimaryAction({ action, agentId, agentTriggers }: { action: AgentCardAction; agentId: string; agentTriggers: Trigger[] }) {
+  if (action.kind === 'run_now') return <RunNowButton agentId={agentId} agentTriggers={agentTriggers} label={action.label} />
+  return (
+    <LinkButton to={action.path} size="sm" className="!text-white">
+      {action.label}
+    </LinkButton>
+  )
+}
+
+function AgentSummaryCard(cardData: AgentCardData) {
+  const { agent, agentTriggers, latestRun, pluginRequirements } = cardData
+  const cardState = describeAgentCardState(agent, agentTriggers, latestRun)
+  const facts = describeFacts(cardData)
+  return (
+    <article aria-label={agent.name} className="flex flex-col gap-3 rounded-[14px] border border-line bg-surface p-[18px]">
+      <div className="flex items-start justify-between gap-2">
+        <Link to={agentPath('builder', agent.id)} className="font-semibold !text-ink no-underline hover:underline">
+          {agent.name}
+        </Link>
+        <StatusPill tone={cardState.chipTone} size="card">
+          {cardState.chipLabel}
         </StatusPill>
       </div>
-      <span className="line-clamp-2 text-body">{subtitle}</span>
-      {stats.length > 0 && (
-        <div className="flex gap-4 text-[13px] text-ink-2">
-          {stats.map((stat) => (
-            <span key={stat.label}>
-              {stat.count !== undefined && <b className="font-semibold">{stat.count}</b>} {stat.label}
-            </span>
-          ))}
-        </div>
+      {agent.description && (
+        <p title={agent.description} className="m-0 line-clamp-2 text-body">
+          {agent.description}
+        </p>
       )}
-    </Link>
+      {facts.length > 0 && <span className="text-[13px] text-ink-2">{facts.join(' · ')}</span>}
+      {pluginRequirements && <PluginChips requirements={pluginRequirements} />}
+      <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-2 pt-1">
+        <PrimaryAction action={cardState.primaryAction} agentId={agent.id} agentTriggers={agentTriggers} />
+        {cardState.secondaryLinks.map((link) => (
+          <Link key={link.label} to={link.path} className="text-[13px] font-medium">
+            {link.label}
+          </Link>
+        ))}
+      </div>
+    </article>
   )
 }
 
 interface AgentSummaryCardsProps {
   agents: Agent[] | null
   loadError: Error | null
+  /** Runs newest first, for each agent's latest run; null while loading. */
+  runs: Run[] | null
   /** Weekly run stats per agent from `listAgentRunStats`; null while loading or when unavailable. */
   runStats: AgentRunStats[] | null
-  /** Every trigger, for the schedule lines; empty while loading or when unavailable. */
+  /** Every trigger, for schedules; empty while loading or when unavailable. */
   triggers: Trigger[]
+  /** Agent id → plugin requirements. */
+  pluginRequirements: Map<string, PluginRequirement[]>
 }
 
-function AgentCardsBody({ agents, loadError, runStats, triggers }: AgentSummaryCardsProps) {
+function AgentCardsBody({ agents, loadError, runs, runStats, triggers, pluginRequirements }: AgentSummaryCardsProps) {
   if (loadError) return <p className="m-0 text-muted">Could not load your agents: {loadError.message}</p>
   if (!agents) return <p className="m-0 text-muted">Loading agents…</p>
-  if (agents.length === 0) return <p className="m-0 text-muted">No agents yet. Build one with New agent</p>
+  if (agents.length === 0) {
+    return (
+      <p className="m-0 text-muted">
+        No agents yet. <Link to={routePaths.newAgent}>Build one with New agent</Link>
+      </p>
+    )
+  }
   return (
     <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3">
       {agents.map((agent) => (
@@ -79,21 +120,27 @@ function AgentCardsBody({ agents, loadError, runStats, triggers }: AgentSummaryC
           key={agent.id}
           agent={agent}
           agentTriggers={triggers.filter((trigger) => trigger.agentId === agent.id)}
+          latestRun={runs?.find((run) => run.agentId === agent.id)}
           runStats={runStats?.find((stats) => stats.agentId === agent.id)}
+          pluginRequirements={pluginRequirements.get(agent.id)}
         />
       ))}
     </div>
   )
 }
 
-/** Grid of agent cards (from `listAgents`, `listTriggers` and `listAgentRunStats`), each linking to that agent's builder. */
-export function AgentSummaryCards({ agents, loadError, runStats, triggers }: AgentSummaryCardsProps) {
+/**
+ * Agent cards: a status chip that says where each agent stands, its one next step (test it,
+ * see what went wrong, schedule it, run now), links to its steps and runs, its description
+ * and the plugins it uses (ready or not).
+ */
+export function AgentSummaryCards(props: AgentSummaryCardsProps) {
   return (
     <section aria-labelledby="home-agents" className="flex flex-col gap-3">
       <h2 id="home-agents" className="m-0 text-[16px] font-semibold">
         Agents
       </h2>
-      <AgentCardsBody agents={agents} loadError={loadError} runStats={runStats} triggers={triggers} />
+      <AgentCardsBody {...props} />
     </section>
   )
 }
