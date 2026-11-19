@@ -16,6 +16,7 @@ import {
 import { describeError } from '@/lib/agentDisplay'
 import { routePaths } from '@/routes'
 import { useOnboardingTour } from '../onboarding/onboardingTourContext'
+import { CrashReportsPanel } from './CrashReportsPanel'
 import { DataActions } from './DataActions'
 import { DefaultModelRow } from './DefaultModelRow'
 import { ActionRow, SelectRow, SettingsGroup, ToggleRow, settingsButtonClassNames } from './SettingRows'
@@ -27,7 +28,7 @@ interface SectionProps {
   updateSetting: UpdateSetting
   /**
    * True in the browser preview: also show the design's controls that have no backend
-   * yet (model fallback, crash reports). The desktop app hides them.
+   * yet (model fallback). The desktop app hides them.
    */
   showsPreviewOnlySettings: boolean
 }
@@ -122,7 +123,7 @@ interface PrivacySectionProps extends SectionProps {
 }
 
 /** Privacy and data group: data folder, run history retention, crash reports, export and delete. */
-export function PrivacySection({ settingsValues, updateSetting, showsPreviewOnlySettings, appSettings, updateAppSetting, appInfo, onDataDeleted }: PrivacySectionProps) {
+export function PrivacySection({ appSettings, updateAppSetting, appInfo, onDataDeleted }: PrivacySectionProps) {
   const [folderAction, setFolderAction] = useState<FolderActionState>({ kind: 'idle' })
 
   async function handleReveal() {
@@ -155,14 +156,7 @@ export function PrivacySection({ settingsValues, updateSetting, showsPreviewOnly
           onSelect={(label) => void updateAppSetting('runHistoryRetentionDays', findRetentionDays(label, appSettings.runHistoryRetentionDays))}
         />
       )}
-      {showsPreviewOnlySettings && (
-        <ToggleRow
-          title="Share anonymous crash reports"
-          description="Never includes messages, files or keys"
-          isChecked={settingsValues.shareCrashReports}
-          onToggle={(isChecked) => updateSetting('shareCrashReports', isChecked)}
-        />
-      )}
+      <CrashReportsPanel />
       {folderAction.kind === 'revealed' && (
         <p role="status" className="m-0 text-[13px] text-body">
           Opened the data folder in {getFileManagerName()}

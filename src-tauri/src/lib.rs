@@ -25,6 +25,7 @@
 //! - [`mcp`]: MCP servers the user adds; their tools for every run (graphrt-mcp)
 //! - [`workflow_secrets`]: every workflow secret across agents and MCP servers
 //! - [`desktop`]: menu bar / tray icon, notifications, keep running when closed, launch at login
+//! - [`crash_reports`]: local, scrubbed crash reports (panic hook, frontend errors); no telemetry
 //! - [`commands`]: the Tauri commands the frontend calls
 
 pub mod agent_builder;
@@ -33,6 +34,7 @@ pub mod chains;
 pub mod chatbot_setup;
 pub mod commands;
 pub mod conversations;
+pub mod crash_reports;
 pub mod credentials;
 pub mod desktop;
 pub mod engine;
@@ -151,6 +153,8 @@ pub fn run() {
     desktop::register_plugins(tauri::Builder::default())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            // First, so a panic while the rest starts up is reported too.
+            crash_reports::install(app)?;
             if cfg!(debug_assertions) {
                 app.handle().plugin(tauri_plugin_log::Builder::default().level(log::LevelFilter::Info).build())?;
             }
@@ -277,6 +281,16 @@ pub fn run() {
             commands::schedule_rules::get_schedule_rules,
             commands::schedule_rules::update_schedule_rules,
             commands::schedule_rules::list_scheduled_runs,
+            commands::crash_reports::list_crash_reports,
+            commands::crash_reports::get_crash_report,
+            commands::crash_reports::delete_all_crash_reports,
+            commands::crash_reports::export_crash_reports,
+            commands::crash_reports::report_frontend_error,
+            commands::crash_reports::get_crash_notice,
+            commands::crash_reports::dismiss_crash_notice,
+            commands::crash_reports::get_crash_report_sharing,
+            commands::crash_reports::set_crash_report_sharing,
+            commands::crash_reports::open_crash_report_issue,
         ])
         .build(tauri::generate_context!())
         .expect("failed to start the graphrt desktop app")

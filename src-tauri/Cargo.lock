@@ -1790,6 +1790,7 @@ dependencies = [
  "indexmap 2.14.2",
  "keyring",
  "log",
+ "regex",
  "reqwest",
  "rusqlite",
  "rustls",

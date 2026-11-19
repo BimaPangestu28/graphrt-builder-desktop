@@ -44,6 +44,12 @@ function answerBackend(command: string, commandArguments?: Record<string, unknow
       ]
     case 'get_default_model':
       return { provider: 'openai', name: 'gpt-4o-mini' }
+    case 'list_crash_reports':
+      return []
+    case 'get_crash_report_sharing':
+      return false
+    case 'set_crash_report_sharing':
+      return commandArguments?.offersSharing
     default:
       return null
   }
@@ -81,7 +87,18 @@ describe('SettingsPage in the desktop app', () => {
     expect(screen.queryByRole('button', { name: 'Remote runner' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Connect a server' })).not.toBeInTheDocument()
     expect(screen.queryByRole('combobox', { name: /If the main model fails/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('checkbox', { name: /crash reports/ })).not.toBeInTheDocument()
+  })
+
+  it('shows the crash reports with the sharing opt-in stored by the backend', async () => {
+    renderSettingsPage()
+    expect(await screen.findByText(/graphrt sends no telemetry/)).toBeInTheDocument()
+    const sharingToggle = await screen.findByRole('checkbox', { name: /Help improve graphrt: offer to share crash reports/ })
+    expect(sharingToggle).not.toBeChecked()
+    fireEvent.click(sharingToggle)
+    await waitFor(() =>
+      expect(backendCalls).toContainEqual({ command: 'set_crash_report_sharing', commandArguments: { offersSharing: true } }),
+    )
+    expect(await screen.findByText('No crash reports on this computer')).toBeInTheDocument()
   })
 
   it('shows the real data folder and version without claiming to be up to date', async () => {

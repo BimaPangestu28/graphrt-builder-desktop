@@ -9,6 +9,7 @@ pub mod builder;
 pub mod chains;
 pub mod chatbot_setup;
 pub mod conversations;
+pub mod crash_reports;
 pub mod credentials;
 pub mod knowledge;
 pub mod mcp;

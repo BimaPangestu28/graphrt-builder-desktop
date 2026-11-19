@@ -22,6 +22,16 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
   offers "Restart when idle". Settings > Updates shows the version, "Check for updates", the status
   and release notes. Updates are signed (`tauri-plugin-updater`); releases attach `latest.json` and
   `.sig` files and need the `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets.
+- **Local crash reports, no telemetry**: when the backend panics or a screen hits an unhandled error,
+  graphrt saves a scrubbed JSON report in `crash-reports/` in the app data folder (at most 50, 64 KB
+  each). Home folders become `~`, and account names, emails, bearer tokens, provider keys and
+  `api_key=`-style values are removed; reports never hold secrets, workflow inputs, run outputs or
+  file contents. Settings > Privacy and data > Crash reports lists them, shows each one exactly as it
+  would be shared, exports them all to one `.json` file (save dialog) and deletes them. The launch after
+  a crash shows a small notice (View · Dismiss); with the opt-in "Help improve graphrt: offer to share
+  crash reports" it also offers a prefilled GitHub issue you review and submit yourself. A screen that
+  breaks shows "Something went wrong" with Reload instead of a blank window. Settings says it plainly:
+  graphrt sends no telemetry.
 - **Windows and Linux, not just macOS**: the app and its copy work the same on all three. Text says
   "this computer"; where the system's own name helps it uses it: macOS Keychain, Windows Credential
   Manager or your system keyring for secrets, menu bar or system tray, Finder or File Explorer, and
