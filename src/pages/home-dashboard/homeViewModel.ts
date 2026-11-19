@@ -5,6 +5,8 @@ import type { Run, RunStatus } from '@/api/types'
 import type { AgentSummaryStat, AttentionItem, RecentRun, RecentRunStatus } from '@/data/homeDashboard'
 import { formatCounterLabel, pickHeadlineCounter } from '@/pages/agent-run/runCounters'
 import { formatRunDay } from '@/pages/agent-run/runResultSummary'
+import { humanizeRunError } from '@/pages/agent-run/runErrorText'
+import { formatRelativeTime, runPathFor } from './homeLinks'
 import { agentPath, routePaths, runReviewPath } from '@/routes'
 
 /** Turns backend runs and run stats into what the Home screen (09) shows. */
@@ -60,32 +62,50 @@ export function readPauseQuestion(run: Run): string | null {
   return typeof prompt === 'string' && prompt.length > 0 ? prompt : null
 }
 
+function groupRunsByAgent(runs: Run[]): Run[][] {
+  const runsByAgent = new Map<string, Run[]>()
+  for (const run of runs) runsByAgent.set(run.agentId, [...(runsByAgent.get(run.agentId) ?? []), run])
+  return [...runsByAgent.values()]
+}
+
 /**
- * "Needs you" rows for runs paused for approval, each opening the run (06) to answer it.
+ * "Needs you" rows for runs paused for approval, one per agent (its newest paused run), each
+ * opening the run to answer it: test runs on the test screen (06), others on Review (19).
  *
  * @param pausedRuns - Runs with status `paused`, newest first (Run[])
  * @param agentName - Display name lookup (AgentNameLookup)
  * @param now - Reference time (Date)
  */
 export function buildPausedRunItems(pausedRuns: Run[], agentName: AgentNameLookup, now: Date = new Date()): AttentionItem[] {
-  return pausedRuns.map((run, index) => {
-    const question = readPauseQuestion(run)
-    const pausedAt = `${formatRunDay(run.startedAt, now)} run · paused for your review`
+  return groupRunsByAgent(pausedRuns).map(([newestRun, ...olderRuns], index) => {
+    const question = readPauseQuestion(newestRun)
+    const pausedAt = `${formatRunDay(newestRun.startedAt, now)} run · paused for your review`
+    const moreWaiting = olderRuns.length > 0 ? ` · ${olderRuns.length} more waiting` : ''
     return {
-      id: `paused-${run.id}`,
-      title: `${agentName(run.agentId)} is waiting for you`,
-      detail: question ? `${question} · ${pausedAt}` : pausedAt,
+      id: `paused-${newestRun.id}`,
+      kind: 'approval',
+      title: `${agentName(newestRun.agentId)} is waiting for you`,
+      detail: `${question ? `${question} · ${pausedAt}` : pausedAt}${moreWaiting}`,
       actionLabel: 'Review',
-      // Test runs continue on the test screen; scheduled and manual runs on the review screen.
-      actionPath: run.trigger === 'test' ? agentPath('testRun', run.agentId, { runId: run.id }) : runReviewPath(run.id),
+      actionPath: newestRun.trigger === 'test' ? agentPath('testRun', newestRun.agentId, { runId: newestRun.id }) : runReviewPath(newestRun.id),
       isPrimaryAction: index === 0,
     }
   })
 }
 
-function describeRunResult(run: Run): string {
+/**
+ * Plain-language result of a run: the humanized error when it failed, else its summary
+ * headline, else what it is doing.
+ *
+ * @param run - The run (Run)
+ * @returns One sentence (string)
+ *
+ * @example
+ * describeRunResult(failedRun) // "Could not reach promo.example.com: that address doesn't exist"
+ */
+export function describeRunResult(run: Run): string {
   const summary = run.outputs?.summary
-  if (run.status === 'failed') return run.errorMessage ?? 'Failed'
+  if (run.status === 'failed') return run.errorMessage ? humanizeRunError(run.errorMessage).summary : 'Failed'
   if (typeof summary === 'string' && summary.trim().length > 0) return summary.trim()
   if (run.status === 'paused') return readPauseQuestion(run) ?? 'Waiting for you'
   if (run.status === 'running') return 'Still running'
@@ -94,7 +114,8 @@ function describeRunResult(run: Run): string {
 }
 
 /**
- * Recent runs table rows: agent, start time, the run's summary headline and its status.
+ * Recent runs table rows: agent (linking to it), relative start time, plain-language result,
+ * status and the screen that opens the run.
  *
  * @param runs - Newest first (Run[])
  * @param agentName - Display name lookup (AgentNameLookup)
@@ -103,10 +124,14 @@ function describeRunResult(run: Run): string {
 export function buildRecentRunRows(runs: Run[], agentName: AgentNameLookup, now: Date = new Date()): RecentRun[] {
   return runs.map((run) => ({
     id: run.id,
+    agentId: run.agentId,
     agentName: agentName(run.agentId),
-    startedAt: formatRunDay(run.startedAt, now),
+    agentPath: agentPath('builder', run.agentId),
+    startedAt: formatRelativeTime(run.startedAt, now),
+    startedAtTitle: new Date(run.startedAt).toLocaleString('en-GB'),
     resultSummary: describeRunResult(run),
     status: recentRunStatuses[run.status],
+    runPath: runPathFor(run),
   }))
 }
 
@@ -144,6 +169,7 @@ export function buildInboxAttentionItem(waitingConversations: Conversation[], ag
   const oldestUpdate = waitingConversations.reduce((oldest, conversation) => (new Date(conversation.updatedAt) < new Date(oldest) ? conversation.updatedAt : oldest), waitingConversations[0].updatedAt)
   return {
     id: 'inbox-waiting',
+    kind: 'chat',
     title: isSingle ? '1 customer is waiting in Inbox' : `${waitingConversations.length} customers are waiting in Inbox`,
     detail: `${describeHandingAgents(waitingConversations, agentName)} passed ${isSingle ? 'it' : 'them'} to you · ${isSingle ? 'waiting' : 'oldest'} ${formatWaitingTime(oldestUpdate, now)}`,
     actionLabel: 'Open Inbox',
@@ -156,6 +182,7 @@ export function buildInboxAttentionItem(waitingConversations: Conversation[], ag
 export function buildConnectionReminderItems(reminders: ConnectionReminder[]): AttentionItem[] {
   return reminders.map((reminder) => ({
     id: `connection-${reminder.id}`,
+    kind: 'connection',
     title: reminder.title,
     detail: reminder.detail,
     actionLabel: reminder.actionLabel,

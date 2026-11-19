@@ -164,20 +164,22 @@ describe('home view model', () => {
     expect(item.actionPath).toBe(agentPath('testRun', 'agent-1', { runId: 'run-7' }))
   })
 
-  it('uses the summary headline as the recent run result', () => {
+  it('humanizes recent run results and links each row to its run', () => {
     const rows = buildRecentRunRows(
       [
         buildRun({ id: 'a', outputs: { summary: 'Sent 4 offers.' } }),
-        buildRun({ id: 'b', status: 'failed', errorMessage: 'Maps key missing' }),
+        buildRun({ id: 'b', status: 'failed', errorMessage: 'connection: iteration item 0 failed: error sending request for url (https://promo.example.com/send): dns error' }),
         buildRun({ id: 'c', status: 'running' }),
       ],
       agentName,
       now,
     )
     expect(rows.map((row) => [row.agentName, row.startedAt, row.resultSummary, row.status])).toEqual([
-      ['Cafe offers', 'Today 09:00', 'Sent 4 offers.', 'Done'],
-      ['Cafe offers', 'Today 09:00', 'Maps key missing', 'Failed'],
-      ['Cafe offers', 'Today 09:00', 'Still running', 'Running'],
+      ['Cafe offers', '3 h ago', 'Sent 4 offers.', 'Done'],
+      ['Cafe offers', '3 h ago', "Could not reach promo.example.com: that address doesn't exist", 'Failed'],
+      ['Cafe offers', '3 h ago', 'Still running', 'Running'],
     ])
+    expect(rows.map((row) => row.runPath)).toEqual(['/runs?runId=a', '/runs/problems?runId=b', '/runs?runId=c'])
+    expect(rows[0].agentPath).toBe(agentPath('builder', 'agent-1'))
   })
 })
