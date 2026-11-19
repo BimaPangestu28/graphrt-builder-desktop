@@ -50,7 +50,8 @@ export function AgentIdentityHeader({ agent, onRenamed }: AgentIdentityHeaderPro
   )
 }
 
-function RenameForm({ agent, onDone, onRenamed }: { agent: Agent; onDone: () => void; onRenamed: () => Promise<void> | void }) {
+/** Rename in place: Enter or Save stores the trimmed name, Escape or Cancel closes. */
+export function RenameForm({ agent, onDone, onRenamed }: { agent: Agent; onDone: () => void; onRenamed: () => Promise<void> | void }) {
   const inputId = useId()
   const inputRef = useRef<HTMLInputElement>(null)
   const [name, setName] = useState(agent.name)
@@ -111,7 +112,11 @@ function RenameForm({ agent, onDone, onRenamed }: { agent: Agent; onDone: () => 
   )
 }
 
-function DeleteConfirmation({ agent, onCancel }: { agent: Agent; onCancel: () => void }) {
+/**
+ * Asks before deleting and says what goes with the agent. After deleting it calls `onDeleted`,
+ * or goes Home when none is given (the builder of a deleted agent can't stay open).
+ */
+export function DeleteConfirmation({ agent, onCancel, onDeleted }: { agent: Agent; onCancel: () => void; onDeleted?: () => void }) {
   const navigate = useNavigate()
   const [isDeleting, setIsDeleting] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -122,19 +127,22 @@ function DeleteConfirmation({ agent, onCancel }: { agent: Agent; onCancel: () =>
     try {
       await deleteAgent(agent.id)
       notifyAgentsChanged()
-      navigate(routePaths.home, { replace: true })
+      if (onDeleted) onDeleted()
+      else navigate(routePaths.home, { replace: true })
     } catch (deleteError) {
       setErrorMessage(`Could not delete: ${describeError(deleteError)}`)
       setIsDeleting(false)
     }
   }
 
+  const titleId = useId()
+  const detailId = useId()
   return (
-    <div role="alertdialog" aria-labelledby="delete-agent-title" aria-describedby="delete-agent-detail" className="mt-2 flex flex-col gap-3 rounded-xl border border-danger-line bg-danger-tint p-4">
-      <span id="delete-agent-title" className="font-semibold text-danger-deep">
+    <div role="alertdialog" aria-labelledby={titleId} aria-describedby={detailId} className="mt-2 flex flex-col gap-3 rounded-xl border border-danger-line bg-danger-tint p-4">
+      <span id={titleId} className="font-semibold text-danger-deep">
         Delete “{agent.name}”?
       </span>
-      <span id="delete-agent-detail" className="text-[13px] leading-normal text-body">
+      <span id={detailId} className="text-[13px] leading-normal text-body">
         Its steps, every version, its run history and its schedules are deleted, and any run still going or waiting for you is
         stopped. Keys and secrets in the Keychain stay. This can't be undone.
       </span>

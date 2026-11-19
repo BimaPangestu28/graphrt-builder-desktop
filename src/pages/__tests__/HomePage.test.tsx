@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { resetSampleAgents, sampleAgentsBackend } from '@/api/sampleBackend/agents'
@@ -142,5 +142,48 @@ describe('HomePage', () => {
     expect(getGreetingForHour(8)).toBe('Good morning')
     expect(getGreetingForHour(14)).toBe('Good afternoon')
     expect(getGreetingForHour(21)).toBe('Good evening')
+  })
+
+  it('renames an agent from its card menu', async () => {
+    const renameSpy = vi.spyOn(sampleAgentsBackend, 'renameAgent')
+    renderHomePage()
+    const agentsSection = screen.getByRole('region', { name: 'Agents' })
+    const mapsCard = await within(agentsSection).findByRole('article', { name: 'Maps leads to WhatsApp' })
+
+    fireEvent.click(within(mapsCard).getByRole('button', { name: 'More actions for Maps leads to WhatsApp' }))
+    const menu = within(mapsCard).getByRole('menu')
+    expect(within(menu).getByRole('menuitem', { name: 'Rename' })).toHaveFocus()
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Rename' }))
+    fireEvent.change(within(mapsCard).getByLabelText('Agent name'), { target: { value: 'Bandar Lampung leads' } })
+    fireEvent.click(within(mapsCard).getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(renameSpy).toHaveBeenCalledWith('maps-leads', 'Bandar Lampung leads'))
+    expect(await within(agentsSection).findByRole('article', { name: 'Bandar Lampung leads' })).toBeInTheDocument()
+  })
+
+  it('deletes an agent from its card menu after asking', async () => {
+    const deleteSpy = vi.spyOn(sampleAgentsBackend, 'deleteAgent')
+    renderHomePage()
+    const agentsSection = screen.getByRole('region', { name: 'Agents' })
+    const invoiceCard = await within(agentsSection).findByRole('article', { name: 'Invoice reminders' })
+
+    fireEvent.click(within(invoiceCard).getByRole('button', { name: 'More actions for Invoice reminders' }))
+    fireEvent.click(within(invoiceCard).getByRole('menuitem', { name: 'Delete' }))
+    expect(within(invoiceCard).getByRole('alertdialog')).toHaveTextContent('Delete “Invoice reminders”?')
+    expect(deleteSpy).not.toHaveBeenCalled()
+    fireEvent.click(within(invoiceCard).getByRole('button', { name: 'Delete agent' }))
+
+    await waitFor(() => expect(deleteSpy).toHaveBeenCalledWith('invoice-reminders'))
+    await waitFor(() => expect(within(agentsSection).queryByRole('article', { name: 'Invoice reminders' })).not.toBeInTheDocument())
+  })
+
+  it('closes the card menu with Escape', async () => {
+    renderHomePage()
+    const mapsCard = await within(screen.getByRole('region', { name: 'Agents' })).findByRole('article', { name: 'Maps leads to WhatsApp' })
+    const menuButton = within(mapsCard).getByRole('button', { name: 'More actions for Maps leads to WhatsApp' })
+    fireEvent.click(menuButton)
+    fireEvent.keyDown(within(mapsCard).getByRole('menu'), { key: 'Escape' })
+    expect(within(mapsCard).queryByRole('menu')).not.toBeInTheDocument()
+    expect(menuButton).toHaveFocus()
   })
 })
