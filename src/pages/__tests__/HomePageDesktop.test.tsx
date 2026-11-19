@@ -266,4 +266,28 @@ describe('HomePage in the desktop app', () => {
     expect(within(checklist).getByRole('link', { name: 'Connect a model' })).toHaveAttribute('href', routePaths.connections)
     expect(screen.getByRole('link', { name: 'Build one with New agent' })).toHaveAttribute('href', routePaths.newAgent)
   })
+
+  it('previews a long approval message in plain words, with when it paused on its own line', async () => {
+    const promotionMessage = 'Send this promotion to HEBAT Business Consulting?\n\nSubject: **Grow faster**\n\nHello team,\nBest regards'
+    const longPausedRun: Run = { ...pausedRun, pauseReasons: [{ node_id: 'approve', kind: 'human_input', data: { prompt: promotionMessage } }] }
+    answerBackend({ agents: [digestAgent], runs: [longPausedRun, { ...longPausedRun, id: 'run-0' }], waitingChats: [], triggers: [], usageSummary: emptyMonth })
+    renderHomePage()
+    const needsYou = screen.getByRole('region', { name: /Needs you/ })
+    const preview = await within(needsYou).findByText('Send this promotion to HEBAT Business Consulting? Subject: Grow faster Hello team, Best regards')
+    expect(preview).toHaveAttribute('title', promotionMessage)
+    expect(preview).toHaveClass('line-clamp-2')
+    expect(within(needsYou).getByText(/^Today \d\d:\d\d run · paused for your review · 1 more waiting$/)).toBeInTheDocument()
+  })
+
+  it('clamps long run results to a plain preview and links to every run', async () => {
+    const reportSummary = '## Report\n\n**3 cafes** messaged\n- 1 skipped'
+    const succeededRun: Run = { ...pausedRun, status: 'succeeded', pauseReasons: null, outputs: { summary: reportSummary } }
+    answerBackend({ agents: [digestAgent], runs: [succeededRun], waitingChats: [], triggers: [], usageSummary: emptyMonth })
+    renderHomePage()
+    const recentRuns = screen.getByRole('region', { name: 'Recent runs' })
+    const resultLink = await within(recentRuns).findByRole('link', { name: 'Report 3 cafes messaged 1 skipped' })
+    expect(resultLink).toHaveAttribute('title', reportSummary.trim())
+    expect(within(recentRuns).getByRole('link', { name: 'Inbox digest' })).toHaveAttribute('title', 'Inbox digest')
+    expect(within(recentRuns).getByRole('link', { name: 'See all runs' })).toHaveAttribute('href', routePaths.runs)
+  })
 })

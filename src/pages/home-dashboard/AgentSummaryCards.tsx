@@ -8,6 +8,7 @@ import { getKindLabel } from '@/lib/agentDisplay'
 import { StatusPill } from '@/pages/agent-run/StatusPill'
 import { agentPath, routePaths } from '@/routes'
 import { describeAgentCardState, type AgentCardAction } from './agentCardState'
+import { HomeSectionHeader } from './HomeSectionHeader'
 import { describeAgentSchedule } from './homeSummaryLines'
 import { describeAgentRunStats } from './homeViewModel'
 import { describePluginGap } from './needsYou'
@@ -153,9 +154,7 @@ function AgentCardsBody({ agents, loadError, runs, runStats, triggers, pluginReq
 export function AgentSummaryCards(props: AgentSummaryCardsProps) {
   return (
     <section aria-labelledby="home-agents" className="flex flex-col gap-3">
-      <h2 id="home-agents" className="m-0 text-[16px] font-semibold">
-        Agents
-      </h2>
+      <HomeSectionHeader headingId="home-agents" heading="Agents" />
       <AgentCardsBody {...props} />
     </section>
   )

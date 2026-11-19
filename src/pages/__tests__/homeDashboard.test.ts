@@ -164,7 +164,7 @@ describe('Needs you', () => {
     )
     expect(items?.map((item) => item.kind)).toEqual(['approval', 'setup'])
     expect(items?.[0]).toMatchObject({ actionPath: runReviewPath('paused-new') })
-    expect(items?.[0].detail).toMatch(/1 more waiting$/)
+    expect(items?.[0].meta ?? items?.[0].detail).toMatch(/1 more waiting$/)
     expect(items?.[1].detail).toBe("Google Places key is missing · whatsapp-api is not trusted · whatsapp-api isn't installed")
   })
 

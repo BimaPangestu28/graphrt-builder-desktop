@@ -151,7 +151,8 @@ describe('home view model', () => {
     const [item] = buildPausedRunItems([pausedRun], agentName, now)
     expect(item).toMatchObject({
       title: 'Cafe offers is waiting for you',
-      detail: 'Send this? · Today 09:00 run · paused for your review',
+      detail: 'Send this?',
+      meta: 'Today 09:00 run · paused for your review',
       actionLabel: 'Review',
       actionPath: runReviewPath('run-9'),
       isPrimaryAction: true,

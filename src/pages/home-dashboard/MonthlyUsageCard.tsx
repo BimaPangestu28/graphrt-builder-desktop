@@ -1,3 +1,4 @@
+import { HomeSectionHeader } from './HomeSectionHeader'
 import type { MonthlyNumbers } from './monthlyUsage'
 
 interface MonthlyUsageCardProps {
@@ -13,9 +14,9 @@ function MonthlyUsageBody({ monthlyNumbers, loadError }: MonthlyUsageCardProps) 
   return (
     <dl className="m-0 flex flex-col gap-3.5">
       {monthlyNumbers.rows.map((usageRow) => (
-        <div key={usageRow.label} className="flex justify-between">
+        <div key={usageRow.label} className="flex justify-between gap-3">
           <dt className="text-body">{usageRow.label}</dt>
-          <dd className="m-0 font-semibold">{usageRow.value}</dd>
+          <dd className="m-0 font-semibold tabular-nums">{usageRow.value}</dd>
         </div>
       ))}
     </dl>
@@ -26,9 +27,7 @@ function MonthlyUsageBody({ monthlyNumbers, loadError }: MonthlyUsageCardProps) 
 export function MonthlyUsageCard({ monthlyNumbers, loadError }: MonthlyUsageCardProps) {
   return (
     <section aria-labelledby="home-this-month" className="flex min-w-0 flex-[1_1_260px] flex-col gap-3">
-      <h2 id="home-this-month" className="m-0 text-[16px] font-semibold">
-        This month
-      </h2>
+      <HomeSectionHeader headingId="home-this-month" heading="This month" />
       <div className="flex flex-col gap-3.5 rounded-[14px] border border-line bg-surface p-[18px]">
         <MonthlyUsageBody monthlyNumbers={monthlyNumbers} loadError={loadError} />
       </div>
