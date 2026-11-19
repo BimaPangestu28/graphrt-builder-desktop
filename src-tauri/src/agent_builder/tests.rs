@@ -71,7 +71,7 @@ async fn valid_first_draft_is_saved_with_name_kind_and_progress() {
         .await
         .unwrap();
 
-    assert_eq!(agent.name, "Cafe WhatsApp offers");
+    assert_eq!(agent.name, "Cafe WhatsApp Offers");
     assert_eq!(agent.kind, AgentKind::Task);
     assert_eq!(agent.description, CAFE_REQUEST);
     assert_eq!(agent.flow_yaml.trim(), APPROVAL_LOOP.trim());
@@ -412,7 +412,7 @@ async fn the_name_line_is_not_part_of_the_explanation() {
         .await
         .unwrap();
 
-    assert_eq!(agent.name, "Cafe offers");
+    assert_eq!(agent.name, "Cafe Offers");
     assert_eq!(progress.previews().last().unwrap().explanation, "");
 }
 
