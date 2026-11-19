@@ -5,9 +5,9 @@ import { startRun } from '@/api/runs'
 import { resetSampleRuns, sampleRunStepDelayMs, sampleRunsBackend, sampleStepsUntilApproval } from '@/api/sampleBackend/runs'
 import { RunsPage } from '../RunsPage'
 
-function renderRunsPage() {
+function renderRunsPage(initialEntry = '/runs') {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <RunsPage />
     </MemoryRouter>,
   )
@@ -41,6 +41,12 @@ describe('RunsPage', () => {
     expect(screen.getByRole('heading', { level: 2, name: 'Maps leads to WhatsApp' })).toBeInTheDocument()
     expect(await screen.findByText('You approved 11 of 12')).toBeInTheDocument()
     expect(screen.getByText(/47m 12s · \$0\.05 AI cost/)).toBeInTheDocument()
+  })
+
+  it('opens the run named in ?runId= (links from Home)', async () => {
+    renderRunsPage('/runs?runId=morning-digest-0700')
+    await findRunRows()
+    expect(await screen.findByRole('heading', { level: 2, name: 'Morning email digest' })).toBeInTheDocument()
   })
 
   it('shows the run steps with the same expandable step list as the Test run screen', async () => {

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import type { Run } from '@/api/types'
 import { AppShell } from '@/components/layout'
 import { joinClassNames } from '@/components/ui'
@@ -95,7 +96,9 @@ function SelectedRunPanel({ run, getAgentName, onClose }: { run: Run; getAgentNa
 export function RunsPage() {
   const [agentFilter, setAgentFilter] = useState(allAgentsFilterValue)
   const [statusFilter, setStatusFilter] = useState<RunsStatusFilter>('all')
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(defaultSelectedRunId)
+  // `?runId=` (from Home's recent runs and other links) selects that run; otherwise the default.
+  const [searchParams] = useSearchParams()
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(searchParams.get('runId') ?? defaultSelectedRunId)
   const getAgentName = useAgentNames()
   const allRunsData = useRuns()
   const visibleRunsData = useRuns(toRunFilter(agentFilter, statusFilter))

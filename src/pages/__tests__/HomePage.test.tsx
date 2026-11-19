@@ -43,7 +43,10 @@ describe('HomePage', () => {
     expect(await within(needsYou).findByText('Catering assistant is waiting for you')).toBeInTheDocument()
     expect(await within(needsYou).findByText('3 customers are waiting in Inbox')).toBeInTheDocument()
     expect(await within(needsYou).findByText("Maps leads to WhatsApp isn't ready to run")).toBeInTheDocument()
-    expect(within(needsYou).getByText('WhatsApp was logged out')).toBeInTheDocument()
+    // One row per agent: its connection problem and its plugin setup together.
+    const mapsRow = within(needsYou).getByText("Maps leads to WhatsApp isn't ready to run").closest('li')
+    expect(mapsRow).toHaveTextContent('WhatsApp was logged out')
+    expect(mapsRow).toHaveTextContent("whatsapp-api isn't installed")
     expect(within(needsYou).getByText('Gmail sign-in expired')).toBeInTheDocument()
     const titles = within(needsYou)
       .getAllByRole('listitem')

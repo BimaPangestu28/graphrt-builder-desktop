@@ -11,6 +11,16 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
 
 ### Added
 
+- **Plugins are set up in the build chat**: the builder knows every plugin in the graphrt-plugins catalog
+  (with each step's settings), so drafts use plugin steps even before they're installed. Right after a
+  draft, the chat shows what each plugin needs — permissions, warnings, **Install & trust**, settings and
+  the browser download — and Test waits until they're ready. Runs of agents with missing plugins are
+  refused before they start.
+- **Home that tells you what to do next**: Needs you lists failed runs, approvals, waiting chats, plugins
+  or keys that aren't ready and broken schedules; agent cards show their real state with one next step;
+  a Getting started checklist; recent runs explain errors in plain words; This month shows successes,
+  failures, items sent and tokens.
+- **Rename and delete agents** from the builder (click the name; Delete agent asks first).
 - **Live test runs**: the step list shows only your steps in order, with live durations, "3 of 10 · Kopi
   Kenangan" progress for loops, and rows you can open to see streamed model text, outputs and errors
   in plain words. The chat column narrates the run; finished runs offer Run again and Edit steps.
