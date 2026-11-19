@@ -8,6 +8,7 @@ use crate::desktop as desktop_integration;
 use crate::desktop::app_settings::AppSettings;
 use crate::desktop::data::{self, DeletionSummary, ExportSummary};
 use crate::desktop::data_folder;
+use crate::desktop::onboarding_tour::OnboardingTourStatus;
 use crate::error::AppResult;
 use crate::state::AppState;
 use crate::storage::models::{RunFilter, RunStatus};
@@ -35,6 +36,22 @@ pub fn update_app_settings(
         }
     }
     Ok(settings)
+}
+
+/// Whether the onboarding tour was completed, skipped or not seen yet.
+#[tauri::command]
+pub fn get_onboarding_tour_status(state: State<'_, AppState>) -> AppResult<OnboardingTourStatus> {
+    OnboardingTourStatus::load(&state.db)
+}
+
+/// Remembers how the onboarding tour ended, so it opens by itself only once.
+#[tauri::command]
+pub fn set_onboarding_tour_status(
+    state: State<'_, AppState>,
+    status: OnboardingTourStatus,
+) -> AppResult<OnboardingTourStatus> {
+    status.save(&state.db)?;
+    Ok(status)
 }
 
 /// Absolute path of the folder holding the database, knowledge bases and plugins.

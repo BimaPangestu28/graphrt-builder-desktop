@@ -11,6 +11,7 @@
 //! - [`data_folder`]: where the data lives, and "Show in Finder".
 //! - [`chat_notify`]: a notification when a chatbot hands a conversation over.
 //! - [`daily_summary`]: one notification a day summarizing the runs.
+//! - [`onboarding_tour`]: whether the onboarding tour was completed or skipped.
 //!
 //! Run status changes reach this module through two small sink wrappers that
 //! [`crate::run`] chains around the Tauri sink: [`notify::NotifyingSink`]
@@ -24,6 +25,7 @@ pub mod data;
 pub mod data_folder;
 pub mod keep_awake;
 pub mod notify;
+pub mod onboarding_tour;
 pub mod tray;
 pub mod window;
 

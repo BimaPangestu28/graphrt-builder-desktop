@@ -255,6 +255,8 @@ pub fn run() {
             commands::app_settings::delete_all_data,
             commands::app_settings::get_data_folder_path,
             commands::app_settings::reveal_data_folder,
+            commands::app_settings::get_onboarding_tour_status,
+            commands::app_settings::set_onboarding_tour_status,
             commands::node_runtime::node_runtime_info,
             commands::node_runtime::install_browser_runtime,
             commands::plugins::list_plugin_catalog,
