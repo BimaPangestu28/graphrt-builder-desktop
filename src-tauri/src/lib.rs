@@ -177,6 +177,7 @@ pub fn run() {
             commands::credentials::list_available_models,
             commands::credentials::list_workflow_secrets,
             commands::credentials::set_workflow_secret,
+            commands::credentials::add_workflow_secret,
             commands::credentials::delete_workflow_secret,
             commands::credentials::list_all_workflow_secrets,
             commands::mcp::list_mcp_servers,

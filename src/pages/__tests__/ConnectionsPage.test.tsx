@@ -134,42 +134,132 @@ describe('ConnectionsPage secrets', () => {
   })
   afterEach(() => vi.restoreAllMocks())
 
-  it('lists every secret with who uses it and whether it is set', async () => {
+  async function openSecretsPanel() {
     renderConnectionsPage()
-    expect(await within(getAdvancedSection()).findByText('Google Places API key')).toBeInTheDocument()
-    expect(within(getAdvancedSection()).getByText('GOOGLE_PLACES_API_KEY · Used by Maps leads to WhatsApp')).toBeInTheDocument()
-    expect(within(getAdvancedSection()).getByText('Connected')).toBeInTheDocument()
+    expect(await within(getAdvancedSection()).findByText(/your agents use · 1 saved/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Manage Secrets' }))
+    return screen.getByRole('region', { name: 'Secrets' })
+  }
+
+  function getSecretRow(name: string) {
+    return within(screen.getByRole('region', { name: 'Secrets' })).getByRole('listitem', { name })
+  }
+
+  it('lists every secret with who uses it and whether it is saved', async () => {
+    const secretsPanel = await openSecretsPanel()
+    expect(within(secretsPanel).getByText('Google Places API key')).toBeInTheDocument()
+    expect(within(secretsPanel).getByText('GOOGLE_PLACES_API_KEY · Used by Maps leads to WhatsApp')).toBeInTheDocument()
+    expect(within(secretsPanel).getByText('Saved')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Manage Secrets' })).toHaveTextContent('Done')
   })
 
-  it('replaces and removes a secret value with a password field', async () => {
+  it('opens the Secrets panel from ?section=secrets', async () => {
+    renderConnectionsPage('/connections?section=secrets')
+    expect(await screen.findByRole('form', { name: 'Add a secret' })).toBeInTheDocument()
+  })
+
+  it('adds a secret that no agent uses yet, without ever showing its value again', async () => {
+    const addSecretSpy = vi.spyOn(sampleCredentialsBackend, 'addWorkflowSecret')
+    await openSecretsPanel()
+    const addForm = screen.getByRole('form', { name: 'Add a secret' })
+    fireEvent.change(within(addForm).getByLabelText('Name'), { target: { value: 'my server-token' } })
+    expect(within(addForm).getByLabelText('Name')).toHaveValue('MY_SERVER_TOKEN')
+    const valueInput = within(addForm).getByLabelText('Value')
+    expect(valueInput).toHaveAttribute('type', 'password')
+    fireEvent.change(valueInput, { target: { value: '[SERVER TOKEN]' } })
+    fireEvent.click(within(addForm).getByRole('button', { name: 'Show Value' }))
+    expect(valueInput).toHaveAttribute('type', 'text')
+    fireEvent.change(within(addForm).getByLabelText('Note (optional)'), { target: { value: 'Home server deploys' } })
+    fireEvent.click(within(addForm).getByRole('button', { name: 'Save secret' }))
+
+    expect(await within(addForm).findByText('MY_SERVER_TOKEN is saved in the keychain. Agents read it as {{#env.MY_SERVER_TOKEN#}}')).toBeInTheDocument()
+    expect(addSecretSpy).toHaveBeenCalledWith({ name: 'MY_SERVER_TOKEN', value: '[SERVER TOKEN]', note: 'Home server deploys' })
+    const serverTokenRow = getSecretRow('MY_SERVER_TOKEN')
+    expect(within(serverTokenRow).getByText(/^Home server deploys · Not used yet · Saved Just now$/)).toBeInTheDocument()
+    expect(within(serverTokenRow).getByText('Saved')).toBeInTheDocument()
+    expect(within(addForm).getByLabelText('Value')).toHaveValue('')
+    expect(screen.queryByText('[SERVER TOKEN]')).not.toBeInTheDocument()
+    expect(screen.queryByDisplayValue('[SERVER TOKEN]')).not.toBeInTheDocument()
+    expect(within(getAdvancedSection()).getByText(/your agents use · 2 saved/)).toBeInTheDocument()
+  })
+
+  it('explains a malformed name or an empty value before saving', async () => {
+    const addSecretSpy = vi.spyOn(sampleCredentialsBackend, 'addWorkflowSecret')
+    await openSecretsPanel()
+    const addForm = screen.getByRole('form', { name: 'Add a secret' })
+    fireEvent.click(within(addForm).getByRole('button', { name: 'Save secret' }))
+    expect(within(addForm).getByRole('alert')).toHaveTextContent('Give the secret a name, like MY_SERVER_TOKEN')
+
+    fireEvent.change(within(addForm).getByLabelText('Name'), { target: { value: '1TOKEN' } })
+    expect(within(addForm).getByRole('alert')).toHaveTextContent('Start the name with a letter')
+    fireEvent.change(within(addForm).getByLabelText('Name'), { target: { value: 'API.TOKEN' } })
+    expect(within(addForm).getByRole('alert')).toHaveTextContent('Use capital letters, digits and underscores')
+
+    fireEvent.change(within(addForm).getByLabelText('Name'), { target: { value: 'API_TOKEN' } })
+    fireEvent.click(within(addForm).getByRole('button', { name: 'Save secret' }))
+    expect(within(addForm).getByRole('alert')).toHaveTextContent('Paste the value to save')
+    expect(addSecretSpy).not.toHaveBeenCalled()
+  })
+
+  it('shows the backend refusal when the name already has a value', async () => {
+    await openSecretsPanel()
+    const addForm = screen.getByRole('form', { name: 'Add a secret' })
+    fireEvent.change(within(addForm).getByLabelText('Name'), { target: { value: 'GOOGLE_PLACES_API_KEY' } })
+    fireEvent.change(within(addForm).getByLabelText('Value'), { target: { value: 'other' } })
+    fireEvent.click(within(addForm).getByRole('button', { name: 'Save secret' }))
+    expect(await within(addForm).findByRole('alert')).toHaveTextContent(/already saved; use Replace/)
+  })
+
+  it('replaces and removes (after confirming) a secret value with a password field', async () => {
     const setSecretSpy = vi.spyOn(sampleCredentialsBackend, 'setWorkflowSecret')
     const deleteSecretSpy = vi.spyOn(sampleCredentialsBackend, 'deleteWorkflowSecret')
-    renderConnectionsPage()
-    fireEvent.click(await screen.findByRole('button', { name: 'Replace GOOGLE_PLACES_API_KEY' }))
+    await openSecretsPanel()
+    fireEvent.click(screen.getByRole('button', { name: 'Replace GOOGLE_PLACES_API_KEY' }))
     const valueInput = screen.getByLabelText('Value of GOOGLE_PLACES_API_KEY')
     expect(valueInput).toHaveAttribute('type', 'password')
+    expect(screen.getByText('Saved in the keychain, never shown again')).toBeInTheDocument()
     fireEvent.change(valueInput, { target: { value: '[PLACES KEY]' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     expect(await screen.findByRole('button', { name: 'Remove GOOGLE_PLACES_API_KEY' })).toBeInTheDocument()
     expect(setSecretSpy).toHaveBeenCalledWith('GOOGLE_PLACES_API_KEY', '[PLACES KEY]')
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove GOOGLE_PLACES_API_KEY' }))
-    expect(await screen.findByRole('button', { name: 'Add GOOGLE_PLACES_API_KEY' })).toBeInTheDocument()
-    expect(within(getAdvancedSection()).getByText('Not set')).toBeInTheDocument()
+    const confirmation = screen.getByRole('alertdialog', { name: 'Remove GOOGLE_PLACES_API_KEY?' })
+    expect(confirmation).toHaveTextContent('Maps leads to WhatsApp will stop working until you add it again.')
+    fireEvent.click(within(confirmation).getByRole('button', { name: 'Keep it' }))
+    expect(deleteSecretSpy).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove GOOGLE_PLACES_API_KEY' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, remove GOOGLE_PLACES_API_KEY' }))
+    expect(await screen.findByRole('button', { name: 'Add GOOGLE_PLACES_API_KEY' })).toHaveTextContent('Missing — add value')
+    expect(within(getSecretRow('GOOGLE_PLACES_API_KEY')).getByText('Missing')).toBeInTheDocument()
     expect(deleteSecretSpy).toHaveBeenCalledWith('GOOGLE_PLACES_API_KEY')
   })
 
-  it('shows an honest empty state when no agent needs a secret', async () => {
-    vi.spyOn(sampleCredentialsBackend, 'listAllWorkflowSecrets').mockResolvedValue([])
-    renderConnectionsPage()
-    expect(await within(getAdvancedSection()).findByText(/No agent needs an API key or token yet/)).toBeInTheDocument()
+  it('removes a secret the user added from the list entirely', async () => {
+    await sampleCredentialsBackend.addWorkflowSecret({ name: 'DB_PASSWORD', value: '[DB PASSWORD]', note: null })
+    renderConnectionsPage('/connections?section=secrets')
+    const passwordRow = await screen.findByRole('listitem', { name: 'DB_PASSWORD' })
+    fireEvent.click(within(passwordRow).getByRole('button', { name: 'Remove DB_PASSWORD' }))
+    expect(within(passwordRow).getByRole('alertdialog')).toHaveTextContent('Agents can no longer use it.')
+    fireEvent.click(within(passwordRow).getByRole('button', { name: 'Yes, remove DB_PASSWORD' }))
+    await waitFor(() => expect(screen.queryByRole('listitem', { name: 'DB_PASSWORD' })).not.toBeInTheDocument())
   })
 
-  it('finds secrets by name in the search', async () => {
+  it('shows an honest empty state when there are no secrets', async () => {
+    vi.spyOn(sampleCredentialsBackend, 'listAllWorkflowSecrets').mockResolvedValue([])
     renderConnectionsPage()
-    await within(getAdvancedSection()).findByText('Google Places API key')
+    expect(await within(getAdvancedSection()).findByText(/your agents use · None yet/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Manage Secrets' }))
+    expect(within(getAdvancedSection()).getByText(/No secrets yet/)).toBeInTheDocument()
+  })
+
+  it('finds secrets by name in the search and opens the panel for them', async () => {
+    renderConnectionsPage()
+    await within(getAdvancedSection()).findByText(/your agents use · 1 saved/)
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search connections' }), { target: { value: 'places' } })
     expect(within(getAdvancedSection()).getByText('Google Places API key')).toBeInTheDocument()
+    expect(screen.queryByRole('form', { name: 'Add a secret' })).not.toBeInTheDocument()
     expect(screen.queryByText('MCP servers')).not.toBeInTheDocument()
   })
 })
@@ -213,12 +303,15 @@ describe('ConnectionsPage MCP servers', () => {
       bearerTokenSecret: null,
     })
     expect(within(githubCard).getByText('Not tested yet')).toBeInTheDocument()
-    expect(await within(getAdvancedSection()).findByText('Used by MCP server github')).toBeInTheDocument()
+    expect(await within(getAdvancedSection()).findByText(/your agents use · 1 saved · 1 missing/)).toBeInTheDocument()
     expect(screen.getByText(/any MCP server · 2 added/)).toBeInTheDocument()
 
     fireEvent.click(within(githubCard).getByRole('button', { name: 'Test github' }))
     expect(await within(githubCard).findByText(/^Connected/)).toBeInTheDocument()
-    fireEvent.click(within(githubCard).getByRole('button', { name: 'Remove github' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Manage Secrets' }))
+    expect(within(getAdvancedSection()).getByText('Used by MCP server github')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Manage MCP servers' }))
+    fireEvent.click(within(await screen.findByRole('article', { name: 'github' })).getByRole('button', { name: 'Remove github' }))
     await waitFor(() => expect(screen.queryByRole('article', { name: 'github' })).not.toBeInTheDocument())
   })
 

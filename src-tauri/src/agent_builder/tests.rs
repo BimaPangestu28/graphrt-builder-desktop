@@ -96,6 +96,35 @@ async fn valid_first_draft_is_saved_with_name_kind_and_progress() {
 }
 
 #[tokio::test]
+async fn system_prompt_offers_saved_secret_names_but_never_values() {
+    let db = test_database();
+    let credentials = crate::credentials::CredentialStore::in_memory();
+    let server_token = crate::workflow_secrets::saved::NewWorkflowSecret {
+        name: "MY_SERVER_TOKEN".into(),
+        value: "token-value-never-in-prompt".into(),
+        note: None,
+    };
+    crate::workflow_secrets::saved::add_workflow_secret(&db, &credentials, server_token).unwrap();
+    let (mock, builder) = mock_builder(&[fenced_reply("Simple answer", SIMPLE_ANSWER)]);
+
+    build_agent_with_model(&db, &builder, request("Post to my server with my API token", None), &|_| {}).await.unwrap();
+
+    let system_prompt = message_text(&mock.requests()[0], 0);
+    assert!(system_prompt.contains("Secrets the user already saved in the app"), "{system_prompt}");
+    assert!(system_prompt.contains("`MY_SERVER_TOKEN`"));
+    assert!(system_prompt.contains("{{#env.MY_SERVER_TOKEN#}}"));
+    assert!(!system_prompt.contains("token-value-never-in-prompt"));
+}
+
+#[test]
+fn system_prompt_has_no_saved_secrets_section_without_saved_secrets() {
+    let choice = ModelChoice { provider: ModelProvider::Openai, name: "gpt-4o-mini".into() };
+    assert!(!prompt::build_system_prompt(&choice, &[]).contains("Secrets the user already saved"));
+    let revision_prompt = prompt::revision_system_prompt(&choice, &["DB_PASSWORD".into()]);
+    assert!(revision_prompt.contains("`DB_PASSWORD`"));
+}
+
+#[tokio::test]
 async fn chosen_kind_is_kept_and_name_falls_back_to_document_name() {
     let db = test_database();
     let unnamed_reply = format!("```yaml\n{SIMPLE_ANSWER}```");
@@ -341,7 +370,7 @@ async fn draft_that_sends_without_approval_is_sent_back_for_repair() {
 #[test]
 fn system_prompt_includes_the_chatbot_guide() {
     let choice = ModelChoice { provider: ModelProvider::Openai, name: "gpt-4o-mini".into() };
-    for system_prompt in [prompt::build_system_prompt(&choice), prompt::revision_system_prompt(&choice)] {
+    for system_prompt in [prompt::build_system_prompt(&choice, &[]), prompt::revision_system_prompt(&choice, &[])] {
         assert!(system_prompt.contains("`handoff_reason`"), "{system_prompt}");
         assert!(system_prompt.contains("{{#conversation.notes#}}"));
     }
@@ -353,10 +382,10 @@ async fn system_prompt_lists_installed_plugin_steps() {
     let _lock = crate::plugins::tests::ACTIVE_SNAPSHOT_LOCK.lock().await;
     fixture.service.activate();
     let choice = ModelChoice { provider: ModelProvider::Openai, name: "gpt-4o-mini".into() };
-    let with_plugin = prompt::build_system_prompt(&choice);
+    let with_plugin = prompt::build_system_prompt(&choice, &[]);
     crate::plugins::active::publish(None);
     crate::plugins::active::publish_catalog(None);
-    let without_plugin = prompt::build_system_prompt(&choice);
+    let without_plugin = prompt::build_system_prompt(&choice, &[]);
 
     assert!(with_plugin.contains("`fixture-echo.echo` (Echo text)"), "{with_plugin}");
     assert!(with_plugin.contains("instead of a raw `http-request`"));
@@ -470,7 +499,7 @@ async fn drafts_may_use_catalog_plugins_that_are_not_installed() {
     let _lock = crate::plugins::tests::ACTIVE_SNAPSHOT_LOCK.lock().await;
     crate::plugins::active::publish_catalog(Some(Arc::new(crate::plugins::tests::not_installed_catalog())));
     let choice = ModelChoice { provider: ModelProvider::Openai, name: "gpt-4o-mini".into() };
-    let system_prompt = prompt::build_system_prompt(&choice);
+    let system_prompt = prompt::build_system_prompt(&choice, &[]);
     let unknown_kind = CATALOG_PLUGIN_DRAFT.replace("fixture-mail.send_mail", "fixture-mail.format_disk");
     let db = test_database();
     let (mock, builder) =

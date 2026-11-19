@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import type { McpServerDefinition, WorkflowSecretOverview } from '@/api/connectionTypes'
 import { ConnectionsPage } from '../ConnectionsPage'
@@ -46,6 +46,10 @@ function renderConnectionsPage() {
   )
 }
 
+function secretOverview(name: string): WorkflowSecretOverview {
+  return { name, description: null, isSecret: true, required: true, configured: false, agents: [], mcpServers: [], note: null, createdAt: null, updatedAt: null }
+}
+
 function getAdvancedSection() {
   return screen.getByRole('region', { name: 'Advanced' })
 }
@@ -58,8 +62,11 @@ describe('ConnectionsPage in the desktop app', () => {
 
   it('shows no sample apps and honest empty states', async () => {
     renderConnectionsPage()
-    expect(await within(getAdvancedSection()).findByText(/No agent needs an API key or token yet/)).toBeInTheDocument()
+    expect(await within(getAdvancedSection()).findByText(/Server logins, API tokens and passwords your agents use · None yet/)).toBeInTheDocument()
     expect(await within(getAdvancedSection()).findByText('Give agents tools from any MCP server · 0 added')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Manage Secrets' }))
+    expect(within(getAdvancedSection()).getByText(/No secrets yet\. Add one above; ones your agents use appear here too/)).toBeInTheDocument()
+    expect(screen.getByRole('form', { name: 'Add a secret' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Apps' })).not.toBeInTheDocument()
     expect(screen.queryByText('WhatsApp')).not.toBeInTheDocument()
     expect(screen.queryByText(/Google Places/)).not.toBeInTheDocument()
@@ -68,23 +75,17 @@ describe('ConnectionsPage in the desktop app', () => {
 
   it('lists the secrets the agents declare, set or not', async () => {
     workflowSecrets = [
-      { name: 'GITHUB_TOKEN', description: null, isSecret: true, required: true, configured: false, agents: [], mcpServers: ['github'] },
-      {
-        name: 'MAPS_API_KEY',
-        description: null,
-        isSecret: true,
-        required: true,
-        configured: true,
-        agents: [{ agentId: 'a1', agentName: '[AGENT NAME]' }],
-        mcpServers: [],
-      },
+      { ...secretOverview('GITHUB_TOKEN'), mcpServers: ['github'] },
+      { ...secretOverview('MAPS_API_KEY'), configured: true, agents: [{ agentId: 'a1', agentName: '[AGENT NAME]' }] },
     ]
     renderConnectionsPage()
-    expect(await within(getAdvancedSection()).findByText('GITHUB_TOKEN')).toBeInTheDocument()
-    expect(within(getAdvancedSection()).getByText('Used by MCP server github')).toBeInTheDocument()
-    expect(within(getAdvancedSection()).getByText('Not set')).toBeInTheDocument()
+    expect(await within(getAdvancedSection()).findByText(/· 1 saved · 1 missing/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Manage Secrets' }))
+    const githubRow = within(getAdvancedSection()).getByRole('listitem', { name: 'GITHUB_TOKEN' })
+    expect(within(githubRow).getByText('Used by MCP server github')).toBeInTheDocument()
+    expect(within(githubRow).getByText('Missing')).toBeInTheDocument()
+    expect(within(githubRow).getByRole('button', { name: 'Add GITHUB_TOKEN' })).toHaveTextContent('Missing — add value')
     expect(within(getAdvancedSection()).getByText('Used by [AGENT NAME]')).toBeInTheDocument()
-    expect(within(getAdvancedSection()).getByRole('button', { name: 'Add GITHUB_TOKEN' })).toBeInTheDocument()
     expect(within(getAdvancedSection()).getByRole('button', { name: 'Remove MAPS_API_KEY' })).toBeInTheDocument()
   })
 })

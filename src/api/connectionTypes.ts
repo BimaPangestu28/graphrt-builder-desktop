@@ -20,6 +20,20 @@ export interface WorkflowSecretOverview {
   agents: SecretAgentUse[]
   /** Names of the MCP servers that need it. */
   mcpServers: string[]
+  /** The user's note, for a secret saved in the app. */
+  note: string | null
+  /** RFC 3339 time of the first save in the app; null when not recorded. */
+  createdAt: string | null
+  /** RFC 3339 time of the latest save in the app; null when not recorded. */
+  updatedAt: string | null
+}
+
+/** A secret the user adds themselves (Connections > Advanced > Secrets > Add secret). */
+export interface NewWorkflowSecret {
+  /** UPPER_SNAKE_CASE, 1–64 characters, e.g. `MY_SERVER_TOKEN`. */
+  name: string
+  value: string
+  note: string | null
 }
 
 /** How the app reaches an MCP server: a local command (stdio) or a URL (Streamable HTTP). */

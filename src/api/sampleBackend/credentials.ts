@@ -1,5 +1,5 @@
 import { BackendError } from '../client'
-import type { WorkflowSecretOverview } from '../connectionTypes'
+import type { NewWorkflowSecret, WorkflowSecretOverview } from '../connectionTypes'
 import type { ProviderModels } from '../modelCatalogTypes'
 import type { ModelChoice, ModelProvider, ProviderStatus, WorkflowSecretStatus } from '../types'
 import { readSampleMcpServers } from './mcpServers'
@@ -20,6 +20,14 @@ interface SampleCredentialsState {
   defaultModel: ModelChoice
   /** Names of workflow secrets that have a value (the value itself is dropped). */
   configuredSecretNames: Set<string>
+  /** Secrets saved in the app (Add secret, Replace), like the backend's saved-secrets index. */
+  savedSecrets: Map<string, SampleSavedSecret>
+}
+
+interface SampleSavedSecret {
+  note: string | null
+  createdAt: string
+  updatedAt: string
 }
 
 function createInitialState(): SampleCredentialsState {
@@ -28,11 +36,12 @@ function createInitialState(): SampleCredentialsState {
     ollamaBaseUrl: defaultOllamaBaseUrl,
     defaultModel: { provider: 'openai', name: 'gpt-4o-mini' },
     configuredSecretNames: new Set<string>(['GOOGLE_PLACES_API_KEY']),
+    savedSecrets: new Map<string, SampleSavedSecret>(),
   }
 }
 
 /** Secrets the sample agents declare, as the Connections design shows them (screen 21). */
-const sampleAgentSecrets: Array<Omit<WorkflowSecretOverview, 'configured' | 'mcpServers'>> = [
+const sampleAgentSecrets: Array<Omit<WorkflowSecretOverview, 'configured' | 'mcpServers' | 'note' | 'createdAt' | 'updatedAt'>> = [
   {
     name: 'GOOGLE_PLACES_API_KEY',
     description: 'Google Places API key',
@@ -89,11 +98,64 @@ function storeDefaultModel(choice: ModelChoice): void {
 
 const workflowSecretNamePattern = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/
 
+/** Names the user types: `MY_SERVER_TOKEN` (same rule as `workflow_secrets/saved.rs`). */
+const newSecretNamePattern = /^[A-Z][A-Z0-9_]{0,63}$/
+const secretValueMaxBytes = 16 * 1024
+const secretNoteMaxChars = 200
+
+/** Records a save in the saved-secrets index; `note` undefined keeps the stored one. */
+function recordSecretSave(name: string, note?: string | null): void {
+  const now = new Date().toISOString()
+  const previousRecord = credentialsState.savedSecrets.get(name)
+  credentialsState.savedSecrets.set(name, {
+    note: note === undefined ? (previousRecord?.note ?? null) : note,
+    createdAt: previousRecord?.createdAt ?? now,
+    updatedAt: now,
+  })
+}
+
+/** @throws BackendError - `invalid_input` for a blank or too large value */
+function requireSecretValue(name: string, value: string): void {
+  requireText(value, `the value for ${name} is empty`)
+  if (new TextEncoder().encode(value).length > secretValueMaxBytes) {
+    throw new BackendError('invalid_input', `the value for ${name} is too large (at most 16 KB)`)
+  }
+}
+
 /** @throws BackendError - `invalid_input` for a malformed name or blank value */
 function storeWorkflowSecret(name: string, value: string): void {
   if (!workflowSecretNamePattern.test(name)) throw new BackendError('invalid_input', 'secret names use letters, digits and underscores')
-  requireText(value, `enter the value for ${name}`)
+  requireSecretValue(name, value)
   credentialsState.configuredSecretNames.add(name)
+  recordSecretSave(name)
+}
+
+/** @throws BackendError - `invalid_input` for a malformed name, bad value, long note or a name already saved */
+function addSampleWorkflowSecret(secret: NewWorkflowSecret): void {
+  const name = secret.name.trim()
+  if (!newSecretNamePattern.test(name)) {
+    throw new BackendError(
+      'invalid_input',
+      'secret names use capital letters, digits and underscores (like MY_SERVER_TOKEN), start with a letter and are at most 64 characters',
+    )
+  }
+  const note = secret.note?.trim() || null
+  if (note && note.length > secretNoteMaxChars) throw new BackendError('invalid_input', 'the note is too long (at most 200 characters)')
+  if (credentialsState.configuredSecretNames.has(name)) {
+    throw new BackendError('invalid_input', `a secret named ${name} is already saved; use Replace to change its value`)
+  }
+  requireSecretValue(name, secret.value)
+  credentialsState.configuredSecretNames.add(name)
+  recordSecretSave(name, note)
+}
+
+function removeSampleWorkflowSecret(name: string): void {
+  credentialsState.configuredSecretNames.delete(name)
+  credentialsState.savedSecrets.delete(name)
+}
+
+function emptySecretOverview(name: string, required: boolean): WorkflowSecretOverview {
+  return { name, description: null, isSecret: true, required, configured: false, agents: [], mcpServers: [], note: null, createdAt: null, updatedAt: null }
 }
 
 /**
@@ -104,19 +166,26 @@ function listSampleWorkflowSecrets(_agentId: string): WorkflowSecretStatus[] {
   return []
 }
 
-/** Every sample secret name with its status: the agents' secrets plus the sample MCP servers' ones. */
+/**
+ * Every sample secret name with its status: the agents' secrets, the sample MCP servers'
+ * ones and the ones saved in the app.
+ */
 function listAllSampleWorkflowSecrets(): WorkflowSecretOverview[] {
   const secretsByName = new Map<string, WorkflowSecretOverview>()
   for (const agentSecret of sampleAgentSecrets) {
-    secretsByName.set(agentSecret.name, { ...agentSecret, agents: [...agentSecret.agents], configured: false, mcpServers: [] })
+    secretsByName.set(agentSecret.name, { ...emptySecretOverview(agentSecret.name, agentSecret.required), ...agentSecret, agents: [...agentSecret.agents] })
   }
   for (const server of readSampleMcpServers()) {
     const serverSecretNames = [...server.secretEnv, ...(server.bearerTokenSecret ? [server.bearerTokenSecret] : [])]
     for (const secretName of serverSecretNames) {
-      const secret = secretsByName.get(secretName) ?? { name: secretName, description: null, isSecret: true, required: true, configured: false, agents: [], mcpServers: [] }
+      const secret = secretsByName.get(secretName) ?? emptySecretOverview(secretName, true)
       secret.mcpServers.push(server.name)
       secretsByName.set(secretName, secret)
     }
+  }
+  for (const [secretName, savedSecret] of credentialsState.savedSecrets) {
+    const secret = secretsByName.get(secretName) ?? emptySecretOverview(secretName, false)
+    secretsByName.set(secretName, { ...secret, ...savedSecret })
   }
   return [...secretsByName.values()]
     .map((secret) => ({ ...secret, configured: credentialsState.configuredSecretNames.has(secret.name) }))
@@ -159,9 +228,8 @@ export const sampleCredentialsBackend = {
   listWorkflowSecrets: (agentId: string): Promise<WorkflowSecretStatus[]> => respondWith(() => listSampleWorkflowSecrets(agentId)),
   listAllWorkflowSecrets: (): Promise<WorkflowSecretOverview[]> => respondWith(listAllSampleWorkflowSecrets),
   setWorkflowSecret: (name: string, value: string): Promise<void> => respondWith(() => storeWorkflowSecret(name, value)),
-  deleteWorkflowSecret: (name: string): Promise<void> => respondWith(() => {
-      credentialsState.configuredSecretNames.delete(name)
-    }),
+  addWorkflowSecret: (secret: NewWorkflowSecret): Promise<void> => respondWith(() => addSampleWorkflowSecret(secret)),
+  deleteWorkflowSecret: (name: string): Promise<void> => respondWith(() => removeSampleWorkflowSecret(name)),
 }
 
 /** Restores the sample keys and default model (use in test `beforeEach`). */

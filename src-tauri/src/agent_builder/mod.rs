@@ -178,7 +178,7 @@ pub(crate) async fn build_agent_with_model(
     let kind = request.kind.unwrap_or_else(|| kind::infer_kind(description));
     log::info!("building a {kind:?} agent with {}/{}", provider_name(builder.choice.provider), builder.choice.name);
     let messages = vec![
-        Message::system(prompt::build_system_prompt(&builder.choice)),
+        Message::system(prompt::build_system_prompt(&builder.choice, &saved_secret_names(db))),
         Message::user(prompt::build_request(description, kind)),
     ];
     report(on_progress, BuildStage::Drafting, "Drafting the steps");
@@ -211,7 +211,7 @@ pub(crate) async fn revise_agent_with_model(
     let agent = db.get_agent(agent_id)?;
     let before = current_summary(&agent);
     let messages = vec![
-        Message::system(prompt::revision_system_prompt(&builder.choice)),
+        Message::system(prompt::revision_system_prompt(&builder.choice, &saved_secret_names(db))),
         Message::user(prompt::revision_request(&agent.flow_yaml, instruction)),
     ];
     report(on_progress, BuildStage::Drafting, "Updating the steps");
@@ -227,6 +227,15 @@ pub(crate) async fn revise_agent_with_model(
         summary: changes.summary,
         changed_step_ids: changes.changed_step_ids,
         explanation: draft.explanation,
+    })
+}
+
+/// Names of the secrets the user saved, for the builder prompt. A read failure only
+/// drops the hint (logged), it never stops a build.
+fn saved_secret_names(db: &Database) -> Vec<String> {
+    crate::workflow_secrets::saved::saved_secret_names(db).unwrap_or_else(|error| {
+        log::warn!("could not read the saved secret names for the builder: {error}");
+        Vec::new()
     })
 }
 

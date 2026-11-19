@@ -95,9 +95,20 @@ pub fn list_workflow_secrets(state: State<'_, AppState>, agent_id: String) -> Ap
         .collect()
 }
 
+/// Saves or replaces one secret's value (Replace, or a value the builder asks for)
+/// and remembers its name so the builder can offer it to other agents.
 #[tauri::command]
 pub fn set_workflow_secret(state: State<'_, AppState>, name: String, value: String) -> AppResult<()> {
-    state.credentials.set_workflow_secret(name.trim(), &value)
+    crate::workflow_secrets::saved::replace_workflow_secret(&state.db, &state.credentials, &name, &value)
+}
+
+/// Adds a secret the user names themselves (Connections > Advanced > Secrets > Add secret).
+#[tauri::command]
+pub fn add_workflow_secret(
+    state: State<'_, AppState>,
+    secret: crate::workflow_secrets::saved::NewWorkflowSecret,
+) -> AppResult<()> {
+    crate::workflow_secrets::saved::add_workflow_secret(&state.db, &state.credentials, secret)
 }
 
 /// Every secret name any agent declares or an MCP server needs, with its
@@ -112,5 +123,5 @@ pub fn list_all_workflow_secrets(
 
 #[tauri::command]
 pub fn delete_workflow_secret(state: State<'_, AppState>, name: String) -> AppResult<()> {
-    state.credentials.delete_workflow_secret(name.trim())
+    crate::workflow_secrets::saved::remove_workflow_secret(&state.db, &state.credentials, &name)
 }

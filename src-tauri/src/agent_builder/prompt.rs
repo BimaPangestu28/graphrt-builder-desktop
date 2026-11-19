@@ -68,21 +68,23 @@ markdown). Then reply with the complete updated workflow document inside one ```
 Keep the ids of steps you do not change, and change only what the request needs. Existing model nodes keep their model unless \
 the request is about the model; new model nodes follow the model rule above.";
 
-/// System prompt for drafting a new agent.
-pub(super) fn build_system_prompt(model: &ModelChoice) -> String {
-    system_prompt(model, BUILD_REPLY_FORMAT)
+/// System prompt for drafting a new agent. `saved_secret_names` are the secrets the
+/// user saved in the app (names only, never values).
+pub(super) fn build_system_prompt(model: &ModelChoice, saved_secret_names: &[String]) -> String {
+    system_prompt(model, BUILD_REPLY_FORMAT, saved_secret_names)
 }
 
 /// System prompt for revising an existing agent.
-pub(super) fn revision_system_prompt(model: &ModelChoice) -> String {
-    system_prompt(model, REVISION_REPLY_FORMAT)
+pub(super) fn revision_system_prompt(model: &ModelChoice, saved_secret_names: &[String]) -> String {
+    system_prompt(model, REVISION_REPLY_FORMAT, saved_secret_names)
 }
 
-fn system_prompt(model: &ModelChoice, reply_format: &str) -> String {
+fn system_prompt(model: &ModelChoice, reply_format: &str, saved_secret_names: &[String]) -> String {
     let rules = SHARED_RULES.replace("{provider}", provider_name(model.provider)).replace("{model}", &model.name);
     let rules = append_domain_guides(rules);
     let rules = append_plugin_guide(rules);
     let rules = append_mcp_guide(rules);
+    let rules = append_saved_secrets_guide(rules, saved_secret_names);
     format!(
         "{ROLE}\n\n# Rules\n{rules}\n\n# Reply format\n{reply_format}\n\n# Workflow format\n{guide}\n\n\
          # Example: answer one question\n```yaml\n{simple_answer}\n```\n\n\
@@ -110,6 +112,31 @@ fn append_plugin_guide(rules: String) -> String {
     } else {
         format!("{rules}\n{guide}")
     }
+}
+
+/// Most saved secret names listed, so a long list cannot crowd out the rules.
+const MAX_SAVED_SECRET_NAMES: usize = 50;
+
+/// Adds the names of the secrets the user saved, so the model reuses them instead of
+/// inventing new names for a credential the user already has.
+fn append_saved_secrets_guide(rules: String, saved_secret_names: &[String]) -> String {
+    if saved_secret_names.is_empty() {
+        return rules;
+    }
+    let listed_names = saved_secret_names
+        .iter()
+        .take(MAX_SAVED_SECRET_NAMES)
+        .map(|name| format!("`{name}`"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "{rules}\n- Secrets the user already saved in the app (Connections > Advanced > Secrets; values are \
+         never shown to you): {listed_names}. When the job needs one of these credentials (a server login, API \
+         token, database password), declare it under `env` with `type: secret` using exactly that name and read \
+         it as `{{{{#env.NAME#}}}}`, e.g. `{{{{#env.{example}#}}}}`. Pick the name that best matches what the user \
+         describes; only add a new secret name when none of these fits.",
+        example = saved_secret_names[0],
+    )
 }
 
 /// Adds the configured MCP servers' tools (dynamic, like the plugin guide).
