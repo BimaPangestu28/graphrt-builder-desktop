@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button, Icon, joinClassNames } from '@/components/ui'
+import { useOnboardingTour } from '@/pages/onboarding/onboardingTourContext'
 import { gettingStartedDismissedKey, isGettingStartedComplete, type GettingStartedStep } from './gettingStarted'
 
 function readDismissed(): boolean {
@@ -46,6 +47,24 @@ function DoneStepsLine({ doneSteps }: { doneSteps: GettingStartedStep[] }) {
         </span>
       ))}
     </p>
+  )
+}
+
+/** "Take the tour" under the checklist; hidden outside the app's tour provider. */
+function TakeTheTourRow() {
+  const onboardingTour = useOnboardingTour()
+  if (!onboardingTour) return null
+  return (
+    <div className="border-t border-chip px-2.5 pt-2">
+      <button
+        type="button"
+        onClick={onboardingTour.openTour}
+        className="flex cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 font-sans text-[13px] font-semibold text-brand hover:text-brand-strong"
+      >
+        <Icon name="info" size={14} />
+        Take the tour
+      </button>
+    </div>
   )
 }
 
@@ -97,6 +116,7 @@ export function GettingStartedCard({ steps }: { steps: GettingStartedStep[] | nu
         ))}
       </ol>
       <DoneStepsLine doneSteps={doneSteps} />
+      <TakeTheTourRow />
     </section>
   )
 }

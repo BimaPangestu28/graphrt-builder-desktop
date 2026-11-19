@@ -14,6 +14,7 @@ import {
 } from '@/data/settings'
 import { describeError } from '@/lib/agentDisplay'
 import { routePaths } from '@/routes'
+import { useOnboardingTour } from '../onboarding/onboardingTourContext'
 import { DataActions } from './DataActions'
 import { DefaultModelRow } from './DefaultModelRow'
 import { ActionRow, SelectRow, SettingsGroup, ToggleRow, settingsButtonClassNames } from './SettingRows'
@@ -297,12 +298,30 @@ export function NotificationsSection({ appSettings, updateAppSetting }: AppSetti
   )
 }
 
-/** About group: version and helpful links. */
+/** "Show the tour again", when the app's tour provider is there (hidden otherwise). */
+function TourRow() {
+  const onboardingTour = useOnboardingTour()
+  if (!onboardingTour) return null
+  return (
+    <ActionRow
+      title="Onboarding tour"
+      description="A short walk through what graphrt does and where things are"
+      action={
+        <button type="button" onClick={onboardingTour.openTour} className={`${settingsButtonClassNames} h-[34px]`}>
+          Show the tour again
+        </button>
+      }
+    />
+  )
+}
+
+/** About group: version, the onboarding tour and helpful links. */
 export function AboutSection({ appInfo }: { appInfo: AppInfo | null }) {
   const versionText = appInfo ? `Version ${appInfo.version}${appInfo.updateStatus ? ` · ${appInfo.updateStatus}` : ''}` : 'Loading…'
   return (
     <SettingsGroup headingId="settings-about-heading" title="About">
       <ActionRow title="graphrt" description={versionText} action={null} />
+      <TourRow />
       <ActionRow
         title="Connected accounts"
         description="AI model keys, secrets, MCP servers and plugins"

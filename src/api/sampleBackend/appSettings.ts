@@ -1,6 +1,7 @@
 import type { AppSettings, DeletionSummary, ExportSummary } from '../appSettingsTypes'
 import { requireText, respondWith } from './sampleResponse'
 import { resetSampleAgents, sampleAgentsBackend } from './agents'
+import { resetSampleOnboardingTour } from './onboardingTour'
 
 /**
  * Sample desktop preferences for the browser preview and tests, kept in module memory.
@@ -34,6 +35,7 @@ async function deleteSampleData(removeKeychainItems: boolean): Promise<DeletionS
   const agents = await sampleAgentsBackend.listAgents()
   await Promise.all(agents.map((agent) => sampleAgentsBackend.deleteAgent(agent.id)))
   storedSettings = createInitialSettings()
+  resetSampleOnboardingTour()
   return { deletedAgentCount: agents.length, removedKeychainItemCount: removeKeychainItems ? 3 : 0 }
 }
 
