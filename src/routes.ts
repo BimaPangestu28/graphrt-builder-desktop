@@ -52,6 +52,16 @@ export const agentRoutePatterns = {
 
 export type AgentRouteKey = keyof typeof agentRoutePatterns
 
+/**
+ * Search param of the builder (04) holding a change request to prefill in its chat box, for
+ * example from "Ask the builder to fix this step". The builder reads it once and removes it,
+ * so a refresh does not prefill again. It is never sent on its own: the user presses Send.
+ *
+ * @example
+ * agentPath('builder', agent.id, { [builderAskParam]: 'Please fix the "Send" step.' })
+ */
+export const builderAskParam = 'ask'
+
 /** Agent id used by the sample data when no real agent exists (browser preview, tests). */
 export const sampleAgentId = 'maps-leads'
 

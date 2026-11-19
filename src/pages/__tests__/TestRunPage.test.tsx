@@ -214,7 +214,10 @@ describe('TestRunPage', () => {
     const sendRow = sendButton.closest('li') as HTMLElement
     expect(within(sendRow).getByText("Could not reach the server: that address doesn't exist")).toBeInTheDocument()
     expect(within(sendRow).getByText('Technical details')).toBeInTheDocument()
-    expect(within(sendRow).getByRole('link', { name: 'Ask the builder to fix this step' })).toHaveAttribute('href', '/agents/maps-leads/steps')
+    const fixLink = within(sendRow).getByRole('link', { name: 'Ask the builder to fix this step' })
+    const fixUrl = new URL(fixLink.getAttribute('href') ?? '', 'http://localhost')
+    expect(fixUrl.pathname).toBe('/agents/maps-leads/steps')
+    expect(fixUrl.searchParams.get('ask')).toBe(`The step "Send WhatsApp" (send_whatsapp) failed with: ${rawError}. Please fix this step.`)
 
     fireEvent.click(screen.getByRole('button', { name: 'Run again' }))
     await flushBackendCalls()

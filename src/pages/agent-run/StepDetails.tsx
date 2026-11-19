@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { buildFixStepPath } from './fixStepRequest'
 import { humanizeRunError } from './runErrorText'
 import type { RunStepView } from './runSteps'
 import { readFinalText, summarizeValues } from './stepValueSummary'
@@ -48,7 +49,7 @@ function ModelText({ step }: { step: RunStepView }) {
 }
 
 /** The error in plain words, the raw text one click away. */
-export function ErrorExplanation({ rawError, stepDetail, fixPath }: { rawError: string; stepDetail: string | null; fixPath?: string | null }) {
+export function ErrorExplanation({ rawError, stepDetail, fixStepPath }: { rawError: string; stepDetail: string | null; fixStepPath?: string | null }) {
   const { summary } = humanizeRunError(rawError, stepDetail)
   return (
     <div className="flex flex-col gap-1.5 rounded-lg border border-danger-line bg-danger-tint px-3 py-2">
@@ -57,8 +58,8 @@ export function ErrorExplanation({ rawError, stepDetail, fixPath }: { rawError: 
         <summary className="cursor-pointer">Technical details</summary>
         <pre className="m-0 mt-1 whitespace-pre-wrap break-words font-mono">{rawError}</pre>
       </details>
-      {fixPath && (
-        <Link to={fixPath} className="text-[13px] font-medium">
+      {fixStepPath && (
+        <Link to={fixStepPath} className="text-[13px] font-medium">
           Ask the builder to fix this step
         </Link>
       )}
@@ -82,11 +83,11 @@ function describeEmptyState(step: RunStepView): string | null {
 interface StepDetailsProps {
   step: RunStepView
   id: string
-  /** Where "Ask the builder to fix this step" goes, for failed steps. */
-  fixPath?: string | null
+  /** Agent whose builder "Ask the builder to fix this step" opens, for failed steps. */
+  fixAgentId?: string | null
 }
 
-export function StepDetails({ step, id, fixPath }: StepDetailsProps) {
+export function StepDetails({ step, id, fixAgentId }: StepDetailsProps) {
   const usageText = formatUsage(step)
   const emptyState = describeEmptyState(step)
   const hasValues = step.outputs !== null || step.inputs !== undefined
@@ -100,7 +101,7 @@ export function StepDetails({ step, id, fixPath }: StepDetailsProps) {
         </span>
       )}
       {step.isModelStep && <ModelText step={step} />}
-      {step.errorMessage && step.iteration === null && <ErrorExplanation rawError={step.errorMessage} stepDetail={step.stepDetail} fixPath={fixPath} />}
+      {step.errorMessage && step.iteration === null && <ErrorExplanation rawError={step.errorMessage} stepDetail={step.stepDetail} fixStepPath={fixAgentId ? buildFixStepPath(fixAgentId, step) : null} />}
       {step.retryCount > 0 && (
         <span className="text-[13px] text-body">
           Retried {step.retryCount === 1 ? 'once' : `${step.retryCount} times`}

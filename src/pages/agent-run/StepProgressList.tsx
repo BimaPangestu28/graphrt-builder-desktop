@@ -95,10 +95,10 @@ interface StepRowProps {
   now: number
   isExpanded: boolean
   onToggle: () => void
-  fixPath?: string | null
+  fixAgentId?: string | null
 }
 
-function StepRow({ step, now, isExpanded, onToggle, fixPath }: StepRowProps) {
+function StepRow({ step, now, isExpanded, onToggle, fixAgentId }: StepRowProps) {
   const detailsId = useId()
   const meta = describeStepMeta(step, now)
   const isMuted = step.state === 'pending' || step.state === 'skipped'
@@ -127,7 +127,7 @@ function StepRow({ step, now, isExpanded, onToggle, fixPath }: StepRowProps) {
       <IterationBar step={step} />
       {isExpanded && (
         <div className="ml-[30px]">
-          <StepDetails step={step} id={detailsId} fixPath={step.state === 'failed' ? fixPath : null} />
+          <StepDetails step={step} id={detailsId} fixAgentId={step.state === 'failed' ? fixAgentId : null} />
         </div>
       )}
     </li>
@@ -138,8 +138,8 @@ interface StepProgressListProps {
   steps: RunStepView[]
   /** Current time in ms, for live durations (see `useNow`). */
   now?: number
-  /** Where "Ask the builder to fix this step" goes on a failed step. */
-  fixPath?: string | null
+  /** Agent whose builder "Ask the builder to fix this step" opens (prefilled) on a failed step. */
+  fixAgentId?: string | null
 }
 
 /**
@@ -148,7 +148,7 @@ interface StepProgressListProps {
  * step did; the model step that is writing and a failed step open by themselves, and close
  * again when they finish unless the user opened or closed them.
  */
-export function StepProgressList({ steps, now = Date.now(), fixPath }: StepProgressListProps) {
+export function StepProgressList({ steps, now = Date.now(), fixAgentId }: StepProgressListProps) {
   const [expandedByUser, setExpandedByUser] = useState<Record<string, boolean>>({})
   return (
     <ol aria-label="Steps" className="m-0 flex list-none flex-col gap-2 rounded-xl border border-line bg-surface p-4">
@@ -160,7 +160,7 @@ export function StepProgressList({ steps, now = Date.now(), fixPath }: StepProgr
             step={step}
             now={now}
             isExpanded={isExpanded}
-            fixPath={fixPath}
+            fixAgentId={fixAgentId}
             onToggle={() => setExpandedByUser((current) => ({ ...current, [step.id]: !isExpanded }))}
           />
         )
