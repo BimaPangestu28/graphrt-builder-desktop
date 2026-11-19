@@ -50,6 +50,8 @@ export interface PluginCatalog {
 export interface PluginConfigStatus {
   name: string
   configured: boolean
+  /** The plugin has a default (limits, folders, API version), so it never blocks running. */
+  optional: boolean
 }
 
 /** A plugin installed under the app data folder. */

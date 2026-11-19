@@ -170,6 +170,9 @@ pub struct PluginCatalog {
 pub struct PluginConfigStatus {
     pub name: String,
     pub configured: bool,
+    /// The plugin has a default for it (tuning such as limits or folders), so it never
+    /// blocks running; same rule as plugin readiness.
+    pub optional: bool,
 }
 
 /// An installed plugin, loaded or not.

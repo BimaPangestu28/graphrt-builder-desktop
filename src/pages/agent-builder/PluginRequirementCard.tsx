@@ -1,5 +1,7 @@
 import type { PluginRequirement } from '@/api/pluginRequirementTypes'
 import { Badge, Button, StrokeIcon } from '@/components/ui'
+import { whatsAppWebPluginName } from '../connect-whatsapp/useWhatsAppActions'
+import { WhatsAppWebLinkPanel } from '../connect-whatsapp/WhatsAppWebLinkPanel'
 import { PluginConfigForm } from '../connections/PluginConfigForm'
 import {
   browserDownloadSizeNote,
@@ -110,9 +112,14 @@ function RequirementActions({ requirement, setup }: PluginRequirementCardProps) 
   )
 }
 
+/** `whatsapp-web` links by QR code, which needs the plugin installed and trusted and the browser ready. */
+function canLinkWhatsAppWeb(requirement: PluginRequirement): boolean {
+  return requirement.name === whatsAppWebPluginName && requirement.installed && requirement.trusted && requirement.browserReady
+}
+
 /**
  * One plugin the agent needs, in the build chat: what it is, which steps use it, what it
- * asks for, its warning, and the actions that make it ready.
+ * asks for, its warning, and the actions that make it ready (plus the QR link for `whatsapp-web`).
  */
 export function PluginRequirementCard({ requirement, setup }: PluginRequirementCardProps) {
   const errorMessage = setup.errorByName[requirement.name]
@@ -127,6 +134,7 @@ export function PluginRequirementCard({ requirement, setup }: PluginRequirementC
         ))}
       </ul>
       <RequirementActions requirement={requirement} setup={setup} />
+      {canLinkWhatsAppWeb(requirement) && <WhatsAppWebLinkPanel />}
       {errorMessage && (
         <p role="alert" className="m-0 text-[13px] text-danger">
           {errorMessage}

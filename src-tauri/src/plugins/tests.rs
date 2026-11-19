@@ -395,6 +395,30 @@ async fn an_update_asking_for_more_permissions_drops_trust() {
 }
 
 #[tokio::test]
+async fn installed_settings_say_whether_they_are_optional() {
+    let fixture = installed_fixture().await;
+    let mut files = fixture_files();
+    let manifest = String::from_utf8(files[0].1.clone()).unwrap();
+    files[0].1 = manifest
+        .replace("\"version\": \"1.0.0\"", "\"version\": \"1.1.0\"")
+        .replace(
+            "\"env\": [\"FIXTURE_ECHO_TOKEN\"]",
+            "\"env\": [\"FIXTURE_ECHO_TOKEN\", \"FIXTURE_ECHO_IDLE_MINUTES\"]",
+        )
+        .into_bytes();
+    fixture.publish("1.1.0", tarball(&files, &[]));
+    fixture.service.catalog(true).await.unwrap();
+
+    let updated = fixture.service.update(PLUGIN).await.unwrap();
+
+    let optional_by_name: Vec<(&str, bool)> =
+        updated.config.iter().map(|status| (status.name.as_str(), status.optional)).collect();
+    assert_eq!(optional_by_name, [("FIXTURE_ECHO_TOKEN", false), ("FIXTURE_ECHO_IDLE_MINUTES", true)]);
+    let listing = serde_json::to_value(&updated).unwrap();
+    assert_eq!(listing["config"][1]["optional"], true);
+}
+
+#[tokio::test]
 async fn non_https_downloads_are_refused() {
     let fixture = Fixture::new();
     let tarball = good_tarball();

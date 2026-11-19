@@ -277,8 +277,9 @@ fn unset_plugin_settings_are_missing_credentials() {
     fixture.agent("Maps leads", PLUGIN_FLOW);
     let mut whatsapp = installed_plugin("whatsapp-api");
     whatsapp.config = vec![
-        PluginConfigStatus { name: "WHATSAPP_TOKEN".into(), configured: false },
-        PluginConfigStatus { name: "WHATSAPP_PHONE_ID".into(), configured: true },
+        PluginConfigStatus { name: "WHATSAPP_TOKEN".into(), configured: false, optional: false },
+        PluginConfigStatus { name: "WHATSAPP_PHONE_ID".into(), configured: true, optional: false },
+        PluginConfigStatus { name: "WHATSAPP_GRAPH_VERSION".into(), configured: false, optional: true },
     ];
     fixture.plugins = vec![installed_plugin("maps-browser"), whatsapp];
 
@@ -286,6 +287,8 @@ fn unset_plugin_settings_are_missing_credentials() {
     assert_eq!(problems.len(), 1);
     assert!(problems[0].detail.contains("whatsapp-api setting WHATSAPP_TOKEN"));
     assert!(!problems[0].detail.contains("WHATSAPP_PHONE_ID"));
+    // Optional tuning settings have defaults, so leaving them unset is not a problem.
+    assert!(!problems[0].detail.contains("WHATSAPP_GRAPH_VERSION"));
     assert_eq!(action_kinds(&problems[0]), [ProblemActionKind::OpenPlugins]);
 }
 

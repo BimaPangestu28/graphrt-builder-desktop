@@ -1,14 +1,17 @@
 import type { InstalledPlugin } from '@/api/pluginTypes'
 import { Badge, Button } from '@/components/ui'
 import type { PluginsState } from '@/hooks/usePlugins'
-import { PluginConfigForm } from './PluginConfigForm'
 import { describeInstallProgress, type PluginListItem } from './pluginDisplay'
 import { PluginPermissionList } from './PluginPermissionList'
+import { PluginSettings } from './PluginSettings'
 import { PluginTrustToggle } from './PluginTrustToggle'
+import { WhatsAppWebLinkSection } from './WhatsAppWebLinkSection'
 
 interface PluginCardProps {
   item: PluginListItem
   plugins: PluginsState
+  /** The browser runtime (Chromium) is installed, so browser plugins can run actions. */
+  isBrowserReady: boolean
 }
 
 const operationLabels = { installing: 'Installing…', updating: 'Updating…', removing: 'Removing…', trusting: 'Saving…' } as const
@@ -30,7 +33,7 @@ function PluginCardHeader({ item }: { item: PluginListItem }) {
   )
 }
 
-function PluginActions({ item, plugins }: PluginCardProps) {
+function PluginActions({ item, plugins }: Pick<PluginCardProps, 'item' | 'plugins'>) {
   const operation = plugins.operationByName[item.name]
   const isBusy = operation !== undefined
   if (!item.installed) {
@@ -73,7 +76,7 @@ function PluginLoadNotes({ installed }: { installed: InstalledPlugin }) {
   )
 }
 
-function InstalledPluginSettings({ installed, plugins }: { installed: InstalledPlugin; plugins: PluginsState }) {
+function InstalledPluginSettings({ installed, plugins, isBrowserReady }: { installed: InstalledPlugin; plugins: PluginsState; isBrowserReady: boolean }) {
   return (
     <>
       <PluginLoadNotes installed={installed} />
@@ -83,12 +86,8 @@ function InstalledPluginSettings({ installed, plugins }: { installed: InstalledP
         isSaving={plugins.operationByName[installed.name] === 'trusting'}
         onChange={(trusted) => void plugins.setTrusted(installed.name, trusted)}
       />
-      <PluginConfigForm
-        pluginName={installed.name}
-        fields={installed.config.map((setting) => ({ variable: setting.name, configured: setting.configured }))}
-        onSave={(variable, value) => plugins.saveConfig(installed.name, variable, value)}
-        onClear={(variable) => plugins.clearConfig(installed.name, variable)}
-      />
+      <WhatsAppWebLinkSection installed={installed} isBrowserReady={isBrowserReady} />
+      <PluginSettings installed={installed} plugins={plugins} />
     </>
   )
 }
@@ -96,9 +95,10 @@ function InstalledPluginSettings({ installed, plugins }: { installed: InstalledP
 /**
  * One plugin on Connections → Plugins: what it asks for (shown before install), its steps,
  * install / update / remove with live progress, and once installed the trust toggle,
- * its settings, load errors and warnings.
+ * its settings (optional ones folded away), load errors and warnings, and for `whatsapp-web`
+ * the QR link panel.
  */
-export function PluginCard({ item, plugins }: PluginCardProps) {
+export function PluginCard({ item, plugins, isBrowserReady }: PluginCardProps) {
   const progress = plugins.progressByName[item.name]
   const errorMessage = plugins.errorByName[item.name]
   return (
@@ -119,7 +119,7 @@ export function PluginCard({ item, plugins }: PluginCardProps) {
           {errorMessage}
         </p>
       )}
-      {item.installed && <InstalledPluginSettings installed={item.installed} plugins={plugins} />}
+      {item.installed && <InstalledPluginSettings installed={item.installed} plugins={plugins} isBrowserReady={isBrowserReady} />}
     </article>
   )
 }

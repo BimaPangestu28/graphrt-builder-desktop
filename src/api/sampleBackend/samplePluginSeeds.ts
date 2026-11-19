@@ -37,7 +37,7 @@ export const samplePluginSeeds: SamplePluginSeed[] = [
     description: 'Send messages from your personal WhatsApp, linked with a QR code like WhatsApp Web',
     permissions: {
       network: true,
-      secrets: false,
+      secrets: true,
       env: ['WHATSAPP_WEB_PROFILE_DIR', 'WHATSAPP_WEB_IDLE_MINUTES', 'WHATSAPP_WEB_MIN_SEND_INTERVAL_SECONDS', 'WHATSAPP_WEB_DAILY_SEND_LIMIT', 'WHATSAPP_WEB_ALLOWED_FILE_DIRS'],
     },
     needsBrowser: true,
@@ -95,6 +95,14 @@ export const samplePluginWarnings: Record<string, string> = {
  */
 export const sampleRequiredPluginSettings: Record<string, string[]> = {
   'whatsapp-api': ['WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID'],
+}
+
+/** Name endings of tuning settings the plugins default themselves, as in `src-tauri/src/plugins/optional_settings.rs`. */
+const optionalSettingSuffixes = ['_VERSION', '_MINUTES', '_SECONDS', '_LIMIT', '_DIR', '_DIRS', '_INTERVAL']
+
+/** Whether a plugin works without `variable` set (same rule as the desktop backend). */
+export function isOptionalSampleSetting(variable: string): boolean {
+  return optionalSettingSuffixes.some((suffix) => variable.endsWith(suffix))
 }
 
 /** A plugin a sample agent's step uses although its node type is a built-in one (the preview's maps-leads agent). */

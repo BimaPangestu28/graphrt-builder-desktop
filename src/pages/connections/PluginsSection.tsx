@@ -42,7 +42,7 @@ export function PluginsSection({ plugins, browserRuntime }: PluginsSectionProps)
       {items.length > 0 && (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-2.5">
           {items.map((item) => (
-            <PluginCard key={item.name} item={item} plugins={plugins} />
+            <PluginCard key={item.name} item={item} plugins={plugins} isBrowserReady={browserRuntime.status === 'installed'} />
           ))}
         </div>
       )}
