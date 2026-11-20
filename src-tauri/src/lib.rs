@@ -125,6 +125,7 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         events: Arc::new(plugins::events::TauriPluginEventSink::new(app.handle().clone())),
     }));
     plugins.activate();
+    plugins::auto_update::spawn(plugins.clone());
     live_view::spawn(
         data_dir.join(live_view::LIVE_VIEW_DIR_NAME),
         Arc::new(live_view::TauriLiveViewSink::new(app.handle().clone())),
@@ -267,6 +268,8 @@ pub fn run() {
             commands::plugins::list_installed_plugins,
             commands::plugins::install_plugin,
             commands::plugins::update_plugin,
+            commands::plugins::update_all_plugins,
+            commands::plugins::list_plugin_auto_updates,
             commands::plugins::remove_plugin,
             commands::plugins::set_plugin_trusted,
             commands::plugins::set_plugin_config,

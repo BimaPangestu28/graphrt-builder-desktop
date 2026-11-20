@@ -21,6 +21,7 @@ function createInitialSettings(): AppSettings {
     notifyDailySummary: false,
     runHistoryRetentionDays: 30,
     autoDownloadUpdates: true,
+    autoUpdatePlugins: true,
   }
 }
 

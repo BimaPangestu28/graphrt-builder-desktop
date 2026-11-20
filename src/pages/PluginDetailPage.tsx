@@ -43,9 +43,16 @@ function HeaderActions({ item, plugins }: { item: PluginListItem; plugins: Plugi
     )
   }
   return (
-    <div className="flex flex-wrap items-center justify-end gap-2">
-      {item.updateAvailable && <PluginUpdateButton item={item} plugins={plugins} size="md" />}
-      <PluginRemoveButton item={item} plugins={plugins} size="md" />
+    <div className="flex max-w-[320px] flex-col items-end gap-1.5">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {item.updateAvailable && <PluginUpdateButton item={item} plugins={plugins} size="md" />}
+        <PluginRemoveButton item={item} plugins={plugins} size="md" />
+      </div>
+      {item.updateAvailable && item.updateNeedsApproval && (
+        <span className="text-right text-[12px] leading-normal text-amber-strong">
+          Needs your approval: v{item.version} asks for more than the installed version, so it does not update by itself. After updating, trust it again
+        </span>
+      )}
     </div>
   )
 }

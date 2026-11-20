@@ -25,6 +25,7 @@ const KEY_NOTIFY_ON_CHAT_HANDOFF: &str = "app.notify_on_chat_handoff";
 const KEY_NOTIFY_DAILY_SUMMARY: &str = "app.notify_daily_summary";
 const KEY_RUN_HISTORY_RETENTION_DAYS: &str = "app.run_history_retention_days";
 const KEY_AUTO_DOWNLOAD_UPDATES: &str = "app.auto_download_updates";
+const KEY_AUTO_UPDATE_PLUGINS: &str = "app.auto_update_plugins";
 
 /// Stored value of [`AppSettings::run_history_retention_days`] = `None`.
 const RETENTION_FOREVER: &str = "forever";
@@ -64,6 +65,9 @@ pub struct AppSettings {
     /// Download a new version in the background as soon as the update check finds one
     /// (it is installed only when the user restarts). Off: the update is only announced.
     pub auto_download_updates: bool,
+    /// Install newer catalog versions of installed plugins in the background when they ask
+    /// for nothing more than the installed version (see `plugins::auto_update`).
+    pub auto_update_plugins: bool,
 }
 
 impl Default for AppSettings {
@@ -81,6 +85,7 @@ impl Default for AppSettings {
             notify_daily_summary: false,
             run_history_retention_days: Some(DEFAULT_RUN_HISTORY_RETENTION_DAYS),
             auto_download_updates: true,
+            auto_update_plugins: true,
         }
     }
 }
@@ -103,6 +108,7 @@ impl AppSettings {
             notify_daily_summary: read_flag(db, KEY_NOTIFY_DAILY_SUMMARY, defaults.notify_daily_summary)?,
             run_history_retention_days: read_retention(db, defaults.run_history_retention_days)?,
             auto_download_updates: read_flag(db, KEY_AUTO_DOWNLOAD_UPDATES, defaults.auto_download_updates)?,
+            auto_update_plugins: read_flag(db, KEY_AUTO_UPDATE_PLUGINS, defaults.auto_update_plugins)?,
         })
     }
 
@@ -133,6 +139,7 @@ impl AppSettings {
             (KEY_NOTIFY_ON_CHAT_HANDOFF, self.notify_on_chat_handoff),
             (KEY_NOTIFY_DAILY_SUMMARY, self.notify_daily_summary),
             (KEY_AUTO_DOWNLOAD_UPDATES, self.auto_download_updates),
+            (KEY_AUTO_UPDATE_PLUGINS, self.auto_update_plugins),
         ];
         for (key, value) in flags {
             db.set_setting(key, if value { "true" } else { "false" })?;
@@ -230,6 +237,7 @@ mod tests {
             notify_daily_summary: true,
             run_history_retention_days: None,
             auto_download_updates: false,
+            auto_update_plugins: false,
         };
         changed.save(&database).unwrap();
         assert_eq!(AppSettings::load(&database).unwrap(), changed);
@@ -285,6 +293,18 @@ mod tests {
         let manual = AppSettings { auto_download_updates: false, ..AppSettings::default() };
         manual.save(&database).unwrap();
         assert!(!AppSettings::load(&database).unwrap().auto_download_updates);
+    }
+
+    #[test]
+    fn plugins_update_by_themselves_until_switched_off() {
+        let database = test_database();
+        assert!(AppSettings::load(&database).unwrap().auto_update_plugins);
+        let manual = AppSettings { auto_update_plugins: false, ..AppSettings::default() };
+        manual.save(&database).unwrap();
+        assert!(!AppSettings::load(&database).unwrap().auto_update_plugins);
+        let older_frontend: AppSettings = serde_json::from_value(serde_json::json!({ "openAtLogin": false })).unwrap();
+        assert!(older_frontend.auto_update_plugins);
+        assert_eq!(serde_json::to_value(AppSettings::default()).unwrap()["autoUpdatePlugins"], true);
     }
 
     #[test]

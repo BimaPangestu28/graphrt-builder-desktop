@@ -5,10 +5,13 @@ import type {
   BrowserRuntimeStatus,
   InstalledPlugin,
   PluginActionResult,
+  PluginAutoUpdate,
+  PluginBulkUpdateSummary,
   PluginCatalog,
   PluginCatalogEntry,
   PluginEvent,
   PluginInstallStage,
+  PluginPermissions,
 } from '../pluginTypes'
 import type { FlowStep } from '../types'
 import { readCurrentSteps } from './sampleAgentStore'
@@ -35,6 +38,8 @@ interface SampleInstalledRecord {
   version: string
   trusted: boolean
   configuredVariables: Set<string>
+  /** What the installed version asks for (the catalog's, unless a test says otherwise). */
+  permissions: PluginPermissions
 }
 
 interface SamplePluginsState {
@@ -44,14 +49,32 @@ interface SamplePluginsState {
   isWhatsAppWebLoggedIn: boolean
   /** Plugins each agent uses besides `<plugin>.<kind>` steps (tests may change them). */
   pluginNeedsByAgentId: Record<string, SamplePluginNeed[]>
+  /** Updates "installed automatically", newest first (tests set them). */
+  autoUpdates: PluginAutoUpdate[]
 }
 
 function createInitialState(): SamplePluginsState {
   const installedByName = new Map<string, SampleInstalledRecord>()
   for (const installedPlugin of initiallyInstalledSamplePlugins) {
-    installedByName.set(installedPlugin.name, { ...installedPlugin, configuredVariables: new Set<string>() })
+    const permissions = copyPermissions(findSeed(installedPlugin.name).permissions)
+    installedByName.set(installedPlugin.name, { ...installedPlugin, configuredVariables: new Set<string>(), permissions })
   }
-  return { installedByName, browserRuntimeStatus: 'not_installed', isWhatsAppWebLoggedIn: false, pluginNeedsByAgentId: { ...samplePluginNeedsByAgentId } }
+  return {
+    installedByName,
+    browserRuntimeStatus: 'not_installed',
+    isWhatsAppWebLoggedIn: false,
+    pluginNeedsByAgentId: { ...samplePluginNeedsByAgentId },
+    autoUpdates: [],
+  }
+}
+
+function copyPermissions(permissions: PluginPermissions): PluginPermissions {
+  return { ...permissions, env: [...permissions.env] }
+}
+
+/** Same rule as `PluginPermissions::asks_for_more_than` in the backend. */
+function asksForMoreThan(requested: PluginPermissions, previous: PluginPermissions): boolean {
+  return (requested.secrets && !previous.secrets) || requested.env.some((variable) => !previous.env.includes(variable))
 }
 
 let pluginsState = createInitialState()
@@ -87,7 +110,7 @@ function toInstalledPlugin(installedRecord: SampleInstalledRecord): InstalledPlu
     name: seed.name,
     version: installedRecord.version,
     description: seed.description,
-    permissions: { ...seed.permissions, env: [...seed.permissions.env] },
+    permissions: copyPermissions(installedRecord.permissions),
     trusted: installedRecord.trusted,
     needsBrowser: seed.needsBrowser,
     nodes: seed.nodes.map((node) => ({ ...node })),
@@ -105,14 +128,17 @@ function toInstalledPlugin(installedRecord: SampleInstalledRecord): InstalledPlu
 }
 
 function toCatalogEntry(seed: SamplePluginSeed): PluginCatalogEntry {
-  const installedVersion = pluginsState.installedByName.get(seed.name)?.version ?? null
+  const installedRecord = pluginsState.installedByName.get(seed.name)
+  const installedVersion = installedRecord?.version ?? null
+  const updateAvailable = installedVersion !== null && installedVersion !== seed.version
   return {
     ...seed,
     permissions: { ...seed.permissions, env: [...seed.permissions.env] },
     nodes: seed.nodes.map((node) => ({ ...node })),
     tools: [...seed.tools],
     installedVersion,
-    updateAvailable: installedVersion !== null && installedVersion !== seed.version,
+    updateAvailable,
+    updateNeedsApproval: updateAvailable && installedRecord !== undefined && asksForMoreThan(seed.permissions, installedRecord.permissions),
   }
 }
 
@@ -134,7 +160,13 @@ function installSamplePlugin(name: string): InstalledPlugin {
   const seed = findSeed(name)
   if (pluginsState.installedByName.has(name)) throw new BackendError('invalid_input', `${name} is already installed`)
   emitInstallProgress(seed)
-  const installedRecord: SampleInstalledRecord = { name, version: seed.version, trusted: false, configuredVariables: new Set<string>() }
+  const installedRecord: SampleInstalledRecord = {
+    name,
+    version: seed.version,
+    trusted: false,
+    configuredVariables: new Set<string>(),
+    permissions: copyPermissions(seed.permissions),
+  }
   pluginsState.installedByName.set(name, installedRecord)
   emitPluginEvent({ type: 'plugins_changed' })
   return toInstalledPlugin(installedRecord)
@@ -146,9 +178,27 @@ function updateSamplePlugin(name: string): InstalledPlugin {
   const seed = findSeed(name)
   if (installedRecord.version === seed.version) throw new BackendError('invalid_input', `${name} is already up to date`)
   emitInstallProgress(seed)
+  if (asksForMoreThan(seed.permissions, installedRecord.permissions)) installedRecord.trusted = false
   installedRecord.version = seed.version
+  installedRecord.permissions = copyPermissions(seed.permissions)
   emitPluginEvent({ type: 'plugins_changed' })
   return toInstalledPlugin(installedRecord)
+}
+
+/** "Update all": every pending update asking for nothing more, like `update_all_plugins`. */
+function updateAllSamplePlugins(): PluginBulkUpdateSummary {
+  const summary: PluginBulkUpdateSummary = { updated: [], needsApproval: [], failed: [] }
+  for (const entry of readCatalog().plugins.filter((catalogEntry) => catalogEntry.updateAvailable)) {
+    if (entry.updateNeedsApproval) {
+      summary.needsApproval.push(entry.name)
+      continue
+    }
+    const installedRecord = findInstalledRecord(entry.name)
+    installedRecord.version = entry.version
+    summary.updated.push({ name: entry.name, fromVersion: entry.installedVersion ?? '', toVersion: entry.version })
+  }
+  if (summary.updated.length > 0) emitPluginEvent({ type: 'plugins_changed' })
+  return summary
 }
 
 function removeSamplePlugin(name: string): void {
@@ -305,6 +355,8 @@ export const samplePluginsBackend = {
   listInstalledPlugins: (): Promise<InstalledPlugin[]> => respondWith(() => [...pluginsState.installedByName.values()].map(toInstalledPlugin)),
   installPlugin: (name: string): Promise<InstalledPlugin> => respondWith(() => installSamplePlugin(name)),
   updatePlugin: (name: string): Promise<InstalledPlugin> => respondWith(() => updateSamplePlugin(name)),
+  updateAllPlugins: (): Promise<PluginBulkUpdateSummary> => respondWith(updateAllSamplePlugins),
+  listPluginAutoUpdates: (): Promise<PluginAutoUpdate[]> => respondWith(() => pluginsState.autoUpdates.map((autoUpdate) => ({ ...autoUpdate }))),
   removePlugin: (name: string): Promise<void> => respondWith(() => removeSamplePlugin(name)),
   setPluginTrusted: (name: string, trusted: boolean): Promise<InstalledPlugin> => respondWith(() => setSamplePluginTrusted(name, trusted)),
   setPluginConfig: (name: string, variable: string, value: string): Promise<InstalledPlugin> => respondWith(() => setSamplePluginConfig(name, variable, value)),
@@ -347,6 +399,27 @@ export function setSampleBrowserRuntimeStatus(status: BrowserRuntimeStatus): voi
  */
 export function setSampleAgentPluginNeeds(agentId: string, needs: SamplePluginNeed[]): void {
   pluginsState.pluginNeedsByAgentId[agentId] = needs
+}
+
+/**
+ * Installs (or replaces) a sample plugin at `version`, asking for `permissions` (the
+ * catalog's by default): tests of pending updates, with or without new permissions.
+ */
+export function setSampleInstalledPlugin(name: string, version: string, permissions?: PluginPermissions): void {
+  const seed = findSeed(name)
+  const previous = pluginsState.installedByName.get(name)
+  pluginsState.installedByName.set(name, {
+    name,
+    version,
+    trusted: previous?.trusted ?? false,
+    configuredVariables: previous?.configuredVariables ?? new Set<string>(),
+    permissions: copyPermissions(permissions ?? seed.permissions),
+  })
+}
+
+/** Sets the updates the sample says it installed by itself (newest first). */
+export function setSampleAutoUpdates(autoUpdates: PluginAutoUpdate[]): void {
+  pluginsState.autoUpdates = autoUpdates.map((autoUpdate) => ({ ...autoUpdate }))
 }
 
 /** Restores the two installed sample plugins and clears trust, settings and sessions (use in test `beforeEach`). */

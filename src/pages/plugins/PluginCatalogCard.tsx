@@ -69,6 +69,9 @@ function CardActions({ item, plugins, listSearch, onStartInstall }: PluginCatalo
       </>
     )
   }
+  if (item.updateAvailable && item.updateNeedsApproval) {
+    return <OpenLink item={item} listSearch={listSearch} label="Review update" isPrimary />
+  }
   if (item.updateAvailable) {
     return (
       <>

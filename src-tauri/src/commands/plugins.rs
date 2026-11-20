@@ -6,6 +6,7 @@ use tauri::State;
 
 use crate::error::AppResult;
 use crate::node_runtime::BrowserRuntimeStatus;
+use crate::plugins::auto_update::{PluginAutoUpdate, PluginBulkUpdateSummary};
 use crate::plugins::models::{InstalledPlugin, PluginActionResult, PluginCatalog};
 use crate::plugins::requirements::PluginRequirement;
 use crate::plugins::session::SessionState;
@@ -29,6 +30,18 @@ pub async fn install_plugin(state: State<'_, AppState>, name: String) -> AppResu
 #[tauri::command]
 pub async fn update_plugin(state: State<'_, AppState>, name: String) -> AppResult<InstalledPlugin> {
     state.plugins.update(name.trim()).await
+}
+
+/// "Update all": installs every pending update that asks for no new permissions.
+#[tauri::command]
+pub async fn update_all_plugins(state: State<'_, AppState>) -> AppResult<PluginBulkUpdateSummary> {
+    state.plugins.update_all_ready().await
+}
+
+/// Plugins updated automatically, newest first (Home's "Updated automatically" line).
+#[tauri::command]
+pub fn list_plugin_auto_updates(state: State<'_, AppState>) -> AppResult<Vec<PluginAutoUpdate>> {
+    state.plugins.recent_auto_updates()
 }
 
 #[tauri::command]

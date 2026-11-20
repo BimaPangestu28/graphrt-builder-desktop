@@ -12,6 +12,7 @@ use graphrt_plugin::LoadedManifest;
 
 use super::archive::extract_plugin_tarball;
 use super::host::read_plugin;
+use super::models::PluginPermissions;
 use crate::error::{AppError, AppResult};
 
 /// A staging folder that is removed when dropped (also on early returns).
@@ -37,22 +38,36 @@ impl Drop for StagingDir {
     }
 }
 
+/// What the extracted plugin is checked against before it replaces anything.
+pub(super) struct InstallChecks<'registry> {
+    /// Node kinds the plugin is registered next to (the built-in ones).
+    pub base_registry: &'registry graphrt_core::Registry,
+    /// When set, a plugin asking for more than this is refused before it is moved
+    /// into place (automatic updates never bring in new permissions).
+    pub permission_limit: Option<PluginPermissions>,
+}
+
 /// Extracts `tarball` (already checksum-verified) for plugin `name`, checks it
-/// loads, and moves it to `<plugins_dir>/<name>`. Returns the installed manifest.
+/// loads (and stays within `checks.permission_limit`), and moves it to
+/// `<plugins_dir>/<name>`. Returns the installed manifest.
 ///
 /// # Errors
-/// `InvalidInput` for unsafe archives or plugins graphrt rejects; `Internal`
-/// for I/O errors. Nothing is left behind on error.
+/// `InvalidInput` for unsafe archives, plugins graphrt rejects or a plugin asking
+/// for more than the permission limit; `Internal` for I/O errors. Nothing is left
+/// behind on error and an existing install stays as it was.
 pub(super) fn install_tarball(
     plugins_dir: &Path,
     name: &str,
     tarball: &[u8],
-    base_registry: &graphrt_core::Registry,
+    checks: &InstallChecks<'_>,
 ) -> AppResult<LoadedManifest> {
     std::fs::create_dir_all(plugins_dir).map_err(|error| io_error(plugins_dir, &error))?;
     let staging = StagingDir::create(plugins_dir)?;
     let extracted = extract_plugin_tarball(tarball, name, &staging.path)?;
-    check_loads(&extracted, name, base_registry)?;
+    check_loads(&extracted, name, checks.base_registry)?;
+    if let Some(limit) = &checks.permission_limit {
+        check_permission_limit(&extracted, name, limit)?;
+    }
     let target = plugins_dir.join(name);
     swap_into_place(&extracted, &target, &staging.path)?;
     LoadedManifest::from_dir(&target).map_err(|error| AppError::Internal(error.to_string()))
@@ -71,6 +86,20 @@ fn check_loads(dir: &Path, name: &str, base_registry: &graphrt_core::Registry) -
     let mut registry = base_registry.clone();
     let mut tools = graphrt_core::tool::ToolRegistry::new();
     host.register(&mut registry, &mut tools).map_err(|error| rejected(error.to_string()))
+}
+
+/// Refuses a plugin whose manifest asks for more than `limit`. The catalog said it
+/// would not, so this guards against a catalog that is out of step with its tarball.
+fn check_permission_limit(dir: &Path, name: &str, limit: &PluginPermissions) -> AppResult<()> {
+    let manifest = read_plugin(dir).map_err(AppError::InvalidInput)?;
+    let requested = PluginPermissions::from(&manifest.manifest.permissions);
+    if requested.asks_for_more_than(limit) {
+        return Err(AppError::InvalidInput(format!(
+            "plugin {name} {} asks for more permissions than the installed version; update it yourself to approve them",
+            manifest.manifest.version
+        )));
+    }
+    Ok(())
 }
 
 /// Moves `extracted` to `target`, keeping the previous install until the new

@@ -30,6 +30,7 @@ function catalogWith(...names: string[]): PluginCatalog {
       sizeBytes: 1,
       installedVersion: null,
       updateAvailable: false,
+      updateNeedsApproval: false,
     })),
     generatedAt: null,
     fromCache: false,

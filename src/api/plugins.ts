@@ -6,6 +6,8 @@ import {
   type BrowserRuntimeStatus,
   type InstalledPlugin,
   type PluginActionResult,
+  type PluginAutoUpdate,
+  type PluginBulkUpdateSummary,
   type PluginCatalog,
   type PluginEvent,
 } from './pluginTypes'
@@ -48,6 +50,24 @@ export function installPlugin(name: string): Promise<InstalledPlugin> {
 export function updatePlugin(name: string): Promise<InstalledPlugin> {
   if (!isDesktopApp()) return samplePluginsBackend.updatePlugin(name)
   return callBackend('update_plugin', { name })
+}
+
+/**
+ * "Update all": installs every pending update that asks for no new permissions. Updates
+ * that ask for more are left for the user and listed in `needsApproval`.
+ *
+ * @returns What was updated, left alone or failed (PluginBulkUpdateSummary)
+ * @throws BackendError - when there is no catalog (offline and never fetched)
+ */
+export function updateAllPlugins(): Promise<PluginBulkUpdateSummary> {
+  if (!isDesktopApp()) return samplePluginsBackend.updateAllPlugins()
+  return callBackend('update_all_plugins')
+}
+
+/** Plugins graphrt updated by itself, newest first (at most 20). */
+export function listPluginAutoUpdates(): Promise<PluginAutoUpdate[]> {
+  if (!isDesktopApp()) return samplePluginsBackend.listPluginAutoUpdates()
+  return callBackend('list_plugin_auto_updates')
 }
 
 export function removePlugin(name: string): Promise<void> {

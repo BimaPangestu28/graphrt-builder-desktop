@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { resetSampleAgents, sampleAgentsBackend } from '@/api/sampleBackend/agents'
+import { resetSamplePlugins, setSampleInstalledPlugin } from '@/api/sampleBackend/plugins'
 import { agentPath, routePaths } from '@/routes'
 import { Sidebar } from './Sidebar'
 
@@ -14,7 +15,10 @@ function renderSidebar(props: Parameters<typeof Sidebar>[0]) {
 }
 
 describe('Sidebar', () => {
-  beforeEach(() => resetSampleAgents())
+  beforeEach(() => {
+    resetSampleAgents()
+    resetSamplePlugins()
+  })
   afterEach(() => vi.restoreAllMocks())
 
   it('marks the active nav item as the current page', async () => {
@@ -63,6 +67,7 @@ describe('Sidebar', () => {
   })
 
   it('has a Plugins item right after Knowledge, marked current on the Plugins pages', async () => {
+    setSampleInstalledPlugin('google-maps-scraper', '1.1.0')
     renderSidebar({ activeNav: 'plugins' })
     const pluginsLink = screen.getByRole('link', { name: 'Plugins' })
     expect(pluginsLink).toHaveAttribute('href', routePaths.plugins)
@@ -70,5 +75,20 @@ describe('Sidebar', () => {
     const mainLinkNames = screen.getAllByRole('link').map((link) => link.textContent)
     expect(mainLinkNames.indexOf('Plugins')).toBe(mainLinkNames.indexOf('Knowledge') + 1)
     await screen.findByRole('link', { name: /Maps leads to WhatsApp/ })
+  })
+
+  it('counts plugin updates next to Plugins without changing the link name', async () => {
+    renderSidebar({ activeNav: 'home' })
+    const badge = await screen.findByTestId('plugin-update-badge')
+    expect(badge).toHaveTextContent('1')
+    expect(badge).toHaveAttribute('title', '1 plugin update available')
+    expect(screen.getByRole('link', { name: 'Plugins' })).toContainElement(badge)
+  })
+
+  it('shows no plugin badge when every plugin is up to date', async () => {
+    setSampleInstalledPlugin('google-maps-scraper', '1.1.0')
+    renderSidebar({ activeNav: 'home' })
+    await screen.findByRole('link', { name: /Maps leads to WhatsApp/ })
+    expect(screen.queryByTestId('plugin-update-badge')).not.toBeInTheDocument()
   })
 })

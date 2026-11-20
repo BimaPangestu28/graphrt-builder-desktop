@@ -25,6 +25,7 @@ function catalogEntry(name: string, overrides: Partial<PluginCatalog['plugins'][
     sizeBytes: 1,
     installedVersion: null,
     updateAvailable: false,
+    updateNeedsApproval: false,
     ...overrides,
   }
 }

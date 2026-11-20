@@ -3,7 +3,8 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { resetSampleAgents } from '@/api/sampleBackend/agents'
 import { resetSampleCredentials } from '@/api/sampleBackend/credentials'
-import { emitSamplePluginEvent, resetSamplePlugins, samplePluginsBackend } from '@/api/sampleBackend/plugins'
+import { resetSampleAppSettings, sampleAppSettingsBackend } from '@/api/sampleBackend/appSettings'
+import { emitSamplePluginEvent, resetSamplePlugins, samplePluginsBackend, setSampleInstalledPlugin } from '@/api/sampleBackend/plugins'
 import { pluginDetailPath, pluginDetailPattern, routePaths } from '@/routes'
 import { PluginsPage } from '../PluginsPage'
 
@@ -36,6 +37,7 @@ describe('PluginsPage', () => {
     resetSampleCredentials()
     resetSampleAgents()
     resetSamplePlugins()
+    resetSampleAppSettings()
   })
   afterEach(() => vi.restoreAllMocks())
 
@@ -188,5 +190,23 @@ describe('PluginsPage', () => {
     await renderLoadedPluginsPage()
     expect(screen.getByText(/Could not load the plugin catalog: You are offline/)).toBeInTheDocument()
     expect(visibleCardNames()).toEqual(['google-maps-scraper', 'website-check'])
+  })
+
+  it('switches automatic updates off next to the tabs', async () => {
+    await renderLoadedPluginsPage()
+    const toggle = await screen.findByRole('checkbox', { name: 'Update automatically' })
+    expect(toggle).toBeChecked()
+    fireEvent.click(toggle)
+    await waitFor(async () => expect((await sampleAppSettingsBackend.getAppSettings()).autoUpdatePlugins).toBe(false))
+    expect(toggle).not.toBeChecked()
+  })
+
+  it('sends an update asking for new permissions to the plugin page for review', async () => {
+    setSampleInstalledPlugin('google-maps-scraper', '1.0.0', { network: true, secrets: false, env: [] })
+    await renderLoadedPluginsPage(`${routePaths.plugins}?tab=updates`)
+    const card = getCard('google-maps-scraper')
+    expect(within(card).queryByRole('button', { name: 'Update google-maps-scraper' })).not.toBeInTheDocument()
+    fireEvent.click(within(card).getByRole('link', { name: 'Review update google-maps-scraper' }))
+    expect(await screen.findByRole('heading', { name: 'Plugin detail' })).toBeInTheDocument()
   })
 })

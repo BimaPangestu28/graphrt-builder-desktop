@@ -20,6 +20,7 @@
 mod action;
 pub mod active;
 mod archive;
+pub mod auto_update;
 mod catalog;
 pub mod download;
 pub mod events;
@@ -73,6 +74,28 @@ const BUILDER_CATALOG_TIMEOUT: Duration = Duration::from_secs(5);
 const TARBALL_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 /// Download progress is reported at most every this many bytes.
 const PROGRESS_STEP_BYTES: u64 = 256 * 1024;
+
+/// How an install reports progress and which permissions it may bring in.
+#[derive(Debug, Clone)]
+struct InstallMode {
+    /// `None`: any (the user is on screen; trust drops when an update asks for more).
+    /// `Some`: a plugin asking for more than this is refused and nothing changes.
+    permission_limit: Option<PluginPermissions>,
+    /// Sends `install_progress` events (off for background updates).
+    reports_progress: bool,
+}
+
+impl InstallMode {
+    /// The user asked for it on screen.
+    fn interactive() -> Self {
+        Self { permission_limit: None, reports_progress: true }
+    }
+
+    /// An update the user did not approve one by one: no new permissions, no progress.
+    fn within(permissions: PluginPermissions) -> Self {
+        Self { permission_limit: Some(permissions), reports_progress: false }
+    }
+}
 
 /// What [`PluginService::new`] needs.
 #[derive(Debug)]
@@ -513,13 +536,20 @@ impl PluginService {
     /// checksum mismatch, an unsafe archive or a plugin graphrt rejects;
     /// `Internal` for download / I/O errors. Nothing is installed on error.
     pub async fn install(&self, name: &str) -> AppResult<InstalledPlugin> {
+        self.install_with(name, &InstallMode::interactive()).await
+    }
+
+    /// [`PluginService::install`] with `mode`'s permission limit and progress reporting.
+    async fn install_with(&self, name: &str, mode: &InstallMode) -> AppResult<InstalledPlugin> {
         let _change = self.changes.lock().await;
-        let result = self.install_from_catalog(name).await;
+        let result = self.install_from_catalog(name, mode).await;
         let (stage, message) = match &result {
             Ok(_) => (PluginInstallStage::Done, None),
             Err(error) => (PluginInstallStage::Failed, Some(error.to_string())),
         };
-        self.send_progress(name, stage, None, message);
+        if mode.reports_progress {
+            self.send_progress(name, stage, None, message);
+        }
         if result.is_ok() {
             self.events.send(PluginEvent::PluginsChanged);
         }
@@ -537,30 +567,36 @@ impl PluginService {
         self.install(name).await
     }
 
-    async fn install_from_catalog(&self, name: &str) -> AppResult<InstalledPlugin> {
+    async fn install_from_catalog(&self, name: &str, mode: &InstallMode) -> AppResult<InstalledPlugin> {
         let entry = self.catalog_entry(name).await?;
         require_https(&entry.tarball_url)?;
         if entry.size_bytes > MAX_TARBALL_BYTES {
             return Err(AppError::InvalidInput(format!("plugin {name} is larger than the download limit")));
         }
         let max_bytes = if entry.size_bytes > 0 { entry.size_bytes } else { MAX_TARBALL_BYTES };
-        self.send_progress(name, PluginInstallStage::Downloading, Some((0, Some(entry.size_bytes))), None);
-        let tarball = self
-            .downloader
-            .fetch(&entry.tarball_url, max_bytes, TARBALL_TIMEOUT, Some(self.progress_callback(name)))
-            .await?;
-        self.send_progress(name, PluginInstallStage::Verifying, None, None);
+        let report = |stage: PluginInstallStage, bytes: Option<(u64, Option<u64>)>| {
+            if mode.reports_progress {
+                self.send_progress(name, stage, bytes, None);
+            }
+        };
+        report(PluginInstallStage::Downloading, Some((0, Some(entry.size_bytes))));
+        let progress = mode.reports_progress.then(|| self.progress_callback(name));
+        let tarball = self.downloader.fetch(&entry.tarball_url, max_bytes, TARBALL_TIMEOUT, progress).await?;
+        report(PluginInstallStage::Verifying, None);
         archive::verify_sha256(&tarball, &entry.sha256)?;
-        self.send_progress(name, PluginInstallStage::Extracting, None, None);
+        report(PluginInstallStage::Extracting, None);
         let previous_permissions = self.snapshot().plugin(name).map(|plugin| plugin.permissions.clone());
         let plugins_dir = self.plugins_dir.clone();
         let plugin_name = name.to_owned();
+        let permission_limit = mode.permission_limit.clone();
         let manifest = tokio::task::spawn_blocking(move || {
-            install::install_tarball(&plugins_dir, &plugin_name, &tarball, &crate::flow::builtin_node_registry())
+            let base_registry = crate::flow::builtin_node_registry();
+            let checks = install::InstallChecks { base_registry: &base_registry, permission_limit };
+            install::install_tarball(&plugins_dir, &plugin_name, &tarball, &checks)
         })
         .await
         .map_err(|error| AppError::Internal(format!("the install task stopped: {error}")))??;
-        self.send_progress(name, PluginInstallStage::Loading, None, None);
+        report(PluginInstallStage::Loading, None);
         let new_permissions = PluginPermissions::from(&manifest.manifest.permissions);
         if previous_permissions.is_some_and(|previous| new_permissions.asks_for_more_than(&previous)) {
             log::info!("plugin {name} asks for more permissions after the update; it is no longer trusted");

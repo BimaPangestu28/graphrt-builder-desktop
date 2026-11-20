@@ -183,4 +183,15 @@ describe('SettingsPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Connect a server' }))
     expect(screen.getByRole('heading', { name: 'Remote runner' })).toBeInTheDocument()
   })
+
+  it('switches automatic plugin updates off under Updates', async () => {
+    const updateSpy = vi.spyOn(sampleAppSettingsBackend, 'updateAppSettings')
+    renderSettingsPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Updates' }))
+    const toggle = await screen.findByRole('checkbox', { name: /Automatically update plugins/ })
+    expect(toggle).toBeChecked()
+    fireEvent.click(toggle)
+    await waitFor(() => expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({ autoUpdatePlugins: false })))
+    expect((await sampleAppSettingsBackend.getAppSettings()).autoUpdatePlugins).toBe(false)
+  })
 })
