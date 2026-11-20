@@ -1,5 +1,5 @@
 import type { BadgeTone } from '@/components/ui'
-import type { InstalledPlugin, PluginCatalog, PluginMaturity, PluginNodeInfo, PluginPermissions, PluginTosRisk } from '@/api/pluginTypes'
+import type { InstalledPlugin, PluginCatalog, PluginMaturity, PluginNodeInfo, PluginPermissions, PluginSource, PluginTosRisk } from '@/api/pluginTypes'
 import type { PluginInstallProgress } from '@/hooks/usePlugins'
 import { pluginDisplayName } from '@/lib/pluginDisplayName'
 import { categorizePlugin, type PluginCategory } from './pluginCategories'
@@ -28,10 +28,17 @@ export interface PluginListItem {
   warning: string | null
   maturity: PluginMaturity | null
   tosRisk: PluginTosRisk | null
+  /** `official`, `community` (reviewed by the graphrt maintainers) or `local` (not reviewed). */
+  source: PluginSource
+  /** Who maintains it, when known. */
+  publisher: string | null
+  repositoryUrl: string | null
+  /** For a `local` plugin: the folder or archive it was installed from. */
+  localPath: string | null
 }
 
 function fromInstalledPlugin(installedPlugin: InstalledPlugin): PluginListItem {
-  const { name, description, version, permissions, needsBrowser, nodes, readmeUrl, iconUrl } = installedPlugin
+  const { name, description, version, permissions, needsBrowser, nodes, readmeUrl, iconUrl, source, publisher, repositoryUrl, localPath } = installedPlugin
   return {
     name,
     displayName: pluginDisplayName(installedPlugin),
@@ -49,12 +56,18 @@ function fromInstalledPlugin(installedPlugin: InstalledPlugin): PluginListItem {
     warning: null,
     maturity: null,
     tosRisk: null,
+    source,
+    publisher,
+    repositoryUrl,
+    localPath,
   }
 }
 
 /**
  * Merges the catalog with installed plugins: installed ones first, then the rest of the
  * catalog. Installed plugins the catalog does not list (offline, removed from it) still show.
+ * A plugin installed from this computer (`local`) replaces a catalog entry of the same name:
+ * it is a different plugin, never updated from the catalog.
  *
  * @param catalog - From `listPluginCatalog`, or null when it could not be loaded (PluginCatalog | null)
  * @param installedPlugins - From `listInstalledPlugins` (InstalledPlugin[])
@@ -62,7 +75,9 @@ function fromInstalledPlugin(installedPlugin: InstalledPlugin): PluginListItem {
  */
 export function buildPluginListItems(catalog: PluginCatalog | null, installedPlugins: InstalledPlugin[]): PluginListItem[] {
   const installedByName = new Map(installedPlugins.map((installedPlugin) => [installedPlugin.name, installedPlugin]))
-  const catalogItems: PluginListItem[] = (catalog?.plugins ?? []).map((entry) => ({
+  const localNames = new Set(installedPlugins.filter((installedPlugin) => installedPlugin.source === 'local').map((installedPlugin) => installedPlugin.name))
+  const catalogEntries = (catalog?.plugins ?? []).filter((entry) => !localNames.has(entry.name))
+  const catalogItems: PluginListItem[] = catalogEntries.map((entry) => ({
     name: entry.name,
     displayName: pluginDisplayName(entry),
     description: entry.description,
@@ -79,6 +94,10 @@ export function buildPluginListItems(catalog: PluginCatalog | null, installedPlu
     warning: entry.warning?.trim() ? entry.warning : null,
     maturity: entry.status ?? null,
     tosRisk: entry.tosRisk ?? null,
+    source: entry.source ?? 'official',
+    publisher: entry.publisher ?? installedByName.get(entry.name)?.publisher ?? null,
+    repositoryUrl: entry.repositoryUrl ?? installedByName.get(entry.name)?.repositoryUrl ?? null,
+    localPath: null,
   }))
   const catalogNames = new Set(catalogItems.map((item) => item.name))
   const installedOnlyItems = installedPlugins.filter((installedPlugin) => !catalogNames.has(installedPlugin.name)).map(fromInstalledPlugin)
@@ -164,6 +183,30 @@ export function describePluginStatus(item: PluginListItem): { label: string; ton
   if (item.updateAvailable) return { label: 'Update available', tone: 'brand' }
   if (pluginNeedsAttention(installed)) return { label: 'Needs setup', tone: 'amber' }
   return { label: `Installed v${installed.version}`, tone: 'ok' }
+}
+
+/**
+ * The source badge of a plugin: nothing for official plugins (the default needs no label),
+ * "Community" for third-party plugins the maintainers reviewed, "Local · not reviewed" for
+ * plugins installed from this computer.
+ *
+ * @param source - Where the plugin comes from (PluginSource)
+ * @returns The badge label and tone, or null for none ({ label: string; tone: BadgeTone } | null)
+ */
+export function describePluginSource(source: PluginSource): { label: string; tone: BadgeTone } | null {
+  if (source === 'community') return { label: 'Community', tone: 'brand' }
+  if (source === 'local') return { label: 'Local · not reviewed', tone: 'amber' }
+  return null
+}
+
+/**
+ * The sentence the install confirmation adds for a community plugin, or null for others.
+ * e.g. "Reviewed by the graphrt maintainers, but maintained by Acme Inc."
+ */
+export function describeCommunityInstallNote(item: Pick<PluginListItem, 'source' | 'publisher'>): string | null {
+  if (item.source !== 'community') return null
+  const maintainer = item.publisher ?? 'a third party'
+  return `Reviewed by the graphrt maintainers, but maintained by ${maintainer}${maintainer.endsWith('.') ? '' : '.'}`
 }
 
 const maturityLabels: Record<PluginMaturity, string> = { stable: 'Stable', beta: 'Beta', experimental: 'Experimental' }

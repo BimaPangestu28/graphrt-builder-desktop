@@ -34,6 +34,17 @@ pub async fn install_plugin(state: State<'_, AppState>, name: String) -> AppResu
     state.plugins.install(name.trim()).await
 }
 
+/// Installs a plugin from a folder or `.tar.gz` on this computer (Developer mode only).
+/// `replace` confirms replacing a plugin of the same name installed from the catalog.
+#[tauri::command]
+pub async fn install_local_plugin(
+    state: State<'_, AppState>,
+    path: String,
+    replace: Option<bool>,
+) -> AppResult<InstalledPlugin> {
+    state.plugins.install_local(&path, replace.unwrap_or(false)).await
+}
+
 #[tauri::command]
 pub async fn update_plugin(state: State<'_, AppState>, name: String) -> AppResult<InstalledPlugin> {
     state.plugins.update(name.trim()).await
@@ -85,6 +96,13 @@ pub async fn delete_plugin_config(
 #[tauri::command]
 pub fn open_plugin_readme(state: State<'_, AppState>, name: String) -> AppResult<()> {
     let url = state.plugins.readme_url(name.trim())?;
+    crate::crash_reports::sharing::open_in_browser(&url)
+}
+
+/// Opens a plugin's source repository (from the catalog, saved at install time) in the default browser.
+#[tauri::command]
+pub fn open_plugin_repository(state: State<'_, AppState>, name: String) -> AppResult<()> {
+    let url = state.plugins.repository_url(name.trim())?;
     crate::crash_reports::sharing::open_in_browser(&url)
 }
 

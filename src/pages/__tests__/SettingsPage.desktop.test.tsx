@@ -26,6 +26,7 @@ function createStoredSettings(): AppSettings {
     autoDownloadUpdates: true,
     autoUpdatePlugins: true,
     runLimits: { stepTimeoutSeconds: 120, runDurationMinutes: 30, maxStepAttempts: 10_000, maxNestingDepth: 8, maxParallelSteps: 64 },
+    developerMode: false,
   }
 }
 

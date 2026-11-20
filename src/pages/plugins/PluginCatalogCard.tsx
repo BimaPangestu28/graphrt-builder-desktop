@@ -5,7 +5,7 @@ import type { PluginsState } from '@/hooks/usePlugins'
 import { pluginDetailPath } from '@/routes'
 import { PluginInstallButton, PluginOperationFeedback, PluginUpdateButton } from './PluginActions'
 import { pluginCategoryLabels } from './pluginCategories'
-import { describeMaturity, describePermissionChips, describePluginStatus, describeStepCount, itemNeedsAttention, type PluginListItem } from './pluginDisplay'
+import { describeCommunityInstallNote, describeMaturity, describePermissionChips, describePluginSource, describePluginStatus, describeStepCount, itemNeedsAttention, type PluginListItem } from './pluginDisplay'
 import { PluginIcon } from './PluginIcon'
 import { PluginPermissionChips } from './PluginPermissionList'
 
@@ -28,10 +28,11 @@ function describeCardMeta(item: PluginListItem): string {
 function InstallApproval({ item, plugins, onCancel }: { item: PluginListItem; plugins: PluginsState; onCancel: () => void }) {
   const asksFor = describePermissionChips(item.permissions, item.needsBrowser)
   const isInstalling = plugins.operationByName[item.name] === 'installing'
+  const communityNote = describeCommunityInstallNote(item)
   return (
     <div role="group" aria-label={`Install ${item.displayName}?`} className="flex flex-col gap-2 rounded-lg bg-subtle p-2.5">
       <p className="m-0 text-[12px] leading-normal text-body">
-        Runs its code on this computer{asksFor.length > 0 ? ` and asks for: ${asksFor.join(', ')}` : ''}. It starts untrusted, without settings or secrets.
+        {communityNote && `${communityNote} `}Runs its code on this computer{asksFor.length > 0 ? ` and asks for: ${asksFor.join(', ')}` : ''}. It starts untrusted, without settings or secrets.
       </p>
       <div className="flex justify-end gap-2">
         {!isInstalling && (
@@ -92,6 +93,7 @@ function CardActions({ item, plugins, listSearch, onStartInstall }: PluginCatalo
 export function PluginCatalogCard({ item, plugins, listSearch }: PluginCatalogCardProps) {
   const [isApproving, setIsApproving] = useState(false)
   const status = describePluginStatus(item)
+  const sourceBadge = describePluginSource(item.source)
   const showsApproval = isApproving && !item.installed
   return (
     <article aria-label={item.displayName} className="flex h-full flex-col gap-3 rounded-[14px] border border-line bg-surface p-4 transition-shadow hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
@@ -103,7 +105,14 @@ export function PluginCatalogCard({ item, plugins, listSearch }: PluginCatalogCa
               {item.displayName}
             </Link>
           </h3>
-          <span className="truncate text-[12px] text-muted">{describeCardMeta(item)}</span>
+          <span className="flex min-w-0 items-center gap-1.5">
+            {sourceBadge && (
+              <Badge tone={sourceBadge.tone} className="shrink-0 !px-2 !text-[11px]">
+                {sourceBadge.label}
+              </Badge>
+            )}
+            <span className="truncate text-[12px] text-muted">{describeCardMeta(item)}</span>
+          </span>
         </div>
         <Badge tone={status.tone} className="shrink-0">
           {status.label}

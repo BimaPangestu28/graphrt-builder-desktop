@@ -26,6 +26,7 @@ function createInitialSettings(): AppSettings {
     autoDownloadUpdates: true,
     autoUpdatePlugins: true,
     runLimits: { ...defaultRunLimits },
+    developerMode: false,
   }
 }
 

@@ -138,6 +138,10 @@ fn installed_plugin(name: &str) -> InstalledPlugin {
         warnings: Vec::new(),
         readme_url: None,
         icon_url: None,
+        source: Default::default(),
+        publisher: None,
+        repository_url: None,
+        local_path: None,
     }
 }
 

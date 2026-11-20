@@ -13,10 +13,14 @@ import type {
   PluginInstallStage,
   PluginNodeInfo,
   PluginPermissions,
+  PluginSource,
 } from '../pluginTypes'
 import type { FlowStep } from '../types'
 import { readCurrentSteps } from './sampleAgentStore'
 import { requireText, respondWith } from './sampleResponse'
+import { sampleAppSettingsBackend } from './appSettings'
+import { humanizePluginName } from '@/lib/pluginDisplayName'
+import type { LocalPluginPickKind } from '../plugins'
 import {
   initiallyInstalledSamplePlugins,
   isOptionalSampleSetting,
@@ -41,7 +45,12 @@ interface SampleInstalledRecord {
   configuredVariables: Set<string>
   /** What the installed version asks for (the catalog's, unless a test says otherwise). */
   permissions: PluginPermissions
+  /** Set for a plugin "installed from this computer" (Developer mode): the picked path. */
+  localPath?: string
 }
+
+/** Catalog labels tests give a seed (official, by graphrt, without a repository by default). */
+type SampleCatalogLabels = Pick<PluginCatalogEntry, 'source' | 'publisher' | 'repositoryUrl'>
 
 interface SamplePluginsState {
   installedByName: Map<string, SampleInstalledRecord>
@@ -54,6 +63,8 @@ interface SamplePluginsState {
   autoUpdates: PluginAutoUpdate[]
   /** When the sample catalog was last "fetched" (ms since epoch), or null before the first fetch. */
   catalogFetchedAtMs: number | null
+  /** Source / publisher / repository per seed, when a test changes them. */
+  catalogLabelsByName: Map<string, SampleCatalogLabels>
 }
 
 function createInitialState(): SamplePluginsState {
@@ -69,7 +80,14 @@ function createInitialState(): SamplePluginsState {
     pluginNeedsByAgentId: { ...samplePluginNeedsByAgentId },
     autoUpdates: [],
     catalogFetchedAtMs: null,
+    catalogLabelsByName: new Map(),
   }
+}
+
+/** The catalog labels of a seed: a test's, else the seed's, else official by graphrt. */
+function readCatalogLabels(seed: SamplePluginSeed): SampleCatalogLabels {
+  const seedLabels: SampleCatalogLabels = { source: seed.source ?? 'official', publisher: seed.publisher ?? 'graphrt', repositoryUrl: seed.repositoryUrl ?? null }
+  return pluginsState.catalogLabelsByName.get(seed.name) ?? seedLabels
 }
 
 function copyPermissions(permissions: PluginPermissions): PluginPermissions {
@@ -108,8 +126,35 @@ function listWarnings(seed: SamplePluginSeed, installedRecord: SampleInstalledRe
   return [`Not trusted: ${seed.name} does not receive its settings${seed.permissions.secrets ? ' or secrets' : ''}`]
 }
 
+/** A plugin "installed from this computer": the seed's steps when one has its name, else none. */
+function toLocalInstalledPlugin(installedRecord: SampleInstalledRecord, localPath: string): InstalledPlugin {
+  const seed = samplePluginSeeds.find((candidate) => candidate.name === installedRecord.name)
+  return {
+    name: installedRecord.name,
+    displayName: humanizePluginName(installedRecord.name),
+    version: installedRecord.version,
+    description: seed?.description ?? 'A plugin installed from this computer',
+    permissions: copyPermissions(installedRecord.permissions),
+    trusted: installedRecord.trusted,
+    needsBrowser: false,
+    nodes: seed?.nodes.map((node) => ({ ...node })) ?? [],
+    tools: seed ? [...seed.tools] : [],
+    config: installedRecord.permissions.env.map((variable) => ({ name: variable, configured: installedRecord.configuredVariables.has(variable), optional: isOptionalSampleSetting(variable) })),
+    loadError: null,
+    warnings: [],
+    readmeUrl: null,
+    iconUrl: null,
+    source: 'local',
+    publisher: null,
+    repositoryUrl: null,
+    localPath,
+  }
+}
+
 function toInstalledPlugin(installedRecord: SampleInstalledRecord): InstalledPlugin {
+  if (installedRecord.localPath !== undefined) return toLocalInstalledPlugin(installedRecord, installedRecord.localPath)
   const seed = findSeed(installedRecord.name)
+  const labels = readCatalogLabels(seed)
   return {
     name: seed.name,
     displayName: seed.displayName,
@@ -129,15 +174,22 @@ function toInstalledPlugin(installedRecord: SampleInstalledRecord): InstalledPlu
     warnings: listWarnings(seed, installedRecord),
     readmeUrl: seed.readmeUrl,
     iconUrl: seed.iconUrl,
+    source: labels.source,
+    publisher: labels.publisher,
+    repositoryUrl: labels.repositoryUrl,
+    localPath: null,
   }
 }
 
 function toCatalogEntry(seed: SamplePluginSeed): PluginCatalogEntry {
-  const installedRecord = pluginsState.installedByName.get(seed.name)
+  const record = pluginsState.installedByName.get(seed.name)
+  // Like the backend: a plugin installed from this computer is never matched with the catalog.
+  const installedRecord = record?.localPath === undefined ? record : undefined
   const installedVersion = installedRecord?.version ?? null
   const updateAvailable = installedVersion !== null && installedVersion !== seed.version
   return {
     ...seed,
+    ...readCatalogLabels(seed),
     permissions: { ...seed.permissions, env: [...seed.permissions.env] },
     nodes: seed.nodes.map((node) => ({ ...node })),
     tools: [...seed.tools],
@@ -364,6 +416,55 @@ function openSamplePluginReadme(name: string): void {
   window.open(readmeUrl, '_blank', 'noopener,noreferrer')
 }
 
+/** @throws BackendError - `not_found` for an unknown plugin or one without a repository link */
+function openSamplePluginRepository(name: string): void {
+  const installedRecord = pluginsState.installedByName.get(name)
+  const repositoryUrl = installedRecord?.localPath === undefined ? readCatalogLabels(findSeed(name)).repositoryUrl : null
+  if (!repositoryUrl) throw new BackendError('not_found', `${name} has no repository link`)
+  window.open(repositoryUrl, '_blank', 'noopener,noreferrer')
+}
+
+/** Sample paths the preview "picks" (it has no file picker). */
+const samplePickedPaths: Record<LocalPluginPickKind, string> = {
+  folder: '/Users/you/code/my-local-plugin',
+  archive: '/Users/you/Downloads/my-local-plugin-0.1.0.tar.gz',
+}
+
+/** The plugin name a sample path stands for: the folder name, or the archive name before its version. */
+function nameFromPickedPath(path: string): string {
+  const baseName = path.split(/[\\/]/).filter(Boolean).pop() ?? ''
+  return baseName.replace(/\.(tar\.gz|tgz)$/, '').replace(/-\d+(\.\d+)*$/, '')
+}
+
+/**
+ * Like `install_local_plugin`: refuses a name installed from the catalog unless `replace`,
+ * and installs the plugin untrusted, labelled local.
+ *
+ * @throws BackendError - `invalid_input` while Developer mode is off; `conflict` for a catalog name
+ */
+async function installSampleLocalPlugin(path: string, replace: boolean): Promise<InstalledPlugin> {
+  const { developerMode } = await sampleAppSettingsBackend.getAppSettings()
+  if (!developerMode) throw new BackendError('invalid_input', 'turn on Developer mode to install plugins from this computer')
+  const trimmedPath = requireText(path, 'choose a plugin folder or archive')
+  const name = nameFromPickedPath(trimmedPath)
+  const existing = pluginsState.installedByName.get(name)
+  if (existing && existing.localPath === undefined && !replace) {
+    throw new BackendError('conflict', `plugin ${name} is already installed from the catalog; confirm to replace it with the copy from this computer`)
+  }
+  const seed = samplePluginSeeds.find((candidate) => candidate.name === name)
+  const installedRecord: SampleInstalledRecord = {
+    name,
+    version: '0.1.0',
+    trusted: false,
+    configuredVariables: new Set<string>(),
+    permissions: copyPermissions(seed?.permissions ?? { network: true, secrets: false, env: [] }),
+    localPath: trimmedPath,
+  }
+  pluginsState.installedByName.set(name, installedRecord)
+  emitPluginEvent({ type: 'plugins_changed' })
+  return toInstalledPlugin(installedRecord)
+}
+
 export const samplePluginsBackend = {
   listAgentPluginRequirements: (agentId: string): Promise<PluginRequirement[]> => respondWith(() => listSampleAgentPluginRequirements(agentId)),
   listPluginCatalog: (refresh: boolean): Promise<PluginCatalog> => respondWith(() => readCatalog(refresh)),
@@ -383,6 +484,9 @@ export const samplePluginsBackend = {
     respondWith(() => runSamplePluginAction(name, kind)),
   checkPluginSession: (name: string): Promise<PluginSessionState> => respondWith(() => checkSamplePluginSession(name)),
   openPluginReadme: (name: string): Promise<void> => respondWith(() => openSamplePluginReadme(name)),
+  openPluginRepository: (name: string): Promise<void> => respondWith(() => openSamplePluginRepository(name)),
+  pickLocalPluginPath: (kind: LocalPluginPickKind): Promise<string | null> => respondWith(() => samplePickedPaths[kind]),
+  installLocalPlugin: (path: string, replace: boolean): Promise<InstalledPlugin> => installSampleLocalPlugin(path, replace),
   /** The preview has no downloaded icons: every plugin shows its monogram. */
   getPluginIcon: (_name: string): Promise<string | null> => respondWith(() => null),
 }
@@ -431,6 +535,12 @@ export function setSampleInstalledPlugin(name: string, version: string, permissi
     configuredVariables: previous?.configuredVariables ?? new Set<string>(),
     permissions: copyPermissions(permissions ?? seed.permissions),
   })
+}
+
+/** Gives a catalog seed a source, publisher and repository (tests of the community labels). */
+export function setSampleCatalogLabels(name: string, labels: { source: PluginSource; publisher: string | null; repositoryUrl: string | null }): void {
+  findSeed(name)
+  pluginsState.catalogLabelsByName.set(name, { ...labels })
 }
 
 /** Sets the updates the sample says it installed by itself (newest first). */

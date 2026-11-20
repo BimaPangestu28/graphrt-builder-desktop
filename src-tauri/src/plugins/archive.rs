@@ -13,10 +13,10 @@ use sha2::{Digest, Sha256};
 
 use crate::error::{AppError, AppResult};
 
-/// Most bytes all extracted files may take together.
-const MAX_EXTRACTED_BYTES: u64 = 1024 * 1024 * 1024;
-/// Most entries an archive may hold.
-const MAX_ENTRIES: usize = 100_000;
+/// Most bytes all extracted files may take together (also the cap for a sideloaded folder).
+pub(super) const MAX_EXTRACTED_BYTES: u64 = 1024 * 1024 * 1024;
+/// Most entries an archive may hold (also the cap for a sideloaded folder).
+pub(super) const MAX_ENTRIES: usize = 100_000;
 
 /// Lowercase hex SHA-256 of `bytes`.
 pub fn sha256_hex(bytes: &[u8]) -> String {
@@ -81,6 +81,40 @@ pub fn extract_plugin_tarball(bytes: &[u8], top_dir: &str, destination: &Path) -
     Ok(plugin_dir)
 }
 
+/// The top-level folder of a plugin tarball (its first entry's first path part), for a
+/// sideloaded archive whose plugin name is not known beforehand. The name must be a valid
+/// plugin name; [`extract_plugin_tarball`] then checks every entry sits under it.
+///
+/// # Errors
+/// `InvalidInput` when the archive cannot be read, is empty or starts with an unsafe path.
+pub fn tarball_top_dir(bytes: &[u8]) -> AppResult<String> {
+    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(bytes));
+    let entries = archive.entries().map_err(|error| bad_archive(&error))?;
+    for entry in entries {
+        let entry = entry.map_err(|error| bad_archive(&error))?;
+        let entry_type = entry.header().entry_type();
+        if entry_type.is_pax_global_extensions() || entry_type.is_pax_local_extensions() {
+            continue;
+        }
+        let raw_path = entry.path().map_err(|error| bad_archive(&error))?.into_owned();
+        let first = raw_path.components().find(|component| !matches!(component, Component::CurDir));
+        let Some(Component::Normal(top)) = first else {
+            return Err(AppError::InvalidInput(format!(
+                "the plugin archive has an unsafe path ({}); nothing was installed",
+                raw_path.display()
+            )));
+        };
+        let top = top.to_string_lossy().into_owned();
+        if !graphrt_plugin::is_valid_name(&top) {
+            return Err(AppError::InvalidInput(format!(
+                "the plugin archive's top folder `{top}` is not a valid plugin name"
+            )));
+        }
+        return Ok(top);
+    }
+    Err(AppError::InvalidInput("the plugin archive is empty".into()))
+}
+
 /// The entry path as a relative path starting with `top_dir`, or `InvalidInput`
 /// for absolute paths, `..`, or entries outside `top_dir/`.
 fn safe_relative_path(raw: &Path, top_dir: &str) -> AppResult<PathBuf> {
@@ -112,8 +146,9 @@ fn create_dir(path: &Path) -> AppResult<()> {
     std::fs::create_dir_all(path).map_err(|error| io_error(path, &error))
 }
 
-/// Writes one file (never through an existing file or link: `create_new`).
-fn write_file(entry: &mut impl Read, target: &Path, mode: u32) -> AppResult<()> {
+/// Writes one file (never through an existing file or link: `create_new`) with the
+/// owner's read/write bits, plus executable bits when `mode` has any.
+pub(super) fn write_file(entry: &mut impl Read, target: &Path, mode: u32) -> AppResult<()> {
     if let Some(parent) = target.parent() {
         create_dir(parent)?;
     }

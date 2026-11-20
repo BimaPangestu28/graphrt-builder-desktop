@@ -14,6 +14,9 @@
 //!   resumes with the plugins it compiled with); the check is retried after
 //!   [`RETRY_INTERVAL`].
 //! - Plugins are never installed or removed here, and trust is never changed.
+//! - Sideloaded (`local`) plugins are skipped: never auto-updated, never matched against
+//!   the catalog, even when it lists a plugin of the same name
+//!   ([`PluginService::catalog_matched_plugins`]).
 //! - Every automatic update is remembered (name, from → to, when) in the settings
 //!   table (`plugins.auto_updated`, newest first, at most [`HISTORY_LIMIT`]) so Home
 //!   can say "Updated google-maps-scraper to 0.2.1".
@@ -158,7 +161,7 @@ impl PluginService {
             Some(index) => index,
             None => self.fetch_catalog().await?.0,
         };
-        let plan = plan_updates(&index, &self.snapshot().plugins);
+        let plan = plan_updates(&index, &self.catalog_matched_plugins());
         Ok(self.apply_plan(plan, false).await.0)
     }
 
@@ -174,7 +177,7 @@ impl PluginService {
             Ok((index, _)) => index,
             Err(error) => return AutoUpdateOutcome::CatalogUnavailable(error.to_string()),
         };
-        let plan = plan_updates(&index, &self.snapshot().plugins);
+        let plan = plan_updates(&index, &self.catalog_matched_plugins());
         let (summary, stopped_for_runs) = self.apply_plan(plan, true).await;
         if let Err(error) = record_auto_updates(&self.db, &summary.updated, &crate::storage::now_rfc3339()) {
             log::warn!("could not remember the automatic plugin updates: {error}");

@@ -152,7 +152,12 @@ fn requirement(usage: PluginUsage, sources: &RequirementSources<'_>) -> AppResul
     let PluginUsage { plugin_name, step_titles: used_by_steps, node_kinds } = usage;
     let name = plugin_name.as_str();
     let state = sources.installed.iter().find(|plugin| plugin.name == name && plugin.is_loaded());
-    let entry = sources.catalog.and_then(|catalog| catalog.plugins.iter().find(|entry| entry.name == name));
+    // A sideloaded plugin is not the catalog plugin of the same name: ignore that entry.
+    let is_local = sources.install_records.get(name).is_some_and(InstallRecord::is_local);
+    let entry = sources
+        .catalog
+        .filter(|_| !is_local)
+        .and_then(|catalog| catalog.plugins.iter().find(|entry| entry.name == name));
     let permissions = match (state, entry) {
         (Some(state), _) => state.permissions.clone(),
         (None, Some(entry)) => PluginPermissions::from(&entry.permissions),

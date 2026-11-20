@@ -20,7 +20,7 @@ import {
   PluginUsersSection,
   PluginWarningBox,
 } from './plugins/PluginDetailSections'
-import { buildPluginListItems, describeMaturity, describePluginStatus, type PluginListItem } from './plugins/pluginDisplay'
+import { buildPluginListItems, describeCommunityInstallNote, describeMaturity, describePluginSource, describePluginStatus, type PluginListItem } from './plugins/pluginDisplay'
 import { PluginIcon } from './plugins/PluginIcon'
 import { usePluginUsers } from './plugins/usePluginUsers'
 
@@ -39,10 +39,13 @@ function BackLink() {
 
 function HeaderActions({ item, plugins }: { item: PluginListItem; plugins: PluginsState }) {
   if (!item.installed) {
+    const communityNote = describeCommunityInstallNote(item)
     return (
-      <div className="ml-auto flex max-w-[220px] flex-col items-end gap-1.5">
+      <div className="ml-auto flex max-w-[260px] flex-col items-end gap-1.5">
         <PluginInstallButton item={item} plugins={plugins} size="md" />
-        <span className="text-right text-[12px] leading-normal text-muted">Runs its code on this computer. It starts untrusted, without settings or secrets.</span>
+        <span className="text-right text-[12px] leading-normal text-muted">
+          {communityNote && `${communityNote} `}Runs its code on this computer. It starts untrusted, without settings or secrets.
+        </span>
       </div>
     )
   }
@@ -66,6 +69,7 @@ const maturityBadgeTones: Record<PluginMaturity, BadgeTone> = { stable: 'neutral
 /** Icon, name, status and maturity badges, category and version, the description, then the actions on the right. */
 function PluginHeader({ item, plugins }: { item: PluginListItem; plugins: PluginsState }) {
   const status = describePluginStatus(item)
+  const sourceBadge = describePluginSource(item.source)
   const maturityLabel = describeMaturity(item.maturity)
   return (
     <header className="flex flex-wrap items-start gap-x-5 gap-y-4">
@@ -74,6 +78,7 @@ function PluginHeader({ item, plugins }: { item: PluginListItem; plugins: Plugin
         <h1 className={`${pageTitleClassName} [overflow-wrap:anywhere]`}>{item.displayName}</h1>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
           <Badge tone={status.tone}>{status.label}</Badge>
+          {sourceBadge && <Badge tone={sourceBadge.tone}>{sourceBadge.label}</Badge>}
           {maturityLabel && item.maturity && <Badge tone={maturityBadgeTones[item.maturity]}>{maturityLabel}</Badge>}
           <span className="text-[13px] text-muted">
             <code aria-label="Plugin name" className="font-mono text-[12px]">
@@ -82,6 +87,7 @@ function PluginHeader({ item, plugins }: { item: PluginListItem; plugins: Plugin
             {' · '}
             {pluginCategoryLabels[item.category]} · v{item.version}
           </span>
+          {item.publisher && <span className="text-[13px] text-muted">by {item.publisher}</span>}
         </div>
         <p className="m-0 max-w-[640px] leading-normal text-body">{item.description}</p>
       </div>
