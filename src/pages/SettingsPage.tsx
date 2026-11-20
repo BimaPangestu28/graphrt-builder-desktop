@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { getAppInfo } from '@/api/appInfo'
 import { isDesktopApp } from '@/api/client'
 import type { AppInfo } from '@/api/connectionTypes'
-import { AppShell } from '@/components/layout'
+import { AppShell, PageFrame, PageTitleBlock } from '@/components/layout'
 import { joinClassNames } from '@/components/ui'
 import { previewOnlySettingsSections, settingsSections, type SettingsSectionKey } from '@/data/settings'
 import { useAsyncData } from '@/hooks/useAsyncData'
@@ -29,9 +29,8 @@ function SettingsSubNav({ sections, activeSection, onSelectSection }: SettingsSu
   return (
     <nav
       aria-label="Settings sections"
-      className="box-border flex min-w-0 flex-[0_1_200px] flex-col gap-0.5 border-r border-line px-3 py-7"
+      className="-ml-2.5 box-border flex min-w-0 flex-[0_1_200px] flex-col gap-0.5"
     >
-      <h1 className="m-0 px-2.5 pb-3 text-[20px] font-semibold">Settings</h1>
       {sections.map((section) => {
         const isActive = section.key === activeSection
         return (
@@ -139,24 +138,29 @@ export function SettingsPage() {
   const visibleSections = showsPreviewOnlySettings ? settingsSections : settingsSections.filter((section) => !previewOnlySettingsSections.includes(section.key))
 
   return (
-    <AppShell activeNav="settings" agents={{ kind: 'list' }} mainClassName="flex flex-wrap">
-      <SettingsSubNav sections={visibleSections} activeSection={activeSection} onSelectSection={setActiveSection} />
-      <div className="box-border flex min-w-0 max-w-[760px] flex-[1_1_520px] flex-col gap-7 px-9 py-7">
-        <SettingsSectionContent
-          activeSection={activeSection}
-          onSelectSection={setActiveSection}
-          settingsValues={settingsValues}
-          updateSetting={updateSetting}
-          showsPreviewOnlySettings={showsPreviewOnlySettings}
-          appSettingsState={appSettingsState}
-          appInfo={appInfo}
-        />
-        {appSettingsState.saveError && (
-          <p role="alert" className="m-0 text-[13px] text-danger">
-            Could not save the change: {appSettingsState.saveError}
-          </p>
-        )}
-      </div>
+    <AppShell activeNav="settings" agents={{ kind: 'list' }}>
+      <PageFrame>
+        <PageTitleBlock title="Settings" subtitle="How this app runs your agents, tells you what happened and keeps your data" />
+        <div className="flex flex-wrap items-start gap-x-10 gap-y-6">
+          <SettingsSubNav sections={visibleSections} activeSection={activeSection} onSelectSection={setActiveSection} />
+          <div className="box-border flex min-w-0 max-w-[760px] flex-[1_1_520px] flex-col gap-7">
+            <SettingsSectionContent
+              activeSection={activeSection}
+              onSelectSection={setActiveSection}
+              settingsValues={settingsValues}
+              updateSetting={updateSetting}
+              showsPreviewOnlySettings={showsPreviewOnlySettings}
+              appSettingsState={appSettingsState}
+              appInfo={appInfo}
+            />
+            {appSettingsState.saveError && (
+              <p role="alert" className="m-0 text-[13px] text-danger">
+                Could not save the change: {appSettingsState.saveError}
+              </p>
+            )}
+          </div>
+        </div>
+      </PageFrame>
     </AppShell>
   )
 }

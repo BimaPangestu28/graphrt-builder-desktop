@@ -25,7 +25,7 @@ interface VersionHeaderProps {
 function VersionHeader({ agentId, agentName, selectedVersion, isViewingCurrent, isRestoring, onShowCurrent, onRestore }: VersionHeaderProps) {
   const builderPath = agentPath('builder', agentId)
   return (
-    <header className="box-border flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-line px-6 py-3">
+    <header className="box-border flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-line px-8 py-3">
       <div className="flex items-center gap-2.5">
         <Link to={builderPath} className="text-[16px] font-semibold no-underline !text-ink">
           {agentName}
@@ -173,7 +173,7 @@ export function VersionHistoryPage() {
           onRestore={() => void versionHistory.restoreSelectedVersion()}
         />
         {versionHistory.restoreErrorMessage && (
-          <p role="alert" className="m-0 border-b border-danger-line bg-danger-tint px-6 py-3 text-danger-deep">
+          <p role="alert" className="m-0 border-b border-danger-line bg-danger-tint px-8 py-3 text-danger-deep">
             {versionHistory.restoreErrorMessage}
           </p>
         )}

@@ -1,5 +1,5 @@
 import { Link, useLocation, useParams } from 'react-router-dom'
-import { AppShell } from '@/components/layout'
+import { AppShell, PageFrame, pageTitleClassName } from '@/components/layout'
 import { Badge, Icon } from '@/components/ui'
 import { useBrowserRuntime } from '@/hooks/useBrowserRuntime'
 import { usePlugins, type PluginsState } from '@/hooks/usePlugins'
@@ -58,7 +58,7 @@ function PluginHeader({ item, plugins }: { item: PluginListItem; plugins: Plugin
       <PluginMonogram name={item.name} category={item.category} size="lg" />
       <div className="flex min-w-0 flex-[1_1_320px] flex-col gap-1">
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="m-0 text-[24px] font-semibold tracking-[-0.4px] [overflow-wrap:anywhere]">{item.name}</h1>
+          <h1 className={`${pageTitleClassName} [overflow-wrap:anywhere]`}>{item.name}</h1>
           <Badge tone={status.tone}>{status.label}</Badge>
         </div>
         <span className="text-[13px] text-muted">{meta}</span>
@@ -124,9 +124,11 @@ function PluginDetailContent({ pluginName }: { pluginName: string }) {
 export function PluginDetailPage() {
   const { pluginName = '' } = useParams()
   return (
-    <AppShell activeNav="plugins" mainClassName="box-border flex flex-col gap-5 px-8 py-7">
-      <BackLink />
-      <PluginDetailContent pluginName={pluginName} />
+    <AppShell activeNav="plugins">
+      <PageFrame>
+        <BackLink />
+        <PluginDetailContent pluginName={pluginName} />
+      </PageFrame>
     </AppShell>
   )
 }

@@ -4,7 +4,7 @@ import { getCredentialStoreName } from '@/lib/platform'
 import { listAppConnections } from '@/api/appConnections'
 import type { WorkflowSecretOverview } from '@/api/connectionTypes'
 import { listAllWorkflowSecrets } from '@/api/credentials'
-import { AppShell } from '@/components/layout'
+import { AppShell, PageFrame, PageTitleBlock } from '@/components/layout'
 import { StrokeIcon } from '@/components/ui'
 import { advancedConnections, connectionCategoryTitles, type Connection, type ConnectionCategory } from '@/data/connections'
 import { useAsyncData } from '@/hooks/useAsyncData'
@@ -92,62 +92,64 @@ function ConnectionsScreen() {
   }
 
   return (
-    <AppShell activeNav="connections" mainClassName="box-border flex flex-col gap-[26px] px-8 py-7">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <h1 className="m-0 text-[26px] font-semibold tracking-[-0.5px]">Connections</h1>
-          <span className="text-body">Apps, AI models and keys your agents use. Secrets stay in {getCredentialStoreName()}</span>
-        </div>
-        <label className="box-border flex h-10 w-[260px] max-w-full items-center gap-2 rounded-[10px] border border-line-strong px-3 focus-within:border-ink">
-          <StrokeIcon size={15} className="text-muted">
-            <circle cx="11" cy="11" r="6" />
-            <path d="m20 20-4.5-4.5" />
-          </StrokeIcon>
-          <input
-            type="search"
-            aria-label="Search connections"
-            placeholder="Search connections"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            className="min-w-0 flex-auto border-0 bg-transparent text-[14px] text-ink outline-none"
-          />
-        </label>
-      </div>
-
-      {signedOutConnections.map((connection) => (
-        <div key={connection.id} role="alert" className="flex items-center gap-3.5 rounded-xl border border-danger-line bg-danger-tint px-4 py-3.5">
-          <span className="flex-auto leading-normal">
-            <b className="font-semibold">{connection.name} needs you to sign in again.</b>{' '}
-            <span className="text-danger-deep">{connection.connectedDescription.replace('Used by ', '')} is paused until then</span>
-          </span>
-          <button
-            type="button"
-            onClick={() => markConnected(connection.id)}
-            className="h-9 cursor-pointer whitespace-nowrap rounded-[9px] border-0 bg-ink px-3.5 text-[13px] font-semibold text-white hover:bg-ink-2"
-          >
-            Reconnect {connection.name}
-          </button>
-        </div>
-      ))}
-
-      {categories.map((category) => {
-        const categoryConnections = visibleConnections.filter((connection) => connection.category === category)
-        if (categoryConnections.length === 0) return null
-        return <ConnectionSection key={category} category={category} connections={categoryConnections} onSetUp={markConnected} />
-      })}
-
-      {showsModelSection && (
-        <ModelProvidersSection connections={visibleModelConnections} loadError={providerSetupState.error} onKeysChanged={providerSetupState.reload} />
-      )}
-
-      {showsAdvancedSection && (
-        <AdvancedSection
-          rows={visibleAdvancedRows}
-          secretsState={{ allSecrets: secretsLoadState.data, visibleSecrets, loadError: secretsLoadState.error, isSearching, reload: secretsLoadState.reload }}
+    <AppShell activeNav="connections">
+      <PageFrame>
+        <PageTitleBlock
+          title="Connections"
+          subtitle={`Apps, AI models and keys your agents use. Secrets stay in ${getCredentialStoreName()}`}
+          actions={
+            <label className="box-border flex h-10 w-[260px] max-w-full items-center gap-2 rounded-[10px] border border-line-strong px-3 focus-within:border-ink">
+              <StrokeIcon size={15} className="text-muted">
+                <circle cx="11" cy="11" r="6" />
+                <path d="m20 20-4.5-4.5" />
+              </StrokeIcon>
+              <input
+                type="search"
+                aria-label="Search connections"
+                placeholder="Search connections"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                className="min-w-0 flex-auto border-0 bg-transparent text-[14px] text-ink outline-none"
+              />
+            </label>
+          }
         />
-      )}
 
-      {hasNoMatches && <p className="m-0 text-muted">No connections match “{searchQuery.trim()}”</p>}
+        {signedOutConnections.map((connection) => (
+          <div key={connection.id} role="alert" className="flex items-center gap-3.5 rounded-xl border border-danger-line bg-danger-tint px-4 py-3.5">
+            <span className="flex-auto leading-normal">
+              <b className="font-semibold">{connection.name} needs you to sign in again.</b>{' '}
+              <span className="text-danger-deep">{connection.connectedDescription.replace('Used by ', '')} is paused until then</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => markConnected(connection.id)}
+              className="h-9 cursor-pointer whitespace-nowrap rounded-[9px] border-0 bg-ink px-3.5 text-[13px] font-semibold text-white hover:bg-ink-2"
+            >
+              Reconnect {connection.name}
+            </button>
+          </div>
+        ))}
+
+        {categories.map((category) => {
+          const categoryConnections = visibleConnections.filter((connection) => connection.category === category)
+          if (categoryConnections.length === 0) return null
+          return <ConnectionSection key={category} category={category} connections={categoryConnections} onSetUp={markConnected} />
+        })}
+
+        {showsModelSection && (
+          <ModelProvidersSection connections={visibleModelConnections} loadError={providerSetupState.error} onKeysChanged={providerSetupState.reload} />
+        )}
+
+        {showsAdvancedSection && (
+          <AdvancedSection
+            rows={visibleAdvancedRows}
+            secretsState={{ allSecrets: secretsLoadState.data, visibleSecrets, loadError: secretsLoadState.error, isSearching, reload: secretsLoadState.reload }}
+          />
+        )}
+
+        {hasNoMatches && <p className="m-0 text-muted">No connections match “{searchQuery.trim()}”</p>}
+      </PageFrame>
     </AppShell>
   )
 }

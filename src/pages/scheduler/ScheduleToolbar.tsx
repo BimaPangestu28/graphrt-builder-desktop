@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { Button, Icon, StrokeIcon, joinClassNames } from '@/components/ui'
 import { useAgents } from '@/hooks/useAgents'
+import { pageTitleClassName } from '@/components/layout'
 import { agentPath, routePaths } from '@/routes'
 
 export type ScheduleViewMode = 'day' | 'week' | 'list'
@@ -26,7 +27,7 @@ export function ScheduleToolbar({ subtitle, viewMode, onViewModeChange, onShiftW
   return (
     <div className="flex flex-[1_1_100%] flex-wrap items-end justify-between gap-4">
       <div className="flex flex-col gap-1">
-        <h1 className="m-0 text-[28px] font-semibold tracking-[-0.5px]">Schedule</h1>
+        <h1 className={pageTitleClassName}>Schedule</h1>
         <span className="text-body">{subtitle}</span>
       </div>
       <div className="flex flex-wrap items-center gap-2">

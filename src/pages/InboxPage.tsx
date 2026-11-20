@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { getBotEnabled, setBotEnabled } from '@/api/conversations'
 import { outreachOrigin, type ConversationCounts, type ConversationFilter } from '@/api/conversationTypes'
 import type { Agent } from '@/api/types'
-import { AppShell } from '@/components/layout'
+import { AppShell, PageFrame, PageTitleBlock } from '@/components/layout'
 import { StatusDot, joinClassNames } from '@/components/ui'
 import { useAgents } from '@/hooks/useAgents'
 import { useAsyncData } from '@/hooks/useAsyncData'
@@ -115,24 +115,24 @@ export function InboxPage() {
   const chatbot = agents?.find((agent) => agent.kind === 'chatbot')
 
   return (
-    <AppShell activeNav="inbox" agents={{ kind: 'list' }} mainClassName="box-border flex flex-col gap-6 px-8 py-7">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <h1 className="m-0 text-[26px] font-semibold tracking-[-0.5px]">Inbox</h1>
-          <span className="text-body">{chatbot ? `${chatbot.name} · answering your customers` : 'Chats your chatbots hand to you show up here'}</span>
+    <AppShell activeNav="inbox" agents={{ kind: 'list' }}>
+      <PageFrame>
+        <PageTitleBlock
+          title="Inbox"
+          subtitle={chatbot ? `${chatbot.name} · answering your customers` : 'Chats your chatbots hand to you show up here'}
+          actions={chatbot ? <BotAnsweringToggle chatbot={chatbot} /> : undefined}
+        />
+
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-2.5">
+          <InboxStatTile label="All chats" value={counts?.all} />
+          <InboxStatTile label="Bot answering" value={counts?.botAnswering} />
+          <InboxStatTile label="Waiting for you" value={counts?.waitingForYou} isHighlighted />
+          <InboxStatTile label="From outreach" value={counts?.fromOutreach} />
         </div>
-        {chatbot && <BotAnsweringToggle chatbot={chatbot} />}
-      </div>
 
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-2.5">
-        <InboxStatTile label="All chats" value={counts?.all} />
-        <InboxStatTile label="Bot answering" value={counts?.botAnswering} />
-        <InboxStatTile label="Waiting for you" value={counts?.waitingForYou} isHighlighted />
-        <InboxStatTile label="From outreach" value={counts?.fromOutreach} />
-      </div>
-
-      <InboxFilterChips activeFilterKey={activeFilterKey} counts={counts} onSelect={setActiveFilterKey} />
-      <InboxConversations filter={activeFilter.filter} />
+        <InboxFilterChips activeFilterKey={activeFilterKey} counts={counts} onSelect={setActiveFilterKey} />
+        <InboxConversations filter={activeFilter.filter} />
+      </PageFrame>
     </AppShell>
   )
 }

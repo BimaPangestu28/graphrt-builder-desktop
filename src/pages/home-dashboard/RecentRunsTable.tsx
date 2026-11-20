@@ -102,7 +102,7 @@ export function RecentRunsTable({ runs, loadError }: RecentRunsTableProps) {
       </Link>
     ) : null
   return (
-    <section aria-labelledby="home-recent-runs" className="flex min-w-0 flex-[2_1_480px] flex-col gap-3">
+    <section aria-labelledby="home-recent-runs" className="flex min-w-0 flex-col gap-3">
       <HomeSectionHeader headingId="home-recent-runs" heading="Recent runs" trailing={seeAllLink} />
       <RecentRunsBody runs={runs} loadError={loadError} />
     </section>

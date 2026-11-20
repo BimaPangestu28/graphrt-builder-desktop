@@ -108,6 +108,18 @@ describe('HomePage', () => {
     expect(startRunSpy).toHaveBeenCalledWith('maps-leads', 'manual', expect.objectContaining({ keyword: expect.any(String) }))
   })
 
+  it('lays the dashboard out as a main column of agents and runs beside a rail to build and track', async () => {
+    renderHomePage()
+    const mainColumn = screen.getByRole('region', { name: 'Overview' })
+    const rail = screen.getByRole('complementary', { name: 'New agent and this month' })
+    expect(within(mainColumn).getByRole('region', { name: /Needs you/ })).toBeInTheDocument()
+    expect(within(mainColumn).getByRole('region', { name: 'Agents' })).toBeInTheDocument()
+    expect(within(mainColumn).getByRole('region', { name: 'Recent runs' })).toBeInTheDocument()
+    expect(within(rail).getByRole('region', { name: 'Describe a new agent' })).toBeInTheDocument()
+    expect(await within(rail).findByRole('region', { name: /Getting started/ })).toBeInTheDocument()
+    expect(within(rail).getByRole('region', { name: 'This month' })).toBeInTheDocument()
+  })
+
   it('shows the getting started checklist until it is hidden', async () => {
     renderHomePage()
     const checklist = await screen.findByRole('region', { name: /Getting started/ })
