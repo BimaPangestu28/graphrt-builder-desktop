@@ -58,7 +58,7 @@ export function listBuilderRequirements(
  */
 export function listPluginSetupRequirements(pluginRequirements: PluginRequirement[] | null): BuilderRequirement[] {
   return (pluginRequirements ?? []).map((requirement) => ({
-    label: `${requirement.name} plugin`,
+    label: `${requirement.displayName} plugin`,
     pluginName: requirement.name,
     connectPath: pluginDetailPath(requirement.name),
     isConnected: requirement.ready,

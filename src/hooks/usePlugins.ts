@@ -12,6 +12,7 @@ import {
 } from '@/api/plugins'
 import type { InstalledPlugin, PluginCatalog, PluginEvent, PluginInstallStage } from '@/api/pluginTypes'
 import { describeError } from '@/lib/agentDisplay'
+import { findPluginDisplayName } from '@/lib/pluginDisplayName'
 import { useAsyncData, type AsyncDataState } from './useAsyncData'
 import { useBackendSubscription } from './useBackendSubscription'
 
@@ -123,7 +124,7 @@ function usePluginConfigActions(reload: () => Promise<void>) {
  */
 export function usePlugins(): PluginsState {
   const inventoryState = useAsyncData(loadPluginInventory, [])
-  const { reload } = inventoryState
+  const { reload, data: inventory } = inventoryState
   const { progressByName, clearProgress } = usePluginInstallProgress(reload)
   const { saveConfig, clearConfig } = usePluginConfigActions(reload)
   const [operationByName, setOperationByName] = useState<Record<string, PluginOperation>>({})
@@ -137,13 +138,13 @@ export function usePlugins(): PluginsState {
         await work()
         await reload()
       } catch (operationError) {
-        setErrorByName((previous) => ({ ...previous, [name]: `Could not ${operationVerbs[operation]} ${name}: ${describeError(operationError)}` }))
+        setErrorByName((previous) => ({ ...previous, [name]: `Could not ${operationVerbs[operation]} ${findInventoryDisplayName(inventory, name)}: ${describeError(operationError)}` }))
       } finally {
         setOperationByName((previous) => withoutKey(previous, name))
         clearProgress(name)
       }
     },
-    [reload, clearProgress],
+    [reload, clearProgress, inventory],
   )
 
   return {
@@ -158,6 +159,18 @@ export function usePlugins(): PluginsState {
     saveConfig,
     clearConfig,
   }
+}
+
+/**
+ * The display name of the plugin named `name`: from the installed copy, else the catalog,
+ * else the humanized name (also while loading).
+ *
+ * @param inventory - From {@link usePlugins}, or null while loading (PluginInventory | null)
+ * @param name - Technical plugin name (string)
+ * @returns The name to show people (string)
+ */
+export function findInventoryDisplayName(inventory: PluginInventory | null, name: string): string {
+  return findPluginDisplayName([...(inventory?.installed ?? []), ...(inventory?.catalog?.plugins ?? [])], name)
 }
 
 /** The installed plugin with this name, or null (also while loading). */

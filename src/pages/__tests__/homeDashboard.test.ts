@@ -69,6 +69,7 @@ function buildTrigger(changes: Partial<Trigger>): Trigger {
 function buildRequirement(changes: Partial<PluginRequirement>): PluginRequirement {
   return {
     name: 'whatsapp-api',
+    displayName: 'WhatsApp Cloud API',
     description: 'Send WhatsApp messages',
     usedBySteps: ['Send the promotion'],
     permissions: { network: true, secrets: true, env: ['ACCESS_TOKEN'] },
@@ -139,7 +140,7 @@ describe('Needs you', () => {
       detail: "Could not reach promo.example.com: that address doesn't exist · Today 11:00",
       actionPath: `${routePaths.errorStates}?runId=failed-latest`,
     })
-    expect(items?.find((item) => item.kind === 'setup')).toMatchObject({ title: "Cafe promo isn't ready to run", detail: 'whatsapp-api needs ACCESS_TOKEN', actionPath: agentPath('builder', 'promo') })
+    expect(items?.find((item) => item.kind === 'setup')).toMatchObject({ title: "Cafe promo isn't ready to run", detail: 'WhatsApp Cloud API needs ACCESS_TOKEN', actionPath: agentPath('builder', 'promo') })
   })
 
   it('only reports a failure when it is the agent\'s latest run', () => {
@@ -159,7 +160,7 @@ describe('Needs you', () => {
           buildRun({ id: 'paused-new', status: 'paused', trigger: 'schedule' }),
           buildRun({ id: 'paused-old', status: 'paused', trigger: 'schedule', startedAt: hoursAgo(5) }),
         ],
-        problems: [buildProblem({ id: 'p1' }), buildProblem({ id: 'p2', kind: 'plugin_untrusted', title: 'whatsapp-api is not trusted' })],
+        problems: [buildProblem({ id: 'p1' }), buildProblem({ id: 'p2', kind: 'plugin_untrusted', title: 'WhatsApp Cloud API is not trusted' })],
         pluginRequirements: new Map([['digest', [buildRequirement({ installed: false, ready: false })]]]),
       }),
       now,
@@ -167,7 +168,7 @@ describe('Needs you', () => {
     expect(items?.map((item) => item.kind)).toEqual(['approval', 'setup'])
     expect(items?.[0]).toMatchObject({ actionPath: runReviewPath('paused-new') })
     expect(items?.[0].meta ?? items?.[0].detail).toMatch(/1 more waiting$/)
-    expect(items?.[1].detail).toBe("Google Places key is missing · whatsapp-api is not trusted · whatsapp-api isn't installed")
+    expect(items?.[1].detail).toBe("Google Places key is missing · WhatsApp Cloud API is not trusted · WhatsApp Cloud API isn't installed")
   })
 
   it('sends model-key problems to Connections and broken schedules to the schedule', () => {
@@ -193,10 +194,10 @@ describe('Needs you', () => {
   })
 
   it('explains why a plugin is not ready', () => {
-    expect(describePluginGap(buildRequirement({ installed: false }))).toBe("whatsapp-api isn't installed")
-    expect(describePluginGap(buildRequirement({ trusted: false }))).toBe("whatsapp-api isn't trusted yet")
-    expect(describePluginGap(buildRequirement({ trusted: false, trustNotNeeded: true, browserReady: false }))).toBe('whatsapp-api needs the browser installed')
-    expect(describePluginGap(buildRequirement({ name: 'whatsapp-web', needsSession: true, sessionLinked: false }))).toBe("whatsapp-web isn't linked yet")
+    expect(describePluginGap(buildRequirement({ installed: false }))).toBe("WhatsApp Cloud API isn't installed")
+    expect(describePluginGap(buildRequirement({ trusted: false }))).toBe("WhatsApp Cloud API isn't trusted yet")
+    expect(describePluginGap(buildRequirement({ trusted: false, trustNotNeeded: true, browserReady: false }))).toBe('WhatsApp Cloud API needs the browser installed')
+    expect(describePluginGap(buildRequirement({ name: 'whatsapp-web', displayName: 'WhatsApp Web', needsSession: true, sessionLinked: false }))).toBe("WhatsApp Web isn't linked yet")
   })
 })
 

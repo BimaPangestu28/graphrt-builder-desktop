@@ -4,6 +4,7 @@ import { Button, buttonClassNames, joinClassNames } from '@/components/ui'
 import { usePluginUpdates, type PluginUpdatesState } from '@/hooks/usePluginUpdates'
 import { RestartControls } from '@/pages/updates/RestartControls'
 import { useAppUpdates, type AppUpdateControls } from '@/pages/updates/updateContext'
+import { findPluginDisplayName } from '@/lib/pluginDisplayName'
 import { pluginDetailPath, routePaths } from '@/routes'
 import { buildUpdatesNoticeLines, hasUndismissedLine, readDismissedUpdateKeys, writeDismissedUpdateKeys, type UpdatesNoticeLine } from './updatesNoticeLines'
 
@@ -64,16 +65,17 @@ function UpdateAllResult({ pluginUpdates }: { pluginUpdates: PluginUpdatesState 
   }
   if (!lastSummary) return null
   const updatedCount = lastSummary.updated.length
+  const catalogPlugins = pluginUpdates.data?.catalogPlugins ?? []
   return (
     <div className="flex flex-col gap-1 px-[18px] pb-3 text-[13px]">
       {updatedCount > 0 && (
         <p role="status" className="m-0 text-body">
-          Updated {updatedCount === 1 ? lastSummary.updated[0].name : `${updatedCount} plugins`}
+          Updated {updatedCount === 1 ? findPluginDisplayName(catalogPlugins, lastSummary.updated[0].name) : `${updatedCount} plugins`}
         </p>
       )}
       {lastSummary.failed.map((failure) => (
         <p key={failure.name} role="alert" className="m-0 text-danger">
-          Could not update {failure.name}: {failure.message}
+          Could not update {findPluginDisplayName(catalogPlugins, failure.name)}: {failure.message}
         </p>
       ))}
     </div>
@@ -98,6 +100,7 @@ export function UpdatesNotice() {
     now: new Date(),
     updatesListPath,
     pluginPath: pluginDetailPath,
+    knownPlugins: pluginUpdates.data?.catalogPlugins ?? [],
   })
   const hasResult = pluginUpdates.lastSummary !== null || pluginUpdates.updateAllError !== null
   if (!hasResult && (lines.length === 0 || !hasUndismissedLine(lines, dismissedKeys))) return null

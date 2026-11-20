@@ -4,8 +4,8 @@ import { describeError } from '@/lib/agentDisplay'
 
 interface BrowserRuntimeBannerProps {
   runtime: BrowserRuntimeState
-  /** Installed plugins that need Chromium, named in the banner. */
-  pluginNames: string[]
+  /** Display names of the installed plugins that need Chromium, named in the banner. */
+  pluginLabels: string[]
 }
 
 function describeBannerStatus(runtime: BrowserRuntimeState): { label: string; tone: 'ok' | 'amber' | 'danger' | 'neutral' } {
@@ -20,7 +20,7 @@ function describeBannerStatus(runtime: BrowserRuntimeState): { label: string; to
  * One-line browser runtime (Chromium) status at the top of the Plugins page, shown while
  * an installed plugin needs it. Amber with Install until it is there, quiet afterwards.
  */
-export function BrowserRuntimeBanner({ runtime, pluginNames }: BrowserRuntimeBannerProps) {
+export function BrowserRuntimeBanner({ runtime, pluginLabels }: BrowserRuntimeBannerProps) {
   const status = describeBannerStatus(runtime)
   const canInstall = runtime.status === 'not_installed' && !runtime.isInstalling
   const isReady = runtime.status === 'installed'
@@ -36,7 +36,7 @@ export function BrowserRuntimeBanner({ runtime, pluginNames }: BrowserRuntimeBan
           {status.label}
         </Badge>
       </span>
-      <span className="min-w-0 flex-1 text-[12px] text-muted">Chromium for {pluginNames.join(', ')} · about 150 MB</span>
+      <span className="min-w-0 flex-1 text-[12px] text-muted">Chromium for {pluginLabels.join(', ')} · about 150 MB</span>
       {(canInstall || runtime.isInstalling) && (
         <Button size="sm" disabled={!canInstall} onClick={() => void runtime.install()}>
           {runtime.isInstalling ? 'Installing…' : 'Install browser runtime'}

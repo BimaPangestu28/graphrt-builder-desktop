@@ -141,7 +141,7 @@ function usePluginApprovals(requirements: PluginRequirement[] | null, reload: ()
       try {
         await installAndTrust(requirement)
       } catch (approvalError) {
-        setErrorByName((previous) => ({ ...previous, [requirement.name]: `Could not set up ${requirement.name}: ${describeError(approvalError)}` }))
+        setErrorByName((previous) => ({ ...previous, [requirement.name]: `Could not set up ${requirement.displayName}: ${describeError(approvalError)}` }))
       } finally {
         setApprovingNames((previous) => previous.filter((name) => name !== requirement.name))
         clearProgress(requirement.name)

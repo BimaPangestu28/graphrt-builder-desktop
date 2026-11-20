@@ -1,6 +1,6 @@
 import type { InstalledPlugin } from '@/api/pluginTypes'
 import { Button } from '@/components/ui'
-import type { PluginsState } from '@/hooks/usePlugins'
+import { findInventoryDisplayName, type PluginsState } from '@/hooks/usePlugins'
 import { describeError } from '@/lib/agentDisplay'
 import { describeInstallProgress } from '../plugins/pluginDisplay'
 import { PluginPermissionList } from '../plugins/PluginPermissionList'
@@ -21,12 +21,13 @@ export function PluginInstallStepBody({ plugins, pluginName }: { plugins: Plugin
   const inventory = plugins.data
   if (plugins.error) return <p role="alert" className="m-0 text-[13px] text-danger">Could not load plugins: {describeError(plugins.error)}</p>
   if (!inventory) return <p className="m-0 text-[13px] text-muted">Checking plugins…</p>
+  const pluginLabel = findInventoryDisplayName(inventory, pluginName)
   const installedPlugin = inventory.installed.find((candidate) => candidate.name === pluginName)
-  if (installedPlugin) return <p className="m-0 text-[13px] text-body">{pluginName} v{installedPlugin.version} is installed</p>
+  if (installedPlugin) return <p className="m-0 text-[13px] text-body">{pluginLabel} v{installedPlugin.version} is installed</p>
 
   const catalogEntry = inventory.catalog?.plugins.find((entry) => entry.name === pluginName)
   if (!catalogEntry) {
-    const reason = inventory.catalogError ? describeError(inventory.catalogError) : `the catalog has no ${pluginName} plugin`
+    const reason = inventory.catalogError ? describeError(inventory.catalogError) : `the catalog has no ${pluginLabel} plugin`
     return <p role="alert" className="m-0 text-[13px] text-danger">Could not find the plugin to install: {reason}</p>
   }
   const progress = plugins.progressByName[pluginName]
@@ -34,9 +35,9 @@ export function PluginInstallStepBody({ plugins, pluginName }: { plugins: Plugin
   return (
     <>
       <span className="text-[13px] text-body">{catalogEntry.description}. It asks for:</span>
-      <PluginPermissionList pluginName={pluginName} permissions={catalogEntry.permissions} needsBrowser={catalogEntry.needsBrowser} />
+      <PluginPermissionList pluginLabel={pluginLabel} permissions={catalogEntry.permissions} needsBrowser={catalogEntry.needsBrowser} />
       <div className="flex flex-wrap items-center gap-3">
-        <Button size="sm" aria-label={`Install ${pluginName}`} disabled={isInstalling} onClick={() => void plugins.install(pluginName)}>
+        <Button size="sm" aria-label={`Install ${pluginLabel}`} disabled={isInstalling} onClick={() => void plugins.install(pluginName)}>
           {isInstalling ? 'Installing…' : 'Install'}
         </Button>
         {progress && (
@@ -55,7 +56,7 @@ export function PluginTrustStepBody({ plugins, installedPlugin }: { plugins: Plu
   return (
     <>
       <PluginTrustToggle
-        pluginName={installedPlugin.name}
+        pluginLabel={installedPlugin.displayName}
         isTrusted={installedPlugin.trusted}
         isSaving={plugins.operationByName[installedPlugin.name] === 'trusting'}
         onChange={(trusted) => void plugins.setTrusted(installedPlugin.name, trusted)}

@@ -108,6 +108,7 @@ function toInstalledPlugin(installedRecord: SampleInstalledRecord): InstalledPlu
   const seed = findSeed(installedRecord.name)
   return {
     name: seed.name,
+    displayName: seed.displayName,
     version: installedRecord.version,
     description: seed.description,
     permissions: copyPermissions(installedRecord.permissions),
@@ -317,6 +318,7 @@ function toPluginRequirement(seed: SamplePluginSeed, usedBySteps: string[]): Plu
   const sessionLinked = !needsSession || pluginsState.isWhatsAppWebLoggedIn
   return {
     name: seed.name,
+    displayName: seed.displayName,
     description: seed.description,
     usedBySteps,
     permissions: { ...seed.permissions, env: [...seed.permissions.env] },

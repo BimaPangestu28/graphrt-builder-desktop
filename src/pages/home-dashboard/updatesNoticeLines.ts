@@ -1,4 +1,5 @@
 import type { PluginAutoUpdate, PluginCatalogEntry } from '@/api/pluginTypes'
+import { findPluginDisplayName, pluginDisplayName, type NamedPlugin } from '@/lib/pluginDisplayName'
 import type { UpdateStatus } from '@/pages/updates/updateContext'
 
 /** How long "Updated automatically" stays on Home. */
@@ -36,6 +37,8 @@ export interface UpdatesNoticeInputs {
   updatesListPath: string
   /** Where "Review" goes for one plugin. */
   pluginPath: (name: string) => string
+  /** Plugins with display names (the catalog), for automatic updates that only carry a name. */
+  knownPlugins?: NamedPlugin[]
 }
 
 function buildAppLine(status: UpdateStatus | null): UpdatesNoticeLine | null {
@@ -64,7 +67,7 @@ function versionKey(entries: PluginCatalogEntry[]): string {
 
 function buildReadyPluginLine(readyUpdates: PluginCatalogEntry[], inputs: UpdatesNoticeInputs): UpdatesNoticeLine | null {
   if (readyUpdates.length === 0) return null
-  const text = readyUpdates.length === 1 ? `${readyUpdates[0].name} ${readyUpdates[0].version} is available` : `${pluralizeUpdates(readyUpdates.length)} available`
+  const text = readyUpdates.length === 1 ? `${pluginDisplayName(readyUpdates[0])} ${readyUpdates[0].version} is available` : `${pluralizeUpdates(readyUpdates.length)} available`
   return { key: `plugins:${versionKey(readyUpdates)}`, text, action: { kind: 'updateAll', reviewPath: inputs.updatesListPath }, needsApproval: false }
 }
 
@@ -73,19 +76,20 @@ function buildApprovalLine(approvalUpdates: PluginCatalogEntry[], inputs: Update
   const [firstUpdate] = approvalUpdates
   const isSingle = approvalUpdates.length === 1
   const text = isSingle
-    ? `${firstUpdate.name} ${firstUpdate.version} asks for new permissions and needs your approval`
+    ? `${pluginDisplayName(firstUpdate)} ${firstUpdate.version} asks for new permissions and needs your approval`
     : `${pluralizeUpdates(approvalUpdates.length)} ask for new permissions and need your approval`
   const path = isSingle ? inputs.pluginPath(firstUpdate.name) : inputs.updatesListPath
   return { key: `approval:${versionKey(approvalUpdates)}`, text, action: { kind: 'review', path }, needsApproval: true }
 }
 
-function buildAutoUpdateLine(autoUpdates: PluginAutoUpdate[], now: Date): UpdatesNoticeLine | null {
+function buildAutoUpdateLine(autoUpdates: PluginAutoUpdate[], inputs: UpdatesNoticeInputs): UpdatesNoticeLine | null {
+  const { now, knownPlugins = [] } = inputs
   const recentUpdates = autoUpdates.filter((autoUpdate) => {
     const updatedAt = Date.parse(autoUpdate.updatedAt)
     return Number.isFinite(updatedAt) && now.getTime() - updatedAt < recentAutoUpdateWindowMs
   })
   if (recentUpdates.length === 0) return null
-  const changes = recentUpdates.map((autoUpdate) => `${autoUpdate.name} ${autoUpdate.fromVersion} → ${autoUpdate.toVersion}`)
+  const changes = recentUpdates.map((autoUpdate) => `${findPluginDisplayName(knownPlugins, autoUpdate.name)} ${autoUpdate.fromVersion} → ${autoUpdate.toVersion}`)
   const key = `auto:${recentUpdates.map((autoUpdate) => `${autoUpdate.name}@${autoUpdate.toVersion}@${autoUpdate.updatedAt}`).join(',')}`
   return { key, text: `Updated automatically: ${changes.join(', ')}`, action: { kind: 'none' }, needsApproval: false }
 }
@@ -108,7 +112,7 @@ export function buildUpdatesNoticeLines(inputs: UpdatesNoticeInputs): UpdatesNot
     buildAppLine(inputs.appStatus),
     buildReadyPluginLine(readyUpdates, inputs),
     buildApprovalLine(approvalUpdates, inputs),
-    buildAutoUpdateLine(inputs.autoUpdates, inputs.now),
+    buildAutoUpdateLine(inputs.autoUpdates, inputs),
   ]
   return lines.filter((line): line is UpdatesNoticeLine => line !== null)
 }

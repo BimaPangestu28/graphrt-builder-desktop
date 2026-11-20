@@ -41,15 +41,16 @@ export interface NeedsYouSources {
  * Why a plugin is not ready yet, in a few words.
  *
  * @example
- * describePluginGap(requirement) // "whatsapp-api needs ACCESS_TOKEN"
+ * describePluginGap(requirement) // "WhatsApp Cloud API needs ACCESS_TOKEN"
  */
 export function describePluginGap(requirement: PluginRequirement): string {
-  if (!requirement.installed) return `${requirement.name} isn't installed`
-  if (!requirement.trusted && !requirement.trustNotNeeded) return `${requirement.name} isn't trusted yet`
-  if (requirement.missingConfig.length > 0) return `${requirement.name} needs ${requirement.missingConfig.join(', ')}`
-  if (!requirement.browserReady) return `${requirement.name} needs the browser installed`
-  if (requirement.needsSession && !requirement.sessionLinked) return `${requirement.name} isn't linked yet`
-  return `${requirement.name} isn't ready`
+  const pluginLabel = requirement.displayName
+  if (!requirement.installed) return `${pluginLabel} isn't installed`
+  if (!requirement.trusted && !requirement.trustNotNeeded) return `${pluginLabel} isn't trusted yet`
+  if (requirement.missingConfig.length > 0) return `${pluginLabel} needs ${requirement.missingConfig.join(', ')}`
+  if (!requirement.browserReady) return `${pluginLabel} needs the browser installed`
+  if (requirement.needsSession && !requirement.sessionLinked) return `${pluginLabel} isn't linked yet`
+  return `${pluginLabel} isn't ready`
 }
 
 /** One row per agent whose latest run failed, with the humanized reason. */

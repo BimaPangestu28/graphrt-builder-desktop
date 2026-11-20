@@ -29,7 +29,7 @@ function InstallApproval({ item, plugins, onCancel }: { item: PluginListItem; pl
   const asksFor = describePermissionChips(item.permissions, item.needsBrowser)
   const isInstalling = plugins.operationByName[item.name] === 'installing'
   return (
-    <div role="group" aria-label={`Install ${item.name}?`} className="flex flex-col gap-2 rounded-lg bg-subtle p-2.5">
+    <div role="group" aria-label={`Install ${item.displayName}?`} className="flex flex-col gap-2 rounded-lg bg-subtle p-2.5">
       <p className="m-0 text-[12px] leading-normal text-body">
         Runs its code on this computer{asksFor.length > 0 ? ` and asks for: ${asksFor.join(', ')}` : ''}. It starts untrusted, without settings or secrets.
       </p>
@@ -39,7 +39,7 @@ function InstallApproval({ item, plugins, onCancel }: { item: PluginListItem; pl
             Cancel
           </Button>
         )}
-        <PluginInstallButton item={item} plugins={plugins} ariaLabel={`Confirm install ${item.name}`} />
+        <PluginInstallButton item={item} plugins={plugins} ariaLabel={`Confirm install ${item.displayName}`} />
       </div>
     </div>
   )
@@ -50,7 +50,7 @@ function OpenLink({ item, listSearch, label, isPrimary }: { item: PluginListItem
     <Link
       to={pluginDetailPath(item.name)}
       state={{ listSearch }}
-      aria-label={`${label} ${item.name}`}
+      aria-label={`${label} ${item.displayName}`}
       className={buttonClassNames(isPrimary ? 'primary' : 'secondary', 'sm', isPrimary ? '!text-white' : '!text-ink')}
     >
       {label}
@@ -63,7 +63,7 @@ function CardActions({ item, plugins, listSearch, onStartInstall }: PluginCatalo
     return (
       <>
         <OpenLink item={item} listSearch={listSearch} label="Details" isPrimary={false} />
-        <Button size="sm" aria-label={`Install ${item.name}`} onClick={onStartInstall}>
+        <Button size="sm" aria-label={`Install ${item.displayName}`} onClick={onStartInstall}>
           Install
         </Button>
       </>
@@ -94,13 +94,13 @@ export function PluginCatalogCard({ item, plugins, listSearch }: PluginCatalogCa
   const status = describePluginStatus(item)
   const showsApproval = isApproving && !item.installed
   return (
-    <article aria-label={item.name} className="flex h-full flex-col gap-3 rounded-[14px] border border-line bg-surface p-4 transition-shadow hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+    <article aria-label={item.displayName} className="flex h-full flex-col gap-3 rounded-[14px] border border-line bg-surface p-4 transition-shadow hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
       <div className="flex items-start gap-3">
         <PluginIcon name={item.name} iconUrl={item.iconUrl} category={item.category} />
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <h3 className="m-0 truncate text-[14px] font-semibold">
             <Link to={pluginDetailPath(item.name)} state={{ listSearch }} className="no-underline !text-ink hover:underline">
-              {item.name}
+              {item.displayName}
             </Link>
           </h3>
           <span className="truncate text-[12px] text-muted">{describeCardMeta(item)}</span>
@@ -113,7 +113,7 @@ export function PluginCatalogCard({ item, plugins, listSearch }: PluginCatalogCa
         {item.description}
       </p>
       <div className="min-h-[18px]">
-        <PluginPermissionChips pluginName={item.name} permissions={item.permissions} needsBrowser={item.needsBrowser} />
+        <PluginPermissionChips pluginLabel={item.displayName} permissions={item.permissions} needsBrowser={item.needsBrowser} />
       </div>
       <div className="mt-auto flex flex-col gap-2 border-t border-chip pt-3">
         <PluginOperationFeedback pluginName={item.name} plugins={plugins} />

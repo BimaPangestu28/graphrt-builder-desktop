@@ -3,6 +3,7 @@ import { MemoryRouter } from 'react-router-dom'
 import type { PluginCatalogEntry } from '@/api/pluginTypes'
 import { listInstalledPlugins } from '@/api/plugins'
 import { emitSamplePluginEvent, resetSamplePlugins, setSampleAutoUpdates, setSampleInstalledPlugin } from '@/api/sampleBackend/plugins'
+import { humanizePluginName } from '@/lib/pluginDisplayName'
 import { AppUpdateContext, type AppUpdateControls, type UpdateStatus } from '@/pages/updates/updateContext'
 import { UpdatesNotice } from './UpdatesNotice'
 import { buildUpdatesNoticeLines, hasUndismissedLine, recentAutoUpdateWindowMs, updatesNoticeDismissedKey } from './updatesNoticeLines'
@@ -36,6 +37,7 @@ function renderNotice(updateControls: AppUpdateControls | null = null) {
 function catalogEntry(name: string, overrides: Partial<PluginCatalogEntry> = {}): PluginCatalogEntry {
   return {
     name,
+    displayName: humanizePluginName(name),
     version: '1.1.0',
     description: '',
     permissions: { network: false, secrets: false, env: [] },
@@ -73,11 +75,21 @@ describe('buildUpdatesNoticeLines', () => {
     expect(lines.map((line) => line.text)).toEqual([
       'graphrt 0.2.0 is ready',
       '2 plugin updates available',
-      'c 1.1.0 asks for new permissions and needs your approval',
-      'Updated automatically: maps 0.2.0 → 0.2.1',
+      'C 1.1.0 asks for new permissions and needs your approval',
+      'Updated automatically: Maps 0.2.0 → 0.2.1',
     ])
     expect(lines[2]).toMatchObject({ needsApproval: true, action: { kind: 'review', path: '/plugins/c' } })
     expect(lines[1].action).toEqual({ kind: 'updateAll', reviewPath: '/plugins?tab=updates' })
+  })
+
+  it('names plugins by their display name, looked up for automatic updates', () => {
+    const lines = buildUpdatesNoticeLines({
+      ...lineInputs,
+      pendingUpdates: [catalogEntry('whatsapp-api', { displayName: 'WhatsApp Cloud API' })],
+      autoUpdates: [{ name: 'maps', fromVersion: '0.2.0', toVersion: '0.2.1', updatedAt: '2026-11-20T08:00:00Z' }],
+      knownPlugins: [{ name: 'maps', displayName: 'Google Maps' }],
+    })
+    expect(lines.map((line) => line.text)).toEqual(['WhatsApp Cloud API 1.1.0 is available', 'Updated automatically: Google Maps 0.2.0 → 0.2.1'])
   })
 
   it('shows downloads with their percent and drops automatic updates after 24 hours', () => {
@@ -117,20 +129,20 @@ describe('UpdatesNotice', () => {
   it('lists plugin updates and installs them with Update all', async () => {
     renderNotice()
     const notice = await screen.findByRole('region', { name: 'Updates' })
-    expect(within(notice).getByText('google-maps-scraper 1.1.0 is available')).toBeInTheDocument()
+    expect(within(notice).getByText('Google Maps Scraper 1.1.0 is available')).toBeInTheDocument()
     expect(within(notice).getByRole('link', { name: 'Review plugin updates' })).toHaveAttribute('href', '/plugins?tab=updates')
     fireEvent.click(within(notice).getByRole('button', { name: 'Update all' }))
-    expect(await within(notice).findByText('Updated google-maps-scraper')).toBeInTheDocument()
+    expect(await within(notice).findByText('Updated Google Maps Scraper')).toBeInTheDocument()
     const installed = await listInstalledPlugins()
     expect(installed.find((plugin) => plugin.name === 'google-maps-scraper')?.version).toBe('1.1.0')
-    expect(within(notice).queryByText('google-maps-scraper 1.1.0 is available')).not.toBeInTheDocument()
+    expect(within(notice).queryByText('Google Maps Scraper 1.1.0 is available')).not.toBeInTheDocument()
   })
 
   it('leaves updates asking for new permissions to the user', async () => {
     setSampleInstalledPlugin('google-maps-scraper', '1.0.0', { network: true, secrets: false, env: [] })
     renderNotice()
     const notice = await screen.findByRole('region', { name: 'Updates' })
-    expect(within(notice).getByText('google-maps-scraper 1.1.0 asks for new permissions and needs your approval')).toBeInTheDocument()
+    expect(within(notice).getByText('Google Maps Scraper 1.1.0 asks for new permissions and needs your approval')).toBeInTheDocument()
     expect(within(notice).getByRole('link', { name: 'Review updates needing approval' })).toHaveAttribute('href', '/plugins/google-maps-scraper')
     expect(within(notice).queryByRole('button', { name: 'Update all' })).not.toBeInTheDocument()
   })
@@ -139,7 +151,7 @@ describe('UpdatesNotice', () => {
     setSampleInstalledPlugin('google-maps-scraper', '1.1.0')
     setSampleAutoUpdates([{ name: 'google-maps-scraper', fromVersion: '1.0.0', toVersion: '1.1.0', updatedAt: new Date().toISOString() }])
     renderNotice()
-    expect(await screen.findByText('Updated automatically: google-maps-scraper 1.0.0 → 1.1.0')).toBeInTheDocument()
+    expect(await screen.findByText('Updated automatically: Google Maps Scraper 1.0.0 → 1.1.0')).toBeInTheDocument()
   })
 
   it('stays dismissed until something new appears', async () => {
@@ -155,7 +167,7 @@ describe('UpdatesNotice', () => {
 
     setSampleAutoUpdates([{ name: 'website-check', fromVersion: '0.3.0', toVersion: '0.4.0', updatedAt: new Date().toISOString() }])
     emitSamplePluginEvent({ type: 'plugins_changed' })
-    expect(await screen.findByText('Updated automatically: website-check 0.3.0 → 0.4.0')).toBeInTheDocument()
+    expect(await screen.findByText('Updated automatically: Website Check 0.3.0 → 0.4.0')).toBeInTheDocument()
   })
 
   it('renders nothing when there is no news', async () => {

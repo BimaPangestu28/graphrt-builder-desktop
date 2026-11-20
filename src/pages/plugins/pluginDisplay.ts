@@ -1,11 +1,15 @@
 import type { BadgeTone } from '@/components/ui'
 import type { InstalledPlugin, PluginCatalog, PluginMaturity, PluginNodeInfo, PluginPermissions, PluginTosRisk } from '@/api/pluginTypes'
 import type { PluginInstallProgress } from '@/hooks/usePlugins'
+import { pluginDisplayName } from '@/lib/pluginDisplayName'
 import { categorizePlugin, type PluginCategory } from './pluginCategories'
 
 /** One plugin on the Plugins page: catalog data merged with the installed copy. */
 export interface PluginListItem {
+  /** Technical name: the identifier for install calls, routes and icons. */
   name: string
+  /** What people see, e.g. "WhatsApp Cloud API". */
+  displayName: string
   description: string
   /** Catalog version, or the installed one when the catalog does not list the plugin. */
   version: string
@@ -30,6 +34,7 @@ function fromInstalledPlugin(installedPlugin: InstalledPlugin): PluginListItem {
   const { name, description, version, permissions, needsBrowser, nodes, readmeUrl, iconUrl } = installedPlugin
   return {
     name,
+    displayName: pluginDisplayName(installedPlugin),
     description,
     version,
     permissions,
@@ -59,6 +64,7 @@ export function buildPluginListItems(catalog: PluginCatalog | null, installedPlu
   const installedByName = new Map(installedPlugins.map((installedPlugin) => [installedPlugin.name, installedPlugin]))
   const catalogItems: PluginListItem[] = (catalog?.plugins ?? []).map((entry) => ({
     name: entry.name,
+    displayName: pluginDisplayName(entry),
     description: entry.description,
     version: entry.version,
     permissions: entry.permissions,
@@ -108,7 +114,7 @@ export function describeStepCount(stepCount: number): string {
 }
 
 /**
- * Keeps plugins whose name, description or step titles contain the search text (case-insensitive).
+ * Keeps plugins whose display name, technical name, description or step titles contain the search text (case-insensitive).
  *
  * @param items - Plugins in display order (PluginListItem[])
  * @param searchText - What the person typed; blank keeps everything (string)
@@ -117,7 +123,7 @@ export function describeStepCount(stepCount: number): string {
 export function filterPluginListItems(items: PluginListItem[], searchText: string): PluginListItem[] {
   const needle = searchText.trim().toLowerCase()
   if (needle === '') return items
-  return items.filter((item) => [item.name, item.description, ...item.nodes.map((node) => node.title)].some((text) => text.toLowerCase().includes(needle)))
+  return items.filter((item) => [item.displayName, item.name, item.description, ...item.nodes.map((node) => node.title)].some((text) => text.toLowerCase().includes(needle)))
 }
 
 /** The tabs above the catalog. */

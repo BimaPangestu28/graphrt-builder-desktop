@@ -42,11 +42,11 @@ function PluginChips({ requirements }: { requirements: PluginRequirement[] }) {
         <li key={requirement.name}>
           <Link
             to={pluginDetailPath(requirement.name)}
-            title={requirement.ready ? `${requirement.name} is ready` : describePluginGap(requirement)}
+            title={requirement.ready ? `${requirement.displayName} is ready` : describePluginGap(requirement)}
             className="flex items-center gap-1.5 rounded-full bg-canvas px-2 py-0.5 text-[12px] no-underline !text-ink-2 hover:bg-selected"
           >
             <StatusDot tone={requirement.ready ? 'ok' : 'amber'} />
-            {requirement.name}
+            {requirement.displayName}
             <span className="sr-only">{requirement.ready ? ' (ready)' : ' (not ready)'}</span>
           </Link>
         </li>

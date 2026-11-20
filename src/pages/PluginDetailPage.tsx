@@ -4,6 +4,7 @@ import { Badge, Icon } from '@/components/ui'
 import { useBrowserRuntime } from '@/hooks/useBrowserRuntime'
 import { usePlugins, type PluginsState } from '@/hooks/usePlugins'
 import { describeError } from '@/lib/agentDisplay'
+import { humanizePluginName } from '@/lib/pluginDisplayName'
 import { routePaths } from '@/routes'
 import { PluginInstallButton, PluginOperationFeedback, PluginRemoveButton, PluginUpdateButton } from './plugins/PluginActions'
 import { pluginCategoryLabels } from './plugins/pluginCategories'
@@ -65,10 +66,16 @@ function PluginHeader({ item, plugins }: { item: PluginListItem; plugins: Plugin
       <PluginIcon name={item.name} iconUrl={item.iconUrl} category={item.category} size="lg" />
       <div className="flex min-w-0 flex-[1_1_320px] flex-col gap-1">
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className={`${pageTitleClassName} [overflow-wrap:anywhere]`}>{item.name}</h1>
+          <h1 className={`${pageTitleClassName} [overflow-wrap:anywhere]`}>{item.displayName}</h1>
           <Badge tone={status.tone}>{status.label}</Badge>
         </div>
-        <span className="text-[13px] text-muted">{meta}</span>
+        <span className="text-[13px] text-muted">
+          <code aria-label="Plugin name" className="font-mono text-[12px]">
+            {item.name}
+          </code>
+          {' · '}
+          {meta}
+        </span>
         <p className="m-0 max-w-[640px] leading-normal text-body">{item.description}</p>
       </div>
       <HeaderActions item={item} plugins={plugins} />
@@ -90,11 +97,11 @@ function PluginDetailBody({ item, plugins }: { item: PluginListItem; plugins: Pl
       <div className="@container grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="flex min-w-0 flex-col gap-4">
           {installed && <PluginSetupSection installed={installed} plugins={plugins} browserRuntime={browserRuntime} />}
-          <PluginStepsSection pluginName={item.name} nodes={item.nodes} />
+          <PluginStepsSection pluginLabel={item.displayName} nodes={item.nodes} />
         </div>
-        <aside aria-label={`About ${item.name}`} className="flex min-w-0 flex-col gap-4">
+        <aside aria-label={`About ${item.displayName}`} className="flex min-w-0 flex-col gap-4">
           <PluginAsksForSection item={item} />
-          <PluginUsersSection pluginName={item.name} users={users.data} loadError={users.error} />
+          <PluginUsersSection pluginLabel={item.displayName} users={users.data} loadError={users.error} />
           <PluginAboutSection item={item} />
         </aside>
       </div>
@@ -112,7 +119,7 @@ function PluginDetailContent({ pluginName }: { pluginName: string }) {
       </p>
     )
   }
-  if (!inventory) return <p className="m-0 text-muted">Loading {pluginName}…</p>
+  if (!inventory) return <p className="m-0 text-muted">Loading {humanizePluginName(pluginName)}…</p>
   const item = buildPluginListItems(inventory.catalog, inventory.installed).find((candidate) => candidate.name === pluginName)
   if (!item) {
     const reason = inventory.catalogError ? `the catalog could not be loaded (${describeError(inventory.catalogError)}) and it is not installed` : 'the catalog does not list it'

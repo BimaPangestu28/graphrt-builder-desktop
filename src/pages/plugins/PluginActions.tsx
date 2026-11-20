@@ -19,7 +19,7 @@ function isBusy(item: PluginListItem, plugins: PluginsState): boolean {
 export function PluginInstallButton({ item, plugins, size = 'sm', ariaLabel }: PluginActionProps & { ariaLabel?: string }) {
   const isInstalling = plugins.operationByName[item.name] === 'installing'
   return (
-    <Button size={size} aria-label={ariaLabel ?? `Install ${item.name}`} disabled={isBusy(item, plugins)} onClick={() => void plugins.install(item.name)}>
+    <Button size={size} aria-label={ariaLabel ?? `Install ${item.displayName}`} disabled={isBusy(item, plugins)} onClick={() => void plugins.install(item.name)}>
       {isInstalling ? 'Installing…' : 'Install'}
     </Button>
   )
@@ -28,7 +28,7 @@ export function PluginInstallButton({ item, plugins, size = 'sm', ariaLabel }: P
 export function PluginUpdateButton({ item, plugins, size = 'sm' }: PluginActionProps) {
   const isUpdating = plugins.operationByName[item.name] === 'updating'
   return (
-    <Button size={size} aria-label={`Update ${item.name}`} disabled={isBusy(item, plugins)} onClick={() => void plugins.update(item.name)}>
+    <Button size={size} aria-label={`Update ${item.displayName}`} disabled={isBusy(item, plugins)} onClick={() => void plugins.update(item.name)}>
       {isUpdating ? 'Updating…' : `Update to v${item.version}`}
     </Button>
   )
@@ -37,7 +37,7 @@ export function PluginUpdateButton({ item, plugins, size = 'sm' }: PluginActionP
 export function PluginRemoveButton({ item, plugins, size = 'sm' }: PluginActionProps) {
   const isRemoving = plugins.operationByName[item.name] === 'removing'
   return (
-    <Button variant="danger" size={size} aria-label={`Remove ${item.name}`} disabled={isBusy(item, plugins)} onClick={() => void plugins.remove(item.name)}>
+    <Button variant="danger" size={size} aria-label={`Remove ${item.displayName}`} disabled={isBusy(item, plugins)} onClick={() => void plugins.remove(item.name)}>
       {isRemoving ? 'Removing…' : 'Remove'}
     </Button>
   )

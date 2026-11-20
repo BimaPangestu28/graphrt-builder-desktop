@@ -57,7 +57,7 @@ describe('HomePage', () => {
     // One row per agent: its connection problem and its plugin setup together.
     const mapsRow = within(needsYou).getByText("Maps leads to WhatsApp isn't ready to run").closest('li')
     expect(mapsRow).toHaveTextContent('WhatsApp was logged out')
-    expect(mapsRow).toHaveTextContent("whatsapp-api isn't installed")
+    expect(mapsRow).toHaveTextContent("WhatsApp Cloud API isn't installed")
     expect(within(needsYou).getByText('Gmail sign-in expired')).toBeInTheDocument()
     const titles = within(needsYou)
       .getAllByRole('listitem')

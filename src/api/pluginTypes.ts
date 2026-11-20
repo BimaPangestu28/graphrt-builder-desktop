@@ -27,7 +27,10 @@ export type PluginTosRisk = 'none' | 'low' | 'medium' | 'high'
 
 /** One plugin of the online catalog, with its install state on this computer. */
 export interface PluginCatalogEntry {
+  /** Technical name, the identifier (install calls, routes, node kinds), e.g. "whatsapp-api". */
   name: string
+  /** What people see, e.g. "WhatsApp Cloud API": the catalog's curated name, else the humanized name. */
+  displayName: string
   version: string
   description: string
   permissions: PluginPermissions
@@ -98,7 +101,10 @@ export interface PluginConfigStatus {
 
 /** A plugin installed under the app data folder. */
 export interface InstalledPlugin {
+  /** Technical name, the identifier. */
   name: string
+  /** What people see: the curated catalog name (kept from install time, so it shows offline), else the humanized name. */
+  displayName: string
   version: string
   description: string
   /** Requested permissions (from the plugin's manifest). */

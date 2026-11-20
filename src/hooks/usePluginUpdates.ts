@@ -11,6 +11,8 @@ export interface PluginUpdatesData {
   pendingUpdates: PluginCatalogEntry[]
   /** Newest first. */
   autoUpdates: PluginAutoUpdate[]
+  /** Every catalog entry, so updates that only carry a name can show its display name. */
+  catalogPlugins: PluginCatalogEntry[]
 }
 
 async function readAutoUpdates(): Promise<PluginAutoUpdate[]> {
@@ -24,7 +26,7 @@ async function readAutoUpdates(): Promise<PluginAutoUpdate[]> {
 
 async function loadPluginUpdates(): Promise<PluginUpdatesData> {
   const [catalog, autoUpdates] = await Promise.all([listPluginCatalog(false), readAutoUpdates()])
-  return { pendingUpdates: catalog.plugins.filter((entry) => entry.updateAvailable), autoUpdates }
+  return { pendingUpdates: catalog.plugins.filter((entry) => entry.updateAvailable), autoUpdates, catalogPlugins: catalog.plugins }
 }
 
 /**
