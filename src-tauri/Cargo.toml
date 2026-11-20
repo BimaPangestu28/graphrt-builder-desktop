@@ -1,6 +1,6 @@
 [package]
 name = "graphrt"
-version = "0.1.0"
+version = "0.1.1"
 description = "graphrt desktop: build, test and run automation agents on your computer (macOS, Windows, Linux)"
 edition = "2021"
 license = "Apache-2.0"
