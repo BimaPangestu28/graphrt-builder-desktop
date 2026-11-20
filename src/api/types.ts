@@ -51,13 +51,17 @@ export interface GraphrtPauseReason {
   node_id: string | null
   kind: string
   data: unknown
+  /** Added by the desktop to an approval step with a time limit: when it expires (ISO 8601). */
+  expires_at?: string
+  /** Added with `expires_at`: `{ kind: 'stop' }` or `{ kind: 'answer', action }`. */
+  on_timeout?: unknown
 }
 
 /**
  * A graphrt engine event as JSON. `type` is snake_case: run_started, node_started,
  * node_chunk, node_progress, node_retry, node_succeeded, node_failed, node_skipped,
  * node_paused, variable_updated, run_succeeded, run_failed, run_paused, run_aborted…
- * plus the desktop's own `status_changed`.
+ * plus the desktop's own `status_changed` and `approval_timed_out`.
  */
 export interface GraphrtEvent {
   type: string

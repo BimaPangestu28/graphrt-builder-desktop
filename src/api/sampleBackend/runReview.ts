@@ -55,10 +55,13 @@ function buildSamplePending(): PendingApproval[] {
     const placeName = `[PLACE NAME ${position + 1}]`
     const index = alreadyFinishedCount + position
     const frame = `${iterationNodeId}[${index}]`
+    const resumeKey = `${frame}/${approvalNodeId}`
     return {
+      id: resumeKey,
+      kind: 'form',
       nodeId: approvalNodeId,
       frame,
-      resumeKey: `${frame}/${approvalNodeId}`,
+      resumeKey,
       stepTitle: 'Ask me before sending',
       prompt: null,
       fields: [{ name: 'message', label: 'Message', fieldType: 'paragraph', required: true, defaultValue: draftMessage(placeName, placeSpec.kind) }],
@@ -67,6 +70,9 @@ function buildSamplePending(): PendingApproval[] {
         { id: 'skip', title: 'Skip' },
       ],
       timeoutMs: null,
+      expiresAt: null,
+      onTimeout: null,
+      toolCall: null,
       container: {
         nodeId: iterationNodeId,
         nodeType: 'iteration',
@@ -135,6 +141,12 @@ async function reviewSampleRun(runId: string): Promise<RunReview> {
   }
 }
 
+/** The button a form answer chose; tool call answers read as allow / decline. */
+function readAnsweredAction(answer: ApprovalAnswer): string {
+  if ('action' in answer) return answer.action
+  return Object.values(answer.approvals).every(Boolean) ? 'allow' : 'decline'
+}
+
 /** @throws BackendError - `invalid_input` when the run is not paused or an answer names no pending question */
 function answerSampleReview(answersByResumeKey: Record<string, ApprovalAnswer>): Run {
   if (sampleReview.status !== 'paused') throw new BackendError('invalid_input', `Run ${sampleReviewRunId} is not paused`)
@@ -143,7 +155,7 @@ function answerSampleReview(answersByResumeKey: Record<string, ApprovalAnswer>):
   if (unknownKey) throw new BackendError('invalid_input', `Nothing waits on ${unknownKey}`)
   const newlyAnswered: AnsweredApproval[] = sampleReview.pending
     .filter((pending) => answersByResumeKey[pending.resumeKey])
-    .map((pending) => ({ nodeId: pending.nodeId, frame: pending.frame, action: answersByResumeKey[pending.resumeKey].action, index: pending.container?.index ?? null, answeredAt }))
+    .map((pending) => ({ nodeId: pending.nodeId, frame: pending.frame, action: readAnsweredAction(answersByResumeKey[pending.resumeKey]), index: pending.container?.index ?? null, answeredAt }))
   const pending = sampleReview.pending.filter((approval) => !answersByResumeKey[approval.resumeKey])
   sampleReview = { ...sampleReview, pending, answered: [...sampleReview.answered, ...newlyAnswered], status: pending.length === 0 ? 'succeeded' : 'paused' }
   return reviewAsRun(sampleReview)

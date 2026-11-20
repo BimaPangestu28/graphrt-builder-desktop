@@ -3,7 +3,10 @@
 //! A [`RunReview`] is read from one stored run:
 //! - `pending`: every `human_input` pause reason graphrt reported, with the
 //!   rendered prompt, form fields and actions exactly as the `human-input` node
-//!   sent them (`{prompt, fields, actions, timeout_ms}`);
+//!   sent them (`{prompt, fields, actions, timeout_ms}`) plus the desktop's
+//!   deadline and timeout action (`engine::approval_pauses`); and one entry per
+//!   tool call of every `tool_approval` pause (a "Run an agent" step whose
+//!   tools ask first), answered Allow / Decline with `{"approvals": {id: bool}}`;
 //! - for a pause inside an `iteration` / `loop` body, the item position read
 //!   from the pause reason's `frame` (`each_place[3]`, nested frames joined by
 //!   `/`) and, best effort, from the paused run's snapshot: how many items the
@@ -27,12 +30,17 @@ use std::collections::HashMap;
 use serde::Serialize;
 use serde_json::Value as Json;
 
+use crate::engine::approval_pauses::{
+    redact_secrets, TimeoutAction, EXPIRES_AT_KEY, HUMAN_INPUT_PAUSE_KIND, ON_TIMEOUT_KEY, TOOL_APPROVAL_PAUSE_KIND,
+};
 use crate::error::AppResult;
 use crate::flow::FlowStep;
 use crate::storage::models::{Agent, Run, RunEventRecord, RunFilter, RunStatus, RunTrigger};
 use crate::storage::Database;
 
-const HUMAN_INPUT_PAUSE_KIND: &str = "human_input";
+/// Buttons of a tool call question; the answer is `{"approvals": {<call id>: true|false}}`.
+const ALLOW_ACTION_ID: &str = "allow";
+const DECLINE_ACTION_ID: &str = "decline";
 const HUMAN_INPUT_NODE_KIND: &str = "human-input";
 const ITERATION_NODE_KIND: &str = "iteration";
 /// Paused runs looked at when no run id is given.
@@ -79,10 +87,40 @@ pub struct ContainerPosition {
     pub item: Option<Json>,
 }
 
+/// What kind of question a [`PendingApproval`] is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PendingApprovalKind {
+    /// An "Ask me before continuing" (`human-input`) step: `{action, values}`.
+    Form,
+    /// One tool call an agent step waits to make: Allow / Decline.
+    ToolCall,
+}
+
+/// The tool call a `ToolCall` question is about (`data.calls[]` of a `tool_approval` pause).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingToolCall {
+    /// graphrt's call id, the key of the answer.
+    pub call_id: String,
+    /// The name the model called (graphrt's model-safe tool name).
+    pub name: String,
+    /// The tool's provider (plugin, MCP server or `agents`) when the step's `tools` list names it.
+    pub provider: Option<String>,
+    pub tool: Option<String>,
+    /// The arguments, with secret-looking values hidden.
+    pub arguments: Json,
+    /// Why the agent wants to make the call. graphrt does not send one yet, so always `None` for now.
+    pub reason: Option<String>,
+}
+
 /// A question the run waits on right now.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PendingApproval {
+    /// Unique among the run's questions: the resume key, plus `#<call id>` for tool calls.
+    pub id: String,
+    pub kind: PendingApprovalKind,
     pub node_id: String,
     /// graphrt frame of the paused node (`""` at the top level).
     pub frame: String,
@@ -95,6 +133,12 @@ pub struct PendingApproval {
     pub fields: Vec<ApprovalField>,
     pub actions: Vec<ApprovalAction>,
     pub timeout_ms: Option<u64>,
+    /// When the question expires (RFC 3339); `None` waits until answered.
+    pub expires_at: Option<String>,
+    /// What happens on expiry; `None` without a deadline.
+    pub on_timeout: Option<TimeoutAction>,
+    /// The call a `ToolCall` question is about.
+    pub tool_call: Option<PendingToolCall>,
     /// Innermost container the node runs in; `None` at the top level.
     pub container: Option<ContainerPosition>,
 }
@@ -121,7 +165,7 @@ pub struct RunReview {
     pub trigger: RunTrigger,
     pub status: RunStatus,
     pub started_at: String,
-    /// Questions to answer now (empty unless the run is paused on human input).
+    /// Questions to answer now (empty unless the run is paused on human input or tool approval).
     pub pending: Vec<PendingApproval>,
     /// Pause kinds this screen cannot answer (e.g. an external pause).
     pub other_pause_kinds: Vec<String>,
@@ -137,7 +181,7 @@ pub fn get_run_review(db: &Database, run_id: &str) -> AppResult<RunReview> {
     build_review(db, &run)
 }
 
-/// Review of the most recently started run that waits on human input, if any.
+/// Review of the most recently started run that waits on human input or a tool approval, if any.
 ///
 /// # Errors
 /// `AppError::Database` when storage fails.
@@ -150,7 +194,9 @@ pub fn latest_pending_review(db: &Database) -> AppResult<Option<RunReview>> {
 }
 
 fn waits_on_human_input(run: &Run) -> bool {
-    pause_reasons(run).iter().any(|reason| reason_kind(reason) == Some(HUMAN_INPUT_PAUSE_KIND))
+    pause_reasons(run)
+        .iter()
+        .any(|reason| matches!(reason_kind(reason), Some(HUMAN_INPUT_PAUSE_KIND | TOOL_APPROVAL_PAUSE_KIND)))
 }
 
 fn build_review(db: &Database, run: &Run) -> AppResult<RunReview> {
@@ -165,6 +211,9 @@ fn build_review(db: &Database, run: &Run) -> AppResult<RunReview> {
             match reason_kind(reason) {
                 Some(HUMAN_INPUT_PAUSE_KIND) => {
                     pending.extend(read_pending(reason, &steps, snapshot.as_ref()));
+                }
+                Some(TOOL_APPROVAL_PAUSE_KIND) => {
+                    pending.extend(read_tool_call_questions(reason, &steps, snapshot.as_ref()));
                 }
                 kind => other_pause_kinds.push(kind.unwrap_or("unknown").to_owned()),
             }
@@ -228,21 +277,73 @@ fn read_pending(reason: &Json, steps: &HashMap<String, FlowStep>, snapshot: Opti
     let node_id = text_field(reason, "node_id")?.to_owned();
     let frame = text_field(reason, "frame").unwrap_or_default().to_owned();
     let data = reason.get("data").unwrap_or(&Json::Null);
+    let resume_key = resume_key(&frame, &node_id);
     Some(PendingApproval {
-        resume_key: resume_key(&frame, &node_id),
+        id: resume_key.clone(),
+        kind: PendingApprovalKind::Form,
+        resume_key,
         step_title: steps.get(&node_id).map(|step| step.title.clone()),
         prompt: text_field(data, "prompt").map(str::to_owned).filter(|prompt| !prompt.trim().is_empty()),
         fields: read_fields(data),
         actions: read_actions(data),
         timeout_ms: data.get("timeout_ms").and_then(Json::as_u64),
+        expires_at: text_field(reason, EXPIRES_AT_KEY).map(str::to_owned),
+        on_timeout: reason.get(ON_TIMEOUT_KEY).and_then(|choice| serde_json::from_value(choice.clone()).ok()),
+        tool_call: None,
         container: read_container(&frame, steps, snapshot),
         node_id,
         frame,
     })
 }
 
+/// One Allow / Decline question per call of a `tool_approval` pause (`data.calls[]`).
+fn read_tool_call_questions(
+    reason: &Json,
+    steps: &HashMap<String, FlowStep>,
+    snapshot: Option<&Json>,
+) -> Vec<PendingApproval> {
+    let Some(node_id) = text_field(reason, "node_id") else { return Vec::new() };
+    let frame = text_field(reason, "frame").unwrap_or_default();
+    let calls = reason.get("data").and_then(|data| data.get("calls")).and_then(Json::as_array);
+    let resume_key = resume_key(frame, node_id);
+    calls
+        .into_iter()
+        .flatten()
+        .filter_map(|call| {
+            let call_id = text_field(call, "id")?.to_owned();
+            let tool_call = PendingToolCall {
+                name: text_field(call, "name").unwrap_or(&call_id).to_owned(),
+                provider: text_field(call, "provider").map(str::to_owned),
+                tool: text_field(call, "tool").map(str::to_owned),
+                arguments: call.get("arguments").map(redact_secrets).unwrap_or(Json::Null),
+                reason: text_field(call, "reason").map(str::to_owned),
+                call_id,
+            };
+            Some(PendingApproval {
+                id: format!("{resume_key}#{}", tool_call.call_id),
+                kind: PendingApprovalKind::ToolCall,
+                node_id: node_id.to_owned(),
+                frame: frame.to_owned(),
+                resume_key: resume_key.clone(),
+                step_title: steps.get(node_id).map(|step| step.title.clone()),
+                prompt: None,
+                fields: Vec::new(),
+                actions: vec![
+                    ApprovalAction { id: ALLOW_ACTION_ID.to_owned(), title: "Allow".to_owned() },
+                    ApprovalAction { id: DECLINE_ACTION_ID.to_owned(), title: "Decline".to_owned() },
+                ],
+                timeout_ms: None,
+                expires_at: None,
+                on_timeout: None,
+                tool_call: Some(tool_call),
+                container: read_container(frame, steps, snapshot),
+            })
+        })
+        .collect()
+}
+
 /// `resume_run` key for a node: frame-qualified inside containers (graphrt prefers it).
-fn resume_key(frame: &str, node_id: &str) -> String {
+pub(crate) fn resume_key(frame: &str, node_id: &str) -> String {
     if frame.is_empty() {
         node_id.to_owned()
     } else {

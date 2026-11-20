@@ -2,7 +2,7 @@ import type { Run, RunEventRecord, RunFilter, RunStatus as BackendRunStatus, Run
 import type { RunRecord, RunStatus as RunsScreenStatus, RunStep } from '@/data/runs'
 import { agentPath, routePaths, runReviewPath } from '@/routes'
 import { humanizeRunError } from '@/pages/agent-run/runErrorText'
-import { readPauseQuestion } from '@/pages/agent-run/runPauseQuestion'
+import { readPauseDeadline, readPauseQuestion } from '@/pages/agent-run/runPauseQuestion'
 import { buildRunStepViews } from '@/pages/agent-run/runSteps'
 import { formatAiCost, formatClockTime, formatRunDay, formatRunDuration } from '@/pages/agent-run/runResultSummary'
 
@@ -103,7 +103,8 @@ export function describeRunResult(run: Run): Pick<RunRecord, 'result' | 'resultT
   if (summary) return { result: summary, resultTitle: summary }
   if (run.status === 'failed' && run.errorMessage) return { result: humanizeRunError(run.errorMessage).summary, resultTitle: run.errorMessage }
   const question = run.status === 'paused' ? readPauseQuestion(run) : null
-  if (question) return { result: question, resultTitle: question }
+  const deadline = run.status === 'paused' ? readPauseDeadline(run, Date.now()) : null
+  if (question) return { result: deadline ? `${question} · ${deadline}` : question, resultTitle: question }
   return { result: fallbackResultByStatus[run.status] }
 }
 

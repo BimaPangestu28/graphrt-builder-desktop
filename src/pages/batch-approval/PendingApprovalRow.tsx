@@ -1,6 +1,7 @@
 import type { PendingApproval } from '@/api/runReviewTypes'
 import { joinClassNames } from '@/components/ui'
 import { ApprovalFieldInput } from '@/pages/agent-run/ApprovalFieldInput'
+import { describeDeadline, formatToolArguments, summarizeToolArguments } from '@/pages/agent-run/approvalDisplay'
 import type { ApprovalValues } from '@/pages/agent-run/approvalForm'
 import { buildRowMeta, buildRowTitle } from './runReviewModel'
 
@@ -20,6 +21,7 @@ interface PendingApprovalRowProps {
 const editingControlClassNames = 'rounded-[10px] border border-ink bg-surface px-3 py-2.5 text-[14px] leading-normal text-ink outline-none'
 
 function previewText(approval: PendingApproval, values: ApprovalValues): string | null {
+  if (approval.toolCall) return summarizeToolArguments(approval.toolCall.arguments)
   const [firstField] = approval.fields
   const firstValue = firstField ? values[firstField.name] : undefined
   if (typeof firstValue === 'string' && firstValue.trim()) return firstValue
@@ -58,13 +60,13 @@ function ActionChoice({ approval, rowTitle, chosenActionId, actionPair, onChoose
 
 /**
  * One pending question in the review list: the answer to give (checkbox or action list), the
- * item it is about, and either a one-line preview of its first field or (while editing) every
- * form field of the question.
+ * item it is about, its deadline, and either a one-line preview of its first field (a tool call's
+ * arguments) or (while editing) every form field of the question (the arguments as JSON).
  */
 export function PendingApprovalRow(props: PendingApprovalRowProps) {
   const { approval, values, chosenActionId, actionPair, isEditing, isLast } = props
   const rowTitle = buildRowTitle(approval)
-  const rowMeta = buildRowMeta(approval)
+  const rowMeta = [buildRowMeta(approval), describeDeadline(approval, Date.now())].filter(Boolean).join(' · ')
   const isDeclined = actionPair !== null && chosenActionId !== actionPair[0]
   const preview = previewText(approval, values)
   const hasSingleField = approval.fields.length === 1
@@ -79,6 +81,12 @@ export function PendingApprovalRow(props: PendingApprovalRowProps) {
           {isEditing && approval.fields.length > 0 && <span className="text-[12px] font-medium text-brand-strong">Editing</span>}
         </span>
         {isEditing && approval.prompt && rowTitle !== approval.prompt && <span className="whitespace-pre-line text-[13px] text-body">{approval.prompt}</span>}
+        {isEditing && approval.toolCall?.reason && <span className="text-[13px] text-body">{approval.toolCall.reason}</span>}
+        {isEditing && approval.toolCall && (
+          <pre aria-label={`Tool arguments for ${rowTitle}`} className="m-0 max-h-56 overflow-auto rounded-[10px] border border-line bg-surface px-3 py-2 font-mono text-[12px] whitespace-pre-wrap text-ink-2">
+            {formatToolArguments(approval.toolCall.arguments)}
+          </pre>
+        )}
         {isEditing &&
           approval.fields.map((field, fieldIndex) => (
             <ApprovalFieldInput
@@ -96,7 +104,7 @@ export function PendingApprovalRow(props: PendingApprovalRowProps) {
           <button
             type="button"
             onClick={props.onStartEditing}
-            aria-label={`Edit answer for ${rowTitle}`}
+            aria-label={approval.toolCall ? `Show the arguments for ${rowTitle}` : `Edit answer for ${rowTitle}`}
             className={joinClassNames(
               'cursor-text truncate border-0 bg-transparent p-0 text-left text-[14px] leading-normal hover:underline',
               isDeclined ? 'text-muted' : 'text-ink-2',

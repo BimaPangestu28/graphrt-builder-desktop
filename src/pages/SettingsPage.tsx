@@ -15,6 +15,7 @@ import {
   RemoteRunnerSection,
   RunnerSection,
 } from './settings/SettingsSections'
+import { RunLimitsPanel } from './settings/RunLimitsPanel'
 import { UpdatesSection } from './settings/UpdatesSection'
 import { useAppSettings, type AppSettingsState } from './settings/useAppSettings'
 import { useSettingsState, type SettingsValues, type UpdateSetting } from './settings/useSettingsState'
@@ -108,7 +109,10 @@ function SettingsSectionContent({ activeSection, onSelectSection, appSettingsSta
       return (
         <>
           {appSettings ? (
-            <RunnerSection {...sectionProps} appSettings={appSettings} updateAppSetting={updateAppSetting} />
+            <>
+              <RunnerSection {...sectionProps} appSettings={appSettings} updateAppSetting={updateAppSetting} />
+              <RunLimitsPanel key={JSON.stringify(appSettings.runLimits)} runLimits={appSettings.runLimits} onSave={(runLimits) => void updateAppSetting('runLimits', runLimits)} />
+            </>
           ) : (
             <AppSettingsPlaceholder appSettingsState={appSettingsState} />
           )}

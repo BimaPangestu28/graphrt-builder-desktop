@@ -1,4 +1,7 @@
+import { defaultRunLimits } from '@/data/runLimits'
 import type { AppSettings, DeletionSummary, ExportSummary } from '../appSettingsTypes'
+import { BackendError } from '../client'
+import { findInvalidRunLimit } from '@/data/runLimits'
 import { requireText, respondWith } from './sampleResponse'
 import { resetSampleAgents, sampleAgentsBackend } from './agents'
 import { resetSampleOnboardingTour } from './onboardingTour'
@@ -22,6 +25,7 @@ function createInitialSettings(): AppSettings {
     runHistoryRetentionDays: 30,
     autoDownloadUpdates: true,
     autoUpdatePlugins: true,
+    runLimits: { ...defaultRunLimits },
   }
 }
 
@@ -45,7 +49,9 @@ export const sampleAppSettingsBackend = {
   getAppSettings: (): Promise<AppSettings> => respondWith(() => ({ ...storedSettings })),
   updateAppSettings: (settings: AppSettings): Promise<AppSettings> =>
     respondWith(() => {
-      storedSettings = { ...settings }
+      const invalidLimit = findInvalidRunLimit(settings.runLimits)
+      if (invalidLimit) throw new BackendError('invalid_input', invalidLimit)
+      storedSettings = { ...settings, runLimits: { ...settings.runLimits } }
       return { ...storedSettings }
     }),
   exportAgents: (path: string): Promise<ExportSummary> => exportSampleAgents(path),

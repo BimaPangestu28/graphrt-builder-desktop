@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { ApprovalAnswer, PendingApproval, RunReview } from '@/api/runReviewTypes'
-import { buildApprovalAnswer, findMissingRequiredFields, initialApprovalValues, type ApprovalValues } from '@/pages/agent-run/approvalForm'
+import { buildApprovalAnswer, collectAnswersByResumeKey, findMissingRequiredFields, initialApprovalValues, type ApprovalValues } from '@/pages/agent-run/approvalForm'
 import { PendingApprovalRow } from './PendingApprovalRow'
 import { RunReviewSidePanel } from './RunReviewSidePanel'
 import { buildRowTitle, describeReviewedRun, findSharedActionPair, hasItemsAfterThese } from './runReviewModel'
@@ -20,21 +20,21 @@ interface RunReviewListProps {
   isSubmitting: boolean
   onSubmit: (answersByResumeKey: Record<string, ApprovalAnswer>) => void
   /** Answers these with `actionId`, then keeps answering each next item the same way. */
-  onAnswerAllRemaining: (actionId: string, valuesByResumeKey: Record<string, ApprovalValues>) => void
+  onAnswerAllRemaining: (actionId: string, valuesByApprovalId: Record<string, ApprovalValues>) => void
 }
 
-/** Answers, values and editing state of the questions on screen, keyed by resume key. */
+/** Answers, values and editing state of the questions on screen, keyed by approval id. */
 function useReviewAnswers(pending: PendingApproval[]) {
   const [valuesByKey, setValuesByKey] = useState<Record<string, ApprovalValues>>({})
   const [chosenActionByKey, setChosenActionByKey] = useState<Record<string, string>>({})
-  const [editingKey, setEditingKey] = useState<string | null>(pending[0]?.resumeKey ?? null)
+  const [editingKey, setEditingKey] = useState<string | null>(pending[0]?.id ?? null)
 
-  const valuesFor = (approval: PendingApproval) => valuesByKey[approval.resumeKey] ?? initialApprovalValues(approval)
-  const chosenActionFor = (approval: PendingApproval) => chosenActionByKey[approval.resumeKey] ?? approval.actions[0]?.id ?? ''
+  const valuesFor = (approval: PendingApproval) => valuesByKey[approval.id] ?? initialApprovalValues(approval)
+  const chosenActionFor = (approval: PendingApproval) => chosenActionByKey[approval.id] ?? approval.actions[0]?.id ?? ''
   const changeValue = (approval: PendingApproval, fieldName: string, fieldValue: string | boolean) =>
-    setValuesByKey((current) => ({ ...current, [approval.resumeKey]: { ...valuesFor(approval), [fieldName]: fieldValue } }))
-  const chooseAction = (approval: PendingApproval, actionId: string) => setChosenActionByKey((current) => ({ ...current, [approval.resumeKey]: actionId }))
-  const chooseForAll = (actionId: string) => setChosenActionByKey(Object.fromEntries(pending.map((approval) => [approval.resumeKey, actionId])))
+    setValuesByKey((current) => ({ ...current, [approval.id]: { ...valuesFor(approval), [fieldName]: fieldValue } }))
+  const chooseAction = (approval: PendingApproval, actionId: string) => setChosenActionByKey((current) => ({ ...current, [approval.id]: actionId }))
+  const chooseForAll = (actionId: string) => setChosenActionByKey(Object.fromEntries(pending.map((approval) => [approval.id, actionId])))
 
   return { valuesFor, chosenActionFor, changeValue, chooseAction, chooseForAll, editingKey, setEditingKey }
 }
@@ -55,8 +55,8 @@ export function RunReviewList({ review, pending, isSubmitting, onSubmit, onAnswe
   const canAnswerAllRemaining = actionPair !== null && hasItemsAfterThese(pending)
 
   const buildAnswers = (actionFor: (approval: PendingApproval) => string) =>
-    Object.fromEntries(pending.map((approval) => [approval.resumeKey, buildApprovalAnswer(approval, actionFor(approval), answers.valuesFor(approval))]))
-  const valuesByKey = () => Object.fromEntries(pending.map((approval) => [approval.resumeKey, answers.valuesFor(approval)]))
+    collectAnswersByResumeKey(pending.map((approval) => [approval, buildApprovalAnswer(approval, actionFor(approval), answers.valuesFor(approval))]))
+  const valuesByKey = () => Object.fromEntries(pending.map((approval) => [approval.id, answers.valuesFor(approval)]))
   const isBlocked = isSubmitting || blockedTitles.length > 0
 
   return (
@@ -105,15 +105,15 @@ export function RunReviewList({ review, pending, isSubmitting, onSubmit, onAnswe
         <ul className="m-0 list-none overflow-hidden rounded-[14px] border border-line p-0">
           {visiblePending.map((approval, index) => (
             <PendingApprovalRow
-              key={approval.resumeKey}
+              key={approval.id}
               approval={approval}
               values={answers.valuesFor(approval)}
               chosenActionId={answers.chosenActionFor(approval)}
               actionPair={actionPair ? [actionPair[0].id, actionPair[1].id] : null}
-              isEditing={answers.editingKey === approval.resumeKey}
+              isEditing={answers.editingKey === approval.id}
               isLast={hiddenCount === 0 && index === visiblePending.length - 1}
               onChooseAction={(actionId) => answers.chooseAction(approval, actionId)}
-              onStartEditing={() => answers.setEditingKey(approval.resumeKey)}
+              onStartEditing={() => answers.setEditingKey(approval.id)}
               onChangeValue={(fieldName, fieldValue) => answers.changeValue(approval, fieldName, fieldValue)}
             />
           ))}

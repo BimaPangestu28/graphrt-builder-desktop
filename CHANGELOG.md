@@ -32,6 +32,28 @@ releases may contain breaking changes; they are called out under **Changed**.
   copy could be shown). When the page opens with a catalog the app fetched more than 10 minutes
   ago, the saved list shows at once and a fresh one is fetched in the background. A plugin page of
   a plugin that is not installed lists its steps from the catalog detail, fetched on demand.
+- **Agent tool approvals**: a "Run an agent" step whose tools are set to ask first
+  (`require_approval`) pauses with graphrt's `tool_approval` kind, and the app can now answer it.
+  Each tool call shows as its own question (tool, provider when the step's `tools` list names it,
+  arguments as pretty JSON with secret-looking values hidden) with Allow / Decline, in the Test run
+  approval card, Home "Needs you" ("Wants to use send_message"), Runs and Review a run (screen 19,
+  where calls of one step are answered in one resume). Answers resume with
+  `{"approvals": {"<call id>": true|false}}`. Stored pause reasons get `provider` / `tool` and
+  redacted arguments; graphrt keeps the real arguments in its snapshot. graphrt sends no reason for a
+  call and has no "allow for the rest of this run" answer, so neither is offered.
+- **Approval time limits that expire**: an "Ask me before continuing" step with `timeout_ms` now
+  expires. Its stored pause reason gets `expires_at` and `on_timeout`; the step chooses
+  `on_timeout: { action: <button id> }` (answer with that button and the fields' defaults) or
+  `on_timeout: stop` (the default: the run ends as stopped). graphrt moves a node's top-level
+  `timeout_ms` into its run policy, so the desktop reads the step's limit from there. A background
+  check every 15 seconds (and at start-up) applies the action, stores an `approval_timed_out` event
+  ("Timed out → Skip" in the run log), and keeps the deadline of questions still waiting after
+  another one was answered. Approval cards and review rows show "Expires in 2h, then Skip".
+- **Editable run limits** (Settings › Runner › Run limits): time for one step (default 2 minutes),
+  active time for one run (30 minutes), step attempts per run (10,000), loops inside loops (8) and
+  steps at the same time (64) are app settings (`app.run_limits.*`, `AppSettings.runLimits`) with
+  safe ranges, explanations and Reset to defaults. Out-of-range values are refused on save and
+  clamped on load; every run, resume and chatbot turn reads them.
 
 ## [0.1.1] - 2026-11-21
 

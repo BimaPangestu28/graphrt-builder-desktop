@@ -6,7 +6,7 @@ import type { AgentSummaryStat, AttentionItem, RecentRun, RecentRunStatus } from
 import { formatCounterLabel, pickHeadlineCounter } from '@/pages/agent-run/runCounters'
 import { formatRunDay } from '@/pages/agent-run/runResultSummary'
 import { humanizeRunError } from '@/pages/agent-run/runErrorText'
-import { readPauseQuestion } from '@/pages/agent-run/runPauseQuestion'
+import { readPauseDeadline, readPauseQuestion } from '@/pages/agent-run/runPauseQuestion'
 import { formatRelativeTime, runPathFor } from './homeLinks'
 import { agentPath, connectionsTabPath, routePaths, runReviewPath } from '@/routes'
 
@@ -71,7 +71,8 @@ export function buildPausedRunItems(pausedRuns: Run[], agentName: AgentNameLooku
   return groupRunsByAgent(pausedRuns).map(([newestRun, ...olderRuns], index) => {
     const question = readPauseQuestion(newestRun)
     const moreWaiting = olderRuns.length > 0 ? ` · ${olderRuns.length} more waiting` : ''
-    const pausedAtLine = `${formatRunDay(newestRun.startedAt, now)} run · paused for your review${moreWaiting}`
+    const deadline = readPauseDeadline(newestRun, now.getTime())
+    const pausedAtLine = `${formatRunDay(newestRun.startedAt, now)} run · paused for your review${deadline ? ` · ${deadline}` : ''}${moreWaiting}`
     return {
       id: `paused-${newestRun.id}`,
       kind: 'approval',

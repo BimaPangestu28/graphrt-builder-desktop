@@ -9,6 +9,7 @@
 //! - [`keep_awake`]: the system's keep-awake assertion while a run is active
 //!   (`caffeinate` on macOS, `SetThreadExecutionState` on Windows, `systemd-inhibit` on Linux).
 //! - [`app_settings`]: the typed preferences behind all of the above.
+//! - [`run_limits`]: the time and work limits every run gets.
 //! - [`data`]: export all agents / delete all data.
 //! - [`data_folder`]: where the data lives, and "Show in Finder / File Explorer".
 //! - [`chat_notify`]: a notification when a chatbot hands a conversation over.
@@ -32,6 +33,7 @@ pub mod data_folder;
 pub mod keep_awake;
 pub mod notify;
 pub mod onboarding_tour;
+pub mod run_limits;
 pub mod tray;
 pub mod updater;
 pub mod window;

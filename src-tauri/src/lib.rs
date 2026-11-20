@@ -97,6 +97,7 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
     let sink = Arc::new(ChainingSink::new(activity_sink, chain_runner.clone()));
     let runs = Arc::new(RunManager::new(db.clone(), credentials.clone(), sink));
     chain_runner.attach(&runs);
+    engine::spawn_approval_expiry(runs.clone());
     let scheduler = scheduler::spawn(db.clone(), runs.clone());
     let conversation_sink = Arc::new(desktop::chat_notify::ChatNotifyingSink::new(
         Arc::new(conversations::tauri_sink::TauriConversationEventSink::new(app.handle().clone())),

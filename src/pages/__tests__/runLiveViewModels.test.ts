@@ -139,6 +139,29 @@ describe('run step list', () => {
 })
 
 describe('run narration', () => {
+  it('reports an approval that timed out and the answer it gave', () => {
+    const frame = 'each_business[0]'
+    const events = buildEventLog([
+      { type: 'run_started' },
+      node('node_started', 'each_business', '', { kind: 'iteration' }),
+      node('node_progress', 'each_business', '', { name: 'iteration_next', data: { index: 0, total: 1 } }),
+      node('node_paused', 'approve', frame, { reason: { kind: 'human_input' } }),
+      { type: 'run_paused', reasons: [] },
+      { type: 'approval_timed_out', node_id: 'approve', frame, outcome: 'answer', action: 'skip', action_title: 'Skip' },
+    ])
+    const lines = buildRunNarration(template, events)
+    expect(lines.some((line) => line.isApprovalLink)).toBe(false)
+    expect(lines.at(-1)?.text).toMatch(/imed out → Skip$/)
+
+    const stopped = buildEventLog([{ type: 'run_started' }, { type: 'approval_timed_out', node_id: 'approve', frame: '', outcome: 'stop' }])
+    expect(buildRunNarration(template, stopped).at(-1)?.text).toBe('Ask me before sending: timed out → stopped the run')
+  })
+
+  it('says when an agent waits for a tool approval', () => {
+    const events = buildEventLog([{ type: 'run_started' }, node('node_paused', 'write_message', '', { reason: { kind: 'tool_approval' } })])
+    expect(buildRunNarration(template, events).find((line) => line.isApprovalLink)?.text).toBe('Waiting for your OK to use a tool')
+  })
+
   it('says what was found and one line per business', () => {
     const lines = buildRunNarration(template, buildRunWritingThirdMessage()).map((line) => line.text)
     expect(lines).toEqual([

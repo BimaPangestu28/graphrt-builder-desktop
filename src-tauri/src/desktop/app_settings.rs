@@ -1,7 +1,7 @@
 //! Typed view over the `settings` table for the desktop preferences on the
 //! Settings screen (22): launch at login, menu bar, notifications, keep awake,
-//! the default missed-run policy, how long run history is kept and whether
-//! updates download by themselves.
+//! the default missed-run policy, how long run history is kept, whether
+//! updates download by themselves and the run limits ([`RunLimitsSettings`]).
 //!
 //! Each field is one row (`app.<name>`), stored as `true` / `false` or the
 //! serde name of the enum. Missing or unreadable rows fall back to
@@ -10,6 +10,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::desktop::run_limits::RunLimitsSettings;
 use crate::error::AppResult;
 use crate::storage::models::MissedRunPolicy;
 use crate::storage::Database;
@@ -68,6 +69,8 @@ pub struct AppSettings {
     /// Install newer catalog versions of installed plugins in the background when they ask
     /// for nothing more than the installed version (see `plugins::auto_update`).
     pub auto_update_plugins: bool,
+    /// Time and work limits every run gets (Settings › Runner › Run limits).
+    pub run_limits: RunLimitsSettings,
 }
 
 impl Default for AppSettings {
@@ -86,6 +89,7 @@ impl Default for AppSettings {
             run_history_retention_days: Some(DEFAULT_RUN_HISTORY_RETENTION_DAYS),
             auto_download_updates: true,
             auto_update_plugins: true,
+            run_limits: RunLimitsSettings::default(),
         }
     }
 }
@@ -109,6 +113,7 @@ impl AppSettings {
             run_history_retention_days: read_retention(db, defaults.run_history_retention_days)?,
             auto_download_updates: read_flag(db, KEY_AUTO_DOWNLOAD_UPDATES, defaults.auto_download_updates)?,
             auto_update_plugins: read_flag(db, KEY_AUTO_UPDATE_PLUGINS, defaults.auto_update_plugins)?,
+            run_limits: RunLimitsSettings::load(db)?,
         })
     }
 
@@ -123,12 +128,14 @@ impl AppSettings {
 
     /// Stores every field.
     ///
-    /// @throws AppError::InvalidInput - when the retention is 0 days
+    /// @throws AppError::InvalidInput - when the retention is 0 days or a run limit is out of range
     /// @throws AppError::Database - when a value cannot be written
     pub fn save(&self, db: &Database) -> AppResult<()> {
         if self.run_history_retention_days == Some(0) {
             return Err(crate::error::AppError::InvalidInput("run history must be kept for at least 1 day".into()));
         }
+        self.run_limits.validate()?;
+        self.run_limits.save(db)?;
         let flags = [
             (KEY_OPEN_AT_LOGIN, self.open_at_login),
             (KEY_SHOW_IN_MENU_BAR, self.show_in_menu_bar),
@@ -238,6 +245,7 @@ mod tests {
             run_history_retention_days: None,
             auto_download_updates: false,
             auto_update_plugins: false,
+            run_limits: RunLimitsSettings { max_parallel_steps: 8, ..RunLimitsSettings::default() },
         };
         changed.save(&database).unwrap();
         assert_eq!(AppSettings::load(&database).unwrap(), changed);

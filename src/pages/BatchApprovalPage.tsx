@@ -5,7 +5,7 @@ import type { ApprovalAnswer, PendingApproval, RunReview } from '@/api/runReview
 import { AppShell } from '@/components/layout'
 import { toError, useLoadedData, useRunEventSubscription } from '@/hooks/useRunData'
 import { agentPath, routePaths } from '@/routes'
-import { buildApprovalAnswer, findMissingRequiredFields, initialApprovalValues, type ApprovalValues } from '@/pages/agent-run/approvalForm'
+import { buildApprovalAnswer, collectAnswersByResumeKey, findMissingRequiredFields, initialApprovalValues, type ApprovalValues } from '@/pages/agent-run/approvalForm'
 import { RunErrorNotice } from '@/pages/agent-run/RunErrorNotice'
 import { RunReviewList } from './batch-approval/RunReviewList'
 import { buildRowTitle, describeReviewedRun } from './batch-approval/runReviewModel'
@@ -16,7 +16,8 @@ const reviewRefreshEventTypes = new Set(['status_changed', 'run_paused', 'run_su
 /** "Answer all remaining": the action to give every next question, and the values edited on screen. */
 interface AutoAnswer {
   actionId: string
-  valuesByResumeKey: Record<string, ApprovalValues>
+  /** Keyed by `PendingApproval.id`. */
+  valuesByApprovalId: Record<string, ApprovalValues>
 }
 
 /** Loads the review and reloads it whenever the reviewed run changes status. */
@@ -34,14 +35,14 @@ function useRunReview(runId: string | null) {
  * null when a question lacks the action or misses a required field.
  */
 function buildAutoAnswers(pending: PendingApproval[], autoAnswer: AutoAnswer): { answers: Record<string, ApprovalAnswer> } | { blockedTitle: string } {
-  const answers: Record<string, ApprovalAnswer> = {}
+  const answers: Array<[PendingApproval, ApprovalAnswer]> = []
   for (const approval of pending) {
-    const values = autoAnswer.valuesByResumeKey[approval.resumeKey] ?? initialApprovalValues(approval)
+    const values = autoAnswer.valuesByApprovalId[approval.id] ?? initialApprovalValues(approval)
     const hasAction = approval.actions.some((action) => action.id === autoAnswer.actionId)
     if (!hasAction || findMissingRequiredFields(approval, values).length > 0) return { blockedTitle: buildRowTitle(approval) }
-    answers[approval.resumeKey] = buildApprovalAnswer(approval, autoAnswer.actionId, values)
+    answers.push([approval, buildApprovalAnswer(approval, autoAnswer.actionId, values)])
   }
-  return { answers }
+  return { answers: collectAnswersByResumeKey(answers) }
 }
 
 /** Sends answers, remembers which questions were answered, and runs "answer all remaining". */
@@ -80,11 +81,11 @@ function useReviewAnswering(review: RunReview | null, reload: () => void) {
     void submitAnswers(autoAnswers.answers)
     // Runs again when a new question arrives (pending changes) or an answer finished.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoAnswer, isSubmitting, pending.map((approval) => approval.resumeKey).join('\n')])
+  }, [autoAnswer, isSubmitting, pending.map((approval) => approval.id).join('\n')])
 
-  const startAutoAnswer = (actionId: string, valuesByResumeKey: Record<string, ApprovalValues>) => {
+  const startAutoAnswer = (actionId: string, valuesByApprovalId: Record<string, ApprovalValues>) => {
     setAutoStopNotice(null)
-    setAutoAnswer({ actionId, valuesByResumeKey })
+    setAutoAnswer({ actionId, valuesByApprovalId })
   }
 
   return { pending, isSubmitting, submitError, isAutoAnswering: autoAnswer !== null, autoStopNotice, submitAnswers, startAutoAnswer, stopAutoAnswer: () => setAutoAnswer(null) }
@@ -137,7 +138,7 @@ function NothingToReview() {
 
 /**
  * Screen 19 · Review a run (`/runs/review?runId=`; without `runId`, the latest run waiting for an
- * answer). Lists the `human-input` questions the run waits on right now, each with its item
+ * answer). Lists the `human-input` questions and agent tool calls the run waits on right now, each with its item
  * (when the step runs inside an iteration), its form fields and its actions; the header sends
  * every answer in one resume. graphrt asks about one item at a time in a sequential iteration,
  * so the next question appears after answering; "all remaining" keeps answering each next one
@@ -171,7 +172,7 @@ export function BatchApprovalPage() {
       {review && answering.pending.length > 0 ? (
         <>
           <RunReviewList
-            key={answering.pending.map((approval) => approval.resumeKey).join('|')}
+            key={answering.pending.map((approval) => approval.id).join('|')}
             review={review}
             pending={answering.pending}
             isSubmitting={answering.isSubmitting || answering.isAutoAnswering}

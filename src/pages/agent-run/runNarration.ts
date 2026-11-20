@@ -161,7 +161,9 @@ function handleNodeEvent(state: NarrationState, record: RunEventRecord, step: St
   }
   if (event.type === 'node_paused') {
     const isApproval = step.template.nodeType === 'human-input' || event.kind === 'human_input' || event.kind === 'human-input'
-    setLine(state, `pause:${nodeId}:${frame}`, isApproval ? 'Waiting for your approval' : 'Waiting for you', { tone: 'amber', isApprovalLink: true })
+    const pauseKind = event.reason && typeof event.reason === 'object' ? (event.reason as Record<string, unknown>).kind : event.kind
+    const text = pauseKind === 'tool_approval' ? 'Waiting for your OK to use a tool' : isApproval ? 'Waiting for your approval' : 'Waiting for you'
+    setLine(state, `pause:${nodeId}:${frame}`, text, { tone: 'amber', isApprovalLink: true })
   }
   if (event.type === 'node_succeeded') answerPause(state, nodeId, frame, event)
   const lastSegment = parseFrame(frame).at(-1)
@@ -200,6 +202,22 @@ function handleRunEvent(state: NarrationState, record: RunEventRecord): void {
   } else if (event.type === 'run_paused' && ![...state.lines.values()].some((line) => line.isApprovalLink)) {
     setLine(state, `pause:run:${record.seq}`, 'Waiting for you', { tone: 'amber', isApprovalLink: true })
   }
+}
+
+/**
+ * `approval_timed_out` (stored by the desktop when an approval passed its deadline): the waiting
+ * line becomes "Timed out → Skip" or "Timed out → stopped the run".
+ */
+function handleApprovalTimeout(state: NarrationState, record: RunEventRecord): void {
+  const { event } = record
+  const nodeId = readString(event, 'node_id') ?? ''
+  const frame = readFrame(event)
+  const outcome = event.outcome === 'answer' ? (readString(event, 'action_title') ?? readString(event, 'action') ?? 'answered') : 'stopped the run'
+  state.lines.delete(`pause:${nodeId}:${frame}`)
+  const itemTitle = itemTitleFor(state, frame)
+  const label = state.stepsById.get(nodeId)?.template.label
+  const where = itemTitle ?? label
+  setLine(state, `timeout:${nodeId}:${frame}`, `${where ? `${where}: t` : 'T'}imed out → ${outcome}`, { tone: 'amber' })
 }
 
 /** Approval links stay links only while the run still waits on them. */
@@ -242,6 +260,8 @@ export function buildRunNarration(template: RunStepTemplate[], events: RunEventR
       if (step) handleNodeEvent(state, record, step)
     } else if (type.startsWith('run_')) {
       handleRunEvent(state, record)
+    } else if (type === 'approval_timed_out') {
+      handleApprovalTimeout(state, record)
     }
   }
   return settleApprovalLinks([...state.lines.values()], events)
