@@ -1,15 +1,29 @@
-import type { ApprovalAction, ApprovalField, ContainerPosition, PendingApproval } from './runReviewTypes'
+import type { ApprovalAction, ApprovalField, ContainerPosition, PendingApproval, PendingToolCall, TimeoutAction } from './runReviewTypes'
+import { redactSecrets } from './secretRedaction'
 import type { Run } from './types'
 
 /**
  * Reads the questions of a paused run straight from its graphrt pause reasons, the same way
  * `src-tauri/src/run_review.rs` does (without the snapshot and flow details, which only the
  * backend can read). graphrt's `human-input` node pauses with kind `human_input` and
- * `data: { prompt, fields: [{ name, label, type, required, default }], actions: [{ id, title }], timeout_ms }`.
+ * `data: { prompt, fields: [{ name, label, type, required, default }], actions: [{ id, title }], timeout_ms }`;
+ * the desktop adds `expires_at` and `on_timeout` when the step has a time limit. An agent step whose
+ * tools ask first pauses with kind `tool_approval` and `data: { calls: [{ id, name, arguments }] }`
+ * (the desktop adds `provider` / `tool`); each call becomes one Allow / Decline question.
  */
 
 const humanInputPauseKind = 'human_input'
+const toolApprovalPauseKind = 'tool_approval'
 const frameSegmentPattern = /^(.+)\[(\d+)\]$/
+
+/** Action id of the Allow button of a tool call question. */
+export const allowActionId = 'allow'
+
+/** The two buttons of a tool call question. */
+export const toolCallActions: ApprovalAction[] = [
+  { id: allowActionId, title: 'Allow' },
+  { id: 'decline', title: 'Decline' },
+]
 
 type JsonRecord = Record<string, unknown>
 
@@ -61,33 +75,91 @@ export function buildResumeKey(frame: string, nodeId: string): string {
   return frame ? `${frame}/${nodeId}` : nodeId
 }
 
-function readPendingApproval(rawReason: unknown): PendingApproval | null {
-  const reason = asRecord(rawReason)
-  const nodeId = readText(reason, 'node_id')
-  if (!reason || !nodeId || reason.kind !== humanInputPauseKind) return null
+/** `{ kind: 'stop' }` or `{ kind: 'answer', action }` from a stored `on_timeout`; null otherwise. */
+export function readTimeoutAction(rawChoice: unknown): TimeoutAction | null {
+  const choice = asRecord(rawChoice)
+  if (choice?.kind === 'stop') return { kind: 'stop' }
+  const action = readText(choice, 'action')
+  return choice?.kind === 'answer' && action ? { kind: 'answer', action } : null
+}
+
+function readFormApproval(reason: JsonRecord, nodeId: string): PendingApproval {
   const frame = readText(reason, 'frame') ?? ''
   const data = asRecord(reason.data)
   const prompt = readText(data, 'prompt')
+  const resumeKey = buildResumeKey(frame, nodeId)
   return {
+    id: resumeKey,
+    kind: 'form',
     nodeId,
     frame,
-    resumeKey: buildResumeKey(frame, nodeId),
+    resumeKey,
     stepTitle: null,
     prompt: prompt && prompt.trim() ? prompt : null,
     fields: readFields(data),
     actions: readActions(data),
     timeoutMs: typeof data?.timeout_ms === 'number' ? data.timeout_ms : null,
+    expiresAt: readText(reason, 'expires_at'),
+    onTimeout: readTimeoutAction(reason.on_timeout),
+    toolCall: null,
     container: readContainerFromFrame(frame),
   }
+}
+
+function readToolCall(rawCall: unknown): PendingToolCall | null {
+  const call = asRecord(rawCall)
+  const callId = readText(call, 'id')
+  if (!call || !callId) return null
+  return {
+    callId,
+    name: readText(call, 'name') ?? callId,
+    provider: readText(call, 'provider'),
+    tool: readText(call, 'tool'),
+    arguments: redactSecrets(call.arguments ?? null),
+    reason: readText(call, 'reason'),
+  }
+}
+
+function readToolCallApprovals(reason: JsonRecord, nodeId: string): PendingApproval[] {
+  const frame = readText(reason, 'frame') ?? ''
+  const resumeKey = buildResumeKey(frame, nodeId)
+  const rawCalls = asRecord(reason.data)?.calls
+  const toolCalls = (Array.isArray(rawCalls) ? rawCalls : []).map(readToolCall).filter((call): call is PendingToolCall => call !== null)
+  return toolCalls.map((toolCall) => ({
+    id: `${resumeKey}#${toolCall.callId}`,
+    kind: 'toolCall',
+    nodeId,
+    frame,
+    resumeKey,
+    stepTitle: null,
+    prompt: null,
+    fields: [],
+    actions: toolCallActions,
+    timeoutMs: null,
+    expiresAt: null,
+    onTimeout: null,
+    toolCall,
+    container: readContainerFromFrame(frame),
+  }))
+}
+
+function readQuestionsOfReason(rawReason: unknown): PendingApproval[] {
+  const reason = asRecord(rawReason)
+  const nodeId = readText(reason, 'node_id')
+  if (!reason || !nodeId) return []
+  if (reason.kind === humanInputPauseKind) return [readFormApproval(reason, nodeId)]
+  if (reason.kind === toolApprovalPauseKind) return readToolCallApprovals(reason, nodeId)
+  return []
 }
 
 /**
  * The questions a paused run waits on, in pause order.
  *
  * @param run - The run, or null (Run | null)
- * @returns One entry per `human_input` pause reason; empty unless the run is paused (PendingApproval[])
+ * @returns One entry per `human_input` pause reason and per call of a `tool_approval` one; empty
+ *   unless the run is paused (PendingApproval[])
  */
 export function readPendingApprovals(run: Run | null): PendingApproval[] {
   if (run?.status !== 'paused') return []
-  return (run.pauseReasons ?? []).map(readPendingApproval).filter((approval): approval is PendingApproval => approval !== null)
+  return (run.pauseReasons ?? []).flatMap(readQuestionsOfReason)
 }

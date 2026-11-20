@@ -1,3 +1,4 @@
+mod approvals;
 mod event_storage;
 mod review_flow;
 

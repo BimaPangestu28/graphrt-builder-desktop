@@ -177,7 +177,7 @@ function TestRunScreen({ agentId, agent, runId, flowSummary }: TestRunScreenProp
           {firstApproval && (
             <div ref={approvalCardRef} id="approval-card" tabIndex={-1} className="rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-amber">
               <ApprovalCard
-                key={`${runId}-${firstApproval.resumeKey}`}
+                key={`${runId}-${firstApproval.id}`}
                 approval={firstApproval}
                 isSubmitting={isSubmitting}
                 onAnswer={(answer) => void answerApproval(firstApproval, answer)}

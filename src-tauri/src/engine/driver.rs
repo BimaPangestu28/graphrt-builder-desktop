@@ -13,6 +13,7 @@
 //! Storage errors are logged, never fatal: the task always tries to leave the
 //! run `Paused` or terminal in the database.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use futures::StreamExt;
@@ -20,6 +21,7 @@ use graphrt_core::{Event, RunStream};
 use serde_json::{json, Value as Json};
 use tokio::time::Instant;
 
+use super::approval_pauses::PauseSettings;
 use super::chunk_buffer::{ChunkBuffer, ChunkBufferLimits, ChunkPosition};
 use super::{ActiveRuns, RunEventPayload, RunEventSink};
 use crate::storage::models::{AgentStatus, RunStatus, RunTrigger};
@@ -37,6 +39,10 @@ pub(super) struct RunDriver {
     pub(super) agent_id: String,
     pub(super) trigger: RunTrigger,
     pub(super) chunk_buffer_limits: ChunkBufferLimits,
+    /// The flow's approval and agent steps, to enrich stored pause reasons.
+    pub(super) pause_settings: Arc<PauseSettings>,
+    /// Deadlines of the questions the run waited on before this resume (see `approval_pauses`).
+    pub(super) carried_deadlines: Arc<HashMap<String, String>>,
 }
 
 /// State of one drive (one graphrt stream).
@@ -193,7 +199,8 @@ impl RunDriver {
         }
     }
 
-    /// Stores the snapshot; a snapshot that cannot be stored fails the run instead,
+    /// Stores the snapshot and the pause reasons (with the desktop's deadlines and
+    /// tool details, see `approval_pauses`); a snapshot that cannot be stored fails the run instead,
     /// since a paused run without a snapshot could never be resumed.
     fn record_pause(
         &self,
@@ -202,7 +209,8 @@ impl RunDriver {
         snapshot: &graphrt_core::Snapshot,
     ) -> Option<RunStatus> {
         let stored = snapshot.to_json().map_err(crate::error::AppError::from).and_then(|snapshot_json| {
-            let reasons_json = serde_json::to_value(reasons)?;
+            let mut reasons_json = serde_json::to_value(reasons)?;
+            self.pause_settings.enrich(&mut reasons_json, &self.carried_deadlines, chrono::Utc::now());
             self.db.mark_run_paused(run_id, &snapshot_json, &reasons_json)
         });
         match stored {

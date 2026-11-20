@@ -103,6 +103,9 @@ prompt: "Send this message?\n\n{{#draft.text#}}"
 form: { fields: [{ name: note, label: Note, type: text, required: false }] }
 actions: [{ id: send, title: Send }, { id: skip, title: Skip }]
 ```
+Optional time limit: `timeout_ms: 7200000` expires the question after 2 hours, then
+`on_timeout: { action: skip }` answers with that button (field defaults) or
+`on_timeout: stop` (default) stops the run. Omit `timeout_ms` to wait until answered.
 
 `if-else` (branch) - first matching `case_id`, else handle `false`:
 ```yaml

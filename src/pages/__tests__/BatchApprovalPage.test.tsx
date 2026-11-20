@@ -19,6 +19,8 @@ function renderBatchApprovalPage(initialEntry: string = routePaths.batchApproval
 function buildPending(index: number, changes: Partial<PendingApproval> = {}): PendingApproval {
   const frame = `each_order[${index}]`
   return {
+    id: `${frame}/confirm`,
+    kind: 'form',
     nodeId: 'confirm',
     frame,
     resumeKey: `${frame}/confirm`,
@@ -30,6 +32,9 @@ function buildPending(index: number, changes: Partial<PendingApproval> = {}): Pe
       { id: 'drop', title: 'Drop' },
     ],
     timeoutMs: null,
+    expiresAt: null,
+    onTimeout: null,
+    toolCall: null,
     container: { nodeId: 'each_order', nodeType: 'iteration', title: 'For each order', index, total: 3, finished: index, item: { name: `[ORDER ${index + 1}]` } },
     ...changes,
   }
@@ -122,7 +127,7 @@ describe('BatchApprovalPage', () => {
     const answers = answerSpy.mock.calls[0][1]
     expect(Object.keys(answers)).toHaveLength(12)
     expect(answers['for_each_place[4]/approve_message']).toEqual({ action: 'send', values: { message: 'Halo!' } })
-    expect(answers['for_each_place[5]/approve_message'].action).toBe('skip')
+    expect(answers['for_each_place[5]/approve_message']).toMatchObject({ action: 'skip' })
     expect(screen.getByRole('link', { name: 'See what it did' })).toBeInTheDocument()
   })
 
@@ -131,7 +136,7 @@ describe('BatchApprovalPage', () => {
     renderBatchApprovalPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Skip all' }))
     await screen.findByText(/The run finished/)
-    expect(Object.values(answerSpy.mock.calls[0][1]).every((answer) => answer.action === 'skip')).toBe(true)
+    expect(Object.values(answerSpy.mock.calls[0][1]).every((answer) => 'action' in answer && answer.action === 'skip')).toBe(true)
   })
 
   it('reviews a sequential iteration one item at a time', async () => {
@@ -203,5 +208,37 @@ describe('BatchApprovalPage', () => {
   it('shows an error for an unknown run', async () => {
     renderBatchApprovalPage(runReviewPath('missing-run'))
     expect(await screen.findByRole('alert')).toHaveTextContent('No run missing-run')
+  })
+
+  it('reviews the tool calls an agent waits to make and answers them in one resume', async () => {
+    const toolCallQuestion = (callId: string, tool: string): PendingApproval => ({
+      ...buildPending(0),
+      id: `find_leads#${callId}`,
+      kind: 'toolCall',
+      nodeId: 'find_leads',
+      frame: '',
+      resumeKey: 'find_leads',
+      stepTitle: 'Find and contact leads',
+      prompt: null,
+      fields: [],
+      actions: [
+        { id: 'allow', title: 'Allow' },
+        { id: 'decline', title: 'Decline' },
+      ],
+      container: null,
+      toolCall: { callId, name: tool, provider: 'whatsapp-web', tool, arguments: { phone: '+62 812', api_key: '[hidden]' }, reason: null },
+    })
+    vi.spyOn(sampleRunReviewBackend, 'getRunReview').mockResolvedValue(buildReview({ pending: [toolCallQuestion('c1', 'send_message'), toolCallQuestion('c2', 'send_file')] }))
+    const answerSpy = vi.spyOn(sampleRunReviewBackend, 'answerApprovals').mockResolvedValue({ id: 'run-seq', status: 'running' } as Run)
+    renderBatchApprovalPage(runReviewPath('run-seq'))
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Review 2 items' })).toBeInTheDocument()
+    expect(screen.getByText('whatsapp-web › send_message')).toBeInTheDocument()
+    expect(screen.getAllByText('phone: +62 812 · api_key: [hidden]')).toHaveLength(1)
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Allow: whatsapp-web › send_file' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Allow 1 selected' }))
+
+    await waitFor(() => expect(answerSpy).toHaveBeenCalled())
+    expect(answerSpy.mock.calls[0][1]).toEqual({ find_leads: { approvals: { c1: true, c2: false } } })
   })
 })

@@ -33,6 +33,25 @@ export interface AppSettings {
    * installed one (never while a run is running or paused). Updates asking for more wait.
    */
   autoUpdatePlugins: boolean
+  /** Time and work limits every run gets (Settings › Runner › Run limits). */
+  runLimits: RunLimits
+}
+
+/**
+ * Mirrors `RunLimitsSettings` in `src-tauri/src/desktop/run_limits.rs`; defaults and allowed
+ * ranges are in `src/data/runLimits.ts`.
+ */
+export interface RunLimits {
+  /** Time for one step unless the step sets its own time limit, in seconds. */
+  stepTimeoutSeconds: number
+  /** Active time for one run (waiting for an answer does not count), in minutes. */
+  runDurationMinutes: number
+  /** Step attempts per run, retries and loop rounds included. */
+  maxStepAttempts: number
+  /** How deep loops may sit inside loops. */
+  maxNestingDepth: number
+  /** Steps running at the same time. */
+  maxParallelSteps: number
 }
 
 export interface ExportSummary {

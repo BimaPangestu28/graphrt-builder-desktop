@@ -1,3 +1,4 @@
+import { allowActionId } from '@/api/pauseReasons'
 import type { ApprovalAnswer, ApprovalField, PendingApproval } from '@/api/runReviewTypes'
 
 /**
@@ -61,17 +62,38 @@ function toAnswerValue(field: ApprovalField, value: string | boolean | undefined
 }
 
 /**
- * The answer graphrt's `human-input` node expects: `{ action, values }`.
+ * The answer the paused node expects: `{ action, values }` for a `human-input` form, and
+ * `{ approvals: { [callId]: allowed } }` for a tool call (Allow → true, Decline → false).
  *
  * @example
  * buildApprovalAnswer(approval, 'approve', { message: 'Hi' }) // { action: 'approve', values: { message: 'Hi' } }
+ * buildApprovalAnswer(toolCallApproval, 'allow', {}) // { approvals: { call_1: true } }
  */
 export function buildApprovalAnswer(approval: PendingApproval, actionId: string, values: ApprovalValues): ApprovalAnswer {
+  if (approval.kind === 'toolCall' && approval.toolCall) return { approvals: { [approval.toolCall.callId]: actionId === allowActionId } }
   return { action: actionId, values: Object.fromEntries(approval.fields.map((field) => [field.name, toAnswerValue(field, values[field.name])])) }
+}
+
+/**
+ * Answers keyed by resume key for `resumeRun`. Tool call answers of the same agent step share a
+ * resume key, so their `approvals` are merged into one answer.
+ *
+ * @param answers - Each question with its answer (Array<[PendingApproval, ApprovalAnswer]>)
+ * @returns `{ [resumeKey]: answer }` (Record<string, ApprovalAnswer>)
+ */
+export function collectAnswersByResumeKey(answers: Array<[PendingApproval, ApprovalAnswer]>): Record<string, ApprovalAnswer> {
+  const answersByResumeKey: Record<string, ApprovalAnswer> = {}
+  for (const [approval, answer] of answers) {
+    const earlierAnswer = answersByResumeKey[approval.resumeKey]
+    answersByResumeKey[approval.resumeKey] =
+      earlierAnswer && 'approvals' in earlierAnswer && 'approvals' in answer ? { approvals: { ...earlierAnswer.approvals, ...answer.approvals } } : answer
+  }
+  return answersByResumeKey
 }
 
 /** Heading and description of a question: the prompt's first line and the rest, or the step title. */
 export function splitApprovalPrompt(approval: PendingApproval): { heading: string; description: string | null } {
+  if (approval.toolCall) return { heading: `Allow ${approval.toolCall.tool ?? approval.toolCall.name}?`, description: approval.stepTitle ? `${approval.stepTitle} wants to use this tool` : 'The agent wants to use this tool' }
   const [firstLine, ...otherLines] = (approval.prompt ?? '').split('\n')
   const description = otherLines.join('\n').trim() || null
   if (firstLine.trim()) return { heading: firstLine.trim(), description }

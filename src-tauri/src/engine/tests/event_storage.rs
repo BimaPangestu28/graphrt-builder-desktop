@@ -376,7 +376,7 @@ async fn abort_before_the_task_registers_aborts_the_graphrt_run() {
     .unwrap();
     let mut run_input = graphrt_core::RunInput::new();
     run_input.inputs = preparation::json_object_to_value_map(json!({"question": "?"}), "run inputs").unwrap();
-    harness.runs.spawn_driver(&run, engine.run(run_input)).unwrap();
+    harness.runs.spawn_driver(&run, engine.run(run_input), PauseContext::default()).unwrap();
 
     wait_for_event(&harness.db, &run.id, "run_aborted").await;
     wait_until_unregistered(&harness, &run.id).await;

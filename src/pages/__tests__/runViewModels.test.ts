@@ -58,6 +58,8 @@ describe('run progress', () => {
     }
     expect(readPendingApprovals(run)).toEqual([
       {
+        id: 'each[2]/approve',
+        kind: 'form',
         nodeId: 'approve',
         frame: 'each[2]',
         resumeKey: 'each[2]/approve',
@@ -69,6 +71,9 @@ describe('run progress', () => {
           { id: 'no', title: 'no' },
         ],
         timeoutMs: 60000,
+        expiresAt: null,
+        onTimeout: null,
+        toolCall: null,
         container: { nodeId: 'each', nodeType: null, title: null, index: 2, total: null, finished: null, item: null },
       },
     ])

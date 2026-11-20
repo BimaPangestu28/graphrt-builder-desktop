@@ -9,15 +9,11 @@ use graphrt_core::{Engine, IndexMap, Services, Value};
 
 use super::ModelRegistrySource;
 use crate::credentials::CredentialStore;
+use crate::desktop::app_settings::AppSettings;
 use crate::error::{AppError, AppResult};
 use crate::flow;
 use crate::storage::models::Agent;
 use crate::storage::Database;
-
-/// Wall-clock budget of one run segment (graphrt counts active time, not time paused).
-const MAX_RUN_DURATION_MS: u64 = 30 * 60 * 1000;
-/// Timeout for nodes that do not set their own.
-const DEFAULT_NODE_TIMEOUT_MS: u64 = 2 * 60 * 1000;
 
 /// Compiles the flow, checks provider keys and wires graphrt services.
 ///
@@ -45,15 +41,13 @@ pub(super) fn build_engine(
     let services = Services::new().with(model_source.build_registry(credentials, db)?).with(http_client).with(tools);
     // Knowledge bases for the `knowledge-retrieval` node (stores open on first search).
     let services = services.with(crate::knowledge::knowledge_service_for_runs(db, credentials)?);
-    Ok(Engine::new(Arc::new(graph)).with_services(services).with_limits(run_limits()))
+    Ok(Engine::new(Arc::new(graph)).with_services(services).with_limits(run_limits(db)))
 }
 
-fn run_limits() -> Limits {
-    Limits {
-        max_duration_ms: Some(MAX_RUN_DURATION_MS),
-        default_node_timeout_ms: Some(DEFAULT_NODE_TIMEOUT_MS),
-        ..Limits::default()
-    }
+/// The run limits from Settings › Runner (graphrt counts active run time, not time paused).
+/// A settings read failure is logged and the defaults apply.
+pub(super) fn run_limits(db: &Database) -> Limits {
+    AppSettings::load_or_default(db).run_limits.to_engine_limits()
 }
 
 /// `MissingPlugins` naming every plugin the flow uses that is not installed.

@@ -1,5 +1,6 @@
 import type { ApprovalAction, PendingApproval, RunReview } from '@/api/runReviewTypes'
 import type { RunTrigger } from '@/api/types'
+import { describeToolName } from '@/pages/agent-run/approvalDisplay'
 import { formatRunDay } from '@/pages/agent-run/runResultSummary'
 
 /**
@@ -21,7 +22,10 @@ function asItemRecord(item: unknown): Record<string, unknown> | null {
   return item && typeof item === 'object' && !Array.isArray(item) ? (item as Record<string, unknown>) : null
 }
 
-/** "[PLACE NAME 1]" from the item's name/title, else the item text, "Item 4", the prompt or the step title. */
+/**
+ * "[PLACE NAME 1]" from the item's name/title, else the item text, the tool a tool call uses,
+ * "Item 4", the prompt or the step title.
+ */
 export function buildRowTitle(approval: PendingApproval): string {
   const item = approval.container?.item
   const itemRecord = asItemRecord(item)
@@ -30,6 +34,7 @@ export function buildRowTitle(approval: PendingApproval): string {
     if (typeof nameValue === 'string' && nameValue.trim()) return nameValue
   }
   if (typeof item === 'string' && item.trim() && item.length <= maxItemMetaLength * 2) return item
+  if (approval.toolCall) return describeToolName(approval.toolCall)
   if (approval.container) return `Item ${approval.container.index + 1}`
   return approval.prompt?.split('\n')[0] ?? approval.stepTitle ?? 'Question'
 }

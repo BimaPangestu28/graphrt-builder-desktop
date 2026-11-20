@@ -12,6 +12,9 @@
 //!   (workflow, credentials, graphrt services, inputs).
 //! - `driver`: the task that consumes one graphrt stream and records it.
 //! - `chunk_buffer`: combines streamed chunks into few stored rows.
+//! - `approval_pauses`: deadlines, timeout actions and tool details added to
+//!   stored pause reasons; `approval_expiry`: applies a step's timeout action
+//!   once its deadline has passed ([`RunManager::expire_due_approvals`]).
 //! - `active_runs`: handles of running tasks and abort requests.
 //! - [`ModelRegistrySource`]: where model clients come from (keychain in the
 //!   app, scripted mock models in tests).
@@ -23,6 +26,8 @@
 
 mod active_runs;
 pub mod agent_tools;
+mod approval_expiry;
+pub(crate) mod approval_pauses;
 mod chunk_buffer;
 mod driver;
 mod preparation;
@@ -30,12 +35,15 @@ pub mod tauri_sink;
 #[cfg(test)]
 mod tests;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use graphrt_core::{RunInput, Snapshot};
 use serde::{Deserialize, Serialize};
 
 use self::active_runs::ActiveRuns;
+pub(crate) use self::approval_expiry::spawn_approval_expiry;
+use self::approval_pauses::PauseSettings;
 use self::chunk_buffer::ChunkBufferLimits;
 use self::driver::RunDriver;
 pub(crate) use self::preparation::flow_for_version;
@@ -111,6 +119,19 @@ impl ModelRegistrySource for KeychainModelRegistrySource {
     }
 }
 
+/// What a driver needs to enrich the pause reasons it stores.
+#[derive(Debug, Clone, Default)]
+struct PauseContext {
+    settings: Arc<PauseSettings>,
+    carried_deadlines: Arc<HashMap<String, String>>,
+}
+
+impl PauseContext {
+    fn new(flow_yaml: &str, carried_deadlines: HashMap<String, String>) -> Self {
+        Self { settings: Arc::new(PauseSettings::from_flow(flow_yaml)), carried_deadlines: Arc::new(carried_deadlines) }
+    }
+}
+
 /// Starts, resumes and aborts agent runs. One per app, shared as `Arc<RunManager>`.
 #[derive(Debug)]
 pub struct RunManager {
@@ -179,7 +200,8 @@ impl RunManager {
             log::warn!("could not store the inputs of run {}: {error}", run.id);
         }
         self.driver_for(&run).send_status(&run.id, RunStatus::Running);
-        self.spawn_driver(&run, engine.run(run_input))?;
+        let pause_context = PauseContext::new(&agent.flow_yaml, HashMap::new());
+        self.spawn_driver(&run, engine.run(run_input), pause_context)?;
         Ok(run)
     }
 
@@ -211,7 +233,8 @@ impl RunManager {
         // concurrent resumes cannot both start a task.
         self.db.mark_run_resumed(run_id)?;
         self.driver_for(&run).send_status(run_id, RunStatus::Running);
-        self.spawn_driver(&run, engine.run(run_input))?;
+        let carried = approval_pauses::carried_deadlines(run.pause_reasons.as_ref());
+        self.spawn_driver(&run, engine.run(run_input), PauseContext::new(&flow_yaml, carried))?;
         self.db.get_run(run_id)
     }
 
@@ -283,6 +306,10 @@ impl RunManager {
     }
 
     fn driver_for(&self, run: &Run) -> RunDriver {
+        self.driver_with(run, PauseContext::default())
+    }
+
+    fn driver_with(&self, run: &Run, pause_context: PauseContext) -> RunDriver {
         RunDriver {
             db: self.db.clone(),
             sink: self.sink.clone(),
@@ -290,14 +317,16 @@ impl RunManager {
             agent_id: run.agent_id.clone(),
             trigger: run.trigger,
             chunk_buffer_limits: self.chunk_buffer_limits,
+            pause_settings: pause_context.settings,
+            carried_deadlines: pause_context.carried_deadlines,
         }
     }
 
     /// Registers the stream's handle and spawns the task driving it.
     ///
     /// If registration fails the run is marked failed, so it never stays `Running`.
-    fn spawn_driver(&self, run: &Run, stream: graphrt_core::RunStream) -> AppResult<()> {
-        let driver = self.driver_for(run);
+    fn spawn_driver(&self, run: &Run, stream: graphrt_core::RunStream, pause_context: PauseContext) -> AppResult<()> {
+        let driver = self.driver_with(run, pause_context);
         let drive_id = match self.active_runs.register(&run.id, stream.handle()) {
             Ok(drive_id) => drive_id,
             Err(error) => {
