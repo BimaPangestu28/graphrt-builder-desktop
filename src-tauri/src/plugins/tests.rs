@@ -471,6 +471,29 @@ async fn catalog_falls_back_to_the_saved_copy_when_offline() {
 }
 
 #[tokio::test]
+async fn catalog_larger_than_two_mib_is_accepted() {
+    // 146 plugins with their node config schemas already make a 3.5 MB indented catalog.
+    let fixture = Fixture::new();
+    let mut catalog: serde_json::Value =
+        serde_json::from_slice(&catalog_json("1.0.0", TARBALL_URL, &"a".repeat(64), 1)).unwrap();
+    catalog["plugins"][0]["description"] = serde_json::Value::from("x".repeat(3_500_000));
+    fixture.downloader.serve(CATALOG_URL, serde_json::to_vec(&catalog).unwrap());
+
+    let listed = fixture.service.catalog(true).await.unwrap();
+
+    assert_eq!(listed.plugins.len(), 1);
+    assert!(!listed.from_cache);
+}
+
+#[tokio::test]
+async fn catalog_over_the_limit_is_rejected() {
+    let fixture = Fixture::new();
+    let oversized = vec![b' '; usize::try_from(super::catalog::MAX_CATALOG_BYTES).unwrap() + 1];
+    fixture.downloader.serve(CATALOG_URL, oversized);
+    assert!(fixture.service.catalog(true).await.is_err());
+}
+
+#[tokio::test]
 async fn catalog_with_an_unknown_schema_is_rejected() {
     let fixture = Fixture::new();
     fixture.downloader.serve(CATALOG_URL, br#"{"schema": 2, "plugins": []}"#.to_vec());

@@ -13,8 +13,9 @@ pub const DEFAULT_CATALOG_URL: &str =
     "https://github.com/BimaPangestu28/graphrt-plugins/releases/download/catalog/index.json";
 /// Catalog schema this app understands.
 const CATALOG_SCHEMA: u32 = 1;
-/// Largest catalog accepted.
-pub(super) const MAX_CATALOG_BYTES: u64 = 2 * 1024 * 1024;
+/// Largest catalog accepted. The catalog carries every node's config schema, so it
+/// grows with the plugin count (146 plugins: 2.0 MB compact, 3.5 MB indented).
+pub(super) const MAX_CATALOG_BYTES: u64 = 16 * 1024 * 1024;
 
 /// Parses the catalog. Entries with an invalid name, a non-https tarball URL
 /// or a malformed checksum are dropped (logged), so one bad entry does not
