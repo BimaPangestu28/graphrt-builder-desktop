@@ -18,6 +18,7 @@ use crate::node_runtime::NodeRuntime;
 use crate::storage::Database;
 
 mod catalog_plugins;
+mod plugin_icons;
 
 const PLUGIN: &str = "fixture-echo";
 /// Catalog entries of plugins the tests never install.

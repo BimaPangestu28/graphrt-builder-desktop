@@ -65,6 +65,9 @@ pub struct CatalogPlugin {
     pub tools: Vec<String>,
     #[serde(default)]
     pub readme_url: Option<String>,
+    /// HTTPS link to the plugin's SVG icon (a `catalog` release asset; newer catalogs only).
+    #[serde(default)]
+    pub icon_url: Option<String>,
     /// Terms-of-service / ban warning from the plugin's README (e.g. whatsapp-web).
     #[serde(default)]
     pub warning: Option<String>,
@@ -155,6 +158,9 @@ pub struct PluginCatalogEntry {
     pub nodes: Vec<PluginNodeInfo>,
     pub tools: Vec<String>,
     pub readme_url: Option<String>,
+    /// HTTPS link to the plugin's SVG icon, when the catalog has one. The UI shows it
+    /// through `get_plugin_icon` (a cached data URL), never by loading this link.
+    pub icon_url: Option<String>,
     /// Terms-of-service / ban warning from the plugin's README, when it has one.
     pub warning: Option<String>,
     /// Maturity label (`stable`, `beta`, `experimental`), when the catalog says.
@@ -204,6 +210,8 @@ pub struct InstalledPlugin {
     pub load_error: Option<String>,
     pub warnings: Vec<String>,
     pub readme_url: Option<String>,
+    /// The catalog's icon link at install time (see [`PluginCatalogEntry::icon_url`]).
+    pub icon_url: Option<String>,
 }
 
 /// The outputs of a one-off plugin action.
@@ -253,4 +261,7 @@ pub struct InstallRecord {
     pub needs_browser: bool,
     #[serde(default)]
     pub readme_url: Option<String>,
+    /// The catalog's icon link at install time, so the icon shows when the catalog does not.
+    #[serde(default)]
+    pub icon_url: Option<String>,
 }

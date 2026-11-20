@@ -115,7 +115,9 @@ impl Downloader for HttpsDownloader {
 }
 
 fn too_large(max_bytes: u64) -> AppError {
-    AppError::InvalidInput(format!("the download is larger than the {} MB limit", max_bytes / (1024 * 1024)))
+    const MIB: u64 = 1024 * 1024;
+    let limit = if max_bytes >= MIB { format!("{} MB", max_bytes / MIB) } else { format!("{} KB", max_bytes / 1024) };
+    AppError::InvalidInput(format!("the download is larger than the {limit} limit"))
 }
 
 /// Uses the `ring` rustls backend, like graphrt-http. Installing fails

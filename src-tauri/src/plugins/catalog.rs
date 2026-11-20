@@ -19,7 +19,7 @@ pub(super) const MAX_CATALOG_BYTES: u64 = 16 * 1024 * 1024;
 
 /// Parses the catalog. Entries with an invalid name, a non-https tarball URL
 /// or a malformed checksum are dropped (logged), so one bad entry does not
-/// hide the others.
+/// hide the others. A non-https `icon_url` only loses the icon.
 ///
 /// # Errors
 /// `InvalidInput` when the document is not JSON or uses another schema.
@@ -31,6 +31,9 @@ pub(super) fn parse_catalog(bytes: &[u8]) -> AppResult<CatalogIndex> {
             "the plugin catalog uses schema {}; this app understands schema {CATALOG_SCHEMA}. Update the app",
             index.schema
         )));
+    }
+    for plugin in &mut index.plugins {
+        drop_invalid_icon_url(plugin);
     }
     index.plugins.retain(|plugin| match validate_entry(plugin) {
         Ok(()) => true,
@@ -55,6 +58,15 @@ fn validate_entry(plugin: &CatalogPlugin) -> AppResult<()> {
         require_https(readme_url)?;
     }
     Ok(())
+}
+
+/// Clears an `icon_url` that is not `https://` (logged); the entry stays listed.
+fn drop_invalid_icon_url(plugin: &mut CatalogPlugin) {
+    let Some(icon_url) = &plugin.icon_url else { return };
+    if let Err(error) = require_https(icon_url) {
+        log::warn!("ignoring the icon of catalog entry `{}`: {error}", plugin.name);
+        plugin.icon_url = None;
+    }
 }
 
 /// Reads the saved catalog, if any (and still valid).
@@ -97,6 +109,7 @@ pub(super) fn catalog_view(index: &CatalogIndex, installed: &[PluginState], from
                 nodes: plugin.nodes.iter().map(super::models::CatalogNode::info).collect(),
                 tools: plugin.tools.clone(),
                 readme_url: plugin.readme_url.clone(),
+                icon_url: plugin.icon_url.clone(),
                 warning: plugin.warning.clone().filter(|warning| !warning.trim().is_empty()),
                 status: plugin.status.clone(),
                 tos_risk: plugin.tos_risk.clone(),

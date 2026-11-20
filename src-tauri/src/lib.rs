@@ -276,6 +276,7 @@ pub fn run() {
             commands::plugins::check_plugin_session,
             commands::plugins::list_agent_plugin_requirements,
             commands::plugins::open_plugin_readme,
+            commands::plugins::get_plugin_icon,
             commands::problems::list_problems,
             commands::problems::get_failed_run_report,
             commands::problems::retry_run,
