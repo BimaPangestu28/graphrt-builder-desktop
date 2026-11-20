@@ -9,6 +9,31 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ### Added
 
+- **Plugin source and publisher**: catalog entries (v1 and v2) may carry `source` (`official`
+  or `community`; missing means official, anything else is treated as official and logged),
+  `publisher` (trimmed, at most 60 characters, no control characters) and `repository_url`
+  (https only); invalid values are dropped, not the entry. They reach the catalog view, are
+  kept in the install record and are returned on installed plugins. Community plugins get a
+  "Community" badge on their card and plugin page (official plugins stay unbadged), the plugin
+  page says "by <publisher>" and has "View the source code" (opened in the default browser via
+  the new `open_plugin_repository`, like the README), and the install confirmation says the
+  plugin is reviewed by the graphrt maintainers but maintained by its publisher.
+- **Install plugins from a folder or archive (Developer mode)**: Settings › About › Developer
+  mode (off by default) adds "Install from folder or archive…" on the Plugins page, using the
+  system file picker (the existing `dialog:allow-open` permission; no new capability). The new
+  `install_local_plugin(path, replace)` command, refused while Developer mode is off, accepts a
+  folder or a `.tar.gz`: archives go through the same safe extraction as catalog tarballs (size
+  and entry caps, no links, devices, absolute paths or `..`); folders are copied with the same
+  caps, refusing any symlink, junction or special file inside (never followed) and skipping
+  `.git`, and a folder inside the app's plugins folder is refused. The copy is then checked and
+  moved into place by the catalog install path (manifest rules, the manifest's file checksums,
+  node kind registration). The plugin is recorded as `source: local` with the picked path,
+  labelled "Local · not reviewed", starts untrusted (also when reinstalled) and is never
+  auto-updated, offered as an update, matched against a catalog plugin of the same name or
+  replaced by a catalog install. Replacing a plugin installed from the catalog needs a
+  confirmation (the command answers with the new `conflict` error code) and drops that
+  plugin's saved settings. Removing a local plugin works as before.
+
 - **Plugin catalog v2**: the app reads the slim `index-v2.json` of the graphrt-plugins `catalog`
   release first (at most 4 MiB) and falls back to v1 `index.json` (16 MiB, as before) when v2 is
   missing (404), not valid JSON, too large or uses an unknown schema; the log says which one was
