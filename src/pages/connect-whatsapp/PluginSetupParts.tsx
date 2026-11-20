@@ -2,9 +2,9 @@ import type { InstalledPlugin } from '@/api/pluginTypes'
 import { Button } from '@/components/ui'
 import type { PluginsState } from '@/hooks/usePlugins'
 import { describeError } from '@/lib/agentDisplay'
-import { describeInstallProgress } from '../connections/pluginDisplay'
-import { PluginPermissionList } from '../connections/PluginPermissionList'
-import { PluginTrustToggle } from '../connections/PluginTrustToggle'
+import { describeInstallProgress } from '../plugins/pluginDisplay'
+import { PluginPermissionList } from '../plugins/PluginPermissionList'
+import { PluginTrustToggle } from '../plugins/PluginTrustToggle'
 
 function PluginErrorMessage({ plugins, pluginName }: { plugins: PluginsState; pluginName: string }) {
   const errorMessage = plugins.errorByName[pluginName]

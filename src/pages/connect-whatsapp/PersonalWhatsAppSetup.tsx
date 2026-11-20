@@ -1,6 +1,6 @@
 import type { BrowserRuntimeState } from '@/hooks/useBrowserRuntime'
 import { findInstalledPlugin, type PluginsState } from '@/hooks/usePlugins'
-import { BrowserRuntimeCard } from '../connections/BrowserRuntimeCard'
+import { BrowserRuntimeCard } from '../plugins/BrowserRuntimeCard'
 import { PluginInstallStepBody, PluginTrustStepBody } from './PluginSetupParts'
 import { SetupStep } from './SetupStep'
 import { whatsAppWebPluginName } from './useWhatsAppActions'

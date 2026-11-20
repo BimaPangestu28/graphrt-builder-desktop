@@ -10,6 +10,8 @@
     "needs_browser": false,
     "node": ">=20",
     "warning": "Sending bulk mail may get the account blocked.",
+    "status": "beta",
+    "tos_risk": "medium",
     "operations_count": 2,
     "nodes": [
       {

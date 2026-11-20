@@ -18,7 +18,6 @@ import {
   isOptionalSampleSetting,
   samplePluginNeedsByAgentId,
   samplePluginSeeds,
-  samplePluginWarnings,
   sampleRequiredPluginSettings,
   type SamplePluginNeed,
   type SamplePluginSeed,
@@ -271,7 +270,7 @@ function toPluginRequirement(seed: SamplePluginSeed, usedBySteps: string[]): Plu
     usedBySteps,
     permissions: { ...seed.permissions, env: [...seed.permissions.env] },
     needsBrowser: seed.needsBrowser,
-    warning: samplePluginWarnings[seed.name] ?? null,
+    warning: seed.warning,
     installed,
     trusted,
     trustNotNeeded,
@@ -292,6 +291,13 @@ function listSampleAgentPluginRequirements(agentId: string): PluginRequirement[]
   })
 }
 
+/** @throws BackendError - `not_found` for an unknown plugin or one without a README link */
+function openSamplePluginReadme(name: string): void {
+  const { readmeUrl } = findSeed(name)
+  if (!readmeUrl) throw new BackendError('not_found', `${name} has no README link`)
+  window.open(readmeUrl, '_blank', 'noopener,noreferrer')
+}
+
 export const samplePluginsBackend = {
   listAgentPluginRequirements: (agentId: string): Promise<PluginRequirement[]> => respondWith(() => listSampleAgentPluginRequirements(agentId)),
   listPluginCatalog: (_refresh: boolean): Promise<PluginCatalog> => respondWith(readCatalog),
@@ -307,6 +313,7 @@ export const samplePluginsBackend = {
   runPluginAction: (name: string, kind: string, _config: Record<string, unknown>): Promise<PluginActionResult> =>
     respondWith(() => runSamplePluginAction(name, kind)),
   checkPluginSession: (name: string): Promise<PluginSessionState> => respondWith(() => checkSamplePluginSession(name)),
+  openPluginReadme: (name: string): Promise<void> => respondWith(() => openSamplePluginReadme(name)),
 }
 
 /** Subscribes to sample `plugin-event` payloads. Returns the unsubscribe function. */

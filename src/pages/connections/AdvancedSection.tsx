@@ -1,16 +1,14 @@
 import { useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { listMcpServers } from '@/api/mcpServers'
 import type { AdvancedConnection } from '@/data/connections'
 import { useAsyncData } from '@/hooks/useAsyncData'
-import { useBrowserRuntime } from '@/hooks/useBrowserRuntime'
-import { usePlugins } from '@/hooks/usePlugins'
+import { routePaths } from '@/routes'
 import { McpServersPanel } from './McpServersPanel'
-import { PluginsSection } from './PluginsSection'
 import { summarizeSecrets } from './secretDisplay'
 import { SecretsPanel, type SecretsListState } from './SecretRows'
 
-type AdvancedPanel = AdvancedConnection['kind'] | 'secrets'
+type AdvancedPanel = 'mcp' | 'secrets'
 
 const sectionHeadingClassNames = 'm-0 text-[13px] font-semibold text-muted'
 const manageButtonClassNames =
@@ -18,16 +16,24 @@ const manageButtonClassNames =
 const panelIds: Record<AdvancedPanel, string> = {
   secrets: 'connections-secrets-panel',
   mcp: 'connections-mcp-panel',
-  plugins: 'connections-plugins-panel',
 }
 const secretsRowDescription = 'Server logins, API tokens and passwords your agents use'
 
-function describeRow(row: AdvancedConnection, count: number | null, countLabel: string): string {
-  return count === null ? row.description : `${row.description} · ${count} ${countLabel}`
+function describeRow(row: AdvancedConnection, count: number | null): string {
+  return count === null ? row.description : `${row.description} · ${count} added`
 }
 
 function readInitialPanel(section: string | null): AdvancedPanel | null {
-  return section === 'plugins' || section === 'mcp' || section === 'secrets' ? section : null
+  return section === 'mcp' || section === 'secrets' ? section : null
+}
+
+function RowText({ name, description }: { name: string; description: string }) {
+  return (
+    <span className="flex flex-col gap-0.5">
+      <span className="font-medium">{name}</span>
+      <span className="text-[12px] text-muted">{description}</span>
+    </span>
+  )
 }
 
 interface AdvancedRowProps {
@@ -39,13 +45,14 @@ interface AdvancedRowProps {
   onToggle: (panel: AdvancedPanel) => void
 }
 
+function rowClassNames(hasBorder: boolean): string {
+  return `flex items-center justify-between gap-3 px-4 py-3 ${hasBorder ? 'border-b border-chip' : ''}`
+}
+
 function AdvancedRow({ name, description, panel, isOpen, hasBorder, onToggle }: AdvancedRowProps) {
   return (
-    <div className={`flex items-center justify-between gap-3 px-4 py-3 ${hasBorder ? 'border-b border-chip' : ''}`}>
-      <span className="flex flex-col gap-0.5">
-        <span className="font-medium">{name}</span>
-        <span className="text-[12px] text-muted">{description}</span>
-      </span>
+    <div className={rowClassNames(hasBorder)}>
+      <RowText name={name} description={description} />
       <button
         type="button"
         aria-label={`Manage ${name}`}
@@ -60,6 +67,18 @@ function AdvancedRow({ name, description, panel, isOpen, hasBorder, onToggle }: 
   )
 }
 
+/** Plugins used to be managed here; the row now only points to their page. */
+function PluginsLinkRow({ row, hasBorder }: { row: AdvancedConnection; hasBorder: boolean }) {
+  return (
+    <div className={rowClassNames(hasBorder)}>
+      <RowText name={row.name} description={row.description} />
+      <Link to={routePaths.plugins} className={manageButtonClassNames}>
+        Open Plugins
+      </Link>
+    </div>
+  )
+}
+
 interface AdvancedSectionProps {
   /** The MCP and plugin rows that match the search. */
   rows: AdvancedConnection[]
@@ -68,25 +87,19 @@ interface AdvancedSectionProps {
 
 /**
  * "Advanced" on screen 21: Secrets (add your own, replace or remove values; they go to the
- * keychain), MCP servers and plugins. Manage opens each panel; `?section=secrets`,
- * `?section=plugins` or `?section=mcp` opens one from the start. While searching, the
+ * keychain) and MCP servers, plus a link to the Plugins page. Manage opens each panel;
+ * `?section=secrets` or `?section=mcp` opens one from the start. While searching, the
  * Secrets panel opens by itself when a secret matches.
  */
 export function AdvancedSection({ rows, secretsState }: AdvancedSectionProps) {
   const [searchParams] = useSearchParams()
   const [openPanel, setOpenPanel] = useState<AdvancedPanel | null>(() => readInitialPanel(searchParams.get('section')))
-  const plugins = usePlugins()
-  const browserRuntime = useBrowserRuntime()
   const mcpServers = useAsyncData(listMcpServers, [])
-  const counts: Record<AdvancedConnection['kind'], number | null> = {
-    mcp: mcpServers.data?.length ?? null,
-    plugins: plugins.data?.installed.length ?? null,
-  }
   const { allSecrets, visibleSecrets, isSearching } = secretsState
   const hasMatchingSecrets = (visibleSecrets?.length ?? 0) > 0
   const showsSecretsRow = !isSearching || hasMatchingSecrets
   const showsSecretsPanel = showsSecretsRow && (openPanel === 'secrets' || (isSearching && hasMatchingSecrets))
-  const visiblePanel = openPanel && rows.some((row) => row.kind === openPanel) ? openPanel : null
+  const showsMcpPanel = openPanel === 'mcp' && rows.some((row) => row.kind === 'mcp')
   const secretsDescription = allSecrets ? `${secretsRowDescription} · ${summarizeSecrets(allSecrets)}` : secretsRowDescription
 
   function togglePanel(panel: AdvancedPanel) {
@@ -102,31 +115,30 @@ export function AdvancedSection({ rows, secretsState }: AdvancedSectionProps) {
         {showsSecretsRow && (
           <AdvancedRow name="Secrets" description={secretsDescription} panel="secrets" isOpen={showsSecretsPanel} hasBorder={rows.length > 0} onToggle={togglePanel} />
         )}
-        {rows.map((row, index) => (
-          <AdvancedRow
-            key={row.id}
-            name={row.name}
-            description={describeRow(row, counts[row.kind], row.kind === 'mcp' ? 'added' : 'installed')}
-            panel={row.kind}
-            isOpen={visiblePanel === row.kind}
-            hasBorder={index < rows.length - 1}
-            onToggle={togglePanel}
-          />
-        ))}
+        {rows.map((row, index) => {
+          const hasBorder = index < rows.length - 1
+          if (row.kind === 'pluginsLink') return <PluginsLinkRow key={row.id} row={row} hasBorder={hasBorder} />
+          return (
+            <AdvancedRow
+              key={row.id}
+              name={row.name}
+              description={describeRow(row, mcpServers.data?.length ?? null)}
+              panel="mcp"
+              isOpen={showsMcpPanel}
+              hasBorder={hasBorder}
+              onToggle={togglePanel}
+            />
+          )
+        })}
       </div>
       {showsSecretsPanel && (
         <div id={panelIds.secrets}>
           <SecretsPanel secretsState={secretsState} />
         </div>
       )}
-      {visiblePanel === 'mcp' && (
+      {showsMcpPanel && (
         <div id={panelIds.mcp}>
           <McpServersPanel servers={mcpServers} onServersChanged={secretsState.reload} />
-        </div>
-      )}
-      {visiblePanel === 'plugins' && (
-        <div id={panelIds.plugins}>
-          <PluginsSection plugins={plugins} browserRuntime={browserRuntime} />
         </div>
       )}
     </section>

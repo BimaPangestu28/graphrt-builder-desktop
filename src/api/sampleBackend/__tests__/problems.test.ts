@@ -49,7 +49,7 @@ describe('getProblemActionPath', () => {
   it('maps navigation actions to routes and commands to none', () => {
     expect(getProblemActionPath(baseAction)).toBe('/runs/problems?runId=run-1')
     expect(getProblemActionPath({ ...baseAction, kind: 'open_connections' })).toBe('/connections')
-    expect(getProblemActionPath({ ...baseAction, kind: 'open_plugins' })).toBe('/connections?section=plugins')
+    expect(getProblemActionPath({ ...baseAction, kind: 'open_plugins' })).toBe('/plugins')
     expect(getProblemActionPath({ ...baseAction, kind: 'open_builder' })).toBe('/agents/agent-1/steps')
     expect(getProblemActionPath({ ...baseAction, kind: 'open_schedule' })).toBe('/agents/agent-1/schedule')
     expect(getProblemActionPath({ ...baseAction, kind: 'retry_run' })).toBeNull()

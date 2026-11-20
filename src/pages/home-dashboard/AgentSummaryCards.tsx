@@ -6,7 +6,7 @@ import type { Agent, Run, Trigger } from '@/api/types'
 import { LinkButton, StatusDot } from '@/components/ui'
 import { getKindLabel } from '@/lib/agentDisplay'
 import { StatusPill } from '@/pages/agent-run/StatusPill'
-import { agentPath, routePaths } from '@/routes'
+import { agentPath, pluginDetailPath, routePaths } from '@/routes'
 import { describeAgentCardState, type AgentCardAction } from './agentCardState'
 import { HomeSectionHeader } from './HomeSectionHeader'
 import { describeAgentSchedule } from './homeSummaryLines'
@@ -33,19 +33,22 @@ function describeFacts({ agent, agentTriggers, runStats }: AgentCardData): strin
   return [getKindLabel(agent.kind), describeAgentSchedule(agentTriggers), ...statsLine].filter((fact): fact is string => Boolean(fact))
 }
 
+/** One chip per plugin the agent uses, each opening that plugin's page. */
 function PluginChips({ requirements }: { requirements: PluginRequirement[] }) {
   if (requirements.length === 0) return null
   return (
     <ul aria-label="Plugins" className="m-0 flex list-none flex-wrap gap-1.5 p-0">
       {requirements.map((requirement) => (
-        <li
-          key={requirement.name}
-          title={requirement.ready ? `${requirement.name} is ready` : describePluginGap(requirement)}
-          className="flex items-center gap-1.5 rounded-full bg-canvas px-2 py-0.5 text-[12px] text-ink-2"
-        >
-          <StatusDot tone={requirement.ready ? 'ok' : 'amber'} />
-          {requirement.name}
-          <span className="sr-only">{requirement.ready ? ' (ready)' : ' (not ready)'}</span>
+        <li key={requirement.name}>
+          <Link
+            to={pluginDetailPath(requirement.name)}
+            title={requirement.ready ? `${requirement.name} is ready` : describePluginGap(requirement)}
+            className="flex items-center gap-1.5 rounded-full bg-canvas px-2 py-0.5 text-[12px] no-underline !text-ink-2 hover:bg-selected"
+          >
+            <StatusDot tone={requirement.ready ? 'ok' : 'amber'} />
+            {requirement.name}
+            <span className="sr-only">{requirement.ready ? ' (ready)' : ' (not ready)'}</span>
+          </Link>
         </li>
       ))}
     </ul>

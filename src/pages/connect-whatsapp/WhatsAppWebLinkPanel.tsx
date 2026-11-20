@@ -35,7 +35,7 @@ function describeSessionDetails(sessionStatus: WhatsAppWebStatus | null): string
  * Links a personal WhatsApp to the trusted `whatsapp-web` plugin: whether it is linked
  * (checked on mount), "Link WhatsApp (scan QR code)" which opens the plugin's QR window,
  * and "Refresh status". Render only once the plugin is installed and trusted and the
- * browser runtime is ready. Used on screen 05, the Connections plugin card and the build chat.
+ * browser runtime is ready. Used on screen 05, the whatsapp-web plugin page and the build chat.
  *
  * @param props.onSessionChange - Called after each link or status check, e.g. to reload the plugin requirements (() => void)
  */

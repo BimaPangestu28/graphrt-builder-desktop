@@ -3,7 +3,8 @@ import type { PluginCatalogEntry } from '../pluginTypes'
 /**
  * Seed catalog for the sample plugins backend (browser preview and tests). Mirrors the
  * graphrt-plugins catalog closely enough for the screens: two WhatsApp plugins, the
- * Google Maps scraper and the website checker step from screen 12.
+ * Google Maps scraper and the website checker step from screen 12 first, then a handful
+ * of other catalog plugins so the Plugins page shows several categories.
  */
 
 /** A catalog entry before it is merged with this computer's install state. */
@@ -29,6 +30,9 @@ export const samplePluginSeeds: SamplePluginSeed[] = [
     ],
     tools: ['send_whatsapp_text'],
     readmeUrl: `${readmeBaseUrl}/whatsapp-api`,
+    warning: null,
+    status: 'beta',
+    tosRisk: 'none',
     sizeBytes: 48_000,
   },
   {
@@ -48,6 +52,10 @@ export const samplePluginSeeds: SamplePluginSeed[] = [
     ],
     tools: [],
     readmeUrl: `${readmeBaseUrl}/whatsapp-web`,
+    warning:
+      'Automating a personal WhatsApp account is against the WhatsApp Terms of Service. WhatsApp may ban the number, so send few messages, only to people who expect them.',
+    status: 'experimental',
+    tosRisk: 'high',
     sizeBytes: 120_000,
   },
   {
@@ -59,6 +67,9 @@ export const samplePluginSeeds: SamplePluginSeed[] = [
     nodes: [{ kind: 'google-maps-scraper.search', title: 'Search Google Maps', description: 'Finds places for a keyword and city' }],
     tools: ['search_google_maps'],
     readmeUrl: `${readmeBaseUrl}/google-maps-scraper`,
+    warning: null,
+    status: 'stable',
+    tosRisk: 'medium',
     sizeBytes: 96_000,
   },
   {
@@ -70,7 +81,95 @@ export const samplePluginSeeds: SamplePluginSeed[] = [
     nodes: [{ kind: 'website-check.check', title: 'Check the website', description: 'In url · Out reachable, has_form' }],
     tools: [],
     readmeUrl: `${readmeBaseUrl}/website-check`,
+    warning: null,
+    status: null,
+    tosRisk: null,
     sizeBytes: 22_000,
+  },
+  {
+    name: 'telegram-bot',
+    version: '0.1.0',
+    description: 'Telegram Bot API: send messages and photos, read updates and reply in chats',
+    permissions: { network: true, secrets: true, env: ['TELEGRAM_BOT_TOKEN'] },
+    needsBrowser: false,
+    nodes: [
+      { kind: 'telegram-bot.send_message', title: 'Send Telegram message', description: 'Sends a text message to a chat' },
+      { kind: 'telegram-bot.get_updates', title: 'Read new messages', description: 'Lists messages the bot received' },
+    ],
+    tools: [],
+    readmeUrl: `${readmeBaseUrl}/telegram-bot`,
+    warning: null,
+    status: 'beta',
+    tosRisk: 'none',
+    sizeBytes: 30_000,
+  },
+  {
+    name: 'openai',
+    version: '0.2.0',
+    description: 'OpenAI API: chat completions, structured output and embeddings with your own key',
+    permissions: { network: true, secrets: true, env: ['OPENAI_API_KEY'] },
+    needsBrowser: false,
+    nodes: [
+      { kind: 'openai.chat', title: 'Ask an OpenAI model', description: 'Sends a prompt and returns the answer' },
+      { kind: 'openai.embed', title: 'Create embeddings', description: 'Turns text into vectors for search' },
+    ],
+    tools: [],
+    readmeUrl: `${readmeBaseUrl}/openai`,
+    warning: null,
+    status: 'beta',
+    tosRisk: 'none',
+    sizeBytes: 34_000,
+  },
+  {
+    name: 'google-sheets',
+    version: '0.3.0',
+    description: 'Read, append and update rows in a Google Sheets spreadsheet',
+    permissions: { network: true, secrets: true, env: ['GOOGLE_SHEETS_CREDENTIALS_JSON'] },
+    needsBrowser: false,
+    nodes: [
+      { kind: 'google-sheets.read_rows', title: 'Read rows', description: 'Reads a range of rows' },
+      { kind: 'google-sheets.append_rows', title: 'Add rows', description: 'Appends rows at the end of a sheet' },
+    ],
+    tools: [],
+    readmeUrl: `${readmeBaseUrl}/google-sheets`,
+    warning: null,
+    status: 'beta',
+    tosRisk: 'none',
+    sizeBytes: 41_000,
+  },
+  {
+    name: 'stripe',
+    version: '0.1.2',
+    description: 'Stripe: list payments and customers, create payment links and refunds',
+    permissions: { network: true, secrets: true, env: ['STRIPE_SECRET_KEY'] },
+    needsBrowser: false,
+    nodes: [
+      { kind: 'stripe.list_payments', title: 'List payments', description: 'Recent payments with their status' },
+      { kind: 'stripe.create_payment_link', title: 'Create payment link', description: 'A link customers can pay with' },
+    ],
+    tools: [],
+    readmeUrl: `${readmeBaseUrl}/stripe`,
+    warning: null,
+    status: 'beta',
+    tosRisk: 'none',
+    sizeBytes: 38_000,
+  },
+  {
+    name: 'pdf-tools',
+    version: '0.2.0',
+    description: 'Extract text from PDF files, merge and split them, all on this computer',
+    permissions: { network: false, secrets: false, env: ['PDF_TOOLS_ALLOWED_DIRS'] },
+    needsBrowser: false,
+    nodes: [
+      { kind: 'pdf-tools.extract_text', title: 'Read PDF text', description: 'Returns the text of each page' },
+      { kind: 'pdf-tools.merge', title: 'Merge PDFs', description: 'Joins several PDF files into one' },
+    ],
+    tools: [],
+    readmeUrl: `${readmeBaseUrl}/pdf-tools`,
+    warning: null,
+    status: 'stable',
+    tosRisk: 'none',
+    sizeBytes: 64_000,
   },
 ]
 
@@ -79,15 +178,6 @@ export const initiallyInstalledSamplePlugins: Array<{ name: string; version: str
   { name: 'google-maps-scraper', version: '1.0.0', trusted: true },
   { name: 'website-check', version: '0.4.0', trusted: false },
 ]
-
-/**
- * The ToS / ban warning a plugin's README carries, shown in the build chat before it is
- * installed (the catalog itself does not list it; the backend reads the README).
- */
-export const samplePluginWarnings: Record<string, string> = {
-  'whatsapp-web':
-    'Automating a personal WhatsApp account is against the WhatsApp Terms of Service. WhatsApp may ban the number, so send few messages, only to people who expect them.',
-}
 
 /**
  * Settings a plugin cannot work without (the rest of `permissions.env` is optional), so

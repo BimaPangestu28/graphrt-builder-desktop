@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import type { ChatbotChannel, ChatbotPersona, HandoffRules } from '@/api/chatbotSetupTypes'
 import { joinClassNames } from '@/components/ui'
 import { chatbotToneOptions, handoffRuleOptions } from '@/data/chatbotSetup'
-import { connectionsPluginsPath } from '@/routes'
+import { routePaths } from '@/routes'
 import { CheckboxRow, LabeledField, SectionHeading, fieldControlClassNames } from '../knowledge/FormControls'
 
 /**
@@ -64,7 +64,7 @@ function ChannelRow({ channel, isEnabled, onToggle }: { channel: ChatbotChannel;
           <span className="text-[12px] text-muted">Not connected</span>
         </span>
         <Link
-          to={connectionsPluginsPath}
+          to={routePaths.plugins}
           aria-label={`Connect ${channel.name}`}
           className="inline-flex h-8 items-center rounded-lg border border-line-strong bg-surface px-3 text-[13px] font-medium no-underline !text-ink hover:bg-subtle"
         >

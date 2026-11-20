@@ -23,7 +23,18 @@ describe('sample plugins backend', () => {
     const installedPlugins = await samplePluginsBackend.listInstalledPlugins()
     expect(installedPlugins.map((installedPlugin) => installedPlugin.name)).toEqual(['google-maps-scraper', 'website-check'])
     const catalog = await samplePluginsBackend.listPluginCatalog(false)
-    expect(catalog.plugins.map((entry) => entry.name)).toEqual(['whatsapp-api', 'whatsapp-web', 'google-maps-scraper', 'website-check'])
+    expect(catalog.plugins.map((entry) => entry.name)).toEqual([
+      'whatsapp-api',
+      'whatsapp-web',
+      'google-maps-scraper',
+      'website-check',
+      'telegram-bot',
+      'openai',
+      'google-sheets',
+      'stripe',
+      'pdf-tools',
+    ])
+    expect(catalog.plugins.find((entry) => entry.name === 'whatsapp-web')).toMatchObject({ status: 'experimental', tosRisk: 'high', warning: expect.stringContaining('Terms of Service') })
     expect(catalog.plugins.find((entry) => entry.name === 'google-maps-scraper')).toMatchObject({ installedVersion: '1.0.0', updateAvailable: true })
     expect(catalog.plugins.find((entry) => entry.name === 'whatsapp-api')).toMatchObject({
       installedVersion: null,

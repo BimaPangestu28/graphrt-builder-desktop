@@ -1,11 +1,11 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { resetSampleAgents } from '@/api/sampleBackend/agents'
 import { resetSampleCredentials, sampleCredentialsBackend } from '@/api/sampleBackend/credentials'
 import { resetSampleMcpServers, sampleMcpServersBackend } from '@/api/sampleBackend/mcpServers'
-import { emitSamplePluginEvent, resetSamplePlugins, samplePluginsBackend, setSampleBrowserRuntimeStatus } from '@/api/sampleBackend/plugins'
-import { connectionsPluginsPath } from '@/routes'
+import { resetSamplePlugins } from '@/api/sampleBackend/plugins'
+import { routePaths } from '@/routes'
 import { ConnectionsPage } from '../ConnectionsPage'
 
 function renderConnectionsPage(initialPath = '/connections') {
@@ -108,6 +108,26 @@ describe('ConnectionsPage', () => {
     vi.spyOn(sampleCredentialsBackend, 'listProviderStatuses').mockRejectedValue(new BackendError('credentials', 'Keychain is locked'))
     renderConnectionsPage()
     expect(await screen.findByText('Could not load AI models: Keychain is locked')).toBeInTheDocument()
+  })
+
+  it('links to the Plugins page from Advanced, where plugins used to be managed', async () => {
+    renderConnectionsPage()
+    const advancedSection = await screen.findByRole('region', { name: 'Advanced' })
+    expect(within(advancedSection).getByText('Plugins moved to their own page in the sidebar')).toBeInTheDocument()
+    expect(within(advancedSection).getByRole('link', { name: 'Open Plugins' })).toHaveAttribute('href', routePaths.plugins)
+    expect(within(advancedSection).queryByRole('button', { name: 'Manage Plugins' })).not.toBeInTheDocument()
+  })
+
+  it('redirects the old plugins address to the Plugins page', async () => {
+    render(
+      <MemoryRouter initialEntries={['/connections?section=plugins']}>
+        <Routes>
+          <Route path={routePaths.connections} element={<ConnectionsPage />} />
+          <Route path={routePaths.plugins} element={<h1>Plugins page</h1>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    expect(await screen.findByRole('heading', { name: 'Plugins page' })).toBeInTheDocument()
   })
 
   it('filters connections by search', async () => {
@@ -359,199 +379,3 @@ describe('ConnectionsPage MCP servers', () => {
   })
 })
 
-function getPluginCard(pluginName: string) {
-  return screen.getByRole('article', { name: pluginName })
-}
-
-/** Opens a plugin row's details (Manage / Details) unless they are open already. */
-function openPluginDetails(pluginName: string) {
-  const toggle = within(getPluginCard(pluginName)).getByRole('button', { name: new RegExp(`^(Manage|Details for) ${pluginName}$`) })
-  if (toggle.getAttribute('aria-expanded') !== 'true') fireEvent.click(toggle)
-  return getPluginCard(pluginName)
-}
-
-async function openPluginsPanel(installedCount = 2) {
-  renderConnectionsPage()
-  expect(await screen.findByText(new RegExp(`WebAssembly · ${installedCount} installed`))).toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Manage Plugins' }))
-  return screen.findByRole('article', { name: 'whatsapp-api' })
-}
-
-describe('ConnectionsPage plugins', () => {
-  beforeEach(() => {
-    resetSampleCredentials()
-    resetSamplePlugins()
-  })
-  afterEach(() => vi.restoreAllMocks())
-
-  it('shows the installed count and opens the Plugins panel from Manage or the URL', async () => {
-    renderConnectionsPage(connectionsPluginsPath)
-    expect(await screen.findByRole('region', { name: 'Plugins' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Manage Plugins' })).toHaveAttribute('aria-expanded', 'true')
-    fireEvent.click(screen.getByRole('button', { name: 'Manage Plugins' }))
-    expect(screen.queryByRole('region', { name: 'Plugins' })).not.toBeInTheDocument()
-  })
-
-  it('shows what a plugin asks for before it is installed, then installs it', async () => {
-    const whatsAppApiCard = await openPluginsPanel()
-    expect(within(whatsAppApiCard).getByRole('list', { name: 'whatsapp-api needs' })).toHaveTextContent(/Internet.*Secrets.*4 settings/)
-    expect(within(whatsAppApiCard).queryByRole('list', { name: 'What whatsapp-api asks for' })).not.toBeInTheDocument()
-    openPluginDetails('whatsapp-api')
-    const permissions = within(whatsAppApiCard).getByRole('list', { name: 'What whatsapp-api asks for' })
-    expect(permissions).toHaveTextContent('Connects to the internet')
-    expect(permissions).toHaveTextContent('Receives secret values in plain text')
-    expect(permissions).toHaveTextContent('WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID')
-    expect(within(whatsAppApiCard).getByText(/Send WhatsApp text/)).toBeInTheDocument()
-
-    fireEvent.click(within(whatsAppApiCard).getByRole('button', { name: 'Install whatsapp-api' }))
-    await waitFor(() => expect(within(getPluginCard('whatsapp-api')).getByText('Installed v0.3.0')).toBeInTheDocument())
-    expect(within(getPluginCard('whatsapp-api')).getByText('Not trusted')).toBeInTheDocument()
-    expect(within(getPluginCard('whatsapp-api')).getByRole('button', { name: 'Manage whatsapp-api' })).toHaveAttribute('aria-expanded', 'true')
-    expect(within(getPluginCard('whatsapp-api')).getByRole('checkbox', { name: 'Trust whatsapp-api' })).not.toBeChecked()
-    expect(screen.getByText(/WebAssembly · 3 installed/)).toBeInTheDocument()
-  })
-
-  it('shows install progress from plugin events', async () => {
-    vi.spyOn(samplePluginsBackend, 'installPlugin').mockImplementation(() => new Promise(() => {}))
-    const whatsAppApiCard = await openPluginsPanel()
-    fireEvent.click(within(whatsAppApiCard).getByRole('button', { name: 'Install whatsapp-api' }))
-    act(() => emitSamplePluginEvent({ type: 'install_progress', name: 'whatsapp-api', stage: 'downloading', receivedBytes: 20, totalBytes: 50, message: null }))
-    expect(within(whatsAppApiCard).getByRole('status')).toHaveTextContent('Downloading · 40%')
-    expect(within(whatsAppApiCard).getByRole('button', { name: 'Install whatsapp-api' })).toBeDisabled()
-  })
-
-  it('trusts a plugin next to a clear warning', async () => {
-    const setTrustedSpy = vi.spyOn(samplePluginsBackend, 'setPluginTrusted')
-    await openPluginsPanel()
-    const websiteCheckCard = openPluginDetails('website-check')
-    expect(within(websiteCheckCard).getByText(/Plugins run code on this computer: only trust plugins you know/)).toBeInTheDocument()
-    fireEvent.click(within(websiteCheckCard).getByRole('checkbox', { name: 'Trust website-check' }))
-    expect(await within(getPluginCard('website-check')).findByRole('checkbox', { name: 'Trust website-check' })).toBeChecked()
-    await waitFor(() => expect(within(getPluginCard('website-check')).queryByText('Not trusted')).not.toBeInTheDocument())
-    expect(setTrustedSpy).toHaveBeenCalledWith('website-check', true)
-  })
-
-  it('folds optional settings away and shows only required ones', async () => {
-    await samplePluginsBackend.installPlugin('whatsapp-api')
-    await samplePluginsBackend.installPlugin('whatsapp-web')
-    await openPluginsPanel(4)
-
-    const whatsAppApiCard = getPluginCard('whatsapp-api')
-    expect(within(whatsAppApiCard).getByLabelText('WHATSAPP_ACCESS_TOKEN')).toBeVisible()
-    expect(within(whatsAppApiCard).getByLabelText('WHATSAPP_GRAPH_VERSION')).not.toBeVisible()
-
-    const whatsAppWebCard = getPluginCard('whatsapp-web')
-    // No required settings: no inputs until "Optional settings" is opened.
-    for (const input of within(whatsAppWebCard).getAllByLabelText(/^WHATSAPP_WEB_/)) expect(input).not.toBeVisible()
-    const optionalToggle = within(whatsAppWebCard).getByText('Optional settings (5)')
-    expect(within(whatsAppWebCard).getByText('Defaults work for most people')).not.toBeVisible()
-    fireEvent.click(optionalToggle)
-    expect(within(whatsAppWebCard).getByText('Defaults work for most people')).toBeVisible()
-    expect(within(whatsAppWebCard).getByLabelText('WHATSAPP_WEB_DAILY_SEND_LIMIT')).toBeVisible()
-  })
-
-  it('links whatsapp-web by QR code from its card once trusted and the browser is ready', async () => {
-    setSampleBrowserRuntimeStatus('installed')
-    await samplePluginsBackend.installPlugin('whatsapp-web')
-    await openPluginsPanel(3)
-    const card = getPluginCard('whatsapp-web')
-    expect(card).toHaveTextContent('Trust the plugin, then link WhatsApp by scanning a QR code')
-    expect(within(card).queryByRole('button', { name: 'Link WhatsApp (scan QR code)' })).not.toBeInTheDocument()
-
-    fireEvent.click(within(card).getByRole('checkbox', { name: 'Trust whatsapp-web' }))
-    const linkPanel = await within(getPluginCard('whatsapp-web')).findByRole('region', { name: 'Link WhatsApp' })
-    expect(await within(linkPanel).findByRole('status')).toHaveTextContent('WhatsApp: Not linked')
-    expect(linkPanel).toHaveTextContent('A window with a QR code opens. On your phone: WhatsApp → Settings → Linked devices → Link a device')
-
-    fireEvent.click(within(linkPanel).getByRole('button', { name: 'Link WhatsApp (scan QR code)' }))
-    expect(await within(linkPanel).findByText('Linked')).toBeInTheDocument()
-  })
-
-  it('saves and clears a setting without ever showing its value', async () => {
-    await openPluginsPanel()
-    const settingForm = within(openPluginDetails('google-maps-scraper')).getByRole('form', { name: 'google-maps-scraper setting GOOGLE_MAPS_LANGUAGE' })
-    expect(within(settingForm).getByText('Not set')).toBeInTheDocument()
-    const settingInput = within(settingForm).getByLabelText('GOOGLE_MAPS_LANGUAGE')
-    expect(settingInput).toHaveAttribute('type', 'password')
-    fireEvent.change(settingInput, { target: { value: '[LANGUAGE]' } })
-    fireEvent.click(within(settingForm).getByRole('button', { name: 'Save GOOGLE_MAPS_LANGUAGE' }))
-    expect(await within(settingForm).findByText('Saved')).toBeInTheDocument()
-    expect(settingInput).toHaveValue('')
-    fireEvent.click(within(settingForm).getByRole('button', { name: 'Clear GOOGLE_MAPS_LANGUAGE' }))
-    expect(await within(settingForm).findByText('Not set')).toBeInTheDocument()
-  })
-
-  it('updates and removes an installed plugin', async () => {
-    await openPluginsPanel()
-    fireEvent.click(within(getPluginCard('google-maps-scraper')).getByRole('button', { name: 'Update google-maps-scraper' }))
-    expect(await within(getPluginCard('google-maps-scraper')).findByText('Installed v1.1.0')).toBeInTheDocument()
-    expect(within(getPluginCard('google-maps-scraper')).queryByRole('button', { name: 'Update google-maps-scraper' })).not.toBeInTheDocument()
-    fireEvent.click(within(openPluginDetails('website-check')).getByRole('button', { name: 'Remove website-check' }))
-    await waitFor(() => expect(within(getPluginCard('website-check')).getByRole('button', { name: 'Install website-check' })).toBeInTheDocument())
-    expect(screen.getByRole('region', { name: 'Available · 3' })).toContainElement(getPluginCard('website-check'))
-  })
-
-  it('groups installed plugins before available ones, details collapsed until opened', async () => {
-    await openPluginsPanel()
-    const installedGroup = screen.getByRole('region', { name: 'Installed · 2' })
-    const availableGroup = screen.getByRole('region', { name: 'Available · 2' })
-    expect(within(installedGroup).getAllByRole('article').map((card) => card.getAttribute('aria-label'))).toEqual(['google-maps-scraper', 'website-check'])
-    expect(within(availableGroup).getAllByRole('article').map((card) => card.getAttribute('aria-label'))).toEqual(['whatsapp-api', 'whatsapp-web'])
-    // google-maps-scraper only has an optional setting (GOOGLE_MAPS_LANGUAGE), so nothing needs attention.
-    expect(within(getPluginCard('google-maps-scraper')).getByRole('button', { name: 'Manage google-maps-scraper' })).toHaveAttribute('aria-expanded', 'false')
-    const manageButton = within(getPluginCard('website-check')).getByRole('button', { name: 'Manage website-check' })
-    expect(manageButton).toHaveAttribute('aria-expanded', 'false')
-    expect(within(getPluginCard('website-check')).queryByRole('checkbox')).not.toBeInTheDocument()
-    fireEvent.click(manageButton)
-    expect(manageButton).toHaveAttribute('aria-expanded', 'true')
-    expect(within(getPluginCard('website-check')).getByRole('checkbox', { name: 'Trust website-check' })).not.toBeChecked()
-  })
-
-  it('filters plugins by name or description', async () => {
-    await openPluginsPanel()
-    const searchBox = screen.getByRole('searchbox', { name: 'Search plugins' })
-    fireEvent.change(searchBox, { target: { value: 'WHATSAPP' } })
-    expect(screen.queryByRole('article', { name: 'website-check' })).not.toBeInTheDocument()
-    expect(screen.getByRole('region', { name: 'Available · 2' })).toBeInTheDocument()
-    expect(screen.queryByRole('region', { name: /^Installed/ })).not.toBeInTheDocument()
-    fireEvent.change(searchBox, { target: { value: 'no such plugin' } })
-    expect(screen.getByText('No plugins match “no such plugin”')).toBeInTheDocument()
-    fireEvent.change(searchBox, { target: { value: '' } })
-    expect(screen.getAllByRole('article')).toHaveLength(4)
-  })
-
-  it('installs the browser runtime when an installed plugin needs it', async () => {
-    await openPluginsPanel()
-    expect(screen.getByText('Not installed')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Install browser runtime' }))
-    expect(await screen.findByText('Installed')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Install browser runtime' })).not.toBeInTheDocument()
-  })
-
-  it('shows the error when an action fails', async () => {
-    vi.spyOn(samplePluginsBackend, 'removePlugin').mockRejectedValue(new BackendError('internal', 'The plugin folder is in use'))
-    await openPluginsPanel()
-    fireEvent.click(within(openPluginDetails('website-check')).getByRole('button', { name: 'Remove website-check' }))
-    expect(await within(getPluginCard('website-check')).findByRole('alert')).toHaveTextContent('Could not remove website-check: The plugin folder is in use')
-  })
-
-  it('shows load errors and warnings of installed plugins', async () => {
-    const listInstalled = samplePluginsBackend.listInstalledPlugins
-    vi.spyOn(samplePluginsBackend, 'listInstalledPlugins').mockImplementation(async () => {
-      const installedPlugins = await listInstalled()
-      return installedPlugins.map((installedPlugin) => (installedPlugin.name === 'website-check' ? { ...installedPlugin, loadError: 'checksum mismatch' } : installedPlugin))
-    })
-    renderConnectionsPage(connectionsPluginsPath)
-    const websiteCheckCard = await screen.findByRole('article', { name: 'website-check' })
-    expect(within(websiteCheckCard).getByRole('alert')).toHaveTextContent('Could not load website-check: checksum mismatch')
-    expect(within(websiteCheckCard).getByRole('button', { name: 'Manage website-check' })).toHaveAttribute('aria-expanded', 'true')
-  })
-
-  it('keeps installed plugins when the catalog cannot be loaded', async () => {
-    vi.spyOn(samplePluginsBackend, 'listPluginCatalog').mockRejectedValue(new BackendError('internal', 'You are offline'))
-    renderConnectionsPage(connectionsPluginsPath)
-    expect(await screen.findByText(/Could not load the plugin catalog: You are offline/)).toBeInTheDocument()
-    expect(screen.getByRole('article', { name: 'website-check' })).toBeInTheDocument()
-    expect(screen.queryByRole('article', { name: 'whatsapp-api' })).not.toBeInTheDocument()
-  })
-})

@@ -74,7 +74,7 @@ describe('ChatbotSetupPage', () => {
     renderChatbotSetup()
     expect(await screen.findByText('Menu November.pdf')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Catering menu and prices · Manage' })).toHaveAttribute('href', '/knowledge/menu-and-prices')
-    expect(screen.getByRole('link', { name: 'Connect Telegram' })).toHaveAttribute('href', '/connections?section=plugins')
+    expect(screen.getByRole('link', { name: 'Connect Telegram' })).toHaveAttribute('href', '/plugins')
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Remove Catering menu and prices' }))

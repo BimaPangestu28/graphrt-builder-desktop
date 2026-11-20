@@ -1,4 +1,4 @@
-import { connectionsPluginsPath, routePaths } from '@/routes'
+import { routePaths } from '@/routes'
 import { getCredentialStoreName } from '@/lib/platform'
 
 /**
@@ -44,10 +44,10 @@ export const tourSteps: readonly TourStep[] = [
   },
   {
     id: 'plugins',
-    title: 'Plugins and connections',
+    title: 'Plugins',
     explanation:
-      'Plugins add skills such as a Google Maps scraper or WhatsApp. You install each one and choose to trust it before it can run; WhatsApp links by scanning a QR code with your phone. Your AI model keys live in Connections too.',
-    tryLink: { label: 'Browse plugins', path: connectionsPluginsPath },
+      'Plugins add skills such as a Google Maps scraper or WhatsApp. Find them under Plugins in the sidebar: you approve each install and choose to trust it before it can run; WhatsApp links by scanning a QR code with your phone.',
+    tryLink: { label: 'Browse plugins', path: routePaths.plugins },
   },
   {
     id: 'secrets',

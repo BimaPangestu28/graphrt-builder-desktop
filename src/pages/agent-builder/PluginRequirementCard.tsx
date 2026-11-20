@@ -2,7 +2,7 @@ import type { PluginRequirement } from '@/api/pluginRequirementTypes'
 import { Badge, Button, StrokeIcon } from '@/components/ui'
 import { whatsAppWebPluginName } from '../connect-whatsapp/useWhatsAppActions'
 import { WhatsAppWebLinkPanel } from '../connect-whatsapp/WhatsAppWebLinkPanel'
-import { PluginConfigForm } from '../connections/PluginConfigForm'
+import { PluginConfigForm } from '../plugins/PluginConfigForm'
 import {
   browserDownloadSizeNote,
   describeApprovalAction,

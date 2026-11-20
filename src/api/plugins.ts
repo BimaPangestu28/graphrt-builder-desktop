@@ -119,6 +119,17 @@ export function checkPluginSession(name: string): Promise<PluginSessionState> {
   return callBackend('check_plugin_session', { name })
 }
 
+/**
+ * Opens a plugin's README in the default browser. The desktop app looks the link up
+ * itself (installed copy or catalog), so only catalog links can be opened.
+ *
+ * @throws BackendError - `not_found` when the plugin has no README link
+ */
+export function openPluginReadme(name: string): Promise<void> {
+  if (!isDesktopApp()) return samplePluginsBackend.openPluginReadme(name)
+  return callBackend('open_plugin_readme', { name })
+}
+
 /** Subscribes to `plugin-event` (install progress, load errors, list changes). Resolves to the unsubscribe function. */
 export function listenToPluginEvents(onEvent: (pluginEvent: PluginEvent) => void): Promise<() => void> {
   if (!isDesktopApp()) return Promise.resolve(subscribeToSamplePluginEvents(onEvent))

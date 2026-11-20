@@ -1,4 +1,4 @@
-import { agentPath, agentRoutePatterns, routePaths, sampleAgentId } from './routes'
+import { agentPath, agentRoutePatterns, pluginDetailPath, routePaths, sampleAgentId } from './routes'
 
 describe('agentPath', () => {
   it('fills in the agent id', () => {
@@ -17,5 +17,12 @@ describe('agentPath', () => {
     for (const routeKey of Object.keys(agentRoutePatterns) as Array<keyof typeof agentRoutePatterns>) {
       expect(agentPath(routeKey, sampleAgentId)).toBe(routePaths[routeKey])
     }
+  })
+})
+
+describe('pluginDetailPath', () => {
+  it('puts the plugin name under /plugins, escaped', () => {
+    expect(pluginDetailPath('whatsapp-web')).toBe('/plugins/whatsapp-web')
+    expect(pluginDetailPath('a/b')).toBe('/plugins/a%2Fb')
   })
 })

@@ -11,6 +11,19 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
 
 ### Added
 
+- **Plugins page**: plugins have their own sidebar item (after Knowledge) at `/plugins` instead of
+  Connections → Advanced. The catalog is an equal-height card grid (monogram, status badge, two-line
+  description, Internet / Secrets / settings / Browser chips, step count, Install / Update / Set up /
+  Open) with All · Installed · Updates · Needs attention tabs (with counts), search over names,
+  descriptions and step titles, and category chips (derived from names, since the catalog has no
+  category). Installing from a card first asks, naming what the plugin gets. A compact browser
+  runtime banner shows while an installed plugin needs Chromium. Each plugin has a page at
+  `/plugins/:pluginName`: status and Install / Update / Remove, the README warning (with the
+  catalog's terms-of-service risk), set up (trust, browser runtime, the WhatsApp QR link, required
+  settings first), the steps it adds, what it asks for, which agents use it and a README button that
+  opens the browser (`open_plugin_readme`). The catalog view now carries `warning`, `status` and
+  `tos_risk`. Builder "Needs" rows and Home's plugin chips open the plugin's page; the tour, problem
+  actions and chatbot channels open Plugins; `/connections?section=plugins` redirects there.
 - **"Find businesses on Maps and message them on WhatsApp" template**, first in the gallery: it asks the
   builder for a Google Maps search (area, kind of business and how many as run inputs), a short personal
   message per business, "Ask me before sending" with the exact message, sending from your own WhatsApp

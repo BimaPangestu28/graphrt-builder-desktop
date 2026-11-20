@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { hasUsableModelProvider } from './lib/firstLaunch'
-import { agentRoutePatterns, knowledgeDetailPattern, routePaths } from './routes'
+import { agentRoutePatterns, knowledgeDetailPattern, pluginDetailPattern, routePaths } from './routes'
 import { ScreenIndexPage } from './pages/ScreenIndexPage'
 import { WelcomePage } from './pages/WelcomePage'
 import { NewAgentPage } from './pages/NewAgentPage'
@@ -28,6 +28,8 @@ import { SettingsPage } from './pages/SettingsPage'
 import { ErrorStatesPage } from './pages/ErrorStatesPage'
 import { VersionHistoryPage } from './pages/VersionHistoryPage'
 import { MenuBarPage } from './pages/MenuBarPage'
+import { PluginsPage } from './pages/PluginsPage'
+import { PluginDetailPage } from './pages/PluginDetailPage'
 
 /** Screen components keyed by route, in canvas order. */
 const screenRoutes = [
@@ -56,6 +58,8 @@ const screenRoutes = [
   { path: routePaths.errorStates, element: <ErrorStatesPage /> },
   { path: agentRoutePatterns.versionHistory, element: <VersionHistoryPage /> },
   { path: routePaths.menuBar, element: <MenuBarPage /> },
+  { path: routePaths.plugins, element: <PluginsPage /> },
+  { path: pluginDetailPattern, element: <PluginDetailPage /> },
 ]
 
 /** `/`: Welcome until a model provider is set up (first launch), Home afterwards. */

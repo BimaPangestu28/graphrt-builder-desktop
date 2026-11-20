@@ -28,13 +28,30 @@ export const routePaths = {
   errorStates: '/runs/problems', // 23
   versionHistory: '/agents/maps-leads/history', // 24
   menuBar: '/menu-bar', // 25
+  plugins: '/plugins', // 26, moved out of Connections (21) into its own sidebar item
   screenIndex: '/screens',
 } as const
 
 export type RouteKey = keyof typeof routePaths
 
-/** Connections (21) with the Plugins panel open (builder "Needs", screen 05). */
-export const connectionsPluginsPath = `${routePaths.connections}?section=plugins`
+/**
+ * The old address of the plugins list (Connections → Advanced → Plugins). Connections
+ * redirects it to {@link routePaths.plugins} so saved links keep working.
+ */
+export const legacyConnectionsPluginsSection = 'plugins'
+
+/** Plugin detail for any plugin of the catalog or installed. */
+export const pluginDetailPattern = '/plugins/:pluginName'
+
+/**
+ * Builds the URL of a plugin's detail page.
+ *
+ * @example
+ * pluginDetailPath('whatsapp-web') // "/plugins/whatsapp-web"
+ */
+export function pluginDetailPath(pluginName: string): string {
+  return pluginDetailPattern.replace(':pluginName', encodeURIComponent(pluginName))
+}
 
 /**
  * Screens that belong to one agent. App.tsx routes these patterns; `routePaths`

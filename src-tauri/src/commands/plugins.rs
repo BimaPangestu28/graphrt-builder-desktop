@@ -1,4 +1,4 @@
-//! Plugin commands (Connections > Plugins, screen 05). Install progress and
+//! Plugin commands (the Plugins page and screen 05). Install progress and
 //! load errors arrive as `plugin-event` Tauri events (see `plugins::events`).
 //! Setting values go into the keychain and are never returned.
 
@@ -59,6 +59,13 @@ pub async fn delete_plugin_config(
     variable: String,
 ) -> AppResult<InstalledPlugin> {
     state.plugins.delete_config(name.trim(), variable.trim()).await
+}
+
+/// Opens a plugin's README (from its manifest or the catalog) in the default browser.
+#[tauri::command]
+pub fn open_plugin_readme(state: State<'_, AppState>, name: String) -> AppResult<()> {
+    let url = state.plugins.readme_url(name.trim())?;
+    crate::crash_reports::sharing::open_in_browser(&url)
 }
 
 /// Whether Chromium is installed (`install_browser_runtime` lives in `commands::node_runtime`).

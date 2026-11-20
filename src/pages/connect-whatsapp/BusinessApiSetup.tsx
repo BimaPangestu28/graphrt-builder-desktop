@@ -1,12 +1,12 @@
 import type { InstalledPlugin } from '@/api/pluginTypes'
 import { Button } from '@/components/ui'
 import { findInstalledPlugin, type PluginsState } from '@/hooks/usePlugins'
-import { PluginConfigForm, type PluginConfigField } from '../connections/PluginConfigForm'
+import { PluginConfigForm, type PluginConfigField } from '../plugins/PluginConfigForm'
 import { PluginInstallStepBody, PluginTrustStepBody } from './PluginSetupParts'
 import { SetupStep } from './SetupStep'
 import { useBusinessConnectionCheck, whatsAppApiPluginName } from './useWhatsAppActions'
 
-/** The two settings screen 05 asks for; the others keep their defaults (Connections → Plugins). */
+/** The two settings screen 05 asks for; the others keep their defaults (on the whatsapp-api plugin page). */
 const credentialFields = [
   { variable: 'WHATSAPP_ACCESS_TOKEN', label: 'Access token' },
   { variable: 'WHATSAPP_PHONE_NUMBER_ID', label: 'Phone number ID' },

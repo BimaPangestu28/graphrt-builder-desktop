@@ -320,6 +320,27 @@ impl PluginService {
             .ok_or_else(|| AppError::NotFound(format!("plugin {name}")))
     }
 
+    /// The README link of a plugin, from the installed copy or the known catalog
+    /// (never fetched for this). Only `https://` links are returned.
+    ///
+    /// # Errors
+    /// `NotFound` when neither lists the plugin or it has no README link;
+    /// `InvalidInput` when the link is not `https://`.
+    pub fn readme_url(&self, name: &str) -> AppResult<String> {
+        let installed_url = self.installed(name).ok().and_then(|plugin| plugin.readme_url);
+        let catalog_url = || {
+            self.known_catalog()
+                .and_then(|index| index.plugins.into_iter().find(|plugin| plugin.name == name))
+                .and_then(|plugin| plugin.readme_url)
+        };
+        let url =
+            installed_url.or_else(catalog_url).ok_or_else(|| AppError::NotFound(format!("README of plugin {name}")))?;
+        if !url.starts_with("https://") {
+            return Err(AppError::InvalidInput(format!("the README link of {name} is not https")));
+        }
+        Ok(url)
+    }
+
     /// The catalog with install state. Uses the copy fetched earlier in this
     /// session unless `refresh`; when fetching fails, the last saved copy.
     ///
