@@ -7,6 +7,8 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-21
+
 The desktop app now runs agents on the graphrt runtime instead of showing sample data.
 
 ### Added
@@ -307,5 +309,6 @@ connected to the graphrt runtime**, so no agent actually runs.
 - The mobile companion screens from the design are not built.
 - macOS builds are unsigned.
 
-[Unreleased]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/BimaPangestu28/graphrt-builder-desktop/releases/tag/v0.1.0
