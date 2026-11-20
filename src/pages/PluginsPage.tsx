@@ -4,6 +4,7 @@ import { useBrowserRuntime } from '@/hooks/useBrowserRuntime'
 import { usePlugins, type PluginsState } from '@/hooks/usePlugins'
 import { describeError } from '@/lib/agentDisplay'
 import { BrowserRuntimeBanner } from './plugins/BrowserRuntimeBanner'
+import { PluginAutoUpdateToggle } from './plugins/PluginAutoUpdateToggle'
 import { PluginCatalogCard } from './plugins/PluginCatalogCard'
 import { PluginCategoryChips, PluginSearchBox, PluginTabs } from './plugins/PluginFilterBar'
 import { buildPluginListItems, countPluginsByTab, type PluginFilter, type PluginListItem } from './plugins/pluginDisplay'
@@ -68,7 +69,10 @@ function PluginCatalog({ items, plugins }: PluginCatalogProps) {
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <PluginTabs activeFilter={filters.tab} counts={countPluginsByTab(items)} onChange={(tab) => updateFilters({ tab })} />
-          <PluginSearchBox searchText={filters.searchText} onChange={(searchText) => updateFilters({ searchText })} />
+          <div className="flex flex-wrap items-start gap-3">
+            <PluginAutoUpdateToggle />
+            <PluginSearchBox searchText={filters.searchText} onChange={(searchText) => updateFilters({ searchText })} />
+          </div>
         </div>
         <PluginCategoryChips categoryCounts={shownCategoryCounts} activeCategory={filters.category} onChange={(category) => updateFilters({ category })} />
       </div>

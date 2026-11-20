@@ -17,6 +17,7 @@ use crate::error::{AppError, AppResult};
 use crate::node_runtime::NodeRuntime;
 use crate::storage::Database;
 
+mod auto_update;
 mod catalog_plugins;
 mod plugin_icons;
 

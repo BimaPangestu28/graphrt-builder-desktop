@@ -92,6 +92,20 @@ function UpdateDetails({ updateControls }: { updateControls: AppUpdateControls }
   )
 }
 
+/** "Automatically update plugins" (also on the Plugins page); waits for the stored preferences. */
+function PluginAutoUpdateRow({ appSettings, updateAppSetting }: Pick<UpdatesSectionProps, 'appSettings' | 'updateAppSetting'>) {
+  if (!appSettings) return null
+  return (
+    <ToggleRow
+      title="Automatically update plugins"
+      description="New plugin versions install by themselves when no agent is running. Versions asking for new permissions wait for your approval"
+      isChecked={appSettings.autoUpdatePlugins}
+      onToggle={(isChecked) => void updateAppSetting('autoUpdatePlugins', isChecked)}
+      hasDivider={false}
+    />
+  )
+}
+
 /**
  * Updates group: the running version, "Check for updates", what the last check found
  * (with release notes and the download / restart that follows) and "Automatically
@@ -106,6 +120,7 @@ export function UpdatesSection({ appSettings, updateAppSetting, fallbackVersion 
       <SettingsGroup headingId="settings-updates-heading" title="Updates">
         <ActionRow title="graphrt" description={versionText} action={null} />
         <p className="m-0 py-3.5 text-[13px] text-body">Updates are available in the desktop app</p>
+        <PluginAutoUpdateRow appSettings={appSettings} updateAppSetting={updateAppSetting} />
       </SettingsGroup>
     )
   }
@@ -132,6 +147,7 @@ export function UpdatesSection({ appSettings, updateAppSetting, fallbackVersion 
           hasDivider={false}
         />
       )}
+      <PluginAutoUpdateRow appSettings={appSettings} updateAppSetting={updateAppSetting} />
     </SettingsGroup>
   )
 }

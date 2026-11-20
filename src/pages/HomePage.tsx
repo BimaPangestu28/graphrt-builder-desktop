@@ -13,6 +13,7 @@ import { buildMonthlyNumbers, startOfLocalMonth, type MonthlyNumbers } from '@/p
 import { buildNeedsYouItems, isSetupProblem } from '@/pages/home-dashboard/needsYou'
 import { NeedsYouSection } from '@/pages/home-dashboard/NeedsYouSection'
 import { RecentRunsTable } from '@/pages/home-dashboard/RecentRunsTable'
+import { UpdatesNotice } from '@/pages/home-dashboard/UpdatesNotice'
 import { useHomeData, type HomeData } from '@/pages/home-dashboard/useHomeData'
 
 const recentRunLimit = 5
@@ -44,7 +45,8 @@ const dashboardGridClassName = 'grid grid-cols-1 items-start gap-8 @min-[920px]:
 /**
  * Screen 09 · Home.
  * A desktop dashboard in the shared page frame: a greeting with how many things need the
- * user and the next scheduled run, then two columns. The main column has "Needs you"
+ * user and the next scheduled run, then two columns. The main column starts with a
+ * dismissible "Updates" notice while the app or plugins have news (see `UpdatesNotice`), then "Needs you"
  * (approvals, waiting chats, failed latest runs, agents not set up, broken schedules, each
  * with one action) first while anything is waiting, the agent cards with their status and
  * next step, and the last few runs in plain words. The right rail has a compact box to
@@ -71,6 +73,7 @@ export function HomePage() {
         <div className="@container">
           <div className={dashboardGridClassName}>
             <section aria-label="Overview" className="flex min-w-0 flex-col gap-8">
+              <UpdatesNotice />
               {isNeedsYouFirst && needsYouSection}
               <AgentSummaryCards agents={agents} loadError={agentsError} runs={runs} runStats={runStats} triggers={triggers} pluginRequirements={pluginRequirements} />
               <RecentRunsTable runs={runs ? buildRecentRunRows(runs.slice(0, recentRunLimit), agentName) : null} loadError={runsError} />

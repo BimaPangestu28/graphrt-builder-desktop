@@ -11,6 +11,21 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
 
 ### Added
 
+- **Automatic plugin updates and an Updates notice on Home**: "Automatically update plugins" (on by
+  default; Settings → Updates and "Update automatically" next to the Plugins tabs, stored as
+  `app.auto_update_plugins`). About a minute after launch and then every 6 hours the catalog is
+  fetched again and installed plugins with another catalog version are updated in the background,
+  only when the new version asks for nothing more than the installed one (no new settings, no
+  plaintext secrets). The downloaded manifest is checked against that limit before it replaces
+  anything, so trust never changes silently. Updates asking for more wait for the user ("needs your
+  approval"; the catalog view now carries `update_needs_approval`, and the card offers "Review
+  update"). Nothing updates while an agent run is running or paused (retried after 15 minutes), and
+  nothing is ever installed or removed. Automatic updates are remembered (`plugins.auto_updated`,
+  last 20; `list_plugin_auto_updates`). Home shows a compact, dismissible Updates notice: the app
+  update (ready → Restart, downloading, or available → Download), plugin updates with Review and
+  "Update all" (`update_all_plugins`, which skips updates needing approval), updates needing
+  approval, and "Updated automatically: X 0.2.0 → 0.2.1" for 24 hours. Dismissing hides it until
+  something new appears. The Plugins sidebar item shows how many plugin updates are waiting.
 - **Plugin icons**: the catalog's optional `icon_url` (https only; a bad link drops only the icon) is
   shown on Plugins page cards, plugin pages and the builder's plugin setup cards. The app downloads
   each SVG once (64 KB cap, 10 s timeout, https-only redirects), keeps it in `plugin-icons/` next to

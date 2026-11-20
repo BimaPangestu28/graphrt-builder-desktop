@@ -52,6 +52,32 @@ export interface PluginCatalogEntry {
   installedVersion: string | null
   /** Installed and the catalog has a different version. */
   updateAvailable: boolean
+  /**
+   * The update asks for more than the installed version (more settings or plaintext secrets):
+   * it never installs automatically, and installing it means trusting the plugin again.
+   */
+  updateNeedsApproval: boolean
+}
+
+/** One plugin moved between versions. */
+export interface PluginVersionChange {
+  name: string
+  fromVersion: string
+  toVersion: string
+}
+
+/** An update graphrt installed by itself ("Automatically update plugins"). */
+export interface PluginAutoUpdate extends PluginVersionChange {
+  /** RFC 3339 UTC. */
+  updatedAt: string
+}
+
+/** What "Update all" did. */
+export interface PluginBulkUpdateSummary {
+  updated: PluginVersionChange[]
+  /** Updates left alone because they ask for more permissions. */
+  needsApproval: string[]
+  failed: Array<{ name: string; message: string }>
 }
 
 export interface PluginCatalog {

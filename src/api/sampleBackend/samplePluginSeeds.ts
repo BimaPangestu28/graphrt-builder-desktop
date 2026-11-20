@@ -8,7 +8,7 @@ import type { PluginCatalogEntry } from '../pluginTypes'
  */
 
 /** A catalog entry before it is merged with this computer's install state. */
-export type SamplePluginSeed = Omit<PluginCatalogEntry, 'installedVersion' | 'updateAvailable'>
+export type SamplePluginSeed = Omit<PluginCatalogEntry, 'installedVersion' | 'updateAvailable' | 'updateNeedsApproval'>
 
 const readmeBaseUrl = 'https://github.com/graphrt/graphrt-plugins/tree/main/plugins'
 

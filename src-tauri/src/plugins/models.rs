@@ -170,6 +170,9 @@ pub struct PluginCatalogEntry {
     pub size_bytes: u64,
     pub installed_version: Option<String>,
     pub update_available: bool,
+    /// The update asks for more than the installed version (more settings or plaintext
+    /// secrets): it is never installed automatically and drops trust when the user installs it.
+    pub update_needs_approval: bool,
 }
 
 /// What `list_plugin_catalog` returns.

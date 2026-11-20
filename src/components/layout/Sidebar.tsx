@@ -4,6 +4,7 @@ import { isDesktopApp } from '@/api/client'
 import type { Agent } from '@/api/types'
 import { useAgents } from '@/hooks/useAgents'
 import { useConversationCounts } from '@/hooks/useConversations'
+import { usePluginUpdateData } from '@/hooks/usePluginUpdates'
 import { useRunnerStatus, type RunnerStatusFacts } from '@/hooks/useRunnerStatus'
 import { getKindLabel, getProviderName, getStatusDotTone } from '@/lib/agentDisplay'
 import { agentPath, routePaths } from '@/routes'
@@ -130,6 +131,27 @@ function DesktopRunnerStatusLine() {
   )
 }
 
+/**
+ * Number of plugin updates waiting, next to Plugins. Hidden from the link's accessible name
+ * (it stays "Plugins") and described by its title instead.
+ */
+function PluginUpdateBadge() {
+  const { data: pluginUpdates } = usePluginUpdateData()
+  const updateCount = pluginUpdates?.pendingUpdates.length ?? 0
+  if (updateCount === 0) return null
+  const description = updateCount === 1 ? '1 plugin update available' : `${updateCount} plugin updates available`
+  return (
+    <span
+      aria-hidden="true"
+      title={description}
+      data-testid="plugin-update-badge"
+      className="box-border flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-soft px-1.5 text-[11px] font-semibold text-brand-strong"
+    >
+      {updateCount}
+    </span>
+  )
+}
+
 /** Left navigation shared by every in-app screen. The Inbox badge is the live number of chats waiting for you. */
 export function Sidebar({ activeNav, agents = { kind: 'list' }, runnerStatus = 'Online · 2 agents scheduled', inboxCount = 0 }: SidebarProps) {
   const { data: conversationCounts } = useConversationCounts()
@@ -147,6 +169,7 @@ export function Sidebar({ activeNav, agents = { kind: 'list' }, runnerStatus = '
         {primaryNavItems.map((item) => (
           <Link key={item.key} to={item.path} aria-current={activeNav === item.key ? 'page' : undefined} className={navLinkClassNames(activeNav === item.key)}>
             {item.label}
+            {item.key === 'plugins' && <PluginUpdateBadge />}
             {item.key === 'inbox' && waitingCount > 0 && (
               <span className="box-border flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-soft px-1.5 text-[11px] font-semibold text-amber-strong">
                 {waitingCount}

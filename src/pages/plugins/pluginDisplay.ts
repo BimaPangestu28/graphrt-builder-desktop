@@ -14,6 +14,8 @@ export interface PluginListItem {
   nodes: PluginNodeInfo[]
   installed: InstalledPlugin | null
   updateAvailable: boolean
+  /** The update asks for more permissions: never automatic, and it needs the plugin trusted again. */
+  updateNeedsApproval: boolean
   category: PluginCategory
   readmeUrl: string | null
   /** The catalog's icon link (or the installed copy's), or null when the plugin has none. */
@@ -35,6 +37,7 @@ function fromInstalledPlugin(installedPlugin: InstalledPlugin): PluginListItem {
     nodes,
     installed: installedPlugin,
     updateAvailable: false,
+    updateNeedsApproval: false,
     category: categorizePlugin(name, description),
     readmeUrl,
     iconUrl,
@@ -63,6 +66,7 @@ export function buildPluginListItems(catalog: PluginCatalog | null, installedPlu
     nodes: entry.nodes,
     installed: installedByName.get(entry.name) ?? null,
     updateAvailable: entry.updateAvailable,
+    updateNeedsApproval: entry.updateNeedsApproval,
     category: categorizePlugin(entry.name, entry.description),
     readmeUrl: entry.readmeUrl ?? installedByName.get(entry.name)?.readmeUrl ?? null,
     iconUrl: entry.iconUrl ?? installedByName.get(entry.name)?.iconUrl ?? null,

@@ -206,6 +206,19 @@ impl Database {
         Ok(usize::try_from(count).unwrap_or(0))
     }
 
+    /// How many runs of any trigger are running or paused (waiting for the user): a
+    /// paused run resumes with the plugins it compiled with, so plugins are not replaced
+    /// under it.
+    pub fn count_active_runs(&self) -> AppResult<usize> {
+        let connection = self.lock()?;
+        let count: i64 = connection.query_row(
+            "SELECT COUNT(*) FROM runs WHERE status IN (?1, ?2)",
+            params![RunStatus::Running, RunStatus::Paused],
+            |row| row.get(0),
+        )?;
+        Ok(usize::try_from(count).unwrap_or(0))
+    }
+
     /// Runs left in `Running` by a crash or quit are marked `Failed` at start-up.
     ///
     /// Paused runs are left alone: their snapshot is persisted, so they remain resumable.

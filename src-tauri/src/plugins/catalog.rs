@@ -90,16 +90,25 @@ pub(super) fn write_cache(cache_file: &Path, bytes: &[u8]) {
     }
 }
 
+/// Whether the catalog version of `plugin` asks for more than the installed copy
+/// (`installed`'s manifest permissions): such an update waits for the user.
+pub(super) fn update_asks_for_more(plugin: &CatalogPlugin, installed: &PluginState) -> bool {
+    PluginPermissions::from(&plugin.permissions).asks_for_more_than(&installed.permissions)
+}
+
 /// The catalog with each plugin's install state.
 pub(super) fn catalog_view(index: &CatalogIndex, installed: &[PluginState], from_cache: bool) -> PluginCatalog {
     let plugins = index
         .plugins
         .iter()
         .map(|plugin| {
-            let installed_version =
-                installed.iter().find(|state| state.name == plugin.name).map(|state| state.version.clone());
+            let installed_state = installed.iter().find(|state| state.name == plugin.name);
+            let installed_version = installed_state.map(|state| state.version.clone());
+            let update_available = installed_version.as_ref().is_some_and(|version| version != &plugin.version);
             PluginCatalogEntry {
-                update_available: installed_version.as_ref().is_some_and(|version| version != &plugin.version),
+                update_available,
+                update_needs_approval: update_available
+                    && installed_state.is_some_and(|state| update_asks_for_more(plugin, state)),
                 installed_version,
                 name: plugin.name.clone(),
                 version: plugin.version.clone(),

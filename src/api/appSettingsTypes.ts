@@ -28,6 +28,11 @@ export interface AppSettings {
   runHistoryRetentionDays: number | null
   /** Download a new version in the background as soon as it is found (installed on restart). */
   autoDownloadUpdates: boolean
+  /**
+   * Install newer plugin versions in the background when they ask for nothing more than the
+   * installed one (never while a run is running or paused). Updates asking for more wait.
+   */
+  autoUpdatePlugins: boolean
 }
 
 export interface ExportSummary {
