@@ -27,6 +27,10 @@ pub enum AppError {
     Serialization(#[from] serde_json::Error),
     #[error("{0}")]
     Internal(String),
+    /// The action would replace something the user has not agreed to replace (e.g. a
+    /// sideloaded plugin over one installed from the catalog); ask, then retry.
+    #[error("{0}")]
+    Conflict(String),
     /// The agent uses plugins that are not installed (technical names, sorted; the
     /// message shows them humanized).
     #[error("this agent needs plugins that are not installed: {}", humanized_plugin_names(.0))]
@@ -53,6 +57,7 @@ impl AppError {
             Self::Schedule(_) => "schedule",
             Self::Serialization(_) => "serialization",
             Self::Internal(_) => "internal",
+            Self::Conflict(_) => "conflict",
             Self::MissingPlugins(_) => "missing_plugins",
         }
     }

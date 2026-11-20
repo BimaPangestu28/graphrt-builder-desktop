@@ -16,16 +16,27 @@ use super::models::PluginPermissions;
 use crate::error::{AppError, AppResult};
 
 /// A staging folder that is removed when dropped (also on early returns).
-struct StagingDir {
-    path: PathBuf,
+pub(super) struct StagingDir {
+    pub path: PathBuf,
 }
 
 impl StagingDir {
-    fn create(plugins_dir: &Path) -> AppResult<Self> {
+    /// Creates `<plugins_dir>/.staging-<uuid>` (and `plugins_dir` when missing).
+    pub fn create(plugins_dir: &Path) -> AppResult<Self> {
+        std::fs::create_dir_all(plugins_dir).map_err(|error| io_error(plugins_dir, &error))?;
         let path = plugins_dir.join(format!(".staging-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&path).map_err(|error| io_error(&path, &error))?;
         Ok(Self { path })
     }
+}
+
+/// A plugin unpacked into a staging folder, not checked or moved into place yet.
+pub(super) struct StagedPlugin {
+    /// Removed (with `dir`) when this is dropped without [`finish_install`].
+    pub staging: StagingDir,
+    /// `<staging>/<name>`.
+    pub dir: PathBuf,
+    pub name: String,
 }
 
 impl Drop for StagingDir {
@@ -61,15 +72,29 @@ pub(super) fn install_tarball(
     tarball: &[u8],
     checks: &InstallChecks<'_>,
 ) -> AppResult<LoadedManifest> {
-    std::fs::create_dir_all(plugins_dir).map_err(|error| io_error(plugins_dir, &error))?;
     let staging = StagingDir::create(plugins_dir)?;
-    let extracted = extract_plugin_tarball(tarball, name, &staging.path)?;
-    check_loads(&extracted, name, checks.base_registry)?;
+    let dir = extract_plugin_tarball(tarball, name, &staging.path)?;
+    finish_install(StagedPlugin { staging, dir, name: name.to_owned() }, plugins_dir, checks)
+}
+
+/// Checks a staged plugin loads (and stays within `checks.permission_limit`), then moves
+/// it to `<plugins_dir>/<name>`, replacing an existing install. Returns the installed manifest.
+/// Shared by catalog installs and sideloading, so both pass the same checks.
+///
+/// # Errors
+/// As [`install_tarball`]; the staging folder is removed and an existing install stays as it was.
+pub(super) fn finish_install(
+    staged: StagedPlugin,
+    plugins_dir: &Path,
+    checks: &InstallChecks<'_>,
+) -> AppResult<LoadedManifest> {
+    let StagedPlugin { staging, dir, name } = staged;
+    check_loads(&dir, &name, checks.base_registry)?;
     if let Some(limit) = &checks.permission_limit {
-        check_permission_limit(&extracted, name, limit)?;
+        check_permission_limit(&dir, &name, limit)?;
     }
-    let target = plugins_dir.join(name);
-    swap_into_place(&extracted, &target, &staging.path)?;
+    let target = plugins_dir.join(&name);
+    swap_into_place(&dir, &target, &staging.path)?;
     LoadedManifest::from_dir(&target).map_err(|error| AppError::Internal(error.to_string()))
 }
 

@@ -40,6 +40,8 @@ mod prompt_guide;
 pub mod requirements;
 pub(crate) mod session;
 mod settings;
+mod sideload;
+pub(crate) mod source;
 
 #[cfg(test)]
 pub(crate) mod tests;
@@ -353,13 +355,14 @@ impl PluginService {
                         })
                     })
                     .collect::<AppResult<Vec<_>>>()?;
-                let display_name = resolve_display_name(
-                    &plugin.name,
-                    [
-                        session_display_names.get(&plugin.name).and_then(Option::as_deref),
-                        record.display_name.as_deref(),
-                    ],
-                );
+                // A sideloaded plugin never takes a catalog plugin's name, icon or links.
+                let session_display_name = if record.is_local() {
+                    None
+                } else {
+                    session_display_names.get(&plugin.name).and_then(Option::as_deref)
+                };
+                let display_name =
+                    resolve_display_name(&plugin.name, [session_display_name, record.display_name.as_deref()]);
                 Ok(InstalledPlugin {
                     name: plugin.name.clone(),
                     display_name,
@@ -375,6 +378,10 @@ impl PluginService {
                     warnings: plugin.warnings.clone(),
                     readme_url: record.readme_url,
                     icon_url: record.icon_url,
+                    source: record.source,
+                    publisher: record.publisher,
+                    repository_url: record.repository_url,
+                    local_path: record.local_path,
                 })
             })
             .collect()
@@ -398,17 +405,47 @@ impl PluginService {
     /// `NotFound` when neither lists the plugin or it has no README link;
     /// `InvalidInput` when the link is not `https://`.
     pub fn readme_url(&self, name: &str) -> AppResult<String> {
-        let installed_url = self.installed(name).ok().and_then(|plugin| plugin.readme_url);
+        self.plugin_link(name, "README", |installed| installed.readme_url.clone(), |entry| entry.readme_url.clone())
+    }
+
+    /// The source repository link of a plugin, looked up like [`PluginService::readme_url`].
+    ///
+    /// # Errors
+    /// `NotFound` when neither lists the plugin or it has no repository link;
+    /// `InvalidInput` when the link is not `https://`.
+    pub fn repository_url(&self, name: &str) -> AppResult<String> {
+        self.plugin_link(
+            name,
+            "repository",
+            |installed| installed.repository_url.clone(),
+            |entry| entry.repository_url.clone(),
+        )
+    }
+
+    /// A link of `name` from the installed copy, else the known catalog (never for a
+    /// sideloaded plugin: a catalog plugin of the same name is a different plugin).
+    fn plugin_link(
+        &self,
+        name: &str,
+        label: &str,
+        from_installed: impl Fn(&InstalledPlugin) -> Option<String>,
+        from_catalog: impl Fn(&models::CatalogPlugin) -> Option<String>,
+    ) -> AppResult<String> {
+        let installed = self.installed(name).ok();
+        let is_local = installed.as_ref().is_some_and(|plugin| plugin.source == models::PluginSource::Local);
+        let installed_url = installed.as_ref().and_then(&from_installed);
         let catalog_url = || {
+            if is_local {
+                return None;
+            }
             self.known_catalog()
                 .and_then(|index| index.plugins.into_iter().find(|plugin| plugin.name == name))
-                .and_then(|plugin| plugin.readme_url)
+                .and_then(|plugin| from_catalog(&plugin))
         };
-        let url =
-            installed_url.or_else(catalog_url).ok_or_else(|| AppError::NotFound(format!("README of plugin {name}")))?;
-        if !url.starts_with("https://") {
-            return Err(AppError::InvalidInput(format!("the README link of {name} is not https")));
-        }
+        let url = installed_url
+            .or_else(catalog_url)
+            .ok_or_else(|| AppError::NotFound(format!("{label} of plugin {name}")))?;
+        require_https(&url).map_err(|_| AppError::InvalidInput(format!("the {label} link of {name} is not https")))?;
         Ok(url)
     }
 
@@ -455,6 +492,9 @@ impl PluginService {
     /// The icon link of `name`: from the catalog fetched this session when it lists the
     /// plugin, else the saved catalog, else the install record.
     fn icon_url(&self, name: &str) -> Option<String> {
+        if self.is_local_plugin(name) {
+            return None;
+        }
         let from_session_catalog = self.catalog.lock().ok().and_then(|catalog| {
             let plugin = catalog.as_ref()?.index.plugins.iter().find(|plugin| plugin.name == name)?;
             Some(plugin.icon_url.clone())
@@ -531,6 +571,11 @@ impl PluginService {
     }
 
     async fn install_from_catalog(&self, name: &str, mode: &InstallMode) -> AppResult<InstalledPlugin> {
+        if self.is_local_plugin(name) {
+            return Err(AppError::InvalidInput(format!(
+                "plugin {name} was installed from a folder or archive on this computer; remove it before installing the catalog version"
+            )));
+        }
         let entry = self.catalog_entry(name).await?;
         require_https(&entry.tarball_url)?;
         self.cache_detail_for_install(&entry).await;
@@ -572,6 +617,10 @@ impl PluginService {
             readme_url: entry.readme_url.clone(),
             icon_url: entry.icon_url.clone(),
             display_name: entry.display_name.clone(),
+            source: source::catalog_entry_source(&entry),
+            publisher: entry.publisher.clone(),
+            repository_url: entry.repository_url.clone(),
+            local_path: None,
         };
         settings::save_install_record(&self.db, name, Some(record))?;
         self.reload();
@@ -717,6 +766,31 @@ impl PluginService {
 
     pub fn browser_runtime_status(&self) -> BrowserRuntimeStatus {
         self.node_runtime.browser_runtime_status()
+    }
+
+    /// Whether `name` was sideloaded (its install record says `local`). An unreadable
+    /// record counts as local, so a catalog update never replaces it by mistake.
+    fn is_local_plugin(&self, name: &str) -> bool {
+        match settings::install_records(&self.db) {
+            Ok(records) => records.get(name).is_some_and(InstallRecord::is_local),
+            Err(error) => {
+                log::warn!("could not read the install record of plugin {name}: {error}");
+                true
+            }
+        }
+    }
+
+    /// The installed plugins that catalog versions apply to: every one except sideloaded
+    /// plugins, which are never matched against catalog updates (or auto-updated).
+    pub(super) fn catalog_matched_plugins(&self) -> Vec<host::PluginState> {
+        let local_names: HashSet<String> = match settings::install_records(&self.db) {
+            Ok(records) => records.into_iter().filter(|(_, record)| record.is_local()).map(|(name, _)| name).collect(),
+            Err(error) => {
+                log::warn!("could not read the plugin install records; no catalog updates are offered: {error}");
+                return Vec::new();
+            }
+        };
+        self.snapshot().plugins.iter().filter(|plugin| !local_names.contains(&plugin.name)).cloned().collect()
     }
 
     fn require_installed(&self, name: &str) -> AppResult<()> {

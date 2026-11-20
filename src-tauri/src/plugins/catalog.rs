@@ -57,7 +57,9 @@ pub(super) fn parse_catalog_v2(bytes: &[u8]) -> AppResult<CatalogIndex> {
 /// Parses a catalog that must use `expected_schema`. Entries with an invalid name, a
 /// non-https tarball URL or a malformed checksum are dropped (logged), so one bad
 /// entry does not hide the others. Invalid optional fields only lose that field: a
-/// non-https `icon_url`, an invalid `display_name` (see [`clean_display_name`]) and,
+/// non-https `icon_url`, an invalid `display_name` (see [`clean_display_name`]), an
+/// unknown `source`, invalid `publisher` or non-https `repository_url` (see
+/// `source::clean_source_fields`) and,
 /// in v2, invalid detail fields (see [`clean_detail_fields`]).
 ///
 /// # Errors
@@ -74,6 +76,7 @@ pub(super) fn parse_catalog_as(bytes: &[u8], expected_schema: u32) -> AppResult<
     for plugin in &mut index.plugins {
         drop_invalid_icon_url(plugin);
         clean_display_name(plugin);
+        super::source::clean_source_fields(plugin);
         if expected_schema == CATALOG_SCHEMA_V2 {
             clean_detail_fields(plugin);
         } else {
@@ -310,6 +313,9 @@ pub(super) fn catalog_view(index: &CatalogIndex, installed: &[PluginState], orig
                 status: plugin.status.clone(),
                 tos_risk: plugin.tos_risk.clone(),
                 size_bytes: plugin.size_bytes,
+                source: super::source::catalog_entry_source(plugin),
+                publisher: plugin.publisher.clone(),
+                repository_url: plugin.repository_url.clone(),
             }
         })
         .collect();

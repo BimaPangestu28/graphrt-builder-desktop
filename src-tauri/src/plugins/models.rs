@@ -4,6 +4,8 @@
 
 use serde::{Deserialize, Serialize};
 
+pub use super::source::PluginSource;
+
 /// What a plugin asks for: network access (informational), plaintext secrets
 /// and host environment variables. Shown before install; granted on trust.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -103,6 +105,16 @@ pub struct CatalogPlugin {
     /// v2: size of the detail file in bytes.
     #[serde(default, deserialize_with = "u64_or_none")]
     pub detail_size_bytes: Option<u64>,
+    /// `official` (missing means official) or `community`; normalized when the catalog is
+    /// parsed (see `source::clean_source_fields`), read with `source::catalog_entry_source`.
+    #[serde(default, deserialize_with = "string_or_none")]
+    pub source: Option<String>,
+    /// Who maintains the plugin, e.g. "graphrt" or "Acme Inc." (at most 60 characters).
+    #[serde(default, deserialize_with = "string_or_none")]
+    pub publisher: Option<String>,
+    /// HTTPS link to the plugin's source repository (dropped when not https).
+    #[serde(default, deserialize_with = "string_or_none")]
+    pub repository_url: Option<String>,
 }
 
 /// A v2 index's short form of a node: enough for lists and "which plugin owns this kind".
@@ -269,6 +281,12 @@ pub struct PluginCatalogEntry {
     /// Terms-of-service risk (`none`, `low`, `medium`, `high`), when the catalog says.
     pub tos_risk: Option<String>,
     pub size_bytes: u64,
+    /// `official` or `community` (never `local`: sideloaded plugins are not in the catalog).
+    pub source: PluginSource,
+    /// Who maintains it, when the catalog says.
+    pub publisher: Option<String>,
+    /// HTTPS link to its source repository, when the catalog has one.
+    pub repository_url: Option<String>,
     pub installed_version: Option<String>,
     pub update_available: bool,
     /// The update asks for more than the installed version (more settings or plaintext
@@ -321,6 +339,14 @@ pub struct InstalledPlugin {
     pub readme_url: Option<String>,
     /// The catalog's icon link at install time (see [`PluginCatalogEntry::icon_url`]).
     pub icon_url: Option<String>,
+    /// Where it was installed from: the catalog's `official` / `community`, or `local`.
+    pub source: PluginSource,
+    /// Who maintains it (from the catalog at install time), when known.
+    pub publisher: Option<String>,
+    /// HTTPS link to its source repository (from the catalog at install time), when known.
+    pub repository_url: Option<String>,
+    /// For a `local` plugin: the folder or archive it was installed from, for display only.
+    pub local_path: Option<String>,
 }
 
 /// The outputs of a one-off plugin action.
@@ -376,4 +402,24 @@ pub struct InstallRecord {
     /// The catalog's curated display name at install time, so it shows offline.
     #[serde(default)]
     pub display_name: Option<String>,
+    /// Where it was installed from. Missing (older records) or unknown means official.
+    /// A `local` plugin is never auto-updated or matched against catalog updates.
+    #[serde(default, deserialize_with = "super::source::lenient_record_source")]
+    pub source: PluginSource,
+    /// The catalog's publisher at install time.
+    #[serde(default)]
+    pub publisher: Option<String>,
+    /// The catalog's repository link at install time.
+    #[serde(default)]
+    pub repository_url: Option<String>,
+    /// For a `local` plugin: the folder or archive it was installed from (display only).
+    #[serde(default)]
+    pub local_path: Option<String>,
+}
+
+impl InstallRecord {
+    /// Whether the plugin was sideloaded (Settings › Developer mode), not installed from the catalog.
+    pub fn is_local(&self) -> bool {
+        self.source == PluginSource::Local
+    }
 }

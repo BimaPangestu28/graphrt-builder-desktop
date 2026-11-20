@@ -22,6 +22,7 @@ mod catalog_plugins;
 mod catalog_v2;
 mod plugin_display_names;
 mod plugin_icons;
+mod sideload;
 
 const PLUGIN: &str = "fixture-echo";
 /// Catalog entries of plugins the tests never install.

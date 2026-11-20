@@ -62,7 +62,7 @@ impl PluginService {
                 Err(error) => (self.saved_catalog_or(error)?, CatalogOrigin { from_cache: true, fetched_at: None }),
             },
         };
-        Ok(catalog::catalog_view(&index, &self.snapshot().plugins, origin))
+        Ok(catalog::catalog_view(&index, &self.catalog_matched_plugins(), origin))
     }
 
     pub(super) fn session_catalog(&self) -> Option<FetchedCatalog> {

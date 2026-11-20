@@ -27,6 +27,7 @@ const KEY_NOTIFY_DAILY_SUMMARY: &str = "app.notify_daily_summary";
 const KEY_RUN_HISTORY_RETENTION_DAYS: &str = "app.run_history_retention_days";
 const KEY_AUTO_DOWNLOAD_UPDATES: &str = "app.auto_download_updates";
 const KEY_AUTO_UPDATE_PLUGINS: &str = "app.auto_update_plugins";
+const KEY_DEVELOPER_MODE: &str = "app.developer_mode";
 
 /// Stored value of [`AppSettings::run_history_retention_days`] = `None`.
 const RETENTION_FOREVER: &str = "forever";
@@ -71,6 +72,9 @@ pub struct AppSettings {
     pub auto_update_plugins: bool,
     /// Time and work limits every run gets (Settings › Runner › Run limits).
     pub run_limits: RunLimitsSettings,
+    /// Developer options, off by default: the Plugins page offers "Install from folder or
+    /// archive…" (sideloading, see `plugins::sideload`), which the backend refuses otherwise.
+    pub developer_mode: bool,
 }
 
 impl Default for AppSettings {
@@ -90,6 +94,7 @@ impl Default for AppSettings {
             auto_download_updates: true,
             auto_update_plugins: true,
             run_limits: RunLimitsSettings::default(),
+            developer_mode: false,
         }
     }
 }
@@ -114,6 +119,7 @@ impl AppSettings {
             auto_download_updates: read_flag(db, KEY_AUTO_DOWNLOAD_UPDATES, defaults.auto_download_updates)?,
             auto_update_plugins: read_flag(db, KEY_AUTO_UPDATE_PLUGINS, defaults.auto_update_plugins)?,
             run_limits: RunLimitsSettings::load(db)?,
+            developer_mode: read_flag(db, KEY_DEVELOPER_MODE, defaults.developer_mode)?,
         })
     }
 
@@ -147,6 +153,7 @@ impl AppSettings {
             (KEY_NOTIFY_DAILY_SUMMARY, self.notify_daily_summary),
             (KEY_AUTO_DOWNLOAD_UPDATES, self.auto_download_updates),
             (KEY_AUTO_UPDATE_PLUGINS, self.auto_update_plugins),
+            (KEY_DEVELOPER_MODE, self.developer_mode),
         ];
         for (key, value) in flags {
             db.set_setting(key, if value { "true" } else { "false" })?;
@@ -246,6 +253,7 @@ mod tests {
             auto_download_updates: false,
             auto_update_plugins: false,
             run_limits: RunLimitsSettings { max_parallel_steps: 8, ..RunLimitsSettings::default() },
+            developer_mode: true,
         };
         changed.save(&database).unwrap();
         assert_eq!(AppSettings::load(&database).unwrap(), changed);
@@ -313,6 +321,18 @@ mod tests {
         let older_frontend: AppSettings = serde_json::from_value(serde_json::json!({ "openAtLogin": false })).unwrap();
         assert!(older_frontend.auto_update_plugins);
         assert_eq!(serde_json::to_value(AppSettings::default()).unwrap()["autoUpdatePlugins"], true);
+    }
+
+    #[test]
+    fn developer_mode_is_off_until_switched_on() {
+        let database = test_database();
+        assert!(!AppSettings::load(&database).unwrap().developer_mode);
+        let developer = AppSettings { developer_mode: true, ..AppSettings::default() };
+        developer.save(&database).unwrap();
+        assert!(AppSettings::load(&database).unwrap().developer_mode);
+        let older_frontend: AppSettings = serde_json::from_value(serde_json::json!({ "openAtLogin": false })).unwrap();
+        assert!(!older_frontend.developer_mode);
+        assert_eq!(serde_json::to_value(AppSettings::default()).unwrap()["developerMode"], false);
     }
 
     #[test]
