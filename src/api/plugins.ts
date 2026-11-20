@@ -10,6 +10,7 @@ import {
   type PluginBulkUpdateSummary,
   type PluginCatalog,
   type PluginEvent,
+  type PluginNodeInfo,
 } from './pluginTypes'
 import type { PluginRequirement, PluginSessionState } from './pluginRequirementTypes'
 import { samplePluginsBackend, subscribeToSampleBrowserRuntimeEvents, subscribeToSamplePluginEvents } from './sampleBackend/plugins'
@@ -28,6 +29,20 @@ import { samplePluginsBackend, subscribeToSampleBrowserRuntimeEvents, subscribeT
 export function listPluginCatalog(refresh = false): Promise<PluginCatalog> {
   if (!isDesktopApp()) return samplePluginsBackend.listPluginCatalog(refresh)
   return callBackend('list_plugin_catalog', { refresh })
+}
+
+/**
+ * The steps a catalog plugin adds, with descriptions, for its plugin page. Newer catalogs
+ * keep them in a per-version detail file the app fetches on demand (and caches); offline
+ * it may return only kinds and titles.
+ *
+ * @param name - Plugin name, e.g. "whatsapp-api" (string)
+ * @returns The plugin's steps (PluginNodeInfo[])
+ * @throws BackendError - `not_found` when the catalog does not list the plugin
+ */
+export function listPluginCatalogSteps(name: string): Promise<PluginNodeInfo[]> {
+  if (!isDesktopApp()) return samplePluginsBackend.listPluginCatalogSteps(name)
+  return callBackend('list_plugin_catalog_steps', { name })
 }
 
 export function listInstalledPlugins(): Promise<InstalledPlugin[]> {

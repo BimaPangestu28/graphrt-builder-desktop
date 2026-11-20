@@ -26,6 +26,12 @@ releases may contain breaking changes; they are called out under **Changed**.
   detail is cached); with the v1 fallback nothing changes. `list_plugin_catalog` also returns
   `fetched_at`, when this session fetched the catalog. A 404 from a download is now reported as
   `not_found`.
+- **Check for updates on the Plugins page**: a "Check for updates" button fetches the catalog again
+  (`list_plugin_catalog` with `refresh: true`), shows "Checking for updates…" meanwhile, then
+  "Updated just now · catalog published <date>", and says why it failed (or that only the saved
+  copy could be shown). When the page opens with a catalog the app fetched more than 10 minutes
+  ago, the saved list shows at once and a fresh one is fetched in the background. A plugin page of
+  a plugin that is not installed lists its steps from the catalog detail, fetched on demand.
 
 ## [0.1.1] - 2026-11-21
 

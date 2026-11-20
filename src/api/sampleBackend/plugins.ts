@@ -11,6 +11,7 @@ import type {
   PluginCatalogEntry,
   PluginEvent,
   PluginInstallStage,
+  PluginNodeInfo,
   PluginPermissions,
 } from '../pluginTypes'
 import type { FlowStep } from '../types'
@@ -51,6 +52,8 @@ interface SamplePluginsState {
   pluginNeedsByAgentId: Record<string, SamplePluginNeed[]>
   /** Updates "installed automatically", newest first (tests set them). */
   autoUpdates: PluginAutoUpdate[]
+  /** When the sample catalog was last "fetched" (ms since epoch), or null before the first fetch. */
+  catalogFetchedAtMs: number | null
 }
 
 function createInitialState(): SamplePluginsState {
@@ -65,6 +68,7 @@ function createInitialState(): SamplePluginsState {
     isWhatsAppWebLoggedIn: false,
     pluginNeedsByAgentId: { ...samplePluginNeedsByAgentId },
     autoUpdates: [],
+    catalogFetchedAtMs: null,
   }
 }
 
@@ -143,8 +147,17 @@ function toCatalogEntry(seed: SamplePluginSeed): PluginCatalogEntry {
   }
 }
 
-function readCatalog(): PluginCatalog {
-  return { plugins: samplePluginSeeds.map(toCatalogEntry), generatedAt: '2026-11-01T00:00:00Z', fromCache: false }
+/** Like the backend: the in-memory catalog is reused unless `refresh`, and remembers when it was fetched. */
+function readCatalog(refresh: boolean): PluginCatalog {
+  if (refresh || pluginsState.catalogFetchedAtMs === null) pluginsState.catalogFetchedAtMs = Date.now()
+  const fetchedAt = new Date(pluginsState.catalogFetchedAtMs).toISOString()
+  return { plugins: samplePluginSeeds.map(toCatalogEntry), generatedAt: '2026-11-01T00:00:00Z', fromCache: false, fetchedAt }
+}
+
+function listSampleCatalogSteps(name: string): PluginNodeInfo[] {
+  const seed = samplePluginSeeds.find((candidate) => candidate.name === name)
+  if (!seed) throw new BackendError('not_found', `plugin ${name} in the catalog`)
+  return seed.nodes.map((node) => ({ ...node }))
 }
 
 const installStages: PluginInstallStage[] = ['downloading', 'verifying', 'extracting', 'loading', 'done']
@@ -189,7 +202,7 @@ function updateSamplePlugin(name: string): InstalledPlugin {
 /** "Update all": every pending update asking for nothing more, like `update_all_plugins`. */
 function updateAllSamplePlugins(): PluginBulkUpdateSummary {
   const summary: PluginBulkUpdateSummary = { updated: [], needsApproval: [], failed: [] }
-  for (const entry of readCatalog().plugins.filter((catalogEntry) => catalogEntry.updateAvailable)) {
+  for (const entry of readCatalog(false).plugins.filter((catalogEntry) => catalogEntry.updateAvailable)) {
     if (entry.updateNeedsApproval) {
       summary.needsApproval.push(entry.name)
       continue
@@ -353,7 +366,8 @@ function openSamplePluginReadme(name: string): void {
 
 export const samplePluginsBackend = {
   listAgentPluginRequirements: (agentId: string): Promise<PluginRequirement[]> => respondWith(() => listSampleAgentPluginRequirements(agentId)),
-  listPluginCatalog: (_refresh: boolean): Promise<PluginCatalog> => respondWith(readCatalog),
+  listPluginCatalog: (refresh: boolean): Promise<PluginCatalog> => respondWith(() => readCatalog(refresh)),
+  listPluginCatalogSteps: (name: string): Promise<PluginNodeInfo[]> => respondWith(() => listSampleCatalogSteps(name)),
   listInstalledPlugins: (): Promise<InstalledPlugin[]> => respondWith(() => [...pluginsState.installedByName.values()].map(toInstalledPlugin)),
   installPlugin: (name: string): Promise<InstalledPlugin> => respondWith(() => installSamplePlugin(name)),
   updatePlugin: (name: string): Promise<InstalledPlugin> => respondWith(() => updateSamplePlugin(name)),
@@ -425,6 +439,11 @@ export function setSampleAutoUpdates(autoUpdates: PluginAutoUpdate[]): void {
 }
 
 /** Restores the two installed sample plugins and clears trust, settings and sessions (use in test `beforeEach`). */
+/** Pretends the sample catalog was fetched at `fetchedAtMs` (tests of the stale refetch). */
+export function setSampleCatalogFetchedAt(fetchedAtMs: number | null): void {
+  pluginsState.catalogFetchedAtMs = fetchedAtMs
+}
+
 export function resetSamplePlugins(): void {
   pluginsState = createInitialState()
 }

@@ -89,6 +89,8 @@ export interface PluginCatalog {
   generatedAt: string | null
   /** The catalog could not be fetched and this is the last saved copy. */
   fromCache: boolean
+  /** When the app last fetched the catalog this session (RFC 3339), or null for a saved copy. */
+  fetchedAt: string | null
 }
 
 /** Whether a setting the plugin requests has a value in the keychain. Values are never returned. */

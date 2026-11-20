@@ -1,7 +1,9 @@
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { AppShell, PageFrame, pageTitleClassName } from '@/components/layout'
-import type { PluginMaturity } from '@/api/pluginTypes'
+import { listPluginCatalogSteps } from '@/api/plugins'
+import type { PluginMaturity, PluginNodeInfo } from '@/api/pluginTypes'
 import { Badge, Icon, type BadgeTone } from '@/components/ui'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { useBrowserRuntime } from '@/hooks/useBrowserRuntime'
 import { usePlugins, type PluginsState } from '@/hooks/usePlugins'
 import { describeError } from '@/lib/agentDisplay'
@@ -88,8 +90,20 @@ function PluginHeader({ item, plugins }: { item: PluginListItem; plugins: Plugin
   )
 }
 
+/**
+ * The steps to list: an installed plugin's own; for a catalog plugin, the ones the app
+ * fetches on demand (newer catalogs keep descriptions in a per-version detail file),
+ * showing the catalog list meanwhile or when that fails.
+ */
+function usePluginSteps(item: PluginListItem): PluginNodeInfo[] {
+  const isInstalled = item.installed !== null
+  const catalogSteps = useAsyncData(() => (isInstalled ? Promise.resolve(null) : listPluginCatalogSteps(item.name)), [item.name, isInstalled])
+  return !isInstalled && catalogSteps.data && catalogSteps.data.length > 0 ? catalogSteps.data : item.nodes
+}
+
 function PluginDetailBody({ item, plugins }: { item: PluginListItem; plugins: PluginsState }) {
   const browserRuntime = useBrowserRuntime()
+  const steps = usePluginSteps(item)
   const { installed } = item
   const refreshKey = installed ? `${installed.version}:${installed.trusted}:${installed.config.filter((setting) => setting.configured).length}` : 'not-installed'
   const users = usePluginUsers(item.name, refreshKey)
@@ -102,7 +116,7 @@ function PluginDetailBody({ item, plugins }: { item: PluginListItem; plugins: Pl
       <div className="@container grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="flex min-w-0 flex-col gap-5">
           {installed && <PluginSetupSection installed={installed} plugins={plugins} browserRuntime={browserRuntime} />}
-          <PluginStepsSection pluginLabel={item.displayName} nodes={item.nodes} />
+          <PluginStepsSection pluginLabel={item.displayName} nodes={steps} />
         </div>
         <aside aria-label={`About ${item.displayName}`} className="grid min-w-0 grid-cols-1 items-start gap-5 max-lg:@2xl:grid-cols-2">
           <PluginAsksForSection item={item} />
