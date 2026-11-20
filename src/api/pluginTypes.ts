@@ -36,6 +36,11 @@ export interface PluginCatalogEntry {
   nodes: PluginNodeInfo[]
   tools: string[]
   readmeUrl: string | null
+  /**
+   * HTTPS link to the plugin's SVG icon, or null when the catalog has none. Never load it
+   * directly (the CSP allows no remote images): {@link getPluginIcon} returns a cached data URL.
+   */
+  iconUrl: string | null
   /** Terms-of-service / ban warning from the plugin's README (e.g. whatsapp-web), or null. */
   warning: string | null
   /** Maturity label, when the catalog says (older catalogs do not). */
@@ -84,6 +89,8 @@ export interface InstalledPlugin {
   /** Notes from graphrt, e.g. requested permissions that were not granted. */
   warnings: string[]
   readmeUrl: string | null
+  /** The catalog's icon link when it was installed, or null. See {@link PluginCatalogEntry.iconUrl}. */
+  iconUrl: string | null
 }
 
 export type BrowserRuntimeStatus = 'not_installed' | 'installing' | 'installed'

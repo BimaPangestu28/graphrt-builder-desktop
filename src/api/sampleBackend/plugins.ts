@@ -100,6 +100,7 @@ function toInstalledPlugin(installedRecord: SampleInstalledRecord): InstalledPlu
     loadError: null,
     warnings: listWarnings(seed, installedRecord),
     readmeUrl: seed.readmeUrl,
+    iconUrl: seed.iconUrl,
   }
 }
 
@@ -314,6 +315,8 @@ export const samplePluginsBackend = {
     respondWith(() => runSamplePluginAction(name, kind)),
   checkPluginSession: (name: string): Promise<PluginSessionState> => respondWith(() => checkSamplePluginSession(name)),
   openPluginReadme: (name: string): Promise<void> => respondWith(() => openSamplePluginReadme(name)),
+  /** The preview has no downloaded icons: every plugin shows its monogram. */
+  getPluginIcon: (_name: string): Promise<string | null> => respondWith(() => null),
 }
 
 /** Subscribes to sample `plugin-event` payloads. Returns the unsubscribe function. */

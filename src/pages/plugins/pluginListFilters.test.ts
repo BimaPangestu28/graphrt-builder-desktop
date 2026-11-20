@@ -18,6 +18,7 @@ function catalogEntry(name: string, overrides: Partial<PluginCatalog['plugins'][
     nodes: [],
     tools: [],
     readmeUrl: null,
+    iconUrl: null,
     warning: null,
     status: null,
     tosRisk: null,
@@ -42,6 +43,7 @@ function installedPlugin(name: string, overrides: Partial<InstalledPlugin> = {})
     loadError: null,
     warnings: [],
     readmeUrl: null,
+    iconUrl: null,
     ...overrides,
   }
 }

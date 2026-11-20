@@ -3,6 +3,7 @@ import { Badge, Button, StrokeIcon } from '@/components/ui'
 import { whatsAppWebPluginName } from '../connect-whatsapp/useWhatsAppActions'
 import { WhatsAppWebLinkPanel } from '../connect-whatsapp/WhatsAppWebLinkPanel'
 import { PluginConfigForm } from '../plugins/PluginConfigForm'
+import { PluginIcon } from '../plugins/PluginIcon'
 import {
   browserDownloadSizeNote,
   describeApprovalAction,
@@ -30,9 +31,12 @@ function PluginWarning({ pluginName, warning }: { pluginName: string; warning: s
 function PluginCardHeader({ requirement }: { requirement: PluginRequirement }) {
   return (
     <div className="flex flex-wrap items-start justify-between gap-2">
-      <span className="flex min-w-0 flex-col gap-0.5">
-        <b className="font-semibold">{requirement.name}</b>
-        <span className="text-[13px] text-body">{requirement.description}</span>
+      <span className="flex min-w-0 items-start gap-3">
+        <PluginIcon name={requirement.name} />
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <b className="font-semibold">{requirement.name}</b>
+          <span className="text-[13px] text-body">{requirement.description}</span>
+        </span>
       </span>
       <Badge tone={requirement.ready ? 'ok' : 'amber'}>{describeRequirementState(requirement)}</Badge>
     </div>

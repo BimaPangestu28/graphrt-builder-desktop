@@ -6,7 +6,7 @@ import { pluginDetailPath } from '@/routes'
 import { PluginInstallButton, PluginOperationFeedback, PluginUpdateButton } from './PluginActions'
 import { pluginCategoryLabels } from './pluginCategories'
 import { describeMaturity, describePermissionChips, describePluginStatus, describeStepCount, itemNeedsAttention, type PluginListItem } from './pluginDisplay'
-import { PluginMonogram } from './PluginMonogram'
+import { PluginIcon } from './PluginIcon'
 import { PluginPermissionChips } from './PluginPermissionList'
 
 interface PluginCatalogCardProps {
@@ -82,7 +82,7 @@ function CardActions({ item, plugins, listSearch, onStartInstall }: PluginCatalo
 }
 
 /**
- * One plugin in the Plugins grid. Every card has the same shape so rows line up: monogram,
+ * One plugin in the Plugins grid. Every card has the same shape so rows line up: icon,
  * name and status, a two-line description, what it asks for, then the step count and the
  * main action pinned to the bottom (Install → approval, Update, Set up or Open).
  */
@@ -93,7 +93,7 @@ export function PluginCatalogCard({ item, plugins, listSearch }: PluginCatalogCa
   return (
     <article aria-label={item.name} className="flex h-full flex-col gap-3 rounded-[14px] border border-line bg-surface p-4 transition-shadow hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
       <div className="flex items-start gap-3">
-        <PluginMonogram name={item.name} category={item.category} />
+        <PluginIcon name={item.name} iconUrl={item.iconUrl} category={item.category} />
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <h3 className="m-0 truncate text-[14px] font-semibold">
             <Link to={pluginDetailPath(item.name)} state={{ listSearch }} className="no-underline !text-ink hover:underline">
