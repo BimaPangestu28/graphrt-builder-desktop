@@ -1,9 +1,11 @@
-import { Badge, Button, type BadgeTone } from '@/components/ui'
+import { Badge, Button, joinClassNames, type BadgeTone } from '@/components/ui'
 import type { BrowserRuntimeState } from '@/hooks/useBrowserRuntime'
 import { describeError } from '@/lib/agentDisplay'
 
 interface BrowserRuntimeCardProps {
   runtime: BrowserRuntimeState
+  /** Inside a setup checklist step: a quieter box without its own title, the step names it. */
+  isEmbedded?: boolean
 }
 
 function describeRuntimeStatus(runtime: BrowserRuntimeState): string {
@@ -26,13 +28,18 @@ function pickRuntimeStatusTone(runtime: BrowserRuntimeState): BadgeTone {
  * Google Maps scraper need, laid out like a plugin row: name and status on the left,
  * Install on the right, progress in the status badge.
  */
-export function BrowserRuntimeCard({ runtime }: BrowserRuntimeCardProps) {
+export function BrowserRuntimeCard({ runtime, isEmbedded = false }: BrowserRuntimeCardProps) {
   const canInstall = runtime.status === 'not_installed' && !runtime.isInstalling
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[14px] border border-line bg-surface px-4 py-3">
+    <div
+      className={joinClassNames(
+        'flex flex-wrap items-center gap-x-4 gap-y-2 border border-line',
+        isEmbedded ? 'rounded-[10px] bg-subtle px-3 py-2.5' : 'rounded-[14px] bg-surface px-4 py-3',
+      )}
+    >
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <b className="font-semibold text-ink">Browser runtime</b>
+          {!isEmbedded && <b className="font-semibold text-ink">Browser runtime</b>}
           <span role="status">
             <Badge tone={pickRuntimeStatusTone(runtime)} className="whitespace-normal">
               {describeRuntimeStatus(runtime)}

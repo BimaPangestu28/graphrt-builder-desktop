@@ -87,13 +87,13 @@ export interface AdvancedConnection {
   name: string
   description: string
   /**
-   * - mcp: Manage opens the MCP servers panel, with a live count after the description
+   * - mcp: the MCP servers section, with a live count after the description
    * - pluginsLink: plugins moved to their own page; the row only links there
    */
   kind: 'mcp' | 'pluginsLink'
 }
 
-/** The fixed rows under Advanced; the Secrets list above them comes from the backend. */
+/** The fixed MCP servers and Plugins entries of the Connections page (search matches them by name and description). */
 export const advancedConnections: AdvancedConnection[] = [
   { id: 'mcp-servers', name: 'MCP servers', description: 'Give agents tools from any MCP server', kind: 'mcp' },
   { id: 'plugins', name: 'Plugins', description: 'Plugins moved to their own page in the sidebar', kind: 'pluginsLink' },

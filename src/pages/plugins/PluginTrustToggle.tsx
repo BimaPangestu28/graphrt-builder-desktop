@@ -17,7 +17,7 @@ interface PluginTrustToggleProps {
 export function PluginTrustToggle({ pluginLabel, isTrusted, isSaving, onChange }: PluginTrustToggleProps) {
   const warningId = useId()
   return (
-    <div className={joinClassNames('flex flex-col gap-1 rounded-lg border px-3 py-2', isTrusted ? 'border-line bg-subtle' : 'border-amber-line-2 bg-amber-tint')}>
+    <div className={joinClassNames('flex flex-col gap-1 rounded-[10px] border px-3 py-2.5', isTrusted ? 'border-line bg-subtle' : 'border-amber-line-2 bg-amber-tint')}>
       <label className="flex cursor-pointer items-center gap-2 text-[13px] font-medium text-ink">
         <input
           type="checkbox"

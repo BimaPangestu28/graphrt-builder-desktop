@@ -110,12 +110,14 @@ describe('ConnectionsPage', () => {
     expect(await screen.findByText('Could not load AI models: Keychain is locked')).toBeInTheDocument()
   })
 
-  it('links to the Plugins page from Advanced, where plugins used to be managed', async () => {
+  it('shows AI models, Secrets and MCP servers as sections, and links to the Plugins page where plugins used to be managed', async () => {
     renderConnectionsPage()
-    const advancedSection = await screen.findByRole('region', { name: 'Advanced' })
-    expect(within(advancedSection).getByText('Plugins moved to their own page in the sidebar')).toBeInTheDocument()
-    expect(within(advancedSection).getByRole('link', { name: 'Open Plugins' })).toHaveAttribute('href', routePaths.plugins)
-    expect(within(advancedSection).queryByRole('button', { name: 'Manage Plugins' })).not.toBeInTheDocument()
+    expect(await screen.findByRole('region', { name: 'Secrets' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'MCP servers' })).toBeInTheDocument()
+    const pluginsCard = screen.getByRole('complementary', { name: 'Plugins' })
+    expect(within(pluginsCard).getByText('Plugins moved to their own page in the sidebar')).toBeInTheDocument()
+    expect(within(pluginsCard).getByRole('link', { name: 'Open Plugins' })).toHaveAttribute('href', routePaths.plugins)
+    expect(screen.queryByRole('region', { name: 'Advanced' })).not.toBeInTheDocument()
   })
 
   it('redirects the old plugins address to the Plugins page', async () => {
@@ -143,8 +145,8 @@ describe('ConnectionsPage', () => {
   })
 })
 
-function getAdvancedSection() {
-  return screen.getByRole('region', { name: 'Advanced' })
+function getSecretsSection() {
+  return screen.getByRole('region', { name: 'Secrets' })
 }
 
 describe('ConnectionsPage secrets', () => {
@@ -156,9 +158,9 @@ describe('ConnectionsPage secrets', () => {
 
   async function openSecretsPanel() {
     renderConnectionsPage()
-    expect(await within(getAdvancedSection()).findByText(/your agents use · 1 saved/)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Manage Secrets' }))
-    return screen.getByRole('region', { name: 'Secrets' })
+    expect(await within(getSecretsSection()).findByText(/your agents use · 1 saved/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Add secret' }))
+    return getSecretsSection()
   }
 
   function getSecretRow(name: string) {
@@ -170,10 +172,19 @@ describe('ConnectionsPage secrets', () => {
     expect(within(secretsPanel).getByText('Google Places API key')).toBeInTheDocument()
     expect(within(secretsPanel).getByText('GOOGLE_PLACES_API_KEY · Used by Maps leads to WhatsApp')).toBeInTheDocument()
     expect(within(secretsPanel).getByText('Saved')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Manage Secrets' })).toHaveTextContent('Done')
+    expect(within(secretsPanel).queryByRole('button', { name: 'Add secret' })).not.toBeInTheDocument()
+    fireEvent.click(within(secretsPanel).getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('form', { name: 'Add a secret' })).not.toBeInTheDocument()
+    expect(within(secretsPanel).getByText('Google Places API key')).toBeInTheDocument()
   })
 
-  it('opens the Secrets panel from ?section=secrets', async () => {
+  it('lists the secrets without opening anything', async () => {
+    renderConnectionsPage()
+    expect(await within(getSecretsSection()).findByText('Google Places API key')).toBeInTheDocument()
+    expect(screen.queryByRole('form', { name: 'Add a secret' })).not.toBeInTheDocument()
+  })
+
+  it('opens the add-secret form from ?section=secrets', async () => {
     renderConnectionsPage('/connections?section=secrets')
     expect(await screen.findByRole('form', { name: 'Add a secret' })).toBeInTheDocument()
   })
@@ -200,7 +211,7 @@ describe('ConnectionsPage secrets', () => {
     expect(within(addForm).getByLabelText('Value')).toHaveValue('')
     expect(screen.queryByText('[SERVER TOKEN]')).not.toBeInTheDocument()
     expect(screen.queryByDisplayValue('[SERVER TOKEN]')).not.toBeInTheDocument()
-    expect(within(getAdvancedSection()).getByText(/your agents use · 2 saved/)).toBeInTheDocument()
+    expect(within(getSecretsSection()).getByText(/your agents use · 2 saved/)).toBeInTheDocument()
   })
 
   it('explains a malformed name or an empty value before saving', async () => {
@@ -251,7 +262,7 @@ describe('ConnectionsPage secrets', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove GOOGLE_PLACES_API_KEY' }))
     fireEvent.click(screen.getByRole('button', { name: 'Yes, remove GOOGLE_PLACES_API_KEY' }))
-    expect(await screen.findByRole('button', { name: 'Add GOOGLE_PLACES_API_KEY' })).toHaveTextContent('Missing — add value')
+    expect(await screen.findByRole('button', { name: 'Add GOOGLE_PLACES_API_KEY' })).toHaveTextContent('Add value')
     expect(within(getSecretRow('GOOGLE_PLACES_API_KEY')).getByText('Missing')).toBeInTheDocument()
     expect(deleteSecretSpy).toHaveBeenCalledWith('GOOGLE_PLACES_API_KEY')
   })
@@ -269,16 +280,16 @@ describe('ConnectionsPage secrets', () => {
   it('shows an honest empty state when there are no secrets', async () => {
     vi.spyOn(sampleCredentialsBackend, 'listAllWorkflowSecrets').mockResolvedValue([])
     renderConnectionsPage()
-    expect(await within(getAdvancedSection()).findByText(/your agents use · None yet/)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Manage Secrets' }))
-    expect(within(getAdvancedSection()).getByText(/No secrets yet/)).toBeInTheDocument()
+    expect(await within(getSecretsSection()).findByText(/your agents use · None yet/)).toBeInTheDocument()
+    expect(within(getSecretsSection()).getByText(/No secrets yet/)).toBeInTheDocument()
   })
 
-  it('finds secrets by name in the search and opens the panel for them', async () => {
+  it('finds secrets by name in the search and hides the other sections', async () => {
     renderConnectionsPage()
-    await within(getAdvancedSection()).findByText(/your agents use · 1 saved/)
+    await within(getSecretsSection()).findByText(/your agents use · 1 saved/)
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search connections' }), { target: { value: 'places' } })
-    expect(within(getAdvancedSection()).getByText('Google Places API key')).toBeInTheDocument()
+    expect(within(getSecretsSection()).getByText('Google Places API key')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Add secret' })).not.toBeInTheDocument()
     expect(screen.queryByRole('form', { name: 'Add a secret' })).not.toBeInTheDocument()
     expect(screen.queryByText('MCP servers')).not.toBeInTheDocument()
   })
@@ -295,7 +306,7 @@ describe('ConnectionsPage MCP servers', () => {
   async function openMcpPanel() {
     renderConnectionsPage()
     expect(await screen.findByText(/any MCP server · 1 added/)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Manage MCP servers' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add server' }))
     return screen.findByRole('article', { name: 'files' })
   }
 
@@ -323,14 +334,12 @@ describe('ConnectionsPage MCP servers', () => {
       bearerTokenSecret: null,
     })
     expect(within(githubCard).getByText('Not tested yet')).toBeInTheDocument()
-    expect(await within(getAdvancedSection()).findByText(/your agents use · 1 saved · 1 missing/)).toBeInTheDocument()
+    expect(await within(getSecretsSection()).findByText(/your agents use · 1 saved · 1 missing/)).toBeInTheDocument()
     expect(screen.getByText(/any MCP server · 2 added/)).toBeInTheDocument()
 
     fireEvent.click(within(githubCard).getByRole('button', { name: 'Test github' }))
     expect(await within(githubCard).findByText(/^Connected/)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Manage Secrets' }))
-    expect(within(getAdvancedSection()).getByText('Used by MCP server github')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Manage MCP servers' }))
+    expect(within(getSecretsSection()).getByText('Used by MCP server github')).toBeInTheDocument()
     fireEvent.click(within(await screen.findByRole('article', { name: 'github' })).getByRole('button', { name: 'Remove github' }))
     await waitFor(() => expect(screen.queryByRole('article', { name: 'github' })).not.toBeInTheDocument())
   })
@@ -379,3 +388,15 @@ describe('ConnectionsPage MCP servers', () => {
   })
 })
 
+
+describe('ConnectionsPage MCP section from a link', () => {
+  beforeEach(() => resetSampleMcpServers())
+
+  it('opens the add-server form from ?section=mcp', async () => {
+    renderConnectionsPage('/connections?section=mcp')
+    expect(await screen.findByRole('form', { name: 'Add an MCP server' })).toBeInTheDocument()
+    fireEvent.click(within(screen.getByRole('form', { name: 'Add an MCP server' })).getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('form', { name: 'Add an MCP server' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add server' })).toBeInTheDocument()
+  })
+})

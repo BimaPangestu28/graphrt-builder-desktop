@@ -1,7 +1,9 @@
 import { useState, type FormEvent } from 'react'
 import { getCredentialStoreName } from '@/lib/platform'
 import { addWorkflowSecret } from '@/api/credentials'
+import { Button } from '@/components/ui'
 import { describeError } from '@/lib/agentDisplay'
+import { connectionsCardClassNames } from './ConnectionsSection'
 import { describeSecretNameProblem, normalizeSecretName } from './secretDisplay'
 import { SecretValueInput } from './SecretValueInput'
 
@@ -12,6 +14,8 @@ const textInputClassNames =
 interface AddSecretFormProps {
   /** Reloads the list after the secret was saved. */
   onAdded: () => Promise<void>
+  /** Folds the form away again. */
+  onClose: () => void
 }
 
 /**
@@ -19,7 +23,7 @@ interface AddSecretFormProps {
  * password field with Show / Hide, and an optional note. The value goes to the keychain
  * and is never shown again; agents read it as `{{#env.NAME#}}`.
  */
-export function AddSecretForm({ onAdded }: AddSecretFormProps) {
+export function AddSecretForm({ onAdded, onClose }: AddSecretFormProps) {
   const [secretName, setSecretName] = useState('')
   const [secretValue, setSecretValue] = useState('')
   const [secretNote, setSecretNote] = useState('')
@@ -53,9 +57,9 @@ export function AddSecretForm({ onAdded }: AddSecretFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} aria-label="Add a secret" className="flex flex-col gap-3 border-b border-chip px-4 py-3.5">
+    <form onSubmit={handleSubmit} aria-label="Add a secret" className={`flex flex-col gap-3 p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] ${connectionsCardClassNames}`}>
       <span className="flex flex-col gap-0.5">
-        <span className="font-medium">Add secret</span>
+        <span className="text-[14px] font-semibold">Add a secret</span>
         <span className="text-[12px] text-muted">Server logins, API tokens, database passwords. Saved in {getCredentialStoreName()}, never shown again</span>
       </span>
       <div className="flex flex-wrap gap-3">
@@ -111,15 +115,14 @@ export function AddSecretForm({ onAdded }: AddSecretFormProps) {
           {savedName} is saved in {getCredentialStoreName()}. Agents read it as {`{{#env.${savedName}#}}`}
         </span>
       )}
-      <span>
-        <button
-          type="submit"
-          disabled={isSaving}
-          className="h-8 cursor-pointer rounded-lg border-0 bg-ink px-3 text-[13px] font-medium text-white hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-50"
-        >
+      <div className="flex justify-end gap-2 border-t border-chip pt-3">
+        <Button variant="ghost" size="sm" onClick={onClose}>
+          {savedName ? 'Done' : 'Cancel'}
+        </Button>
+        <Button type="submit" size="sm" disabled={isSaving}>
           {isSaving ? 'Saving…' : 'Save secret'}
-        </button>
-      </span>
+        </Button>
+      </div>
     </form>
   )
 }
