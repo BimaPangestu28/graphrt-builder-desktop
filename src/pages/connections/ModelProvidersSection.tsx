@@ -11,7 +11,7 @@ import { ConnectionsNotice, ConnectionsSection } from './ConnectionsSection'
 import type { ModelConnection } from './modelConnections'
 import { ProviderKeyForm } from './ProviderKeyForm'
 
-/** Same column rule as the Apps grid, so cards line up across sections. */
+/** Same column rule as the Apps grid, so cards line up across tabs. */
 export const connectionCardGridClassNames = 'grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3'
 
 interface KeyActionsProps {
@@ -59,7 +59,7 @@ interface ModelProvidersSectionProps {
 }
 
 /**
- * "AI models" on screen 21: one card per provider, the default one highlighted, backed by the keychain commands: Add key / Replace key open
+ * The AI models tab of screen 21: one card per provider, the default one highlighted, backed by the keychain commands: Add key / Replace key open
  * an inline form that calls `setApiKey`; Remove calls `deleteApiKey`.
  */
 export function ModelProvidersSection({ connections, loadError, onKeysChanged }: ModelProvidersSectionProps) {

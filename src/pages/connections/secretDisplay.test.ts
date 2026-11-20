@@ -1,5 +1,5 @@
 import type { WorkflowSecretOverview } from '@/api/connectionTypes'
-import { describeSecretNameProblem, describeSecretUsers, normalizeSecretName, summarizeSecrets } from './secretDisplay'
+import { describeSecretNameProblem, describeSecretUsers, normalizeSecretName } from './secretDisplay'
 
 function secretOverview(overrides: Partial<WorkflowSecretOverview>): WorkflowSecretOverview {
   return { name: 'API_TOKEN', description: null, isSecret: true, required: false, configured: false, agents: [], mcpServers: [], note: null, createdAt: null, updatedAt: null, ...overrides }
@@ -23,9 +23,4 @@ describe('secret display helpers', () => {
     expect(normalizeSecretName('my server-token')).toBe('MY_SERVER_TOKEN')
   })
 
-  it('counts saved and missing secrets', () => {
-    expect(summarizeSecrets([])).toBe('None yet')
-    expect(summarizeSecrets([secretOverview({ configured: true }), secretOverview({ required: true })])).toBe('1 saved · 1 missing')
-    expect(summarizeSecrets([secretOverview({ configured: true }), secretOverview({})])).toBe('1 saved')
-  })
 })

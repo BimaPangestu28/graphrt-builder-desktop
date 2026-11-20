@@ -1,14 +1,13 @@
 import { useState, type FormEvent } from 'react'
 import type { McpServerDefinition, McpServerInput } from '@/api/connectionTypes'
-import { addMcpServer, listMcpServers, removeMcpServer, testMcpServer } from '@/api/mcpServers'
+import { addMcpServer, removeMcpServer, testMcpServer } from '@/api/mcpServers'
 import { Button, Icon, StatusDot, joinClassNames, type StatusDotTone } from '@/components/ui'
-import { useAsyncData } from '@/hooks/useAsyncData'
+import type { AsyncDataState } from '@/hooks/useAsyncData'
 import { describeError } from '@/lib/agentDisplay'
-import { ConnectionsNotice, ConnectionsSection, connectionsCardClassNames, useIsLinkedSection, useScrollToLinkedSection } from './ConnectionsSection'
+import { ConnectionsNotice, ConnectionsSection, connectionsCardClassNames, useOpensAddForm } from './ConnectionsSection'
 
 const inputClassNames = 'box-border h-9 min-w-0 rounded-[9px] border border-line-strong bg-surface px-3 text-[14px] font-normal text-ink outline-none focus:border-ink'
 const fieldLabelClassNames = 'flex flex-col gap-1 text-[12px] font-medium text-muted'
-const mcpSectionId = 'connections-mcp'
 
 /** "npx -y server" or the URL. */
 export function describeTransport(server: McpServerDefinition): string {
@@ -206,23 +205,20 @@ function AddMcpServerForm({ onAdded, onClose }: { onAdded: () => Promise<void>; 
 }
 
 interface McpServersSectionProps {
-  /** Description from the search data, e.g. "Give agents tools from any MCP server". */
-  description: string
-  /** Called after a change, so the Secrets list picks up new or removed secret names. */
+  /** Added servers, loaded by the page so the tab bar can count them. */
+  servers: AsyncDataState<McpServerDefinition[]>
+  /** Called after a change, so the Secrets tab picks up new or removed secret names. */
   onServersChanged: () => Promise<void>
 }
 
 /**
- * "MCP servers" on screen 21: every added server (a command or a URL) with Test and
- * Remove, and "Add server" on the right, which unfolds the form. `?section=mcp` opens the
- * form and scrolls here. Agents use the tools as `<name>/<tool>`.
+ * The MCP servers tab of screen 21: every added server (a command or a URL) with Test and
+ * Remove, and "Add server" at the top-right, which unfolds the form. `?add=1` opens the form
+ * on arrival. Agents use the tools as `<name>/<tool>`.
  */
-export function McpServersSection({ description, onServersChanged }: McpServersSectionProps) {
-  const servers = useAsyncData(listMcpServers, [])
-  const isLinked = useIsLinkedSection('mcp')
-  const [isAdding, setIsAdding] = useState(isLinked)
-  useScrollToLinkedSection('mcp', mcpSectionId)
-  const countText = servers.data ? ` · ${servers.data.length} added` : ''
+export function McpServersSection({ servers, onServersChanged }: McpServersSectionProps) {
+  const opensAddForm = useOpensAddForm()
+  const [isAdding, setIsAdding] = useState(opensAddForm)
 
   async function handleChanged() {
     await Promise.all([servers.reload(), onServersChanged()])
@@ -230,9 +226,9 @@ export function McpServersSection({ description, onServersChanged }: McpServersS
 
   return (
     <ConnectionsSection
-      id={mcpSectionId}
+      id="connections-mcp"
       title="MCP servers"
-      description={`${description}${countText}`}
+      description="Give agents tools from any MCP server, started on this computer or reached by URL"
       action={
         !isAdding && (
           <Button variant="secondary" size="sm" onClick={() => setIsAdding(true)}>

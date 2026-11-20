@@ -47,7 +47,7 @@ export function listWorkflowSecrets(agentId: string): Promise<WorkflowSecretStat
 
 /**
  * Every secret name any agent declares or an MCP server needs, with whether it is stored
- * and who uses it (Connections > Advanced > Secrets). Values are never returned.
+ * and who uses it (Connections, Secrets tab). Values are never returned.
  */
 export function listAllWorkflowSecrets(): Promise<WorkflowSecretOverview[]> {
   if (!isDesktopApp()) return sampleCredentialsBackend.listAllWorkflowSecrets()

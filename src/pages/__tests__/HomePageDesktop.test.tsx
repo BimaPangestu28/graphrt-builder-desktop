@@ -7,7 +7,7 @@ import type { UsageSummary } from '@/api/usageSummaryTypes'
 import { gettingStartedDismissedKey } from '@/pages/home-dashboard/gettingStarted'
 import { startOfLocalMonth } from '@/pages/home-dashboard/monthlyUsage'
 import { HomePage } from '@/pages/HomePage'
-import { agentPath, routePaths } from '@/routes'
+import { agentPath, connectionsTabPath, routePaths } from '@/routes'
 import type { CommandHandlers } from '@/test/desktopBackend'
 
 const fakeBackend = vi.hoisted(() => ({ handlers: {} as CommandHandlers }))
@@ -266,7 +266,7 @@ describe('HomePage in the desktop app', () => {
     expect(screen.getByText('No runs yet. Test an agent to see it here')).toBeInTheDocument()
     const checklist = await screen.findByRole('region', { name: /Getting started/ })
     expect(within(checklist).getByText('0 of 5 done')).toBeInTheDocument()
-    expect(within(checklist).getByRole('link', { name: 'Connect a model' })).toHaveAttribute('href', routePaths.connections)
+    expect(within(checklist).getByRole('link', { name: 'Connect a model' })).toHaveAttribute('href', connectionsTabPath('models'))
     expect(screen.getByRole('link', { name: 'Build one with New agent' })).toHaveAttribute('href', routePaths.newAgent)
   })
 

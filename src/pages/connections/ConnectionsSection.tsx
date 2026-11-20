@@ -1,39 +1,37 @@
-import { useEffect, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { joinClassNames } from '@/components/ui'
+import { connectionsAddFormParam } from '@/routes'
 
 /** The card look every block on the Connections page shares (same as the Plugins grid cards). */
 export const connectionsCardClassNames = 'rounded-[14px] border border-line bg-surface'
 
-/** Sections that `?section=` can open and scroll to. */
-export type LinkableConnectionsSection = 'secrets' | 'mcp'
-
 interface ConnectionsSectionProps {
   /** Element id, also used to build the heading id that names the region. */
   id: string
+  /** Names the region for screen readers; the selected tab above already shows it. */
   title: string
-  /** One line under the title saying what the section is for. */
-  description?: ReactNode
-  /** A button on the right of the title, e.g. "Add secret". */
+  /** One line saying what the tab is for. */
+  description: ReactNode
+  /** A button at the tab's top-right, e.g. "Add secret". */
   action?: ReactNode
   children: ReactNode
 }
 
 /**
- * One section of the Connections page: a title with a one-line explanation and an
- * optional action on the right, then its cards. The heading names the region.
+ * The content of one Connections tab: a one-line explanation with an optional action on
+ * the right, then its cards. The visually hidden heading names the region, since the
+ * selected tab already shows the title.
  */
 export function ConnectionsSection({ id, title, description, action, children }: ConnectionsSectionProps) {
   const headingId = `${id}-h`
   return (
-    <section id={id} aria-labelledby={headingId} className="flex min-w-0 scroll-mt-6 flex-col gap-3">
-      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <h2 id={headingId} className="m-0 text-[16px] font-semibold tracking-[-0.2px]">
-            {title}
-          </h2>
-          {description && <p className="m-0 text-[13px] leading-normal text-muted">{description}</p>}
-        </div>
+    <section id={id} aria-labelledby={headingId} className="flex min-w-0 flex-col gap-4">
+      <h2 id={headingId} className="sr-only">
+        {title}
+      </h2>
+      <div className="flex min-h-8 flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <p className="m-0 min-w-0 flex-[1_1_320px] text-[13px] leading-normal text-muted">{description}</p>
         {action}
       </div>
       {children}
@@ -55,23 +53,8 @@ export function ConnectionsNotice({ children, tone = 'muted' }: { children: Reac
   )
 }
 
-/** Whether the page was opened with `?section=<section>` (e.g. from a "Set it in Connections" link). */
-export function useIsLinkedSection(section: LinkableConnectionsSection): boolean {
+/** Whether the tab was opened with `?add=1` (e.g. from an old `?section=secrets` link), so its add form starts open. */
+export function useOpensAddForm(): boolean {
   const [searchParams] = useSearchParams()
-  return searchParams.get('section') === section
-}
-
-/**
- * Scrolls to the section once when the page was opened with `?section=<section>`.
- *
- * @param section - Which `?section=` value this section answers to
- * @param elementId - The id of the section element to scroll to
- */
-export function useScrollToLinkedSection(section: LinkableConnectionsSection, elementId: string): void {
-  const isLinked = useIsLinkedSection(section)
-  useEffect(() => {
-    if (isLinked) document.getElementById(elementId)?.scrollIntoView?.({ block: 'start' })
-    // Only on the first render: later searches must not jump the page around.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  return searchParams.get(connectionsAddFormParam) === '1'
 }

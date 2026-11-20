@@ -3,7 +3,7 @@ import { getCredentialStoreShortName } from '@/lib/platform'
 import type { ProviderStatus, WorkflowSecretStatus } from '@/api/types'
 import { appRequirementsByAgentId } from '@/data/mapsLeadsAgent'
 import { getProviderName } from '@/lib/agentDisplay'
-import { agentPath, pluginDetailPath, routePaths } from '@/routes'
+import { agentPath, connectionsTabPath, pluginDetailPath } from '@/routes'
 import type { BuilderRequirement } from './AgentRequirementsList'
 import { describeRequirementState, needsOnlySessionLink } from './pluginRequirementDisplay'
 
@@ -31,12 +31,12 @@ export function listBuilderRequirements(
   const modelRequirements = modelProviders.map((provider) => ({
     label: `${getProviderName(provider)} · ${getCredentialStoreShortName()}`,
     isConnected: providerStatuses?.some((status) => status.provider === provider && status.configured) ?? true,
-    connectPath: routePaths.connections,
+    connectPath: connectionsTabPath('models'),
   }))
   const secretRequirements = (workflowSecrets ?? []).map((secret) => ({
     label: secret.description ? `${secret.description} · ${secret.name}` : secret.name,
     isConnected: secret.configured || !secret.required,
-    connectPath: routePaths.connections,
+    connectPath: connectionsTabPath('secrets'),
     secretName: secret.name,
   }))
   return [

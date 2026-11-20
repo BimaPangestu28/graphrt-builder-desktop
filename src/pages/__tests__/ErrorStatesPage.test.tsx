@@ -4,7 +4,7 @@ import { BackendError } from '@/api/client'
 import type { Problem } from '@/api/problemTypes'
 import { resetSampleProblems, sampleFailedRunId, sampleProblemsBackend } from '@/api/sampleBackend/problems'
 import { ErrorStatesPage } from '@/pages/ErrorStatesPage'
-import { routePaths } from '@/routes'
+import { connectionsTabPath, routePaths } from '@/routes'
 
 function renderErrorStatesPage(initialPath: string = routePaths.errorStates) {
   return render(
@@ -24,7 +24,7 @@ describe('ErrorStatesPage', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Could not read your email' })).toBeInTheDocument()
     expect(screen.getByText('Failed after 3 tries')).toBeInTheDocument()
     expect(screen.getByText(/a retry starts a new run/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Reconnect Gmail' })).toHaveAttribute('href', routePaths.connections)
+    expect(screen.getByRole('link', { name: 'Reconnect Gmail' })).toHaveAttribute('href', connectionsTabPath('models'))
     const otherProblems = screen.getByRole('complementary', { name: 'Other problems' })
     expect(within(otherProblems).getByRole('link', { name: 'Scan QR again' })).toHaveAttribute('href', routePaths.plugins)
     expect(within(otherProblems).queryByRole('article', { name: 'Could not read your email' })).not.toBeInTheDocument()

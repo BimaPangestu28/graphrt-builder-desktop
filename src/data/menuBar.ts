@@ -1,4 +1,4 @@
-import { routePaths } from '@/routes'
+import { connectionsTabPath, routePaths } from '@/routes'
 
 /** Mock data for screen 25, the macOS menu bar popover and system notifications. */
 
@@ -15,7 +15,7 @@ export interface MenuBarAttentionItem {
 export const menuBarAttentionItems: MenuBarAttentionItem[] = [
   { id: 'review', title: '12 messages to review', detail: 'Maps leads to WhatsApp', actionLabel: 'Review', actionPath: routePaths.batchApproval, tone: 'amber', isPrimaryAction: true },
   { id: 'inbox', title: '2 customers waiting', detail: 'Catering assistant · oldest 9m', actionLabel: 'Open', actionPath: routePaths.inbox, tone: 'amber', isPrimaryAction: false },
-  { id: 'gmail', title: 'Gmail signed out', detail: 'Morning email digest paused', actionLabel: 'Fix', actionPath: routePaths.connections, tone: 'danger', isPrimaryAction: false },
+  { id: 'gmail', title: 'Gmail signed out', detail: 'Morning email digest paused', actionLabel: 'Fix', actionPath: connectionsTabPath('apps'), tone: 'danger', isPrimaryAction: false },
 ]
 
 export const runningAgent = { name: 'Lead tracker', completedCount: 6, totalCount: 15 }

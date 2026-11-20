@@ -1,6 +1,6 @@
 import type { PluginRequirement } from '@/api/pluginRequirementTypes'
 import type { Agent, ProviderStatus, Run, Trigger } from '@/api/types'
-import { agentPath, routePaths } from '@/routes'
+import { agentPath, connectionsTabPath, routePaths } from '@/routes'
 
 /** The Home "Getting started" checklist (09), each step derived from real data. */
 
@@ -51,7 +51,7 @@ export function deriveGettingStartedSteps(sources: GettingStartedSources): Getti
   const untestedAgent = agents.find((agent) => !hasPassedTest(agent, runs)) ?? firstAgent
   const testedAgent = agents.find((agent) => hasPassedTest(agent, runs)) ?? firstAgent
   return [
-    { id: 'model', label: 'Connect a model', isDone: providerStatuses.some((status) => status.configured), path: routePaths.connections },
+    { id: 'model', label: 'Connect a model', isDone: providerStatuses.some((status) => status.configured), path: connectionsTabPath('models') },
     { id: 'agent', label: 'Build your first agent', isDone: agents.length > 0, path: routePaths.newAgent },
     {
       id: 'plugins',

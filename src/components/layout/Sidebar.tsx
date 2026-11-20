@@ -7,7 +7,7 @@ import { useConversationCounts } from '@/hooks/useConversations'
 import { usePluginUpdateData } from '@/hooks/usePluginUpdates'
 import { useRunnerStatus, type RunnerStatusFacts } from '@/hooks/useRunnerStatus'
 import { getKindLabel, getProviderName, getStatusDotTone } from '@/lib/agentDisplay'
-import { agentPath, routePaths } from '@/routes'
+import { agentPath, connectionsTabPath, routePaths } from '@/routes'
 
 export type MainNavKey = 'home' | 'inbox' | 'runs' | 'schedule' | 'knowledge' | 'plugins' | 'connections' | 'settings'
 
@@ -124,7 +124,7 @@ function DesktopRunnerStatusLine() {
   return (
     <span className="text-[12px] text-muted">
       No model connected ·{' '}
-      <Link to={routePaths.connections} className="font-medium">
+      <Link to={connectionsTabPath('models')} className="font-medium">
         Add one
       </Link>
     </span>
@@ -190,7 +190,7 @@ export function Sidebar({ activeNav, agents = { kind: 'list' }, runnerStatus = '
           </span>
           {isDesktopApp() ? <DesktopRunnerStatusLine /> : <span className="text-[12px] text-muted">{runnerStatus}</span>}
         </div>
-        <Link to={routePaths.connections} aria-current={activeNav === 'connections' ? 'page' : undefined} className={navLinkClassNames(activeNav === 'connections')}>
+        <Link to={connectionsTabPath('models')} aria-current={activeNav === 'connections' ? 'page' : undefined} className={navLinkClassNames(activeNav === 'connections')}>
           Connections
         </Link>
         <Link to={routePaths.settings} aria-current={activeNav === 'settings' ? 'page' : undefined} className={navLinkClassNames(activeNav === 'settings')}>

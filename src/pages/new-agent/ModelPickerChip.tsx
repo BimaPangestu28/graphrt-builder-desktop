@@ -6,7 +6,7 @@ import { useAvailableModels } from '@/hooks/useAvailableModels'
 import { useDefaultModel } from '@/hooks/useDefaultModel'
 import { describeError } from '@/lib/agentDisplay'
 import { buildModelOptionGroups, modelChoiceKey } from '@/lib/modelChoices'
-import { routePaths } from '@/routes'
+import { connectionsTabPath } from '@/routes'
 
 const chipClassNames = 'flex h-[30px] items-center gap-1.5 rounded-lg bg-canvas px-2.5 text-[13px] text-ink-2'
 
@@ -28,7 +28,7 @@ export function ModelPickerChip({ label = 'Model for new agents' }: { label?: st
   if (!defaultModel) {
     return (
       <span className={chipClassNames}>
-        <Link to={routePaths.connections} className="font-medium">
+        <Link to={connectionsTabPath('models')} className="font-medium">
           {defaultModelState.error ? 'Could not check the model' : 'Connect a model'}
         </Link>
       </span>
