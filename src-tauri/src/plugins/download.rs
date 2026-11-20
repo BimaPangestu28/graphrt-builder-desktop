@@ -23,6 +23,10 @@ pub trait Downloader: Send + Sync + fmt::Debug {
     /// Downloads `url`, failing when the body exceeds `max_bytes` or the whole
     /// transfer takes longer than `timeout`. Callers have already checked
     /// that `url` is HTTPS ([`require_https`]).
+    ///
+    /// # Errors
+    /// `NotFound` when the server answers 404 (the catalog falls back from v2 to v1
+    /// on it); `InvalidInput` when the body is too large; `Internal` otherwise.
     fn fetch(
         &self,
         url: &str,
@@ -76,6 +80,9 @@ impl HttpsDownloader {
         require_https(url)?;
         let download_error = |error: reqwest::Error| AppError::Internal(format!("download failed: {error}"));
         let mut response = self.client.get(url).send().await.map_err(download_error)?;
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Err(AppError::NotFound(url.to_owned()));
+        }
         if !response.status().is_success() {
             return Err(AppError::Internal(format!("download failed: {url} answered {}", response.status())));
         }

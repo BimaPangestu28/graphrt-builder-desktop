@@ -29,7 +29,7 @@ fn a_curated_display_name_is_trimmed_and_shown_in_the_catalog() {
     let index = parse_catalog(&catalog_with_display_name("  Fixture Echo Pro ".into(), &good_tarball())).unwrap();
     assert_eq!(index.plugins[0].display_name.as_deref(), Some(DISPLAY_NAME));
 
-    let view = catalog_view(&index, &[], false);
+    let view = catalog_view(&index, &[], Default::default());
     assert_eq!(view.plugins[0].display_name, DISPLAY_NAME);
     assert_eq!(view.plugins[0].name, PLUGIN, "the technical name stays the identifier");
 }
@@ -52,7 +52,7 @@ fn an_invalid_display_name_is_dropped_but_the_plugin_stays_listed() {
         let index = parse_catalog(&catalog_with_display_name(invalid_value.clone(), &good_tarball())).unwrap();
         assert_eq!(index.plugins.len(), 1, "{invalid_value}");
         assert_eq!(index.plugins[0].display_name, None, "{invalid_value}");
-        let view = catalog_view(&index, &[], false);
+        let view = catalog_view(&index, &[], Default::default());
         assert_eq!(view.plugins[0].display_name, "Fixture Echo", "{invalid_value}");
     }
 }
@@ -68,7 +68,7 @@ fn a_display_name_of_exactly_sixty_characters_is_kept() {
 fn catalogs_without_display_name_show_the_humanized_name() {
     let index = parse_catalog(&catalog_json("1.0.0", TARBALL_URL, &"a".repeat(64), 1)).unwrap();
     assert_eq!(index.plugins[0].display_name, None);
-    assert_eq!(catalog_view(&index, &[], false).plugins[0].display_name, "Fixture Echo");
+    assert_eq!(catalog_view(&index, &[], Default::default()).plugins[0].display_name, "Fixture Echo");
 }
 
 #[tokio::test]

@@ -1,9 +1,12 @@
 import { useSearchParams } from 'react-router-dom'
 import { AppShell, PageFrame, PageTitleBlock } from '@/components/layout'
 import { useBrowserRuntime } from '@/hooks/useBrowserRuntime'
+import { usePluginCatalogRefresh, type PluginCatalogRefreshState } from '@/hooks/usePluginCatalogRefresh'
 import { usePlugins, type PluginsState } from '@/hooks/usePlugins'
+import { Button, Spinner } from '@/components/ui'
 import { describeError } from '@/lib/agentDisplay'
 import { BrowserRuntimeBanner } from './plugins/BrowserRuntimeBanner'
+import { describeCatalogFreshness } from './plugins/catalogFreshness'
 import { PluginAutoUpdateToggle } from './plugins/PluginAutoUpdateToggle'
 import { PluginCatalogCard } from './plugins/PluginCatalogCard'
 import { PluginCategoryChips, PluginSearchBox, PluginTabs } from './plugins/PluginFilterBar'
@@ -24,7 +27,37 @@ function CatalogNotes({ plugins }: { plugins: PluginsState }) {
     return <p className="m-0 text-[13px] text-muted">Could not load the plugin catalog: {describeError(inventory.catalogError)}. Installed plugins still work</p>
   }
   if (inventory.catalog?.fromCache) return <p className="m-0 text-[13px] text-muted">Offline: showing the last saved catalog</p>
+  if (inventory.catalog) return <p className="m-0 text-[13px] text-muted">{describeCatalogFreshness(inventory.catalog, Date.now())}</p>
   return null
+}
+
+/** "Check for updates" with the catalog's freshness (or why it is missing) and the last refresh error. */
+function CatalogStatus({ plugins, catalogRefresh }: { plugins: PluginsState; catalogRefresh: PluginCatalogRefreshState }) {
+  if (!plugins.data) return null
+  const { isRefreshing, refreshError, refresh } = catalogRefresh
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5" role="status" aria-live="polite">
+          <CatalogNotes plugins={plugins} />
+          {isRefreshing && (
+            <span className="inline-flex items-center gap-1.5 text-[13px] text-muted">
+              <Spinner />
+              Checking for updates…
+            </span>
+          )}
+        </div>
+        <Button variant="secondary" size="sm" onClick={() => void refresh()} disabled={isRefreshing}>
+          Check for updates
+        </Button>
+      </div>
+      {refreshError && (
+        <p role="alert" className="m-0 text-[13px] text-danger">
+          Could not check for updates: {refreshError}
+        </p>
+      )}
+    </div>
+  )
 }
 
 function PluginsHeader() {
@@ -96,10 +129,13 @@ function PluginCatalog({ items, plugins }: PluginCatalogProps) {
  * The graphrt-plugins catalog merged with what is installed, as an equal-height card grid
  * with All / Installed / Updates / Needs attention tabs, search and category chips. Each
  * card links to the plugin's page (`/plugins/:pluginName`) for trust, settings and Remove.
- * The browser runtime banner shows while an installed plugin needs Chromium.
+ * The browser runtime banner shows while an installed plugin needs Chromium. "Check for
+ * updates" fetches the catalog again; a catalog fetched over 10 minutes ago is refetched
+ * in the background when the page opens (the saved list shows meanwhile).
  */
 export function PluginsPage() {
   const plugins = usePlugins()
+  const catalogRefresh = usePluginCatalogRefresh(plugins)
   const browserRuntime = useBrowserRuntime()
   const inventory = plugins.data
   const items = inventory ? buildPluginListItems(inventory.catalog, inventory.installed) : []
@@ -115,7 +151,7 @@ export function PluginsPage() {
           </p>
         )}
         {!plugins.error && !inventory && <p className="m-0 text-muted">Loading plugins…</p>}
-        <CatalogNotes plugins={plugins} />
+        <CatalogStatus plugins={plugins} catalogRefresh={catalogRefresh} />
         {browserPluginLabels.length > 0 && <BrowserRuntimeBanner runtime={browserRuntime} pluginLabels={browserPluginLabels} />}
         {inventory && <PluginCatalog items={items} plugins={plugins} />}
       </PageFrame>

@@ -43,6 +43,23 @@ describe('PluginDetailPage', () => {
   })
   afterEach(() => vi.restoreAllMocks())
 
+  it('lists the steps the app fetches on demand for a plugin that is not installed', async () => {
+    const listSteps = vi.spyOn(samplePluginsBackend, 'listPluginCatalogSteps').mockResolvedValue([
+      { kind: 'whatsapp-api.send_text', title: 'Send WhatsApp text', description: 'From the plugin detail file' },
+    ])
+    await renderLoadedPluginPage('whatsapp-api')
+    const steps = within(getSection('What it adds')).getByRole('list', { name: 'Steps WhatsApp Cloud API adds' })
+    await waitFor(() => expect(steps).toHaveTextContent('From the plugin detail file'))
+    expect(listSteps).toHaveBeenCalledWith('whatsapp-api')
+  })
+
+  it('keeps the catalog steps when fetching them fails', async () => {
+    vi.spyOn(samplePluginsBackend, 'listPluginCatalogSteps').mockRejectedValue(new BackendError('internal', 'offline'))
+    await renderLoadedPluginPage('whatsapp-api')
+    const steps = within(getSection('What it adds')).getByRole('list', { name: 'Steps WhatsApp Cloud API adds' })
+    expect(steps).toHaveTextContent('Sends a text message to a phone number')
+  })
+
   it('shows what a plugin adds and asks for before it is installed, then installs it untrusted', async () => {
     await renderLoadedPluginPage('whatsapp-api')
     expect(screen.getByText('Not installed')).toBeInTheDocument()

@@ -265,6 +265,7 @@ pub fn run() {
             commands::node_runtime::node_runtime_info,
             commands::node_runtime::install_browser_runtime,
             commands::plugins::list_plugin_catalog,
+            commands::plugins::list_plugin_catalog_steps,
             commands::plugins::list_installed_plugins,
             commands::plugins::install_plugin,
             commands::plugins::update_plugin,

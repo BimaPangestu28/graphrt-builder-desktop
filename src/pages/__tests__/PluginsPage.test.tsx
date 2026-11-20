@@ -4,7 +4,7 @@ import { BackendError } from '@/api/client'
 import { resetSampleAgents } from '@/api/sampleBackend/agents'
 import { resetSampleCredentials } from '@/api/sampleBackend/credentials'
 import { resetSampleAppSettings, sampleAppSettingsBackend } from '@/api/sampleBackend/appSettings'
-import { emitSamplePluginEvent, resetSamplePlugins, samplePluginsBackend, setSampleInstalledPlugin } from '@/api/sampleBackend/plugins'
+import { emitSamplePluginEvent, resetSamplePlugins, samplePluginsBackend, setSampleCatalogFetchedAt, setSampleInstalledPlugin } from '@/api/sampleBackend/plugins'
 import { pluginDetailPath, pluginDetailPattern, routePaths } from '@/routes'
 import { PluginsPage } from '../PluginsPage'
 
@@ -229,5 +229,69 @@ describe('PluginsPage', () => {
     expect(within(card).queryByRole('button', { name: 'Update Google Maps Scraper' })).not.toBeInTheDocument()
     fireEvent.click(within(card).getByRole('link', { name: 'Review update Google Maps Scraper' }))
     expect(await screen.findByRole('heading', { name: 'Plugin detail' })).toBeInTheDocument()
+  })
+
+  describe('catalog refresh', () => {
+    it('checks for updates on request and says when the catalog was updated', async () => {
+      const listCatalog = vi.spyOn(samplePluginsBackend, 'listPluginCatalog')
+      await renderLoadedPluginsPage()
+      expect(screen.getByText(/Updated just now · catalog published/)).toBeInTheDocument()
+      expect(listCatalog).not.toHaveBeenCalledWith(true)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Check for updates' }))
+
+      expect(screen.getByRole('button', { name: 'Check for updates' })).toBeDisabled()
+      expect(screen.getByText('Checking for updates…')).toBeInTheDocument()
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Check for updates' })).toBeEnabled())
+      expect(listCatalog).toHaveBeenCalledWith(true)
+      expect(screen.queryByText('Checking for updates…')).not.toBeInTheDocument()
+      expect(screen.getByText(/Updated just now/)).toBeInTheDocument()
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('shows why checking for updates failed and keeps the list', async () => {
+      await renderLoadedPluginsPage()
+      vi.spyOn(samplePluginsBackend, 'listPluginCatalog').mockRejectedValue(new BackendError('internal', 'You are offline'))
+
+      fireEvent.click(screen.getByRole('button', { name: 'Check for updates' }))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('Could not check for updates: You are offline')
+      expect(visibleCardNames()).toHaveLength(9)
+    })
+
+    it('says so when only the saved catalog could be shown', async () => {
+      await renderLoadedPluginsPage()
+      const savedCopy = { ...(await samplePluginsBackend.listPluginCatalog(false)), fromCache: true, fetchedAt: null }
+      vi.spyOn(samplePluginsBackend, 'listPluginCatalog').mockResolvedValue(savedCopy)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Check for updates' }))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(/last saved copy/)
+    })
+
+    it('refetches a catalog older than 10 minutes in the background when the page opens', async () => {
+      setSampleCatalogFetchedAt(Date.now() - 11 * 60 * 1000)
+      const listCatalog = vi.spyOn(samplePluginsBackend, 'listPluginCatalog')
+
+      await renderLoadedPluginsPage()
+
+      expect(visibleCardNames()).toHaveLength(9)
+      await waitFor(() => expect(listCatalog).toHaveBeenCalledWith(true))
+      await waitFor(() => expect(screen.getByText(/Updated just now/)).toBeInTheDocument())
+      expect(listCatalog.mock.calls.filter(([refresh]) => refresh === true)).toHaveLength(1)
+    })
+
+    it('does not refetch a catalog fetched a few minutes ago', async () => {
+      setSampleCatalogFetchedAt(Date.now() - 3 * 60 * 1000)
+      const listCatalog = vi.spyOn(samplePluginsBackend, 'listPluginCatalog')
+
+      await renderLoadedPluginsPage()
+
+      expect(screen.getByText(/Updated 3 minutes ago/)).toBeInTheDocument()
+      await act(async () => {
+        await Promise.resolve()
+      })
+      expect(listCatalog).not.toHaveBeenCalledWith(true)
+    })
   })
 })

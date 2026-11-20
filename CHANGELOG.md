@@ -7,6 +7,32 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ## [Unreleased]
 
+### Added
+
+- **Plugin catalog v2**: the app reads the slim `index-v2.json` of the graphrt-plugins `catalog`
+  release first (at most 4 MiB) and falls back to v1 `index.json` (16 MiB, as before) when v2 is
+  missing (404), not valid JSON, too large or uses an unknown schema; the log says which one was
+  used. Each is saved under its own name (`plugin-catalog-v2.json`, `plugin-catalog.json`) and the
+  newer saved copy is used offline. v2 entries list `node_kinds` (kind and title) and `tools`, and
+  point at an immutable per-version detail file (`detail_url`, `detail_sha256`,
+  `detail_size_bytes`, checked like `readme_url` / `icon_url`; invalid ones are dropped, not the
+  entry) holding each node's description, `config_schema` and `outputs`. Details are fetched on
+  demand (plugin page via the new `list_plugin_catalog_steps`, install, builder) and in a
+  background sync after every catalog fetch (missing ones only, 4 at a time, never blocking),
+  verified (HTTPS, size at most 1 MiB and as listed, sha256, same name and version) and kept in
+  `plugin-details/<name>-<version>.json`; versions the index no longer lists are pruned. Offline,
+  only saved details are used. The builder's step types, draft validation of plugins that are not
+  installed, requirements and the plugin page read nodes from the details (or `node_kinds` until a
+  detail is cached); with the v1 fallback nothing changes. `list_plugin_catalog` also returns
+  `fetched_at`, when this session fetched the catalog. A 404 from a download is now reported as
+  `not_found`.
+- **Check for updates on the Plugins page**: a "Check for updates" button fetches the catalog again
+  (`list_plugin_catalog` with `refresh: true`), shows "Checking for updates…" meanwhile, then
+  "Updated just now · catalog published <date>", and says why it failed (or that only the saved
+  copy could be shown). When the page opens with a catalog the app fetched more than 10 minutes
+  ago, the saved list shows at once and a fresh one is fetched in the background. A plugin page of
+  a plugin that is not installed lists its steps from the catalog detail, fetched on demand.
+
 ## [0.1.1] - 2026-11-21
 
 The desktop app now runs agents on the graphrt runtime instead of showing sample data.

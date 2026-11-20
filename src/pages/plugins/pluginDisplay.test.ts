@@ -35,7 +35,7 @@ function catalogWith(...names: string[]): PluginCatalog {
       updateNeedsApproval: false,
     })),
     generatedAt: null,
-    fromCache: false,
+    fromCache: false, fetchedAt: null,
   }
 }
 

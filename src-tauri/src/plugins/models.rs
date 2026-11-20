@@ -1,5 +1,6 @@
 //! Types shared with the frontend (`src/api/pluginTypes.ts`) and the catalog
-//! wire format (`index.json` of the graphrt-plugins releases).
+//! wire formats of the graphrt-plugins `catalog` release: v1 `index.json`, v2
+//! `index-v2.json` and the per-version v2 details (`plugin-<name>-<version>.json`).
 
 use serde::{Deserialize, Serialize};
 
@@ -41,7 +42,13 @@ pub struct PluginNodeInfo {
     pub description: String,
 }
 
-/// One plugin as published in the catalog (`index.json`, snake_case on the wire).
+/// One plugin as published in the catalog (`index.json` or `index-v2.json`, snake_case on the wire).
+///
+/// v1 entries carry every node in `nodes` (with `config_schema` / `outputs`). v2 entries
+/// list only `node_kinds` (kind and title) and point at an immutable detail file
+/// (`detail_url`, `detail_sha256`, `detail_size_bytes`) holding the full nodes; the
+/// service fills `nodes` from that detail, or from `node_kinds` until it is cached
+/// (see `details::resolve_catalog`).
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct CatalogPlugin {
     pub name: String,
@@ -84,6 +91,82 @@ pub struct CatalogPlugin {
     /// How many operations (node kinds) the plugin offers.
     #[serde(default)]
     pub operations_count: Option<u32>,
+    /// v2: kind and title of each node; the full nodes are in the detail file.
+    #[serde(default, deserialize_with = "lenient_node_kinds")]
+    pub node_kinds: Vec<CatalogNodeKind>,
+    /// v2: HTTPS link to this version's detail file (checked when parsed; dropped when invalid).
+    #[serde(default, deserialize_with = "string_or_none")]
+    pub detail_url: Option<String>,
+    /// v2: sha256 (64 hex) of the detail file's bytes.
+    #[serde(default, deserialize_with = "string_or_none")]
+    pub detail_sha256: Option<String>,
+    /// v2: size of the detail file in bytes.
+    #[serde(default, deserialize_with = "u64_or_none")]
+    pub detail_size_bytes: Option<u64>,
+}
+
+/// A v2 index's short form of a node: enough for lists and "which plugin owns this kind".
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct CatalogNodeKind {
+    pub kind: String,
+    #[serde(default)]
+    pub title: String,
+}
+
+impl CatalogNodeKind {
+    /// The node as v1 would list it without description, schema or outputs.
+    pub fn to_node(&self) -> CatalogNode {
+        CatalogNode {
+            kind: self.kind.clone(),
+            title: self.title.clone(),
+            description: String::new(),
+            config_schema: None,
+            outputs: None,
+        }
+    }
+}
+
+/// Reads `node_kinds` leniently: a non-array becomes empty and entries without a
+/// usable `kind` are dropped, so one odd field never fails the whole catalog.
+fn lenient_node_kinds<'de, D>(deserializer: D) -> Result<Vec<CatalogNodeKind>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let serde_json::Value::Array(items) = serde_json::Value::deserialize(deserializer)? else { return Ok(Vec::new()) };
+    Ok(items
+        .into_iter()
+        .filter_map(|item| serde_json::from_value::<CatalogNodeKind>(item).ok())
+        .filter(|node_kind| !node_kind.kind.trim().is_empty())
+        .collect())
+}
+
+/// Reads an optional unsigned number that may hold any JSON value (anything else is `None`).
+fn u64_or_none<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(serde_json::Value::deserialize(deserializer)?.as_u64())
+}
+
+/// A v2 detail file (`plugin-<name>-<version>.json`): the full nodes and tools of one
+/// released plugin version. Immutable once published.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct PluginDetail {
+    pub schema: u32,
+    pub name: String,
+    pub version: String,
+    #[serde(default)]
+    pub nodes: Vec<CatalogNode>,
+    #[serde(default)]
+    pub tools: Vec<CatalogTool>,
+}
+
+/// One tool a plugin adds, as listed in its detail file.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct CatalogTool {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
 }
 
 /// Reads an optional string field that may hold any JSON value: a non-string becomes
@@ -152,7 +235,7 @@ impl From<&CatalogPermissions> for PluginPermissions {
     }
 }
 
-/// The catalog document.
+/// The catalog document (v1 `index.json` or v2 `index-v2.json`; `schema` says which).
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct CatalogIndex {
     pub schema: u32,
@@ -201,6 +284,8 @@ pub struct PluginCatalog {
     pub generated_at: Option<String>,
     /// The catalog could not be fetched; this is the last saved copy.
     pub from_cache: bool,
+    /// When this session last fetched the catalog (RFC 3339), or `None` for a saved copy.
+    pub fetched_at: Option<String>,
 }
 
 /// Whether one requested variable has a value in the keychain.
