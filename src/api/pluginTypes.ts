@@ -25,6 +25,13 @@ export type PluginMaturity = 'stable' | 'beta' | 'experimental'
 
 export type PluginTosRisk = 'none' | 'low' | 'medium' | 'high'
 
+/**
+ * Where a plugin comes from. `official`: built by graphrt (also when the catalog does not say);
+ * `community`: a third-party plugin reviewed and mirrored by the graphrt maintainers;
+ * `local`: installed from a folder or archive on this computer (Developer mode), not reviewed.
+ */
+export type PluginSource = 'official' | 'community' | 'local'
+
 /** One plugin of the online catalog, with its install state on this computer. */
 export interface PluginCatalogEntry {
   /** Technical name, the identifier (install calls, routes, node kinds), e.g. "whatsapp-api". */
@@ -51,7 +58,13 @@ export interface PluginCatalogEntry {
   /** How likely using it breaks the service's terms, when the catalog says. */
   tosRisk: PluginTosRisk | null
   sizeBytes: number
-  /** Installed version, or null when not installed. */
+  /** `official` or `community` (the catalog never lists `local` plugins). */
+  source: PluginSource
+  /** Who maintains it, e.g. "graphrt" or "Acme Inc.", when the catalog says. */
+  publisher: string | null
+  /** HTTPS link to its source repository; open it with {@link openPluginRepository}. */
+  repositoryUrl: string | null
+  /** Installed version, or null when not installed (or installed from this computer). */
   installedVersion: string | null
   /** Installed and the catalog has a different version. */
   updateAvailable: boolean
@@ -125,6 +138,14 @@ export interface InstalledPlugin {
   readmeUrl: string | null
   /** The catalog's icon link when it was installed, or null. See {@link PluginCatalogEntry.iconUrl}. */
   iconUrl: string | null
+  /** Where it was installed from; `local` plugins are never updated from the catalog. */
+  source: PluginSource
+  /** Who maintains it (from the catalog at install time), or null. */
+  publisher: string | null
+  /** Its source repository (from the catalog at install time), or null. */
+  repositoryUrl: string | null
+  /** For a `local` plugin: the folder or archive it was installed from (display only). */
+  localPath: string | null
 }
 
 export type BrowserRuntimeStatus = 'not_installed' | 'installing' | 'installed'

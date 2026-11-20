@@ -25,6 +25,9 @@ function catalogEntry(name: string, overrides: Partial<PluginCatalog['plugins'][
     status: null,
     tosRisk: null,
     sizeBytes: 1,
+    source: 'official',
+    publisher: null,
+    repositoryUrl: null,
     installedVersion: null,
     updateAvailable: false,
     updateNeedsApproval: false,
@@ -48,6 +51,10 @@ function installedPlugin(name: string, overrides: Partial<InstalledPlugin> = {})
     warnings: [],
     readmeUrl: null,
     iconUrl: null,
+    source: 'official',
+    publisher: null,
+    repositoryUrl: null,
+    localPath: null,
     ...overrides,
   }
 }

@@ -1,7 +1,7 @@
 import { Fragment, useId, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { openPluginReadme } from '@/api/plugins'
-import type { InstalledPlugin, PluginNodeInfo, PluginTosRisk } from '@/api/pluginTypes'
+import { openPluginReadme, openPluginRepository } from '@/api/plugins'
+import type { InstalledPlugin, PluginNodeInfo, PluginSource, PluginTosRisk } from '@/api/pluginTypes'
 import { Button, Icon, StatusDot, StrokeIcon } from '@/components/ui'
 import type { BrowserRuntimeState } from '@/hooks/useBrowserRuntime'
 import type { PluginsState } from '@/hooks/usePlugins'
@@ -231,21 +231,28 @@ export function PluginUsersSection({ pluginLabel, users, loadError }: { pluginLa
   return <DetailSection title="Used by agents">{body}</DetailSection>
 }
 
-/** Opens the README in the default browser (a plain link would stay inside the app window). */
-function ReadmeButton({ pluginName }: { pluginName: string }) {
+interface ExternalLinkButtonProps {
+  label: string
+  /** What failed to open, e.g. "the README". */
+  target: string
+  openLink: () => Promise<void>
+}
+
+/** Opens a plugin link in the default browser (a plain link would stay inside the app window). */
+function ExternalLinkButton({ label, target, openLink }: ExternalLinkButtonProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  async function openReadme() {
+  async function handleOpen() {
     setErrorMessage(null)
     try {
-      await openPluginReadme(pluginName)
+      await openLink()
     } catch (openError) {
-      setErrorMessage(`Could not open the README: ${describeError(openError)}`)
+      setErrorMessage(`Could not open ${target}: ${describeError(openError)}`)
     }
   }
   return (
     <div className="flex flex-col gap-1">
-      <Button variant="secondary" size="sm" onClick={() => void openReadme()} className="w-full">
-        Read the README
+      <Button variant="secondary" size="sm" onClick={() => void handleOpen()} className="w-full">
+        {label}
         <Icon name="arrowRight" size={13} />
       </Button>
       {errorMessage && (
@@ -266,18 +273,34 @@ function AboutRow({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
-/** Category, versions, maturity and the README link. */
+const sourceLabels: Record<PluginSource, string> = {
+  official: 'Official (graphrt)',
+  community: 'Community (reviewed by graphrt)',
+  local: 'Local · not reviewed',
+}
+
+/** Category, source and publisher, versions, maturity, and the README and repository links. */
 export function PluginAboutSection({ item }: { item: PluginListItem }) {
+  const isLocal = item.source === 'local'
   return (
     <DetailSection title="About">
       <dl className="m-0 flex flex-col">
         <AboutRow label="Category">{pluginCategoryLabels[item.category]}</AboutRow>
-        <AboutRow label="Catalog version">v{item.version}</AboutRow>
+        <AboutRow label="Source">{sourceLabels[item.source]}</AboutRow>
+        {item.publisher && <AboutRow label="Maintained by">{item.publisher}</AboutRow>}
+        {isLocal && item.localPath && (
+          <AboutRow label="Installed from">
+            <code className="font-mono text-[12px] [overflow-wrap:anywhere]">{item.localPath}</code>
+          </AboutRow>
+        )}
+        {!isLocal && <AboutRow label="Catalog version">v{item.version}</AboutRow>}
         {item.installed && <AboutRow label="Installed">v{item.installed.version}</AboutRow>}
-        <AboutRow label="Maturity">{describeMaturity(item.maturity) ?? (item.maturity === 'stable' ? 'Stable' : 'Not labelled')}</AboutRow>
+        {!isLocal && <AboutRow label="Maturity">{describeMaturity(item.maturity) ?? (item.maturity === 'stable' ? 'Stable' : 'Not labelled')}</AboutRow>}
         {item.tosRisk && <AboutRow label="Terms-of-service risk">{tosRiskLabels[item.tosRisk]}</AboutRow>}
       </dl>
-      {item.readmeUrl && <ReadmeButton pluginName={item.name} />}
+      {isLocal && <p className="m-0 text-[12px] leading-normal text-muted">Installed from this computer: graphrt has not reviewed it and never updates it. Install it again to pick up changes</p>}
+      {item.readmeUrl && <ExternalLinkButton label="Read the README" target="the README" openLink={() => openPluginReadme(item.name)} />}
+      {item.repositoryUrl && <ExternalLinkButton label="View the source code" target="the repository" openLink={() => openPluginRepository(item.name)} />}
     </DetailSection>
   )
 }

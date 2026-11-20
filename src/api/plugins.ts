@@ -61,6 +61,45 @@ export function installPlugin(name: string): Promise<InstalledPlugin> {
   return callBackend('install_plugin', { name })
 }
 
+/** What to pick for {@link pickLocalPluginPath}: a plugin folder or a `.tar.gz` archive. */
+export type LocalPluginPickKind = 'folder' | 'archive'
+
+/**
+ * Opens the system picker for a plugin folder or `.tar.gz` archive (Developer mode). The
+ * browser preview has no picker and answers with a sample path.
+ *
+ * @param kind - Pick a folder or an archive (LocalPluginPickKind)
+ * @returns The absolute path, or null when the picker was closed (string | null)
+ */
+export async function pickLocalPluginPath(kind: LocalPluginPickKind): Promise<string | null> {
+  if (!isDesktopApp()) return samplePluginsBackend.pickLocalPluginPath(kind)
+  const { open } = await import('@tauri-apps/plugin-dialog')
+  const picked =
+    kind === 'folder'
+      ? await open({ title: 'Choose a plugin folder', directory: true, multiple: false })
+      : await open({ title: 'Choose a plugin archive', multiple: false, filters: [{ name: 'Plugin archive (.tar.gz)', extensions: ['gz', 'tgz'] }] })
+  return typeof picked === 'string' ? picked : null
+}
+
+/**
+ * Installs a plugin from a folder or `.tar.gz` on this computer (Developer mode only). It is
+ * checked like a catalog plugin, starts untrusted, is labelled "Local · not reviewed" and is
+ * never updated from the catalog.
+ *
+ * @param path - Absolute path from {@link pickLocalPluginPath} (string)
+ * @param replace - The user agreed to replace a plugin of the same name installed from the catalog (boolean)
+ * @returns The installed plugin (InstalledPlugin)
+ * @throws BackendError - `conflict` when a catalog plugin of that name is installed and `replace` is false;
+ *   `invalid_input` for unsafe or invalid plugins or while Developer mode is off
+ *
+ * @example
+ * const installedPlugin = await installLocalPlugin('/Users/me/code/my-plugin')
+ */
+export function installLocalPlugin(path: string, replace = false): Promise<InstalledPlugin> {
+  if (!isDesktopApp()) return samplePluginsBackend.installLocalPlugin(path, replace)
+  return callBackend('install_local_plugin', { path, replace })
+}
+
 /** Installs the catalog version over the installed one (when `updateAvailable`). */
 export function updatePlugin(name: string): Promise<InstalledPlugin> {
   if (!isDesktopApp()) return samplePluginsBackend.updatePlugin(name)
@@ -163,6 +202,17 @@ export function checkPluginSession(name: string): Promise<PluginSessionState> {
 export function openPluginReadme(name: string): Promise<void> {
   if (!isDesktopApp()) return samplePluginsBackend.openPluginReadme(name)
   return callBackend('open_plugin_readme', { name })
+}
+
+/**
+ * Opens a plugin's source repository in the default browser (the link comes from the
+ * catalog, kept at install time).
+ *
+ * @throws BackendError - `not_found` when the plugin has no repository link
+ */
+export function openPluginRepository(name: string): Promise<void> {
+  if (!isDesktopApp()) return samplePluginsBackend.openPluginRepository(name)
+  return callBackend('open_plugin_repository', { name })
 }
 
 /**

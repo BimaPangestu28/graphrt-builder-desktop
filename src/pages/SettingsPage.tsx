@@ -104,7 +104,7 @@ function SettingsSectionContent({ activeSection, onSelectSection, appSettingsSta
     case 'updates':
       return <UpdatesSection appSettings={appSettings} updateAppSetting={updateAppSetting} fallbackVersion={appInfo?.version ?? null} />
     case 'about':
-      return <AboutSection appInfo={appInfo} />
+      return <AboutSection appInfo={appInfo} appSettings={appSettings} updateAppSetting={updateAppSetting} />
     case 'runner':
       return (
         <>

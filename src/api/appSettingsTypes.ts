@@ -35,6 +35,11 @@ export interface AppSettings {
   autoUpdatePlugins: boolean
   /** Time and work limits every run gets (Settings › Runner › Run limits). */
   runLimits: RunLimits
+  /**
+   * Developer options (off by default): the Plugins page offers "Install from folder or
+   * archive…" for plugins that are not in the catalog. The backend refuses it otherwise.
+   */
+  developerMode: boolean
 }
 
 /**

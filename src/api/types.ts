@@ -240,4 +240,6 @@ export type BackendErrorCode =
   | 'schedule'
   | 'serialization'
   | 'internal'
+  /** The action would replace something without the user's OK (e.g. a sideloaded plugin over a catalog one). */
+  | 'conflict'
   | 'missing_plugins'

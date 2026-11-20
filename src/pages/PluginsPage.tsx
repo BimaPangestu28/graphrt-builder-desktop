@@ -7,6 +7,7 @@ import { Button, Spinner } from '@/components/ui'
 import { describeError } from '@/lib/agentDisplay'
 import { BrowserRuntimeBanner } from './plugins/BrowserRuntimeBanner'
 import { describeCatalogFreshness } from './plugins/catalogFreshness'
+import { LocalPluginInstall } from './plugins/LocalPluginInstall'
 import { PluginAutoUpdateToggle } from './plugins/PluginAutoUpdateToggle'
 import { PluginCatalogCard } from './plugins/PluginCatalogCard'
 import { PluginCategoryChips, PluginSearchBox, PluginTabs } from './plugins/PluginFilterBar'
@@ -131,7 +132,8 @@ function PluginCatalog({ items, plugins }: PluginCatalogProps) {
  * card links to the plugin's page (`/plugins/:pluginName`) for trust, settings and Remove.
  * The browser runtime banner shows while an installed plugin needs Chromium. "Check for
  * updates" fetches the catalog again; a catalog fetched over 10 minutes ago is refetched
- * in the background when the page opens (the saved list shows meanwhile).
+ * in the background when the page opens (the saved list shows meanwhile). With Settings ›
+ * About › Developer mode on, "Install from folder or archive…" sideloads a plugin.
  */
 export function PluginsPage() {
   const plugins = usePlugins()
@@ -152,6 +154,7 @@ export function PluginsPage() {
         )}
         {!plugins.error && !inventory && <p className="m-0 text-muted">Loading plugins…</p>}
         <CatalogStatus plugins={plugins} catalogRefresh={catalogRefresh} />
+        {inventory && <LocalPluginInstall onInstalled={plugins.reload} />}
         {browserPluginLabels.length > 0 && <BrowserRuntimeBanner runtime={browserRuntime} pluginLabels={browserPluginLabels} />}
         {inventory && <PluginCatalog items={items} plugins={plugins} />}
       </PageFrame>

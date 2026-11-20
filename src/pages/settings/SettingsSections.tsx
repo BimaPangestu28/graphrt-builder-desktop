@@ -310,8 +310,29 @@ function TourRow() {
   )
 }
 
-/** About group: version, the onboarding tour and helpful links. */
-export function AboutSection({ appInfo }: { appInfo: AppInfo | null }) {
+/** "Developer mode": unlocks sideloading on the Plugins page; waits for the stored preferences. */
+function DeveloperModeRow({ appSettings, updateAppSetting }: { appSettings: AppSettings | null; updateAppSetting: UpdateAppSetting }) {
+  if (!appSettings) return null
+  return (
+    <ToggleRow
+      title="Developer mode"
+      description="Adds “Install from folder or archive…” on the Plugins page, for plugins you build yourself. They are not reviewed, start untrusted and never update by themselves"
+      isChecked={appSettings.developerMode}
+      onToggle={(isChecked) => void updateAppSetting('developerMode', isChecked)}
+      hasDivider={false}
+    />
+  )
+}
+
+interface AboutSectionProps {
+  appInfo: AppInfo | null
+  /** Null while the stored preferences load (Developer mode waits for them). */
+  appSettings: AppSettings | null
+  updateAppSetting: UpdateAppSetting
+}
+
+/** About group: version, the onboarding tour, helpful links and Developer mode. */
+export function AboutSection({ appInfo, appSettings, updateAppSetting }: AboutSectionProps) {
   const versionText = appInfo ? `Version ${appInfo.version}${appInfo.updateStatus ? ` · ${appInfo.updateStatus}` : ''}` : 'Loading…'
   return (
     <SettingsGroup headingId="settings-about-heading" title="About">
@@ -320,13 +341,13 @@ export function AboutSection({ appInfo }: { appInfo: AppInfo | null }) {
       <ActionRow
         title="Connected accounts"
         description="AI model keys, secrets and MCP servers"
-        hasDivider={false}
         action={
           <Link to={connectionsTabPath('models')} className={`${settingsButtonClassNames} inline-flex h-[34px] items-center rounded-lg px-3 no-underline !text-ink`}>
             Open Connections
           </Link>
         }
       />
+      <DeveloperModeRow appSettings={appSettings} updateAppSetting={updateAppSetting} />
     </SettingsGroup>
   )
 }

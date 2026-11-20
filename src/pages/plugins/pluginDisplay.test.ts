@@ -3,7 +3,9 @@ import { describeBrowserRuntimeEvent } from '@/hooks/useBrowserRuntime'
 import { humanizePluginName } from '@/lib/pluginDisplayName'
 import {
   buildPluginListItems,
+  describeCommunityInstallNote,
   describeInstallProgress,
+  describePluginSource,
   describePermissionChips,
   describePluginPermissions,
   describeStepCount,
@@ -30,6 +32,9 @@ function catalogWith(...names: string[]): PluginCatalog {
       status: null,
       tosRisk: null,
       sizeBytes: 1,
+      source: 'official',
+      publisher: null,
+      repositoryUrl: null,
       installedVersion: null,
       updateAvailable: false,
       updateNeedsApproval: false,
@@ -55,6 +60,10 @@ function installed(name: string): InstalledPlugin {
     warnings: [],
     readmeUrl: null,
     iconUrl: null,
+    source: 'official',
+    publisher: null,
+    repositoryUrl: null,
+    localPath: null,
   }
 }
 
@@ -165,5 +174,35 @@ describe('plugin row helpers', () => {
     expect(pluginNeedsAttention({ ...installed('untrusted'), permissions: { network: false, secrets: false, env: ['TOKEN'] } })).toBe(true)
     expect(pluginNeedsAttention({ ...installed('trusted'), trusted: true, permissions: { network: false, secrets: true, env: [] } })).toBe(false)
     expect(pluginNeedsAttention({ ...installed('warned'), warnings: ['Read this first'] })).toBe(true)
+  })
+})
+
+describe('plugin sources', () => {
+  it('badges community and local plugins, never official ones', () => {
+    expect(describePluginSource('official')).toBeNull()
+    expect(describePluginSource('community')).toEqual({ label: 'Community', tone: 'brand' })
+    expect(describePluginSource('local')).toEqual({ label: 'Local · not reviewed', tone: 'amber' })
+  })
+
+  it('names the publisher of a community plugin in the install note', () => {
+    expect(describeCommunityInstallNote({ source: 'community', publisher: 'Acme Inc.' })).toBe('Reviewed by the graphrt maintainers, but maintained by Acme Inc.')
+    expect(describeCommunityInstallNote({ source: 'community', publisher: null })).toBe('Reviewed by the graphrt maintainers, but maintained by a third party.')
+    expect(describeCommunityInstallNote({ source: 'official', publisher: 'graphrt' })).toBeNull()
+  })
+
+  it('carries the catalog labels and lets a local plugin replace the catalog entry of its name', () => {
+    const catalog = catalogWith('alpha', 'beta')
+    catalog.plugins[0] = { ...catalog.plugins[0], source: 'community', publisher: 'Acme', repositoryUrl: 'https://example.test/alpha', updateAvailable: true }
+    catalog.plugins[1] = { ...catalog.plugins[1], updateAvailable: true }
+    const localBeta = { ...installed('beta'), source: 'local' as const, localPath: '/code/beta' }
+
+    const items = buildPluginListItems(catalog, [localBeta])
+
+    expect(items.map((item) => [item.name, item.source, item.updateAvailable])).toEqual([
+      ['beta', 'local', false],
+      ['alpha', 'community', true],
+    ])
+    expect(items[0].localPath).toBe('/code/beta')
+    expect(items[1]).toMatchObject({ publisher: 'Acme', repositoryUrl: 'https://example.test/alpha' })
   })
 })
