@@ -12,12 +12,14 @@
 //! - `kind`: infers the agent kind when the user did not pick one.
 //! - `diff`: compares two flow summaries for the revision summary.
 //! - `history`: saves the builder chat (requests and replies) per agent.
+//! - `edit_lock`: which agents a revision is changing (the Nodes view waits meanwhile).
 //!
 //! The public functions resolve the model from the user's credentials; the
 //! `*_with_model` functions hold the logic and take any [`ChatModel`], so tests
 //! drive them with `graphrt_llm::mock::MockModel`.
 
 pub(crate) mod diff;
+pub mod edit_lock;
 mod extract;
 pub mod history;
 mod kind;
@@ -207,6 +209,8 @@ pub(crate) async fn revise_agent_with_model(
     if instruction.is_empty() {
         return Err(AppError::InvalidInput("describe the change".into()));
     }
+    // Hand edits in the Nodes view wait while this revision runs (released on every return).
+    let _edit_guard = edit_lock::begin_builder_edit(agent_id);
     report(on_progress, BuildStage::Understanding, "Understanding the change");
     let agent = db.get_agent(agent_id)?;
     let before = current_summary(&agent);

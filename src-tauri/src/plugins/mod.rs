@@ -387,6 +387,29 @@ impl PluginService {
             .collect()
     }
 
+    /// What people see for each plugin the app knows (installed ones, then the known
+    /// catalog), keyed by technical name. Reading the install records may fail; the
+    /// installed plugins then fall back to their catalog or humanized names.
+    pub fn plugin_display_names(&self) -> HashMap<String, String> {
+        let mut names: HashMap<String, String> = self
+            .known_catalog()
+            .map(|catalog| {
+                catalog
+                    .plugins
+                    .iter()
+                    .map(|plugin| {
+                        (plugin.name.clone(), resolve_display_name(&plugin.name, [plugin.display_name.as_deref()]))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        match self.list_installed() {
+            Ok(installed) => names.extend(installed.into_iter().map(|plugin| (plugin.name, plugin.display_name))),
+            Err(error) => log::warn!("could not read the installed plugins' names: {error}"),
+        }
+        names
+    }
+
     /// One installed plugin.
     ///
     /// # Errors

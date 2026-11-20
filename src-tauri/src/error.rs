@@ -35,6 +35,20 @@ pub enum AppError {
     /// message shows them humanized).
     #[error("this agent needs plugins that are not installed: {}", humanized_plugin_names(.0))]
     MissingPlugins(Vec<String>),
+    /// An edit was made on `base_version`, but the agent moved on to `latest_version`
+    /// (the builder or another window saved meanwhile).
+    #[error("this agent changed while you were editing (you edited version {base_version}, the latest is version {latest_version})")]
+    VersionConflict { base_version: i64, latest_version: i64 },
+    /// The builder (a chat change) is changing this agent; edits wait until it is done.
+    #[error("the builder is changing this agent; try again when it is done")]
+    BuilderBusy,
+    /// An edited graph does not pass validation; nothing was saved.
+    #[error("the edited steps have {} problem(s): {}", .0.len(), first_problem_message(.0))]
+    InvalidGraph(Vec<crate::agent_graph::GraphProblem>),
+}
+
+fn first_problem_message(problems: &[crate::agent_graph::GraphProblem]) -> String {
+    problems.first().map(|problem| problem.message.clone()).unwrap_or_default()
 }
 
 fn humanized_plugin_names(names: &[String]) -> String {
@@ -59,17 +73,40 @@ impl AppError {
             Self::Internal(_) => "internal",
             Self::Conflict(_) => "conflict",
             Self::MissingPlugins(_) => "missing_plugins",
+            Self::VersionConflict { .. } => "version_conflict",
+            Self::BuilderBusy => "builder_busy",
+            Self::InvalidGraph(_) => "invalid_graph",
+        }
+    }
+
+    /// Structured data for the variants the UI acts on (`None` for the others).
+    pub fn details(&self) -> Option<serde_json::Value> {
+        match self {
+            Self::VersionConflict { base_version, latest_version } => {
+                Some(serde_json::json!({ "baseVersion": base_version, "latestVersion": latest_version }))
+            }
+            Self::InvalidGraph(problems) => {
+                serde_json::to_value(problems).ok().map(|problems| serde_json::json!({ "problems": problems }))
+            }
+            _ => None,
         }
     }
 }
 
-/// Serialized as `{ "code": "...", "message": "..." }` so the frontend gets a typed error.
+/// Serialized as `{ "code": "...", "message": "..." }` so the frontend gets a typed error,
+/// plus `details` for the variants that carry data (see [`AppError::details`]).
 impl Serialize for AppError {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("AppError", 2)?;
+        let details = self.details();
+        let mut state = serializer.serialize_struct("AppError", if details.is_some() { 3 } else { 2 })?;
         state.serialize_field("code", self.code())?;
         state.serialize_field("message", &self.to_string())?;
+        if let Some(details) = details {
+            state.serialize_field("details", &details)?;
+        } else {
+            state.skip_field("details")?;
+        }
         state.end()
     }
 }

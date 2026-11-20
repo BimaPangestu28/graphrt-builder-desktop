@@ -40,6 +40,8 @@ graphrt-mcp = { git = "https://github.com/BimaPangestu28/graphrt", rev = "32bcd7
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
 futures = "0.3"
 indexmap = { version = "2", features = ["serde"] }
+# Writing workflow documents edited in the Nodes view back to YAML (same crate graphrt-core reads them with).
+serde-saphyr = "2"
 thiserror = "2"
 # Same version as graphrt-rag's SqliteStore: a binary can link only one bundled SQLite.
 # `fallible_uint` keeps `usize`/`u64` parameters working as they did in 0.32.

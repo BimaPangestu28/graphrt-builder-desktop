@@ -214,6 +214,30 @@ const MIGRATIONS: &[&str] = &[
     );
     CREATE INDEX builder_messages_by_agent_created_at ON builder_messages (agent_id, created_at);
     "#,
+    // Node positions of the Nodes view (see `node_layouts.rs`), per agent version and
+    // node id; graphrt drops positions from workflow documents, so the app keeps them.
+    // Plus the canvas zoom and pan of each agent.
+    r#"
+    CREATE TABLE node_layouts (
+        agent_id  TEXT NOT NULL REFERENCES agents (id) ON DELETE CASCADE,
+        version   INTEGER NOT NULL CHECK (version >= 1),
+        node_id   TEXT NOT NULL CHECK (length(node_id) > 0),
+        x         REAL NOT NULL,
+        y         REAL NOT NULL,
+        width     REAL,
+        height    REAL,
+        collapsed INTEGER NOT NULL DEFAULT 0 CHECK (collapsed IN (0, 1)),
+        PRIMARY KEY (agent_id, version, node_id)
+    );
+
+    CREATE TABLE canvas_viewports (
+        agent_id   TEXT PRIMARY KEY NOT NULL REFERENCES agents (id) ON DELETE CASCADE,
+        x          REAL NOT NULL,
+        y          REAL NOT NULL,
+        zoom       REAL NOT NULL CHECK (zoom > 0),
+        updated_at TEXT NOT NULL
+    );
+    "#,
 ];
 
 /// Applies every migration newer than the database's `user_version`.
@@ -266,6 +290,7 @@ mod tests {
                 "agent_versions",
                 "agents",
                 "builder_messages",
+                "canvas_viewports",
                 "chain_steps",
                 "chains",
                 "conversation_messages",
@@ -273,6 +298,7 @@ mod tests {
                 "knowledge_bases",
                 "knowledge_documents",
                 "knowledge_sources",
+                "node_layouts",
                 "run_events",
                 "run_inputs",
                 "runs",

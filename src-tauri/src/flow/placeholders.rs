@@ -13,13 +13,22 @@ const PLACEHOLDER_WORDS: &[&str] = &["your-domain", "yourdomain", "your-api", "y
 
 /// "<step title> (<host>)" for every HTTP step whose URL host is a placeholder.
 pub(super) fn placeholder_http_steps(graph: &Graph) -> Vec<String> {
+    placeholder_http_nodes(graph).into_iter().map(|(node, host)| format!("{} ({host})", step_label(node))).collect()
+}
+
+/// `(node id, host)` of every HTTP step whose URL host is a placeholder.
+pub(super) fn placeholder_http_node_hosts(graph: &Graph) -> Vec<(String, String)> {
+    placeholder_http_nodes(graph).into_iter().map(|(node, host)| (node.id.to_string(), host)).collect()
+}
+
+fn placeholder_http_nodes(graph: &Graph) -> Vec<(&GraphNode, String)> {
     graph
         .nodes()
         .iter()
         .filter(|node| node.kind == "http-request")
         .filter_map(|node| {
             let host = url_host(node.doc.config.get("url").and_then(Json::as_str)?)?;
-            is_placeholder_host(&host).then(|| format!("{} ({host})", step_label(node)))
+            is_placeholder_host(&host).then_some((node, host))
         })
         .collect()
 }
