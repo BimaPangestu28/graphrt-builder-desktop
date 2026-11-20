@@ -45,6 +45,10 @@ pub struct PluginNodeInfo {
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct CatalogPlugin {
     pub name: String,
+    /// Curated name people see, e.g. "WhatsApp Cloud API" (newer catalogs only). Checked
+    /// when the catalog is parsed: an invalid one is dropped, the entry stays.
+    #[serde(default, deserialize_with = "string_or_none")]
+    pub display_name: Option<String>,
     pub version: String,
     #[serde(default)]
     pub description: String,
@@ -80,6 +84,18 @@ pub struct CatalogPlugin {
     /// How many operations (node kinds) the plugin offers.
     #[serde(default)]
     pub operations_count: Option<u32>,
+}
+
+/// Reads an optional string field that may hold any JSON value: a non-string becomes
+/// `None` instead of failing the whole catalog over one odd field.
+fn string_or_none<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    match serde_json::Value::deserialize(deserializer)? {
+        serde_json::Value::String(text) => Ok(Some(text)),
+        _ => Ok(None),
+    }
 }
 
 /// One node kind as published in the catalog (snake_case on the wire).
@@ -151,6 +167,8 @@ pub struct CatalogIndex {
 #[serde(rename_all = "camelCase")]
 pub struct PluginCatalogEntry {
     pub name: String,
+    /// What people see: the catalog's curated name, else the humanized `name`.
+    pub display_name: String,
     pub version: String,
     pub description: String,
     pub permissions: PluginPermissions,
@@ -201,6 +219,9 @@ pub struct PluginConfigStatus {
 #[serde(rename_all = "camelCase")]
 pub struct InstalledPlugin {
     pub name: String,
+    /// What people see: the curated name from the catalog (saved at install time, so it
+    /// shows offline), else the humanized `name`.
+    pub display_name: String,
     pub version: String,
     pub description: String,
     /// Requested permissions, from the manifest.
@@ -267,4 +288,7 @@ pub struct InstallRecord {
     /// The catalog's icon link at install time, so the icon shows when the catalog does not.
     #[serde(default)]
     pub icon_url: Option<String>,
+    /// The catalog's curated display name at install time, so it shows offline.
+    #[serde(default)]
+    pub display_name: Option<String>,
 }

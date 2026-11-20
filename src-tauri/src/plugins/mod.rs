@@ -22,6 +22,7 @@ pub mod active;
 mod archive;
 pub mod auto_update;
 mod catalog;
+pub(crate) mod display_name;
 pub mod download;
 pub mod events;
 mod host;
@@ -46,6 +47,7 @@ use std::time::Duration;
 
 pub use active::{add_plugin_tools, register_catalog_placeholders, register_plugin_nodes};
 pub use catalog::DEFAULT_CATALOG_URL;
+use display_name::resolve_display_name;
 use download::{require_https, Downloader, ProgressCallback};
 use events::PluginEventSink;
 use host::{build_snapshot, HostInputs, PluginSnapshot, SharedSnapshot};
@@ -308,6 +310,7 @@ impl PluginService {
     pub fn list_installed(&self) -> AppResult<Vec<InstalledPlugin>> {
         let snapshot = self.snapshot();
         let records = settings::install_records(&self.db)?;
+        let session_display_names = self.session_catalog_display_names();
         snapshot
             .plugins
             .iter()
@@ -325,8 +328,16 @@ impl PluginService {
                         })
                     })
                     .collect::<AppResult<Vec<_>>>()?;
+                let display_name = resolve_display_name(
+                    &plugin.name,
+                    [
+                        session_display_names.get(&plugin.name).and_then(Option::as_deref),
+                        record.display_name.as_deref(),
+                    ],
+                );
                 Ok(InstalledPlugin {
                     name: plugin.name.clone(),
+                    display_name,
                     version: plugin.version.clone(),
                     description: plugin.description.clone(),
                     permissions: plugin.permissions.clone(),
@@ -406,6 +417,14 @@ impl PluginService {
                 Ok(None)
             }
         }
+    }
+
+    /// `name -> display_name` of the catalog fetched this session (empty before one), so
+    /// installed plugins pick up a curated name the catalog added after they were installed.
+    fn session_catalog_display_names(&self) -> HashMap<String, Option<String>> {
+        let Ok(catalog) = self.catalog.lock() else { return HashMap::new() };
+        let plugins = catalog.as_ref().map(|index| index.plugins.as_slice()).unwrap_or_default();
+        plugins.iter().map(|plugin| (plugin.name.clone(), plugin.display_name.clone())).collect()
     }
 
     /// The icon link of `name`: from the catalog fetched this session when it lists the
@@ -607,6 +626,7 @@ impl PluginService {
             needs_browser: entry.needs_browser,
             readme_url: entry.readme_url.clone(),
             icon_url: entry.icon_url.clone(),
+            display_name: entry.display_name.clone(),
         };
         settings::save_install_record(&self.db, name, Some(record))?;
         self.reload();

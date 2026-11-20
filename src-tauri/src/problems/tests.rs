@@ -125,6 +125,7 @@ impl Fixture {
 fn installed_plugin(name: &str) -> InstalledPlugin {
     InstalledPlugin {
         name: name.into(),
+        display_name: crate::plugins::display_name::humanize_plugin_name(name),
         version: "1.0.0".into(),
         description: String::new(),
         permissions: PluginPermissions::default(),
