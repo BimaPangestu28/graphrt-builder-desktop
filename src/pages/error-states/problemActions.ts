@@ -1,5 +1,5 @@
 import type { ProblemAction } from '@/api/problemTypes'
-import { agentPath, connectionsPluginsPath, routePaths } from '@/routes'
+import { agentPath, routePaths } from '@/routes'
 
 /**
  * Where a problem button goes. Commands (`retry_run`, `install_browser`) have no path;
@@ -15,7 +15,7 @@ export function getProblemActionPath(action: ProblemAction): string | null {
     case 'open_connections':
       return routePaths.connections
     case 'open_plugins':
-      return connectionsPluginsPath
+      return routePaths.plugins
     case 'open_builder':
       return action.agentId ? agentPath('builder', action.agentId) : routePaths.home
     case 'open_schedule':

@@ -20,6 +20,11 @@ export interface PluginNodeInfo {
   description: string
 }
 
+/** `stable`: verified end to end; `beta`: official API, unit-tested; `experimental`: may break. */
+export type PluginMaturity = 'stable' | 'beta' | 'experimental'
+
+export type PluginTosRisk = 'none' | 'low' | 'medium' | 'high'
+
 /** One plugin of the online catalog, with its install state on this computer. */
 export interface PluginCatalogEntry {
   name: string
@@ -31,6 +36,12 @@ export interface PluginCatalogEntry {
   nodes: PluginNodeInfo[]
   tools: string[]
   readmeUrl: string | null
+  /** Terms-of-service / ban warning from the plugin's README (e.g. whatsapp-web), or null. */
+  warning: string | null
+  /** Maturity label, when the catalog says (older catalogs do not). */
+  status: PluginMaturity | null
+  /** How likely using it breaks the service's terms, when the catalog says. */
+  tosRisk: PluginTosRisk | null
   sizeBytes: number
   /** Installed version, or null when not installed. */
   installedVersion: string | null

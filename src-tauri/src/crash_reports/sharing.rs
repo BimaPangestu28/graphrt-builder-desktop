@@ -155,6 +155,13 @@ pub fn open_issue_in_browser(url: &str) -> AppResult<()> {
     if !url.starts_with(&format!("{NEW_ISSUE_URL}?")) {
         return Err(AppError::InvalidInput("only graphrt's new-issue page can be opened".into()));
     }
+    open_in_browser(url)
+}
+
+/// Opens a link in the default browser without a shell. Callers check the link first.
+///
+/// @throws AppError::Internal - when the browser cannot be started
+pub(crate) fn open_in_browser(url: &str) -> AppResult<()> {
     let (program, arguments) = browser_command(url);
     Command::new(program)
         .args(&arguments)

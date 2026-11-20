@@ -8,7 +8,7 @@ import { useRunnerStatus, type RunnerStatusFacts } from '@/hooks/useRunnerStatus
 import { getKindLabel, getProviderName, getStatusDotTone } from '@/lib/agentDisplay'
 import { agentPath, routePaths } from '@/routes'
 
-export type MainNavKey = 'home' | 'inbox' | 'runs' | 'schedule' | 'knowledge' | 'connections' | 'settings'
+export type MainNavKey = 'home' | 'inbox' | 'runs' | 'schedule' | 'knowledge' | 'plugins' | 'connections' | 'settings'
 
 /**
  * What the "Agents" section of the sidebar shows:
@@ -39,6 +39,7 @@ const primaryNavItems: Array<{ key: MainNavKey; label: string; path: string }> =
   { key: 'runs', label: 'Runs', path: routePaths.runs },
   { key: 'schedule', label: 'Schedule', path: routePaths.scheduler },
   { key: 'knowledge', label: 'Knowledge', path: routePaths.knowledge },
+  { key: 'plugins', label: 'Plugins', path: routePaths.plugins },
 ]
 
 const navLinkBase = 'flex items-center justify-between rounded-lg px-2.5 py-2 no-underline'

@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { resetSampleAgents, sampleAgentsBackend } from '@/api/sampleBackend/agents'
-import { agentPath } from '@/routes'
+import { agentPath, routePaths } from '@/routes'
 import { Sidebar } from './Sidebar'
 
 function renderSidebar(props: Parameters<typeof Sidebar>[0]) {
@@ -59,6 +59,16 @@ describe('Sidebar', () => {
   it('hides the inbox count when there is nothing waiting', async () => {
     renderSidebar({ inboxCount: 0 })
     expect(screen.getByRole('link', { name: 'Inbox' })).toHaveTextContent(/^Inbox$/)
+    await screen.findByRole('link', { name: /Maps leads to WhatsApp/ })
+  })
+
+  it('has a Plugins item right after Knowledge, marked current on the Plugins pages', async () => {
+    renderSidebar({ activeNav: 'plugins' })
+    const pluginsLink = screen.getByRole('link', { name: 'Plugins' })
+    expect(pluginsLink).toHaveAttribute('href', routePaths.plugins)
+    expect(pluginsLink).toHaveAttribute('aria-current', 'page')
+    const mainLinkNames = screen.getAllByRole('link').map((link) => link.textContent)
+    expect(mainLinkNames.indexOf('Plugins')).toBe(mainLinkNames.indexOf('Knowledge') + 1)
     await screen.findByRole('link', { name: /Maps leads to WhatsApp/ })
   })
 })

@@ -16,7 +16,7 @@ export interface BuilderRequirement {
   /** Set for plugins the steps use (`<plugin>.<kind>` node types). */
   pluginName?: string
   /**
-   * not_installed / needs_setup: "Set up in chat" (or a link to Connections) · not_linked: only the
+   * not_installed / needs_setup: "Set up in chat" (or a link to the plugin's page) · not_linked: only the
    * account link is missing (whatsapp-web), "Not linked" with the QR link action · ready: "Ready".
    */
   pluginState?: 'not_installed' | 'needs_setup' | 'not_linked' | 'ready'
@@ -28,7 +28,7 @@ interface AgentRequirementsListProps {
   requirements: BuilderRequirement[]
   /** Saves a workflow secret's value; required when any requirement has a `secretName`. */
   onSaveSecret?: (secretName: string, value: string) => Promise<void>
-  /** Shows the plugin setup card in the chat; without it, plugins not ready link to Connections. */
+  /** Shows the plugin setup card in the chat; without it, plugins not ready link to their plugin page. */
   onShowPluginSetup?: () => void
   /** Called after a plugin account link (QR scan) ends, to reload the plugin requirements. */
   onPluginSessionChange?: () => unknown

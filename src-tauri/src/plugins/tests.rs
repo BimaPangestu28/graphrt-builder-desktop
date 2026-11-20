@@ -458,6 +458,24 @@ async fn catalog_shows_installed_versions_and_updates() {
 }
 
 #[tokio::test]
+async fn readme_links_come_from_the_installed_plugin_or_the_catalog() {
+    let fixture = installed_fixture().await;
+    assert_eq!(fixture.service.readme_url(PLUGIN).unwrap(), "https://plugins.example.test/README.md");
+    assert!(matches!(fixture.service.readme_url("no-such-plugin"), Err(AppError::NotFound(_))));
+}
+
+#[test]
+fn catalog_view_carries_the_warning_maturity_and_tos_risk() {
+    let catalog = super::catalog::catalog_view(&not_installed_catalog(), &[], false);
+    let mail = catalog.plugins.iter().find(|entry| entry.name == "fixture-mail").unwrap();
+    assert_eq!(mail.warning.as_deref(), Some("Sending bulk mail may get the account blocked."));
+    assert_eq!(mail.status.as_deref(), Some("beta"));
+    assert_eq!(mail.tos_risk.as_deref(), Some("medium"));
+    let browser = catalog.plugins.iter().find(|entry| entry.name == "fixture-browser").unwrap();
+    assert_eq!(browser.status, None);
+}
+
+#[tokio::test]
 async fn catalog_falls_back_to_the_saved_copy_when_offline() {
     let fixture = Fixture::new();
     fixture.publish("1.0.0", good_tarball());

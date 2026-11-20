@@ -1,7 +1,9 @@
-import type { InstalledPlugin, PluginCatalog, PluginNodeInfo, PluginPermissions } from '@/api/pluginTypes'
+import type { BadgeTone } from '@/components/ui'
+import type { InstalledPlugin, PluginCatalog, PluginMaturity, PluginNodeInfo, PluginPermissions, PluginTosRisk } from '@/api/pluginTypes'
 import type { PluginInstallProgress } from '@/hooks/usePlugins'
+import { categorizePlugin, type PluginCategory } from './pluginCategories'
 
-/** One plugin card on Connections → Plugins: catalog data merged with the installed copy. */
+/** One plugin on the Plugins page: catalog data merged with the installed copy. */
 export interface PluginListItem {
   name: string
   description: string
@@ -12,11 +14,31 @@ export interface PluginListItem {
   nodes: PluginNodeInfo[]
   installed: InstalledPlugin | null
   updateAvailable: boolean
+  category: PluginCategory
+  readmeUrl: string | null
+  /** Terms-of-service / ban warning from the catalog, or null. */
+  warning: string | null
+  maturity: PluginMaturity | null
+  tosRisk: PluginTosRisk | null
 }
 
 function fromInstalledPlugin(installedPlugin: InstalledPlugin): PluginListItem {
-  const { name, description, version, permissions, needsBrowser, nodes } = installedPlugin
-  return { name, description, version, permissions, needsBrowser, nodes, installed: installedPlugin, updateAvailable: false }
+  const { name, description, version, permissions, needsBrowser, nodes, readmeUrl } = installedPlugin
+  return {
+    name,
+    description,
+    version,
+    permissions,
+    needsBrowser,
+    nodes,
+    installed: installedPlugin,
+    updateAvailable: false,
+    category: categorizePlugin(name, description),
+    readmeUrl,
+    warning: null,
+    maturity: null,
+    tosRisk: null,
+  }
 }
 
 /**
@@ -38,6 +60,11 @@ export function buildPluginListItems(catalog: PluginCatalog | null, installedPlu
     nodes: entry.nodes,
     installed: installedByName.get(entry.name) ?? null,
     updateAvailable: entry.updateAvailable,
+    category: categorizePlugin(entry.name, entry.description),
+    readmeUrl: entry.readmeUrl ?? installedByName.get(entry.name)?.readmeUrl ?? null,
+    warning: entry.warning?.trim() ? entry.warning : null,
+    maturity: entry.status ?? null,
+    tosRisk: entry.tosRisk ?? null,
   }))
   const catalogNames = new Set(catalogItems.map((item) => item.name))
   const installedOnlyItems = installedPlugins.filter((installedPlugin) => !catalogNames.has(installedPlugin.name)).map(fromInstalledPlugin)
@@ -73,7 +100,7 @@ export function describeStepCount(stepCount: number): string {
 }
 
 /**
- * Keeps plugins whose name or description contains the search text (case-insensitive).
+ * Keeps plugins whose name, description or step titles contain the search text (case-insensitive).
  *
  * @param items - Plugins in display order (PluginListItem[])
  * @param searchText - What the person typed; blank keeps everything (string)
@@ -82,7 +109,61 @@ export function describeStepCount(stepCount: number): string {
 export function filterPluginListItems(items: PluginListItem[], searchText: string): PluginListItem[] {
   const needle = searchText.trim().toLowerCase()
   if (needle === '') return items
-  return items.filter((item) => item.name.toLowerCase().includes(needle) || item.description.toLowerCase().includes(needle))
+  return items.filter((item) => [item.name, item.description, ...item.nodes.map((node) => node.title)].some((text) => text.toLowerCase().includes(needle)))
+}
+
+/** The tabs above the catalog. */
+export type PluginFilter = 'all' | 'installed' | 'updates' | 'attention'
+
+/** Whether an installed plugin should be looked at: it needs attention or failed to load. */
+export function itemNeedsAttention(item: PluginListItem): boolean {
+  return item.installed !== null && pluginNeedsAttention(item.installed)
+}
+
+const filterPredicates: Record<PluginFilter, (item: PluginListItem) => boolean> = {
+  all: () => true,
+  installed: (item) => item.installed !== null,
+  updates: (item) => item.updateAvailable,
+  attention: itemNeedsAttention,
+}
+
+/** Keeps the plugins of one tab, order unchanged. */
+export function filterPluginsByTab(items: PluginListItem[], filter: PluginFilter): PluginListItem[] {
+  return filter === 'all' ? items : items.filter(filterPredicates[filter])
+}
+
+/** How many plugins each tab holds. */
+export function countPluginsByTab(items: PluginListItem[]): Record<PluginFilter, number> {
+  return {
+    all: items.length,
+    installed: items.filter(filterPredicates.installed).length,
+    updates: items.filter(filterPredicates.updates).length,
+    attention: items.filter(filterPredicates.attention).length,
+  }
+}
+
+/** The one status badge of a plugin card: what matters most first. */
+export function describePluginStatus(item: PluginListItem): { label: string; tone: BadgeTone } {
+  const { installed } = item
+  if (!installed) return { label: 'Not installed', tone: 'neutral' }
+  if (installed.loadError) return { label: 'Failed to load', tone: 'danger' }
+  if (item.updateAvailable) return { label: 'Update available', tone: 'brand' }
+  if (pluginNeedsAttention(installed)) return { label: 'Needs setup', tone: 'amber' }
+  return { label: `Installed v${installed.version}`, tone: 'ok' }
+}
+
+const maturityLabels: Record<PluginMaturity, string> = { stable: 'Stable', beta: 'Beta', experimental: 'Experimental' }
+
+/** e.g. "Beta", or null for stable or unlabelled plugins (nothing worth pointing out). */
+export function describeMaturity(maturity: PluginMaturity | null): string | null {
+  return maturity && maturity !== 'stable' ? maturityLabels[maturity] : null
+}
+
+/** Two-letter monogram for a plugin tile, e.g. "google-maps-scraper" → "GM", "stripe" → "ST". */
+export function pluginMonogram(name: string): string {
+  const words = name.split(/[-_\s]+/).filter(Boolean)
+  if (words.length >= 2) return `${words[0][0]}${words[1][0]}`.toUpperCase()
+  return name.slice(0, 2).toUpperCase()
 }
 
 const installStageLabels: Record<PluginInstallProgress['stage'], string> = {
@@ -120,7 +201,7 @@ export function isPluginReady(installedPlugin: InstalledPlugin): boolean {
 }
 
 /**
- * Whether an installed plugin's details should open on their own: it failed to load,
+ * Whether an installed plugin needs a look: it failed to load,
  * still needs trusting before its steps can run, has a required setting with no value,
  * or has warnings to read.
  */

@@ -3,7 +3,7 @@ import { getCredentialStoreShortName } from '@/lib/platform'
 import type { ProviderStatus, WorkflowSecretStatus } from '@/api/types'
 import { appRequirementsByAgentId } from '@/data/mapsLeadsAgent'
 import { getProviderName } from '@/lib/agentDisplay'
-import { agentPath, connectionsPluginsPath, routePaths } from '@/routes'
+import { agentPath, pluginDetailPath, routePaths } from '@/routes'
 import type { BuilderRequirement } from './AgentRequirementsList'
 import { describeRequirementState, needsOnlySessionLink } from './pluginRequirementDisplay'
 
@@ -60,7 +60,7 @@ export function listPluginSetupRequirements(pluginRequirements: PluginRequiremen
   return (pluginRequirements ?? []).map((requirement) => ({
     label: `${requirement.name} plugin`,
     pluginName: requirement.name,
-    connectPath: connectionsPluginsPath,
+    connectPath: pluginDetailPath(requirement.name),
     isConnected: requirement.ready,
     pluginState: readPluginState(requirement),
     detail: requirement.ready || needsOnlySessionLink(requirement) ? undefined : describeRequirementState(requirement),

@@ -1,6 +1,6 @@
 import type { PluginRequirement } from '@/api/pluginRequirementTypes'
 import type { ProviderStatus, WorkflowSecretStatus } from '@/api/types'
-import { connectionsPluginsPath } from '@/routes'
+import { pluginDetailPath } from '@/routes'
 import { listBuilderRequirements, listPluginSetupRequirements } from './builderRequirements'
 
 const openAiConfigured: ProviderStatus[] = [{ provider: 'openai', configured: true, baseUrl: null }]
@@ -64,7 +64,7 @@ describe('listPluginSetupRequirements', () => {
       {
         label: 'whatsapp-api plugin',
         pluginName: 'whatsapp-api',
-        connectPath: connectionsPluginsPath,
+        connectPath: pluginDetailPath('whatsapp-api'),
         isConnected: false,
         pluginState: 'not_installed',
         detail: 'Not installed',

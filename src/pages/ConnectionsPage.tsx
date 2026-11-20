@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Navigate, useSearchParams } from 'react-router-dom'
 import { getCredentialStoreName } from '@/lib/platform'
 import { listAppConnections } from '@/api/appConnections'
 import type { WorkflowSecretOverview } from '@/api/connectionTypes'
@@ -8,6 +9,7 @@ import { StrokeIcon } from '@/components/ui'
 import { advancedConnections, connectionCategoryTitles, type Connection, type ConnectionCategory } from '@/data/connections'
 import { useAsyncData } from '@/hooks/useAsyncData'
 import { useProviderStatuses } from '@/hooks/useProviderStatuses'
+import { legacyConnectionsPluginsSection, routePaths } from '@/routes'
 import { AdvancedSection } from './connections/AdvancedSection'
 import { ConnectionCard } from './connections/ConnectionCard'
 import { buildModelConnections } from './connections/modelConnections'
@@ -52,10 +54,16 @@ function matchesSecret(searchQuery: string, secret: WorkflowSecretOverview): boo
  * Apps come from `listAppConnections` (none in the desktop app, where apps connect through
  * plugins; the preview's sample apps include a signed-out Gmail banner). AI models come from
  * `listProviderStatuses`; their keys are added, replaced and removed through the keychain
- * commands. Advanced lists every workflow secret (`listAllWorkflowSecrets`), MCP servers
- * and graphrt plugins.
+ * commands. Advanced lists every workflow secret (`listAllWorkflowSecrets`) and MCP servers,
+ * and links to the Plugins page. The old plugins address (`?section=plugins`) redirects there.
  */
 export function ConnectionsPage() {
+  const [searchParams] = useSearchParams()
+  if (searchParams.get('section') === legacyConnectionsPluginsSection) return <Navigate to={routePaths.plugins} replace />
+  return <ConnectionsScreen />
+}
+
+function ConnectionsScreen() {
   const appConnectionsState = useAsyncData(listAppConnections, [])
   const [reconnectedAppIds, setReconnectedAppIds] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState('')

@@ -6,7 +6,7 @@ import { useBackendSubscription } from '@/hooks/useBackendSubscription'
 import { useBrowserRuntime } from '@/hooks/useBrowserRuntime'
 import { toInstallProgress } from '@/hooks/usePlugins'
 import { describeError } from '@/lib/agentDisplay'
-import { describeInstallProgress } from '../connections/pluginDisplay'
+import { describeInstallProgress } from '../plugins/pluginDisplay'
 import { arePluginRequirementsReady, needsOnlySessionLink, needsPluginApproval } from './pluginRequirementDisplay'
 
 /** Browser runtime download as the setup card shows it. */

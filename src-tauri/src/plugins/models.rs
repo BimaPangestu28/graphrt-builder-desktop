@@ -68,6 +68,12 @@ pub struct CatalogPlugin {
     /// Terms-of-service / ban warning from the plugin's README (e.g. whatsapp-web).
     #[serde(default)]
     pub warning: Option<String>,
+    /// Maturity label: `stable`, `beta` or `experimental` (newer catalogs only).
+    #[serde(default)]
+    pub status: Option<String>,
+    /// Terms-of-service risk of using the plugin: `none`, `low`, `medium` or `high` (newer catalogs only).
+    #[serde(default)]
+    pub tos_risk: Option<String>,
     /// How many operations (node kinds) the plugin offers.
     #[serde(default)]
     pub operations_count: Option<u32>,
@@ -149,6 +155,12 @@ pub struct PluginCatalogEntry {
     pub nodes: Vec<PluginNodeInfo>,
     pub tools: Vec<String>,
     pub readme_url: Option<String>,
+    /// Terms-of-service / ban warning from the plugin's README, when it has one.
+    pub warning: Option<String>,
+    /// Maturity label (`stable`, `beta`, `experimental`), when the catalog says.
+    pub status: Option<String>,
+    /// Terms-of-service risk (`none`, `low`, `medium`, `high`), when the catalog says.
+    pub tos_risk: Option<String>,
     pub size_bytes: u64,
     pub installed_version: Option<String>,
     pub update_available: bool,
