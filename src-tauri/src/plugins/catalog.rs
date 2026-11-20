@@ -1,7 +1,9 @@
-//! The plugin catalog (`index.json` of the graphrt-plugins `catalog` release):
-//! parsing, validation, the on-disk cache and the "available vs installed" view.
+//! The plugin catalog (`index-v2.json`, else v1 `index.json`, of the graphrt-plugins
+//! `catalog` release): parsing, validation, the on-disk saved copies and the
+//! "available vs installed" view.
 
 use std::path::Path;
+use std::time::SystemTime;
 
 use super::display_name::{resolve_display_name, validate_display_name, MAX_DISPLAY_NAME_CHARS};
 use super::download::require_https;
@@ -9,34 +11,74 @@ use super::host::PluginState;
 use super::models::{CatalogIndex, CatalogPlugin, PluginCatalog, PluginCatalogEntry, PluginPermissions};
 use crate::error::{AppError, AppResult};
 
-/// Where the published catalog lives.
+/// Where the published v1 catalog lives; v2 sits next to it (see [`v2_catalog_url`]).
 pub const DEFAULT_CATALOG_URL: &str =
     "https://github.com/BimaPangestu28/graphrt-plugins/releases/download/catalog/index.json";
-/// Catalog schema this app understands.
-const CATALOG_SCHEMA: u32 = 1;
-/// Largest catalog accepted. The catalog carries every node's config schema, so it
+/// File name of the v1 catalog in its release; the v2 index replaces it with [`V2_INDEX_FILE_NAME`].
+const V1_INDEX_FILE_NAME: &str = "index.json";
+const V2_INDEX_FILE_NAME: &str = "index-v2.json";
+/// Schema of v1 `index.json` (every node's config schema inline).
+pub(super) const CATALOG_SCHEMA_V1: u32 = 1;
+/// Schema of `index-v2.json` (slim index; nodes in per-version detail files).
+pub(super) const CATALOG_SCHEMA_V2: u32 = 2;
+/// Largest v1 catalog accepted. It carries every node's config schema, so it
 /// grows with the plugin count (146 plugins: 2.0 MB compact, 3.5 MB indented).
 pub(super) const MAX_CATALOG_BYTES: u64 = 16 * 1024 * 1024;
+/// Largest `index-v2.json` accepted (published well under 500 KB).
+pub(super) const MAX_CATALOG_V2_BYTES: u64 = 4 * 1024 * 1024;
+/// Largest detail file accepted (and the most `detail_size_bytes` may say).
+pub(super) const MAX_DETAIL_BYTES: u64 = 1024 * 1024;
+/// Longest plugin version used in a detail file name.
+const MAX_VERSION_CHARS: usize = 64;
 
-/// Parses the catalog. Entries with an invalid name, a non-https tarball URL
-/// or a malformed checksum are dropped (logged), so one bad entry does not
-/// hide the others. A non-https `icon_url` only loses the icon, and an invalid
-/// `display_name` only loses that name (see [`clean_display_name`]).
+/// The `index-v2.json` URL next to a v1 `.../index.json` URL, or `None` when the
+/// catalog URL does not end that way (then only v1 is read).
+pub(super) fn v2_catalog_url(v1_catalog_url: &str) -> Option<String> {
+    let base = v1_catalog_url.strip_suffix(V1_INDEX_FILE_NAME)?;
+    base.ends_with('/').then(|| format!("{base}{V2_INDEX_FILE_NAME}"))
+}
+
+/// Parses a v1 catalog (`index.json`). See [`parse_catalog_as`].
 ///
 /// # Errors
 /// `InvalidInput` when the document is not JSON or uses another schema.
 pub(super) fn parse_catalog(bytes: &[u8]) -> AppResult<CatalogIndex> {
+    parse_catalog_as(bytes, CATALOG_SCHEMA_V1)
+}
+
+/// Parses a v2 catalog (`index-v2.json`). See [`parse_catalog_as`].
+///
+/// # Errors
+/// `InvalidInput` when the document is not JSON or uses another schema.
+pub(super) fn parse_catalog_v2(bytes: &[u8]) -> AppResult<CatalogIndex> {
+    parse_catalog_as(bytes, CATALOG_SCHEMA_V2)
+}
+
+/// Parses a catalog that must use `expected_schema`. Entries with an invalid name, a
+/// non-https tarball URL or a malformed checksum are dropped (logged), so one bad
+/// entry does not hide the others. Invalid optional fields only lose that field: a
+/// non-https `icon_url`, an invalid `display_name` (see [`clean_display_name`]) and,
+/// in v2, invalid detail fields (see [`clean_detail_fields`]).
+///
+/// # Errors
+/// `InvalidInput` when the document is not JSON or uses another schema.
+pub(super) fn parse_catalog_as(bytes: &[u8], expected_schema: u32) -> AppResult<CatalogIndex> {
     let mut index: CatalogIndex = serde_json::from_slice(bytes)
         .map_err(|error| AppError::InvalidInput(format!("the plugin catalog is not valid: {error}")))?;
-    if index.schema != CATALOG_SCHEMA {
+    if index.schema != expected_schema {
         return Err(AppError::InvalidInput(format!(
-            "the plugin catalog uses schema {}; this app understands schema {CATALOG_SCHEMA}. Update the app",
+            "the plugin catalog uses schema {}; expected schema {expected_schema}. Update the app",
             index.schema
         )));
     }
     for plugin in &mut index.plugins {
         drop_invalid_icon_url(plugin);
         clean_display_name(plugin);
+        if expected_schema == CATALOG_SCHEMA_V2 {
+            clean_detail_fields(plugin);
+        } else {
+            clear_v2_fields(plugin);
+        }
     }
     index.plugins.retain(|plugin| match validate_entry(plugin) {
         Ok(()) => true,
@@ -53,14 +95,71 @@ fn validate_entry(plugin: &CatalogPlugin) -> AppResult<()> {
         return Err(AppError::InvalidInput("invalid plugin name".into()));
     }
     require_https(&plugin.tarball_url)?;
-    let is_sha256 = plugin.sha256.len() == 64 && plugin.sha256.chars().all(|character| character.is_ascii_hexdigit());
-    if !is_sha256 {
+    if !is_sha256_hex(&plugin.sha256) {
         return Err(AppError::InvalidInput("sha256 is not 64 hex characters".into()));
     }
     if let Some(readme_url) = &plugin.readme_url {
         require_https(readme_url)?;
     }
     Ok(())
+}
+
+fn is_sha256_hex(text: &str) -> bool {
+    text.len() == 64 && text.chars().all(|character| character.is_ascii_hexdigit())
+}
+
+/// Whether `version` is safe in a file name (`<name>-<version>.json`): 1 to
+/// [`MAX_VERSION_CHARS`] of `A-Z a-z 0-9 . + - _`, starting with a letter or digit.
+pub(super) fn is_safe_version(version: &str) -> bool {
+    let starts_well = version.chars().next().is_some_and(|character| character.is_ascii_alphanumeric());
+    starts_well
+        && version.len() <= MAX_VERSION_CHARS
+        && version
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '.' | '+' | '-' | '_'))
+}
+
+/// Why the v2 detail fields of `plugin` cannot be used, or `None` when they can.
+fn detail_fields_problem(plugin: &CatalogPlugin) -> Option<String> {
+    let url = plugin.detail_url.as_deref()?;
+    if let Err(error) = require_https(url) {
+        return Some(error.to_string());
+    }
+    if !plugin.detail_sha256.as_deref().is_some_and(is_sha256_hex) {
+        return Some("detail_sha256 is not 64 hex characters".into());
+    }
+    match plugin.detail_size_bytes {
+        Some(size) if size > 0 && size <= MAX_DETAIL_BYTES => {}
+        _ => return Some(format!("detail_size_bytes must be 1 to {MAX_DETAIL_BYTES}")),
+    }
+    if !is_safe_version(&plugin.version) {
+        return Some("the version cannot name a detail file".into());
+    }
+    None
+}
+
+/// Clears the detail fields of a v2 entry (logged) when any is invalid: the entry stays
+/// listed with its `node_kinds`, only without config schemas.
+fn clean_detail_fields(plugin: &mut CatalogPlugin) {
+    let Some(problem) = detail_fields_problem(plugin) else {
+        if plugin.detail_url.is_none() {
+            plugin.detail_sha256 = None;
+            plugin.detail_size_bytes = None;
+        }
+        return;
+    };
+    log::warn!("ignoring the detail file of catalog entry `{}`: {problem}", plugin.name);
+    plugin.detail_url = None;
+    plugin.detail_sha256 = None;
+    plugin.detail_size_bytes = None;
+}
+
+/// v1 entries carry their nodes inline; v2-only fields there are ignored.
+fn clear_v2_fields(plugin: &mut CatalogPlugin) {
+    plugin.node_kinds.clear();
+    plugin.detail_url = None;
+    plugin.detail_sha256 = None;
+    plugin.detail_size_bytes = None;
 }
 
 /// Clears an `icon_url` that is not `https://` (logged); the entry stays listed.
@@ -85,13 +184,46 @@ fn clean_display_name(plugin: &mut CatalogPlugin) {
     }
 }
 
-/// Reads the saved catalog, if any (and still valid).
-pub(super) fn read_cached(cache_file: &Path) -> Option<CatalogIndex> {
+/// The saved copies of the catalog: v2 and v1 live under distinct names.
+#[derive(Debug, Clone)]
+pub(super) struct SavedCatalogFiles {
+    pub v1: std::path::PathBuf,
+    pub v2: std::path::PathBuf,
+}
+
+impl SavedCatalogFiles {
+    /// The saved copy for a catalog of `schema`.
+    pub fn for_schema(&self, schema: u32) -> &Path {
+        if schema == CATALOG_SCHEMA_V2 {
+            &self.v2
+        } else {
+            &self.v1
+        }
+    }
+
+    /// The most recently saved valid copy (v2 or v1), if any.
+    pub fn read_newest(&self) -> Option<CatalogIndex> {
+        let v2 = read_saved_as(&self.v2, CATALOG_SCHEMA_V2);
+        let v1 = read_saved_as(&self.v1, CATALOG_SCHEMA_V1);
+        match (v2, v1) {
+            (Some((v2_index, v2_saved_at)), Some((v1_index, v1_saved_at))) => {
+                Some(if v1_saved_at > v2_saved_at { v1_index } else { v2_index })
+            }
+            (Some((index, _)), None) | (None, Some((index, _))) => Some(index),
+            (None, None) => None,
+        }
+    }
+}
+
+/// Reads a saved catalog of `schema` and when it was saved, if it exists and is still valid.
+fn read_saved_as(cache_file: &Path, schema: u32) -> Option<(CatalogIndex, SystemTime)> {
     let bytes = std::fs::read(cache_file).ok()?;
-    match parse_catalog(&bytes) {
-        Ok(index) => Some(index),
+    let saved_at =
+        std::fs::metadata(cache_file).and_then(|metadata| metadata.modified()).unwrap_or(SystemTime::UNIX_EPOCH);
+    match parse_catalog_as(&bytes, schema) {
+        Ok(index) => Some((index, saved_at)),
         Err(error) => {
-            log::warn!("ignoring the saved plugin catalog: {error}");
+            log::warn!("ignoring the saved plugin catalog {}: {error}", cache_file.display());
             None
         }
     }
@@ -139,8 +271,18 @@ pub(super) fn update_asks_for_more(plugin: &CatalogPlugin, installed: &PluginSta
     PluginPermissions::from(&plugin.permissions).asks_for_more_than(&installed.permissions)
 }
 
-/// The catalog with each plugin's install state.
-pub(super) fn catalog_view(index: &CatalogIndex, installed: &[PluginState], from_cache: bool) -> PluginCatalog {
+/// How the catalog shown was obtained.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(super) struct CatalogOrigin {
+    /// The fetch failed; this is the last saved copy.
+    pub from_cache: bool,
+    /// When this session fetched it (RFC 3339); `None` for a saved copy.
+    pub fetched_at: Option<String>,
+}
+
+/// The catalog with each plugin's install state. `index` must already be resolved
+/// (v2 nodes filled from details, see `details::resolve_catalog`).
+pub(super) fn catalog_view(index: &CatalogIndex, installed: &[PluginState], origin: CatalogOrigin) -> PluginCatalog {
     let plugins = index
         .plugins
         .iter()
@@ -171,7 +313,12 @@ pub(super) fn catalog_view(index: &CatalogIndex, installed: &[PluginState], from
             }
         })
         .collect();
-    PluginCatalog { plugins, generated_at: index.generated_at.clone(), from_cache }
+    PluginCatalog {
+        plugins,
+        generated_at: index.generated_at.clone(),
+        from_cache: origin.from_cache,
+        fetched_at: origin.fetched_at,
+    }
 }
 
 #[cfg(test)]

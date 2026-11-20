@@ -19,6 +19,7 @@ use crate::storage::Database;
 
 mod auto_update;
 mod catalog_plugins;
+mod catalog_v2;
 mod plugin_display_names;
 mod plugin_icons;
 
@@ -34,6 +35,8 @@ pub(crate) static ACTIVE_SNAPSHOT_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mu
 #[derive(Debug, Default)]
 pub(crate) struct FakeDownloader {
     files: Mutex<HashMap<String, Vec<u8>>>,
+    /// Every URL asked for, in order.
+    requests: Mutex<Vec<String>>,
 }
 
 impl FakeDownloader {
@@ -43,6 +46,11 @@ impl FakeDownloader {
 
     fn forget(&self, url: &str) {
         self.files.lock().unwrap().remove(url);
+    }
+
+    /// How many times `url` was asked for.
+    fn request_count(&self, url: &str) -> usize {
+        self.requests.lock().unwrap().iter().filter(|requested| *requested == url).count()
     }
 }
 
@@ -55,8 +63,10 @@ impl Downloader for FakeDownloader {
         progress: Option<ProgressCallback>,
     ) -> BoxFuture<'_, AppResult<Vec<u8>>> {
         let found = self.files.lock().unwrap().get(url).cloned();
+        self.requests.lock().unwrap().push(url.to_owned());
+        let url = url.to_owned();
         Box::pin(async move {
-            let bytes = found.ok_or_else(|| AppError::Internal("download failed: 404".into()))?;
+            let bytes = found.ok_or_else(|| AppError::NotFound(format!("download {url}")))?;
             if bytes.len() as u64 > max_bytes {
                 return Err(AppError::InvalidInput("too large".into()));
             }
@@ -469,7 +479,7 @@ async fn readme_links_come_from_the_installed_plugin_or_the_catalog() {
 
 #[test]
 fn catalog_view_carries_the_warning_maturity_and_tos_risk() {
-    let catalog = super::catalog::catalog_view(&not_installed_catalog(), &[], false);
+    let catalog = super::catalog::catalog_view(&not_installed_catalog(), &[], Default::default());
     let mail = catalog.plugins.iter().find(|entry| entry.name == "fixture-mail").unwrap();
     assert_eq!(mail.warning.as_deref(), Some("Sending bulk mail may get the account blocked."));
     assert_eq!(mail.status.as_deref(), Some("beta"));

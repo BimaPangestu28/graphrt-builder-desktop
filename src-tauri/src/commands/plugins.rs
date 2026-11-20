@@ -7,7 +7,7 @@ use tauri::State;
 use crate::error::AppResult;
 use crate::node_runtime::BrowserRuntimeStatus;
 use crate::plugins::auto_update::{PluginAutoUpdate, PluginBulkUpdateSummary};
-use crate::plugins::models::{InstalledPlugin, PluginActionResult, PluginCatalog};
+use crate::plugins::models::{InstalledPlugin, PluginActionResult, PluginCatalog, PluginNodeInfo};
 use crate::plugins::requirements::PluginRequirement;
 use crate::plugins::session::SessionState;
 use crate::state::AppState;
@@ -15,6 +15,13 @@ use crate::state::AppState;
 #[tauri::command]
 pub async fn list_plugin_catalog(state: State<'_, AppState>, refresh: Option<bool>) -> AppResult<PluginCatalog> {
     state.plugins.catalog(refresh.unwrap_or(false)).await
+}
+
+/// The steps a catalog plugin adds, with descriptions, for its plugin page. Catalog v2
+/// keeps them in a per-version detail file, fetched now when it is not saved yet.
+#[tauri::command]
+pub async fn list_plugin_catalog_steps(state: State<'_, AppState>, name: String) -> AppResult<Vec<PluginNodeInfo>> {
+    state.plugins.catalog_plugin_nodes(name.trim()).await
 }
 
 #[tauri::command]

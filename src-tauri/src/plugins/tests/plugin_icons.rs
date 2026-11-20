@@ -46,7 +46,7 @@ fn catalog_entries_carry_their_https_icon_url() {
     let index = super::super::catalog::parse_catalog(&catalog_with_icon(ICON_URL.into())).unwrap();
     assert_eq!(index.plugins[0].icon_url.as_deref(), Some(ICON_URL));
 
-    let view = super::super::catalog::catalog_view(&index, &[], false);
+    let view = super::super::catalog::catalog_view(&index, &[], Default::default());
     assert_eq!(view.plugins[0].icon_url.as_deref(), Some(ICON_URL));
 }
 

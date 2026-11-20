@@ -16,12 +16,17 @@
 //! - Installing downloads over HTTPS (size-capped), checks the catalog's
 //!   sha256, extracts safely into a staging folder, loads the plugin with
 //!   graphrt (manifest + entrypoint checksums), then moves it into place.
+//! - The catalog is read from `index-v2.json` (slim index + per-version detail
+//!   files, see [`details`]) with v1 `index.json` as the fallback; see
+//!   `catalog_fetch.rs`.
 
 mod action;
 pub mod active;
 mod archive;
 pub mod auto_update;
 mod catalog;
+mod catalog_fetch;
+mod details;
 pub(crate) mod display_name;
 pub mod download;
 pub mod events;
@@ -52,8 +57,8 @@ use download::{require_https, Downloader, ProgressCallback};
 use events::PluginEventSink;
 use host::{build_snapshot, HostInputs, PluginSnapshot, SharedSnapshot};
 use models::{
-    CatalogIndex, CatalogPlugin, InstallRecord, InstalledPlugin, PluginActionResult, PluginCatalog, PluginConfigStatus,
-    PluginEvent, PluginInstallStage, PluginPermissions,
+    InstallRecord, InstalledPlugin, PluginActionResult, PluginConfigStatus, PluginEvent, PluginInstallStage,
+    PluginPermissions,
 };
 pub use prompt_guide::installed_plugins_guide;
 
@@ -66,8 +71,10 @@ use crate::storage::Database;
 pub const PLUGINS_DIR_NAME: &str = "plugins";
 /// Folder under the app data folder for plugin state (browser profiles).
 pub const PLUGIN_DATA_DIR_NAME: &str = "plugin-data";
-/// The saved catalog, next to the plugins folder.
+/// The saved v1 catalog, next to the plugins folder.
 const CATALOG_CACHE_FILE_NAME: &str = "plugin-catalog.json";
+/// The saved v2 catalog (`index-v2.json`), next to the v1 copy.
+const CATALOG_V2_CACHE_FILE_NAME: &str = "plugin-catalog-v2.json";
 /// Largest plugin tarball accepted.
 const MAX_TARBALL_BYTES: u64 = 256 * 1024 * 1024;
 const CATALOG_TIMEOUT: Duration = Duration::from_secs(20);
@@ -118,17 +125,26 @@ pub struct PluginService {
     plugin_data_dir: PathBuf,
     /// Where browser plugins write live view frames (`crate::live_view`).
     live_view_dir: PathBuf,
-    catalog_cache_file: PathBuf,
+    /// The saved v1 and v2 catalogs.
+    catalog_files: catalog::SavedCatalogFiles,
     /// Downloaded plugin icons (see [`icons`]), next to the catalog cache.
     icons_dir: PathBuf,
+    /// The v1 `index.json` URL (the fallback).
     catalog_url: String,
+    /// The `index-v2.json` URL next to it, tried first.
+    catalog_v2_url: Option<String>,
+    /// Catalog v2 plugin details, saved under `plugin-details/`.
+    details: Arc<details::DetailStore>,
     db: Arc<Database>,
     credentials: Arc<CredentialStore>,
     node_runtime: Arc<NodeRuntime>,
     downloader: Arc<dyn Downloader>,
     events: Arc<dyn PluginEventSink>,
     snapshot: RwLock<SharedSnapshot>,
-    catalog: Mutex<Option<CatalogIndex>>,
+    /// The catalog fetched this session and when (shared with the detail sync).
+    catalog: catalog_fetch::CatalogSlot,
+    /// The background detail sync of the last catalog fetch, if one runs.
+    detail_sync: Mutex<Option<tokio::task::JoinHandle<()>>>,
     /// `name -> icon_url` of the saved catalog, read once when no catalog was fetched yet.
     saved_catalog_icon_urls: OnceLock<HashMap<String, Option<String>>>,
     /// Icon URLs that failed to download this session, so lists do not retry them per card.
@@ -136,7 +152,7 @@ pub struct PluginService {
     /// Serializes installs, updates, removals and trust / setting changes.
     changes: tokio::sync::Mutex<()>,
     /// The app's service publishes its snapshot process-wide; test services do not.
-    publishes_globally: AtomicBool,
+    publishes_globally: Arc<AtomicBool>,
 }
 
 impl std::fmt::Debug for PluginService {
@@ -156,7 +172,15 @@ impl PluginService {
         let plugins_dir = config.app_data_dir.join(PLUGINS_DIR_NAME);
         install::clean_leftovers(&plugins_dir);
         let service = Self {
-            catalog_cache_file: config.app_data_dir.join(CATALOG_CACHE_FILE_NAME),
+            catalog_files: catalog::SavedCatalogFiles {
+                v1: config.app_data_dir.join(CATALOG_CACHE_FILE_NAME),
+                v2: config.app_data_dir.join(CATALOG_V2_CACHE_FILE_NAME),
+            },
+            details: Arc::new(details::DetailStore::new(
+                config.app_data_dir.join(details::DETAILS_DIR_NAME),
+                config.downloader.clone(),
+            )),
+            catalog_v2_url: catalog::v2_catalog_url(&config.catalog_url),
             icons_dir: config.app_data_dir.join(icons::ICONS_DIR_NAME),
             plugin_data_dir: config.app_data_dir.join(PLUGIN_DATA_DIR_NAME),
             live_view_dir: config.app_data_dir.join(crate::live_view::LIVE_VIEW_DIR_NAME),
@@ -168,11 +192,12 @@ impl PluginService {
             downloader: config.downloader,
             events: config.events,
             snapshot: RwLock::new(Arc::new(PluginSnapshot::empty())),
-            catalog: Mutex::new(None),
+            catalog: Arc::new(Mutex::new(None)),
+            detail_sync: Mutex::new(None),
             saved_catalog_icon_urls: OnceLock::new(),
             failed_icon_urls: Mutex::new(HashSet::new()),
             changes: tokio::sync::Mutex::new(()),
-            publishes_globally: AtomicBool::new(false),
+            publishes_globally: Arc::new(AtomicBool::new(false)),
         };
         service.reload();
         service
@@ -423,7 +448,7 @@ impl PluginService {
     /// installed plugins pick up a curated name the catalog added after they were installed.
     fn session_catalog_display_names(&self) -> HashMap<String, Option<String>> {
         let Ok(catalog) = self.catalog.lock() else { return HashMap::new() };
-        let plugins = catalog.as_ref().map(|index| index.plugins.as_slice()).unwrap_or_default();
+        let plugins = catalog.as_ref().map(|fetched| fetched.index.plugins.as_slice()).unwrap_or_default();
         plugins.iter().map(|plugin| (plugin.name.clone(), plugin.display_name.clone())).collect()
     }
 
@@ -431,12 +456,12 @@ impl PluginService {
     /// plugin, else the saved catalog, else the install record.
     fn icon_url(&self, name: &str) -> Option<String> {
         let from_session_catalog = self.catalog.lock().ok().and_then(|catalog| {
-            let plugin = catalog.as_ref()?.plugins.iter().find(|plugin| plugin.name == name)?;
+            let plugin = catalog.as_ref()?.index.plugins.iter().find(|plugin| plugin.name == name)?;
             Some(plugin.icon_url.clone())
         });
         let from_saved_catalog = || {
             let icon_urls = self.saved_catalog_icon_urls.get_or_init(|| {
-                let index = catalog::read_cached(&self.catalog_cache_file);
+                let index = self.catalog_files.read_newest();
                 index
                     .map(|index| index.plugins.into_iter().map(|plugin| (plugin.name, plugin.icon_url)).collect())
                     .unwrap_or_default()
@@ -465,87 +490,6 @@ impl PluginService {
             return Err(AppError::InvalidInput(format!("{icon_url} is not an SVG image")));
         }
         Ok(bytes)
-    }
-
-    /// The catalog with install state. Uses the copy fetched earlier in this
-    /// session unless `refresh`; when fetching fails, the last saved copy.
-    ///
-    /// # Errors
-    /// The fetch error when there is no saved copy either.
-    pub async fn catalog(&self, refresh: bool) -> AppResult<PluginCatalog> {
-        let in_memory = if refresh { None } else { self.cached_catalog() };
-        let (index, from_cache) = match in_memory {
-            Some(index) => (index, false),
-            None => self.fetch_catalog().await?,
-        };
-        Ok(catalog::catalog_view(&index, &self.snapshot().plugins, from_cache))
-    }
-
-    fn cached_catalog(&self) -> Option<CatalogIndex> {
-        self.catalog.lock().ok().and_then(|catalog| catalog.clone())
-    }
-
-    /// The catalog fetched in this session, else the saved copy, else `None`.
-    fn known_catalog(&self) -> Option<CatalogIndex> {
-        self.cached_catalog().or_else(|| catalog::read_cached(&self.catalog_cache_file))
-    }
-
-    /// Makes sure the builder sees the catalog: fetches it when this session
-    /// has not yet, waiting at most [`BUILDER_CATALOG_TIMEOUT`]; offline, the
-    /// saved copy stays in use, and without either only installed plugins are listed.
-    pub async fn refresh_catalog_for_builder(&self) {
-        if self.cached_catalog().is_some() {
-            return;
-        }
-        let download = self.download_catalog_within(BUILDER_CATALOG_TIMEOUT);
-        match tokio::time::timeout(BUILDER_CATALOG_TIMEOUT, download).await {
-            Ok(Ok(_)) => {}
-            Ok(Err(error)) => log::warn!("the builder uses the saved plugin catalog: {error}"),
-            Err(_) => log::warn!("the plugin catalog took too long; the builder uses the saved copy"),
-        }
-    }
-
-    async fn fetch_catalog(&self) -> AppResult<(CatalogIndex, bool)> {
-        match self.download_catalog().await {
-            Ok(index) => Ok((index, false)),
-            Err(error) => match catalog::read_cached(&self.catalog_cache_file) {
-                Some(index) => {
-                    log::warn!("could not fetch the plugin catalog, using the saved copy: {error}");
-                    Ok((index, true))
-                }
-                None => Err(error),
-            },
-        }
-    }
-
-    async fn download_catalog(&self) -> AppResult<CatalogIndex> {
-        self.download_catalog_within(CATALOG_TIMEOUT).await
-    }
-
-    async fn download_catalog_within(&self, timeout: Duration) -> AppResult<CatalogIndex> {
-        require_https(&self.catalog_url)?;
-        let bytes = self.downloader.fetch(&self.catalog_url, catalog::MAX_CATALOG_BYTES, timeout, None).await?;
-        let index = catalog::parse_catalog(&bytes)?;
-        catalog::write_cache(&self.catalog_cache_file, &bytes);
-        if let Ok(mut slot) = self.catalog.lock() {
-            *slot = Some(index.clone());
-        }
-        if self.publishes_globally.load(Ordering::SeqCst) {
-            active::publish_catalog(Some(Arc::new(index.clone())));
-        }
-        Ok(index)
-    }
-
-    async fn catalog_entry(&self, name: &str) -> AppResult<CatalogPlugin> {
-        let index = match self.cached_catalog() {
-            Some(index) => index,
-            None => self.fetch_catalog().await?.0,
-        };
-        index
-            .plugins
-            .into_iter()
-            .find(|plugin| plugin.name == name)
-            .ok_or_else(|| AppError::NotFound(format!("plugin {name} in the catalog")))
     }
 
     /// Installs (or reinstalls) `name` from the catalog. Progress goes to `plugin-event`.
@@ -589,6 +533,7 @@ impl PluginService {
     async fn install_from_catalog(&self, name: &str, mode: &InstallMode) -> AppResult<InstalledPlugin> {
         let entry = self.catalog_entry(name).await?;
         require_https(&entry.tarball_url)?;
+        self.cache_detail_for_install(&entry).await;
         if entry.size_bytes > MAX_TARBALL_BYTES {
             return Err(AppError::InvalidInput(format!("plugin {name} is larger than the download limit")));
         }
