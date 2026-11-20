@@ -11,6 +11,12 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
 
 ### Added
 
+- **Plugin icons**: the catalog's optional `icon_url` (https only; a bad link drops only the icon) is
+  shown on Plugins page cards, plugin pages and the builder's plugin setup cards. The app downloads
+  each SVG once (64 KB cap, 10 s timeout, https-only redirects), keeps it in `plugin-icons/` next to
+  the catalog cache so it works offline, and serves it to the UI as a `data:` URL through
+  `get_plugin_icon`, rendered only with `<img>` so scripts in an SVG never run. The CSP is unchanged
+  (`img-src 'self' data:`). Plugins without an icon, or whose icon fails, keep their monogram tile.
 - **Plugins page**: plugins have their own sidebar item (after Knowledge) at `/plugins` instead of
   Connections → Advanced. The catalog is an equal-height card grid (monogram, status badge, two-line
   description, Internet / Secrets / settings / Browser chips, step count, Install / Update / Set up /
