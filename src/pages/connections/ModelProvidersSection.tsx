@@ -1,15 +1,18 @@
 import { useState } from 'react'
 import { deleteApiKey, setApiKey, setDefaultModel } from '@/api/credentials'
 import type { ModelProvider } from '@/api/types'
+import { Button } from '@/components/ui'
 import { connectionCategoryTitles } from '@/data/connections'
 import { describeError } from '@/lib/agentDisplay'
+import { getCredentialStoreName } from '@/lib/platform'
 import { recommendedModelFor } from '@/lib/modelChoices'
 import { ConnectionCard } from './ConnectionCard'
+import { ConnectionsNotice, ConnectionsSection } from './ConnectionsSection'
 import type { ModelConnection } from './modelConnections'
 import { ProviderKeyForm } from './ProviderKeyForm'
 
-const sectionHeadingClassNames = 'm-0 text-[13px] font-semibold text-muted'
-const textButtonClassNames = 'cursor-pointer border-0 bg-transparent p-0 text-[12px] font-medium text-ink-2 underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-50'
+/** Same column rule as the Apps grid, so cards line up across sections. */
+export const connectionCardGridClassNames = 'grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3'
 
 interface KeyActionsProps {
   connection: ModelConnection
@@ -21,29 +24,30 @@ interface KeyActionsProps {
 }
 
 /**
- * Actions under a connected provider: "Use by default" when it is not the default model's
- * provider, and "Replace key" / "Remove" when it has a key in the keychain.
+ * Buttons at the bottom of a connected provider card: "Use by default" when it is not the
+ * default model's provider, "Replace key", and "Remove" pushed to the right, when it has a
+ * key in the keychain. The default card's badge already says it is the default.
  */
 function KeyActions({ connection, isRemoving, isMakingDefault, onReplace, onRemove, onMakeDefault }: KeyActionsProps) {
   const canMakeDefault = connection.state === 'connected'
   return (
-    <span className="flex gap-3">
+    <>
       {canMakeDefault && (
-        <button type="button" aria-label={`Use ${connection.name} by default`} onClick={onMakeDefault} disabled={isMakingDefault} className={textButtonClassNames}>
+        <Button size="sm" variant="secondary" aria-label={`Use ${connection.name} by default`} onClick={onMakeDefault} disabled={isMakingDefault}>
           {isMakingDefault ? 'Saving…' : 'Use by default'}
-        </button>
+        </Button>
       )}
       {connection.usesApiKey && (
-        <>
-          <button type="button" aria-label={`Replace key ${connection.name}`} onClick={onReplace} className={textButtonClassNames}>
+        <span className="ml-auto flex items-center gap-1">
+          <Button size="sm" variant="ghost" aria-label={`Replace key ${connection.name}`} onClick={onReplace}>
             Replace key
-          </button>
-          <button type="button" aria-label={`Remove key ${connection.name}`} onClick={onRemove} disabled={isRemoving} className={textButtonClassNames}>
+          </Button>
+          <Button size="sm" variant="ghost" aria-label={`Remove key ${connection.name}`} onClick={onRemove} disabled={isRemoving} className="!text-danger hover:!bg-danger-tint">
             {isRemoving ? 'Removing…' : 'Remove'}
-          </button>
-        </>
+          </Button>
+        </span>
       )}
-    </span>
+    </>
   )
 }
 
@@ -55,7 +59,7 @@ interface ModelProvidersSectionProps {
 }
 
 /**
- * "AI models" on screen 21, backed by the keychain commands: Add key / Replace key open
+ * "AI models" on screen 21: one card per provider, the default one highlighted, backed by the keychain commands: Add key / Replace key open
  * an inline form that calls `setApiKey`; Remove calls `deleteApiKey`.
  */
 export function ModelProvidersSection({ connections, loadError, onKeysChanged }: ModelProvidersSectionProps) {
@@ -125,18 +129,19 @@ export function ModelProvidersSection({ connections, loadError, onKeysChanged }:
   }
 
   return (
-    <section aria-labelledby="connections-models-h" className="flex flex-col gap-2.5">
-      <h2 id="connections-models-h" className={sectionHeadingClassNames}>
-        {connectionCategoryTitles.models}
-      </h2>
-      {loadError && <p className="m-0 text-muted">Could not load AI models: {describeError(loadError)}</p>}
-      {!loadError && !connections && <p className="m-0 text-muted">Loading AI models…</p>}
-      {connections && <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-2.5">{connections.map(renderCard)}</div>}
+    <ConnectionsSection
+      id="connections-models"
+      title={connectionCategoryTitles.models}
+      description={`The models your agents think with. Keys stay in ${getCredentialStoreName()}; new agents use the default`}
+    >
+      {loadError && <ConnectionsNotice tone="danger">Could not load AI models: {describeError(loadError)}</ConnectionsNotice>}
+      {!loadError && !connections && <ConnectionsNotice>Loading AI models…</ConnectionsNotice>}
+      {connections && <div className={connectionCardGridClassNames}>{connections.map(renderCard)}</div>}
       {removeErrorMessage && (
         <p aria-live="polite" className="m-0 text-[13px] text-danger">
           {removeErrorMessage}
         </p>
       )}
-    </section>
+    </ConnectionsSection>
   )
 }

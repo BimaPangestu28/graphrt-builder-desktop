@@ -1,6 +1,6 @@
 import { useId, useState, type FormEvent } from 'react'
 import { getCredentialStoreName } from '@/lib/platform'
-import { Button } from '@/components/ui'
+import { Badge, Button, joinClassNames } from '@/components/ui'
 import { describeError } from '@/lib/agentDisplay'
 
 /** One setting a plugin reads (an environment variable), with whether it has a value. */
@@ -57,12 +57,14 @@ function PluginConfigRow({ pluginLabel, field, onSave, onClear }: PluginConfigRo
   }
 
   return (
-    <form onSubmit={handleSubmit} aria-label={`${pluginLabel} setting ${field.variable}`} className="flex flex-col gap-1">
-      <div className="flex items-baseline justify-between gap-2">
-        <label htmlFor={inputId} className="min-w-0 text-[12px] font-medium text-ink-2 [overflow-wrap:anywhere]">
+    <form onSubmit={handleSubmit} aria-label={`${pluginLabel} setting ${field.variable}`} className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <label htmlFor={inputId} className={joinClassNames('min-w-0 text-[12px] font-medium text-ink-2 [overflow-wrap:anywhere]', !field.label && 'font-mono')}>
           {label}
         </label>
-        <span className={field.configured ? 'shrink-0 text-[12px] font-medium text-ok-strong' : 'shrink-0 text-[12px] text-muted'}>{field.configured ? 'Saved' : 'Not set'}</span>
+        <Badge tone={field.configured ? 'ok' : 'neutral'} className="shrink-0 px-2 text-[11px]">
+          {field.configured ? 'Saved' : 'Not set'}
+        </Badge>
       </div>
       <div className="flex flex-wrap gap-2">
         <input
@@ -74,11 +76,11 @@ function PluginConfigRow({ pluginLabel, field, onSave, onClear }: PluginConfigRo
           onChange={(event) => setValue(event.target.value)}
           className="box-border h-8 min-w-0 flex-[1_1_180px] rounded-lg border border-line-strong bg-surface px-3 text-[13px] text-ink outline-none focus:border-brand"
         />
-        <Button type="submit" size="sm" aria-label={`Save ${field.variable}`} disabled={isBusy || value.trim() === ''}>
+        <Button type="submit" variant="secondary" size="sm" aria-label={`Save ${field.variable}`} disabled={isBusy || value.trim() === ''}>
           {pendingAction === 'saving' ? 'Saving…' : 'Save'}
         </Button>
         {field.configured && (
-          <Button variant="secondary" size="sm" aria-label={`Clear ${field.variable}`} disabled={isBusy} onClick={() => void runAction('clearing', onClear)}>
+          <Button variant="ghost" size="sm" aria-label={`Clear ${field.variable}`} disabled={isBusy} onClick={() => void runAction('clearing', onClear)}>
             {pendingAction === 'clearing' ? 'Clearing…' : 'Clear'}
           </Button>
         )}

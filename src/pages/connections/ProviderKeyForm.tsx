@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { Button } from '@/components/ui'
 import { getCredentialStoreName } from '@/lib/platform'
 import { describeError } from '@/lib/agentDisplay'
 
@@ -10,8 +11,6 @@ interface ProviderKeyFormProps {
   onSave: (apiKey: string) => Promise<void>
   onCancel: () => void
 }
-
-const smallButtonClassNames = 'h-8 cursor-pointer rounded-lg px-3 text-[13px] font-medium disabled:cursor-not-allowed disabled:opacity-50'
 
 /** Inline card for pasting a model provider key on the Connections screen (21). */
 export function ProviderKeyForm({ providerName, isReplacing, onSave, onCancel }: ProviderKeyFormProps) {
@@ -34,8 +33,15 @@ export function ProviderKeyForm({ providerName, isReplacing, onSave, onCancel }:
   }
 
   return (
-    <form onSubmit={handleSubmit} aria-label={`${providerName} key`} className="flex flex-col gap-2.5 rounded-xl border-2 border-ink p-3.5">
-      <b className="font-semibold">{providerName}</b>
+    <form
+      onSubmit={handleSubmit}
+      aria-label={`${providerName} key`}
+      className="flex h-full min-w-0 flex-col gap-2.5 rounded-[14px] border border-line-heavy bg-surface p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)]"
+    >
+      <div className="flex flex-col gap-0.5">
+        <b className="text-[14px] font-semibold">{providerName}</b>
+        <span className="text-[12px] text-muted">Saved in {getCredentialStoreName()}, never shown again</span>
+      </div>
       <input
         type="password"
         aria-label={`${providerName} API key`}
@@ -43,22 +49,21 @@ export function ProviderKeyForm({ providerName, isReplacing, onSave, onCancel }:
         value={apiKey}
         autoFocus
         onChange={(event) => setApiKey(event.target.value)}
-        className="box-border h-9 rounded-[9px] border border-line-strong bg-surface px-3 text-[14px] text-ink"
+        className="box-border h-9 rounded-[9px] border border-line-strong bg-surface px-3 text-[14px] text-ink outline-none focus:border-ink"
       />
       {errorMessage && (
         <span aria-live="polite" className="text-[13px] text-danger">
           {errorMessage}
         </span>
       )}
-      <div className="flex gap-2">
-        <button type="submit" disabled={!canSave} className={`${smallButtonClassNames} border-0 bg-ink text-white hover:bg-ink-2`}>
-          {isSaving ? 'Saving…' : 'Save key'}
-        </button>
-        <button type="button" onClick={onCancel} className={`${smallButtonClassNames} border border-line-strong bg-surface text-ink hover:bg-subtle`}>
+      <div className="mt-auto flex justify-end gap-2 border-t border-chip pt-3">
+        <Button variant="ghost" size="sm" onClick={onCancel}>
           Cancel
-        </button>
+        </Button>
+        <Button type="submit" size="sm" disabled={!canSave}>
+          {isSaving ? 'Saving…' : 'Save key'}
+        </Button>
       </div>
-      <span className="text-[12px] text-muted">Saved in {getCredentialStoreName()}, never shown again</span>
     </form>
   )
 }

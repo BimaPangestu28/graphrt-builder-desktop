@@ -1,62 +1,65 @@
 import type { ReactNode } from 'react'
-import { joinClassNames } from '@/components/ui'
+import { Badge, Button, joinClassNames, type BadgeTone } from '@/components/ui'
 import type { Connection, ConnectionState } from '@/data/connections'
 
 interface ConnectionCardProps {
   connection: Connection
   onSetUp: (connectionId: string) => void
-  /** Extra actions under a set-up connection, e.g. Replace key / Remove. */
+  /** Actions at the bottom of a set-up connection, e.g. Use by default / Replace key / Remove. */
   footer?: ReactNode
 }
 
-const cardBorderClassNames: Record<ConnectionState, string> = {
-  connected: 'border border-line',
-  default: 'border-2 border-ink',
-  signedOut: 'border border-danger-line',
-  available: 'border border-line',
+const cardStateClassNames: Record<ConnectionState, string> = {
+  connected: 'border-line bg-surface',
+  default: 'border-brand-line-2 bg-brand-tint shadow-[inset_0_0_0_1px_var(--color-brand-line-2)]',
+  signedOut: 'border-danger-line bg-surface',
+  available: 'border-line bg-surface',
 }
 
-const statusLabelClassNames: Record<Exclude<ConnectionState, 'available'>, string> = {
-  connected: 'font-medium text-ok-strong',
-  default: 'font-semibold text-ink-2',
-  signedOut: 'font-medium text-danger',
+const statusBadgeTones: Record<ConnectionState, BadgeTone> = {
+  connected: 'ok',
+  default: 'brand',
+  signedOut: 'danger',
+  available: 'neutral',
+}
+
+function describeStatusLabel(connection: Connection): string {
+  if (connection.state === 'signedOut') return 'Signed out'
+  if (connection.state === 'available') return 'Not set up'
+  return connection.connectedLabel
+}
+
+/** The bar pinned to the bottom of a card, so actions line up across a row of cards. */
+export function ConnectionCardFooter({ children }: { children: ReactNode }) {
+  return <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-chip pt-3">{children}</div>
 }
 
 /**
- * One app or AI model on the Connections screen. Set-up connections show their status
- * and usage; ones not set up yet show a Connect / Add key button instead.
+ * One app or AI model on the Connections screen, shaped like the Plugins grid cards: name
+ * and a status badge on top, one line of detail, then actions pinned to the bottom. Ones
+ * not set up yet offer Connect / Add key there; set-up ones show their `footer`.
  */
 export function ConnectionCard({ connection, onSetUp, footer }: ConnectionCardProps) {
-  const cardClassNames = joinClassNames('rounded-xl p-3.5', cardBorderClassNames[connection.state])
-
-  if (connection.state === 'available') {
-    return (
-      <div className={joinClassNames(cardClassNames, 'flex items-center justify-between gap-3')}>
-        <span className="flex flex-col gap-1">
-          <b className="font-semibold">{connection.name}</b>
-          <span className="text-[13px] text-body">{connection.availableDescription}</span>
-        </span>
-        <button
-          type="button"
-          aria-label={`${connection.setupActionLabel} ${connection.name}`}
-          onClick={() => onSetUp(connection.id)}
-          className="h-8 cursor-pointer rounded-lg border border-line-strong bg-surface px-3 text-[13px] font-medium text-ink hover:bg-subtle"
-        >
-          {connection.setupActionLabel}
-        </button>
-      </div>
-    )
-  }
-
-  const statusLabel = connection.state === 'signedOut' ? 'Signed out' : connection.connectedLabel
+  const isAvailable = connection.state === 'available'
+  const description = isAvailable ? connection.availableDescription : connection.connectedDescription
   return (
-    <div className={joinClassNames(cardClassNames, 'flex flex-col gap-2')}>
-      <div className="flex justify-between gap-2">
-        <b className="font-semibold">{connection.name}</b>
-        <span className={joinClassNames('text-[12px]', statusLabelClassNames[connection.state])}>{statusLabel}</span>
+    <div className={joinClassNames('flex h-full min-w-0 flex-col gap-2 rounded-[14px] border p-4', cardStateClassNames[connection.state])}>
+      <div className="flex items-start justify-between gap-2">
+        <b className="min-w-0 text-[14px] font-semibold [overflow-wrap:anywhere]">{connection.name}</b>
+        <Badge tone={statusBadgeTones[connection.state]} className="shrink-0">
+          {describeStatusLabel(connection)}
+        </Badge>
       </div>
-      <span className="text-[13px] text-body">{connection.connectedDescription}</span>
-      {footer}
+      <p className="m-0 text-[13px] leading-normal text-body">{description}</p>
+      {isAvailable ? (
+        <ConnectionCardFooter>
+          <Button variant="secondary" size="sm" aria-label={`${connection.setupActionLabel} ${connection.name}`} onClick={() => onSetUp(connection.id)}>
+            {connection.setupActionLabel}
+          </Button>
+        </ConnectionCardFooter>
+      ) : (
+        footer && <ConnectionCardFooter>{footer}</ConnectionCardFooter>
+      )}
     </div>
   )
 }

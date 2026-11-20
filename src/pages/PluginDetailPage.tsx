@@ -1,6 +1,7 @@
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { AppShell, PageFrame, pageTitleClassName } from '@/components/layout'
-import { Badge, Icon } from '@/components/ui'
+import type { PluginMaturity } from '@/api/pluginTypes'
+import { Badge, Icon, type BadgeTone } from '@/components/ui'
 import { useBrowserRuntime } from '@/hooks/useBrowserRuntime'
 import { usePlugins, type PluginsState } from '@/hooks/usePlugins'
 import { describeError } from '@/lib/agentDisplay'
@@ -37,14 +38,14 @@ function BackLink() {
 function HeaderActions({ item, plugins }: { item: PluginListItem; plugins: PluginsState }) {
   if (!item.installed) {
     return (
-      <div className="flex max-w-[280px] flex-col items-end gap-1.5">
+      <div className="ml-auto flex max-w-[220px] flex-col items-end gap-1.5">
         <PluginInstallButton item={item} plugins={plugins} size="md" />
         <span className="text-right text-[12px] leading-normal text-muted">Runs its code on this computer. It starts untrusted, without settings or secrets.</span>
       </div>
     )
   }
   return (
-    <div className="flex max-w-[320px] flex-col items-end gap-1.5">
+    <div className="ml-auto flex max-w-[320px] flex-col items-end gap-1.5">
       <div className="flex flex-wrap items-center justify-end gap-2">
         {item.updateAvailable && <PluginUpdateButton item={item} plugins={plugins} size="md" />}
         <PluginRemoveButton item={item} plugins={plugins} size="md" />
@@ -58,24 +59,28 @@ function HeaderActions({ item, plugins }: { item: PluginListItem; plugins: Plugi
   )
 }
 
+const maturityBadgeTones: Record<PluginMaturity, BadgeTone> = { stable: 'neutral', beta: 'neutral', experimental: 'amber' }
+
+/** Icon, name, status and maturity badges, category and version, the description, then the actions on the right. */
 function PluginHeader({ item, plugins }: { item: PluginListItem; plugins: PluginsState }) {
   const status = describePluginStatus(item)
-  const meta = [pluginCategoryLabels[item.category], `v${item.version}`, describeMaturity(item.maturity)].filter(Boolean).join(' · ')
+  const maturityLabel = describeMaturity(item.maturity)
   return (
-    <header className="flex flex-wrap items-start gap-4">
+    <header className="flex flex-wrap items-start gap-x-5 gap-y-4">
       <PluginIcon name={item.name} iconUrl={item.iconUrl} category={item.category} size="lg" />
-      <div className="flex min-w-0 flex-[1_1_320px] flex-col gap-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <h1 className={`${pageTitleClassName} [overflow-wrap:anywhere]`}>{item.displayName}</h1>
+      <div className="flex min-w-0 flex-[1_1_300px] flex-col gap-2">
+        <h1 className={`${pageTitleClassName} [overflow-wrap:anywhere]`}>{item.displayName}</h1>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
           <Badge tone={status.tone}>{status.label}</Badge>
+          {maturityLabel && item.maturity && <Badge tone={maturityBadgeTones[item.maturity]}>{maturityLabel}</Badge>}
+          <span className="text-[13px] text-muted">
+            <code aria-label="Plugin name" className="font-mono text-[12px]">
+              {item.name}
+            </code>
+            {' · '}
+            {pluginCategoryLabels[item.category]} · v{item.version}
+          </span>
         </div>
-        <span className="text-[13px] text-muted">
-          <code aria-label="Plugin name" className="font-mono text-[12px]">
-            {item.name}
-          </code>
-          {' · '}
-          {meta}
-        </span>
         <p className="m-0 max-w-[640px] leading-normal text-body">{item.description}</p>
       </div>
       <HeaderActions item={item} plugins={plugins} />
@@ -94,12 +99,12 @@ function PluginDetailBody({ item, plugins }: { item: PluginListItem; plugins: Pl
       <PluginOperationFeedback pluginName={item.name} plugins={plugins} />
       <PluginWarningBox item={item} />
       {installed && <PluginLoadNotes installed={installed} />}
-      <div className="@container grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="flex min-w-0 flex-col gap-4">
+      <div className="@container grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="flex min-w-0 flex-col gap-5">
           {installed && <PluginSetupSection installed={installed} plugins={plugins} browserRuntime={browserRuntime} />}
           <PluginStepsSection pluginLabel={item.displayName} nodes={item.nodes} />
         </div>
-        <aside aria-label={`About ${item.displayName}`} className="flex min-w-0 flex-col gap-4">
+        <aside aria-label={`About ${item.displayName}`} className="grid min-w-0 grid-cols-1 items-start gap-5 max-lg:@2xl:grid-cols-2">
           <PluginAsksForSection item={item} />
           <PluginUsersSection pluginLabel={item.displayName} users={users.data} loadError={users.error} />
           <PluginAboutSection item={item} />

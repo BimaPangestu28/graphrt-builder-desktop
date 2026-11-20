@@ -5,18 +5,24 @@ import { listAppConnections } from '@/api/appConnections'
 import type { WorkflowSecretOverview } from '@/api/connectionTypes'
 import { listAllWorkflowSecrets } from '@/api/credentials'
 import { AppShell, PageFrame, PageTitleBlock } from '@/components/layout'
-import { StrokeIcon } from '@/components/ui'
+import { Button, Icon, StrokeIcon } from '@/components/ui'
 import { advancedConnections, connectionCategoryTitles, type Connection, type ConnectionCategory } from '@/data/connections'
 import { useAsyncData } from '@/hooks/useAsyncData'
 import { useProviderStatuses } from '@/hooks/useProviderStatuses'
 import { legacyConnectionsPluginsSection, routePaths } from '@/routes'
-import { AdvancedSection } from './connections/AdvancedSection'
 import { ConnectionCard } from './connections/ConnectionCard'
+import { ConnectionsSection } from './connections/ConnectionsSection'
+import { McpServersSection } from './connections/McpServersSection'
 import { buildModelConnections } from './connections/modelConnections'
-import { ModelProvidersSection } from './connections/ModelProvidersSection'
+import { connectionCardGridClassNames, ModelProvidersSection } from './connections/ModelProvidersSection'
+import { PluginsLinkCard } from './connections/PluginsLinkCard'
 import { describeSecretUsers } from './connections/secretDisplay'
+import { SecretsSection } from './connections/SecretsSection'
 
-const sectionHeadingClassNames = 'm-0 text-[13px] font-semibold text-muted'
+const connectionCategoryDescriptions: Record<ConnectionCategory, string> = {
+  apps: 'Accounts your agents read from and act in',
+  models: '',
+}
 
 function matchesSearch(searchQuery: string, ...searchableTexts: string[]): boolean {
   const normalizedQuery = searchQuery.trim().toLowerCase()
@@ -25,18 +31,14 @@ function matchesSearch(searchQuery: string, ...searchableTexts: string[]): boole
 }
 
 function ConnectionSection({ category, connections, onSetUp }: { category: ConnectionCategory; connections: Connection[]; onSetUp: (connectionId: string) => void }) {
-  const headingId = `connections-${category}-h`
   return (
-    <section aria-labelledby={headingId} className="flex flex-col gap-2.5">
-      <h2 id={headingId} className={sectionHeadingClassNames}>
-        {connectionCategoryTitles[category]}
-      </h2>
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-2.5">
+    <ConnectionsSection id={`connections-${category}`} title={connectionCategoryTitles[category]} description={connectionCategoryDescriptions[category]}>
+      <div className={connectionCardGridClassNames}>
         {connections.map((connection) => (
           <ConnectionCard key={connection.id} connection={connection} onSetUp={onSetUp} />
         ))}
       </div>
-    </section>
+    </ConnectionsSection>
   )
 }
 
@@ -54,8 +56,9 @@ function matchesSecret(searchQuery: string, secret: WorkflowSecretOverview): boo
  * Apps come from `listAppConnections` (none in the desktop app, where apps connect through
  * plugins; the preview's sample apps include a signed-out Gmail banner). AI models come from
  * `listProviderStatuses`; their keys are added, replaced and removed through the keychain
- * commands. Advanced lists every workflow secret (`listAllWorkflowSecrets`) and MCP servers,
- * and links to the Plugins page. The old plugins address (`?section=plugins`) redirects there.
+ * commands. Secrets (`listAllWorkflowSecrets`) and MCP servers are always-open sections with
+ * their own "Add" button; `?section=secrets` / `?section=mcp` opens that form and scrolls to it.
+ * A small card links to the Plugins page; the old plugins address (`?section=plugins`) redirects there.
  */
 export function ConnectionsPage() {
   const [searchParams] = useSearchParams()
@@ -83,9 +86,10 @@ function ConnectionsScreen() {
   const visibleAdvancedRows = advancedConnections.filter((row) => matchesSearch(searchQuery, row.name, row.description))
   const visibleSecrets = secretsLoadState.data?.filter((secret) => matchesSecret(searchQuery, secret)) ?? null
   const categories: ConnectionCategory[] = ['apps']
-  const hasNoAdvancedMatches = visibleAdvancedRows.length === 0 && (visibleSecrets?.length ?? 0) === 0
-  const showsAdvancedSection = !isSearching || !hasNoAdvancedMatches
-  const hasNoMatches = visibleConnections.length === 0 && hasNoAdvancedMatches && !showsModelSection
+  const showsSecretsSection = !isSearching || (visibleSecrets?.length ?? 0) > 0
+  const mcpRow = visibleAdvancedRows.find((row) => row.kind === 'mcp')
+  const pluginsLinkRow = visibleAdvancedRows.find((row) => row.kind === 'pluginsLink')
+  const hasNoMatches = visibleConnections.length === 0 && !showsSecretsSection && visibleAdvancedRows.length === 0 && !showsModelSection
 
   function markConnected(connectionId: string) {
     setReconnectedAppIds((previousIds) => [...previousIds, connectionId])
@@ -93,7 +97,7 @@ function ConnectionsScreen() {
 
   return (
     <AppShell activeNav="connections">
-      <PageFrame>
+      <PageFrame className="gap-8">
         <PageTitleBlock
           title="Connections"
           subtitle={`Apps, AI models and keys your agents use. Secrets stay in ${getCredentialStoreName()}`}
@@ -116,18 +120,15 @@ function ConnectionsScreen() {
         />
 
         {signedOutConnections.map((connection) => (
-          <div key={connection.id} role="alert" className="flex items-center gap-3.5 rounded-xl border border-danger-line bg-danger-tint px-4 py-3.5">
-            <span className="flex-auto leading-normal">
+          <div key={connection.id} role="alert" className="flex flex-wrap items-center gap-x-3.5 gap-y-2 rounded-[14px] border border-danger-line bg-danger-tint px-4 py-3">
+            <Icon name="alert" size={18} className="shrink-0 text-danger" />
+            <span className="min-w-0 flex-[1_1_280px] leading-normal">
               <b className="font-semibold">{connection.name} needs you to sign in again.</b>{' '}
               <span className="text-danger-deep">{connection.connectedDescription.replace('Used by ', '')} is paused until then</span>
             </span>
-            <button
-              type="button"
-              onClick={() => markConnected(connection.id)}
-              className="h-9 cursor-pointer whitespace-nowrap rounded-[9px] border-0 bg-ink px-3.5 text-[13px] font-semibold text-white hover:bg-ink-2"
-            >
+            <Button size="sm" onClick={() => markConnected(connection.id)} className="ml-auto">
               Reconnect {connection.name}
-            </button>
+            </Button>
           </div>
         ))}
 
@@ -141,12 +142,15 @@ function ConnectionsScreen() {
           <ModelProvidersSection connections={visibleModelConnections} loadError={providerSetupState.error} onKeysChanged={providerSetupState.reload} />
         )}
 
-        {showsAdvancedSection && (
-          <AdvancedSection
-            rows={visibleAdvancedRows}
+        {showsSecretsSection && (
+          <SecretsSection
             secretsState={{ allSecrets: secretsLoadState.data, visibleSecrets, loadError: secretsLoadState.error, isSearching, reload: secretsLoadState.reload }}
           />
         )}
+
+        {mcpRow && <McpServersSection description={mcpRow.description} onServersChanged={secretsLoadState.reload} />}
+
+        {pluginsLinkRow && <PluginsLinkCard row={pluginsLinkRow} />}
 
         {hasNoMatches && <p className="m-0 text-muted">No connections match “{searchQuery.trim()}”</p>}
       </PageFrame>

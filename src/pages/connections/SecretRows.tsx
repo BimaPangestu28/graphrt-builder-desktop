@@ -2,19 +2,14 @@ import { useState, type FormEvent } from 'react'
 import { getCredentialStoreName } from '@/lib/platform'
 import type { WorkflowSecretOverview } from '@/api/connectionTypes'
 import { deleteWorkflowSecret, setWorkflowSecret } from '@/api/credentials'
-import { joinClassNames } from '@/components/ui'
+import { Badge, Button, joinClassNames } from '@/components/ui'
 import { describeError } from '@/lib/agentDisplay'
 import { formatSavedAt } from '@/pages/version-history/formatSavedAt'
-import { AddSecretForm } from './AddSecretForm'
+import { ConnectionsNotice, connectionsCardClassNames } from './ConnectionsSection'
 import { describeSecretUsers, isSecretMissing } from './secretDisplay'
 import { SecretValueInput } from './SecretValueInput'
 
-const rowClassNames = 'flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-chip last:border-b-0'
-const textButtonClassNames =
-  'cursor-pointer border-0 bg-transparent p-0 text-[12px] font-medium text-ink-2 underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-50'
-const smallButtonClassNames = 'h-8 cursor-pointer rounded-lg px-3 text-[13px] font-medium disabled:cursor-not-allowed disabled:opacity-50'
-const primaryButtonClassNames = `${smallButtonClassNames} border-0 bg-ink text-white hover:bg-ink-2`
-const secondaryButtonClassNames = `${smallButtonClassNames} border border-line-strong bg-surface text-ink hover:bg-subtle`
+const rowClassNames = 'flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-chip px-4 py-3 last:border-b-0'
 
 interface SecretValueFormProps {
   secret: WorkflowSecretOverview
@@ -52,12 +47,12 @@ function SecretValueForm({ secret, onSave, onCancel }: SecretValueFormProps) {
         autoFocus
         className="flex-[1_1_240px]"
       />
-      <button type="submit" disabled={!canSave} className={primaryButtonClassNames}>
+      <Button type="submit" size="sm" disabled={!canSave}>
         {isSaving ? 'Saving…' : 'Save'}
-      </button>
-      <button type="button" onClick={onCancel} className={secondaryButtonClassNames}>
+      </Button>
+      <Button variant="ghost" size="sm" onClick={onCancel}>
         Cancel
-      </button>
+      </Button>
       <span className="w-full text-[12px] text-muted">Saved in {getCredentialStoreName()}, never shown again</span>
       {errorMessage && (
         <span aria-live="polite" className="w-full text-[13px] text-danger">
@@ -82,16 +77,16 @@ function RemoveConfirmation({ secret, isRemoving, onConfirm, onCancel }: RemoveC
       ? `${describeSecretUsers(secret).replace('Used by ', '')} will stop working until you add it again.`
       : 'Agents can no longer use it.'
   return (
-    <div role="alertdialog" aria-label={`Remove ${secret.name}?`} className="flex w-full flex-wrap items-center gap-2 rounded-lg bg-danger-tint px-3 py-2">
-      <span className="flex-auto text-[13px] text-danger-deep">
+    <div role="alertdialog" aria-label={`Remove ${secret.name}?`} className="flex w-full flex-wrap items-center gap-2 rounded-[10px] border border-danger-line bg-danger-tint px-3 py-2">
+      <span className="flex-[1_1_240px] text-[13px] leading-normal text-danger-deep [overflow-wrap:anywhere]">
         Remove {secret.name} from {getCredentialStoreName()}? {consequence}
       </span>
-      <button type="button" disabled={isRemoving} onClick={onConfirm} className={`${smallButtonClassNames} border-0 bg-danger text-white`}>
-        {isRemoving ? 'Removing…' : `Yes, remove ${secret.name}`}
-      </button>
-      <button type="button" onClick={onCancel} className={secondaryButtonClassNames}>
+      <Button variant="secondary" size="sm" onClick={onCancel}>
         Keep it
-      </button>
+      </Button>
+      <Button size="sm" disabled={isRemoving} onClick={onConfirm} className="!border-danger !bg-danger hover:!bg-danger-deep">
+        {isRemoving ? 'Removing…' : `Yes, remove ${secret.name}`}
+      </Button>
     </div>
   )
 }
@@ -103,8 +98,8 @@ function describeSecretDetails(secret: WorkflowSecretOverview): string {
 }
 
 function SecretStatus({ secret }: { secret: WorkflowSecretOverview }) {
-  if (secret.configured) return <span className="text-[13px] text-ok-strong">Saved</span>
-  return <span className={joinClassNames('text-[13px]', isSecretMissing(secret) ? 'text-danger' : 'text-muted')}>{isSecretMissing(secret) ? 'Missing' : 'Optional'}</span>
+  if (secret.configured) return <Badge tone="ok">Saved</Badge>
+  return isSecretMissing(secret) ? <Badge tone="danger">Missing</Badge> : <Badge>Optional</Badge>
 }
 
 interface SecretRowProps {
@@ -143,20 +138,25 @@ function SecretRow({ secret, onChanged }: SecretRowProps) {
 
   return (
     <div role="listitem" aria-label={secret.name} className={rowClassNames}>
-      <span className="flex min-w-0 flex-col gap-0.5">
-        <span className={joinClassNames('font-medium', !secret.description && 'font-mono text-[13px]')}>{secret.description ?? secret.name}</span>
-        <span className="text-[12px] text-muted">{describeSecretDetails(secret)}</span>
+      <span className="flex min-w-0 flex-[1_1_260px] flex-col gap-0.5">
+        <span className={joinClassNames('font-medium [overflow-wrap:anywhere]', !secret.description && 'font-mono text-[13px]')}>{secret.description ?? secret.name}</span>
+        <span className="text-[12px] leading-normal text-muted [overflow-wrap:anywhere]">{describeSecretDetails(secret)}</span>
       </span>
       {!isEditing && !isConfirmingRemove && (
-        <span className="flex items-center gap-3">
+        <span className="ml-auto flex shrink-0 items-center gap-2">
           <SecretStatus secret={secret} />
-          <button type="button" aria-label={`${secret.configured ? 'Replace' : 'Add'} ${secret.name}`} onClick={() => setIsEditing(true)} className={textButtonClassNames}>
-            {secret.configured ? 'Replace value' : isMissing ? 'Missing — add value' : 'Add value'}
-          </button>
+          <Button
+            variant={isMissing ? 'primary' : 'secondary'}
+            size="sm"
+            aria-label={`${secret.configured ? 'Replace' : 'Add'} ${secret.name}`}
+            onClick={() => setIsEditing(true)}
+          >
+            {secret.configured ? 'Replace' : 'Add value'}
+          </Button>
           {(secret.configured || secret.createdAt) && (
-            <button type="button" aria-label={`Remove ${secret.name}`} onClick={() => setIsConfirmingRemove(true)} className={textButtonClassNames}>
+            <Button variant="ghost" size="sm" aria-label={`Remove ${secret.name}`} onClick={() => setIsConfirmingRemove(true)} className="!text-danger hover:!bg-danger-tint">
               Remove
-            </button>
+            </Button>
           )}
         </span>
       )}
@@ -184,32 +184,23 @@ export interface SecretsListState {
   reload: () => Promise<void>
 }
 
-function SecretsNotice({ text }: { text: string }) {
-  return <p className="m-0 px-4 py-3 text-[13px] text-muted">{text}</p>
-}
-
 /**
- * The Secrets panel under Advanced: "Add secret", then every secret the user saved or an
- * agent (or MCP server) reads, from `listAllWorkflowSecrets`. Values go to the keychain
- * and are never shown; agents read a secret as `{{#env.NAME#}}`.
+ * Every secret the user saved or an agent (or MCP server) reads, from
+ * `listAllWorkflowSecrets`, as rows in one card. Values go to the keychain and are never
+ * shown; agents read a secret as `{{#env.NAME#}}`.
  */
-export function SecretsPanel({ secretsState }: { secretsState: SecretsListState }) {
+export function SecretsList({ secretsState }: { secretsState: SecretsListState }) {
   const { visibleSecrets, loadError, isSearching, reload } = secretsState
+  if (loadError) return <ConnectionsNotice tone="danger">Could not load secrets: {describeError(loadError)}</ConnectionsNotice>
+  if (!visibleSecrets) return <ConnectionsNotice>Loading secrets…</ConnectionsNotice>
+  if (visibleSecrets.length === 0) {
+    return isSearching ? null : <ConnectionsNotice>No secrets yet. Use Add secret, or add an agent that needs one and it appears here</ConnectionsNotice>
+  }
   return (
-    <section aria-label="Secrets" className="rounded-xl border border-line">
-      {!isSearching && <AddSecretForm onAdded={reload} />}
-      {loadError && <SecretsNotice text={`Could not load secrets: ${describeError(loadError)}`} />}
-      {!loadError && !visibleSecrets && <SecretsNotice text="Loading secrets…" />}
-      {!loadError && visibleSecrets?.length === 0 && !isSearching && (
-        <SecretsNotice text="No secrets yet. Add one above; ones your agents use appear here too" />
-      )}
-      {visibleSecrets && visibleSecrets.length > 0 && (
-        <div role="list" aria-label="Saved and needed secrets">
-          {visibleSecrets.map((secret) => (
-            <SecretRow key={secret.name} secret={secret} onChanged={reload} />
-          ))}
-        </div>
-      )}
-    </section>
+    <div role="list" aria-label="Saved and needed secrets" className={connectionsCardClassNames}>
+      {visibleSecrets.map((secret) => (
+        <SecretRow key={secret.name} secret={secret} onChanged={reload} />
+      ))}
+    </div>
   )
 }
