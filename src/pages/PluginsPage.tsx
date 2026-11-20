@@ -78,7 +78,7 @@ function PluginCatalog({ items, plugins }: PluginCatalogProps) {
       {visibleItems.length === 0 ? (
         <EmptyResults filters={filters} />
       ) : (
-        <div aria-label="Plugin catalog" role="list" className="grid grid-cols-[repeat(auto-fill,minmax(270px,1fr))] gap-3">
+        <div aria-label="Plugin catalog" role="list" className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
           {visibleItems.map((item) => (
             <div key={item.name} role="listitem" className="min-w-0">
               <PluginCatalogCard item={item} plugins={plugins} listSearch={listSearch} />
