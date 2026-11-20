@@ -27,9 +27,16 @@ pub enum AppError {
     Serialization(#[from] serde_json::Error),
     #[error("{0}")]
     Internal(String),
-    /// The agent uses plugins that are not installed (names, sorted).
-    #[error("this agent needs plugins that are not installed: {}", .0.join(", "))]
+    /// The agent uses plugins that are not installed (technical names, sorted; the
+    /// message shows them humanized).
+    #[error("this agent needs plugins that are not installed: {}", humanized_plugin_names(.0))]
     MissingPlugins(Vec<String>),
+}
+
+fn humanized_plugin_names(names: &[String]) -> String {
+    let labels: Vec<String> =
+        names.iter().map(|name| crate::plugins::display_name::humanize_plugin_name(name)).collect();
+    labels.join(", ")
 }
 
 impl AppError {

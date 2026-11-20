@@ -446,7 +446,7 @@ graph:
     match result {
         Err(error @ AppError::MissingPlugins(_)) => {
             assert_eq!(error.code(), "missing_plugins");
-            assert!(error.to_string().contains("fixture-browser, fixture-mail"), "{error}");
+            assert!(error.to_string().contains("Fixture Browser, Fixture Mail"), "{error}");
         }
         other => panic!("expected MissingPlugins, got {other:?}"),
     }

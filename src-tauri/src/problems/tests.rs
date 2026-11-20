@@ -251,7 +251,7 @@ fn plugins_missing_not_loaded_or_untrusted_are_reported() {
     fixture.agent("Maps leads", PLUGIN_FLOW);
     let problems = fixture.problems_of(ProblemKind::PluginMissing);
     assert_eq!(problems.len(), 2);
-    assert_eq!(problems[0].title, "The maps-browser plugin is not installed");
+    assert_eq!(problems[0].title, "The Maps Browser plugin is not installed");
     assert_eq!(action_kinds(&problems[0]), [ProblemActionKind::OpenPlugins]);
 
     let mut broken = installed_plugin("maps-browser");
@@ -265,9 +265,9 @@ fn plugins_missing_not_loaded_or_untrusted_are_reported() {
     let problems = fixture.problems();
     let kinds: Vec<(ProblemKind, &str)> =
         problems.iter().map(|problem| (problem.kind, problem.title.as_str())).collect();
-    assert!(kinds.contains(&(ProblemKind::PluginNotLoaded, "The maps-browser plugin could not start")));
-    assert!(kinds.contains(&(ProblemKind::PluginNotLoaded, "The x-api plugin could not start")));
-    assert!(kinds.contains(&(ProblemKind::PluginUntrusted, "The whatsapp-api plugin is not trusted yet")));
+    assert!(kinds.contains(&(ProblemKind::PluginNotLoaded, "The Maps Browser plugin could not start")));
+    assert!(kinds.contains(&(ProblemKind::PluginNotLoaded, "The X API plugin could not start")));
+    assert!(kinds.contains(&(ProblemKind::PluginUntrusted, "The WhatsApp API plugin is not trusted yet")));
     assert!(!kinds.iter().any(|(kind, _)| *kind == ProblemKind::PluginMissing));
     let not_loaded = problems.iter().find(|problem| problem.id == "plugin_not_loaded:maps-browser").unwrap();
     assert!(not_loaded.detail.contains("Maps leads cannot run"));
@@ -287,7 +287,7 @@ fn unset_plugin_settings_are_missing_credentials() {
 
     let problems = fixture.problems_of(ProblemKind::MissingCredentials);
     assert_eq!(problems.len(), 1);
-    assert!(problems[0].detail.contains("whatsapp-api setting WHATSAPP_TOKEN"));
+    assert!(problems[0].detail.contains("WhatsApp API setting WHATSAPP_TOKEN"));
     assert!(!problems[0].detail.contains("WHATSAPP_PHONE_ID"));
     // Optional tuning settings have defaults, so leaving them unset is not a problem.
     assert!(!problems[0].detail.contains("WHATSAPP_GRAPH_VERSION"));
