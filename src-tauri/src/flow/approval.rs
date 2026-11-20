@@ -22,24 +22,38 @@ const WRITING_METHODS: &[&str] = &["POST", "PUT", "PATCH", "DELETE"];
 
 /// Titles (or ids) of sending steps that some path reaches without an approval.
 pub(super) fn unapproved_sending_steps(graph: &Graph) -> Vec<String> {
+    unapproved_sending_nodes(graph).into_iter().map(step_label).collect()
+}
+
+/// Node ids of the sending steps that some path reaches without an approval.
+pub(super) fn unapproved_sending_node_ids(graph: &Graph) -> Vec<String> {
+    unapproved_sending_nodes(graph).into_iter().map(|node| node.id.to_string()).collect()
+}
+
+/// Whether a node kind (with its config) sends data out, so it must sit behind an approval.
+pub(super) fn is_sending_kind(kind: &str, config: &serde_json::Map<String, Json>) -> bool {
+    if crate::plugins::is_sending_plugin_kind(kind) {
+        return true;
+    }
+    if kind != "http-request" {
+        return false;
+    }
+    let method = config.get("method").and_then(Json::as_str).unwrap_or("GET");
+    WRITING_METHODS.iter().any(|writing_method| method.eq_ignore_ascii_case(writing_method))
+}
+
+fn unapproved_sending_nodes(graph: &Graph) -> Vec<&GraphNode> {
     (0..graph.nodes().len())
         .filter_map(|node_index| graph.node(node_index).map(|node| (node_index, node)))
         .filter(|(_, node)| is_sending_step(node))
         .filter(|(node_index, _)| reachable_without_approval(graph, *node_index))
-        .map(|(_, node)| step_label(node))
+        .map(|(_, node)| node)
         .collect()
 }
 
 fn is_sending_step(node: &GraphNode) -> bool {
-    // Plugin steps that send or change something (`whatsapp-api.send_text`).
-    if crate::plugins::is_sending_plugin_kind(&node.kind) {
-        return true;
-    }
-    if node.kind != "http-request" {
-        return false;
-    }
-    let method = node.doc.config.get("method").and_then(Json::as_str).unwrap_or("GET");
-    WRITING_METHODS.iter().any(|writing_method| method.eq_ignore_ascii_case(writing_method))
+    // Plugin steps that send or change something (`whatsapp-api.send_text`) count too.
+    is_sending_kind(&node.kind, &node.doc.config)
 }
 
 /// True when walking backwards from `target` can reach the workflow entry

@@ -206,6 +206,75 @@ pub fn find_placeholder_http_steps(flow_yaml: &str) -> AppResult<Vec<String>> {
     Ok(placeholders::placeholder_http_steps(&graph))
 }
 
+/// How the builder and run screens describe one node, from its kind, title and config.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodeDescription {
+    /// The node `title`, or a readable fallback from the kind ("Ask a model").
+    pub title: String,
+    /// One-line detail, e.g. model name, URL host or prompt excerpt.
+    pub detail: String,
+    /// The run stops here and asks the user.
+    pub needs_approval: bool,
+}
+
+/// Describes one node the way [`summarize_flow`] describes its steps.
+pub fn describe_node(
+    kind: &str,
+    title: Option<&str>,
+    config: &serde_json::Map<String, serde_json::Value>,
+) -> NodeDescription {
+    let title = title
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .map_or_else(|| summary::fallback_title(kind), str::to_owned);
+    NodeDescription {
+        title,
+        detail: summary::step_detail(kind, config),
+        needs_approval: summary::step_needs_approval(kind, config),
+    }
+}
+
+/// Readable name of a node kind, as the builder lists it ("Ask a model", "For each item").
+pub fn node_kind_title(kind: &str) -> String {
+    summary::fallback_title(kind)
+}
+
+/// The run inputs of a parsed (not necessarily compiling) document: its `start` variables.
+pub fn start_inputs(workflow: &graphrt_core::Workflow) -> Vec<FlowInput> {
+    workflow
+        .graph
+        .nodes
+        .iter()
+        .filter(|node| node.kind == "start")
+        .filter_map(|node| node.config.get("variables").and_then(serde_json::Value::as_array))
+        .flatten()
+        .filter_map(summary::build_input)
+        .collect()
+}
+
+/// Whether a node of this kind and config sends data out (writing HTTP methods and
+/// plugin steps that send or change something), so it must sit behind an approval.
+pub fn is_sending_node(kind: &str, config: &serde_json::Map<String, serde_json::Value>) -> bool {
+    approval::is_sending_kind(kind, config)
+}
+
+/// Node ids of compiled sending steps that a path reaches without an approval
+/// (see [`find_unapproved_sending_steps`]).
+pub fn unapproved_sending_node_ids(graph: &graphrt_core::Graph) -> Vec<String> {
+    approval::unapproved_sending_node_ids(graph)
+}
+
+/// `(node id, host)` of compiled HTTP steps calling a placeholder address
+/// (see [`find_placeholder_http_steps`]).
+pub fn placeholder_http_node_hosts(graph: &graphrt_core::Graph) -> Vec<(String, String)> {
+    placeholders::placeholder_http_node_hosts(graph)
+}
+
+/// Model providers (`model.provider`) of a compiled graph's model nodes, sorted.
+pub fn model_providers_of(graph: &graphrt_core::Graph) -> Vec<String> {
+    summary::summarize_graph(graph).model_providers
+}
+
 /// The workflow format cheat-sheet the agent builder includes in its prompt.
 pub fn workflow_format_guide() -> &'static str {
     WORKFLOW_FORMAT_GUIDE

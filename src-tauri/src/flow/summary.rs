@@ -124,7 +124,7 @@ fn build_step(node: &GraphNode, depth: u32) -> FlowStep {
 }
 
 /// Readable label for a node type without a title.
-fn fallback_title(kind: &str) -> String {
+pub(super) fn fallback_title(kind: &str) -> String {
     let label = match kind {
         "llm" => "Ask a model",
         "agent" => "Run an agent",
@@ -157,7 +157,7 @@ fn humanize_kind(kind: &str) -> String {
     }
 }
 
-fn step_detail(kind: &str, config: &Map<String, Json>) -> String {
+pub(super) fn step_detail(kind: &str, config: &Map<String, Json>) -> String {
     if MODEL_KINDS.contains(&kind) {
         if let Some(model_name) = model_field(config, "name") {
             return model_name.to_owned();
@@ -234,7 +234,7 @@ fn excerpt(text: &str) -> String {
     format!("{}…", truncated.trim_end())
 }
 
-fn step_needs_approval(kind: &str, config: &Map<String, Json>) -> bool {
+pub(super) fn step_needs_approval(kind: &str, config: &Map<String, Json>) -> bool {
     match kind {
         "human-input" => true,
         "agent" => match config.get("require_approval") {
@@ -258,7 +258,7 @@ fn collect_inputs(graph: &Graph) -> Vec<FlowInput> {
         .collect()
 }
 
-fn build_input(variable: &Json) -> Option<FlowInput> {
+pub(super) fn build_input(variable: &Json) -> Option<FlowInput> {
     let name = variable.get("variable").and_then(Json::as_str)?.to_owned();
     let label = ["label", "description"]
         .iter()

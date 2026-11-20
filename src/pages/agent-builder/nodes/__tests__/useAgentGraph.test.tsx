@@ -1,0 +1,179 @@
+import { act, renderHook, waitFor } from '@testing-library/react'
+import { resetSampleAgentGraphs, sampleAgentGraphBackend, setSampleBuilderBusy } from '@/api/sampleBackend/agentGraph'
+import { resetSampleAgents } from '@/api/sampleBackend/agents'
+import { listStoredBuilderMessages, readCurrentSteps, readStoredAgent, saveNewVersion } from '@/api/sampleBackend/sampleAgentStore'
+import { useAgentGraph } from '../useAgentGraph'
+
+const agentId = 'maps-leads'
+
+async function renderLoadedHook(options: { onSaved?: () => void } = {}) {
+  const hook = renderHook(({ currentVersion }) => useAgentGraph({ agentId, currentVersion, onSaved: options.onSaved }), {
+    initialProps: { currentVersion: readStoredAgent(agentId).currentVersion as number | null },
+  })
+  await waitFor(() => expect(hook.result.current.graph).not.toBeNull())
+  return hook
+}
+
+describe('useAgentGraph', () => {
+  beforeEach(() => {
+    resetSampleAgents()
+    resetSampleAgentGraphs()
+  })
+  afterEach(() => vi.restoreAllMocks())
+
+  it('loads the current graph and its saved positions', async () => {
+    await sampleAgentGraphBackend.saveNodeLayout(agentId, 7, [{ nodeId: 'search_maps', x: 10, y: 20 }], { x: 0, y: 0, zoom: 0.9 })
+    const { result } = await renderLoadedHook()
+
+    expect(result.current.graph?.version).toBe(7)
+    expect(result.current.graph?.nodes.find((node) => node.id === 'approve_message')?.ports.outputs.map((port) => port.id)).toEqual(['send', 'skip'])
+    expect(result.current.positions.search_maps).toMatchObject({ x: 10, y: 20 })
+    expect(result.current.viewport).toEqual({ x: 0, y: 0, zoom: 0.9 })
+    expect(result.current.isDirty).toBe(false)
+    expect(result.current.status).toBe('idle')
+  })
+
+  it('tracks edits with undo and redo', async () => {
+    const { result } = await renderLoadedHook()
+
+    act(() => result.current.updateNode('write_message', { title: 'Write a promotion' }, 'renamed Write a short message'))
+    expect(result.current.isDirty).toBe(true)
+    expect(result.current.graph?.nodes.find((node) => node.id === 'write_message')?.displayTitle).toBe('Write a promotion')
+    expect(result.current.pendingDescriptions).toEqual(['renamed Write a short message'])
+
+    act(() => result.current.undo())
+    expect(result.current.isDirty).toBe(false)
+    expect(result.current.canRedo).toBe(true)
+    expect(result.current.pendingDescriptions).toEqual([])
+
+    act(() => result.current.redo())
+    expect(result.current.graph?.nodes.find((node) => node.id === 'write_message')?.title).toBe('Write a promotion')
+    expect(result.current.canUndo).toBe(true)
+  })
+
+  it('derives ports locally: the error exit appears with Go to the error path', async () => {
+    const { result } = await renderLoadedHook()
+    act(() => result.current.updateNode('send_whatsapp', { onError: { strategy: 'fail-branch', values: {} } }))
+    const send = result.current.graph?.nodes.find((node) => node.id === 'send_whatsapp')
+    expect(send?.ports.outputs.map((port) => port.id)).toEqual(['source', 'fail-branch'])
+  })
+
+  it('saves edits as a new version with the edit descriptions and the positions', async () => {
+    const onSaved = vi.fn()
+    const saveSpy = vi.spyOn(sampleAgentGraphBackend, 'saveAgentGraph')
+    const { result } = await renderLoadedHook({ onSaved })
+    act(() => result.current.moveNodes([{ nodeId: 'write_message', x: 300, y: 40 }]))
+    act(() => result.current.updateNode('send_whatsapp', { retry: { maxRetries: 2, intervalMs: 2000, backoff: 2 } }, 'set Retry 2× on Send WhatsApp'))
+
+    let saveResult: Awaited<ReturnType<typeof result.current.save>> = null
+    await act(async () => {
+      saveResult = await result.current.save()
+    })
+
+    expect(saveSpy).toHaveBeenCalledWith(agentId, 7, expect.objectContaining({ description: 'set Retry 2× on Send WhatsApp', layout: [{ nodeId: 'write_message', x: 300, y: 40 }] }))
+    expect(saveResult).toMatchObject({ saved: true, versionBefore: 7, versionAfter: 8, summary: 'Edited in Nodes: set Retry 2× on Send WhatsApp' })
+    expect(onSaved).toHaveBeenCalledTimes(1)
+    expect(result.current.status).toBe('saved')
+    expect(result.current.isDirty).toBe(false)
+    expect(result.current.canUndo).toBe(false)
+    expect(readStoredAgent(agentId).currentVersion).toBe(8)
+    expect(listStoredBuilderMessages(agentId).at(-1)).toMatchObject({ text: 'Edited in Nodes: set Retry 2× on Send WhatsApp', versionBefore: 7, versionAfter: 8 })
+    expect((await sampleAgentGraphBackend.getNodeLayout(agentId, 8)).nodes).toEqual([{ nodeId: 'write_message', x: 300, y: 40 }])
+  })
+
+  it('does not call the backend without edits', async () => {
+    const saveSpy = vi.spyOn(sampleAgentGraphBackend, 'saveAgentGraph')
+    const { result } = await renderLoadedHook()
+    await act(async () => {
+      expect(await result.current.save()).toBeNull()
+    })
+    expect(saveSpy).not.toHaveBeenCalled()
+  })
+
+  it('reports a conflict when the builder saved meanwhile, and keeps the builder’s version on request', async () => {
+    const { result } = await renderLoadedHook()
+    act(() => result.current.updateNode('write_message', { title: 'Mine' }))
+    saveNewVersion(agentId, readCurrentSteps(agentId), 'Changed by the builder')
+
+    await act(async () => {
+      await result.current.save()
+    })
+    expect(result.current.status).toBe('conflict')
+    expect(result.current.conflict).toEqual({ latestVersion: 8 })
+
+    await act(async () => result.current.resolveConflict('keep-theirs'))
+    expect(result.current.graph?.version).toBe(8)
+    expect(result.current.isDirty).toBe(false)
+    expect(result.current.status).toBe('idle')
+  })
+
+  it('keeps mine by saving the edit over the latest version', async () => {
+    const { result } = await renderLoadedHook()
+    act(() => result.current.updateNode('write_message', { title: 'Mine' }))
+    saveNewVersion(agentId, readCurrentSteps(agentId), 'Changed by the builder')
+    await act(async () => {
+      await result.current.save()
+    })
+
+    await act(async () => result.current.resolveConflict('keep-mine'))
+
+    expect(result.current.status).toBe('saved')
+    expect(result.current.lastSave).toMatchObject({ versionBefore: 8, versionAfter: 9 })
+    expect(result.current.graph?.nodes.find((node) => node.id === 'write_message')?.title).toBe('Mine')
+  })
+
+  it('turns a version change from the chat into a reload when clean, a conflict when dirty', async () => {
+    const hook = await renderLoadedHook()
+    saveNewVersion(agentId, readCurrentSteps(agentId), 'Chat change')
+    hook.rerender({ currentVersion: 8 })
+    await waitFor(() => expect(hook.result.current.graph?.version).toBe(8))
+
+    act(() => hook.result.current.updateNode('write_message', { title: 'Mine' }))
+    saveNewVersion(agentId, readCurrentSteps(agentId), 'Another chat change')
+    hook.rerender({ currentVersion: 9 })
+    await waitFor(() => expect(hook.result.current.status).toBe('conflict'))
+    expect(hook.result.current.graph?.nodes.find((node) => node.id === 'write_message')?.title).toBe('Mine')
+  })
+
+  it('waits while the builder is changing the agent', async () => {
+    const saveSpy = vi.spyOn(sampleAgentGraphBackend, 'saveAgentGraph')
+    const { result } = await renderLoadedHook()
+    act(() => setSampleBuilderBusy(agentId, true))
+    await waitFor(() => expect(result.current.builderBusy).toBe(true))
+    act(() => result.current.updateNode('write_message', { title: 'Mine' }))
+
+    await act(async () => {
+      expect(await result.current.save()).toBeNull()
+    })
+    expect(result.current.status).toBe('builder-busy')
+    expect(saveSpy).not.toHaveBeenCalled()
+
+    act(() => setSampleBuilderBusy(agentId, false))
+    await waitFor(() => expect(result.current.builderBusy).toBe(false))
+    await act(async () => {
+      await result.current.save()
+    })
+    expect(result.current.status).toBe('saved')
+  })
+
+  it('shows the problems of a refused save and keeps the edit', async () => {
+    const { result } = await renderLoadedHook()
+    act(() => result.current.addEdge({ source: 'write_message', target: 'ghost' }))
+    await act(async () => {
+      await result.current.save()
+    })
+    expect(result.current.status).toBe('invalid')
+    expect(result.current.saveProblems[0]).toMatchObject({ severity: 'error', code: 'compile' })
+    expect(result.current.isDirty).toBe(true)
+  })
+
+  it('saves moved positions for the saved version without adding one', async () => {
+    const { result } = await renderLoadedHook()
+    act(() => result.current.moveNodes([{ nodeId: 'end', x: 900, y: 0 }]))
+    expect(result.current.isLayoutDirty).toBe(true)
+    await act(async () => result.current.saveLayout())
+    expect(result.current.isLayoutDirty).toBe(false)
+    expect((await sampleAgentGraphBackend.getNodeLayout(agentId, 7)).nodes).toEqual([{ nodeId: 'end', x: 900, y: 0 }])
+    expect(readStoredAgent(agentId).currentVersion).toBe(7)
+  })
+})

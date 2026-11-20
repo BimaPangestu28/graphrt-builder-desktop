@@ -16,18 +16,21 @@ export function isDesktopApp(): boolean {
 /** Error thrown by {@link callBackend} with the backend's stable code. */
 export class BackendError extends Error {
   readonly code: BackendErrorCode
+  /** Structured data some codes carry (`version_conflict`: `{ baseVersion, latestVersion }`, `invalid_graph`: `{ problems }`); null otherwise. */
+  readonly details: unknown
 
-  constructor(code: BackendErrorCode, message: string) {
+  constructor(code: BackendErrorCode, message: string, details?: unknown) {
     super(message)
     this.name = 'BackendError'
     this.code = code
+    this.details = details ?? null
   }
 }
 
 function toBackendError(rawError: unknown): BackendError {
   if (rawError && typeof rawError === 'object' && 'code' in rawError && 'message' in rawError) {
-    const { code, message } = rawError as { code: BackendErrorCode; message: string }
-    return new BackendError(code, message)
+    const { code, message, details } = rawError as { code: BackendErrorCode; message: string; details?: unknown }
+    return new BackendError(code, message, details)
   }
   return new BackendError('internal', typeof rawError === 'string' ? rawError : 'Something went wrong')
 }

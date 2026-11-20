@@ -17,6 +17,8 @@
 //! - `agent_settings(agent_id, key, value_json, updated_at)`: per-agent JSON settings
 //! - `builder_messages(id, agent_id, role, text, explanation, status, version_before,
 //!    version_after, changed_step_ids, created_at)`: the builder chat (see `builder_messages.rs`)
+//! - `node_layouts(agent_id, version, node_id, x, y, width, height, collapsed)` and
+//!   `canvas_viewports(agent_id, x, y, zoom, updated_at)`: the Nodes view layout (see `node_layouts.rs`)
 //!
 //! `Database` is cheap to share (`Arc<Database>`); every method takes `&self`
 //! and locks the single connection for the duration of the call.
@@ -29,6 +31,7 @@ mod codec;
 mod maintenance;
 mod migrations;
 pub mod models;
+pub mod node_layouts;
 pub mod run_inputs;
 pub mod runs;
 pub mod settings;

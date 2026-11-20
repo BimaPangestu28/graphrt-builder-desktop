@@ -77,6 +77,51 @@ impl Database {
         Ok(updated_agent)
     }
 
+    /// [`Database::update_agent_flow`] for an edit made on `base_version`: saves only
+    /// when that is still the current version, checked in the same transaction, so a
+    /// chat change that landed meanwhile is never overwritten.
+    ///
+    /// # Errors
+    /// `VersionConflict` with the latest version when the agent moved on; `NotFound`
+    /// for an unknown agent; `InvalidInput` for an empty flow.
+    pub fn update_agent_flow_from_version(
+        &self,
+        agent_id: &str,
+        base_version: i64,
+        flow_yaml: &str,
+        change_summary: &str,
+    ) -> AppResult<Agent> {
+        validate_flow(flow_yaml)?;
+        let mut connection = self.lock()?;
+        let transaction = connection.transaction()?;
+        let agent = fetch_agent(&transaction, agent_id)?;
+        if agent.current_version != base_version {
+            return Err(AppError::VersionConflict { base_version, latest_version: agent.current_version });
+        }
+        append_version(&transaction, &agent, flow_yaml, change_summary)?;
+        let updated_agent = fetch_agent(&transaction, agent_id)?;
+        transaction.commit()?;
+        Ok(updated_agent)
+    }
+
+    /// One saved version of an agent.
+    ///
+    /// # Errors
+    /// `NotFound` when the agent or the version does not exist.
+    pub fn get_agent_version(&self, agent_id: &str, version: i64) -> AppResult<AgentVersion> {
+        let connection = self.lock()?;
+        ensure_agent_exists(&connection, agent_id)?;
+        connection
+            .query_row(
+                "SELECT agent_id, version, flow_yaml, change_summary, created_at
+                 FROM agent_versions WHERE agent_id = ?1 AND version = ?2",
+                params![agent_id, version],
+                map_version_row,
+            )
+            .optional()?
+            .ok_or_else(|| AppError::NotFound(format!("version {version} of agent {agent_id}")))
+    }
+
     pub fn rename_agent(&self, agent_id: &str, name: &str) -> AppResult<Agent> {
         let name = validated_name(name)?;
         let connection = self.lock()?;
@@ -191,6 +236,8 @@ fn append_version(connection: &Connection, agent: &Agent, flow_yaml: &str, chang
         "UPDATE agents SET flow_yaml = ?1, current_version = ?2, updated_at = ?3 WHERE id = ?4",
         params![flow_yaml, next_version, now, agent.id],
     )?;
+    // Chat changes and restores keep the Nodes view positions of the steps they keep.
+    super::node_layouts::copy_layout_forward(connection, &agent.id, agent.current_version, next_version, flow_yaml)?;
     Ok(())
 }
 

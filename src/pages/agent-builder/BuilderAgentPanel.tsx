@@ -1,15 +1,18 @@
 import { splitPaneColumnClassName, splitPaneScrollClassName } from '@/components/layout'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import type { SaveGraphResult } from '@/api/agentGraphTypes'
 import type { Agent, FlowSummary } from '@/api/types'
 import { joinClassNames } from '@/components/ui'
 import { agentPath } from '@/routes'
 import { AgentIdentityHeader } from './AgentIdentityHeader'
 import { AgentRequirementsList, type BuilderRequirement } from './AgentRequirementsList'
 import { BuilderStepCard } from './BuilderStepCard'
+import { NodesView } from './nodes'
 
 const builderTabs = [
   { key: 'steps', label: 'Steps' },
+  { key: 'nodes', label: 'Nodes' },
   { key: 'runs', label: 'Runs' },
   { key: 'source', label: 'Source' },
 ] as const
@@ -19,7 +22,7 @@ type BuilderTabKey = (typeof builderTabs)[number]['key']
 const headerLinkBaseClassNames = 'flex h-9 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-medium no-underline'
 const outlineHeaderLinkClassNames = `${headerLinkBaseClassNames} border border-line-strong bg-surface !text-ink hover:bg-subtle`
 
-/** Segmented Steps / Runs / Source switcher. */
+/** Segmented Steps / Nodes / Runs / Source switcher. */
 function BuilderTabList({ activeTab, onSelect }: { activeTab: BuilderTabKey; onSelect: (tab: BuilderTabKey) => void }) {
   return (
     <div role="tablist" aria-label="Agent views" className="flex gap-1 rounded-[10px] bg-selected p-1">
@@ -147,9 +150,14 @@ interface BuilderAgentPanelProps {
   arePluginsReady?: boolean
   /** Reloads the agent after it was renamed. */
   onAgentRenamed?: () => Promise<void> | void
+  /** After the Nodes view saved a version: reload the agent, steps and chat. */
+  onGraphSaved?: (result: SaveGraphResult) => void
 }
 
-/** Right column of screen 04: tabs, actions, the agent's steps and what it needs connected. */
+/**
+ * Right column of screen 04: tabs, actions, the agent's steps and what it needs connected.
+ * The Nodes tab shows the same steps as an editable graph (`./nodes`).
+ */
 export function BuilderAgentPanel({
   agent,
   flowSummary,
@@ -161,6 +169,7 @@ export function BuilderAgentPanel({
   onPluginSessionChange,
   arePluginsReady,
   onAgentRenamed,
+  onGraphSaved,
 }: BuilderAgentPanelProps) {
   const [activeTab, setActiveTab] = useState<BuilderTabKey>('steps')
 
@@ -171,25 +180,31 @@ export function BuilderAgentPanel({
         <BuilderHeaderActions agentId={agent.id} onTestBlocked={arePluginsReady === false ? onShowPluginSetup : undefined} />
       </header>
 
-      <div role="tabpanel" id={`builder-panel-${activeTab}`} aria-labelledby={`builder-tab-${activeTab}`} className={`flex flex-col gap-6 p-6 ${splitPaneScrollClassName}`}>
-        <div className="flex flex-col gap-1">
-          <AgentIdentityHeader agent={agent} onRenamed={onAgentRenamed ?? (() => undefined)} />
-          <span className="text-body">Runs on this computer · started by hand</span>
+      {activeTab === 'nodes' ? (
+        <div role="tabpanel" id="builder-panel-nodes" aria-labelledby="builder-tab-nodes" className="flex min-h-0 flex-1 flex-col">
+          <NodesView agent={agent} onGraphSaved={onGraphSaved} />
         </div>
-        {activeTab === 'steps' && (
-          <StepsTabContent
-            flowSummary={flowSummary}
-            flowSummaryError={flowSummaryError}
-            highlightedStepIds={highlightedStepIds}
-            requirements={requirements}
-            onSaveSecret={onSaveSecret}
-            onShowPluginSetup={onShowPluginSetup}
-            onPluginSessionChange={onPluginSessionChange}
-          />
-        )}
-        {activeTab === 'runs' && <RunsTabContent agentId={agent.id} />}
-        {activeTab === 'source' && <SourceTabContent flowYaml={agent.flowYaml} />}
-      </div>
+      ) : (
+        <div role="tabpanel" id={`builder-panel-${activeTab}`} aria-labelledby={`builder-tab-${activeTab}`} className={`flex flex-col gap-6 p-6 ${splitPaneScrollClassName}`}>
+          <div className="flex flex-col gap-1">
+            <AgentIdentityHeader agent={agent} onRenamed={onAgentRenamed ?? (() => undefined)} />
+            <span className="text-body">Runs on this computer · started by hand</span>
+          </div>
+          {activeTab === 'steps' && (
+            <StepsTabContent
+              flowSummary={flowSummary}
+              flowSummaryError={flowSummaryError}
+              highlightedStepIds={highlightedStepIds}
+              requirements={requirements}
+              onSaveSecret={onSaveSecret}
+              onShowPluginSetup={onShowPluginSetup}
+              onPluginSessionChange={onPluginSessionChange}
+            />
+          )}
+          {activeTab === 'runs' && <RunsTabContent agentId={agent.id} />}
+          {activeTab === 'source' && <SourceTabContent flowYaml={agent.flowYaml} />}
+        </div>
+      )}
     </section>
   )
 }

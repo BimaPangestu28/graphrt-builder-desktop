@@ -127,6 +127,7 @@ export function BuilderPage() {
           onPluginSessionChange={reloadPluginRequirements}
           arePluginsReady={pluginSetup.isReady !== false}
           onAgentRenamed={reloadAgent}
+          onGraphSaved={() => void reloadAgentAndSteps(null)}
         />
       ) : (
         <AgentPanelMessage>{agentState.error ? `Could not load this agent: ${describeError(agentState.error)}` : 'Loading agent…'}</AgentPanelMessage>

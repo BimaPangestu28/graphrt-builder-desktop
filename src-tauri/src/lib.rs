@@ -29,6 +29,7 @@
 //! - [`commands`]: the Tauri commands the frontend calls
 
 pub mod agent_builder;
+pub mod agent_graph;
 pub mod agent_steps;
 pub mod chains;
 pub mod chatbot_setup;
@@ -162,6 +163,7 @@ pub fn run() {
             }
             let app_state = initialize_app_state(app)?;
             app.manage(app_state);
+            commands::agent_graph::emit_edit_state_changes(app.handle().clone());
             desktop::setup(app)?;
             Ok(())
         })
@@ -194,6 +196,12 @@ pub fn run() {
             commands::builder::revise_agent,
             commands::builder::list_builder_messages,
             commands::builder::get_flow_summary,
+            commands::agent_graph::get_agent_graph,
+            commands::agent_graph::get_node_kinds,
+            commands::agent_graph::save_agent_graph,
+            commands::agent_graph::get_node_layout,
+            commands::agent_graph::save_node_layout,
+            commands::agent_graph::get_agent_edit_state,
             commands::runs::start_run,
             commands::runs::resume_run,
             commands::runs::abort_run,
