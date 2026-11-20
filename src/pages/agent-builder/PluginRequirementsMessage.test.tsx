@@ -14,8 +14,8 @@ function renderSetupMessage() {
   return render(<AgentPluginSetupMessage agentId="maps-leads" />)
 }
 
-async function findCard(pluginName: string) {
-  return screen.findByRole('article', { name: pluginName })
+async function findCard(pluginLabel: string) {
+  return screen.findByRole('article', { name: pluginLabel })
 }
 
 describe('plugin setup message in the build chat', () => {
@@ -31,19 +31,19 @@ describe('plugin setup message in the build chat', () => {
       { pluginName: 'whatsapp-web', stepId: 'send_whatsapp' },
     ])
     renderSetupMessage()
-    const whatsAppApiCard = await findCard('whatsapp-api')
+    const whatsAppApiCard = await findCard('WhatsApp Cloud API')
     expect(screen.getByRole('group', { name: 'This agent needs 2 plugins · 0 ready' })).toBeInTheDocument()
     expect(whatsAppApiCard).toHaveTextContent('Used by: Send WhatsApp')
     expect(whatsAppApiCard).toHaveTextContent('Not installed')
-    const permissions = within(whatsAppApiCard).getByRole('list', { name: 'What whatsapp-api asks for' })
+    const permissions = within(whatsAppApiCard).getByRole('list', { name: 'What WhatsApp Cloud API asks for' })
     expect(permissions).toHaveTextContent('Uses the internet')
     expect(permissions).toHaveTextContent('Asks for secrets or tokens: WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID')
     expect(within(whatsAppApiCard).queryByRole('note')).not.toBeInTheDocument()
 
-    const whatsAppWebCard = screen.getByRole('article', { name: 'whatsapp-web' })
-    expect(within(whatsAppWebCard).getByRole('note', { name: 'Warning about whatsapp-web' })).toHaveTextContent(/against the WhatsApp Terms of Service/)
-    expect(within(whatsAppWebCard).getByRole('list', { name: 'What whatsapp-web asks for' })).toHaveTextContent('Opens web pages in a browser (Chromium)')
-    expect(within(whatsAppWebCard).getByRole('button', { name: 'Install & trust whatsapp-web' })).toBeInTheDocument()
+    const whatsAppWebCard = screen.getByRole('article', { name: 'WhatsApp Web' })
+    expect(within(whatsAppWebCard).getByRole('note', { name: 'Warning about WhatsApp Web' })).toHaveTextContent(/against the WhatsApp Terms of Service/)
+    expect(within(whatsAppWebCard).getByRole('list', { name: 'What WhatsApp Web asks for' })).toHaveTextContent('Opens web pages in a browser (Chromium)')
+    expect(within(whatsAppWebCard).getByRole('button', { name: 'Install & trust WhatsApp Web' })).toBeInTheDocument()
     expect(within(whatsAppWebCard).getByRole('button', { name: 'Download browser' })).toBeInTheDocument()
     expect(whatsAppWebCard).toHaveTextContent('about 150 MB download')
   })
@@ -56,9 +56,9 @@ describe('plugin setup message in the build chat', () => {
     const trustSpy = vi.spyOn(samplePluginsBackend, 'setPluginTrusted')
     const configSpy = vi.spyOn(samplePluginsBackend, 'setPluginConfig')
     renderSetupMessage()
-    const card = await findCard('whatsapp-api')
+    const card = await findCard('WhatsApp Cloud API')
 
-    fireEvent.click(within(card).getByRole('button', { name: 'Install & trust whatsapp-api' }))
+    fireEvent.click(within(card).getByRole('button', { name: 'Install & trust WhatsApp Cloud API' }))
     act(() => emitSamplePluginEvent({ type: 'install_progress', name: 'whatsapp-api', stage: 'downloading', receivedBytes: 12_000, totalBytes: 48_000, message: null }))
     expect(within(card).getByRole('status')).toHaveTextContent('Downloading · 25%')
     act(() => emitSamplePluginEvent({ type: 'install_progress', name: 'whatsapp-api', stage: 'verifying', receivedBytes: 48_000, totalBytes: 48_000, message: null }))
@@ -95,7 +95,7 @@ describe('plugin setup message in the build chat', () => {
         }),
     )
     renderSetupMessage()
-    const card = await findCard('google-maps-scraper')
+    const card = await findCard('Google Maps Scraper')
     expect(card).toHaveTextContent('Needs the browser')
 
     fireEvent.click(within(card).getByRole('button', { name: 'Download browser' }))
@@ -118,14 +118,14 @@ describe('plugin setup message in the build chat', () => {
     const installSpy = vi.spyOn(samplePluginsBackend, 'installPlugin')
     const trustSpy = vi.spyOn(samplePluginsBackend, 'setPluginTrusted')
     renderSetupMessage()
-    await findCard('whatsapp-api')
+    await findCard('WhatsApp Cloud API')
 
     fireEvent.click(screen.getByRole('button', { name: 'Install all & trust' }))
     expect(await screen.findByRole('group', { name: 'This agent needs 2 plugins · 1 ready' })).toBeInTheDocument()
     expect(installSpy.mock.calls).toEqual([['whatsapp-api'], ['website-check']])
     expect(trustSpy.mock.calls).toEqual([['whatsapp-api', true]])
     expect(screen.queryByRole('button', { name: 'Install all & trust' })).not.toBeInTheDocument()
-    expect(within(screen.getByRole('article', { name: 'website-check' })).getByText('Ready', { selector: 'span.font-medium' })).toBeInTheDocument()
+    expect(within(screen.getByRole('article', { name: 'Website Check' })).getByText('Ready', { selector: 'span.font-medium' })).toBeInTheDocument()
   })
 
   it('links personal WhatsApp by QR code from the card once whatsapp-web is installed and trusted', async () => {
@@ -133,10 +133,10 @@ describe('plugin setup message in the build chat', () => {
     setSampleAgentPluginNeeds('maps-leads', [{ pluginName: 'whatsapp-web', stepId: 'send_whatsapp' }])
     const runActionSpy = vi.spyOn(samplePluginsBackend, 'runPluginAction')
     renderSetupMessage()
-    const card = await findCard('whatsapp-web')
+    const card = await findCard('WhatsApp Web')
     expect(within(card).queryByRole('button', { name: 'Link WhatsApp (scan QR code)' })).not.toBeInTheDocument()
 
-    fireEvent.click(within(card).getByRole('button', { name: 'Install & trust whatsapp-web' }))
+    fireEvent.click(within(card).getByRole('button', { name: 'Install & trust WhatsApp Web' }))
     const linkPanel = await within(card).findByRole('region', { name: 'Link WhatsApp' })
     expect(await within(linkPanel).findByRole('status')).toHaveTextContent('WhatsApp: Not linked')
     expect(linkPanel).toHaveTextContent('On your phone: WhatsApp → Settings → Linked devices → Link a device')
@@ -150,9 +150,9 @@ describe('plugin setup message in the build chat', () => {
     setSampleAgentPluginNeeds('maps-leads', [{ pluginName: 'whatsapp-api', stepId: 'send_whatsapp' }])
     vi.spyOn(samplePluginsBackend, 'installPlugin').mockRejectedValue(new Error('Checksum mismatch'))
     renderSetupMessage()
-    const card = await findCard('whatsapp-api')
-    fireEvent.click(within(card).getByRole('button', { name: 'Install & trust whatsapp-api' }))
-    expect(await within(card).findByRole('alert')).toHaveTextContent('Could not set up whatsapp-api: Checksum mismatch')
+    const card = await findCard('WhatsApp Cloud API')
+    fireEvent.click(within(card).getByRole('button', { name: 'Install & trust WhatsApp Cloud API' }))
+    expect(await within(card).findByRole('alert')).toHaveTextContent('Could not set up WhatsApp Cloud API: Checksum mismatch')
   })
 
   it('renders nothing for an agent without plugins', async () => {

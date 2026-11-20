@@ -41,6 +41,7 @@ describe('listBuilderRequirements', () => {
 function pluginRequirement(overrides: Partial<PluginRequirement> = {}): PluginRequirement {
   return {
     name: 'whatsapp-api',
+    displayName: 'WhatsApp Cloud API',
     description: 'Official WhatsApp Business API',
     usedBySteps: ['Send WhatsApp'],
     permissions: { network: true, secrets: true, env: ['WHATSAPP_ACCESS_TOKEN'] },
@@ -62,7 +63,7 @@ describe('listPluginSetupRequirements', () => {
   it('asks to set up a plugin that is not installed', () => {
     expect(listPluginSetupRequirements([pluginRequirement({ installed: false, trusted: false, ready: false })])).toEqual([
       {
-        label: 'whatsapp-api plugin',
+        label: 'WhatsApp Cloud API plugin',
         pluginName: 'whatsapp-api',
         connectPath: pluginDetailPath('whatsapp-api'),
         isConnected: false,

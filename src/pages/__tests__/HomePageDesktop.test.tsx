@@ -106,6 +106,7 @@ function createWaitingChat(id: string, updatedAt: string): Conversation {
 
 const whatsappRequirement: PluginRequirement = {
   name: 'whatsapp-api',
+  displayName: 'WhatsApp Cloud API',
   description: 'Send WhatsApp messages',
   usedBySteps: ['Send the promotion'],
   permissions: { network: true, secrets: true, env: ['ACCESS_TOKEN'] },
@@ -200,7 +201,7 @@ describe('HomePage in the desktop app', () => {
     expect(within(failedRow).getByText(/^Could not reach promo\.example\.com: that address doesn't exist · Today \d\d:\d\d$/)).toBeInTheDocument()
     expect(within(failedRow).getByRole('link', { name: 'See what went wrong' })).toHaveAttribute('href', `${routePaths.errorStates}?runId=promo-2`)
     const setupRow = within(needsYou).getByText("Cafe promo isn't ready to run").closest('li') as HTMLElement
-    expect(within(setupRow).getByText('whatsapp-api needs ACCESS_TOKEN')).toBeInTheDocument()
+    expect(within(setupRow).getByText('WhatsApp Cloud API needs ACCESS_TOKEN')).toBeInTheDocument()
     expect(within(setupRow).getByRole('link', { name: 'Set up' })).toHaveAttribute('href', agentPath('builder', 'promo'))
     expect(screen.queryByText(/dns error/)).not.toBeInTheDocument()
   })
@@ -212,7 +213,7 @@ describe('HomePage in the desktop app', () => {
       waitingChats: [],
       triggers: [],
       usageSummary: monthWithRuns,
-      pluginRequirements: { promo: [whatsappRequirement, { ...whatsappRequirement, name: 'google-maps', missingConfig: [], ready: true }] },
+      pluginRequirements: { promo: [whatsappRequirement, { ...whatsappRequirement, name: 'google-maps', displayName: 'Google Maps', missingConfig: [], ready: true }] },
     })
     renderHomePage()
     const promoCard = await screen.findByRole('article', { name: 'Cafe promo' })
@@ -220,8 +221,8 @@ describe('HomePage in the desktop app', () => {
     expect(within(promoCard).getByRole('link', { name: 'See what went wrong' })).toHaveAttribute('href', `${routePaths.errorStates}?runId=promo-2`)
     expect(within(promoCard).getByText(promoAgent.description)).toHaveAttribute('title', promoAgent.description)
     const plugins = await within(promoCard).findByRole('list', { name: 'Plugins' })
-    expect(within(plugins).getByText('whatsapp-api').closest('li')).toHaveTextContent('(not ready)')
-    expect(within(plugins).getByText('google-maps').closest('li')).toHaveTextContent('(ready)')
+    expect(within(plugins).getByText('WhatsApp Cloud API').closest('li')).toHaveTextContent('(not ready)')
+    expect(within(plugins).getByText('Google Maps').closest('li')).toHaveTextContent('(ready)')
 
     const recentRuns = screen.getByRole('region', { name: 'Recent runs' })
     expect(within(recentRuns).getAllByText("Could not reach promo.example.com: that address doesn't exist")).toHaveLength(2)

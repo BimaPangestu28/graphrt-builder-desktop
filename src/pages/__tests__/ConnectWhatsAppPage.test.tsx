@@ -21,16 +21,16 @@ function renderConnectWhatsAppPage() {
   )
 }
 
-async function installAndTrust(pluginName: string) {
-  fireEvent.click(await screen.findByRole('button', { name: `Install ${pluginName}` }))
-  fireEvent.click(await screen.findByRole('checkbox', { name: `Trust ${pluginName}` }))
-  expect(await screen.findByRole('checkbox', { name: `Trust ${pluginName}` })).toBeChecked()
+async function installAndTrust(pluginLabel: string) {
+  fireEvent.click(await screen.findByRole('button', { name: `Install ${pluginLabel}` }))
+  fireEvent.click(await screen.findByRole('checkbox', { name: `Trust ${pluginLabel}` }))
+  expect(await screen.findByRole('checkbox', { name: `Trust ${pluginLabel}` })).toBeChecked()
 }
 
 async function saveSetting(label: RegExp, value: string, variable: string) {
   fireEvent.change(await screen.findByLabelText(label), { target: { value } })
   fireEvent.click(screen.getByRole('button', { name: `Save ${variable}` }))
-  expect(await within(screen.getByRole('form', { name: `whatsapp-api setting ${variable}` })).findByText('Saved')).toBeInTheDocument()
+  expect(await within(screen.getByRole('form', { name: `WhatsApp Cloud API setting ${variable}` })).findByText('Saved')).toBeInTheDocument()
 }
 
 describe('ConnectWhatsAppPage', () => {
@@ -66,13 +66,13 @@ describe('ConnectWhatsAppPage', () => {
       const setConfigSpy = vi.spyOn(samplePluginsBackend, 'setPluginConfig')
       renderConnectWhatsAppPage()
       fireEvent.click(screen.getByRole('radio', { name: /WhatsApp Business/ }))
-      const permissions = await screen.findByRole('list', { name: 'What whatsapp-api asks for' })
+      const permissions = await screen.findByRole('list', { name: 'What WhatsApp Cloud API asks for' })
       expect(permissions).toHaveTextContent('Connects to the internet')
       expect(permissions).toHaveTextContent('WHATSAPP_ACCESS_TOKEN')
       expect(screen.queryByRole('button', { name: 'Check connection' })).not.toBeInTheDocument()
 
-      await installAndTrust('whatsapp-api')
-      expect(screen.getByText(/Trusting gives whatsapp-api its settings and secrets in plain text/)).toBeInTheDocument()
+      await installAndTrust('WhatsApp Cloud API')
+      expect(screen.getByText(/Trusting gives WhatsApp Cloud API its settings and secrets in plain text/)).toBeInTheDocument()
       expect(screen.getByLabelText(/Access token/)).toHaveAttribute('type', 'password')
       await saveSetting(/Access token/, '[ACCESS TOKEN]', 'WHATSAPP_ACCESS_TOKEN')
       await saveSetting(/Phone number ID/, '[PHONE NUMBER ID]', 'WHATSAPP_PHONE_NUMBER_ID')
@@ -87,7 +87,7 @@ describe('ConnectWhatsAppPage', () => {
       vi.spyOn(samplePluginsBackend, 'runPluginAction').mockRejectedValue(new BackendError('workflow', 'Invalid OAuth access token'))
       renderConnectWhatsAppPage()
       fireEvent.click(screen.getByRole('radio', { name: /WhatsApp Business/ }))
-      await installAndTrust('whatsapp-api')
+      await installAndTrust('WhatsApp Cloud API')
       await saveSetting(/Access token/, '[ACCESS TOKEN]', 'WHATSAPP_ACCESS_TOKEN')
       await saveSetting(/Phone number ID/, '[PHONE NUMBER ID]', 'WHATSAPP_PHONE_NUMBER_ID')
       fireEvent.click(screen.getByRole('button', { name: 'Check connection' }))
@@ -98,8 +98,8 @@ describe('ConnectWhatsAppPage', () => {
       vi.spyOn(samplePluginsBackend, 'installPlugin').mockRejectedValue(new BackendError('internal', 'Checksum mismatch'))
       renderConnectWhatsAppPage()
       fireEvent.click(screen.getByRole('radio', { name: /WhatsApp Business/ }))
-      fireEvent.click(await screen.findByRole('button', { name: 'Install whatsapp-api' }))
-      expect(await screen.findByRole('alert')).toHaveTextContent('Could not install whatsapp-api: Checksum mismatch')
+      fireEvent.click(await screen.findByRole('button', { name: 'Install WhatsApp Cloud API' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent('Could not install WhatsApp Cloud API: Checksum mismatch')
     })
   })
 
@@ -119,8 +119,8 @@ describe('ConnectWhatsAppPage', () => {
       const runActionSpy = vi.spyOn(samplePluginsBackend, 'runPluginAction')
       renderConnectWhatsAppPage()
       fireEvent.click(screen.getByRole('radio', { name: /Personal WhatsApp/ }))
-      expect(await screen.findByRole('list', { name: 'What whatsapp-web asks for' })).toHaveTextContent('Needs the browser runtime')
-      await installAndTrust('whatsapp-web')
+      expect(await screen.findByRole('list', { name: 'What WhatsApp Web asks for' })).toHaveTextContent('Needs the browser runtime')
+      await installAndTrust('WhatsApp Web')
 
       fireEvent.click(await screen.findByRole('button', { name: 'Install browser runtime' }))
       const linkPanel = await screen.findByRole('region', { name: 'Link WhatsApp' })
@@ -142,7 +142,7 @@ describe('ConnectWhatsAppPage', () => {
       vi.spyOn(samplePluginsBackend, 'runPluginAction').mockRejectedValue(new BackendError('workflow', 'Timed out waiting for the QR scan'))
       renderConnectWhatsAppPage()
       fireEvent.click(screen.getByRole('radio', { name: /Personal WhatsApp/ }))
-      await installAndTrust('whatsapp-web')
+      await installAndTrust('WhatsApp Web')
       expect(screen.queryByRole('button', { name: 'Install browser runtime' })).not.toBeInTheDocument()
       fireEvent.click(await screen.findByRole('button', { name: 'Link WhatsApp (scan QR code)' }))
       expect(await screen.findByRole('alert')).toHaveTextContent('Timed out waiting for the QR scan')

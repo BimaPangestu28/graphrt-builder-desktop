@@ -15,6 +15,7 @@ const readmeBaseUrl = 'https://github.com/graphrt/graphrt-plugins/tree/main/plug
 export const samplePluginSeeds: SamplePluginSeed[] = [
   {
     name: 'whatsapp-api',
+    displayName: 'WhatsApp Cloud API',
     version: '0.3.0',
     description: 'Send WhatsApp messages through the official WhatsApp Business Cloud API',
     permissions: {
@@ -38,6 +39,7 @@ export const samplePluginSeeds: SamplePluginSeed[] = [
   },
   {
     name: 'whatsapp-web',
+    displayName: 'WhatsApp Web',
     version: '0.2.1',
     description: 'Send messages from your personal WhatsApp, linked with a QR code like WhatsApp Web',
     permissions: {
@@ -62,6 +64,7 @@ export const samplePluginSeeds: SamplePluginSeed[] = [
   },
   {
     name: 'google-maps-scraper',
+    displayName: 'Google Maps Scraper',
     version: '1.1.0',
     description: 'Searches Google Maps and returns places with their phone, rating and reviews',
     permissions: { network: true, secrets: false, env: ['GOOGLE_MAPS_LANGUAGE'] },
@@ -77,6 +80,7 @@ export const samplePluginSeeds: SamplePluginSeed[] = [
   },
   {
     name: 'website-check',
+    displayName: 'Website Check',
     version: '0.4.0',
     description: 'Opens a website and reports if it loads and has a contact form',
     permissions: { network: true, secrets: false, env: [] },
@@ -92,6 +96,7 @@ export const samplePluginSeeds: SamplePluginSeed[] = [
   },
   {
     name: 'telegram-bot',
+    displayName: 'Telegram Bot',
     version: '0.1.0',
     description: 'Telegram Bot API: send messages and photos, read updates and reply in chats',
     permissions: { network: true, secrets: true, env: ['TELEGRAM_BOT_TOKEN'] },
@@ -110,6 +115,7 @@ export const samplePluginSeeds: SamplePluginSeed[] = [
   },
   {
     name: 'openai',
+    displayName: 'OpenAI',
     version: '0.2.0',
     description: 'OpenAI API: chat completions, structured output and embeddings with your own key',
     permissions: { network: true, secrets: true, env: ['OPENAI_API_KEY'] },
@@ -128,6 +134,7 @@ export const samplePluginSeeds: SamplePluginSeed[] = [
   },
   {
     name: 'google-sheets',
+    displayName: 'Google Sheets',
     version: '0.3.0',
     description: 'Read, append and update rows in a Google Sheets spreadsheet',
     permissions: { network: true, secrets: true, env: ['GOOGLE_SHEETS_CREDENTIALS_JSON'] },
@@ -146,6 +153,7 @@ export const samplePluginSeeds: SamplePluginSeed[] = [
   },
   {
     name: 'stripe',
+    displayName: 'Stripe',
     version: '0.1.2',
     description: 'Stripe: list payments and customers, create payment links and refunds',
     permissions: { network: true, secrets: true, env: ['STRIPE_SECRET_KEY'] },
@@ -164,6 +172,7 @@ export const samplePluginSeeds: SamplePluginSeed[] = [
   },
   {
     name: 'pdf-tools',
+    displayName: 'PDF Tools',
     version: '0.2.0',
     description: 'Extract text from PDF files, merge and split them, all on this computer',
     permissions: { network: false, secrets: false, env: ['PDF_TOOLS_ALLOWED_DIRS'] },

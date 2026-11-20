@@ -4,6 +4,7 @@ import { describeApprovalAction, describeRequirementPermissions, describeRequire
 function requirement(overrides: Partial<PluginRequirement> = {}): PluginRequirement {
   return {
     name: 'google-maps-scraper',
+    displayName: 'Google Maps Scraper',
     description: 'Searches Google Maps',
     usedBySteps: ['Search Google Maps'],
     permissions: { network: true, secrets: false, env: ['GOOGLE_MAPS_LANGUAGE'] },

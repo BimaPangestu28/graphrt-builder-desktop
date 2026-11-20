@@ -1,5 +1,6 @@
 import type { InstalledPlugin, PluginCatalog } from '@/api/pluginTypes'
 import { describeBrowserRuntimeEvent } from '@/hooks/useBrowserRuntime'
+import { humanizePluginName } from '@/lib/pluginDisplayName'
 import {
   buildPluginListItems,
   describeInstallProgress,
@@ -16,6 +17,7 @@ function catalogWith(...names: string[]): PluginCatalog {
   return {
     plugins: names.map((name) => ({
       name,
+      displayName: humanizePluginName(name),
       version: '1.0.0',
       description: name,
       permissions: noPermissions,
@@ -40,6 +42,7 @@ function catalogWith(...names: string[]): PluginCatalog {
 function installed(name: string): InstalledPlugin {
   return {
     name,
+    displayName: humanizePluginName(name),
     version: '0.1.0',
     description: name,
     permissions: noPermissions,
@@ -78,6 +81,27 @@ describe('buildPluginListItems', () => {
       ['local-only', true],
       ['alpha', false],
     ])
+  })
+
+  it('names each card by its display name, humanizing the name when there is none', () => {
+    const catalog = catalogWith('whatsapp-api', 'currency-rates')
+    catalog.plugins[0].displayName = 'WhatsApp Cloud API'
+    catalog.plugins[1].displayName = ''
+    const items = buildPluginListItems(catalog, [{ ...installed('local-sftp'), displayName: '' }])
+    expect(items.map((item) => [item.name, item.displayName])).toEqual([
+      ['local-sftp', 'Local SFTP'],
+      ['whatsapp-api', 'WhatsApp Cloud API'],
+      ['currency-rates', 'Currency Rates'],
+    ])
+  })
+
+  it('searches both the display name and the technical name', () => {
+    const catalog = catalogWith('whatsapp-api', 'currency-rates')
+    catalog.plugins[0].displayName = 'WhatsApp Cloud API'
+    const items = buildPluginListItems(catalog, [])
+    expect(filterPluginListItems(items, 'cloud api').map((item) => item.name)).toEqual(['whatsapp-api'])
+    expect(filterPluginListItems(items, 'WHATSAPP-API').map((item) => item.name)).toEqual(['whatsapp-api'])
+    expect(filterPluginListItems(items, 'currency rates').map((item) => item.name)).toEqual(['currency-rates'])
   })
 
   it('lists installed plugins without a catalog', () => {

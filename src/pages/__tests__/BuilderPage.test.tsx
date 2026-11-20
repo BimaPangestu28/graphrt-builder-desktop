@@ -259,14 +259,14 @@ describe('BuilderPage', () => {
     renderBuilderPage()
     const chat = screen.getByRole('region', { name: 'Chat' })
     const setupMessage = await within(chat).findByRole('group', { name: 'This agent needs 2 plugins · 0 ready' })
-    expect(within(setupMessage).getByRole('article', { name: 'whatsapp-api' })).toBeInTheDocument()
+    expect(within(setupMessage).getByRole('article', { name: 'WhatsApp Cloud API' })).toBeInTheDocument()
     expect(within(setupMessage).getByRole('button', { name: 'Install all & trust' })).toBeInTheDocument()
     expect(within(chat).getByText(/^Your agent has 6 steps/).compareDocumentPosition(setupMessage) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
     // The "Needs" panel lists the same plugins compactly and points to the card.
-    const needsRow = screen.getByText('whatsapp-api plugin').closest('li')!
+    const needsRow = screen.getByText('WhatsApp Cloud API plugin').closest('li')!
     expect(needsRow).toHaveTextContent('Not installed')
-    fireEvent.click(screen.getByRole('button', { name: 'Set up whatsapp-api plugin in chat' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Set up WhatsApp Cloud API plugin in chat' }))
     expect(setupMessage).toHaveFocus()
   })
 
@@ -274,11 +274,11 @@ describe('BuilderPage', () => {
     setSampleBrowserRuntimeStatus('installed')
     setSampleAgentPluginNeeds('maps-leads', [{ pluginName: 'whatsapp-web', stepId: 'send_whatsapp' }])
     renderBuilderPage()
-    const card = await screen.findByRole('article', { name: 'whatsapp-web' })
-    fireEvent.click(within(card).getByRole('button', { name: 'Install & trust whatsapp-web' }))
-    const needsRow = (await screen.findByText('whatsapp-web plugin')).closest('li')!
+    const card = await screen.findByRole('article', { name: 'WhatsApp Web' })
+    fireEvent.click(within(card).getByRole('button', { name: 'Install & trust WhatsApp Web' }))
+    const needsRow = (await screen.findByText('WhatsApp Web plugin')).closest('li')!
     // Installed and trusted is not enough: WhatsApp still has to be linked by QR code.
-    const linkButton = await within(needsRow).findByRole('button', { name: 'Link WhatsApp (scan QR code) for whatsapp-web plugin' })
+    const linkButton = await within(needsRow).findByRole('button', { name: 'Link WhatsApp (scan QR code) for WhatsApp Web plugin' })
     expect(within(needsRow).getByText('Not linked')).toBeInTheDocument()
     expect(within(needsRow).queryByText('Ready')).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /Test with 1 place/ })).not.toBeInTheDocument()
@@ -296,7 +296,7 @@ describe('BuilderPage', () => {
     await samplePluginsBackend.setPluginTrusted('whatsapp-web', true)
     await samplePluginsBackend.runPluginAction('whatsapp-web', 'whatsapp-web.login', {})
     renderBuilderPage()
-    const needsRow = (await screen.findByText('whatsapp-web plugin')).closest('li')!
+    const needsRow = (await screen.findByText('WhatsApp Web plugin')).closest('li')!
     expect(await within(needsRow).findByText('Ready')).toBeInTheDocument()
   })
 
@@ -324,7 +324,7 @@ describe('BuilderPage', () => {
     const setupMessage = await within(chat).findByRole('group', { name: 'This agent needs 1 plugin · 0 ready' })
     const reply = await within(chat).findByText(/^Changed/, { selector: 'p' })
     expect(reply.compareDocumentPosition(setupMessage) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(within(setupMessage).getByRole('note', { name: 'Warning about whatsapp-web' })).toBeInTheDocument()
+    expect(within(setupMessage).getByRole('note', { name: 'Warning about WhatsApp Web' })).toBeInTheDocument()
     expect(within(chat).getAllByRole('group', { name: /This agent needs/ })).toHaveLength(1)
     expect(screen.getByRole('button', { name: 'Test with 1 place' })).toBeInTheDocument()
   })

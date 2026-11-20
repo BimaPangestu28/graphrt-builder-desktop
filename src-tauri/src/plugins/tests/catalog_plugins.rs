@@ -202,6 +202,7 @@ async fn an_installed_trusted_configured_plugin_is_ready_once_the_browser_is() {
             needs_browser: true,
             readme_url: None,
             icon_url: None,
+            display_name: None,
         },
     )]);
     let catalog = not_installed_catalog();

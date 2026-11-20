@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use super::display_name::resolve_display_name;
 use super::host::PluginState;
 use super::models::{CatalogIndex, InstallRecord, PluginPermissions};
 use super::optional_settings::is_optional_setting;
@@ -24,6 +25,8 @@ pub struct RequirementPermissions {
 #[serde(rename_all = "camelCase")]
 pub struct PluginRequirement {
     pub name: String,
+    /// What people see (see `display_name.rs`): catalog, then install record, then humanized.
+    pub display_name: String,
     pub description: String,
     pub used_by_steps: Vec<String>,
     pub permissions: RequirementPermissions,
@@ -173,8 +176,16 @@ fn requirement(usage: PluginUsage, sources: &RequirementSources<'_>) -> AppResul
     let session_linked = session_state.unwrap_or(true);
     let ready =
         installed && (trusted || trust_not_needed) && missing_config.is_empty() && browser_ready && session_linked;
+    let display_name = resolve_display_name(
+        name,
+        [
+            entry.and_then(|entry| entry.display_name.as_deref()),
+            sources.install_records.get(name).and_then(|record| record.display_name.as_deref()),
+        ],
+    );
     Ok(PluginRequirement {
         name: name.to_owned(),
+        display_name,
         description,
         used_by_steps,
         permissions: RequirementPermissions {

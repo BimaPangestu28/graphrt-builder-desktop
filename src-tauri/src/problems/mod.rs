@@ -27,6 +27,7 @@ use self::needs::{provider_display_name, read_flow_needs, FlowNeeds};
 use crate::credentials::CredentialStore;
 use crate::error::AppResult;
 use crate::node_runtime::BrowserRuntimeStatus;
+use crate::plugins::display_name::humanize_plugin_name;
 use crate::plugins::models::InstalledPlugin;
 use crate::scheduler::ZonedSchedule;
 use crate::storage::models::{Agent, AgentStatus, Run, RunFilter, RunStatus, RunTrigger, Trigger};
@@ -145,7 +146,7 @@ fn missing_items(sources: &ProblemSources<'_>, needs: &FlowNeeds) -> AppResult<M
     let other_count = labels.len();
     for plugin in sources.plugins.iter().filter(|plugin| needs.plugins.contains(&plugin.name)) {
         for setting in plugin.config.iter().filter(|setting| !setting.configured && !setting.optional) {
-            labels.push(format!("{} setting {}", plugin.name, setting.name));
+            labels.push(format!("{} setting {}", plugin.display_name, setting.name));
         }
     }
     Ok(MissingItems { only_plugin_settings: other_count == 0, labels })
@@ -214,7 +215,7 @@ fn plugin_problems(plugins: &[InstalledPlugin], agents: &[AgentContext]) -> Vec<
             problems.push(plugin_problem(
                 format!("plugin_missing:{plugin_name}"),
                 ProblemKind::PluginMissing,
-                format!("The {plugin_name} plugin is not installed"),
+                format!("The {} plugin is not installed", humanize_plugin_name(plugin_name)),
                 format!("{} uses it. Install it from Connections, Plugins", agent_names.join(", ")),
             ));
         }
@@ -226,14 +227,14 @@ fn plugin_problems(plugins: &[InstalledPlugin], agents: &[AgentContext]) -> Vec<
             problems.push(plugin_problem(
                 format!("plugin_not_loaded:{}", plugin.name),
                 ProblemKind::PluginNotLoaded,
-                format!("The {} plugin could not start", plugin.name),
+                format!("The {} plugin could not start", plugin.display_name),
                 format!("{load_error}.{}", users_text.unwrap_or_default()),
             ));
         } else if let Some(agent_names) = used_by.filter(|_| !plugin.trusted) {
             problems.push(plugin_problem(
                 format!("plugin_untrusted:{}", plugin.name),
                 ProblemKind::PluginUntrusted,
-                format!("The {} plugin is not trusted yet", plugin.name),
+                format!("The {} plugin is not trusted yet", plugin.display_name),
                 format!("{} uses it. Plugins only run after you trust them", agent_names.join(", ")),
             ));
         }

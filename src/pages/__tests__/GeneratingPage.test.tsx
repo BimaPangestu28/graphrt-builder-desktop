@@ -135,8 +135,8 @@ describe('GeneratingPage', () => {
 
     const chat = screen.getByRole('region', { name: 'Chat' })
     const setupMessage = within(chat).getByRole('group', { name: 'This agent needs 2 plugins · 0 ready' })
-    expect(within(setupMessage).getByRole('article', { name: 'google-maps-scraper' })).toHaveTextContent('Used by: Search Google Maps')
-    expect(within(setupMessage).getByRole('article', { name: 'whatsapp-api' })).toHaveTextContent('Used by: Send WhatsApp')
+    expect(within(setupMessage).getByRole('article', { name: 'Google Maps Scraper' })).toHaveTextContent('Used by: Search Google Maps')
+    expect(within(setupMessage).getByRole('article', { name: 'WhatsApp Cloud API' })).toHaveTextContent('Used by: Send WhatsApp')
     expect(screen.getByText('All steps ready. Set up its plugins in the chat')).toBeInTheDocument()
 
     fireEvent.click(within(setupMessage).getByRole('button', { name: 'Continue without them' }))
@@ -148,7 +148,7 @@ describe('GeneratingPage', () => {
     await samplePluginsBackend.removePlugin('website-check')
     renderGeneratingPage()
     await advanceBy(sampleBuildTiming.buildStageDelayMs * 5)
-    fireEvent.click(screen.getByRole('button', { name: 'Install website-check' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Install Website Check' }))
     await advanceBy(0)
     expect(screen.getByRole('group', { name: 'This agent needs 1 plugin · 1 ready' })).toBeInTheDocument()
     await advanceBy(openBuilderDelayMs * 2)

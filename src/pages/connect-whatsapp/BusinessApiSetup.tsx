@@ -1,6 +1,6 @@
 import type { InstalledPlugin } from '@/api/pluginTypes'
 import { Button } from '@/components/ui'
-import { findInstalledPlugin, type PluginsState } from '@/hooks/usePlugins'
+import { findInstalledPlugin, findInventoryDisplayName, type PluginsState } from '@/hooks/usePlugins'
 import { PluginConfigForm, type PluginConfigField } from '../plugins/PluginConfigForm'
 import { PluginInstallStepBody, PluginTrustStepBody } from './PluginSetupParts'
 import { SetupStep } from './SetupStep'
@@ -55,7 +55,7 @@ export function BusinessApiSetup({ plugins }: { plugins: PluginsState }) {
 
   return (
     <ol aria-label="Set up WhatsApp Business" className="m-0 flex list-none flex-col gap-4 p-0">
-      <SetupStep number={1} title={`Install the ${whatsAppApiPluginName} plugin`} isDone={installedPlugin !== null}>
+      <SetupStep number={1} title={`Install the ${findInventoryDisplayName(plugins.data, whatsAppApiPluginName)} plugin`} isDone={installedPlugin !== null}>
         <PluginInstallStepBody plugins={plugins} pluginName={whatsAppApiPluginName} />
       </SetupStep>
       <SetupStep number={2} title="Trust the plugin" isDone={isTrusted}>
@@ -66,7 +66,7 @@ export function BusinessApiSetup({ plugins }: { plugins: PluginsState }) {
           <>
             <span className="text-[13px] text-body">Find both in Meta for Developers under WhatsApp, API setup</span>
             <PluginConfigForm
-              pluginName={whatsAppApiPluginName}
+              pluginLabel={findInventoryDisplayName(plugins.data, whatsAppApiPluginName)}
               fields={fields}
               onSave={(variable, value) => plugins.saveConfig(whatsAppApiPluginName, variable, value)}
               onClear={(variable) => plugins.clearConfig(whatsAppApiPluginName, variable)}

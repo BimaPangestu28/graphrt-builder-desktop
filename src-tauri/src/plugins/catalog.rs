@@ -3,6 +3,7 @@
 
 use std::path::Path;
 
+use super::display_name::{resolve_display_name, validate_display_name, MAX_DISPLAY_NAME_CHARS};
 use super::download::require_https;
 use super::host::PluginState;
 use super::models::{CatalogIndex, CatalogPlugin, PluginCatalog, PluginCatalogEntry, PluginPermissions};
@@ -19,7 +20,8 @@ pub(super) const MAX_CATALOG_BYTES: u64 = 16 * 1024 * 1024;
 
 /// Parses the catalog. Entries with an invalid name, a non-https tarball URL
 /// or a malformed checksum are dropped (logged), so one bad entry does not
-/// hide the others. A non-https `icon_url` only loses the icon.
+/// hide the others. A non-https `icon_url` only loses the icon, and an invalid
+/// `display_name` only loses that name (see [`clean_display_name`]).
 ///
 /// # Errors
 /// `InvalidInput` when the document is not JSON or uses another schema.
@@ -34,6 +36,7 @@ pub(super) fn parse_catalog(bytes: &[u8]) -> AppResult<CatalogIndex> {
     }
     for plugin in &mut index.plugins {
         drop_invalid_icon_url(plugin);
+        clean_display_name(plugin);
     }
     index.plugins.retain(|plugin| match validate_entry(plugin) {
         Ok(()) => true,
@@ -66,6 +69,19 @@ fn drop_invalid_icon_url(plugin: &mut CatalogPlugin) {
     if let Err(error) = require_https(icon_url) {
         log::warn!("ignoring the icon of catalog entry `{}`: {error}", plugin.name);
         plugin.icon_url = None;
+    }
+}
+
+/// Trims `display_name`, or clears it (logged) when it is blank, too long or has control
+/// characters; the entry stays listed and shows its humanized name instead.
+fn clean_display_name(plugin: &mut CatalogPlugin) {
+    let Some(raw) = plugin.display_name.take() else { return };
+    plugin.display_name = validate_display_name(&raw);
+    if plugin.display_name.is_none() {
+        log::warn!(
+            "ignoring the display name of catalog entry `{}`: it must be 1 to {MAX_DISPLAY_NAME_CHARS} characters without control characters",
+            plugin.name
+        );
     }
 }
 
@@ -139,6 +155,7 @@ pub(super) fn catalog_view(index: &CatalogIndex, installed: &[PluginState], from
                     && installed_state.is_some_and(|state| update_asks_for_more(plugin, state)),
                 installed_version,
                 name: plugin.name.clone(),
+                display_name: resolve_display_name(&plugin.name, [plugin.display_name.as_deref()]),
                 version: plugin.version.clone(),
                 description: plugin.description.clone(),
                 permissions: PluginPermissions::from(&plugin.permissions),

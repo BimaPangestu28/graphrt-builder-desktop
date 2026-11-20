@@ -103,7 +103,7 @@ export function PluginsPage() {
   const browserRuntime = useBrowserRuntime()
   const inventory = plugins.data
   const items = inventory ? buildPluginListItems(inventory.catalog, inventory.installed) : []
-  const browserPluginNames = inventory?.installed.filter((installedPlugin) => installedPlugin.needsBrowser).map((installedPlugin) => installedPlugin.name) ?? []
+  const browserPluginLabels = inventory?.installed.filter((installedPlugin) => installedPlugin.needsBrowser).map((installedPlugin) => installedPlugin.displayName) ?? []
 
   return (
     <AppShell activeNav="plugins">
@@ -116,7 +116,7 @@ export function PluginsPage() {
         )}
         {!plugins.error && !inventory && <p className="m-0 text-muted">Loading plugins…</p>}
         <CatalogNotes plugins={plugins} />
-        {browserPluginNames.length > 0 && <BrowserRuntimeBanner runtime={browserRuntime} pluginNames={browserPluginNames} />}
+        {browserPluginLabels.length > 0 && <BrowserRuntimeBanner runtime={browserRuntime} pluginLabels={browserPluginLabels} />}
         {inventory && <PluginCatalog items={items} plugins={plugins} />}
       </PageFrame>
     </AppShell>

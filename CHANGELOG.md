@@ -26,6 +26,20 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
   "Update all" (`update_all_plugins`, which skips updates needing approval), updates needing
   approval, and "Updated automatically: X 0.2.0 → 0.2.1" for 24 hours. Dismissing hides it until
   something new appears. The Plugins sidebar item shows how many plugin updates are waiting.
+- **Plugin display names**: plugins are labelled with a name people read ("WhatsApp Cloud API",
+  "Currency Rates") instead of their technical name (`whatsapp-api`). The catalog's optional
+  `display_name` is trimmed and accepted up to 60 characters without control characters; an invalid
+  one (or a non-string) drops only that field, never the entry. It is saved in the install record so
+  installed plugins keep it offline, and an installed plugin picks up a name the catalog adds later.
+  Without one (older catalogs, local installs) the name is humanized: words title-cased, acronyms in
+  capitals (`-api` → API, AI, CRM, CSV, PDF, QR, SQL, SFTP, RSS, OCR, S3, …), known brands spelled
+  their way (GitHub, OpenAI, WhatsApp, YouTube, …) and small joining words lower-case. The catalog
+  view, installed plugins and agent plugin requirements carry `displayName`; it shows on Plugins
+  page cards, the plugin page title (with the technical name as small text under it), the builder's
+  plugin setup cards and "Needs" rows, Home's plugin chips, "Needs you" and Updates notice, the
+  WhatsApp setup steps, trust and settings labels, errors, and Problems titles. Plugins page search
+  matches the display name and the technical name. The technical name stays the identifier in
+  install calls, routes, node kinds and logs.
 - **Plugin icons**: the catalog's optional `icon_url` (https only; a bad link drops only the icon) is
   shown on Plugins page cards, plugin pages and the builder's plugin setup cards. The app downloads
   each SVG once (64 KB cap, 10 s timeout, https-only redirects), keeps it in `plugin-icons/` next to

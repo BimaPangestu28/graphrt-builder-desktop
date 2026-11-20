@@ -9,6 +9,8 @@ export type PluginSessionState = 'linked' | 'not_linked' | 'unknown'
 export interface PluginRequirement {
   /** Plugin name, e.g. "whatsapp-api". */
   name: string
+  /** What people see, e.g. "WhatsApp Cloud API" (curated, else the humanized name). */
+  displayName: string
   /** Catalog description. */
   description: string
   /** Step titles of this agent that use the plugin, e.g. ["Send the promotion message"]. */

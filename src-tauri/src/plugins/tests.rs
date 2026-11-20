@@ -19,6 +19,7 @@ use crate::storage::Database;
 
 mod auto_update;
 mod catalog_plugins;
+mod plugin_display_names;
 mod plugin_icons;
 
 const PLUGIN: &str = "fixture-echo";

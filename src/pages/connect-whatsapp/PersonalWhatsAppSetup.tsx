@@ -1,5 +1,5 @@
 import type { BrowserRuntimeState } from '@/hooks/useBrowserRuntime'
-import { findInstalledPlugin, type PluginsState } from '@/hooks/usePlugins'
+import { findInstalledPlugin, findInventoryDisplayName, type PluginsState } from '@/hooks/usePlugins'
 import { BrowserRuntimeCard } from '../plugins/BrowserRuntimeCard'
 import { PluginInstallStepBody, PluginTrustStepBody } from './PluginSetupParts'
 import { SetupStep } from './SetupStep'
@@ -41,7 +41,7 @@ export function PersonalWhatsAppSetup({ plugins, browserRuntime }: PersonalWhats
     <div className="flex flex-col gap-4">
       <TermsOfServiceWarning />
       <ol aria-label="Set up personal WhatsApp" className="m-0 flex list-none flex-col gap-4 p-0">
-        <SetupStep number={1} title={`Install the ${whatsAppWebPluginName} plugin`} isDone={installedPlugin !== null}>
+        <SetupStep number={1} title={`Install the ${findInventoryDisplayName(plugins.data, whatsAppWebPluginName)} plugin`} isDone={installedPlugin !== null}>
           <PluginInstallStepBody plugins={plugins} pluginName={whatsAppWebPluginName} />
         </SetupStep>
         <SetupStep number={2} title="Trust the plugin" isDone={isTrusted}>

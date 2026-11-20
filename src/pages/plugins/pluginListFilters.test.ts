@@ -1,6 +1,7 @@
 import type { PluginRequirement } from '@/api/pluginRequirementTypes'
 import type { InstalledPlugin, PluginCatalog } from '@/api/pluginTypes'
 import type { Agent } from '@/api/types'
+import { humanizePluginName } from '@/lib/pluginDisplayName'
 import { categorizePlugin } from './pluginCategories'
 import { buildPluginListItems, countPluginsByTab, describeMaturity, describePluginStatus, pluginMonogram } from './pluginDisplay'
 import { applyTabAndSearch, countPluginCategories, readPluginListFilters, writePluginListFilters } from './pluginListFilters'
@@ -11,6 +12,7 @@ const noPermissions = { network: false, secrets: false, env: [] }
 function catalogEntry(name: string, overrides: Partial<PluginCatalog['plugins'][number]> = {}): PluginCatalog['plugins'][number] {
   return {
     name,
+    displayName: humanizePluginName(name),
     version: '1.0.0',
     description: '',
     permissions: noPermissions,
@@ -33,6 +35,7 @@ function catalogEntry(name: string, overrides: Partial<PluginCatalog['plugins'][
 function installedPlugin(name: string, overrides: Partial<InstalledPlugin> = {}): InstalledPlugin {
   return {
     name,
+    displayName: humanizePluginName(name),
     version: '1.0.0',
     description: '',
     permissions: noPermissions,

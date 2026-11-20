@@ -39,7 +39,7 @@ export function PluginWarningBox({ item }: { item: PluginListItem }) {
   if (!item.warning) return null
   const showsRisk = item.tosRisk === 'medium' || item.tosRisk === 'high'
   return (
-    <div role="note" aria-label={`Warning about ${item.name}`} className="flex gap-3 rounded-xl border border-amber-line-2 bg-amber-tint px-4 py-3">
+    <div role="note" aria-label={`Warning about ${item.displayName}`} className="flex gap-3 rounded-xl border border-amber-line-2 bg-amber-tint px-4 py-3">
       <Icon name="alert" size={18} className="mt-0.5 shrink-0 text-amber" />
       <div className="flex flex-col gap-1">
         <b className="font-semibold text-amber-deep">{showsRisk && item.tosRisk ? `Read before using · ${tosRiskLabels[item.tosRisk]} terms-of-service risk` : 'Read before using'}</b>
@@ -56,11 +56,11 @@ export function PluginLoadNotes({ installed }: { installed: InstalledPlugin }) {
     <div className="flex flex-col gap-1">
       {installed.loadError && (
         <p role="alert" className="m-0 rounded-xl border border-danger-line bg-danger-tint px-4 py-3 text-[13px] text-danger">
-          Could not load {installed.name}: {installed.loadError}
+          Could not load {installed.displayName}: {installed.loadError}
         </p>
       )}
       {installed.warnings.length > 0 && (
-        <ul aria-label={`Warnings for ${installed.name}`} className="m-0 flex list-none flex-col gap-0.5 p-0 text-[13px] text-amber-deep">
+        <ul aria-label={`Warnings for ${installed.displayName}`} className="m-0 flex list-none flex-col gap-0.5 p-0 text-[13px] text-amber-deep">
           {installed.warnings.map((warning) => (
             <li key={warning}>{warning}</li>
           ))}
@@ -71,13 +71,13 @@ export function PluginLoadNotes({ installed }: { installed: InstalledPlugin }) {
 }
 
 /** The node kinds (steps) the plugin adds, each with its description. */
-export function PluginStepsSection({ pluginName, nodes }: { pluginName: string; nodes: PluginNodeInfo[] }) {
+export function PluginStepsSection({ pluginLabel, nodes }: { pluginLabel: string; nodes: PluginNodeInfo[] }) {
   return (
     <DetailSection title="What it adds" hint={nodes.length > 0 ? `${describeStepCount(nodes.length)} your agents can use` : undefined}>
       {nodes.length === 0 ? (
         <p className="m-0 text-[13px] text-muted">The catalog does not list its steps</p>
       ) : (
-        <ul aria-label={`Steps ${pluginName} adds`} className="m-0 grid list-none grid-cols-1 gap-2 p-0 @xl:grid-cols-2">
+        <ul aria-label={`Steps ${pluginLabel} adds`} className="m-0 grid list-none grid-cols-1 gap-2 p-0 @xl:grid-cols-2">
           {nodes.map((node) => (
             <li key={node.kind} className="flex flex-col gap-0.5 rounded-lg border border-line bg-subtle px-3 py-2">
               <span className="text-[13px] font-medium text-ink">{node.title || node.kind}</span>
@@ -95,7 +95,7 @@ export function PluginStepsSection({ pluginName, nodes }: { pluginName: string; 
 export function PluginAsksForSection({ item }: { item: PluginListItem }) {
   return (
     <DetailSection title="What it asks for">
-      <PluginPermissionList pluginName={item.name} permissions={item.permissions} needsBrowser={item.needsBrowser} />
+      <PluginPermissionList pluginLabel={item.displayName} permissions={item.permissions} needsBrowser={item.needsBrowser} />
     </DetailSection>
   )
 }
@@ -115,7 +115,7 @@ export function PluginSetupSection({ installed, plugins, browserRuntime }: Plugi
   return (
     <DetailSection title="Set up" hint="Trust it, then fill in what it needs">
       <PluginTrustToggle
-        pluginName={installed.name}
+        pluginLabel={installed.displayName}
         isTrusted={installed.trusted}
         isSaving={plugins.operationByName[installed.name] === 'trusting'}
         onChange={(trusted) => void plugins.setTrusted(installed.name, trusted)}
@@ -150,14 +150,14 @@ function PluginUserRow({ user }: { user: PluginUser }) {
 }
 
 /** "Used by agents": each agent's builder link with the steps that use the plugin. */
-export function PluginUsersSection({ pluginName, users, loadError }: { pluginName: string; users: PluginUser[] | null; loadError: Error | null }) {
+export function PluginUsersSection({ pluginLabel, users, loadError }: { pluginLabel: string; users: PluginUser[] | null; loadError: Error | null }) {
   let body: ReactNode
   if (loadError) body = <p className="m-0 text-[13px] text-muted">Could not check the agents: {describeError(loadError)}</p>
   else if (!users) body = <p className="m-0 text-[13px] text-muted">Checking your agents…</p>
-  else if (users.length === 0) body = <p className="m-0 text-[13px] text-muted">No agent uses {pluginName} yet</p>
+  else if (users.length === 0) body = <p className="m-0 text-[13px] text-muted">No agent uses {pluginLabel} yet</p>
   else
     body = (
-      <ul aria-label={`Agents using ${pluginName}`} className="m-0 flex list-none flex-col gap-2 p-0">
+      <ul aria-label={`Agents using ${pluginLabel}`} className="m-0 flex list-none flex-col gap-2 p-0">
         {users.map((user) => (
           <PluginUserRow key={user.agentId} user={user} />
         ))}

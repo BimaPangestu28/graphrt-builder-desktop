@@ -10,7 +10,7 @@ interface PluginSettingsProps {
 function PluginSettingsForm({ installed, plugins, fields }: PluginSettingsProps & { fields: PluginConfigField[] }) {
   return (
     <PluginConfigForm
-      pluginName={installed.name}
+      pluginLabel={installed.displayName}
       fields={fields}
       onSave={(variable, value) => plugins.saveConfig(installed.name, variable, value)}
       onClear={(variable) => plugins.clearConfig(installed.name, variable)}

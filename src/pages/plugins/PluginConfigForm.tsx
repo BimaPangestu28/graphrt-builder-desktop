@@ -12,7 +12,8 @@ export interface PluginConfigField {
 }
 
 interface PluginConfigFormProps {
-  pluginName: string
+  /** The plugin's display name, for the form labels. */
+  pluginLabel: string
   fields: PluginConfigField[]
   /** Saves a value to the keychain; rejects with the error to show. */
   onSave: (variable: string, value: string) => Promise<void>
@@ -21,14 +22,14 @@ interface PluginConfigFormProps {
 }
 
 interface PluginConfigRowProps {
-  pluginName: string
+  pluginLabel: string
   field: PluginConfigField
   onSave: (value: string) => Promise<void>
   onClear: () => Promise<void>
 }
 
 /** One password input with Save / Clear. The stored value is never shown, only "Saved". */
-function PluginConfigRow({ pluginName, field, onSave, onClear }: PluginConfigRowProps) {
+function PluginConfigRow({ pluginLabel, field, onSave, onClear }: PluginConfigRowProps) {
   const inputId = useId()
   const [value, setValue] = useState('')
   const [pendingAction, setPendingAction] = useState<'saving' | 'clearing' | null>(null)
@@ -56,7 +57,7 @@ function PluginConfigRow({ pluginName, field, onSave, onClear }: PluginConfigRow
   }
 
   return (
-    <form onSubmit={handleSubmit} aria-label={`${pluginName} setting ${field.variable}`} className="flex flex-col gap-1">
+    <form onSubmit={handleSubmit} aria-label={`${pluginLabel} setting ${field.variable}`} className="flex flex-col gap-1">
       <div className="flex items-baseline justify-between gap-2">
         <label htmlFor={inputId} className="min-w-0 text-[12px] font-medium text-ink-2 [overflow-wrap:anywhere]">
           {label}
@@ -95,14 +96,14 @@ function PluginConfigRow({ pluginName, field, onSave, onClear }: PluginConfigRow
  * Settings a plugin requests, one password input each. Values go to the OS keychain and
  * are never read back: each row only says "Saved" or "Not set".
  */
-export function PluginConfigForm({ pluginName, fields, onSave, onClear }: PluginConfigFormProps) {
+export function PluginConfigForm({ pluginLabel, fields, onSave, onClear }: PluginConfigFormProps) {
   if (fields.length === 0) return null
   return (
     <div className="flex flex-col gap-2.5">
       {fields.map((field) => (
         <PluginConfigRow
           key={field.variable}
-          pluginName={pluginName}
+          pluginLabel={pluginLabel}
           field={field}
           onSave={(value) => onSave(field.variable, value)}
           onClear={() => onClear(field.variable)}

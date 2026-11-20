@@ -19,9 +19,9 @@ interface PluginRequirementCardProps {
 }
 
 /** The README's ToS / ban warning, prominent and readable before anything is installed. */
-function PluginWarning({ pluginName, warning }: { pluginName: string; warning: string }) {
+function PluginWarning({ pluginLabel, warning }: { pluginLabel: string; warning: string }) {
   return (
-    <div role="note" aria-label={`Warning about ${pluginName}`} className="flex flex-col gap-1 rounded-lg border border-amber bg-amber-soft px-3 py-2.5 text-[13px] text-amber-deep">
+    <div role="note" aria-label={`Warning about ${pluginLabel}`} className="flex flex-col gap-1 rounded-lg border border-amber bg-amber-soft px-3 py-2.5 text-[13px] text-amber-deep">
       <b className="font-semibold">Read before you install</b>
       <span className="leading-normal">{warning}</span>
     </div>
@@ -34,7 +34,7 @@ function PluginCardHeader({ requirement }: { requirement: PluginRequirement }) {
       <span className="flex min-w-0 items-start gap-3">
         <PluginIcon name={requirement.name} />
         <span className="flex min-w-0 flex-col gap-0.5">
-          <b className="font-semibold">{requirement.name}</b>
+          <b className="font-semibold">{requirement.displayName}</b>
           <span className="text-[13px] text-body">{requirement.description}</span>
         </span>
       </span>
@@ -50,7 +50,7 @@ function ApprovalAction({ requirement, setup }: PluginRequirementCardProps) {
   const progressText = setup.progressByName[requirement.name]
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <Button size="sm" aria-label={`${actionLabel} ${requirement.name}`} disabled={isApproving || setup.isApprovingAll} onClick={() => void setup.approvePlugin(requirement.name)}>
+      <Button size="sm" aria-label={`${actionLabel} ${requirement.displayName}`} disabled={isApproving || setup.isApprovingAll} onClick={() => void setup.approvePlugin(requirement.name)}>
         {isApproving ? 'Setting up…' : actionLabel}
       </Button>
       <span role="status" className="text-[13px] text-ink-2">
@@ -105,7 +105,7 @@ function RequirementActions({ requirement, setup }: PluginRequirementCardProps) 
       {needsPluginApproval(requirement) && <ApprovalAction requirement={requirement} setup={setup} />}
       {showsSettings && (
         <PluginConfigForm
-          pluginName={requirement.name}
+          pluginLabel={requirement.displayName}
           fields={requirement.missingConfig.map((variable) => ({ variable, configured: false }))}
           onSave={(variable, value) => setup.saveSetting(requirement.name, variable, value)}
           onClear={async () => {}}
@@ -128,11 +128,11 @@ function canLinkWhatsAppWeb(requirement: PluginRequirement): boolean {
 export function PluginRequirementCard({ requirement, setup }: PluginRequirementCardProps) {
   const errorMessage = setup.errorByName[requirement.name]
   return (
-    <article aria-label={requirement.name} className="flex flex-col gap-2.5 rounded-xl border border-line bg-surface p-3.5">
+    <article aria-label={requirement.displayName} className="flex flex-col gap-2.5 rounded-xl border border-line bg-surface p-3.5">
       <PluginCardHeader requirement={requirement} />
       {requirement.usedBySteps.length > 0 && <span className="text-[12px] text-muted">Used by: {requirement.usedBySteps.join(', ')}</span>}
-      {requirement.warning && <PluginWarning pluginName={requirement.name} warning={requirement.warning} />}
-      <ul aria-label={`What ${requirement.name} asks for`} className="m-0 flex list-disc flex-col gap-0.5 pl-5 text-[12px] text-body">
+      {requirement.warning && <PluginWarning pluginLabel={requirement.displayName} warning={requirement.warning} />}
+      <ul aria-label={`What ${requirement.displayName} asks for`} className="m-0 flex list-disc flex-col gap-0.5 pl-5 text-[12px] text-body">
         {describeRequirementPermissions(requirement).map((line) => (
           <li key={line}>{line}</li>
         ))}
