@@ -121,14 +121,14 @@ pub(super) struct UpdatePlan {
     pub needs_approval: Vec<String>,
 }
 
-/// Splits the installed plugins with another catalog version (the same rule as the
+/// Splits the installed plugins with a newer catalog version (the same rule as the
 /// catalog's `update_available`) into updates that ask for nothing more and updates
 /// that need the user's approval. Plugins the catalog does not list are left alone.
 pub(super) fn plan_updates(index: &CatalogIndex, installed: &[PluginState]) -> UpdatePlan {
     let mut plan = UpdatePlan::default();
     for state in installed {
         let Some(entry) = index.plugins.iter().find(|plugin| plugin.name == state.name) else { continue };
-        if entry.version == state.version {
+        if !super::catalog::is_newer_version(&entry.version, &state.version) {
             continue;
         }
         if update_asks_for_more(entry, state) {

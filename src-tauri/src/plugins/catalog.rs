@@ -81,6 +81,33 @@ pub(super) fn read_cached(cache_file: &Path) -> Option<CatalogIndex> {
     }
 }
 
+/// Whether `candidate` is a newer version than `installed` (`1.10.0` > `1.9.2`).
+/// Numeric dot parts are compared in order; a pre-release (`1.2.0-beta`) counts as
+/// older than its release. Versions that don't parse are never "newer", so an odd
+/// or older catalog entry can't downgrade an installed plugin.
+pub(crate) fn is_newer_version(candidate: &str, installed: &str) -> bool {
+    match (parse_version(candidate), parse_version(installed)) {
+        (Some(candidate), Some(installed)) => candidate > installed,
+        _ => false,
+    }
+}
+
+/// `1.2.3` → ([1, 2, 3], is_release); `1.2.3-beta.1` → ([1, 2, 3], false).
+fn parse_version(version: &str) -> Option<(Vec<u64>, bool)> {
+    let version = version.trim().trim_start_matches('v');
+    let (core, pre_release) = match version.split_once('-') {
+        Some((core, _)) => (core, true),
+        None => (version.split('+').next().unwrap_or(version), false),
+    };
+    let parts = core.split('.').map(|part| part.parse::<u64>().ok()).collect::<Option<Vec<_>>>()?;
+    if parts.is_empty() {
+        return None;
+    }
+    let mut padded = parts;
+    padded.resize(3.max(padded.len()), 0);
+    Some((padded, !pre_release))
+}
+
 /// Saves the raw catalog next to the plugins (written then renamed).
 pub(super) fn write_cache(cache_file: &Path, bytes: &[u8]) {
     let temporary = cache_file.with_extension("json.tmp");
@@ -104,7 +131,8 @@ pub(super) fn catalog_view(index: &CatalogIndex, installed: &[PluginState], from
         .map(|plugin| {
             let installed_state = installed.iter().find(|state| state.name == plugin.name);
             let installed_version = installed_state.map(|state| state.version.clone());
-            let update_available = installed_version.as_ref().is_some_and(|version| version != &plugin.version);
+            let update_available =
+                installed_version.as_ref().is_some_and(|version| is_newer_version(&plugin.version, version));
             PluginCatalogEntry {
                 update_available,
                 update_needs_approval: update_available
@@ -127,4 +155,21 @@ pub(super) fn catalog_view(index: &CatalogIndex, installed: &[PluginState], from
         })
         .collect();
     PluginCatalog { plugins, generated_at: index.generated_at.clone(), from_cache }
+}
+
+#[cfg(test)]
+mod version_order_tests {
+    use super::is_newer_version;
+
+    #[test]
+    fn only_newer_versions_count_as_updates() {
+        assert!(is_newer_version("0.2.1", "0.2.0"));
+        assert!(is_newer_version("1.10.0", "1.9.2"));
+        assert!(is_newer_version("1.2.0", "1.2.0-beta.1"));
+        assert!(is_newer_version("v2.0", "1.9.9"));
+        assert!(!is_newer_version("0.2.0", "0.2.1"), "never a downgrade");
+        assert!(!is_newer_version("0.2.0", "0.2.0"));
+        assert!(!is_newer_version("1.2.0-beta.1", "1.2.0"));
+        assert!(!is_newer_version("latest", "0.1.0"), "unparseable never counts");
+    }
 }
