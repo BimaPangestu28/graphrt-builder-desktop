@@ -136,6 +136,7 @@ fn installed_plugin(name: &str) -> InstalledPlugin {
         load_error: None,
         warnings: Vec::new(),
         readme_url: None,
+        icon_url: None,
     }
 }
 

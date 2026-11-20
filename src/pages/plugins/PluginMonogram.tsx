@@ -15,17 +15,23 @@ const categoryTintClassNames: Record<PluginCategory, string> = {
   other: 'bg-chip text-ink-2',
 }
 
-const sizeClassNames = { md: 'size-9 rounded-[10px] text-[12px]', lg: 'size-12 rounded-xl text-[15px]' }
+export type PluginTileSize = 'md' | 'lg'
+
+/** Size and corner radius of a plugin tile, shared by the monogram and {@link PluginIcon}. */
+export const pluginTileSizeClassNames: Record<PluginTileSize, string> = { md: 'size-9 rounded-[10px]', lg: 'size-12 rounded-xl' }
+
+const monogramTextClassNames: Record<PluginTileSize, string> = { md: 'text-[12px]', lg: 'text-[15px]' }
 
 /**
- * Two-letter tile standing in for a plugin icon (the catalog has none), tinted by category
- * so the grid is easy to scan. Decorative: the plugin name is always next to it.
+ * Two-letter tile standing in for a plugin icon (when the catalog has none or it cannot be
+ * loaded), tinted by category so the grid is easy to scan. Decorative: the plugin name is
+ * always next to it. Use {@link PluginIcon}, which falls back to this.
  */
-export function PluginMonogram({ name, category, size = 'md' }: { name: string; category: PluginCategory; size?: 'md' | 'lg' }) {
+export function PluginMonogram({ name, category, size = 'md' }: { name: string; category: PluginCategory; size?: PluginTileSize }) {
   return (
     <span
       aria-hidden="true"
-      className={joinClassNames('flex shrink-0 items-center justify-center font-semibold tracking-wide', sizeClassNames[size], categoryTintClassNames[category])}
+      className={joinClassNames('flex shrink-0 items-center justify-center font-semibold tracking-wide', pluginTileSizeClassNames[size], monogramTextClassNames[size], categoryTintClassNames[category])}
     >
       {pluginMonogram(name)}
     </span>

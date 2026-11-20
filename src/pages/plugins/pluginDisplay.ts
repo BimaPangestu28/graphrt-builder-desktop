@@ -16,6 +16,8 @@ export interface PluginListItem {
   updateAvailable: boolean
   category: PluginCategory
   readmeUrl: string | null
+  /** The catalog's icon link (or the installed copy's), or null when the plugin has none. */
+  iconUrl: string | null
   /** Terms-of-service / ban warning from the catalog, or null. */
   warning: string | null
   maturity: PluginMaturity | null
@@ -23,7 +25,7 @@ export interface PluginListItem {
 }
 
 function fromInstalledPlugin(installedPlugin: InstalledPlugin): PluginListItem {
-  const { name, description, version, permissions, needsBrowser, nodes, readmeUrl } = installedPlugin
+  const { name, description, version, permissions, needsBrowser, nodes, readmeUrl, iconUrl } = installedPlugin
   return {
     name,
     description,
@@ -35,6 +37,7 @@ function fromInstalledPlugin(installedPlugin: InstalledPlugin): PluginListItem {
     updateAvailable: false,
     category: categorizePlugin(name, description),
     readmeUrl,
+    iconUrl,
     warning: null,
     maturity: null,
     tosRisk: null,
@@ -62,6 +65,7 @@ export function buildPluginListItems(catalog: PluginCatalog | null, installedPlu
     updateAvailable: entry.updateAvailable,
     category: categorizePlugin(entry.name, entry.description),
     readmeUrl: entry.readmeUrl ?? installedByName.get(entry.name)?.readmeUrl ?? null,
+    iconUrl: entry.iconUrl ?? installedByName.get(entry.name)?.iconUrl ?? null,
     warning: entry.warning?.trim() ? entry.warning : null,
     maturity: entry.status ?? null,
     tosRisk: entry.tosRisk ?? null,

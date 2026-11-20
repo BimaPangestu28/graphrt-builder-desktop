@@ -23,6 +23,7 @@ function catalogWith(...names: string[]): PluginCatalog {
       nodes: [],
       tools: [],
       readmeUrl: null,
+      iconUrl: null,
       warning: null,
       status: null,
       tosRisk: null,
@@ -49,10 +50,26 @@ function installed(name: string): InstalledPlugin {
     loadError: null,
     warnings: [],
     readmeUrl: null,
+    iconUrl: null,
   }
 }
 
 describe('buildPluginListItems', () => {
+  it('carries the icon link from the catalog, else from the installed copy', () => {
+    const catalog = catalogWith('alpha', 'beta')
+    catalog.plugins[0].iconUrl = 'https://example.test/alpha.svg'
+    const installedBeta = { ...installed('beta'), iconUrl: 'https://example.test/beta.svg' }
+    const installedOnly = { ...installed('local-only'), iconUrl: null }
+
+    const items = buildPluginListItems(catalog, [installedBeta, installedOnly])
+
+    expect(Object.fromEntries(items.map((item) => [item.name, item.iconUrl]))).toEqual({
+      alpha: 'https://example.test/alpha.svg',
+      beta: 'https://example.test/beta.svg',
+      'local-only': null,
+    })
+  })
+
   it('puts installed plugins first and keeps ones the catalog does not list', () => {
     const items = buildPluginListItems(catalogWith('alpha', 'beta'), [installed('beta'), installed('local-only')])
     expect(items.map((item) => [item.name, item.installed !== null])).toEqual([

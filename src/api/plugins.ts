@@ -130,6 +130,23 @@ export function openPluginReadme(name: string): Promise<void> {
   return callBackend('open_plugin_readme', { name })
 }
 
+/**
+ * A plugin's icon as a `data:image/svg+xml;base64,...` URL, downloaded once by the desktop
+ * app and cached on disk (works offline afterwards). Render it only with `<img>`, where
+ * SVG scripts never run.
+ *
+ * @param name - Plugin name, e.g. "whatsapp-web" (string)
+ * @returns The data URL, or null when the plugin has no icon or it could not be fetched (string | null)
+ * @throws BackendError - `invalid_input` for an invalid plugin name
+ *
+ * @example
+ * const iconDataUrl = await getPluginIcon('whatsapp-web')
+ */
+export function getPluginIcon(name: string): Promise<string | null> {
+  if (!isDesktopApp()) return samplePluginsBackend.getPluginIcon(name)
+  return callBackend('get_plugin_icon', { name })
+}
+
 /** Subscribes to `plugin-event` (install progress, load errors, list changes). Resolves to the unsubscribe function. */
 export function listenToPluginEvents(onEvent: (pluginEvent: PluginEvent) => void): Promise<() => void> {
   if (!isDesktopApp()) return Promise.resolve(subscribeToSamplePluginEvents(onEvent))

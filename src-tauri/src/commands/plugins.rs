@@ -68,6 +68,13 @@ pub fn open_plugin_readme(state: State<'_, AppState>, name: String) -> AppResult
     crate::crash_reports::sharing::open_in_browser(&url)
 }
 
+/// A plugin's icon as a `data:image/svg+xml;base64,...` URL, or `null` when it has none or
+/// it cannot be fetched. Downloaded once and cached on disk; render it only with `<img>`.
+#[tauri::command]
+pub async fn get_plugin_icon(state: State<'_, AppState>, name: String) -> AppResult<Option<String>> {
+    state.plugins.icon_data_url(name.trim()).await
+}
+
 /// Whether Chromium is installed (`install_browser_runtime` lives in `commands::node_runtime`).
 #[tauri::command]
 pub fn browser_runtime_status(state: State<'_, AppState>) -> BrowserRuntimeStatus {

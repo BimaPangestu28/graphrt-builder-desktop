@@ -17,7 +17,7 @@ import {
   PluginWarningBox,
 } from './plugins/PluginDetailSections'
 import { buildPluginListItems, describeMaturity, describePluginStatus, type PluginListItem } from './plugins/pluginDisplay'
-import { PluginMonogram } from './plugins/PluginMonogram'
+import { PluginIcon } from './plugins/PluginIcon'
 import { usePluginUsers } from './plugins/usePluginUsers'
 
 /** The back link returns to the Plugins page with the filters it was opened from. */
@@ -55,7 +55,7 @@ function PluginHeader({ item, plugins }: { item: PluginListItem; plugins: Plugin
   const meta = [pluginCategoryLabels[item.category], `v${item.version}`, describeMaturity(item.maturity)].filter(Boolean).join(' · ')
   return (
     <header className="flex flex-wrap items-start gap-4">
-      <PluginMonogram name={item.name} category={item.category} size="lg" />
+      <PluginIcon name={item.name} iconUrl={item.iconUrl} category={item.category} size="lg" />
       <div className="flex min-w-0 flex-[1_1_320px] flex-col gap-1">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="m-0 text-[24px] font-semibold tracking-[-0.4px] [overflow-wrap:anywhere]">{item.name}</h1>

@@ -197,7 +197,12 @@ async fn an_installed_trusted_configured_plugin_is_ready_once_the_browser_is() {
     let snapshot = fixture.service.snapshot();
     let records = BTreeMap::from([(
         PLUGIN.to_owned(),
-        crate::plugins::models::InstallRecord { version: "1.0.0".into(), needs_browser: true, readme_url: None },
+        crate::plugins::models::InstallRecord {
+            version: "1.0.0".into(),
+            needs_browser: true,
+            readme_url: None,
+            icon_url: None,
+        },
     )]);
     let catalog = not_installed_catalog();
     // `echo_session`: the echo plugin's account session as the session store reports it

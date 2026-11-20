@@ -24,6 +24,7 @@ mod catalog;
 pub mod download;
 pub mod events;
 mod host;
+mod icons;
 mod install;
 pub mod models;
 mod optional_settings;
@@ -36,9 +37,10 @@ mod settings;
 #[cfg(test)]
 pub(crate) mod tests;
 
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::Duration;
 
 pub use active::{add_plugin_tools, register_catalog_placeholders, register_plugin_nodes};
@@ -92,6 +94,8 @@ pub struct PluginService {
     /// Where browser plugins write live view frames (`crate::live_view`).
     live_view_dir: PathBuf,
     catalog_cache_file: PathBuf,
+    /// Downloaded plugin icons (see [`icons`]), next to the catalog cache.
+    icons_dir: PathBuf,
     catalog_url: String,
     db: Arc<Database>,
     credentials: Arc<CredentialStore>,
@@ -100,6 +104,10 @@ pub struct PluginService {
     events: Arc<dyn PluginEventSink>,
     snapshot: RwLock<SharedSnapshot>,
     catalog: Mutex<Option<CatalogIndex>>,
+    /// `name -> icon_url` of the saved catalog, read once when no catalog was fetched yet.
+    saved_catalog_icon_urls: OnceLock<HashMap<String, Option<String>>>,
+    /// Icon URLs that failed to download this session, so lists do not retry them per card.
+    failed_icon_urls: Mutex<HashSet<String>>,
     /// Serializes installs, updates, removals and trust / setting changes.
     changes: tokio::sync::Mutex<()>,
     /// The app's service publishes its snapshot process-wide; test services do not.
@@ -124,6 +132,7 @@ impl PluginService {
         install::clean_leftovers(&plugins_dir);
         let service = Self {
             catalog_cache_file: config.app_data_dir.join(CATALOG_CACHE_FILE_NAME),
+            icons_dir: config.app_data_dir.join(icons::ICONS_DIR_NAME),
             plugin_data_dir: config.app_data_dir.join(PLUGIN_DATA_DIR_NAME),
             live_view_dir: config.app_data_dir.join(crate::live_view::LIVE_VIEW_DIR_NAME),
             plugins_dir,
@@ -135,6 +144,8 @@ impl PluginService {
             events: config.events,
             snapshot: RwLock::new(Arc::new(PluginSnapshot::empty())),
             catalog: Mutex::new(None),
+            saved_catalog_icon_urls: OnceLock::new(),
+            failed_icon_urls: Mutex::new(HashSet::new()),
             changes: tokio::sync::Mutex::new(()),
             publishes_globally: AtomicBool::new(false),
         };
@@ -304,6 +315,7 @@ impl PluginService {
                     load_error: plugin.load_error.clone(),
                     warnings: plugin.warnings.clone(),
                     readme_url: record.readme_url,
+                    icon_url: record.icon_url,
                 })
             })
             .collect()
@@ -339,6 +351,78 @@ impl PluginService {
             return Err(AppError::InvalidInput(format!("the README link of {name} is not https")));
         }
         Ok(url)
+    }
+
+    /// A plugin's icon as a `data:image/svg+xml;base64,...` URL for an `<img>`, or `None`
+    /// when it has none or it cannot be fetched (the UI shows its placeholder). The icon is
+    /// downloaded once (HTTPS, at most [`icons::MAX_ICON_BYTES`]) and then read from disk,
+    /// so it keeps working offline. A failed download is not retried this session.
+    ///
+    /// # Errors
+    /// `InvalidInput` when `name` is not a valid plugin name.
+    pub async fn icon_data_url(&self, name: &str) -> AppResult<Option<String>> {
+        validate_name(name)?;
+        let Some(icon_url) = self.icon_url(name) else { return Ok(None) };
+        let cache_file = icons::cached_icon_path(&self.icons_dir, name, &icon_url);
+        if let Some(bytes) = icons::read_cached_icon(&cache_file) {
+            return Ok(Some(icons::svg_data_url(&bytes)));
+        }
+        if self.failed_icon_urls.lock().is_ok_and(|failed| failed.contains(&icon_url)) {
+            return Ok(None);
+        }
+        match self.download_icon(&icon_url).await {
+            Ok(bytes) => {
+                icons::write_cached_icon(&self.icons_dir, name, &cache_file, &bytes);
+                Ok(Some(icons::svg_data_url(&bytes)))
+            }
+            Err(error) => {
+                log::warn!("could not fetch the icon of plugin {name}: {error}");
+                if let Ok(mut failed) = self.failed_icon_urls.lock() {
+                    failed.insert(icon_url);
+                }
+                Ok(None)
+            }
+        }
+    }
+
+    /// The icon link of `name`: from the catalog fetched this session when it lists the
+    /// plugin, else the saved catalog, else the install record.
+    fn icon_url(&self, name: &str) -> Option<String> {
+        let from_session_catalog = self.catalog.lock().ok().and_then(|catalog| {
+            let plugin = catalog.as_ref()?.plugins.iter().find(|plugin| plugin.name == name)?;
+            Some(plugin.icon_url.clone())
+        });
+        let from_saved_catalog = || {
+            let icon_urls = self.saved_catalog_icon_urls.get_or_init(|| {
+                let index = catalog::read_cached(&self.catalog_cache_file);
+                index
+                    .map(|index| index.plugins.into_iter().map(|plugin| (plugin.name, plugin.icon_url)).collect())
+                    .unwrap_or_default()
+            });
+            icon_urls.get(name).cloned()
+        };
+        let from_install_record = || match settings::install_records(&self.db) {
+            Ok(records) => records.get(name).and_then(|record| record.icon_url.clone()),
+            Err(error) => {
+                log::warn!("could not read the install record of plugin {name}: {error}");
+                None
+            }
+        };
+        let icon_url = match from_session_catalog.or_else(from_saved_catalog) {
+            Some(listed) => listed,
+            None => from_install_record(),
+        }?;
+        require_https(&icon_url).ok()?;
+        Some(icon_url)
+    }
+
+    async fn download_icon(&self, icon_url: &str) -> AppResult<Vec<u8>> {
+        require_https(icon_url)?;
+        let bytes = self.downloader.fetch(icon_url, icons::MAX_ICON_BYTES, icons::ICON_TIMEOUT, None).await?;
+        if !icons::looks_like_svg(&bytes) {
+            return Err(AppError::InvalidInput(format!("{icon_url} is not an SVG image")));
+        }
+        Ok(bytes)
     }
 
     /// The catalog with install state. Uses the copy fetched earlier in this
@@ -486,6 +570,7 @@ impl PluginService {
             version: manifest.manifest.version.clone(),
             needs_browser: entry.needs_browser,
             readme_url: entry.readme_url.clone(),
+            icon_url: entry.icon_url.clone(),
         };
         settings::save_install_record(&self.db, name, Some(record))?;
         self.reload();
