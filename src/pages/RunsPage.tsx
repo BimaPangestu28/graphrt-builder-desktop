@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { Run } from '@/api/types'
-import { AppShell } from '@/components/layout'
+import { AppShell, PageFrame, PageTitleBlock } from '@/components/layout'
 import { joinClassNames } from '@/components/ui'
 import { defaultSelectedRunId } from '@/data/runs'
 import { useAgentNames, type AgentNameLookup } from '@/hooks/useAgentNames'
@@ -111,11 +111,8 @@ export function RunsPage() {
 
   return (
     <AppShell activeNav="runs" mainClassName="flex flex-wrap">
-      <section aria-label="All runs" className="box-border flex min-w-0 flex-[3_1_560px] flex-col gap-[18px] p-7">
-        <div className="flex flex-col gap-1">
-          <h1 className="m-0 text-[26px] font-semibold tracking-[-0.5px]">Runs</h1>
-          <span className="text-body">Everything your agents did, newest first. Kept for 30 days</span>
-        </div>
+      <PageFrame ariaLabel="All runs" className="flex-[3_1_560px]">
+        <PageTitleBlock title="Runs" subtitle="Everything your agents did, newest first. Kept for 30 days" />
         <RunsFilterBar
           agentFilter={agentFilter}
           statusFilter={statusFilter}
@@ -131,7 +128,7 @@ export function RunsPage() {
           onSelectRun={setSelectedRunId}
           emptyMessage={isFirstLoad ? 'Loading runs…' : 'No runs match these filters'}
         />
-      </section>
+      </PageFrame>
       {selectedRun && <SelectedRunPanel key={selectedRun.id} run={selectedRun} getAgentName={getAgentName} onClose={() => setSelectedRunId(null)} />}
     </AppShell>
   )

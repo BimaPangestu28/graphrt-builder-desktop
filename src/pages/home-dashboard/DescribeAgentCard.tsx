@@ -67,22 +67,22 @@ export function DescribeAgentCard() {
   }
 
   return (
-    <section aria-label="Describe a new agent" className="rounded-[14px] border border-line bg-surface p-[18px]">
+    <section aria-label="Describe a new agent" className="rounded-[14px] border border-line bg-surface p-4">
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <h2 className="m-0 text-[16px] font-semibold">
           <label htmlFor="home-describe-agent-input">What should your agent do?</label>
         </h2>
         <textarea
           id="home-describe-agent-input"
-          rows={2}
+          rows={3}
           value={jobDescription}
           placeholder={describeAgentPlaceholder}
           onChange={(event) => setJobDescription(event.target.value)}
           onKeyDown={handleKeyDown}
-          className="resize-none rounded-[10px] border border-line-strong bg-transparent px-3 py-2.5 text-[15px] leading-[1.5] text-ink outline-none placeholder:text-muted focus:border-ink"
+          className="resize-none rounded-[10px] border border-line-strong bg-transparent px-3 py-2 text-[14px] leading-[1.5] text-ink outline-none placeholder:text-muted focus:border-ink"
         />
         <div className="flex flex-wrap items-center justify-between gap-2.5">
-          <span className="text-[13px] text-muted">You see every step before anything runs · {formatShortcut('Enter')} to build</span>
+          <span className="min-w-0 flex-[1_1_160px] text-[12px] leading-normal text-muted">You see every step before anything runs · {formatShortcut('Enter')} to build</span>
           <Button type="submit" disabled={!canBuild}>
             Build agent
             <Icon name="arrowRight" size={16} />

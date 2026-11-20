@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react'
-import { AppShell } from '@/components/layout'
+import { AppShell, PageFrame, PageTitleBlock } from '@/components/layout'
 import { Icon } from '@/components/ui'
 import { addKnowledgeSource, createKnowledgeBase, guessSourceKind, isWebLink, subscribeToDroppedPaths } from '@/api/knowledge'
 import type { KnowledgeSourceKind } from '@/api/knowledgeTypes'
@@ -124,75 +124,77 @@ export function KnowledgePage() {
   }
 
   return (
-    <AppShell activeNav="knowledge" agents={{ kind: 'list' }} mainClassName="box-border flex flex-col gap-6 px-8 py-7">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <h1 className="m-0 text-[26px] font-semibold tracking-[-0.5px]">Knowledge</h1>
-          <span className="text-body">What your agents and chatbots can look things up in. Everything is indexed and stored on this computer</span>
-        </div>
-        <button
-          type="button"
-          onClick={pickFiles}
-          className="flex h-10 cursor-pointer items-center gap-2 rounded-[9px] border-0 bg-ink px-4 text-[14px] font-semibold text-white hover:bg-ink-2"
-        >
-          <Icon name="plus" size={16} />
-          New knowledge base
-        </button>
-      </div>
+    <AppShell activeNav="knowledge" agents={{ kind: 'list' }}>
+      <PageFrame>
+        <PageTitleBlock
+          title="Knowledge"
+          subtitle="What your agents and chatbots can look things up in. Everything is indexed and stored on this computer"
+          actions={
+              <button
+                type="button"
+                onClick={pickFiles}
+                className="flex h-10 cursor-pointer items-center gap-2 rounded-[9px] border-0 bg-ink px-4 text-[14px] font-semibold text-white hover:bg-ink-2"
+              >
+                <Icon name="plus" size={16} />
+                New knowledge base
+              </button>
+          }
+        />
 
-      {actionError && (
-        <p role="alert" className="m-0 rounded-[10px] border border-danger-line bg-danger-tint px-3.5 py-3 text-[13px] text-danger">
-          {actionError}
-        </p>
-      )}
-      {loadError && (
-        <p role="alert" className="m-0 flex items-center gap-3 text-[13px] text-danger">
-          Could not load your knowledge: {loadError.message}
-          <button type="button" onClick={reload} className={compactButtonClassNames('secondary')}>
-            Try again
+        {actionError && (
+          <p role="alert" className="m-0 rounded-[10px] border border-danger-line bg-danger-tint px-3.5 py-3 text-[13px] text-danger">
+            {actionError}
+          </p>
+        )}
+        {loadError && (
+          <p role="alert" className="m-0 flex items-center gap-3 text-[13px] text-danger">
+            Could not load your knowledge: {loadError.message}
+            <button type="button" onClick={reload} className={compactButtonClassNames('secondary')}>
+              Try again
+            </button>
+          </p>
+        )}
+        {isLoading && !knowledgeBases && <p className="m-0 text-[13px] text-muted">Loading knowledge…</p>}
+
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3">
+          {(knowledgeBases ?? []).map((knowledgeBase, index) => (
+            <KnowledgeBaseCard key={knowledgeBase.id} knowledgeBase={knowledgeBase} isRecentlyOpened={index === 0} />
+          ))}
+          <button
+            type="button"
+            onClick={pickFiles}
+            onDragOver={(event) => {
+              event.preventDefault()
+              setIsDragging(true)
+            }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={handleBrowserDrop}
+            onPaste={(event) => {
+              const pastedText = event.clipboardData.getData('text')
+              if (isWebLink(pastedText)) void createFromSources([{ kind: 'url', location: pastedText.trim() }])
+            }}
+            className={`flex min-h-[150px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-[14px] border border-dashed border-line-heavy p-[18px] text-[14px] font-medium text-ink-2 hover:bg-canvas ${isDragging ? 'bg-canvas' : 'bg-subtle'}`}
+          >
+            <span>Drop files, a folder, or paste a link</span>
+            <span className="text-[12px] font-normal text-muted">PDF, Word, Excel, CSV, Markdown, text and websites</span>
           </button>
-        </p>
-      )}
-      {isLoading && !knowledgeBases && <p className="m-0 text-[13px] text-muted">Loading knowledge…</p>}
-
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3">
-        {(knowledgeBases ?? []).map((knowledgeBase, index) => (
-          <KnowledgeBaseCard key={knowledgeBase.id} knowledgeBase={knowledgeBase} isRecentlyOpened={index === 0} />
-        ))}
-        <button
-          type="button"
-          onClick={pickFiles}
-          onDragOver={(event) => {
-            event.preventDefault()
-            setIsDragging(true)
-          }}
-          onDragLeave={() => setIsDragging(false)}
-          onDrop={handleBrowserDrop}
-          onPaste={(event) => {
-            const pastedText = event.clipboardData.getData('text')
-            if (isWebLink(pastedText)) void createFromSources([{ kind: 'url', location: pastedText.trim() }])
-          }}
-          className={`flex min-h-[150px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-[14px] border border-dashed border-line-heavy p-[18px] text-[14px] font-medium text-ink-2 hover:bg-canvas ${isDragging ? 'bg-canvas' : 'bg-subtle'}`}
-        >
-          <span>Drop files, a folder, or paste a link</span>
-          <span className="text-[12px] font-normal text-muted">PDF, Word, Excel, CSV, Markdown, text and websites</span>
-        </button>
-      </div>
-      <div className="flex flex-wrap items-start gap-3">
-        <button type="button" onClick={pickFolder} className={compactButtonClassNames('secondary', 'h-10')}>
-          Start from a folder
-        </button>
-        <div className="min-w-[280px] flex-1">
-          <AddLinkForm
-            label="Website link for a new knowledge base"
-            buttonText="Start from a link"
-            onAddLink={(url) => createFromSources([{ kind: 'url', location: url }])}
-          />
         </div>
-      </div>
-      {pickerInputs}
+        <div className="flex flex-wrap items-start gap-3">
+          <button type="button" onClick={pickFolder} className={compactButtonClassNames('secondary', 'h-10')}>
+            Start from a folder
+          </button>
+          <div className="min-w-[280px] flex-1">
+            <AddLinkForm
+              label="Website link for a new knowledge base"
+              buttonText="Start from a link"
+              onAddLink={(url) => createFromSources([{ kind: 'url', location: url }])}
+            />
+          </div>
+        </div>
+        {pickerInputs}
 
-      <KnowledgeSearchPanel />
+        <KnowledgeSearchPanel />
+      </PageFrame>
     </AppShell>
   )
 }

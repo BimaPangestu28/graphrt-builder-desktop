@@ -26,7 +26,7 @@ function MonthlyUsageBody({ monthlyNumbers, loadError }: MonthlyUsageCardProps) 
 /** "This month": runs that succeeded and failed, what the agents did, and AI tokens. */
 export function MonthlyUsageCard({ monthlyNumbers, loadError }: MonthlyUsageCardProps) {
   return (
-    <section aria-labelledby="home-this-month" className="flex min-w-0 flex-[1_1_260px] flex-col gap-3">
+    <section aria-labelledby="home-this-month" className="flex min-w-0 flex-col gap-3">
       <HomeSectionHeader headingId="home-this-month" heading="This month" />
       <div className="flex flex-col gap-3.5 rounded-[14px] border border-line bg-surface p-[18px]">
         <MonthlyUsageBody monthlyNumbers={monthlyNumbers} loadError={loadError} />

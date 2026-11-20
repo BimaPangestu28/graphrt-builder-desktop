@@ -1,5 +1,5 @@
 import { useSearchParams } from 'react-router-dom'
-import { AppShell } from '@/components/layout'
+import { AppShell, PageFrame, PageTitleBlock } from '@/components/layout'
 import { useBrowserRuntime } from '@/hooks/useBrowserRuntime'
 import { usePlugins, type PluginsState } from '@/hooks/usePlugins'
 import { describeError } from '@/lib/agentDisplay'
@@ -28,13 +28,10 @@ function CatalogNotes({ plugins }: { plugins: PluginsState }) {
 
 function PluginsHeader() {
   return (
-    <div className="flex max-w-[720px] flex-col gap-1">
-      <h1 className="m-0 text-[26px] font-semibold tracking-[-0.5px]">Plugins</h1>
-      <p className="m-0 leading-normal text-body">
-        Plugins add steps your agents can use, like sending WhatsApp messages or reading a spreadsheet. Nothing installs without your OK, and a plugin gets its
-        settings and secrets only once you trust it.
-      </p>
-    </div>
+    <PageTitleBlock
+      title="Plugins"
+      subtitle="Plugins add steps your agents can use, like sending WhatsApp messages or reading a spreadsheet. Nothing installs without your OK, and a plugin gets its settings and secrets only once you trust it."
+    />
   )
 }
 
@@ -105,17 +102,19 @@ export function PluginsPage() {
   const browserPluginNames = inventory?.installed.filter((installedPlugin) => installedPlugin.needsBrowser).map((installedPlugin) => installedPlugin.name) ?? []
 
   return (
-    <AppShell activeNav="plugins" mainClassName="box-border flex flex-col gap-5 px-8 py-7">
-      <PluginsHeader />
-      {plugins.error && (
-        <p role="alert" className="m-0 text-[13px] text-danger">
-          Could not load plugins: {describeError(plugins.error)}
-        </p>
-      )}
-      {!plugins.error && !inventory && <p className="m-0 text-muted">Loading plugins…</p>}
-      <CatalogNotes plugins={plugins} />
-      {browserPluginNames.length > 0 && <BrowserRuntimeBanner runtime={browserRuntime} pluginNames={browserPluginNames} />}
-      {inventory && <PluginCatalog items={items} plugins={plugins} />}
+    <AppShell activeNav="plugins">
+      <PageFrame>
+        <PluginsHeader />
+        {plugins.error && (
+          <p role="alert" className="m-0 text-[13px] text-danger">
+            Could not load plugins: {describeError(plugins.error)}
+          </p>
+        )}
+        {!plugins.error && !inventory && <p className="m-0 text-muted">Loading plugins…</p>}
+        <CatalogNotes plugins={plugins} />
+        {browserPluginNames.length > 0 && <BrowserRuntimeBanner runtime={browserRuntime} pluginNames={browserPluginNames} />}
+        {inventory && <PluginCatalog items={items} plugins={plugins} />}
+      </PageFrame>
     </AppShell>
   )
 }

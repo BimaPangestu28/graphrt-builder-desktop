@@ -97,8 +97,8 @@ export function GettingStartedCard({ steps }: { steps: GettingStartedStep[] | nu
 
   return (
     <section aria-labelledby="home-getting-started" className="flex flex-col gap-2 rounded-[14px] border border-line bg-surface px-[18px] py-3.5">
-      <div className="flex min-h-7 items-center justify-between gap-2">
-        <h2 id="home-getting-started" className="m-0 flex items-center gap-2.5 text-[16px] font-semibold">
+      <div className="flex min-h-7 flex-wrap items-center justify-between gap-2">
+        <h2 id="home-getting-started" className="m-0 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[16px] font-semibold">
           Getting started
           <ProgressBar doneCount={doneSteps.length} totalCount={steps.length} />
           <span className="text-[13px] font-medium text-muted">

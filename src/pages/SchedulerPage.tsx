@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { isDesktopApp } from '@/api/client'
 import { listScheduledRuns } from '@/api/scheduleRules'
 import type { Trigger } from '@/api/types'
-import { AppShell } from '@/components/layout'
+import { AppShell, PageFrame } from '@/components/layout'
 import { StrokeIcon } from '@/components/ui'
 import { buildCalendarEntries, formatWeekRange, getWeekDates, scheduleTimeZone, scheduleToday, type PastRun, type ScheduleTrigger } from '@/data/scheduler'
 import { useAgentNames } from '@/hooks/useAgentNames'
@@ -93,34 +93,36 @@ export function SchedulerPage() {
   const viewLabel = viewMode === 'day' ? 'Day view' : viewMode === 'week' ? 'Week view' : 'List view'
 
   return (
-    <AppShell activeNav="schedule" agents={{ kind: 'list' }} mainClassName="box-border flex flex-wrap content-start gap-6 p-8">
-      <ScheduleToolbar
-        subtitle={`${formatWeekRange(weekDates)} · ${timezone}`}
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
-        onShiftWeek={(direction) => setWeekOffset((currentOffset) => currentOffset + direction)}
-      />
-      {error && (
-        <div className="flex-[1_1_100%]">
-          <RunErrorNotice title="Could not update the schedules" error={error} />
-        </div>
-      )}
-      {historyError && (
-        <div className="flex-[1_1_100%]">
-          <RunErrorNotice title="Could not load past runs" error={historyError} />
-        </div>
-      )}
-      {viewMode === 'list' ? (
-        <ScheduleList entries={entries} label={viewLabel} />
-      ) : (
-        <CalendarGrid dates={visibleDates} entries={entries} todayIsoDate={todayIsoDate} label={viewLabel} />
-      )}
-      <aside aria-label="Triggers and rules" className="flex min-w-0 flex-[1_1_300px] flex-col gap-4">
-        <TriggersPanel triggers={scheduleTriggers} onToggleTrigger={toggleTrigger} />
-        <ScheduleRulesPanel />
-        {/* Running schedules on a server does not exist yet, so the desktop app does not advertise it. */}
-        {!isDesktopApp() && <RemoteRunnerPromo />}
-      </aside>
+    <AppShell activeNav="schedule" agents={{ kind: 'list' }}>
+      <PageFrame layout="wrap">
+        <ScheduleToolbar
+          subtitle={`${formatWeekRange(weekDates)} · ${timezone}`}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          onShiftWeek={(direction) => setWeekOffset((currentOffset) => currentOffset + direction)}
+        />
+        {error && (
+          <div className="flex-[1_1_100%]">
+            <RunErrorNotice title="Could not update the schedules" error={error} />
+          </div>
+        )}
+        {historyError && (
+          <div className="flex-[1_1_100%]">
+            <RunErrorNotice title="Could not load past runs" error={historyError} />
+          </div>
+        )}
+        {viewMode === 'list' ? (
+          <ScheduleList entries={entries} label={viewLabel} />
+        ) : (
+          <CalendarGrid dates={visibleDates} entries={entries} todayIsoDate={todayIsoDate} label={viewLabel} />
+        )}
+        <aside aria-label="Triggers and rules" className="flex min-w-0 flex-[1_1_300px] flex-col gap-4">
+          <TriggersPanel triggers={scheduleTriggers} onToggleTrigger={toggleTrigger} />
+          <ScheduleRulesPanel />
+          {/* Running schedules on a server does not exist yet, so the desktop app does not advertise it. */}
+          {!isDesktopApp() && <RemoteRunnerPromo />}
+        </aside>
+      </PageFrame>
     </AppShell>
   )
 }

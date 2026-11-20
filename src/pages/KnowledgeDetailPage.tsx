@@ -148,7 +148,7 @@ export function KnowledgeDetailPage() {
 
   return (
     <AppShell activeNav="knowledge" agents={{ kind: 'list' }} mainClassName="flex flex-col">
-      <header className="box-border flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-line px-6 py-3">
+      <header className="box-border flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-line px-8 py-3">
         <div className="flex items-center gap-2 text-muted">
           <Link to={routePaths.knowledge} className="no-underline !text-muted hover:!text-ink">
             Knowledge
