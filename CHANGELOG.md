@@ -185,6 +185,11 @@ The desktop app now runs agents on the graphrt runtime instead of showing sample
   apps or "Connected" rows, and controls without a backend (appearance, language, model
   fallback, crash reports, remote runner) are hidden. The browser preview still shows them.
 
+### Fixed
+
+- **The full plugin catalog shows up again.** The app refused plugin catalogs over 2 MiB and silently kept
+  its saved copy (6 plugins); with 146 plugins the published catalog is 2.0-3.5 MB. The limit is now 16 MiB.
+
 ### Known limitations
 
 - Inbox, Chain, Team and Connect WhatsApp still show sample data.
