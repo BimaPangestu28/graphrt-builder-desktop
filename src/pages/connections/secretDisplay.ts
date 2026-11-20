@@ -47,16 +47,3 @@ export function normalizeSecretName(typedName: string): string {
 export function isSecretMissing(secret: WorkflowSecretOverview): boolean {
   return !secret.configured && secret.required
 }
-
-/**
- * The summary on the Secrets row: "2 saved · 1 missing".
- *
- * @param secrets - Every secret (WorkflowSecretOverview[])
- * @returns The counts, or a hint when there are none (string)
- */
-export function summarizeSecrets(secrets: WorkflowSecretOverview[]): string {
-  if (secrets.length === 0) return 'None yet'
-  const savedCount = secrets.filter((secret) => secret.configured).length
-  const missingCount = secrets.filter(isSecretMissing).length
-  return missingCount > 0 ? `${savedCount} saved · ${missingCount} missing` : `${savedCount} saved`
-}

@@ -1,6 +1,6 @@
 import type { PluginRequirement } from '@/api/pluginRequirementTypes'
 import type { ProviderStatus, WorkflowSecretStatus } from '@/api/types'
-import { pluginDetailPath } from '@/routes'
+import { connectionsTabPath, pluginDetailPath } from '@/routes'
 import { listBuilderRequirements, listPluginSetupRequirements } from './builderRequirements'
 
 const openAiConfigured: ProviderStatus[] = [{ provider: 'openai', configured: true, baseUrl: null }]
@@ -22,6 +22,13 @@ describe('listBuilderRequirements', () => {
       'WHATSAPP_TOKEN',
     ])
     expect(requirements[1]).toMatchObject({ secretName: 'MAPS_API_KEY', isConnected: false })
+  })
+
+  it('sends model keys to the AI models tab and secrets to the Secrets tab of Connections', () => {
+    const [modelRequirement, secretRequirement] = listBuilderRequirements('new-agent', ['openai'], openAiConfigured, [secret({})])
+
+    expect(modelRequirement.connectPath).toBe(connectionsTabPath('models'))
+    expect(secretRequirement.connectPath).toBe('/connections/secrets')
   })
 
   it('treats stored secrets and optional ones (with a default) as connected', () => {

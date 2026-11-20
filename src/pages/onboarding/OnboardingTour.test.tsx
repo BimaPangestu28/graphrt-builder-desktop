@@ -108,6 +108,15 @@ describe('Onboarding tour: when it shows', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(screen.getByLabelText('Current path')).toHaveTextContent(routePaths.knowledge)
   })
+
+  it('sends the secrets step straight to the Secrets tab of Connections', async () => {
+    await saveOnboardingTourStatus('completed')
+    renderWithTour(routePaths.home)
+    fireEvent.click(await screen.findByRole('button', { name: 'Open tour' }))
+    fireEvent.click(screen.getByRole('button', { name: /Step 5: Your own secrets/ }))
+    fireEvent.click(screen.getByRole('link', { name: 'Try it: Open Secrets' }))
+    expect(screen.getByLabelText('Current path')).toHaveTextContent('/connections/secrets')
+  })
 })
 
 describe('Onboarding tour: moving between steps', () => {

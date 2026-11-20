@@ -3,7 +3,7 @@ import type { McpServerDefinition, McpServerInput } from './connectionTypes'
 import { sampleMcpServersBackend } from './sampleBackend/mcpServers'
 
 /**
- * MCP servers (Connections > Advanced). Their tools are available to every run's `tool`
+ * MCP servers (Connections, MCP servers tab). Their tools are available to every run's `tool`
  * and `agent` nodes as `<name>/<tool>`; the app connects only when a node uses them.
  */
 

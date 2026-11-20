@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { hasUsableModelProvider } from './lib/firstLaunch'
-import { agentRoutePatterns, knowledgeDetailPattern, pluginDetailPattern, routePaths } from './routes'
+import { agentRoutePatterns, connectionsTabPattern, knowledgeDetailPattern, pluginDetailPattern, routePaths } from './routes'
 import { ScreenIndexPage } from './pages/ScreenIndexPage'
 import { WelcomePage } from './pages/WelcomePage'
 import { NewAgentPage } from './pages/NewAgentPage'
@@ -23,7 +23,7 @@ import { KnowledgePage } from './pages/KnowledgePage'
 import { KnowledgeDetailPage } from './pages/KnowledgeDetailPage'
 import { BatchApprovalPage } from './pages/BatchApprovalPage'
 import { RunsPage } from './pages/RunsPage'
-import { ConnectionsPage } from './pages/ConnectionsPage'
+import { ConnectionsPage, ConnectionsTabPage } from './pages/ConnectionsPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { ErrorStatesPage } from './pages/ErrorStatesPage'
 import { VersionHistoryPage } from './pages/VersionHistoryPage'
@@ -54,6 +54,7 @@ const screenRoutes = [
   { path: routePaths.batchApproval, element: <BatchApprovalPage /> },
   { path: routePaths.runs, element: <RunsPage /> },
   { path: routePaths.connections, element: <ConnectionsPage /> },
+  { path: connectionsTabPattern, element: <ConnectionsTabPage /> },
   { path: routePaths.settings, element: <SettingsPage /> },
   { path: routePaths.errorStates, element: <ErrorStatesPage /> },
   { path: agentRoutePatterns.versionHistory, element: <VersionHistoryPage /> },

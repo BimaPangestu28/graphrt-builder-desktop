@@ -40,6 +40,34 @@ export type RouteKey = keyof typeof routePaths
  */
 export const legacyConnectionsPluginsSection = 'plugins'
 
+/**
+ * Tabs of Connections (21), each at its own address so it deep-links and survives a refresh.
+ * `apps` only shows in the browser preview, which has sample app accounts.
+ */
+export type ConnectionsTab = 'models' | 'secrets' | 'mcp' | 'apps'
+
+/** Route pattern of one Connections tab; `routePaths.connections` alone redirects to AI models. */
+export const connectionsTabPattern = '/connections/:connectionsTab'
+
+/** Search param that opens a tab's add form (Add secret, Add server) on arrival. */
+export const connectionsAddFormParam = 'add'
+
+/**
+ * Builds the URL of a Connections tab.
+ *
+ * @param tab - Which tab to open (ConnectionsTab)
+ * @param options.opensAddForm - Also unfold the tab's add form (boolean)
+ * @returns The path, e.g. "/connections/secrets?add=1" (string)
+ *
+ * @example
+ * connectionsTabPath('models') // "/connections/models"
+ * connectionsTabPath('secrets', { opensAddForm: true }) // "/connections/secrets?add=1"
+ */
+export function connectionsTabPath(tab: ConnectionsTab, { opensAddForm = false }: { opensAddForm?: boolean } = {}): string {
+  const path = connectionsTabPattern.replace(':connectionsTab', tab)
+  return opensAddForm ? `${path}?${connectionsAddFormParam}=1` : path
+}
+
 /** Plugin detail for any plugin of the catalog or installed. */
 export const pluginDetailPattern = '/plugins/:pluginName'
 

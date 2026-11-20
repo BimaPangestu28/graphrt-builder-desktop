@@ -5,7 +5,7 @@ import { buildConnectionReminderItems, buildInboxAttentionItem, formatWaitingTim
 import { formatTokenCount, startOfLocalMonth } from '@/pages/home-dashboard/monthlyUsage'
 import { countScheduledAgents } from '@/hooks/useRunnerStatus'
 import { describeConnectedRunner } from '@/components/layout/Sidebar'
-import { routePaths } from '@/routes'
+import { connectionsTabPath, routePaths } from '@/routes'
 
 const now = new Date(2026, 10, 18, 10, 30)
 
@@ -104,7 +104,7 @@ describe('Home attention rows', () => {
 
   it('turns connection reminders into rows that open Connections', () => {
     const [row] = buildConnectionReminderItems([{ id: 'gmail', title: 'Gmail sign-in expired', detail: 'Digest failed', actionLabel: 'Reconnect Gmail' }])
-    expect(row).toMatchObject({ id: 'connection-gmail', actionLabel: 'Reconnect Gmail', actionPath: routePaths.connections, isPrimaryAction: false })
+    expect(row).toMatchObject({ id: 'connection-gmail', actionLabel: 'Reconnect Gmail', actionPath: connectionsTabPath('apps'), isPrimaryAction: false })
   })
 })
 

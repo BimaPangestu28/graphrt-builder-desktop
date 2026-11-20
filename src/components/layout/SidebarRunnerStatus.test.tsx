@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import type { ModelChoice, Trigger } from '@/api/types'
-import { routePaths } from '@/routes'
+import { connectionsTabPath } from '@/routes'
 import type { CommandHandler, CommandHandlers } from '@/test/desktopBackend'
 import { Sidebar } from './Sidebar'
 
@@ -79,7 +79,7 @@ describe('Sidebar runner card in the desktop app', () => {
     }, [])
     renderSidebar()
     const addLink = await screen.findByRole('link', { name: 'Add one' })
-    expect(addLink).toHaveAttribute('href', routePaths.connections)
+    expect(addLink).toHaveAttribute('href', connectionsTabPath('models'))
     expect(addLink.parentElement).toHaveTextContent('No model connected · Add one')
   })
 

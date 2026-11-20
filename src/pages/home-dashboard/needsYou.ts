@@ -6,7 +6,7 @@ import type { Run } from '@/api/types'
 import type { AttentionItem, AttentionKind } from '@/data/homeDashboard'
 import { formatRunDay } from '@/pages/agent-run/runResultSummary'
 import { getProblemActionPath } from '@/pages/error-states/problemActions'
-import { agentPath, routePaths } from '@/routes'
+import { agentPath, connectionsTabPath, routePaths } from '@/routes'
 import { failedRunPath, findLatestRunByAgent } from './homeLinks'
 import { buildConnectionReminderItems, buildInboxAttentionItem, buildPausedRunItems, describeRunResult, type AgentNameLookup } from './homeViewModel'
 
@@ -101,7 +101,7 @@ function buildSetupItems(problems: Problem[], pluginRequirements: Map<string, Pl
     detail: gaps.reasons.join(' · '),
     actionLabel: 'Set up',
     // Plugins and secrets are set up in the build chat; model keys and credit in Connections.
-    actionPath: gaps.isConnectionsOnly ? routePaths.connections : agentPath('builder', agentId),
+    actionPath: gaps.isConnectionsOnly ? connectionsTabPath('models') : agentPath('builder', agentId),
     isPrimaryAction: false,
   }))
 }

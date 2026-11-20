@@ -1,33 +1,23 @@
 import { useState } from 'react'
 import { Button, Icon } from '@/components/ui'
 import { AddSecretForm } from './AddSecretForm'
-import { ConnectionsSection, useIsLinkedSection, useScrollToLinkedSection } from './ConnectionsSection'
-import { summarizeSecrets } from './secretDisplay'
+import { ConnectionsSection, useOpensAddForm } from './ConnectionsSection'
 import { SecretsList, type SecretsListState } from './SecretRows'
 
-const secretsSectionId = 'connections-secrets'
-const secretsDescription = 'Server logins, API tokens and passwords your agents use'
-
 /**
- * "Secrets" on screen 21, always open: the summary in the description, "Add secret" on the
- * right (it unfolds the form above the list), then every secret. `?section=secrets` opens
- * the form and scrolls here. While searching it only lists matches and hides the form.
+ * The Secrets tab of screen 21: "Add secret" at the top-right (it unfolds the form above the
+ * list), then every secret. `?add=1` opens the form on arrival.
  */
 export function SecretsSection({ secretsState }: { secretsState: SecretsListState }) {
-  const isLinked = useIsLinkedSection('secrets')
-  const [isAdding, setIsAdding] = useState(isLinked)
-  useScrollToLinkedSection('secrets', secretsSectionId)
-  const { allSecrets, isSearching, reload } = secretsState
-  const description = allSecrets ? `${secretsDescription} · ${summarizeSecrets(allSecrets)}` : secretsDescription
-  const showsAddForm = isAdding && !isSearching
+  const opensAddForm = useOpensAddForm()
+  const [isAdding, setIsAdding] = useState(opensAddForm)
 
   return (
     <ConnectionsSection
-      id={secretsSectionId}
+      id="connections-secrets"
       title="Secrets"
-      description={description}
+      description="Server logins, API tokens and passwords your agents use. Agents only ever see their names"
       action={
-        !isSearching &&
         !isAdding && (
           <Button variant="secondary" size="sm" onClick={() => setIsAdding(true)}>
             <Icon name="plus" size={14} />
@@ -36,7 +26,7 @@ export function SecretsSection({ secretsState }: { secretsState: SecretsListStat
         )
       }
     >
-      {showsAddForm && <AddSecretForm onAdded={reload} onClose={() => setIsAdding(false)} />}
+      {isAdding && <AddSecretForm onAdded={secretsState.reload} onClose={() => setIsAdding(false)} />}
       <SecretsList secretsState={secretsState} />
     </ConnectionsSection>
   )

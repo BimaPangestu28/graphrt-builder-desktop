@@ -6,7 +6,7 @@ import { resetSampleBuilder, sampleBuildDrafts, sampleBuilderBackend, sampleBuil
 import { resetSampleCredentials, sampleCredentialsBackend } from '@/api/sampleBackend/credentials'
 import { resetSamplePlugins, samplePluginsBackend, setSampleAgentPluginNeeds } from '@/api/sampleBackend/plugins'
 import { openBuilderDelayMs } from '@/data/mapsLeadsAgent'
-import { agentPath, routePaths } from '@/routes'
+import { agentPath, connectionsTabPath, routePaths } from '@/routes'
 import { GeneratingPage } from '../GeneratingPage'
 
 const buildRequestState = { buildRequest: { description: 'Find cafes and message them', kind: 'task' } }
@@ -17,7 +17,7 @@ function renderGeneratingPage(locationState: unknown = buildRequestState) {
       <Routes>
         <Route path={routePaths.generating} element={<GeneratingPage />} />
         <Route path={agentPath('builder', 'maps-leads')} element={<p>Builder screen</p>} />
-        <Route path={routePaths.connections} element={<p>Connections screen</p>} />
+        <Route path={connectionsTabPath('models')} element={<p>Connections screen</p>} />
         <Route path={routePaths.newAgent} element={<p>New agent screen</p>} />
       </Routes>
     </MemoryRouter>,

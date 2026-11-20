@@ -176,11 +176,8 @@ function SecretRow({ secret, onChanged }: SecretRowProps) {
 /** Loaded secrets plus load state, as the Connections page hands them down. */
 export interface SecretsListState {
   /** Every secret; null while loading. */
-  allSecrets: WorkflowSecretOverview[] | null
-  /** Secrets matching the search; null while loading. */
-  visibleSecrets: WorkflowSecretOverview[] | null
+  secrets: WorkflowSecretOverview[] | null
   loadError: Error | null
-  isSearching: boolean
   reload: () => Promise<void>
 }
 
@@ -190,15 +187,13 @@ export interface SecretsListState {
  * shown; agents read a secret as `{{#env.NAME#}}`.
  */
 export function SecretsList({ secretsState }: { secretsState: SecretsListState }) {
-  const { visibleSecrets, loadError, isSearching, reload } = secretsState
+  const { secrets, loadError, reload } = secretsState
   if (loadError) return <ConnectionsNotice tone="danger">Could not load secrets: {describeError(loadError)}</ConnectionsNotice>
-  if (!visibleSecrets) return <ConnectionsNotice>Loading secrets…</ConnectionsNotice>
-  if (visibleSecrets.length === 0) {
-    return isSearching ? null : <ConnectionsNotice>No secrets yet. Use Add secret, or add an agent that needs one and it appears here</ConnectionsNotice>
-  }
+  if (!secrets) return <ConnectionsNotice>Loading secrets…</ConnectionsNotice>
+  if (secrets.length === 0) return <ConnectionsNotice>No secrets yet. Use Add secret, or add an agent that needs one and it appears here</ConnectionsNotice>
   return (
     <div role="list" aria-label="Saved and needed secrets" className={connectionsCardClassNames}>
-      {visibleSecrets.map((secret) => (
+      {secrets.map((secret) => (
         <SecretRow key={secret.name} secret={secret} onChanged={reload} />
       ))}
     </div>

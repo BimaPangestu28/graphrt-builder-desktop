@@ -1,5 +1,5 @@
 /**
- * Connections > Advanced: workflow secrets across every agent and MCP servers.
+ * Connections, Secrets and MCP servers tabs: workflow secrets across every agent and MCP servers.
  * Mirrors `src-tauri/src/workflow_secrets.rs` and `src-tauri/src/mcp/definitions.rs`.
  */
 
@@ -28,7 +28,7 @@ export interface WorkflowSecretOverview {
   updatedAt: string | null
 }
 
-/** A secret the user adds themselves (Connections > Advanced > Secrets > Add secret). */
+/** A secret the user adds themselves (Connections, Secrets tab, Add secret). */
 export interface NewWorkflowSecret {
   /** UPPER_SNAKE_CASE, 1–64 characters, e.g. `MY_SERVER_TOKEN`. */
   name: string

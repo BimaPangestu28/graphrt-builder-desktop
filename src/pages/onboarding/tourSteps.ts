@@ -1,4 +1,4 @@
-import { routePaths } from '@/routes'
+import { connectionsTabPath, routePaths } from '@/routes'
 import { getCredentialStoreName } from '@/lib/platform'
 
 /**
@@ -53,8 +53,8 @@ export const tourSteps: readonly TourStep[] = [
     id: 'secrets',
     title: 'Your own secrets',
     explanation:
-      `Add server logins and API tokens your agents need under Connections, Advanced, Secrets. Values stay in ${getCredentialStoreName()}; the builder only ever sees their names.`,
-    tryLink: { label: 'Open Connections', path: routePaths.connections },
+      `Add server logins and API tokens your agents need under Connections, on the Secrets tab. Values stay in ${getCredentialStoreName()}; the builder only ever sees their names.`,
+    tryLink: { label: 'Open Secrets', path: connectionsTabPath('secrets') },
   },
   {
     id: 'runs-schedule-inbox',

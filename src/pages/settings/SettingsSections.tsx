@@ -14,7 +14,7 @@ import {
   runHistoryRetentionChoices,
 } from '@/data/settings'
 import { describeError } from '@/lib/agentDisplay'
-import { routePaths } from '@/routes'
+import { connectionsTabPath } from '@/routes'
 import { useOnboardingTour } from '../onboarding/onboardingTourContext'
 import { CrashReportsPanel } from './CrashReportsPanel'
 import { DataActions } from './DataActions'
@@ -319,10 +319,10 @@ export function AboutSection({ appInfo }: { appInfo: AppInfo | null }) {
       <TourRow />
       <ActionRow
         title="Connected accounts"
-        description="AI model keys, secrets, MCP servers and plugins"
+        description="AI model keys, secrets and MCP servers"
         hasDivider={false}
         action={
-          <Link to={routePaths.connections} className={`${settingsButtonClassNames} inline-flex h-[34px] items-center rounded-lg px-3 no-underline !text-ink`}>
+          <Link to={connectionsTabPath('models')} className={`${settingsButtonClassNames} inline-flex h-[34px] items-center rounded-lg px-3 no-underline !text-ink`}>
             Open Connections
           </Link>
         }

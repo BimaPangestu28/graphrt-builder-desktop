@@ -1,8 +1,8 @@
 import { render, screen } from '@testing-library/react'
 import type { ReactElement } from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { pluginDetailPath, pluginDetailPattern, routePaths } from '@/routes'
-import { ConnectionsPage } from '../ConnectionsPage'
+import { connectionsTabPath, connectionsTabPattern, pluginDetailPath, pluginDetailPattern, routePaths } from '@/routes'
+import { ConnectionsTabPage } from '../ConnectionsPage'
 import { HomePage } from '../HomePage'
 import { InboxPage } from '../InboxPage'
 import { KnowledgePage } from '../KnowledgePage'
@@ -28,7 +28,7 @@ const framedPages: FramedPage[] = [
   { name: 'Inbox', path: routePaths.inbox, routePattern: routePaths.inbox, page: <InboxPage />, title: 'Inbox' },
   { name: 'Plugins', path: routePaths.plugins, routePattern: routePaths.plugins, page: <PluginsPage />, title: 'Plugins' },
   { name: 'Plugin detail', path: pluginDetailPath('whatsapp-api'), routePattern: pluginDetailPattern, page: <PluginDetailPage />, title: 'WhatsApp Cloud API' },
-  { name: 'Connections', path: routePaths.connections, routePattern: routePaths.connections, page: <ConnectionsPage />, title: 'Connections' },
+  { name: 'Connections', path: connectionsTabPath('models'), routePattern: connectionsTabPattern, page: <ConnectionsTabPage />, title: 'Connections' },
   { name: 'Settings', path: routePaths.settings, routePattern: routePaths.settings, page: <SettingsPage />, title: 'Settings' },
 ]
 

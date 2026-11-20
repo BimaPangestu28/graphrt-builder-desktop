@@ -1,43 +1,123 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { resetSampleAgents } from '@/api/sampleBackend/agents'
 import { resetSampleCredentials, sampleCredentialsBackend } from '@/api/sampleBackend/credentials'
 import { resetSampleMcpServers, sampleMcpServersBackend } from '@/api/sampleBackend/mcpServers'
 import { resetSamplePlugins } from '@/api/sampleBackend/plugins'
-import { routePaths } from '@/routes'
-import { ConnectionsPage } from '../ConnectionsPage'
+import { connectionsTabPattern, routePaths } from '@/routes'
+import { ConnectionsPage, ConnectionsTabPage } from '../ConnectionsPage'
 
-function renderConnectionsPage(initialPath = '/connections') {
+function CurrentLocation() {
+  const location = useLocation()
+  return <output aria-label="Current location">{`${location.pathname}${location.search}`}</output>
+}
+
+function renderConnectionsPage(initialPath = '/connections/models') {
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
-      <ConnectionsPage />
+      <Routes>
+        <Route path={routePaths.connections} element={<ConnectionsPage />} />
+        <Route path={connectionsTabPattern} element={<ConnectionsTabPage />} />
+        <Route path={routePaths.plugins} element={<h1>Plugins page</h1>} />
+      </Routes>
+      <CurrentLocation />
     </MemoryRouter>,
   )
+}
+
+function getCurrentLocation() {
+  return screen.getByLabelText('Current location')
+}
+
+function getTabBar() {
+  return screen.getByRole('navigation', { name: 'Connections sections' })
+}
+
+function getTab(name: RegExp) {
+  return within(getTabBar()).getByRole('link', { name })
 }
 
 function getModelsSection() {
   return screen.getByRole('region', { name: 'AI models' })
 }
 
-describe('ConnectionsPage', () => {
-  beforeEach(() => {
-    resetSampleCredentials()
-    resetSampleAgents()
-    resetSamplePlugins()
-    resetSampleMcpServers()
-  })
-  afterEach(() => vi.restoreAllMocks())
+function getSecretsSection() {
+  return screen.getByRole('region', { name: 'Secrets' })
+}
 
-  it('shows apps, AI models and the Gmail sign-in warning', async () => {
-    renderConnectionsPage()
+beforeEach(() => {
+  resetSampleCredentials()
+  resetSampleAgents()
+  resetSamplePlugins()
+  resetSampleMcpServers()
+})
+afterEach(() => vi.restoreAllMocks())
+
+describe('ConnectionsPage tabs', () => {
+  it('opens AI models from /connections, with one tab per kind and its status', async () => {
+    renderConnectionsPage('/connections')
     expect(screen.getByRole('heading', { level: 1, name: 'Connections' })).toBeInTheDocument()
-    expect(await screen.findByRole('heading', { name: 'Apps' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'AI models' })).toBeInTheDocument()
-    expect(screen.getByRole('alert')).toHaveTextContent('Gmail needs you to sign in again.')
-    expect(screen.getByText('Signed out')).toBeInTheDocument()
+    expect(getCurrentLocation()).toHaveTextContent('/connections/models')
+    expect(await within(getTabBar()).findByRole('link', { name: 'AI models 2 connected' })).toHaveAttribute('aria-current', 'page')
+    expect(await within(getTabBar()).findByRole('link', { name: 'Secrets 1 saved' })).toHaveAttribute('href', '/connections/secrets')
+    expect(await within(getTabBar()).findByRole('link', { name: 'MCP servers 1 added' })).toHaveAttribute('href', '/connections/mcp')
+    expect(await within(getTabBar()).findByRole('link', { name: 'Apps 1 signed out' })).toHaveAttribute('href', '/connections/apps')
+    expect(getModelsSection()).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Secrets' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'MCP servers' })).not.toBeInTheDocument()
   })
 
+  it('shows one section per tab and moves between them by link', async () => {
+    renderConnectionsPage()
+    fireEvent.click(await within(getTabBar()).findByRole('link', { name: /^Secrets/ }))
+    expect(getCurrentLocation()).toHaveTextContent('/connections/secrets')
+    expect(getTab(/^Secrets/)).toHaveAttribute('aria-current', 'page')
+    expect(getTab(/^AI models/)).not.toHaveAttribute('aria-current')
+    expect(await within(getSecretsSection()).findByText('Google Places API key')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'AI models' })).not.toBeInTheDocument()
+
+    fireEvent.click(getTab(/^MCP servers/))
+    expect(await screen.findByRole('article', { name: 'files' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Secrets' })).not.toBeInTheDocument()
+  })
+
+  it('has no search box and no Plugins card: Plugins has its own sidebar item', async () => {
+    renderConnectionsPage()
+    await within(getModelsSection()).findByText('Default')
+    expect(screen.queryByRole('searchbox')).not.toBeInTheDocument()
+    expect(screen.queryByRole('complementary', { name: 'Plugins' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Open Plugins/ })).not.toBeInTheDocument()
+  })
+
+  it('sends an unknown tab to AI models', async () => {
+    renderConnectionsPage('/connections/advanced')
+    expect(getCurrentLocation()).toHaveTextContent('/connections/models')
+    expect(await within(getModelsSection()).findByText('Default')).toBeInTheDocument()
+  })
+
+  it('redirects the old plugins address to the Plugins page', async () => {
+    renderConnectionsPage('/connections?section=plugins')
+    expect(await screen.findByRole('heading', { name: 'Plugins page' })).toBeInTheDocument()
+  })
+
+  it('redirects ?section=secrets to the Secrets tab with the add form open', async () => {
+    renderConnectionsPage('/connections?section=secrets')
+    expect(getCurrentLocation()).toHaveTextContent('/connections/secrets?add=1')
+    expect(await screen.findByRole('form', { name: 'Add a secret' })).toBeInTheDocument()
+  })
+
+  it('redirects ?section=mcp to the MCP servers tab with the add form open, which Cancel closes', async () => {
+    renderConnectionsPage('/connections?section=mcp')
+    expect(getCurrentLocation()).toHaveTextContent('/connections/mcp?add=1')
+    const addForm = await screen.findByRole('form', { name: 'Add an MCP server' })
+    fireEvent.click(within(addForm).getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('form', { name: 'Add an MCP server' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add server' })).toBeInTheDocument()
+  })
+})
+
+describe('ConnectionsPage AI models and apps', () => {
   it('loads provider statuses for the AI model cards', async () => {
     renderConnectionsPage()
     expect(within(getModelsSection()).getByText('Loading AI models…')).toBeInTheDocument()
@@ -47,14 +127,22 @@ describe('ConnectionsPage', () => {
     expect(within(getModelsSection()).getByRole('button', { name: 'Add key Google Gemini' })).toBeInTheDocument()
   })
 
-  it('reconnects Gmail from the banner', async () => {
+  it('shows the Gmail sign-in warning above the tabs and the app accounts on the Apps tab', async () => {
+    renderConnectionsPage('/connections/apps')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Gmail needs you to sign in again.')
+    const appsSection = await screen.findByRole('region', { name: 'Apps' })
+    expect(within(appsSection).getByText('WhatsApp')).toBeInTheDocument()
+    expect(within(appsSection).getByText('Signed out')).toBeInTheDocument()
+  })
+
+  it('reconnects Gmail from the banner, which clears the Apps warning', async () => {
     renderConnectionsPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Reconnect Gmail' }))
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(screen.queryByText('Signed out')).not.toBeInTheDocument()
+    expect(getTab(/^Apps/)).toHaveAccessibleName('Apps 3 connected')
   })
 
-  it('adds a provider key with the inline form', async () => {
+  it('adds a provider key with the inline form and updates the tab count', async () => {
     const setApiKeySpy = vi.spyOn(sampleCredentialsBackend, 'setApiKey')
     renderConnectionsPage()
     fireEvent.click(await screen.findByRole('button', { name: 'Add key Anthropic' }))
@@ -66,6 +154,7 @@ describe('ConnectionsPage', () => {
     expect(setApiKeySpy).toHaveBeenCalledWith('anthropic', 'sk-ant-123')
     expect(screen.queryByRole('button', { name: 'Add key Anthropic' })).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Anthropic API key')).not.toBeInTheDocument()
+    expect(getTab(/^AI models/)).toHaveAccessibleName('AI models 3 connected')
   })
 
   it('makes a connected provider the default model', async () => {
@@ -109,67 +198,22 @@ describe('ConnectionsPage', () => {
     renderConnectionsPage()
     expect(await screen.findByText('Could not load AI models: Keychain is locked')).toBeInTheDocument()
   })
-
-  it('shows AI models, Secrets and MCP servers as sections, and links to the Plugins page where plugins used to be managed', async () => {
-    renderConnectionsPage()
-    expect(await screen.findByRole('region', { name: 'Secrets' })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: 'MCP servers' })).toBeInTheDocument()
-    const pluginsCard = screen.getByRole('complementary', { name: 'Plugins' })
-    expect(within(pluginsCard).getByText('Plugins moved to their own page in the sidebar')).toBeInTheDocument()
-    expect(within(pluginsCard).getByRole('link', { name: 'Open Plugins' })).toHaveAttribute('href', routePaths.plugins)
-    expect(screen.queryByRole('region', { name: 'Advanced' })).not.toBeInTheDocument()
-  })
-
-  it('redirects the old plugins address to the Plugins page', async () => {
-    render(
-      <MemoryRouter initialEntries={['/connections?section=plugins']}>
-        <Routes>
-          <Route path={routePaths.connections} element={<ConnectionsPage />} />
-          <Route path={routePaths.plugins} element={<h1>Plugins page</h1>} />
-        </Routes>
-      </MemoryRouter>,
-    )
-    expect(await screen.findByRole('heading', { name: 'Plugins page' })).toBeInTheDocument()
-  })
-
-  it('filters connections by search', async () => {
-    renderConnectionsPage()
-    await within(getModelsSection()).findByText('Default')
-    await screen.findByText('WhatsApp')
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search connections' }), { target: { value: 'ollama' } })
-    expect(screen.getByText('Ollama')).toBeInTheDocument()
-    expect(screen.queryByText('WhatsApp')).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Apps' })).not.toBeInTheDocument()
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search connections' }), { target: { value: 'zzz' } })
-    expect(screen.getByText(/No connections match/)).toBeInTheDocument()
-  })
 })
 
-function getSecretsSection() {
-  return screen.getByRole('region', { name: 'Secrets' })
-}
-
 describe('ConnectionsPage secrets', () => {
-  beforeEach(() => {
-    resetSampleCredentials()
-    resetSampleMcpServers()
-  })
-  afterEach(() => vi.restoreAllMocks())
-
   async function openSecretsPanel() {
-    renderConnectionsPage()
-    expect(await within(getSecretsSection()).findByText(/your agents use · 1 saved/)).toBeInTheDocument()
+    renderConnectionsPage('/connections/secrets')
+    expect(await within(getSecretsSection()).findByText('Google Places API key')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Add secret' }))
     return getSecretsSection()
   }
 
   function getSecretRow(name: string) {
-    return within(screen.getByRole('region', { name: 'Secrets' })).getByRole('listitem', { name })
+    return within(getSecretsSection()).getByRole('listitem', { name })
   }
 
   it('lists every secret with who uses it and whether it is saved', async () => {
     const secretsPanel = await openSecretsPanel()
-    expect(within(secretsPanel).getByText('Google Places API key')).toBeInTheDocument()
     expect(within(secretsPanel).getByText('GOOGLE_PLACES_API_KEY · Used by Maps leads to WhatsApp')).toBeInTheDocument()
     expect(within(secretsPanel).getByText('Saved')).toBeInTheDocument()
     expect(within(secretsPanel).queryByRole('button', { name: 'Add secret' })).not.toBeInTheDocument()
@@ -179,14 +223,9 @@ describe('ConnectionsPage secrets', () => {
   })
 
   it('lists the secrets without opening anything', async () => {
-    renderConnectionsPage()
+    renderConnectionsPage('/connections/secrets')
     expect(await within(getSecretsSection()).findByText('Google Places API key')).toBeInTheDocument()
     expect(screen.queryByRole('form', { name: 'Add a secret' })).not.toBeInTheDocument()
-  })
-
-  it('opens the add-secret form from ?section=secrets', async () => {
-    renderConnectionsPage('/connections?section=secrets')
-    expect(await screen.findByRole('form', { name: 'Add a secret' })).toBeInTheDocument()
   })
 
   it('adds a secret that no agent uses yet, without ever showing its value again', async () => {
@@ -211,7 +250,7 @@ describe('ConnectionsPage secrets', () => {
     expect(within(addForm).getByLabelText('Value')).toHaveValue('')
     expect(screen.queryByText('[SERVER TOKEN]')).not.toBeInTheDocument()
     expect(screen.queryByDisplayValue('[SERVER TOKEN]')).not.toBeInTheDocument()
-    expect(within(getSecretsSection()).getByText(/your agents use · 2 saved/)).toBeInTheDocument()
+    expect(getTab(/^Secrets/)).toHaveAccessibleName('Secrets 2 saved')
   })
 
   it('explains a malformed name or an empty value before saving', async () => {
@@ -241,7 +280,7 @@ describe('ConnectionsPage secrets', () => {
     expect(await within(addForm).findByRole('alert')).toHaveTextContent(/already saved; use Replace/)
   })
 
-  it('replaces and removes (after confirming) a secret value with a password field', async () => {
+  it('replaces and removes (after confirming) a secret value, and the tab then reports it missing', async () => {
     const setSecretSpy = vi.spyOn(sampleCredentialsBackend, 'setWorkflowSecret')
     const deleteSecretSpy = vi.spyOn(sampleCredentialsBackend, 'deleteWorkflowSecret')
     await openSecretsPanel()
@@ -265,11 +304,12 @@ describe('ConnectionsPage secrets', () => {
     expect(await screen.findByRole('button', { name: 'Add GOOGLE_PLACES_API_KEY' })).toHaveTextContent('Add value')
     expect(within(getSecretRow('GOOGLE_PLACES_API_KEY')).getByText('Missing')).toBeInTheDocument()
     expect(deleteSecretSpy).toHaveBeenCalledWith('GOOGLE_PLACES_API_KEY')
+    expect(getTab(/^Secrets/)).toHaveAccessibleName('Secrets 1 missing')
   })
 
   it('removes a secret the user added from the list entirely', async () => {
     await sampleCredentialsBackend.addWorkflowSecret({ name: 'DB_PASSWORD', value: '[DB PASSWORD]', note: null })
-    renderConnectionsPage('/connections?section=secrets')
+    renderConnectionsPage('/connections/secrets')
     const passwordRow = await screen.findByRole('listitem', { name: 'DB_PASSWORD' })
     fireEvent.click(within(passwordRow).getByRole('button', { name: 'Remove DB_PASSWORD' }))
     expect(within(passwordRow).getByRole('alertdialog')).toHaveTextContent('Agents can no longer use it.')
@@ -277,46 +317,30 @@ describe('ConnectionsPage secrets', () => {
     await waitFor(() => expect(screen.queryByRole('listitem', { name: 'DB_PASSWORD' })).not.toBeInTheDocument())
   })
 
-  it('shows an honest empty state when there are no secrets', async () => {
+  it('shows an honest empty state, and no count on the tab, when there are no secrets', async () => {
     vi.spyOn(sampleCredentialsBackend, 'listAllWorkflowSecrets').mockResolvedValue([])
-    renderConnectionsPage()
-    expect(await within(getSecretsSection()).findByText(/your agents use · None yet/)).toBeInTheDocument()
-    expect(within(getSecretsSection()).getByText(/No secrets yet/)).toBeInTheDocument()
-  })
-
-  it('finds secrets by name in the search and hides the other sections', async () => {
-    renderConnectionsPage()
-    await within(getSecretsSection()).findByText(/your agents use · 1 saved/)
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search connections' }), { target: { value: 'places' } })
-    expect(within(getSecretsSection()).getByText('Google Places API key')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Add secret' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('form', { name: 'Add a secret' })).not.toBeInTheDocument()
-    expect(screen.queryByText('MCP servers')).not.toBeInTheDocument()
+    renderConnectionsPage('/connections/secrets')
+    expect(await within(getSecretsSection()).findByText(/No secrets yet/)).toBeInTheDocument()
+    expect(getTab(/^Secrets/)).toHaveAccessibleName('Secrets')
   })
 })
 
 describe('ConnectionsPage MCP servers', () => {
-  beforeEach(() => {
-    resetSampleCredentials()
-    resetSampleMcpServers()
-    resetSamplePlugins()
-  })
-  afterEach(() => vi.restoreAllMocks())
-
   async function openMcpPanel() {
-    renderConnectionsPage()
-    expect(await screen.findByText(/any MCP server · 1 added/)).toBeInTheDocument()
+    renderConnectionsPage('/connections/mcp')
+    const filesCard = await screen.findByRole('article', { name: 'files' })
     fireEvent.click(screen.getByRole('button', { name: 'Add server' }))
-    return screen.findByRole('article', { name: 'files' })
+    return filesCard
   }
 
   it('shows the added servers with their tools', async () => {
     const filesCard = await openMcpPanel()
     expect(within(filesCard).getByText(/npx -y @modelcontextprotocol\/server-filesystem/)).toBeInTheDocument()
     expect(within(filesCard).getByText('Connected · 3 tools: read_file, list_directory, search_files')).toBeInTheDocument()
+    expect(getTab(/^MCP servers/)).toHaveAccessibleName('MCP servers 1 added')
   })
 
-  it('adds a command server whose secret then appears in the Secrets list, tests and removes it', async () => {
+  it('adds a command server whose secret then shows as missing on the Secrets tab, tests and removes it', async () => {
     const addSpy = vi.spyOn(sampleMcpServersBackend, 'addMcpServer')
     await openMcpPanel()
     const addForm = screen.getByRole('form', { name: 'Add an MCP server' })
@@ -334,12 +358,15 @@ describe('ConnectionsPage MCP servers', () => {
       bearerTokenSecret: null,
     })
     expect(within(githubCard).getByText('Not tested yet')).toBeInTheDocument()
-    expect(await within(getSecretsSection()).findByText(/your agents use · 1 saved · 1 missing/)).toBeInTheDocument()
-    expect(screen.getByText(/any MCP server · 2 added/)).toBeInTheDocument()
+    await waitFor(() => expect(getTab(/^Secrets/)).toHaveAccessibleName('Secrets 1 missing'))
+    expect(getTab(/^MCP servers/)).toHaveAccessibleName('MCP servers 2 added')
 
     fireEvent.click(within(githubCard).getByRole('button', { name: 'Test github' }))
     expect(await within(githubCard).findByText(/^Connected/)).toBeInTheDocument()
-    expect(within(getSecretsSection()).getByText('Used by MCP server github')).toBeInTheDocument()
+    fireEvent.click(getTab(/^Secrets/))
+    expect(await within(getSecretsSection()).findByText('Used by MCP server github')).toBeInTheDocument()
+
+    fireEvent.click(getTab(/^MCP servers/))
     fireEvent.click(within(await screen.findByRole('article', { name: 'github' })).getByRole('button', { name: 'Remove github' }))
     await waitFor(() => expect(screen.queryByRole('article', { name: 'github' })).not.toBeInTheDocument())
   })
@@ -385,18 +412,5 @@ describe('ConnectionsPage MCP servers', () => {
     const filesCard = await openMcpPanel()
     fireEvent.click(within(filesCard).getByRole('button', { name: 'Test files' }))
     expect(await within(screen.getByRole('article', { name: 'files' })).findByText('Could not connect: failed to start process')).toBeInTheDocument()
-  })
-})
-
-
-describe('ConnectionsPage MCP section from a link', () => {
-  beforeEach(() => resetSampleMcpServers())
-
-  it('opens the add-server form from ?section=mcp', async () => {
-    renderConnectionsPage('/connections?section=mcp')
-    expect(await screen.findByRole('form', { name: 'Add an MCP server' })).toBeInTheDocument()
-    fireEvent.click(within(screen.getByRole('form', { name: 'Add an MCP server' })).getByRole('button', { name: 'Cancel' }))
-    expect(screen.queryByRole('form', { name: 'Add an MCP server' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Add server' })).toBeInTheDocument()
   })
 })

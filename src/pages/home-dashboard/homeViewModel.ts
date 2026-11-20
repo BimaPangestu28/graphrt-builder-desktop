@@ -8,7 +8,7 @@ import { formatRunDay } from '@/pages/agent-run/runResultSummary'
 import { humanizeRunError } from '@/pages/agent-run/runErrorText'
 import { readPauseQuestion } from '@/pages/agent-run/runPauseQuestion'
 import { formatRelativeTime, runPathFor } from './homeLinks'
-import { agentPath, routePaths, runReviewPath } from '@/routes'
+import { agentPath, connectionsTabPath, routePaths, runReviewPath } from '@/routes'
 
 /** Turns backend runs and run stats into what the Home screen (09) shows. */
 
@@ -178,7 +178,7 @@ export function buildConnectionReminderItems(reminders: ConnectionReminder[]): A
     title: reminder.title,
     detail: reminder.detail,
     actionLabel: reminder.actionLabel,
-    actionPath: routePaths.connections,
+    actionPath: connectionsTabPath('apps'),
     isPrimaryAction: false,
   }))
 }

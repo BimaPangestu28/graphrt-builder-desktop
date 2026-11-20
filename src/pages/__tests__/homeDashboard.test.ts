@@ -8,7 +8,7 @@ import { deriveGettingStartedSteps, isGettingStartedComplete, type GettingStarte
 import { findLatestRunByAgent, formatRelativeTime, runPathFor } from '@/pages/home-dashboard/homeLinks'
 import { buildMonthlyNumbers } from '@/pages/home-dashboard/monthlyUsage'
 import { buildNeedsYouItems, describePluginGap, type NeedsYouSources } from '@/pages/home-dashboard/needsYou'
-import { agentPath, routePaths, runReviewPath } from '@/routes'
+import { agentPath, connectionsTabPath, routePaths, runReviewPath } from '@/routes'
 
 const now = new Date('2026-11-18T12:00:00')
 const agentNames: Record<string, string> = { promo: 'Cafe promo', digest: 'Inbox digest', helpdesk: 'Helpdesk' }
@@ -183,7 +183,7 @@ describe('Needs you', () => {
       now,
     )
     expect(items?.map((item) => [item.kind, item.actionPath])).toEqual([
-      ['setup', routePaths.connections],
+      ['setup', connectionsTabPath('models')],
       ['schedule', agentPath('scheduleAgent', 'digest')],
     ])
   })
@@ -257,7 +257,7 @@ describe('Getting started', () => {
       ['test', false],
       ['schedule', false],
     ])
-    expect(steps[0].path).toBe(routePaths.connections)
+    expect(steps[0].path).toBe(connectionsTabPath('models'))
     expect(steps[1].path).toBe(routePaths.newAgent)
   })
 

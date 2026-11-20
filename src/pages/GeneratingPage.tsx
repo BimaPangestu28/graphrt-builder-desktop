@@ -8,7 +8,7 @@ import { openBuilderDelayMs } from '@/data/mapsLeadsAgent'
 import { useFlowSummary } from '@/hooks/useFlowSummary'
 import { useFollowNewContent } from '@/hooks/useFollowNewContent'
 import { describeError } from '@/lib/agentDisplay'
-import { agentPath, routePaths } from '@/routes'
+import { agentPath, connectionsTabPath, routePaths } from '@/routes'
 import { BuildProgressChecklist, type BuildChecklistItem } from './agent-builder/BuildProgressChecklist'
 import { readBuildRequest } from './agent-builder/buildRequestState'
 import { PanelHeader, UserChatBubble } from './agent-builder/ChatBubbles'
@@ -104,7 +104,7 @@ function BuildErrorNotice({ buildError, onRetry }: { buildError: Error; onRetry:
       <span className="font-semibold">{isMissingCredentials ? 'Add an AI key to build agents' : 'Could not build the agent'}</span>
       <span className="leading-normal text-danger-deep">{describeError(buildError)}</span>
       {isMissingCredentials ? (
-        <Link to={routePaths.connections} className="font-medium">
+        <Link to={connectionsTabPath('models')} className="font-medium">
           Open Connections
         </Link>
       ) : (

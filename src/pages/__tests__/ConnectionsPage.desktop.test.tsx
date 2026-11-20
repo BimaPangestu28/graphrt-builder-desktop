@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import type { McpServerDefinition, WorkflowSecretOverview } from '@/api/connectionTypes'
-import { ConnectionsPage } from '../ConnectionsPage'
+import { connectionsTabPattern } from '@/routes'
+import { ConnectionsTabPage } from '../ConnectionsPage'
 
 /**
  * The Connections screen inside the desktop app shows only what the backend reports:
@@ -38,12 +39,18 @@ vi.mock('@/api/client', async (importOriginal) => {
   }
 })
 
-function renderConnectionsPage() {
+function renderConnectionsPage(initialPath: string) {
   return render(
-    <MemoryRouter>
-      <ConnectionsPage />
+    <MemoryRouter initialEntries={[initialPath]}>
+      <Routes>
+        <Route path={connectionsTabPattern} element={<ConnectionsTabPage />} />
+      </Routes>
     </MemoryRouter>,
   )
+}
+
+function getTabBar() {
+  return screen.getByRole('navigation', { name: 'Connections sections' })
 }
 
 function secretOverview(name: string): WorkflowSecretOverview {
@@ -60,19 +67,30 @@ describe('ConnectionsPage in the desktop app', () => {
     mcpServers = []
   })
 
-  it('shows no sample apps and honest empty states', async () => {
-    renderConnectionsPage()
-    expect(await within(getSecretsSection()).findByText(/Server logins, API tokens and passwords your agents use · None yet/)).toBeInTheDocument()
-    const mcpSection = screen.getByRole('region', { name: 'MCP servers' })
-    expect(await within(mcpSection).findByText('Give agents tools from any MCP server · 0 added')).toBeInTheDocument()
-    expect(within(mcpSection).getByText(/No MCP servers yet/)).toBeInTheDocument()
-    expect(within(getSecretsSection()).getByText(/No secrets yet\. Use Add secret, or add an agent that needs one and it appears here/)).toBeInTheDocument()
+  it('shows no sample apps, no Apps tab and honest empty states', async () => {
+    renderConnectionsPage('/connections/secrets')
+    expect(await within(getSecretsSection()).findByText(/No secrets yet\. Use Add secret, or add an agent that needs one and it appears here/)).toBeInTheDocument()
+    expect(await within(getTabBar()).findByRole('link', { name: 'AI models 1 connected' })).toBeInTheDocument()
+    expect(within(getTabBar()).getByRole('link', { name: 'Secrets' })).toHaveAttribute('aria-current', 'page')
+    expect(within(getTabBar()).getByRole('link', { name: 'MCP servers' })).toBeInTheDocument()
+    expect(within(getTabBar()).queryByRole('link', { name: /^Apps/ })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Add secret' }))
     expect(screen.getByRole('form', { name: 'Add a secret' })).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Apps' })).not.toBeInTheDocument()
     expect(screen.queryByText('WhatsApp')).not.toBeInTheDocument()
     expect(screen.queryByText(/Google Places/)).not.toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('says there are no MCP servers yet', async () => {
+    renderConnectionsPage('/connections/mcp')
+    const mcpSection = screen.getByRole('region', { name: 'MCP servers' })
+    expect(await within(mcpSection).findByText(/No MCP servers yet/)).toBeInTheDocument()
+  })
+
+  it('sends the Apps tab to AI models, since the desktop app has no app accounts', async () => {
+    renderConnectionsPage('/connections/apps')
+    expect(await screen.findByRole('region', { name: 'AI models' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Apps' })).not.toBeInTheDocument()
   })
 
   it('lists the secrets the agents declare, set or not', async () => {
@@ -80,8 +98,8 @@ describe('ConnectionsPage in the desktop app', () => {
       { ...secretOverview('GITHUB_TOKEN'), mcpServers: ['github'] },
       { ...secretOverview('MAPS_API_KEY'), configured: true, agents: [{ agentId: 'a1', agentName: '[AGENT NAME]' }] },
     ]
-    renderConnectionsPage()
-    expect(await within(getSecretsSection()).findByText(/· 1 saved · 1 missing/)).toBeInTheDocument()
+    renderConnectionsPage('/connections/secrets')
+    expect(await within(getTabBar()).findByRole('link', { name: 'Secrets 1 missing' })).toBeInTheDocument()
     const githubRow = within(getSecretsSection()).getByRole('listitem', { name: 'GITHUB_TOKEN' })
     expect(within(githubRow).getByText('Used by MCP server github')).toBeInTheDocument()
     expect(within(githubRow).getByText('Missing')).toBeInTheDocument()

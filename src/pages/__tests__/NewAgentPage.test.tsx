@@ -4,7 +4,7 @@ import { BackendError } from '@/api/client'
 import { resetSampleCredentials, sampleCredentialsBackend } from '@/api/sampleBackend/credentials'
 import mapsWhatsAppTemplate from '@/data/mapsWhatsAppTemplate.json'
 import { agentTemplates, jobDescriptionPlaceholder, newAgentTemplatePath } from '@/data/newAgentTemplates'
-import { routePaths } from '@/routes'
+import { connectionsTabPath, routePaths } from '@/routes'
 import { NewAgentPage } from '../NewAgentPage'
 
 /** Stand-in for screen 03 that shows the router state it received. */
@@ -27,7 +27,7 @@ function renderNewAgentPage(initialEntry: string = routePaths.newAgent) {
         <Route path={routePaths.newAgent} element={<NewAgentPage />} />
         <Route path={routePaths.generating} element={<GeneratingStandIn />} />
         <Route path={routePaths.chatbotSetup} element={<ChatbotSetupStandIn />} />
-        <Route path={routePaths.connections} element={<p>Connections screen</p>} />
+        <Route path={connectionsTabPath('models')} element={<p>Connections screen</p>} />
       </Routes>
     </MemoryRouter>,
   )
