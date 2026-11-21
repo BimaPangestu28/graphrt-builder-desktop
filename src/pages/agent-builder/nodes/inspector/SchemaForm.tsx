@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from 'react'
 import type { JsonValue } from '@/api/agentGraphTypes'
-import { isEmptyConfigValue, isJsonObject, type JsonObject } from './configPaths'
-import { Field, NumberInput, SelectInput, ToggleRow } from './fields'
+import { isEmptyConfigValue, isJsonObject, writeConfigValue, type JsonObject } from './configPaths'
+import { AddButton, Field, NumberInput, RemoveButton, SelectInput, TextInput, ToggleRow } from './fields'
 import { useInspector } from './InspectorContext'
 import { readSelector } from './references'
 import { fieldPathAttribute } from './sectionRequest'
@@ -11,7 +11,7 @@ import { TemplateField } from './TemplateField'
 /**
  * The generic settings form, built from a kind's config JSON Schema (`get_node_kinds`):
  * text (with value chips), numbers with their limits, yes/no, choices, value selectors,
- * and a JSON box for lists and objects. Used for plugin actions and any kind without a
+ * lists of texts and of simple objects as editable rows, and a JSON box for anything else. Used for plugin actions and any kind without a
  * dedicated panel. Required fields that are empty say so inline.
  */
 
@@ -32,7 +32,33 @@ export function schemaRequired(schema: JsonSchema | null | undefined): string[] 
 }
 
 /** The kind of input a property gets. */
-export type SchemaFieldKind = 'selector' | 'choice' | 'text' | 'number' | 'integer' | 'boolean' | 'json'
+export type SchemaFieldKind = 'selector' | 'choice' | 'text' | 'number' | 'integer' | 'boolean' | 'string-list' | 'object-list' | 'json'
+
+/** Item kinds an object-list row can edit inline (anything else keeps the JSON box). */
+const simpleItemKinds = new Set<SchemaFieldKind>(['selector', 'choice', 'text', 'number', 'integer', 'boolean', 'string-list'])
+
+/** A row can hold it: a simple input, or an untyped value (`default: {}`) as a small JSON box. */
+function isSimpleItemProperty(property: JsonSchema): boolean {
+  const kind = schemaFieldKind(property)
+  if (simpleItemKinds.has(kind)) return true
+  return kind === 'json' && schemaType(property) === null && property.properties === undefined && property.items === undefined
+}
+
+function itemSchemaOf(property: JsonSchema): JsonSchema | null {
+  return typeof property.items === 'object' && property.items !== null && !Array.isArray(property.items) ? (property.items as JsonSchema) : null
+}
+
+/** The list kind of an array property: rows of text, rows of simple objects, or null (JSON). */
+function listFieldKind(property: JsonSchema): 'string-list' | 'object-list' | null {
+  const items = itemSchemaOf(property)
+  if (!items) return null
+  const itemType = schemaType(items)
+  if (itemType === 'string' && !Array.isArray(items.enum)) return 'string-list'
+  if (itemType !== 'object') return null
+  const itemProperties = schemaProperties(items)
+  if (itemProperties.length === 0 || itemProperties.length > 8) return null
+  return itemProperties.every(([, itemProperty]) => isSimpleItemProperty(itemProperty)) ? 'object-list' : null
+}
 
 function schemaType(property: JsonSchema): string | null {
   if (typeof property.type === 'string') return property.type
@@ -53,6 +79,7 @@ export function schemaFieldKind(property: JsonSchema): SchemaFieldKind {
   if (type === 'integer') return 'integer'
   if (type === 'number') return 'number'
   if (type === 'boolean') return 'boolean'
+  if (type === 'array') return listFieldKind(property) ?? 'json'
   return 'json'
 }
 
@@ -65,7 +92,7 @@ export function propertyLabel(name: string, property: JsonSchema): string {
 
 const multilineNames = /(text|prompt|message|template|content|caption|body|instruction|description|query)/i
 
-function JsonBox({ label, value, onCommit, required, error, hint }: { label: string; value: JsonValue | undefined; onCommit: (value: JsonValue | undefined) => void; required?: boolean; error?: string | null; hint?: string }) {
+export function JsonBox({ label, value, onCommit, required, error, hint }: { label: string; value: JsonValue | undefined; onCommit: (value: JsonValue | undefined) => void; required?: boolean; error?: string | null; hint?: string }) {
   const { readOnly } = useInspector()
   const id = useId()
   const text = value === undefined ? '' : JSON.stringify(value, null, 2)
@@ -96,6 +123,70 @@ function JsonBox({ label, value, onCommit, required, error, hint }: { label: str
         }}
         className="box-border w-full resize-y rounded-lg border border-line-strong bg-surface px-2 py-1.5 font-mono text-[12px] outline-none focus:border-ink"
       />
+    </Field>
+  )
+}
+
+function readStringList(value: JsonValue | undefined): string[] {
+  return Array.isArray(value) ? value.map((item) => (typeof item === 'string' ? item : JSON.stringify(item))) : []
+}
+
+/** A list of texts as rows (add, edit, remove). */
+function StringListField({ label, value, onChange, required, error, hint }: { label: string; value: JsonValue | undefined; onChange: (value: JsonValue | undefined) => void; required?: boolean; error?: string | null; hint?: string }) {
+  const { readOnly } = useInspector()
+  const items = readStringList(value)
+  const write = (next: string[]) => onChange(next.length === 0 && !required ? undefined : next)
+  return (
+    <Field label={label} required={required} hint={hint} error={error}>
+      <div role="group" aria-label={label} className="flex flex-col gap-1.5">
+        {items.map((item, index) => (
+          <div key={index} className="flex items-center gap-1.5">
+            <TextInput ariaLabel={`${label} ${index + 1}`} value={item} disabled={readOnly} onCommit={(text) => write(items.map((current, itemIndex) => (itemIndex === index ? text : current)))} />
+            <RemoveButton label={`Remove ${label.toLowerCase()} ${index + 1}`} disabled={readOnly} onClick={() => write(items.filter((_unused, itemIndex) => itemIndex !== index))} />
+          </div>
+        ))}
+        <AddButton disabled={readOnly} onClick={() => write([...items, ''])}>
+          Add
+        </AddButton>
+      </div>
+    </Field>
+  )
+}
+
+/** A list of small objects as cards, one input per item property; unknown item keys are kept. */
+function ObjectListField({ label, property, value, onChange, required, error, hint }: { label: string; property: JsonSchema; value: JsonValue | undefined; onChange: (value: JsonValue | undefined) => void; required?: boolean; error?: string | null; hint?: string }) {
+  const { readOnly } = useInspector()
+  const itemSchema = itemSchemaOf(property) ?? {}
+  const itemRequired = schemaRequired(itemSchema)
+  const itemProperties = schemaProperties(itemSchema)
+  const items = Array.isArray(value) ? value : []
+  const write = (next: JsonValue[]) => onChange(next.length === 0 && !required ? undefined : next)
+  const updateItem = (index: number, name: string, next: JsonValue | undefined) =>
+    write(items.map((item, itemIndex) => (itemIndex === index ? writeConfigValue(isJsonObject(item) ? item : {}, [name], next) : item)))
+  const newItem = (): JsonObject => Object.fromEntries(itemProperties.flatMap(([name, itemProperty]) => (itemProperty.default !== undefined ? [[name, itemProperty.default as JsonValue]] : itemRequired.includes(name) && schemaFieldKind(itemProperty) === 'text' ? [[name, '']] : [])))
+  return (
+    <Field label={label} required={required} hint={hint} error={error}>
+      <ol aria-label={label} className="m-0 flex list-none flex-col gap-1.5 p-0">
+        {items.map((item, index) => {
+          const object = isJsonObject(item) ? item : {}
+          return (
+            <li key={index} className="flex flex-col gap-2 rounded-[10px] border border-line bg-surface p-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[12px] font-medium text-muted">
+                  {label} {index + 1}
+                </span>
+                <RemoveButton label={`Remove ${label.toLowerCase()} ${index + 1}`} disabled={readOnly} onClick={() => write(items.filter((_unused, itemIndex) => itemIndex !== index))} />
+              </div>
+              {itemProperties.map(([name, itemProperty]) => (
+                <SchemaPropertyInput key={name} name={name} property={itemProperty} value={object[name]} required={itemRequired.includes(name)} onChange={(next) => updateItem(index, name, next)} />
+              ))}
+            </li>
+          )
+        })}
+      </ol>
+      <AddButton disabled={readOnly} onClick={() => write([...items, newItem()])}>
+        Add
+      </AddButton>
     </Field>
   )
 }
@@ -173,6 +264,10 @@ function SchemaPropertyInput({ name, property, value, required, onChange, requir
         </Field>
       )
     }
+    case 'string-list':
+      return <StringListField label={label} value={value} required={required} error={missing} hint={hint} onChange={onChange} />
+    case 'object-list':
+      return <ObjectListField label={label} property={property} value={value} required={required} error={missing} hint={hint} onChange={onChange} />
     case 'boolean':
       return <ToggleRow label={label} description={hint} disabled={readOnly} checked={typeof value === 'boolean' ? value : property.default === true} onChange={(checked) => onChange(checked)} />
     default:

@@ -20,14 +20,22 @@ interface NodesRunActionsProps {
   onTest: () => void
 }
 
+/** Why Test can't be pressed now, for its tooltip and screen readers; null when it can. */
+export function describeTestButtonState(testBlock: TestBlock | null, isStarting: boolean, isRunActive: boolean): string | null {
+  if (isStarting) return 'Starting the test…'
+  if (isRunActive) return 'A test is running: follow it on the steps'
+  return testBlock?.reason ?? null
+}
+
 /**
  * The Nodes toolbar's Add note, Validate (with the number of problems, spec 37) and Test
- * (off with the reason while the graph has errors or the builder works; spec 45).
+ * (off with the reason while the graph has errors or the builder works; spec 45). It is
+ * the only Test in the Nodes view: the builder header leaves its own out there.
  */
 export function NodesRunActions({ problems, isValidating, onValidate, onAddNote, canAddNote, testBlock, isStarting, isRunActive, onTest }: NodesRunActionsProps) {
   const reasonId = useId()
   const errorCount = problems.filter((problem) => problem.severity === 'error').length
-  const testBlockReason = testBlock?.reason ?? null
+  const testBlockReason = describeTestButtonState(testBlock, isStarting, isRunActive)
   return (
     <>
       <button type="button" onClick={onAddNote} disabled={!canAddNote} title="Add note" className={actionButtonClassNames}>
@@ -55,6 +63,9 @@ export function NodesRunActions({ problems, isValidating, onValidate, onAddNote,
         title={testBlockReason ?? undefined}
         className={joinClassNames(actionButtonClassNames, 'border-ink bg-ink !text-white hover:bg-ink-2')}
       >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M7 4.5v15l13-7.5z" />
+        </svg>
         {isStarting ? 'Starting…' : isRunActive ? 'Testing…' : 'Test'}
       </button>
       {testBlockReason && (

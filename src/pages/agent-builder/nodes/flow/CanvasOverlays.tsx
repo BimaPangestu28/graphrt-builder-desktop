@@ -18,9 +18,14 @@ interface ZoomControlsProps {
   onShowShortcuts: () => void
   /** Px covered on the left by a floating panel; the controls sit right of it. */
   insetLeft?: number
+  /** Whether the minimap shows, and its toggle (absent: no Map button). */
+  isMinimapShown?: boolean
+  onToggleMinimap?: () => void
+  /** A very narrow canvas: only zoom and Fit. */
+  isTight?: boolean
 }
 
-export function ZoomControls({ zoom, onZoomIn, onZoomOut, onFit, onShowShortcuts, insetLeft = 0 }: ZoomControlsProps) {
+export function ZoomControls({ zoom, onZoomIn, onZoomOut, onFit, onShowShortcuts, insetLeft = 0, isMinimapShown = false, onToggleMinimap, isTight = false }: ZoomControlsProps) {
   return (
     <div role="group" aria-label="Zoom" className={joinClassNames(floatingBoxClassNames, 'absolute bottom-4 z-10 flex items-center gap-0.5 p-0.5')} style={{ left: 16 + insetLeft }}>
       <button type="button" aria-label="Zoom out" onClick={onZoomOut} className={iconButtonClassNames}>
@@ -40,10 +45,28 @@ export function ZoomControls({ zoom, onZoomIn, onZoomOut, onFit, onShowShortcuts
       <button type="button" onClick={onFit} className="h-8 cursor-pointer rounded-lg border-0 bg-transparent px-2.5 text-[12px] font-medium text-ink-2 hover:bg-subtle">
         Fit
       </button>
-      <span aria-hidden="true" className="mx-0.5 h-[18px] w-px bg-line" />
-      <button type="button" aria-label="Keyboard shortcuts" onClick={onShowShortcuts} className={joinClassNames(iconButtonClassNames, 'text-[13px] font-semibold')}>
-        ?
-      </button>
+      {onToggleMinimap && !isTight && (
+        <button
+          type="button"
+          aria-pressed={isMinimapShown}
+          aria-label={isMinimapShown ? 'Hide the minimap' : 'Show the minimap'}
+          title={isMinimapShown ? 'Hide the minimap' : 'Show the minimap'}
+          onClick={onToggleMinimap}
+          className={joinClassNames(iconButtonClassNames, isMinimapShown ? 'bg-subtle text-ink' : '')}
+        >
+          <StrokeIcon size={15}>
+            <path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2zM9 4v14M15 6v14" />
+          </StrokeIcon>
+        </button>
+      )}
+      {!isTight && (
+        <>
+          <span aria-hidden="true" className="mx-0.5 h-[18px] w-px bg-line" />
+          <button type="button" aria-label="Keyboard shortcuts" onClick={onShowShortcuts} className={joinClassNames(iconButtonClassNames, 'text-[13px] font-semibold')}>
+            ?
+          </button>
+        </>
+      )}
     </div>
   )
 }

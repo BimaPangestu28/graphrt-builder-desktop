@@ -22,6 +22,8 @@ export {
   ConnectionLineType,
   EdgeLabelRenderer,
   getSmoothStepPath,
+  getNodesBounds,
+  getViewportForBounds,
   NodeResizer,
   Panel,
   SelectionMode,

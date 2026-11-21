@@ -9,6 +9,7 @@ import { AgentPanel, HttpRequestPanel, ToolPanel } from './panels/ConnectPanels'
 import { AggregatorPanel, AnswerPanel, AssignerPanel, EndPanel, ListOperatorPanel, TemplateTransformPanel } from './panels/DataPanels'
 import { HumanInputPanel, IfElsePanel, IterationPanel, LoopPanel } from './panels/FlowPanels'
 import { PluginActionPanel } from './panels/PluginActionPanel'
+import { StartPanel } from './panels/StartPanel'
 import { SchemaForm, SchemaPropertyField, schemaProperties } from './SchemaForm'
 
 /**
@@ -17,6 +18,7 @@ import { SchemaForm, SchemaPropertyField, schemaProperties } from './SchemaForm'
  */
 
 const dedicatedPanels: Record<string, ComponentType> = {
+  start: StartPanel,
   llm: AskModelPanel,
   'parameter-extractor': ParameterExtractorPanel,
   'knowledge-retrieval': KnowledgeRetrievalPanel,

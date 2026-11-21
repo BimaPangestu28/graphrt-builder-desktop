@@ -324,12 +324,24 @@ describe('BuilderPage', () => {
     expect(await within(needsRow).findByText('Ready')).toBeInTheDocument()
   })
 
+  it('has one Test in the Nodes view: the toolbar one, not the header link', async () => {
+    setSampleAgentPluginNeeds('maps-leads', [])
+    renderBuilderPage()
+    expect(await screen.findByRole('link', { name: /Test with 1 place/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('tab', { name: 'Nodes' }))
+    const toolbar = await screen.findByRole('toolbar', { name: 'Nodes' })
+    expect(screen.queryByRole('link', { name: /Test with 1 place/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Test with 1 place/ })).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /^Test$/ })).toEqual([within(toolbar).getByRole('button', { name: /^Test$/ })])
+    expect(screen.getByRole('link', { name: 'History' })).toBeInTheDocument()
+  })
+
   it('brings the setup card up instead of starting a test while plugins are not ready', async () => {
     renderBuilderPage()
     const setupMessage = await screen.findByRole('group', { name: 'This agent needs 2 plugins · 0 ready' })
     expect(screen.queryByRole('link', { name: /Test with 1 place/ })).not.toBeInTheDocument()
     const testButton = screen.getByRole('button', { name: 'Test with 1 place' })
-    expect(testButton).toHaveAccessibleDescription('Set up the plugins it needs in the chat first')
+    expect(testButton).toHaveAccessibleDescription('Set up the plugins this agent needs first')
     fireEvent.click(testButton)
     expect(setupMessage).toHaveFocus()
   })

@@ -119,6 +119,11 @@ describe('config helpers', () => {
     expect(schemaFieldKind({ type: ['number', 'null'] })).toBe('number')
     expect(schemaFieldKind({ type: 'boolean' })).toBe('boolean')
     expect(schemaFieldKind({ type: 'array' })).toBe('json')
+    expect(schemaFieldKind({ type: 'array', items: { type: 'string' } })).toBe('string-list')
+    const simpleItem = { type: 'object', properties: { variable: { type: 'string' }, required: { type: 'boolean' }, default: {}, options: { type: 'array', items: { type: 'string' } } } }
+    expect(schemaFieldKind({ type: 'array', items: simpleItem })).toBe('object-list')
+    expect(schemaFieldKind({ type: 'array', items: { type: 'object', properties: { nested: { type: 'object', properties: { a: { type: 'string' } } } } } })).toBe('json')
+    expect(schemaFieldKind({ type: 'array', items: { type: 'object' } })).toBe('json')
     expect(schemaProperties({ properties: { a: { type: 'string' } }, required: ['a', 'b'] }).map(([name]) => name)).toEqual(['a', 'b'])
   })
 

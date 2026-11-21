@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { SaveGraphResult } from '@/api/agentGraphTypes'
 import { stopAgentRevision } from '@/api/builder'
 import { BackendError } from '@/api/client'
@@ -7,6 +7,8 @@ import { describeError } from '@/lib/agentDisplay'
 import { AddNodePalette, paletteWidth } from './AddNodePalette'
 import type { InspectorSectionRequest, InspectorSectionTarget, NodeSetupStatus } from './contracts'
 import { computeAutoLayout } from './flow/autoLayout'
+import { FoldChatHint } from './flow/FoldChatHint'
+import { isCompactCanvas, isTinyCanvas, useElementSize } from './flow/useCanvasViewportFit'
 import { describeNodeList } from './flow/canvasCommands'
 import { addGraphEdge, addGraphNode, removeGraphEdges, removeGraphNodes } from './graphEdits'
 import { NodeCanvas } from './NodeCanvas'
@@ -59,6 +61,8 @@ export interface NodesViewProps {
   onShowPluginSetup?: () => void
   /** Delay before an edit is saved as a version; null saves only with Save. */
   autosaveDelayMs?: number | null
+  /** Folds the builder chat into its rail: offered as a hint while the canvas is narrow. */
+  onFoldChat?: () => void
 }
 
 /** "Stop the builder" in the sync banner: cancels the running chat change (the chat says "Stopped by you"). */
@@ -119,6 +123,7 @@ export function NodesView({
   arePluginsReady = true,
   onShowPluginSetup,
   autosaveDelayMs = defaultAutosaveDelayMs,
+  onFoldChat,
 }: NodesViewProps) {
   const controller = useAgentGraph({ agentId: agent.id, currentVersion: agent.currentVersion, onSaved: onGraphSaved })
   const { nodeKinds, kindsByKind, kindNames, reload: reloadNodeKinds } = useNodeKinds()
@@ -170,6 +175,8 @@ export function NodesView({
   const problemsByNode = useMemo(() => (graph ? groupProblemsByNode(problems, graph) : {}), [graph, problems])
   const testBlock = graph ? describeTestBlock({ problems, graph, builderBusy: controller.builderBusy, isSaving, arePluginsReady }) : null
   const pluginStatuses = useMemo(() => toPluginStatuses(pluginRequirements ?? []), [pluginRequirements])
+  const canvasColumnRef = useRef<HTMLDivElement>(null)
+  const canvasColumnSize = useElementSize(canvasColumnRef, graph !== null)
 
   async function placeAllNodes() {
     if (!graph) return
@@ -218,7 +225,7 @@ export function NodesView({
       <SyncBanner controller={controller} onStopBuilder={() => void stopBuilder(agent.id)} />
       <RunBar agentId={agent.id} graph={graph} live={live} />
       <div className="flex min-h-0 flex-1">
-        <div className="relative min-w-0 flex-1" {...{ [runCanvasScopeAttribute]: '' }}>
+        <div ref={canvasColumnRef} className="relative min-w-0 flex-1 overflow-hidden" {...{ [runCanvasScopeAttribute]: '' }}>
           <NodeDecorationsProvider value={{ run: live.runState, problemsByNode, liveViews: live.liveViews, now: live.now, onReviewApproval: live.setReviewNodeId }}>
             <CanvasNotesProvider value={{ updateNote: canvasNotes.updateNote, removeNote: canvasNotes.removeNote, readOnly }}>
               <PaletteDropZone graph={graph} readOnly={readOnly} {...palette.dropZoneProps}>
@@ -256,6 +263,7 @@ export function NodesView({
               </PaletteDropZone>
             </CanvasNotesProvider>
           </NodeDecorationsProvider>
+          {onFoldChat && isCompactCanvas(canvasColumnSize) && <FoldChatHint onFoldChat={onFoldChat} isTight={isTinyCanvas(canvasColumnSize)} />}
           <RunOverlay graph={graph} runId={live.testRun.runId} live={live} problems={problems} />
           <AddNodePalette
             isOpen={palette.isOpen}
