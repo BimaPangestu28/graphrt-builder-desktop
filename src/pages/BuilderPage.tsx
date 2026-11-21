@@ -157,6 +157,7 @@ export function BuilderPage() {
             void reloadAgentAndSteps(null)
           }}
           onAskBuilder={prefillChat}
+          onFoldChat={activeTab === 'nodes' && !chatRail.isCollapsed ? () => setChatCollapsed(true) : undefined}
           activeTab={activeTab}
           onActiveTabChange={setActiveTab}
         />

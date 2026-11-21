@@ -7,7 +7,7 @@ import { containerInset, findDropContainer, placeInsideContainer } from '../flow
 import { listPaneMenuItems } from '../flow/NodeContextMenu'
 import { edgeLabelOf, toFlowEdges, toFlowNodes } from '../flow/toFlowElements'
 import { placeUnplacedNodes } from '../flow/useCanvasLayout'
-import { canvasFitPadding } from '../flow/useCanvasViewportFit'
+import { canvasFitPadding, centreClearOfOverlays, isCompactCanvas, isMinimapShown } from '../flow/useCanvasViewportFit'
 import { checkReparentNodes, createGraphNode, insertGraphNodeOnEdge, referencedNodeIds, reparentGraphNodes } from '../graphEdits'
 import { inspectorTargetForProblem } from '../problems/problemDisplay'
 
@@ -182,6 +182,30 @@ describe('canvas menus, fit and problems', () => {
   it('fits clear of a floating panel on the left', () => {
     expect(canvasFitPadding(0).left).toBe('28px')
     expect(canvasFitPadding(312).left).toBe('340px')
+  })
+
+  it('fits clear of the zoom bar and, when it shows, the minimap; tighter on a narrow canvas', () => {
+    expect(canvasFitPadding(0)).toEqual({ top: '28px', right: '28px', bottom: '64px', left: '28px' })
+    expect(canvasFitPadding(0, { minimapShown: true }).bottom).toBe('140px')
+    expect(canvasFitPadding(312, { compact: true })).toEqual({ top: '16px', right: '16px', bottom: '56px', left: '328px' })
+  })
+
+  it('shows the minimap only when there is room, unless the person chose', () => {
+    expect(isMinimapShown('auto', null)).toBe(false)
+    expect(isMinimapShown('auto', { width: 1100, height: 700 })).toBe(true)
+    expect(isMinimapShown('auto', { width: 560, height: 700 })).toBe(false)
+    expect(isMinimapShown('auto', { width: 1100, height: 400 })).toBe(false)
+    expect(isMinimapShown('shown', { width: 400, height: 300 })).toBe(true)
+    expect(isMinimapShown('hidden', { width: 1400, height: 900 })).toBe(false)
+    expect(isCompactCanvas({ width: 560 })).toBe(true)
+    expect(isCompactCanvas({ width: 820 })).toBe(false)
+  })
+
+  it('centres a step in the part of the canvas no overlay covers', () => {
+    const padding = canvasFitPadding(312, { minimapShown: true })
+    // 340 left vs 28 right moves the view left; 140 bottom vs 28 top moves it down.
+    expect(centreClearOfOverlays({ x: 100, y: 100 }, padding, 1)).toEqual({ x: -56, y: 156 })
+    expect(centreClearOfOverlays({ x: 100, y: 100 }, canvasFitPadding(0), 0.5)).toEqual({ x: 100, y: 136 })
   })
 
   it('points Show node at the part of the inspector a problem is about', () => {

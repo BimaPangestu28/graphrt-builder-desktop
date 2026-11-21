@@ -31,7 +31,8 @@ import { flowEdgeTypes } from './flow/StepEdge'
 import { flowNodeTypes } from './flow/StepNode'
 import { toFlowEdges, toFlowNodes, type StepFlowEdge, type StepFlowNode } from './flow/toFlowElements'
 import { useCanvasLayout, type MeasuredSizes } from './flow/useCanvasLayout'
-import { useCanvasViewportFit } from './flow/useCanvasViewportFit'
+import { useMinimapPreference } from './flow/minimapPreference'
+import { isCompactCanvas, isMinimapShown, isTinyCanvas, useCanvasViewportFit, useElementSize } from './flow/useCanvasViewportFit'
 import { useContainerDrag } from './flow/useContainerDrag'
 import { disconnectGraphNodes, reconnectGraphEdge, removeGraphEdges } from './graphEdits'
 import { isNoteFlowNodeId, noteIdOf, noteNodeTypes, toNoteFlowNodes } from './notes/NoteNode'
@@ -172,10 +173,14 @@ function CanvasBody(props: NodeCanvasProps) {
   const flowEdges = useMemo(() => toFlowEdges(graph, liveEdgeIds), [graph, liveEdgeIds])
 
   const announce = useCallback((message: string) => setAnnouncement(message), [])
+  const canvasSize = useElementSize(containerRef, mergedPositions !== null)
+  const [minimapPreference, setMinimapPreference] = useMinimapPreference()
+  const showMinimap = isMinimapShown(minimapPreference, canvasSize)
   const { fitViewOptions, fitAll } = useCanvasViewportFit({
     containerRef,
     isReady: mergedPositions !== null,
     insetLeft: props.overlayInsets?.left ?? 0,
+    room: { minimapShown: showMinimap, compact: isCompactCanvas(canvasSize) },
     duration: motion.duration,
     focusRequest: props.focusRequest ?? null,
     selectedNodeId: selectedNodeIds.length === 1 ? selectedNodeIds[0] : null,
@@ -645,6 +650,7 @@ function CanvasBody(props: NodeCanvasProps) {
           ariaLabelConfig={{ 'node.a11yDescription.default': 'Press Enter to open its settings, Shift F10 for its menu, arrow keys to move it.' }}
         >
           <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#D4D4D8" />
+          {showMinimap && (
           <MiniMap<StepFlowNode>
             pannable
             zoomable
@@ -656,6 +662,7 @@ function CanvasBody(props: NodeCanvasProps) {
             maskColor="rgba(244, 244, 245, 0.55)"
             style={{ width: 150, height: 112 }}
           />
+          )}
         </ReactFlow>
         <ZoomControls
           zoom={zoom}
@@ -663,6 +670,9 @@ function CanvasBody(props: NodeCanvasProps) {
           onZoomOut={() => void reactFlow.zoomOut(motion)}
           onFit={fitAll}
           insetLeft={props.overlayInsets?.left ?? 0}
+          isMinimapShown={showMinimap}
+          isTight={isTinyCanvas(canvasSize)}
+          onToggleMinimap={() => setMinimapPreference(showMinimap ? 'hidden' : 'shown')}
           onShowShortcuts={() => setIsShortcutsOpen((isOpen) => !isOpen)}
         />
         {isShortcutsOpen && <ShortcutsPanel isMac={isMac} onClose={() => setIsShortcutsOpen(false)} />}

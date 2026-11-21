@@ -59,8 +59,10 @@ const testPlayIcon = (
 /**
  * History, Schedule and the primary "Test with 1 place" action. While plugins are not
  * ready (`onTestBlocked` set), Test is a button that brings the chat's setup card up instead.
+ * The Nodes view has its own Test in its toolbar (it runs on the canvas, with Validate and
+ * the reason when it is off), so the header leaves it out there: one Test per view.
  */
-function BuilderHeaderActions({ agentId, onTestBlocked }: { agentId: string; onTestBlocked?: () => void }) {
+function BuilderHeaderActions({ agentId, onTestBlocked, showTest }: { agentId: string; onTestBlocked?: () => void; showTest: boolean }) {
   const testClassNames = `${headerLinkBaseClassNames} bg-ink !text-white hover:bg-ink-2`
   return (
     <div className="flex gap-2">
@@ -70,14 +72,14 @@ function BuilderHeaderActions({ agentId, onTestBlocked }: { agentId: string; onT
       <Link to={agentPath('scheduleAgent', agentId)} className={outlineHeaderLinkClassNames}>
         Schedule
       </Link>
-      {onTestBlocked ? (
+      {!showTest ? null : onTestBlocked ? (
         <>
           <button type="button" aria-describedby="test-needs-plugins" onClick={onTestBlocked} className={joinClassNames(testClassNames, 'cursor-pointer border-0')}>
             {testPlayIcon}
             Test with 1 place
           </button>
           <span id="test-needs-plugins" className="sr-only">
-            Set up the plugins it needs in the chat first
+            Set up the plugins this agent needs first
           </span>
         </>
       ) : (
@@ -180,6 +182,8 @@ interface BuilderAgentPanelProps {
   onGraphSaved?: (result: SaveGraphResult) => void
   /** "Fix with builder" in the Nodes view: prefills the chat box (the user sends it). */
   onAskBuilder?: (request: string) => void
+  /** Folds the chat into its rail (offered in the Nodes view when the canvas is narrow); absent when it is folded. */
+  onFoldChat?: () => void
   /** The open tab when the page controls it (the chat narrows in Nodes); uncontrolled without it. */
   activeTab?: BuilderTabKey
   onActiveTabChange?: (tab: BuilderTabKey) => void
@@ -202,6 +206,7 @@ export function BuilderAgentPanel({
   onAgentRenamed,
   onGraphSaved,
   onAskBuilder,
+  onFoldChat,
   activeTab: controlledTab,
   onActiveTabChange,
 }: BuilderAgentPanelProps) {
@@ -220,12 +225,12 @@ export function BuilderAgentPanel({
     <section aria-label="Agent" className={`box-border flex min-w-0 flex-[1_1_440px] flex-col bg-subtle ${splitPaneColumnClassName}`}>
       <header className={joinClassNames('box-border flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-line py-3', activeTab === 'nodes' ? 'px-4' : 'px-6')}>
         <BuilderTabList activeTab={activeTab} onSelect={setActiveTab} />
-        <BuilderHeaderActions agentId={agent.id} onTestBlocked={arePluginsReady === false ? onShowPluginSetup : undefined} />
+        <BuilderHeaderActions agentId={agent.id} onTestBlocked={arePluginsReady === false ? onShowPluginSetup : undefined} showTest={activeTab !== 'nodes'} />
       </header>
 
       {activeTab === 'nodes' ? (
         <div role="tabpanel" id="builder-panel-nodes" aria-labelledby="builder-tab-nodes" className="flex min-h-0 flex-1 flex-col">
-          <NodesView agent={agent} onGraphSaved={onGraphSaved} pluginRequirements={requirements} onAskBuilder={onAskBuilder ?? askBuilder} arePluginsReady={arePluginsReady !== false} onShowPluginSetup={onShowPluginSetup} />
+          <NodesView agent={agent} onGraphSaved={onGraphSaved} pluginRequirements={requirements} onAskBuilder={onAskBuilder ?? askBuilder} arePluginsReady={arePluginsReady !== false} onShowPluginSetup={onShowPluginSetup} onFoldChat={onFoldChat} />
         </div>
       ) : (
         <div role="tabpanel" id={`builder-panel-${activeTab}`} aria-labelledby={`builder-tab-${activeTab}`} className={`flex flex-col gap-6 p-6 ${splitPaneScrollClassName}`}>

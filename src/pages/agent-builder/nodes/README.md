@@ -16,7 +16,7 @@ canvas, inspector, add-node palette and live-run / sync parts on top of it.
 | `graphEdits.ts` | Pure edit functions (`updateGraphNode`, `addGraphEdge`, `createGraphNode`, `uniqueNodeId`, `toGraphEdit`…) | everyone |
 | `contracts.ts` | Props of the phase-2 components | everyone |
 | `NodeCanvas.tsx`, `flow/*` | Canvas: React Flow + ELK auto-layout, read-only render, drag to move | **canvas** |
-| `NodeInspector.tsx`, `inspector/*` | Step settings: header, per-kind panels, schema form, Change action, When this step fails, variable picker (`{{#node.field#}}` chips) | **inspector** |
+| `NodeInspector.tsx`, `inspector/*` | Step settings: header, per-kind panels (Start: the run inputs editor, `inspector/startInputs.ts`), schema form (lists of simple objects as rows), Change action, When this step fails, variable picker (`{{#node.field#}}` chips) | **inspector** |
 | `AddNodePalette.tsx` | STUB: lists offered kinds | **palette** |
 | `RunOverlay.tsx`, `ProblemsPanel.tsx`, `SyncBanner.tsx` | Live run layer (arrow styles, Review card), problems list, builder-busy queue + per-step conflicts | **live/sync** |
 | `run/*` | Run events → node / arrow states (`nodeRunStates.ts`), the shown run (`useNodesTestRun`, `useNodesLiveRun`), `RunBar`, `NodeDecorations` (badges drawn inside cards), Test / Validate / Add note actions | **live/sync** |

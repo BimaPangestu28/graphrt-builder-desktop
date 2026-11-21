@@ -150,13 +150,4 @@
   }
 }
 
-/* No room for the minimap beside the zoom controls in a narrow canvas. */
-.node-canvas {
-  container-type: inline-size;
-}
-
-@container (max-width: 560px) {
-  .node-canvas .node-minimap {
-    display: none;
-  }
-}
+/* The minimap shows only when the canvas has room for it (or the person turned it on): see `useCanvasViewportFit.ts`. */
