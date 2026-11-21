@@ -198,3 +198,56 @@ export function changedNodeIds(before: AgentGraph, after: AgentGraph): string[] 
 export function isSameGraph(first: AgentGraph, second: AgentGraph): boolean {
   return JSON.stringify(toGraphEdit(first)) === JSON.stringify(toGraphEdit(second))
 }
+
+/** The exit a freshly added node continues through: its default exit, else its first non-error one. */
+function continuingHandle(node: GraphNode): string | null {
+  const outputs = node.ports.outputs.filter((outputPort) => outputPort.role !== 'fail-branch')
+  return (outputs.find((outputPort) => outputPort.id === SOURCE_HANDLE) ?? outputs[0])?.id ?? null
+}
+
+/**
+ * Puts `node` on an arrow: `source → node → target`. The first half keeps the arrow's exit
+ * (a branch stays a branch). A node without an exit (End, Stop repeating) only takes the
+ * arrow in and the original arrow stays; a node without an input (Start) is only added. An
+ * unknown arrow id just adds the node. The node joins the arrow's container (`parent`).
+ *
+ * @param graph - Working copy (AgentGraph)
+ * @param node - The new node, built with `createGraphNode` (GraphNode)
+ * @param edgeId - UI id of the arrow (string)
+ * @returns The graph with the node and its arrows (AgentGraph)
+ */
+export function insertGraphNodeOnEdge(graph: AgentGraph, node: GraphNode, edgeId: string): AgentGraph {
+  const edge = graph.edges.find((candidate) => candidate.id === edgeId)
+  if (!edge) return addGraphNode(graph, node)
+  const parent = graph.nodes.find((candidate) => candidate.id === edge.source)?.parent ?? null
+  const placedNode: GraphNode = { ...node, parent }
+  let next = addGraphNode(graph, placedNode)
+  if (placedNode.ports.inputs.length === 0) return next
+  const exitHandle = continuingHandle(placedNode)
+  if (exitHandle) next = removeGraphEdges(next, [edge.id])
+  next = addGraphEdge(next, { source: edge.source, sourceHandle: edge.sourceHandle, target: placedNode.id })
+  if (exitHandle) next = addGraphEdge(next, { source: placedNode.id, sourceHandle: exitHandle, target: edge.target })
+  return next
+}
+
+/**
+ * Adds `node` after `anchorNodeId` (spec: "Add node after inserts on the outgoing default
+ * edge"): on the anchor's default arrow when it has one, else connected from its first exit,
+ * else (End) only placed in the anchor's container.
+ *
+ * @param graph - Working copy (AgentGraph)
+ * @param node - The new node (GraphNode)
+ * @param anchorNodeId - The node to add after (string)
+ * @returns The graph with the node and its arrows (AgentGraph)
+ */
+export function insertGraphNodeAfterNode(graph: AgentGraph, node: GraphNode, anchorNodeId: string): AgentGraph {
+  const anchor = graph.nodes.find((candidate) => candidate.id === anchorNodeId)
+  if (!anchor) return addGraphNode(graph, node)
+  const defaultEdge = graph.edges.find((edge) => edge.source === anchor.id && edge.sourceHandle === SOURCE_HANDLE)
+  if (defaultEdge) return insertGraphNodeOnEdge(graph, node, defaultEdge.id)
+  const placedNode: GraphNode = { ...node, parent: anchor.parent }
+  const next = addGraphNode(graph, placedNode)
+  const anchorHandle = continuingHandle(anchor)
+  if (!anchorHandle || placedNode.ports.inputs.length === 0) return next
+  return addGraphEdge(next, { source: anchor.id, sourceHandle: anchorHandle, target: placedNode.id })
+}

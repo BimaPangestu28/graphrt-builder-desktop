@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { GraphNode, SaveGraphResult } from '@/api/agentGraphTypes'
+import type { SaveGraphResult } from '@/api/agentGraphTypes'
 import type { Agent } from '@/api/types'
 import { describeError } from '@/lib/agentDisplay'
 import { AddNodePalette } from './AddNodePalette'
 import type { NodeSetupStatus } from './contracts'
 import { computeAutoLayout } from './flow/autoLayout'
 import { describeNodeList } from './flow/canvasCommands'
-import { addGraphEdge, addGraphNode, insertGraphNodeAfter, removeGraphEdges, removeGraphNodes } from './graphEdits'
+import { addGraphEdge, addGraphNode, removeGraphEdges, removeGraphNodes } from './graphEdits'
 import { NodeCanvas } from './NodeCanvas'
 import { NodeInspector } from './NodeInspector'
 import { NodesToolbar } from './NodesToolbar'
+import { PaletteDropZone } from './palette/PaletteDropZone'
+import { useAddNodePalette } from './palette/useAddNodePalette'
 import { ProblemsPanel } from './ProblemsPanel'
 import { RunOverlay } from './RunOverlay'
 import { SyncBanner } from './SyncBanner'
@@ -73,19 +75,24 @@ export function toPluginStatuses(requirements: NodesPluginRequirement[]): Record
  */
 export function NodesView({ agent, onGraphSaved, runId = null, pluginRequirements, onAskBuilder }: NodesViewProps) {
   const controller = useAgentGraph({ agentId: agent.id, currentVersion: agent.currentVersion, onSaved: onGraphSaved })
-  const { nodeKinds, kindsByKind, kindNames } = useNodeKinds()
+  const { nodeKinds, kindsByKind, kindNames, reload: reloadNodeKinds } = useNodeKinds()
   const [selectedNodeIds, setSelectedNodeIdsState] = useState<string[]>([])
   // React Flow reports the selection after every node update; keep the same array when it did not change.
   const setSelectedNodeIds = useCallback((nodeIds: string[]) => {
     setSelectedNodeIdsState((current) => (current.length === nodeIds.length && current.every((nodeId, index) => nodeId === nodeIds[index]) ? current : nodeIds))
   }, [])
-  const [isPaletteOpen, setIsPaletteOpen] = useState(false)
-  const [insertAfter, setInsertAfter] = useState<{ source: string; sourceHandle: string } | null>(null)
   const [validationMessage, setValidationMessage] = useState<string | null>(null)
   const [requestedSection, setRequestedSection] = useState<{ section: 'change-action'; sequence: number } | null>(null)
   useLayoutAutosave(controller)
   const { graph, moveNodes, applyEdit } = controller
   const readOnly = controller.builderBusy || controller.status === 'saving'
+  const palette = useAddNodePalette({
+    graph,
+    nodeKinds,
+    selectedNodeIds,
+    readOnly,
+    controller,
+  })
   const selectedNode = selectedNodeIds.length === 1 ? (graph?.nodes.find((node) => node.id === selectedNodeIds[0]) ?? null) : null
   const problems = useMemo(() => [...(graph?.problems ?? []), ...controller.saveProblems], [graph, controller.saveProblems])
   const pluginStatuses = useMemo(() => toPluginStatuses(pluginRequirements ?? []), [pluginRequirements])
@@ -95,27 +102,6 @@ export function NodesView({ agent, onGraphSaved, runId = null, pluginRequirement
   async function placeAllNodes() {
     if (!graph) return
     moveNodes(await computeAutoLayout(graph))
-  }
-
-  function openPalette(after: { source: string; sourceHandle: string } | null) {
-    setInsertAfter(after)
-    setIsPaletteOpen(true)
-  }
-
-  function addNodeFromPalette(node: GraphNode, options: { connectFrom?: { source: string; sourceHandle?: string | null; target: string }; position?: { nodeId: string; x: number; y: number } }) {
-    const description = `added ${node.displayTitle}`
-    // One edit, so the node and its arrows are one undo step (and the arrow sees the new node).
-    applyEdit((current) => {
-      if (insertAfter && current.nodes.some((existing) => existing.id === insertAfter.source)) {
-        const sourceParent = current.nodes.find((existing) => existing.id === insertAfter.source)?.parent ?? null
-        return insertGraphNodeAfter(current, { ...node, parent: node.parent ?? sourceParent }, insertAfter)
-      }
-      const withNode = addGraphNode(current, node)
-      return options.connectFrom ? addGraphEdge(withNode, options.connectFrom) : withNode
-    }, description)
-    if (options.position) moveNodes([options.position])
-    setSelectedNodeIds([node.id])
-    setInsertAfter(null)
   }
 
   function validate() {
@@ -135,62 +121,70 @@ export function NodesView({ agent, onGraphSaved, runId = null, pluginRequirement
     <div className="flex min-h-0 flex-1 flex-col" data-testid="nodes-view">
       <NodesToolbar
         controller={controller}
-        isPaletteOpen={isPaletteOpen}
-        onTogglePalette={() => (isPaletteOpen ? setIsPaletteOpen(false) : openPalette(null))}
+        isPaletteOpen={palette.isOpen}
+        onTogglePalette={palette.toggle}
         onAutoLayout={() => void placeAllNodes()}
         onValidate={validate}
         validationMessage={validationMessage}
       />
       <SyncBanner controller={controller} />
       <div className="flex min-h-0 flex-1">
-        <AddNodePalette
-          isOpen={isPaletteOpen}
-          nodeKinds={nodeKinds}
-          graph={graph}
-          readOnly={readOnly}
-          insertAfter={insertAfter}
-          onAddNode={addNodeFromPalette}
-          onClose={() => {
-            setIsPaletteOpen(false)
-            setInsertAfter(null)
-          }}
-        />
         <div className="relative min-w-0 flex-1">
-          <NodeCanvas
-            graph={graph}
-            positions={controller.positions}
-            viewport={controller.viewport}
-            kindNames={kindNames}
-            kindsByKind={kindsByKind}
-            pluginStatuses={pluginStatuses}
-            selectedNodeIds={selectedNodeIds}
-            readOnly={readOnly}
-            onSelectionChange={setSelectedNodeIds}
-            onMoveNodes={moveNodes}
-            onViewportChange={controller.setViewport}
-            onConnect={(edge) => controller.addEdge(edge, `connected ${describeNodeList(graph, [edge.source])} to ${describeNodeList(graph, [edge.target])}`)}
-            onDelete={({ nodeIds, edgeIds }) =>
-              applyEdit((current) => removeGraphEdges(removeGraphNodes(current, nodeIds), edgeIds), nodeIds.length > 0 ? `deleted ${describeNodeList(graph, nodeIds)}` : 'deleted an arrow')
-            }
-            onApplyEdit={applyEdit}
-            onUndo={controller.undo}
-            onRedo={controller.redo}
-            onOpenPalette={() => openPalette(null)}
-            onAddNodeAfter={(from) => openPalette(from)}
-            onChangeAction={(nodeId) => {
-              setSelectedNodeIds([nodeId])
-              setRequestedSection((current) => ({ section: 'change-action', sequence: (current?.sequence ?? 0) + 1 }))
-              // Until the inspector reads `requestedSection`: open its action picker once it shows this node.
-              window.setTimeout(() => {
-                const changeActionButton = document.querySelector<HTMLButtonElement>('[data-testid="node-inspector"] button[aria-haspopup="listbox"][aria-label$="Change action"]')
-                if (changeActionButton && changeActionButton.getAttribute('aria-expanded') !== 'true') changeActionButton.click()
-                changeActionButton?.focus()
-              }, 50)
-            }}
-            onOpenNodeSettings={(nodeId) => setSelectedNodeIds([nodeId])}
-            onAskBuilder={onAskBuilder}
-          />
+          <PaletteDropZone graph={graph} readOnly={readOnly} {...palette.dropZoneProps}>
+            <NodeCanvas
+              graph={graph}
+              positions={controller.positions}
+              viewport={controller.viewport}
+              kindNames={kindNames}
+              kindsByKind={kindsByKind}
+              pluginStatuses={pluginStatuses}
+              selectedNodeIds={selectedNodeIds}
+              readOnly={readOnly}
+              onSelectionChange={setSelectedNodeIds}
+              onMoveNodes={moveNodes}
+              onViewportChange={controller.setViewport}
+              onConnect={(edge) => controller.addEdge(edge, `connected ${describeNodeList(graph, [edge.source])} to ${describeNodeList(graph, [edge.target])}`)}
+              onDelete={({ nodeIds, edgeIds }) =>
+                applyEdit((current) => removeGraphEdges(removeGraphNodes(current, nodeIds), edgeIds), nodeIds.length > 0 ? `deleted ${describeNodeList(graph, nodeIds)}` : 'deleted an arrow')
+              }
+              onApplyEdit={applyEdit}
+              onUndo={controller.undo}
+              onRedo={controller.redo}
+              onOpenPalette={() => palette.open()}
+              onAddNodeAfter={(from) => palette.open({ type: 'after-exit', source: from.source, sourceHandle: from.sourceHandle })}
+              onRequestAddNode={palette.open}
+              onChangeAction={(nodeId) => {
+                setSelectedNodeIds([nodeId])
+                setRequestedSection((current) => ({ section: 'change-action', sequence: (current?.sequence ?? 0) + 1 }))
+                // Until the inspector reads `requestedSection`: open its action picker once it shows this node.
+                window.setTimeout(() => {
+                  const changeActionButton = document.querySelector<HTMLButtonElement>('[data-testid="node-inspector"] button[aria-haspopup="listbox"][aria-label$="Change action"]')
+                  if (changeActionButton && changeActionButton.getAttribute('aria-expanded') !== 'true') changeActionButton.click()
+                  changeActionButton?.focus()
+                }, 50)
+              }}
+              onOpenNodeSettings={(nodeId) => setSelectedNodeIds([nodeId])}
+              onAskBuilder={onAskBuilder}
+            />
+          </PaletteDropZone>
           <RunOverlay graph={graph} runId={runId} />
+          <AddNodePalette
+            isOpen={palette.isOpen}
+            nodeKinds={nodeKinds}
+            graph={graph}
+            readOnly={readOnly}
+            onAddNode={(node, options) => {
+              // One applyEdit: two actions in one handler would each start from this render's graph.
+              controller.applyEdit((current) => {
+                const withNode = addGraphNode(current, node)
+                return options.connectFrom ? addGraphEdge(withNode, options.connectFrom) : withNode
+              }, `added ${node.displayTitle}`)
+              if (options.position) moveNodes([options.position])
+            }}
+            onClose={palette.close}
+            onPluginInstalled={() => reloadNodeKinds()}
+            {...palette.paletteProps}
+          />
         </div>
         <NodeInspector
           node={selectedNode}
