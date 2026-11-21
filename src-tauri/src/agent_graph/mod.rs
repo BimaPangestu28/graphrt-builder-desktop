@@ -22,6 +22,7 @@ pub mod model;
 mod ports;
 #[cfg(test)]
 mod tests;
+pub mod tool_schemas;
 mod validate;
 
 use std::collections::HashSet;
@@ -267,7 +268,9 @@ pub fn save_agent_graph(
         return Err(AppError::InvalidGraph(blocking.collect()));
     }
     let base_graph = graph_from_workflow(source, &base.workflow, context);
-    let Some(changes) = describe_changes(&base_graph, &edited_graph) else {
+    let Some(changes) =
+        describe_changes(&base_graph, &edited_graph).or_else(|| describe_env_additions(&base_graph, &edited_graph))
+    else {
         return Ok(SaveGraphResult {
             graph: base_graph,
             agent,
@@ -346,6 +349,20 @@ pub fn registry_kinds(registry: &Registry) -> HashSet<String> {
 struct GraphChanges {
     summary: String,
     changed_step_ids: Vec<String>,
+}
+
+/// Secrets declared by the edit alone (`GraphEdit::declare_secrets`), when no step changed.
+fn describe_env_additions(before: &AgentGraph, after: &AgentGraph) -> Option<GraphChanges> {
+    let added: Vec<&str> = after
+        .env
+        .iter()
+        .filter(|variable| !before.env.iter().any(|old| old.name == variable.name))
+        .map(|variable| variable.name.as_str())
+        .collect();
+    if added.is_empty() {
+        return None;
+    }
+    Some(GraphChanges { summary: format!("Declared secret {}", added.join(", ")), changed_step_ids: Vec::new() })
 }
 
 /// What changed between two graphs, in plain words; `None` when nothing did.

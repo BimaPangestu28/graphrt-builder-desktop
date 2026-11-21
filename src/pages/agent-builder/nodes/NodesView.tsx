@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { SaveGraphResult } from '@/api/agentGraphTypes'
+import { stopAgentRevision } from '@/api/builder'
 import { BackendError } from '@/api/client'
 import type { Agent } from '@/api/types'
 import { describeError } from '@/lib/agentDisplay'
 import { AddNodePalette } from './AddNodePalette'
-import type { NodeSetupStatus } from './contracts'
+import type { InspectorSectionRequest, InspectorSectionTarget, NodeSetupStatus } from './contracts'
 import { computeAutoLayout } from './flow/autoLayout'
 import { describeNodeList } from './flow/canvasCommands'
 import { addGraphEdge, addGraphNode, removeGraphEdges, removeGraphNodes } from './graphEdits'
@@ -55,6 +56,15 @@ export interface NodesViewProps {
   onShowPluginSetup?: () => void
   /** Delay before an edit is saved as a version; null saves only with Save. */
   autosaveDelayMs?: number | null
+}
+
+/** "Stop the builder" in the sync banner: cancels the running chat change (the chat says "Stopped by you"). */
+async function stopBuilder(agentId: string): Promise<void> {
+  try {
+    await stopAgentRevision(agentId)
+  } catch (stopError) {
+    console.warn('could not stop the builder', stopError)
+  }
 }
 
 /** Where a new note goes: near the top left of what the canvas shows. */
@@ -115,7 +125,15 @@ export function NodesView({
     setSelectedNodeIdsState((current) => (current.length === nodeIds.length && current.every((nodeId, index) => nodeId === nodeIds[index]) ? current : nodeIds))
   }, [])
   const [isProblemsPanelHidden, setIsProblemsPanelHidden] = useState(false)
-  const [requestedSection, setRequestedSection] = useState<{ section: 'change-action'; sequence: number } | null>(null)
+  const [requestedSection, setRequestedSection] = useState<InspectorSectionRequest | null>(null)
+  /** Opens part of the inspector for `nodeId` ("Change action", a field with a problem). */
+  const requestInspectorSection = useCallback(
+    (nodeId: string, section: InspectorSectionTarget) => {
+      setSelectedNodeIds([nodeId])
+      setRequestedSection((current) => ({ section, nodeId, sequence: (current?.sequence ?? 0) + 1 }))
+    },
+    [setSelectedNodeIds],
+  )
   useLayoutAutosave(controller)
   useGraphAutosave(controller, autosaveDelayMs)
   const { graph, moveNodes, applyEdit } = controller
@@ -182,7 +200,7 @@ export function NodesView({
           />
         }
       />
-      <SyncBanner controller={controller} />
+      <SyncBanner controller={controller} onStopBuilder={() => void stopBuilder(agent.id)} />
       <RunBar agentId={agent.id} graph={graph} live={live} />
       <div className="flex min-h-0 flex-1">
         <div className="relative min-w-0 flex-1" {...{ [runCanvasScopeAttribute]: '' }}>
@@ -211,16 +229,7 @@ export function NodesView({
                   onOpenPalette={() => palette.open()}
                   onAddNodeAfter={(from) => palette.open({ type: 'after-exit', source: from.source, sourceHandle: from.sourceHandle })}
                   onRequestAddNode={palette.open}
-                  onChangeAction={(nodeId) => {
-                    setSelectedNodeIds([nodeId])
-                    setRequestedSection((current) => ({ section: 'change-action', sequence: (current?.sequence ?? 0) + 1 }))
-                    // Until the inspector reads `requestedSection`: open its action picker once it shows this node.
-                    window.setTimeout(() => {
-                      const changeActionButton = document.querySelector<HTMLButtonElement>('[data-testid="node-inspector"] button[aria-haspopup="listbox"][aria-label$="Change action"]')
-                      if (changeActionButton && changeActionButton.getAttribute('aria-expanded') !== 'true') changeActionButton.click()
-                      changeActionButton?.focus()
-                    }, 50)
-                  }}
+                  onChangeAction={(nodeId) => requestInspectorSection(nodeId, 'change-action')}
                   onOpenNodeSettings={(nodeId) => setSelectedNodeIds([nodeId])}
                   onAskBuilder={onAskBuilder}
                   notes={canvasNotes.notes}

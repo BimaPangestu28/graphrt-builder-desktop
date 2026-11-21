@@ -92,10 +92,30 @@ export interface NodeInspectorProps {
    */
   onAskBuilder?: (text: string) => void
   /**
-   * Set by the canvas context menu's "Change action": open that part of the settings
-   * for `node`. `sequence` changes on every request, so asking twice opens it again.
+   * Opens part of the settings, scrolls to it and focuses its control: the canvas menu's
+   * "Change action" (`change-action`), the problems list's "Show node" or a field error
+   * (`on-error`, a section key, or a config path such as `url`). `sequence` changes on every
+   * request, so asking twice opens it again. See {@link InspectorSectionRequest}.
    */
-  requestedSection?: { section: 'change-action'; sequence: number } | null
+  requestedSection?: InspectorSectionRequest | null
+}
+
+/**
+ * What `requestedSection` can name:
+ * - `change-action`: the plugin action picker opens (B2);
+ * - `on-error`: "When this step fails";
+ * - another section key: `sign-in`, `inputs`, `tool`, `tools`, `time-limit`;
+ * - a field's config path (`url`, `authorization.config.api_key`, `config.query`,
+ *   `tool_parameters.city`): its section opens and its input gets focus.
+ */
+export type InspectorSectionTarget = 'change-action' | 'on-error' | (string & {})
+
+export interface InspectorSectionRequest {
+  section: InspectorSectionTarget
+  /** Increase it for every request. */
+  sequence: number
+  /** The node the request is for; without it, the node shown when the request arrived. */
+  nodeId?: string
 }
 
 /**

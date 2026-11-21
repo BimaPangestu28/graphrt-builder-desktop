@@ -1,4 +1,5 @@
-import type { Agent, RevisionResult } from '../types'
+import { BackendError } from '../client'
+import { stoppedReplyText, type Agent, type RevisionResult } from '../types'
 import { appendStoredBuilderMessages, readStoredAgent, type NewSampleBuilderMessage } from './sampleAgentStore'
 
 /**
@@ -20,6 +21,7 @@ function describeSampleError(error: unknown): string {
 
 function describeReply(outcome: { revision: RevisionResult } | { error: unknown }, versionBefore: number | null): NewSampleBuilderMessage {
   const baseReply = { role: 'builder' as const, explanation: null, versionBefore, changedStepIds: [] as string[] }
+  if ('error' in outcome && outcome.error instanceof BackendError && outcome.error.code === 'stopped') return { ...baseReply, text: stoppedReplyText, status: 'done', versionAfter: null }
   if ('error' in outcome) return { ...baseReply, text: describeSampleError(outcome.error), status: 'failed', versionAfter: null }
   const { revision } = outcome
   const explanation = revision.explanation.trim() || null

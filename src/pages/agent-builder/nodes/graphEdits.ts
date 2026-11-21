@@ -168,9 +168,15 @@ export function uniqueNodeId(graph: AgentGraph, base: string): string {
   return `${cleanBase}_${suffix}`
 }
 
-/** The working copy as the edit `save_agent_graph` takes. */
+/**
+ * The working copy as the edit `save_agent_graph` takes. Its secret `env` names go along
+ * as `declareSecrets` (the backend adds the ones the document lacks, e.g. a secret just
+ * picked for an HTTP sign-in, and ignores the rest).
+ */
 export function toGraphEdit(graph: AgentGraph, options: { description?: string | null; layout?: NodeLayout[] | null } = {}): GraphEdit {
+  const declareSecrets = graph.env.filter((variable) => variable.isSecret).map((variable) => variable.name)
   return {
+    ...(declareSecrets.length > 0 ? { declareSecrets } : {}),
     nodes: graph.nodes.map((node) => ({
       id: node.id,
       kind: node.kind,

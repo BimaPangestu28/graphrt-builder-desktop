@@ -245,6 +245,12 @@ function sameGraph(base: AgentGraph, parts: Pick<AgentGraph, 'nodes' | 'edges'>)
   return editable(base) === editable(parts)
 }
 
+/** The base env plus the secrets the edit declares (like the desktop backend: `{ name, type: secret }`, once). */
+function withDeclaredSecrets(env: AgentGraph['env'], declareSecrets: string[] | undefined): AgentGraph['env'] {
+  const added = (declareSecrets ?? []).filter((name, index, names) => names.indexOf(name) === index && !env.some((variable) => variable.name === name))
+  return [...env, ...added.map((name) => ({ name, description: null, isSecret: true, hasDefault: false }))]
+}
+
 function saveGraph(agentId: string, baseVersion: number, edit: GraphEdit): SaveGraphResult {
   if (busyAgentIds.has(agentId)) throw new BackendError('builder_busy', 'the builder is changing this agent; try again when it is done')
   const agent = readStoredAgent(agentId)
@@ -258,13 +264,14 @@ function saveGraph(agentId: string, baseVersion: number, edit: GraphEdit): SaveG
   const parts = graphFromEdit(base, edit)
   const problems = blockingProblems(parts.nodes, parts.edges)
   if (problems.length > 0) throw new BackendError('invalid_graph', `the edited steps have ${problems.length} problem(s): ${problems[0].message}`, { problems })
-  if (sameGraph(base, parts)) return { agent, graph: base, saved: false, summary: '', changedStepIds: [], versionBefore: baseVersion, versionAfter: baseVersion }
+  const env = withDeclaredSecrets(base.env, edit.declareSecrets)
+  if (sameGraph(base, parts) && env.length === base.env.length) return { agent, graph: base, saved: false, summary: '', changedStepIds: [], versionBefore: baseVersion, versionAfter: baseVersion }
 
-  const changes = describeEdit(base, parts.nodes)
+  const changes = sameGraph(base, parts) ? { summary: `Declared secret ${env.slice(base.env.length).map((variable) => variable.name).join(', ')}`, changedStepIds: [] } : describeEdit(base, parts.nodes)
   const summary = `Edited in Nodes: ${edit.description?.trim() || changes.summary}`
   const savedAgent = saveNewVersion(agentId, toFlowSteps(parts.nodes), summary)
   const versionAfter = savedAgent.currentVersion
-  const graph: AgentGraph = { ...base, version: versionAfter, latestVersion: versionAfter, ...parts, problems: sampleProblems(parts.nodes, parts.edges) }
+  const graph: AgentGraph = { ...base, version: versionAfter, latestVersion: versionAfter, ...parts, env, problems: sampleProblems(parts.nodes, parts.edges) }
   storedGraphs.set(graphKey(agentId, versionAfter), cloneGraph(graph))
   copyLayoutForward(agentId, baseVersion, versionAfter, parts.nodes)
   if (edit.layout) storedLayouts.set(graphKey(agentId, versionAfter), edit.layout.map((layout) => ({ ...layout })))
@@ -344,6 +351,11 @@ export function setSampleBuilderBusy(agentId: string, builderBusy: boolean): voi
   if (builderBusy) busyAgentIds.add(agentId)
   else busyAgentIds.delete(agentId)
   for (const listener of editStateListeners) listener({ agentId, builderBusy })
+}
+
+/** True while a sample agent is marked as being changed by the builder. */
+export function isSampleBuilderBusy(agentId: string): boolean {
+  return busyAgentIds.has(agentId)
 }
 
 /** Forgets saved graphs, positions and busy flags (use in test `beforeEach`, with `resetSampleAgents`). */

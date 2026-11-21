@@ -45,6 +45,9 @@ pub enum AppError {
     /// An edited graph does not pass validation; nothing was saved.
     #[error("the edited steps have {} problem(s): {}", .0.len(), first_problem_message(.0))]
     InvalidGraph(Vec<crate::agent_graph::GraphProblem>),
+    /// The user stopped a running builder change ("Stop the builder"); nothing was saved.
+    #[error("Stopped by you")]
+    Stopped,
 }
 
 fn first_problem_message(problems: &[crate::agent_graph::GraphProblem]) -> String {
@@ -76,6 +79,7 @@ impl AppError {
             Self::VersionConflict { .. } => "version_conflict",
             Self::BuilderBusy => "builder_busy",
             Self::InvalidGraph(_) => "invalid_graph",
+            Self::Stopped => "stopped",
         }
     }
 

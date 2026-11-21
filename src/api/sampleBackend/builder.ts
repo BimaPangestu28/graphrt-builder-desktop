@@ -5,6 +5,7 @@ import { listStoredBuilderMessages, readCurrentSteps, readStoredAgent, resetSamp
 import { reviseWithSampleHistory } from './sampleBuilderHistory'
 import { planSampleRevision, type SampleRevisionPlan } from './sampleRevision'
 import { requireText, respondWith, waitFor } from './sampleResponse'
+import { createStoppedError, runStoppableSampleRevision, stopSampleRevisions, type SampleRevisionStopSignal } from './sampleRevisionStop'
 
 /**
  * Sample agent building for the browser preview and tests. "Build agent" walks through
@@ -144,7 +145,7 @@ function createRevisionDraftScript(plan: SampleRevisionPlan, explanation: string
   return { explanation, stepTitles: plan.steps.map((flowStep) => flowStep.title), totalTokens: explanationTokens + plan.steps.length * approximateTokensPerStep }
 }
 
-async function reviseSampleAgent(agentId: string, instruction: string, onProgress: (progress: BuildProgress) => void): Promise<RevisionResult> {
+async function reviseSampleAgent(agentId: string, instruction: string, onProgress: (progress: BuildProgress) => void, stopSignal: SampleRevisionStopSignal): Promise<RevisionResult> {
   const trimmedInstruction = await respondWith(() => {
     readStoredAgent(agentId)
     requireUsableModel()
@@ -157,6 +158,8 @@ async function reviseSampleAgent(agentId: string, instruction: string, onProgres
   await reportStage({ stage: 'understanding', message: 'Reading your change' }, undefined, timing, onProgress)
   await reportStage({ stage: 'drafting', message: 'Updating the steps' }, createRevisionDraftScript(plan, explanation), timing, onProgress)
   await reportStage({ stage: 'checking', message: 'Checking the steps again' }, undefined, timing, onProgress)
+  // A stopped revision has already ended for the caller; it must not save anything either.
+  if (stopSignal.isStopped()) throw createStoppedError()
   const agent = saveNewVersion(agentId, plan.steps, trimmedInstruction)
   onProgress({ stage: 'done', message: plan.summary })
   return { agent, summary: plan.summary, changedStepIds: plan.changedStepIds, explanation }
@@ -165,7 +168,8 @@ async function reviseSampleAgent(agentId: string, instruction: string, onProgres
 export const sampleBuilderBackend = {
   buildAgent: buildSampleAgent,
   reviseAgent: (agentId: string, instruction: string, onProgress: (progress: BuildProgress) => void): Promise<RevisionResult> =>
-    reviseWithSampleHistory(agentId, instruction, () => reviseSampleAgent(agentId, instruction, onProgress)),
+    reviseWithSampleHistory(agentId, instruction, () => runStoppableSampleRevision(agentId, (stopSignal) => reviseSampleAgent(agentId, instruction, onProgress, stopSignal))),
+  stopAgentRevision: (agentId: string): Promise<boolean> => respondWith(() => stopSampleRevisions(agentId)),
   getFlowSummary: (agentId: string): Promise<FlowSummary> => respondWith(() => summarizeStoredAgent(agentId)),
   listBuilderMessages: (agentId: string): Promise<BuilderMessage[]> => respondWith(() => listStoredBuilderMessages(agentId)),
 }

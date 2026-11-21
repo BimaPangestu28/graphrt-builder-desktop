@@ -18,9 +18,9 @@ function createInitialServers(): McpServerDefinition[] {
       secretEnv: [],
       bearerTokenSecret: null,
       knownTools: [
-        { name: 'read_file', description: 'Read a file' },
+        { name: 'read_file', description: 'Read a file', inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'File to read' } }, required: ['path'] } },
         { name: 'list_directory', description: 'List a folder' },
-        { name: 'search_files', description: 'Find files by name' },
+        { name: 'search_files', description: 'Find files by name', inputSchema: { type: 'object', properties: { path: { type: 'string' }, pattern: { type: 'string', description: 'Name pattern, e.g. *.pdf' }, max_results: { type: 'integer', minimum: 1 } }, required: ['path', 'pattern'] } },
       ],
       lastCheck: { connected: true, error: null, checkedAt: '2026-11-17T09:00:00Z' },
     },

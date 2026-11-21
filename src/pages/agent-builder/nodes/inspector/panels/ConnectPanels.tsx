@@ -1,12 +1,15 @@
 import type { JsonValue, NodeConfig } from '@/api/agentGraphTypes'
+import { updateGraphNode } from '../../graphEdits'
 import { isJsonObject, readConfigFlag, readConfigList, readConfigNumber, readConfigObject, readConfigText, readConfigValue, writeConfigValue, type JsonObject } from '../configPaths'
 import { AddButton, Field, hintClassName, InspectorSection, NumberInput, RadioCards, RemoveButton, SegmentedChoice, SelectInput, SupportNote, TextInput, ToggleRow } from '../fields'
 import { useInspector } from '../InspectorContext'
 import { ModelField } from '../ModelField'
 import { formatReference, readSelector, singleReference, templateReferences } from '../references'
+import { propertyLabel, schemaProperties, schemaRequired } from '../SchemaForm'
+import { SecretPicker, withSecretDeclared } from '../SecretPicker'
 import { SelectorField } from '../SelectorField'
 import { TemplateField } from '../TemplateField'
-import { looksLikeSendingTool, useToolSources, type ToolChoice, type ToolSources } from '../toolSources'
+import { describeSchemaInputs, looksLikeSendingTool, useToolSources, type ToolChoice, type ToolSources } from '../toolSources'
 
 /**
  * HTTP request (`http-request`, B9), Run an agent (`agent`, B10) and Use a tool
@@ -106,13 +109,12 @@ function HttpBodyEditor() {
 }
 
 function HttpAuthEditor() {
-  const { node, graph, readOnly, setConfigValue } = useInspector()
+  const { node, graph, readOnly, controller, setConfigValue } = useInspector()
   const auth = readConfigObject(node.config, ['authorization'])
   const usesKey = readConfigText(auth, ['type']) === 'api-key'
   const keyType = readConfigText(auth, ['config', 'type']) || 'bearer'
   const apiKey = readConfigText(auth, ['config', 'api_key'])
   const secretName = singleReference(apiKey)?.[0] === 'env' ? singleReference(apiKey)?.[1] ?? '' : ''
-  const secrets = graph.env
   const writeAuth = (nextAuth: JsonObject, what: string) => setConfigValue(['authorization'], nextAuth, what)
   const writeKeyConfig = (changes: JsonObject, what: string) => writeAuth({ ...auth, type: 'api-key', config: { ...readConfigObject(auth, ['config']), ...changes } }, what)
   return (
@@ -141,15 +143,18 @@ function HttpAuthEditor() {
             onChange={(type) => writeKeyConfig({ type }, 'changed how the key is sent')}
           />
           {keyType === 'custom' && <TextInput ariaLabel="Header name" placeholder="Header name, e.g. X-Api-Key" value={readConfigText(auth, ['config', 'header'])} disabled={readOnly} onCommit={(header) => writeKeyConfig({ header }, 'set the key header')} />}
-          <Field label="Secret" error={apiKey && !secretName ? 'Use a secret from this agent, not a typed key' : null} hint="Keys come from Secrets; the value is never shown or stored in the agent">
-            <SelectInput
-              ariaLabel="Secret"
+          <Field label="Secret" fieldPath="authorization.config.api_key" error={apiKey && !secretName ? 'Use a saved secret, not a typed key' : null} hint="Keys come from Secrets; the value is never shown or stored in the agent">
+            <SecretPicker
+              graph={graph}
               value={secretName}
               disabled={readOnly}
-              options={secrets.map((envVar) => ({ value: envVar.name, label: `${envVar.name}${envVar.isSecret ? ' · secret · Keychain' : ''}` }))}
-              onChange={(name) => writeKeyConfig({ api_key: formatReference(['env', name]) }, `used secret ${name}`)}
+              onPick={(name) => {
+                if (readOnly) return
+                const nextAuth = { ...auth, type: 'api-key', config: { ...readConfigObject(auth, ['config']), type: keyType, api_key: formatReference(['env', name]) } }
+                // One undo step: the reference and the env declaration together.
+                controller.applyEdit((current) => withSecretDeclared(updateGraphNode(current, node.id, { config: writeConfigValue(node.config, ['authorization'], nextAuth) }), name), `used secret ${name} on ${node.displayTitle}`)
+              }}
             />
-            {secrets.length === 0 && <p className={hintClassName}>This agent has no secrets yet. Ask the builder to add one (e.g. API_TOKEN), then pick it here.</p>}
           </Field>
         </>
       )}
@@ -170,14 +175,14 @@ export function HttpRequestPanel() {
         <div className="flex items-start gap-2">
           <SelectInput ariaLabel="Method" className="w-24 shrink-0" value={method} disabled={readOnly} options={httpMethods.map((name) => ({ value: name, label: name.toUpperCase() }))} onChange={(nextMethod) => setConfigValue(['method'], nextMethod, `set the method to ${nextMethod.toUpperCase()}`)} />
           <div className="min-w-0 flex-1">
-            <TemplateField label="URL" required placeholder="https://api.example.com/leads" value={readConfigText(config, ['url'])} onCommit={(url) => setConfigValue(['url'], url, 'set the URL')} />
+            <TemplateField label="URL" fieldPath="url" required placeholder="https://api.example.com/leads" value={readConfigText(config, ['url'])} onCommit={(url) => setConfigValue(['url'], url, 'set the URL')} />
           </div>
         </div>
         <KeyValueEditor label="Query parameters" addLabel="Add a parameter" rows={readKeyValueRows(config.params)} onChange={(rows, what) => setConfigValue(['params'], rows.map((row) => ({ ...row })), what)} />
         <KeyValueEditor label="Headers" addLabel="Add a header" rows={readKeyValueRows(config.headers)} onChange={(rows, what) => setConfigValue(['headers'], rows.map((row) => ({ ...row })), what)} />
         <HttpBodyEditor />
       </InspectorSection>
-      <InspectorSection title="Sign-in" defaultOpen={readConfigText(config, ['authorization', 'type']) === 'api-key'}>
+      <InspectorSection title="Sign-in" sectionKey="sign-in" defaultOpen={readConfigText(config, ['authorization', 'type']) === 'api-key'}>
         <HttpAuthEditor />
       </InspectorSection>
       <InspectorSection title="Time limits" defaultOpen={false}>
@@ -252,6 +257,7 @@ function AgentToolsPicker() {
             {choice.label}
           </span>
           {choice.note && <span className="truncate text-[11px] text-muted">{choice.note}</span>}
+          {describeSchemaInputs(choice.inputSchema) && <span className="truncate text-[11px] text-muted">Inputs: {describeSchemaInputs(choice.inputSchema)}</span>}
         </span>
         <label className="flex shrink-0 items-center gap-1 text-[12px] text-ink-2">
           <input type="checkbox" aria-label={`Ask me first before ${choice.reference}`} checked={isOn && asksFirst(choice.reference)} disabled={readOnly || !isOn} onChange={(event) => toggleApproval(choice.reference, event.target.checked)} className="accent-ink" />
@@ -272,7 +278,7 @@ function AgentToolsPicker() {
         <div role="group" aria-label="Other tools" className="flex flex-col gap-1">
           <span className="text-[11px] font-semibold tracking-[0.4px] text-muted uppercase">Named in the agent</span>
           <ul className="m-0 flex list-none flex-col gap-1 p-0">
-            {otherChosen.map((reference) => row({ reference, provider: reference.split('/')[0], name: reference.split('/')[1] ?? '*', label: reference.split('/')[1] ?? reference, source: 'plugins', inputs: [], note: null }))}
+            {otherChosen.map((reference) => row({ reference, provider: reference.split('/')[0], name: reference.split('/')[1] ?? '*', label: reference.split('/')[1] ?? reference, source: 'plugins', inputs: [], inputSchema: null, note: null }))}
           </ul>
         </div>
       )}
@@ -293,7 +299,7 @@ export function AgentPanel() {
         <TemplateField label="Instructions" multiline value={readConfigText(config, ['instruction'])} onCommit={(instruction) => setConfigValue(['instruction'], instruction || undefined, 'changed the instructions')} />
         <TemplateField label="Task" multiline placeholder="Empty uses the chat message (sys.query)" hint="Empty uses the chat message (sys.query)" value={readConfigText(config, ['query'])} onCommit={(query) => setConfigValue(['query'], query || undefined, 'changed the task')} />
       </InspectorSection>
-      <InspectorSection title="Tools it may use">
+      <InspectorSection title="Tools it may use" sectionKey="tools">
         <AgentToolsPicker />
       </InspectorSection>
       <InspectorSection title="Limits" defaultOpen={false}>
@@ -318,6 +324,27 @@ export function toToolParameter(text: string): JsonObject {
   if (single) return { type: 'variable', value: single }
   if (templateReferences(text).length > 0) return { type: 'mixed', value: text }
   return { type: 'constant', value: text }
+}
+
+/**
+ * Like {@link toToolParameter}, typed by the tool's schema: fixed text for a number,
+ * integer or boolean input is sent as that type (`"5"` → `5`), so the tool gets what its
+ * schema asks for. Text with values in it stays text.
+ */
+export function toSchemaToolParameter(text: string, property: Record<string, unknown> | undefined): JsonObject {
+  const parameter = toToolParameter(text)
+  if (parameter.type !== 'constant' || !property) return parameter
+  const type = Array.isArray(property.type) ? (property.type as unknown[]).find((candidate) => candidate !== 'null') : property.type
+  const trimmed = text.trim()
+  if ((type === 'number' || type === 'integer') && trimmed !== '' && Number.isFinite(Number(trimmed))) return { type: 'constant', value: Number(trimmed) }
+  if (type === 'boolean' && (trimmed === 'true' || trimmed === 'false')) return { type: 'constant', value: trimmed === 'true' }
+  return parameter
+}
+
+function describeSchemaType(property: Record<string, unknown>): string {
+  const type = Array.isArray(property.type) ? (property.type as unknown[]).filter((candidate) => candidate !== 'null').join(' or ') : property.type
+  const description = typeof property.description === 'string' ? property.description : ''
+  return [typeof type === 'string' && type ? type : 'value', description].filter(Boolean).join(' · ')
 }
 
 /** A `tool_parameters` value as template text for the field. */
@@ -357,6 +384,27 @@ function ToolChoiceList({ sources, current, onPick }: { sources: ToolSources & {
   )
 }
 
+interface SchemaInput {
+  name: string
+  property: Record<string, unknown>
+  required: boolean
+}
+
+/** A tool schema's inputs, required ones first. */
+function toolSchemaInputs(schema: Record<string, unknown> | null): SchemaInput[] {
+  if (!schema) return []
+  const required = schemaRequired(schema)
+  const inputs = schemaProperties(schema).map(([name, property]) => ({ name, property, required: required.includes(name) }))
+  return [...inputs.filter((input) => input.required), ...inputs.filter((input) => !input.required)]
+}
+
+function describeNoInputs(choice: ToolChoice | undefined): string {
+  if (!choice) return 'Pick a tool to see its inputs.'
+  if (choice.source === 'agents') return 'This agent takes no inputs.'
+  if (choice.inputSchema) return 'This tool takes no inputs.'
+  return 'The app does not know this tool’s inputs yet (test the MCP server in Connections to read them). Add them by name.'
+}
+
 function readToolProvider(config: NodeConfig): { key: string; value: string } {
   for (const key of ['provider_id', 'provider', 'provider_name']) {
     if (typeof config[key] === 'string' && config[key]) return { key, value: config[key] as string }
@@ -373,7 +421,10 @@ export function ToolPanel() {
   const current = provider.value && toolName ? `${provider.value}/${toolName}` : ''
   const choice = [...sources.agents, ...sources.plugins, ...sources.mcp].find((candidate) => candidate.reference === current)
   const parameters = readConfigObject(node.config, ['tool_parameters'])
-  const inputNames = [...(choice?.inputs.map((input) => input.name) ?? []), ...Object.keys(parameters).filter((name) => !choice?.inputs.some((input) => input.name === name))]
+  const schemaInputs = toolSchemaInputs(choice?.inputSchema ?? null)
+  const declaredNames = [...(choice?.inputs.map((input) => input.name) ?? []), ...schemaInputs.map((input) => input.name)]
+  const inputNames = [...declaredNames, ...Object.keys(parameters).filter((name) => !declaredNames.includes(name))]
+  const acceptsOtherInputs = choice?.source !== 'agents' && choice?.inputSchema?.additionalProperties !== false
   const minutes = node.timeoutMs === null ? null : Number((node.timeoutMs / 60_000).toFixed(2))
   const pickTool = (picked: ToolChoice) =>
     updateConfig((config) => {
@@ -382,37 +433,47 @@ export function ToolPanel() {
     }, `used tool ${picked.label}`)
   return (
     <>
-      <InspectorSection title="Tool">
+      <InspectorSection title="Tool" sectionKey="tool">
         <ToolChoiceList sources={sources} current={current} onPick={pickTool} />
         {!current && <p className="m-0 text-[12px] text-danger">Pick a tool</p>}
         {current && !choice && !sources.isLoading && <p className="m-0 text-[12px] text-amber-strong">{current} is not on this computer; it fails until it is set up.</p>}
       </InspectorSection>
-      <InspectorSection title="Inputs">
-        {inputNames.length === 0 && <p className={hintClassName}>{choice?.source === 'agents' ? 'This agent takes no inputs.' : 'Add the inputs the tool takes.'}</p>}
+      <InspectorSection title="Inputs" sectionKey="inputs">
+        {inputNames.length === 0 && <p className={hintClassName}>{describeNoInputs(choice)}</p>}
         {inputNames.map((name) => {
           const input = choice?.inputs.find((candidate) => candidate.name === name)
+          const schemaInput = schemaInputs.find((candidate) => candidate.name === name)
+          const required = input?.required ?? schemaInput?.required ?? false
+          const hint = input ? `${input.valueType} · from the agent's Start` : schemaInput ? describeSchemaType(schemaInput.property) : choice?.inputSchema ? 'Not in the tool’s inputs' : undefined
           return (
             <div key={name} className="flex items-start gap-1">
               <div className="min-w-0 flex-1">
                 <TemplateField
-                  label={input?.label || name}
+                  label={input?.label || (schemaInput ? propertyLabel(name, schemaInput.property) : name)}
                   ariaLabel={`Input ${name}`}
-                  required={input?.required}
-                  hint={input ? `${input.valueType} · from the agent's Start` : undefined}
+                  fieldPath={`tool_parameters.${name}`}
+                  required={required}
+                  hint={hint}
                   value={readToolParameter(parameters[name])}
-                  onCommit={(text) => setConfigValue(['tool_parameters', name], text === '' && !input?.required ? undefined : toToolParameter(text), `set input ${name}`)}
+                  onCommit={(text) => setConfigValue(['tool_parameters', name], text === '' && !required ? undefined : toSchemaToolParameter(text, schemaInput?.property), `set input ${name}`)}
                 />
               </div>
-              {!input && <RemoveButton label={`Remove input ${name}`} disabled={readOnly} onClick={() => setConfigValue(['tool_parameters', name], undefined, `removed input ${name}`)} />}
+              {!input && !schemaInput && <RemoveButton label={`Remove input ${name}`} disabled={readOnly} onClick={() => setConfigValue(['tool_parameters', name], undefined, `removed input ${name}`)} />}
             </div>
           )
         })}
-        {choice?.source !== 'agents' && (
-          <TextInput ariaLabel="Add an input" placeholder="Add an input by name" value="" disabled={readOnly} onCommit={(name) => name.trim() && setConfigValue(['tool_parameters', name.trim()], { type: 'constant', value: '' }, `added input ${name.trim()}`)} />
+        {acceptsOtherInputs && (
+          <TextInput
+            ariaLabel="Add an input"
+            placeholder={choice?.inputSchema ? 'Add another input by name' : 'Add an input by name'}
+            value=""
+            disabled={readOnly}
+            onCommit={(name) => name.trim() && setConfigValue(['tool_parameters', name.trim()], { type: 'constant', value: '' }, `added input ${name.trim()}`)}
+          />
         )}
         <p className={hintClassName}>Each input can be a value from a step, fixed text, or text with values in it. A value that doesn’t resolve is sent empty</p>
       </InspectorSection>
-      <InspectorSection title="Time limit" defaultOpen={node.timeoutMs !== null}>
+      <InspectorSection title="Time limit" sectionKey="time-limit" defaultOpen={node.timeoutMs !== null}>
         <Field label="Wait for it at most" hint={provider.value === 'agents' ? 'Agents run as tools get 10 minutes' : 'Empty uses the app default, 2 minutes'}>
           <NumberInput ariaLabel="Minutes" value={minutes} min={0.1} max={1440} step={1} suffix="minutes" disabled={readOnly} onCommit={(nextMinutes) => updateNode({ timeoutMs: nextMinutes === null ? null : Math.round(nextMinutes * 60_000) }, nextMinutes === null ? 'cleared the tool time limit' : `set the tool time limit to ${nextMinutes} min`)} />
         </Field>

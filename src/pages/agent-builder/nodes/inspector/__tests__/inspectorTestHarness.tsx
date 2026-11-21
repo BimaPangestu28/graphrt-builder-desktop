@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { getAgentGraph, saveAgentGraph } from '@/api/agentGraph'
 import type { NodeEdit } from '@/api/agentGraphTypes'
+import type { InspectorSectionRequest } from '../../contracts'
 import { NodeInspector } from '../../NodeInspector'
 import { useAgentGraph, type AgentGraphController } from '../../useAgentGraph'
 import { useNodeKinds } from '../../useNodeKinds'
@@ -38,7 +39,7 @@ export async function addFixtureNodes(): Promise<void> {
 
 export const harness: { controller: AgentGraphController | null } = { controller: null }
 
-function InspectorHarness({ nodeId }: { nodeId: string }) {
+function InspectorHarness({ nodeId, requestedSection = null }: { nodeId: string; requestedSection?: InspectorSectionRequest | null }) {
   const controller = useAgentGraph({ agentId, currentVersion: null })
   const { nodeKinds, kindsByKind } = useNodeKinds()
   harness.controller = controller
@@ -54,6 +55,7 @@ function InspectorHarness({ nodeId }: { nodeId: string }) {
       readOnly={false}
       controller={controller}
       onClose={() => undefined}
+      requestedSection={requestedSection}
     />
   )
 }
@@ -66,7 +68,17 @@ export async function renderInspector(nodeId: string) {
     </MemoryRouter>,
   )
   await waitFor(() => expect(screen.getByTestId('node-inspector')).toBeInTheDocument())
-  return view
+  let sequence = 0
+  /** Sends a `requestedSection` (like the canvas menu or the problems list), optionally for another node. */
+  const requestSection = (section: string, shownNodeId = nodeId, requestNodeId?: string) => {
+    sequence += 1
+    view.rerender(
+      <MemoryRouter>
+        <InspectorHarness nodeId={shownNodeId} requestedSection={{ section, sequence, nodeId: requestNodeId }} />
+      </MemoryRouter>,
+    )
+  }
+  return { ...view, requestSection }
 }
 
 /** The node as the controller holds it now. */

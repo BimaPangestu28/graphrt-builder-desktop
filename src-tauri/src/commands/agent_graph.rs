@@ -7,6 +7,7 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::agent_builder::edit_lock;
 use crate::agent_graph::library::{self, LibrarySources, NodeKindInfo};
+use crate::agent_graph::tool_schemas::{self, ToolInputSchema};
 use crate::agent_graph::{self, AgentEditState, AgentGraph, GraphContext, GraphEdit, GraphProblem, SaveGraphResult};
 use crate::credentials;
 use crate::error::AppResult;
@@ -130,6 +131,14 @@ pub fn save_canvas_notes(
     notes: Vec<CanvasNote>,
 ) -> AppResult<CanvasNoteSet> {
     state.db.save_canvas_notes(&agent_id, version, &notes)
+}
+
+/// Input schemas of the plugin and MCP server tools a "Use a tool" or "Run an agent" step
+/// can call (manifest schemas, and what each server reported on its last connection test).
+#[tauri::command]
+pub fn get_tool_input_schemas(state: State<'_, AppState>) -> AppResult<Vec<ToolInputSchema>> {
+    let servers = crate::mcp::definitions::load_definitions(&state.db)?;
+    Ok(tool_schemas::collect_tool_input_schemas(&state.plugins.tool_specs(), &servers))
 }
 
 /// Whether the builder is changing the agent right now (cheap; also see [`AGENT_EDIT_STATE_EVENT`]).

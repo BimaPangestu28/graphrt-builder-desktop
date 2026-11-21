@@ -177,6 +177,30 @@ describe('BuilderPage', () => {
     expect(screen.queryByText('Changed just now')).not.toBeInTheDocument()
   })
 
+  it('stops a change in progress from the chat: nothing is saved and the chat says so', async () => {
+    sampleBuildTiming.revisionStageDelayMs = 200
+    const firstVisit = renderBuilderPage()
+    await screen.findByText('Write a short message')
+    const versionBefore = (await sampleAgentsBackend.getAgent('maps-leads')).currentVersion
+    await sendChange('Skip places with fewer than 50 reviews')
+    const chat = screen.getByRole('region', { name: 'Chat' })
+    fireEvent.click(await within(chat).findByRole('button', { name: 'Stop' }))
+
+    expect(await within(chat).findByText('Stopped by you')).toBeInTheDocument()
+    expect(within(chat).queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument()
+    expect(within(chat).queryByText(/Could not change the agent/)).not.toBeInTheDocument()
+    await act(() => new Promise((resolve) => window.setTimeout(resolve, 800)))
+    expect((await sampleAgentsBackend.getAgent('maps-leads')).currentVersion, 'the stopped change saved no version').toBe(versionBefore)
+    expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument()
+    firstVisit.unmount()
+
+    renderBuilderPage()
+    await screen.findByText('Write a short message')
+    const reopenedChat = screen.getByRole('region', { name: 'Chat' })
+    expect(await within(reopenedChat).findByText('Stopped by you')).toBeInTheDocument()
+    expect(within(reopenedChat).getByText('Skip places with fewer than 50 reviews')).toBeInTheDocument()
+  })
+
   it('shows the saved chat again after reopening the builder, without Undo on old changes', async () => {
     const firstVisit = renderBuilderPage()
     await screen.findByText('Write a short message')

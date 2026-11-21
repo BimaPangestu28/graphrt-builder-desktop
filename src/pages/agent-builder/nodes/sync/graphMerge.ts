@@ -94,8 +94,14 @@ function mergeEdges(base: AgentGraph, mine: AgentGraph, theirs: AgentGraph, node
     .map((edge) => ({ ...edge, unused: isEdgeUnused(edge, nodesById.get(edge.source)) }))
 }
 
-function buildGraph(theirs: AgentGraph, nodes: GraphNode[], edges: GraphEdge[]): AgentGraph {
-  return { ...theirs, nodes, edges }
+/** Their env plus the secrets my waiting edits declared (an HTTP sign-in picked meanwhile). */
+function mergeEnv(base: AgentGraph, mine: AgentGraph, theirs: AgentGraph): AgentGraph['env'] {
+  const isNew = (variable: AgentGraph['env'][number], graph: AgentGraph) => !graph.env.some((other) => other.name === variable.name)
+  return [...theirs.env, ...mine.env.filter((variable) => isNew(variable, base) && isNew(variable, theirs))]
+}
+
+function buildGraph(versions: { base: AgentGraph; mine: AgentGraph; theirs: AgentGraph }, nodes: GraphNode[], edges: GraphEdge[]): AgentGraph {
+  return { ...versions.theirs, env: mergeEnv(versions.base, versions.mine, versions.theirs), nodes, edges }
 }
 
 /**
@@ -130,7 +136,7 @@ export function mergeGraphEdits(base: AgentGraph, mine: AgentGraph, theirs: Agen
     if (choice === 'keep-mine') reappliedNodeIds.push(nodeId)
   }
   const nodes = orderNodes(theirs, mine, chosen)
-  return { merged: buildGraph(theirs, nodes, mergeEdges(base, mine, theirs, nodes)), conflicts, reappliedNodeIds }
+  return { merged: buildGraph({ base, mine, theirs }, nodes, mergeEdges(base, mine, theirs, nodes)), conflicts, reappliedNodeIds }
 }
 
 /** Plain words for my waiting edits: "title of Ask a model", "Send WhatsApp message (new)". */

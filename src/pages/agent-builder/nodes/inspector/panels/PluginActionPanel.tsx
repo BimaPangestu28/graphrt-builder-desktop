@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useInRouterContext } from 'react-router-dom'
 import type { JsonValue, NodeConfig, NodeKindInfo } from '@/api/agentGraphTypes'
 import { listAgentPluginRequirements } from '@/api/plugins'
@@ -10,6 +10,7 @@ import { PluginSessionLinkAction } from '../../../PluginSessionLinkAction'
 import { describeRequirementState, needsOnlySessionLink } from '../../../pluginRequirementDisplay'
 import { isEmptyConfigValue, type JsonObject } from '../configPaths'
 import { hintClassName, InspectorSection, labelClassName, linkButtonClassName, SelectInput } from '../fields'
+import { revealElement, useSectionRequest } from '../sectionRequest'
 import { useInspector } from '../InspectorContext'
 import { parseTemplate } from '../references'
 import { propertyLabel, SchemaForm, schemaProperties, schemaRequired } from '../SchemaForm'
@@ -103,16 +104,26 @@ function PluginSetupStatus({ kindInfo }: { kindInfo: NodeKindInfo }) {
 function ChangeActionField({ actions, onChangeAction }: { actions: NodeKindInfo[]; onChangeAction: (kindInfo: NodeKindInfo) => void }) {
   const { node, kindInfo, readOnly } = useInspector()
   const [isOpen, setIsOpen] = useState(false)
+  const buttonRef = useRef<HTMLButtonElement>(null)
   const pluginName = kindInfo?.plugin?.name ?? node.plugin ?? ''
+  const canChange = !readOnly && actions.length >= 2
+  const { request, claim } = useSectionRequest()
+  // Canvas menu "Change action": open the list and focus the picker (once per request).
+  useEffect(() => {
+    if (request?.section !== 'change-action' || !claim(request.sequence)) return
+    if (canChange) setIsOpen(true)
+    revealElement(buttonRef.current)
+  }, [request, claim, canChange])
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-1.5" data-section-key="change-action">
       <span className={labelClassName}>Action</span>
       <button
+        ref={buttonRef}
         type="button"
         aria-haspopup="listbox"
         aria-expanded={isOpen}
         aria-label={`Action: ${kindInfo?.displayName ?? node.kind}. Change action`}
-        disabled={readOnly || actions.length < 2}
+        disabled={!canChange}
         onClick={() => setIsOpen((open) => !open)}
         className="box-border flex h-[34px] cursor-pointer items-center justify-between gap-2 rounded-[9px] border border-line-strong bg-surface px-2 text-left text-[13px] text-ink disabled:cursor-default"
       >
@@ -226,7 +237,7 @@ export function PluginActionPanel() {
           </button>
         </p>
       )}
-      <InspectorSection title="Inputs">
+      <InspectorSection title="Inputs" sectionKey="inputs">
         <SchemaForm
           schema={kindInfo?.configSchema}
           config={node.config as JsonObject}

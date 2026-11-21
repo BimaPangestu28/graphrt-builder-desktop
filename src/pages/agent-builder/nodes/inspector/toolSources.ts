@@ -1,3 +1,5 @@
+import { getToolInputSchemas } from '@/api/agentGraph'
+import type { ToolInputSchema } from '@/api/agentGraphTypes'
 import { listAgentSteps } from '@/api/chains'
 import { listMcpServers } from '@/api/mcpServers'
 import { listInstalledPlugins } from '@/api/plugins'
@@ -8,7 +10,8 @@ import { useAsyncData } from '@/hooks/useAsyncData'
  * Tools a "Run an agent" or "Use a tool" step can call on this computer (spec B10 /
  * B15): your other agents (`agents/<agent id>`), each installed plugin's tools
  * (`<plugin>/<tool>`) and MCP servers (`<server>/<tool>`). A source that cannot be read
- * is left out; the others still show.
+ * is left out; the others still show. Plugin and MCP tools carry the JSON Schema of their
+ * arguments when the app knows it (`getToolInputSchemas`), so their inputs render as a form.
  */
 
 export type ToolSourceKind = 'agents' | 'plugins' | 'mcp'
@@ -23,6 +26,8 @@ export interface ToolChoice {
   source: ToolSourceKind
   /** An agent's Start inputs (agents only). */
   inputs: AgentInput[]
+  /** JSON Schema of a plugin or MCP tool's arguments; null when unknown (inputs are typed by name). */
+  inputSchema: Record<string, unknown> | null
   note: string | null
 }
 
@@ -48,7 +53,13 @@ async function readOrEmpty<Item>(load: () => Promise<Item[]>, what: string): Pro
  * @returns The tool lists, empty while loading (ToolSources)
  */
 export async function loadToolSources(currentAgentId: string): Promise<ToolSources> {
-  const [agentSteps, plugins, servers] = await Promise.all([readOrEmpty(listAgentSteps, 'agents'), readOrEmpty(listInstalledPlugins, 'plugins'), readOrEmpty(listMcpServers, 'MCP servers')])
+  const [agentSteps, plugins, servers, schemas] = await Promise.all([
+    readOrEmpty(listAgentSteps, 'agents'),
+    readOrEmpty(listInstalledPlugins, 'plugins'),
+    readOrEmpty(listMcpServers, 'MCP servers'),
+    readOrEmpty(getToolInputSchemas, 'tool input schemas'),
+  ])
+  const schemaFor = indexToolSchemas(schemas)
   return {
     agents: agentSteps
       .filter((agentStep) => agentStep.agentId !== currentAgentId)
@@ -59,11 +70,41 @@ export async function loadToolSources(currentAgentId: string): Promise<ToolSourc
         label: agentStep.name,
         source: 'agents' as const,
         inputs: agentStep.inputs,
+        inputSchema: null,
         note: agentStep.usableAsStep ? `${agentStep.inputs.length === 0 ? 'no' : agentStep.inputs.length} input${agentStep.inputs.length === 1 ? '' : 's'}` : agentStep.unusableReason,
       })),
-    plugins: plugins.flatMap((plugin) => plugin.tools.map((tool) => ({ reference: `${plugin.name}/${tool}`, provider: plugin.name, name: tool, label: tool, source: 'plugins' as const, inputs: [], note: null }))),
-    mcp: servers.flatMap((server) => server.knownTools.map((tool) => ({ reference: `${server.name}/${tool.name}`, provider: server.name, name: tool.name, label: tool.name, source: 'mcp' as const, inputs: [], note: tool.description || null }))),
+    plugins: plugins.flatMap((plugin) =>
+      plugin.tools.map((tool) => ({ reference: `${plugin.name}/${tool}`, provider: plugin.name, name: tool, label: tool, source: 'plugins' as const, inputs: [], inputSchema: schemaFor(plugin.name, tool), note: null })),
+    ),
+    mcp: servers.flatMap((server) =>
+      server.knownTools.map((tool) => ({
+        reference: `${server.name}/${tool.name}`,
+        provider: server.name,
+        name: tool.name,
+        label: tool.name,
+        source: 'mcp' as const,
+        inputs: [],
+        inputSchema: schemaFor(server.name, tool.name) ?? tool.inputSchema ?? null,
+        note: tool.description || null,
+      })),
+    ),
   }
+}
+
+/** Looks up a tool's schema by provider and name; null when the app does not know it. */
+function indexToolSchemas(schemas: ToolInputSchema[]): (provider: string, name: string) => Record<string, unknown> | null {
+  const byReference = new Map(schemas.map((schema) => [`${schema.provider}/${schema.name}`, schema.inputSchema]))
+  return (provider, name) => byReference.get(`${provider}/${name}`) ?? null
+}
+
+/**
+ * The input names of a tool schema for a one-line summary, required ones marked:
+ * `query*, max_results`. Empty when the schema lists none.
+ */
+export function describeSchemaInputs(schema: Record<string, unknown> | null): string {
+  const properties = schema && typeof schema.properties === 'object' && schema.properties !== null ? Object.keys(schema.properties) : []
+  const required = Array.isArray(schema?.required) ? (schema.required as unknown[]) : []
+  return properties.map((name) => (required.includes(name) ? `${name}*` : name)).join(', ')
 }
 
 const emptySources: ToolSources = { agents: [], plugins: [], mcp: [] }

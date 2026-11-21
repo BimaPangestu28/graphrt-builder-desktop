@@ -76,7 +76,7 @@ fn definitions_round_trip_through_settings() {
     assert_eq!(load_definitions(&db).unwrap(), all);
     assert!(matches!(add_definition(&db, stdio_input("fs", "other", &[])), Err(AppError::InvalidInput(_))));
 
-    let tools = vec![McpToolInfo { name: "read_file".into(), description: "Read a file".into() }];
+    let tools = vec![McpToolInfo { name: "read_file".into(), description: "Read a file".into(), input_schema: None }];
     let (checked, _) = record_check(&db, "fs", Some(tools.clone()), None).unwrap();
     assert_eq!(checked.known_tools, tools);
     assert!(checked.last_check.as_ref().unwrap().connected);
@@ -212,8 +212,8 @@ fn builder_guide_lists_known_tools() {
     assert_eq!(servers_guide(&[]), "");
     let mut checked = validate_input(stdio_input("fs", "srv", &[])).unwrap();
     checked.known_tools = vec![
-        McpToolInfo { name: "read_file".into(), description: "Read  a\nfile".into() },
-        McpToolInfo { name: "list_dir".into(), description: String::new() },
+        McpToolInfo { name: "read_file".into(), description: "Read  a\nfile".into(), input_schema: None },
+        McpToolInfo { name: "list_dir".into(), description: String::new(), input_schema: None },
     ];
     let unchecked = validate_input(http_input("remote", "https://x/mcp", None)).unwrap();
     let guide = servers_guide(&[checked, unchecked]);

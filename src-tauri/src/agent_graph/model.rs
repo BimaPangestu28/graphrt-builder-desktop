@@ -204,6 +204,10 @@ pub struct GraphEdit {
     /// Positions to save for the new version (replacing the copied-forward ones), if any.
     #[serde(default)]
     pub layout: Option<Vec<NodeLayout>>,
+    /// Saved secrets a step now uses (HTTP sign-in): each one the document does not
+    /// declare yet is added to its `env` as `{ name, type: secret }`. Names only, never values.
+    #[serde(default)]
+    pub declare_secrets: Vec<String>,
 }
 
 /// One node to save; the editable fields of [`GraphNodeView`].
@@ -274,6 +278,7 @@ impl From<&AgentGraph> for GraphEdit {
             edges: graph.edges.iter().map(EdgeEdit::from).collect(),
             description: None,
             layout: None,
+            declare_secrets: Vec::new(),
         }
     }
 }

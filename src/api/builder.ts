@@ -22,6 +22,18 @@ export async function reviseAgent(agentId: string, instruction: string, onProgre
   return callBackend('revise_agent', { agentId, instruction, onProgress: onProgressChannel })
 }
 
+/**
+ * "Stop the builder": cancels the agent's running chat change. Its `reviseAgent` call then
+ * rejects with `stopped`, nothing is saved, the Nodes view can edit again and the chat
+ * notes "Stopped by you".
+ *
+ * @returns False when no change was running (Promise<boolean>)
+ */
+export function stopAgentRevision(agentId: string): Promise<boolean> {
+  if (!isDesktopApp()) return sampleBuilderBackend.stopAgentRevision(agentId)
+  return callBackend('stop_agent_revision', { agentId })
+}
+
 /** Steps, inputs and model providers of the agent's current version. */
 export function getFlowSummary(agentId: string): Promise<FlowSummary> {
   if (!isDesktopApp()) return sampleBuilderBackend.getFlowSummary(agentId)

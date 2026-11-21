@@ -1,13 +1,16 @@
-import type { GraphNode, GraphProblem } from '@/api/agentGraphTypes'
+import { useRef, useState } from 'react'
+import type { AgentGraph, GraphProblem, NodeLayout } from '@/api/agentGraphTypes'
 import { joinClassNames } from '@/components/ui'
-import type { NodeInspectorProps } from './contracts'
-import { createGraphNode, uniqueNodeId } from './graphEdits'
+import type { InspectorSectionRequest, NodeInspectorProps } from './contracts'
+import { copyGraphNodes, pasteGraphNodes, type PasteResult } from './flow/clipboard'
+import { updateGraphNode } from './graphEdits'
 import { listNodeOutputs } from './inspector/availableValues'
 import { ErrorHandlingSection } from './inspector/ErrorHandlingSection'
 import { OutputsList } from './inspector/fields'
 import { InspectorFooter, InspectorHeader } from './inspector/InspectorHeader'
 import { InspectorProvider, useInspector } from './inspector/InspectorContext'
 import { pickSettingsPanel } from './inspector/panelRegistry'
+import { SectionRequestProvider, useFieldRequestFallback } from './inspector/sectionRequest'
 
 /**
  * The settings of the selected step (spec B-boards B1–B17), on the right of the Nodes
@@ -16,24 +19,26 @@ import { pickSettingsPanel } from './inspector/panelRegistry'
  * kinds, a schema form otherwise), "When this step fails", the outputs, and Ask the
  * builder / Duplicate / Delete. Every change goes through `controller` (one undo step
  * each, with words for the version summary); ports and "unused" arrows follow.
+ * `requestedSection` opens a section or field (see `inspector/sectionRequest.tsx`).
  * Building blocks live in `./inspector/`.
  */
 
-/** A copy of `node` with a fresh id, its settings and " (copy)" in the title. */
-export function duplicateGraphNode(node: GraphNode, takenIdsGraph: Parameters<typeof uniqueNodeId>[0], kindDisplayName?: string): GraphNode {
-  return createGraphNode(
-    {
-      id: uniqueNodeId(takenIdsGraph, node.id),
-      kind: node.kind,
-      title: `${node.displayTitle} (copy)`,
-      parent: node.parent,
-      config: structuredClone(node.config),
-      onError: structuredClone(node.onError),
-      retry: { ...node.retry },
-      timeoutMs: node.timeoutMs,
-    },
-    kindDisplayName,
-  )
+/**
+ * A copy of the step `nodeId` with fresh ids, its settings and " (copy)" in the title.
+ * A For each / Repeat comes with its whole body (inner steps, arrows and positions,
+ * references between them pointing at the copies), like Duplicate on the canvas.
+ *
+ * @param graph - Working graph (AgentGraph)
+ * @param nodeId - The step to duplicate (string)
+ * @param positions - Current positions, to place the copy beside the original (Record<string, NodeLayout>)
+ * @returns The graph with the copy, the copy's id and positions (PasteResult & { copyId: string | null })
+ */
+export function duplicateInspectedNode(graph: AgentGraph, nodeId: string, positions: Record<string, NodeLayout>): PasteResult & { copyId: string | null } {
+  const original = graph.nodes.find((node) => node.id === nodeId)
+  const pasted = pasteGraphNodes(graph, copyGraphNodes(graph, [nodeId], positions))
+  const copyId = pasted.idMap[nodeId] ?? null
+  if (!original || !copyId) return { ...pasted, copyId }
+  return { ...pasted, graph: updateGraphNode(pasted.graph, copyId, { title: `${original.displayTitle} (copy)` }), copyId }
 }
 
 function ProblemList({ problems }: { problems: GraphProblem[] }) {
@@ -60,15 +65,17 @@ interface InspectorBodyProps {
 
 function InspectorBody({ problems, onClose, onAskBuilder }: InspectorBodyProps) {
   const { node, graph, kindInfo, controller, readOnly } = useInspector()
+  const bodyRef = useRef<HTMLDivElement>(null)
+  useFieldRequestFallback(bodyRef)
   const SettingsPanel = pickSettingsPanel(node, kindInfo)
   const outputs = listNodeOutputs(node, kindInfo ?? undefined).map((output) => ({ name: output.path.slice(1).join('.'), hint: output.typeHint }))
   const errorOutputs = node.onError.strategy !== 'fail' ? [{ name: 'error_message', hint: 'text · when it failed' }, { name: 'error_type', hint: 'text · when it failed' }] : []
 
   const duplicate = () => {
-    const copy = duplicateGraphNode(node, graph, kindInfo?.displayName)
-    controller.addNode(copy, `duplicated ${node.displayTitle}`)
-    const position = controller.positions[node.id]
-    if (position) controller.moveNodes([{ ...position, nodeId: copy.id, x: position.x + 40, y: position.y + 40 }])
+    const { layouts } = duplicateInspectedNode(graph, node.id, controller.positions)
+    // The edit starts from the controller's latest graph; positions follow once it exists.
+    controller.applyEdit((current) => duplicateInspectedNode(current, node.id, controller.positions).graph, `duplicated ${node.displayTitle}`)
+    if (layouts.length > 0) controller.moveNodes(layouts)
   }
   const remove = () => {
     controller.removeNodes([node.id], `removed ${node.displayTitle}`)
@@ -76,7 +83,7 @@ function InspectorBody({ problems, onClose, onAskBuilder }: InspectorBodyProps) 
   }
 
   return (
-    <>
+    <div ref={bodyRef} className="contents">
       <InspectorHeader onClose={onClose} />
       <ProblemList problems={problems} />
       {readOnly && <p className="m-0 rounded-[10px] bg-subtle px-3 py-2 text-[12px] text-muted">The builder is changing this agent. Settings are read-only until it is done.</p>}
@@ -84,16 +91,33 @@ function InspectorBody({ problems, onClose, onAskBuilder }: InspectorBodyProps) 
       <ErrorHandlingSection />
       <OutputsList outputs={[...outputs, ...errorOutputs]} />
       <InspectorFooter onDuplicate={duplicate} onDelete={remove} onAskBuilder={onAskBuilder} />
-    </>
+    </div>
   )
 }
 
-export function NodeInspector({ node, graph, kindInfo, nodeKinds, problems, readOnly, controller, onClose, onAskBuilder }: NodeInspectorProps) {
+/**
+ * The request meant for the node shown: one naming `nodeId`, or one that arrived while
+ * this node was shown. Selecting another node later does not replay it.
+ */
+function useRequestForNode(requestedSection: InspectorSectionRequest | null | undefined, nodeId: string | null): InspectorSectionRequest | null {
+  const [owner, setOwner] = useState<{ sequence: number; nodeId: string | null } | null>(null)
+  if (requestedSection && requestedSection.sequence !== owner?.sequence) {
+    // Remember which node it arrived for (state from the previous render, React's documented pattern).
+    setOwner({ sequence: requestedSection.sequence, nodeId: requestedSection.nodeId ?? nodeId })
+    return requestedSection.nodeId === undefined || requestedSection.nodeId === nodeId ? requestedSection : null
+  }
+  return requestedSection && owner?.nodeId === nodeId ? requestedSection : null
+}
+
+export function NodeInspector({ node, graph, kindInfo, nodeKinds, problems, readOnly, controller, onClose, onAskBuilder, requestedSection }: NodeInspectorProps) {
+  const request = useRequestForNode(requestedSection, node?.id ?? null)
   if (!node) return null
   return (
     <aside aria-label="Step settings" className="box-border flex w-[340px] shrink-0 flex-col gap-4 overflow-y-auto border-l border-line bg-surface p-4" data-testid="node-inspector">
       <InspectorProvider node={node} graph={graph} kindInfo={kindInfo} nodeKinds={nodeKinds} readOnly={readOnly} controller={controller}>
-        <InspectorBody key={node.id} problems={problems} onClose={onClose} onAskBuilder={onAskBuilder} />
+        <SectionRequestProvider request={request}>
+          <InspectorBody key={node.id} problems={problems} onClose={onClose} onAskBuilder={onAskBuilder} />
+        </SectionRequestProvider>
       </InspectorProvider>
     </aside>
   )
