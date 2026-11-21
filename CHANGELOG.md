@@ -7,6 +7,8 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-21
+
 ### Changed
 
 - **Update popup in the corner**: the bottom-right toast now also appears when a new version is available (Update / Later, with "You have X") and while it downloads (progress, Hide), not only once it is ready. "Later" is remembered for that version across restarts; a newer version shows it again.
@@ -386,6 +388,7 @@ connected to the graphrt runtime**, so no agent actually runs.
 - The mobile companion screens from the design are not built.
 - macOS builds are unsigned.
 
-[Unreleased]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/BimaPangestu28/graphrt-builder-desktop/releases/tag/v0.1.0
