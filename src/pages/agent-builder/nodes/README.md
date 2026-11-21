@@ -18,7 +18,11 @@ canvas, inspector, add-node palette and live-run / sync parts on top of it.
 | `NodeCanvas.tsx`, `flow/*` | Canvas: React Flow + ELK auto-layout, read-only render, drag to move | **canvas** |
 | `NodeInspector.tsx`, `inspector/*` | Step settings: header, per-kind panels, schema form, Change action, When this step fails, variable picker (`{{#node.field#}}` chips) | **inspector** |
 | `AddNodePalette.tsx` | STUB: lists offered kinds | **palette** |
-| `RunOverlay.tsx`, `ProblemsPanel.tsx`, `SyncBanner.tsx` | STUB / minimal: live run, problems, builder-busy + conflict | **live/sync** |
+| `RunOverlay.tsx`, `ProblemsPanel.tsx`, `SyncBanner.tsx` | Live run layer (arrow styles, Review card), problems list, builder-busy queue + per-step conflicts | **live/sync** |
+| `run/*` | Run events → node / arrow states (`nodeRunStates.ts`), the shown run (`useNodesTestRun`, `useNodesLiveRun`), `RunBar`, `NodeDecorations` (badges drawn inside cards), Test / Validate / Add note actions | **live/sync** |
+| `problems/*` | Problem labels, Fix with builder text, why Test is off, live validation (`useGraphValidation`) | **live/sync** |
+| `sync/*` | 3-way per-node merge (`graphMerge.ts`), autosave, the chat's "Edited in Nodes" line with Undo | **live/sync** |
+| `notes/*` | Sticky notes: `useCanvasNotes`, `NoteNode` renderer (type `note`) | **live/sync** |
 
 Libraries: `@xyflow/react` 12.12.1 (import only from `flow/flowLibrary.ts`) and
 `elkjs` 0.12.0 (only through `flow/autoLayout.ts`, loaded lazily).
@@ -34,6 +38,8 @@ Tests that render the canvas call `installReactFlowTestEnvironment()` from
 | `saveAgentGraph(agentId, baseVersion, edit)` | `save_agent_graph` | new version "Edited in Nodes: …", chat entry; errors below |
 | `getNodeLayout` / `saveNodeLayout` | `get_node_layout` / `save_node_layout` | positions per version + viewport per agent; moving adds no version |
 | `getAgentEditState` / `listenToAgentEditState` | `get_agent_edit_state` / event `agent-edit-state` | builder busy |
+| `validateAgentGraph(agentId, baseVersion, edit)` | `validate_agent_graph` | problems of an unsaved edit; saves nothing, works while busy |
+| `getCanvasNotes` / `saveCanvasNotes` | `get_canvas_notes` / `save_canvas_notes` | sticky notes per version (`canvas_notes` table), copied forward to every new version |
 
 Types: `src/api/agentGraphTypes.ts` (mirrors `src-tauri/src/agent_graph/model.rs`).
 The sample backend (`src/api/sampleBackend/agentGraph.ts`) behaves the same in the
@@ -86,13 +92,25 @@ When `currentVersion` (from the builder page) moves past the loaded version, the
 reloads when clean and sets `conflict` when dirty. While `builderBusy`, the canvas is read-only
 and `save` does not call the backend.
 
-## What phase 2 still needs from the backend
+## Live run, problems and sync (live/sync part)
 
-- Live run → node states: run events exist (`run-event`), but mapping them onto node ids for
-  the overlay, and showing handled-error / fallback badges, is UI work on existing events.
-- Edit queue with per-node merge (spec S1 "re-apply if they touch other steps"): today a
-  conflict is whole-graph Keep mine / Keep the builder's.
-- Agent `require_approval` (tool approval) pauses and human-input `timeout_ms` expiry: owned
-  by the approval / run-limits work, not this folder.
-- Canvas notes (graphrt drops note nodes): no table yet.
+- **Node decorations**: `NodesView` wraps the canvas in `NodeDecorationsProvider`; step and container
+  cards render `<NodeDecoration nodeId={…} variant?="container" />` inside their `relative` root
+  (status chip on the top edge, outline, details under the card, loop counters, live browser view).
+  Arrow states are a scoped stylesheet keyed by React Flow's edge `data-id` (`run/RunCanvasStyles.tsx`),
+  so `toFlowEdges` stays as it is.
+- **Notes**: `NodeCanvas` takes `notes` / `onMoveNote` and registers `noteNodeTypes`; note flow ids start
+  with `note:` (`isNoteFlowNodeId`) and never reach `onSelectionChange` or `onMoveNodes`.
+- **Queue and merge**: while the builder is busy the canvas is read-only but inspector edits stay local;
+  when a newer version arrives (page `currentVersion`, or `version_conflict` on save) `useAgentGraph`
+  merges them per step (`sync/graphMerge.ts`). Steps both changed → `status: 'conflict'`,
+  `conflict.nodes`, `resolveNodeConflict(nodeId, choice)` / `resolveConflict(choice)` (then saves).
+- **Autosave** (spec S1): `useGraphAutosave` saves 1.5 s after the last edit; refused edits are not resent
+  until they change. `NodesView autosaveDelayMs={null}` turns it off (tests).
+
+## Still open
+
+- Stop the builder: no backend command to cancel a running revision yet (`onStopBuilder` is unwired).
+- Show node selects the step; centering the viewport on it needs the canvas's React Flow instance.
+- Notes cannot be resized yet; the context menu entry (Add note) belongs to the canvas menu.
 - Change action (B2) lists a plugin's other kinds from `getNodeKinds()` filtered by `plugin.name`.

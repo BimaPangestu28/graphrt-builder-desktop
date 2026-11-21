@@ -108,8 +108,8 @@ function applyScriptStep(runId: string, step: ScriptStep): void {
   emitRunEvent(changedRun, step.event, run.status)
 }
 
-/** Plays steps one after another, {@link sampleRunStepDelayMs} apart. */
-function playScript(runId: string, steps: ScriptStep[]): void {
+/** Plays steps one after another, `delayMs` ({@link sampleRunStepDelayMs}) apart. */
+function playScript(runId: string, steps: ScriptStep[], delayMs = sampleRunStepDelayMs): void {
   const [nextStep, ...remainingSteps] = steps
   if (!nextStep) {
     scriptTimersByRunId.delete(runId)
@@ -117,8 +117,8 @@ function playScript(runId: string, steps: ScriptStep[]): void {
   }
   const timer = setTimeout(() => {
     applyScriptStep(runId, nextStep)
-    playScript(runId, remainingSteps)
-  }, sampleRunStepDelayMs)
+    playScript(runId, remainingSteps, delayMs)
+  }, delayMs)
   scriptTimersByRunId.set(runId, timer)
 }
 
@@ -256,6 +256,102 @@ function matchesFilter(run: Run, filter?: RunFilter): boolean {
   if (filter?.agentId && run.agentId !== filter.agentId) return false
   if (filter?.status && run.status !== filter.status) return false
   return true
+}
+
+/** Businesses the error path demo goes through; items 4 and 8 are skipped at the approval. */
+const errorPathItemCount = 12
+const errorPathSkippedIndexes = new Set([3, 7])
+
+function playedItem(index: number): ScriptStep[] {
+  const frame = { frame: `for_each_place[${index}]` }
+  const branch = errorPathSkippedIndexes.has(index) ? 'skip' : 'send'
+  return [
+    nodeEvent('node_progress', 'for_each_place', { frame: '', name: 'iteration_next', data: { index, total: errorPathItemCount } }),
+    nodeEvent('node_started', 'write_message', { ...frame, kind: 'llm', attempt: 1 }),
+    nodeEvent('node_succeeded', 'write_message', { ...frame, outputs: { text: sampleDraftMessage }, elapsed_ms: 1800 }),
+    nodeEvent('node_started', sampleApprovalNodeId, { ...frame, kind: 'human-input', attempt: 1 }),
+    nodeEvent('node_succeeded', sampleApprovalNodeId, { ...frame, outputs: { action: branch }, branch, elapsed_ms: 0 }),
+    branch === 'send'
+      ? nodeEvent('node_succeeded', 'send_whatsapp', { ...frame, outputs: { status_code: 200 }, elapsed_ms: 700 })
+      : nodeEvent('node_skipped', 'send_whatsapp', frame),
+  ]
+}
+
+/** Item 11: the model is out of credit (fallback values), then the send times out three times (error path). */
+function failingItem(index: number): ScriptStep[] {
+  const frame = { frame: `for_each_place[${index}]` }
+  const timeout = 'The service took too long to answer'
+  return [
+    nodeEvent('node_progress', 'for_each_place', { frame: '', name: 'iteration_next', data: { index, total: errorPathItemCount } }),
+    nodeEvent('node_started', 'write_message', { ...frame, kind: 'llm', attempt: 1 }),
+    nodeEvent('node_failed', 'write_message', { ...frame, error: 'The model was out of credit', error_type: 'provider', handled: true, outputs: { text: 'Hello! We would love to share our catering menu.', error_message: 'The model was out of credit', error_type: 'provider' }, elapsed_ms: 400 }),
+    nodeEvent('node_started', sampleApprovalNodeId, { ...frame, kind: 'human-input', attempt: 1 }),
+    nodeEvent('node_succeeded', sampleApprovalNodeId, { ...frame, outputs: { action: 'send' }, branch: 'send', elapsed_ms: 0 }),
+    nodeEvent('node_started', 'send_whatsapp', { ...frame, kind: 'whatsapp-web.send_message', attempt: 1 }),
+    nodeEvent('node_retry', 'send_whatsapp', { ...frame, attempt: 1, error: timeout, delay_ms: 2000 }),
+    nodeEvent('node_started', 'send_whatsapp', { ...frame, kind: 'whatsapp-web.send_message', attempt: 2 }),
+    nodeEvent('node_retry', 'send_whatsapp', { ...frame, attempt: 2, error: timeout, delay_ms: 4000 }),
+    nodeEvent('node_started', 'send_whatsapp', { ...frame, kind: 'whatsapp-web.send_message', attempt: 3 }),
+    nodeEvent('node_failed', 'send_whatsapp', { ...frame, error: timeout, error_type: 'timeout', handled: true, outputs: { error_message: timeout, error_type: 'timeout' }, elapsed_ms: 30000 }),
+  ]
+}
+
+function buildErrorPathScript(): ScriptStep[] {
+  const playedItems = Array.from({ length: 10 }, (_, index) => playedItem(index)).flat()
+  return [
+    nodeEvent('node_started', 'ask_input', { frame: '', kind: 'start', attempt: 1 }),
+    nodeEvent('node_succeeded', 'ask_input', { frame: '', outputs: sampleMapsLeadsInputs, elapsed_ms: 0 }),
+    nodeEvent('node_started', 'search_maps', { frame: '', kind: 'google-maps-scraper.search', attempt: 1 }),
+    nodeEvent('node_succeeded', 'search_maps', { frame: '', outputs: { places_found: errorPathItemCount }, elapsed_ms: 5200 }),
+    nodeEvent('node_started', 'for_each_place', { frame: '', kind: 'iteration', attempt: 1 }),
+    ...playedItems,
+    ...failingItem(10),
+  ]
+}
+
+function createSampleRun(agentId: string, changes: Partial<Run> = {}): Run {
+  startedRunCount += 1
+  const run: Run = {
+    id: `sample-run-${startedRunCount}`,
+    agentId,
+    agentVersion: readCurrentVersion(agentId),
+    trigger: 'test',
+    status: 'running',
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+    outputs: null,
+    errorMessage: null,
+    pauseReasons: null,
+    ...changes,
+  }
+  storedRuns = [run, ...storedRuns]
+  eventsByRunId.set(run.id, [])
+  return run
+}
+
+/**
+ * Starts the Nodes view's error path demo (spec 44) on a sample agent: 12 businesses, 8 sent and 2
+ * skipped, then on business 11 the model step fails into its fallback values and the send step
+ * fails three times into its error path. The run stays running there (browser preview, screenshots).
+ */
+export function startSampleErrorPathRun(agentId = 'maps-leads', delayMs = 40): Run {
+  const run = createSampleRun(agentId)
+  inputsByRunId.set(run.id, { ...sampleMapsLeadsInputs })
+  playScript(run.id, [{ event: { type: 'run_started', run_id: run.id, resumed: false } }, ...buildErrorPathScript()], delayMs)
+  return { ...run }
+}
+
+/**
+ * Adds a run with all its events at once (tests): no timers, nothing sent to subscribers.
+ *
+ * @example
+ * addSampleRun('maps-leads', { status: 'paused', events: [{ type: 'node_started', node_id: 'search_maps' }] })
+ */
+export function addSampleRun(agentId: string, options: { events: GraphrtEvent[]; status?: RunStatus; pauseReasons?: Run['pauseReasons']; startedAt?: string }): Run {
+  const run = createSampleRun(agentId, { status: options.status ?? 'running', pauseReasons: options.pauseReasons ?? null, startedAt: options.startedAt ?? new Date(Date.now() - 60_000).toISOString() })
+  const createdAt = new Date().toISOString()
+  eventsByRunId.set(run.id, options.events.map((event, index) => ({ runId: run.id, seq: index + 1, event, createdAt })))
+  return { ...run }
 }
 
 export const sampleRunsBackend = {

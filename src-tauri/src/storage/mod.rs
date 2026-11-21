@@ -19,6 +19,8 @@
 //!    version_after, changed_step_ids, created_at)`: the builder chat (see `builder_messages.rs`)
 //! - `node_layouts(agent_id, version, node_id, x, y, width, height, collapsed)` and
 //!   `canvas_viewports(agent_id, x, y, zoom, updated_at)`: the Nodes view layout (see `node_layouts.rs`)
+//! - `canvas_notes(agent_id, version, note_id, x, y, w, h, text, color)`: sticky notes on the
+//!   Nodes canvas, per version and copied forward (see `canvas_notes.rs`)
 //!
 //! `Database` is cheap to share (`Arc<Database>`); every method takes `&self`
 //! and locks the single connection for the duration of the call.
@@ -26,6 +28,7 @@
 pub mod agent_settings;
 pub mod agents;
 pub mod builder_messages;
+pub mod canvas_notes;
 pub mod chains;
 mod codec;
 mod maintenance;

@@ -178,6 +178,8 @@ interface BuilderAgentPanelProps {
   onAgentRenamed?: () => Promise<void> | void
   /** After the Nodes view saved a version: reload the agent, steps and chat. */
   onGraphSaved?: (result: SaveGraphResult) => void
+  /** "Fix with builder" in the Nodes view: prefills the chat box (the user sends it). */
+  onAskBuilder?: (request: string) => void
 }
 
 /**
@@ -196,6 +198,7 @@ export function BuilderAgentPanel({
   arePluginsReady,
   onAgentRenamed,
   onGraphSaved,
+  onAskBuilder,
 }: BuilderAgentPanelProps) {
   const [activeTab, setActiveTab] = useState<BuilderTabKey>('steps')
   const askBuilder = useAskBuilder()
@@ -209,7 +212,7 @@ export function BuilderAgentPanel({
 
       {activeTab === 'nodes' ? (
         <div role="tabpanel" id="builder-panel-nodes" aria-labelledby="builder-tab-nodes" className="flex min-h-0 flex-1 flex-col">
-          <NodesView agent={agent} onGraphSaved={onGraphSaved} pluginRequirements={requirements} onAskBuilder={askBuilder} />
+          <NodesView agent={agent} onGraphSaved={onGraphSaved} pluginRequirements={requirements} onAskBuilder={onAskBuilder ?? askBuilder} arePluginsReady={arePluginsReady !== false} onShowPluginSetup={onShowPluginSetup} />
         </div>
       ) : (
         <div role="tabpanel" id={`builder-panel-${activeTab}`} aria-labelledby={`builder-tab-${activeTab}`} className={`flex flex-col gap-6 p-6 ${splitPaneScrollClassName}`}>

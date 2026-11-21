@@ -263,3 +263,26 @@ export interface NodeKindInfo {
   source: string
   plugin: NodeKindPlugin | null
 }
+
+/** Colors a canvas note can have (`storage::canvas_notes::NOTE_COLORS`). */
+export type CanvasNoteColor = 'yellow' | 'blue' | 'green' | 'pink' | 'gray'
+
+/** A sticky note on the Nodes canvas; graphrt drops note nodes, so the app keeps them per version. */
+export interface CanvasNote {
+  noteId: string
+  x: number
+  y: number
+  /** Width in canvas units. */
+  w: number
+  /** Height in canvas units. */
+  h: number
+  text: string
+  color: CanvasNoteColor
+}
+
+/** The notes of one version; copied forward to every new version. */
+export interface CanvasNoteSet {
+  agentId: string
+  version: number
+  notes: CanvasNote[]
+}

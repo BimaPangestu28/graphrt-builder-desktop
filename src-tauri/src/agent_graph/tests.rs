@@ -411,6 +411,33 @@ fn an_edit_with_blocking_problems_is_refused_with_them() {
 }
 
 #[test]
+fn validating_an_edit_reports_its_problems_and_saves_nothing() {
+    let db = Database::open_in_memory().unwrap();
+    let agent_id = create_agent(&db, APPROVAL_LOOP);
+    let registry = flow::builtin_node_registry();
+    let context = GraphContext::new(&registry);
+    let graph = load_agent_graph(&db, &agent_id, None, &context).unwrap();
+    let mut edit = edit_of(&graph);
+    edit.nodes.retain(|node| node.id != "approve_message");
+    edit.edges.retain(|edge| edge.source != "approve_message" && edge.target != "approve_message");
+
+    let guard = edit_lock::begin_builder_edit(&agent_id);
+    let problems = validate_agent_graph(&db, &agent_id, 1, &edit, &context);
+    drop(guard);
+    let problems = problems.unwrap();
+
+    assert!(problems.iter().any(|problem| problem.severity == ProblemSeverity::Error), "{problems:?}");
+    assert!(problems
+        .iter()
+        .any(|problem| problem.code == problem_codes::UNREACHABLE
+            || problem.code == problem_codes::SEND_WITHOUT_APPROVAL));
+    assert_eq!(db.get_agent(&agent_id).unwrap().current_version, 1, "validating adds no version");
+    let unchanged = validate_agent_graph(&db, &agent_id, 1, &edit_of(&graph), &context).unwrap();
+    assert_eq!(unchanged, graph.problems);
+    assert!(matches!(validate_agent_graph(&db, &agent_id, 9, &edit, &context), Err(AppError::NotFound(_))));
+}
+
+#[test]
 fn positions_are_copied_forward_and_the_edits_layout_is_saved() {
     let db = Database::open_in_memory().unwrap();
     let agent_id = create_agent(&db, SIMPLE_ANSWER);

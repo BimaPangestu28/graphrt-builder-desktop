@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Icon, joinClassNames, StrokeIcon } from '@/components/ui'
 import { describeError } from '@/lib/agentDisplay'
 import type { AgentGraphController } from './useAgentGraph'
@@ -34,10 +35,12 @@ interface NodesToolbarProps {
   onValidate?: () => void
   /** The last Validate's outcome ("No problems found"), until the next edit. */
   validationMessage?: string | null
+  /** More actions before Save (Add note, Validate, Test from the live/sync part). */
+  extraActions?: ReactNode
 }
 
 /** Add node, Auto-layout, Undo / Redo, the save state and Save (spec A toolbar). */
-export function NodesToolbar({ controller, isPaletteOpen, onTogglePalette, onAutoLayout, onValidate, validationMessage }: NodesToolbarProps) {
+export function NodesToolbar({ controller, isPaletteOpen, onTogglePalette, onAutoLayout, onValidate, validationMessage, extraActions }: NodesToolbarProps) {
   const isLocked = controller.builderBusy || controller.status === 'saving'
   return (
     <div role="toolbar" aria-label="Nodes" className="flex flex-wrap items-center gap-2 border-b border-line bg-surface px-4 py-2">
@@ -71,6 +74,7 @@ export function NodesToolbar({ controller, isPaletteOpen, onTogglePalette, onAut
           Validate
         </button>
       )}
+      {extraActions}
       <button
         type="button"
         onClick={() => void controller.save()}

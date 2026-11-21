@@ -238,6 +238,22 @@ const MIGRATIONS: &[&str] = &[
         updated_at TEXT NOT NULL
     );
     "#,
+    // Sticky notes on the Nodes canvas (see `canvas_notes.rs`), per agent version;
+    // graphrt drops note nodes from workflow documents, so the app keeps them.
+    r#"
+    CREATE TABLE canvas_notes (
+        agent_id   TEXT NOT NULL REFERENCES agents (id) ON DELETE CASCADE,
+        version    INTEGER NOT NULL CHECK (version >= 1),
+        note_id    TEXT NOT NULL CHECK (length(note_id) > 0),
+        x          REAL NOT NULL,
+        y          REAL NOT NULL,
+        w          REAL NOT NULL CHECK (w > 0),
+        h          REAL NOT NULL CHECK (h > 0),
+        text       TEXT NOT NULL,
+        color      TEXT NOT NULL,
+        PRIMARY KEY (agent_id, version, note_id)
+    );
+    "#,
 ];
 
 /// Applies every migration newer than the database's `user_version`.
@@ -290,6 +306,7 @@ mod tests {
                 "agent_versions",
                 "agents",
                 "builder_messages",
+                "canvas_notes",
                 "canvas_viewports",
                 "chain_steps",
                 "chains",

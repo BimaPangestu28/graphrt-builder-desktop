@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { SaveGraphResult } from '@/api/agentGraphTypes'
+import { BackendError } from '@/api/client'
 import type { Agent } from '@/api/types'
 import { describeError } from '@/lib/agentDisplay'
 import { AddNodePalette } from './AddNodePalette'
@@ -11,10 +12,20 @@ import { NodeCanvas } from './NodeCanvas'
 import { NodeInspector } from './NodeInspector'
 import { NodesToolbar } from './NodesToolbar'
 import { PaletteDropZone } from './palette/PaletteDropZone'
+import { CanvasNotesProvider } from './notes/NoteNode'
+import { useCanvasNotes } from './notes/useCanvasNotes'
 import { useAddNodePalette } from './palette/useAddNodePalette'
+import { describeTestBlock, groupProblemsByNode } from './problems/problemDisplay'
+import { useGraphValidation } from './problems/useGraphValidation'
 import { ProblemsPanel } from './ProblemsPanel'
+import { NodeDecorationsProvider } from './run/NodeDecorations'
+import { NodesRunActions } from './run/NodesRunActions'
+import { RunBar } from './run/RunBar'
+import { runCanvasScopeAttribute } from './run/RunCanvasStyles'
+import { useNodesLiveRun } from './run/useNodesLiveRun'
 import { RunOverlay } from './RunOverlay'
 import { SyncBanner } from './SyncBanner'
+import { autosaveDelayMs as defaultAutosaveDelayMs, useGraphAutosave } from './sync/useGraphAutosave'
 import { useAgentGraph, type AgentGraphController } from './useAgentGraph'
 import { useNodeKinds } from './useNodeKinds'
 
@@ -32,12 +43,24 @@ export interface NodesViewProps {
   agent: Agent
   /** After a save added a version: reload the agent, its steps and the chat. */
   onGraphSaved?: (result: SaveGraphResult) => void
-  /** The test run to show on the canvas (phase 2, RunOverlay). */
+  /** The run to show on the canvas first; otherwise a test still going, or the next one started. */
   runId?: string | null
   /** Plugin setup state, for the "Not linked" / "Not installed" badges on plugin steps. */
   pluginRequirements?: NodesPluginRequirement[]
   /** Pre-fills the builder chat with `text` (never sends); empty text only focuses the chat. */
   onAskBuilder?: (text: string) => void
+  /** False while a plugin the agent needs is not ready: Test then asks to set it up. */
+  arePluginsReady?: boolean
+  /** Brings the chat's plugin setup card up. */
+  onShowPluginSetup?: () => void
+  /** Delay before an edit is saved as a version; null saves only with Save. */
+  autosaveDelayMs?: number | null
+}
+
+/** Where a new note goes: near the top left of what the canvas shows. */
+function notePositionFor(viewport: AgentGraphController['viewport']): { x: number; y: number } {
+  if (!viewport) return { x: 40, y: -160 }
+  return { x: (-viewport.x + 80) / viewport.zoom, y: (-viewport.y + 60) / viewport.zoom }
 }
 
 /** Saves moved positions a moment after the last move, so dragging adds no version. */
@@ -71,9 +94,19 @@ export function toPluginStatuses(requirements: NodesPluginRequirement[]): Record
 /**
  * The builder's Nodes view (spec "Builder · Nodes"): toolbar, sync banner, the canvas
  * with the Add node palette and the step inspector beside it, and the problems list.
- * Owns the {@link useAgentGraph} controller and hands it to the phase-2 parts.
+ * Owns the {@link useAgentGraph} controller and hands it to the phase-2 parts; runs and
+ * validation are followed here and drawn on the nodes through {@link NodeDecorationsProvider}.
  */
-export function NodesView({ agent, onGraphSaved, runId = null, pluginRequirements, onAskBuilder }: NodesViewProps) {
+export function NodesView({
+  agent,
+  onGraphSaved,
+  runId = null,
+  pluginRequirements,
+  onAskBuilder,
+  arePluginsReady = true,
+  onShowPluginSetup,
+  autosaveDelayMs = defaultAutosaveDelayMs,
+}: NodesViewProps) {
   const controller = useAgentGraph({ agentId: agent.id, currentVersion: agent.currentVersion, onSaved: onGraphSaved })
   const { nodeKinds, kindsByKind, kindNames, reload: reloadNodeKinds } = useNodeKinds()
   const [selectedNodeIds, setSelectedNodeIdsState] = useState<string[]>([])
@@ -81,11 +114,17 @@ export function NodesView({ agent, onGraphSaved, runId = null, pluginRequirement
   const setSelectedNodeIds = useCallback((nodeIds: string[]) => {
     setSelectedNodeIdsState((current) => (current.length === nodeIds.length && current.every((nodeId, index) => nodeId === nodeIds[index]) ? current : nodeIds))
   }, [])
-  const [validationMessage, setValidationMessage] = useState<string | null>(null)
+  const [isProblemsPanelHidden, setIsProblemsPanelHidden] = useState(false)
   const [requestedSection, setRequestedSection] = useState<{ section: 'change-action'; sequence: number } | null>(null)
   useLayoutAutosave(controller)
+  useGraphAutosave(controller, autosaveDelayMs)
   const { graph, moveNodes, applyEdit } = controller
-  const readOnly = controller.builderBusy || controller.status === 'saving'
+  const live = useNodesLiveRun({ agentId: agent.id, graph, initialRunId: runId })
+  const validation = useGraphValidation(controller, agent.id)
+  const canvasNotes = useCanvasNotes(agent.id, controller.savedGraph?.version ?? null)
+  const isSaving = controller.status === 'saving'
+  // The canvas is read-only while the builder works; the inspector's edits wait in the queue.
+  const readOnly = controller.builderBusy || isSaving
   const palette = useAddNodePalette({
     graph,
     nodeKinds,
@@ -94,24 +133,29 @@ export function NodesView({ agent, onGraphSaved, runId = null, pluginRequirement
     controller,
   })
   const selectedNode = selectedNodeIds.length === 1 ? (graph?.nodes.find((node) => node.id === selectedNodeIds[0]) ?? null) : null
-  const problems = useMemo(() => [...(graph?.problems ?? []), ...controller.saveProblems], [graph, controller.saveProblems])
+  const { problems } = validation
+  const problemsByNode = useMemo(() => (graph ? groupProblemsByNode(problems, graph) : {}), [graph, problems])
+  const testBlock = graph ? describeTestBlock({ problems, graph, builderBusy: controller.builderBusy, isSaving, arePluginsReady }) : null
   const pluginStatuses = useMemo(() => toPluginStatuses(pluginRequirements ?? []), [pluginRequirements])
-
-  useEffect(() => setValidationMessage(null), [graph])
 
   async function placeAllNodes() {
     if (!graph) return
     moveNodes(await computeAutoLayout(graph))
   }
 
-  function validate() {
-    if (problems.length === 0) {
-      setValidationMessage('No problems found')
+  async function startTest() {
+    if (!arePluginsReady) {
+      onShowPluginSetup?.()
       return
     }
-    const firstWithNode = problems.find((problem) => problem.nodeId)
-    if (firstWithNode?.nodeId) setSelectedNodeIds([firstWithNode.nodeId])
-    setValidationMessage(problems.length === 1 ? '1 problem: see below' : `${problems.length} problems: see below`)
+    if (controller.isDirty && !(await controller.save())) return
+    const { error } = await live.testRun.startTest()
+    if (error instanceof BackendError && error.code === 'missing_plugins') onShowPluginSetup?.()
+  }
+
+  async function validateNow() {
+    setIsProblemsPanelHidden(false)
+    await validation.validate()
   }
 
   if (controller.loadError) return <p className="m-0 p-6 text-muted">Could not read the steps: {describeError(controller.loadError)}</p>
@@ -124,50 +168,68 @@ export function NodesView({ agent, onGraphSaved, runId = null, pluginRequirement
         isPaletteOpen={palette.isOpen}
         onTogglePalette={palette.toggle}
         onAutoLayout={() => void placeAllNodes()}
-        onValidate={validate}
-        validationMessage={validationMessage}
+        extraActions={
+          <NodesRunActions
+            problems={problems}
+            isValidating={validation.isValidating}
+            onValidate={() => void validateNow()}
+            onAddNote={() => canvasNotes.addNote(notePositionFor(controller.viewport))}
+            canAddNote={!readOnly}
+            testBlock={testBlock}
+            isStarting={live.testRun.isStarting}
+            isRunActive={live.isActive}
+            onTest={() => void startTest()}
+          />
+        }
       />
       <SyncBanner controller={controller} />
+      <RunBar agentId={agent.id} graph={graph} live={live} />
       <div className="flex min-h-0 flex-1">
-        <div className="relative min-w-0 flex-1">
-          <PaletteDropZone graph={graph} readOnly={readOnly} {...palette.dropZoneProps}>
-            <NodeCanvas
-              graph={graph}
-              positions={controller.positions}
-              viewport={controller.viewport}
-              kindNames={kindNames}
-              kindsByKind={kindsByKind}
-              pluginStatuses={pluginStatuses}
-              selectedNodeIds={selectedNodeIds}
-              readOnly={readOnly}
-              onSelectionChange={setSelectedNodeIds}
-              onMoveNodes={moveNodes}
-              onViewportChange={controller.setViewport}
-              onConnect={(edge) => controller.addEdge(edge, `connected ${describeNodeList(graph, [edge.source])} to ${describeNodeList(graph, [edge.target])}`)}
-              onDelete={({ nodeIds, edgeIds }) =>
-                applyEdit((current) => removeGraphEdges(removeGraphNodes(current, nodeIds), edgeIds), nodeIds.length > 0 ? `deleted ${describeNodeList(graph, nodeIds)}` : 'deleted an arrow')
-              }
-              onApplyEdit={applyEdit}
-              onUndo={controller.undo}
-              onRedo={controller.redo}
-              onOpenPalette={() => palette.open()}
-              onAddNodeAfter={(from) => palette.open({ type: 'after-exit', source: from.source, sourceHandle: from.sourceHandle })}
-              onRequestAddNode={palette.open}
-              onChangeAction={(nodeId) => {
-                setSelectedNodeIds([nodeId])
-                setRequestedSection((current) => ({ section: 'change-action', sequence: (current?.sequence ?? 0) + 1 }))
-                // Until the inspector reads `requestedSection`: open its action picker once it shows this node.
-                window.setTimeout(() => {
-                  const changeActionButton = document.querySelector<HTMLButtonElement>('[data-testid="node-inspector"] button[aria-haspopup="listbox"][aria-label$="Change action"]')
-                  if (changeActionButton && changeActionButton.getAttribute('aria-expanded') !== 'true') changeActionButton.click()
-                  changeActionButton?.focus()
-                }, 50)
-              }}
-              onOpenNodeSettings={(nodeId) => setSelectedNodeIds([nodeId])}
-              onAskBuilder={onAskBuilder}
-            />
-          </PaletteDropZone>
-          <RunOverlay graph={graph} runId={runId} />
+        <div className="relative min-w-0 flex-1" {...{ [runCanvasScopeAttribute]: '' }}>
+          <NodeDecorationsProvider value={{ run: live.runState, problemsByNode, liveViews: live.liveViews, now: live.now, onReviewApproval: live.setReviewNodeId }}>
+            <CanvasNotesProvider value={{ updateNote: canvasNotes.updateNote, removeNote: canvasNotes.removeNote, readOnly }}>
+              <PaletteDropZone graph={graph} readOnly={readOnly} {...palette.dropZoneProps}>
+                <NodeCanvas
+                  graph={graph}
+                  positions={controller.positions}
+                  viewport={controller.viewport}
+                  kindNames={kindNames}
+                  kindsByKind={kindsByKind}
+                  pluginStatuses={pluginStatuses}
+                  selectedNodeIds={selectedNodeIds}
+                  readOnly={readOnly}
+                  onSelectionChange={setSelectedNodeIds}
+                  onMoveNodes={moveNodes}
+                  onViewportChange={controller.setViewport}
+                  onConnect={(edge) => controller.addEdge(edge, `connected ${describeNodeList(graph, [edge.source])} to ${describeNodeList(graph, [edge.target])}`)}
+                  onDelete={({ nodeIds, edgeIds }) =>
+                    applyEdit((current) => removeGraphEdges(removeGraphNodes(current, nodeIds), edgeIds), nodeIds.length > 0 ? `deleted ${describeNodeList(graph, nodeIds)}` : 'deleted an arrow')
+                  }
+                  onApplyEdit={applyEdit}
+                  onUndo={controller.undo}
+                  onRedo={controller.redo}
+                  onOpenPalette={() => palette.open()}
+                  onAddNodeAfter={(from) => palette.open({ type: 'after-exit', source: from.source, sourceHandle: from.sourceHandle })}
+                  onRequestAddNode={palette.open}
+                  onChangeAction={(nodeId) => {
+                    setSelectedNodeIds([nodeId])
+                    setRequestedSection((current) => ({ section: 'change-action', sequence: (current?.sequence ?? 0) + 1 }))
+                    // Until the inspector reads `requestedSection`: open its action picker once it shows this node.
+                    window.setTimeout(() => {
+                      const changeActionButton = document.querySelector<HTMLButtonElement>('[data-testid="node-inspector"] button[aria-haspopup="listbox"][aria-label$="Change action"]')
+                      if (changeActionButton && changeActionButton.getAttribute('aria-expanded') !== 'true') changeActionButton.click()
+                      changeActionButton?.focus()
+                    }, 50)
+                  }}
+                  onOpenNodeSettings={(nodeId) => setSelectedNodeIds([nodeId])}
+                  onAskBuilder={onAskBuilder}
+                  notes={canvasNotes.notes}
+                  onMoveNote={(noteId, position) => canvasNotes.updateNote(noteId, { x: Math.round(position.x), y: Math.round(position.y) })}
+                />
+              </PaletteDropZone>
+            </CanvasNotesProvider>
+          </NodeDecorationsProvider>
+          <RunOverlay graph={graph} runId={live.testRun.runId} live={live} problems={problems} />
           <AddNodePalette
             isOpen={palette.isOpen}
             nodeKinds={nodeKinds}
@@ -191,15 +253,25 @@ export function NodesView({ agent, onGraphSaved, runId = null, pluginRequirement
           graph={graph}
           kindInfo={selectedNode ? (kindsByKind[selectedNode.kind] ?? null) : null}
           nodeKinds={nodeKinds}
-          problems={selectedNode ? problems.filter((problem) => problem.nodeId === selectedNode.id) : []}
-          readOnly={readOnly}
+          problems={selectedNode ? (problemsByNode[selectedNode.id] ?? []) : []}
+          readOnly={isSaving}
           controller={controller}
           onClose={() => setSelectedNodeIds([])}
           requestedSection={requestedSection}
           onAskBuilder={onAskBuilder}
         />
       </div>
-      <ProblemsPanel problems={problems} graph={graph} onSelectNode={(nodeId) => setSelectedNodeIds([nodeId])} />
+      {!isProblemsPanelHidden && (
+        <ProblemsPanel
+          problems={problems}
+          graph={graph}
+          onSelectNode={(nodeId) => setSelectedNodeIds([nodeId])}
+          onFixWithBuilder={onAskBuilder}
+          testBlockReason={testBlock?.reason ?? null}
+          wasValidated={validation.wasValidated}
+          onClose={() => setIsProblemsPanelHidden(true)}
+        />
+      )}
     </div>
   )
 }

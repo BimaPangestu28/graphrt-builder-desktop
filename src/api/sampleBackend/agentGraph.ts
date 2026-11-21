@@ -2,6 +2,8 @@ import type {
   AgentEditState,
   AgentEditStateChange,
   AgentGraph,
+  CanvasNote,
+  CanvasNoteSet,
   CanvasViewport,
   GraphEdge,
   GraphEdit,
@@ -32,6 +34,7 @@ import { sampleNodeKinds } from './sampleNodeKinds'
 const storedGraphs = new Map<string, AgentGraph>()
 const storedLayouts = new Map<string, NodeLayout[]>()
 const storedViewports = new Map<string, CanvasViewport>()
+const storedNotes = new Map<string, CanvasNote[]>()
 const busyAgentIds = new Set<string>()
 const editStateListeners = new Set<(change: AgentEditStateChange) => void>()
 
@@ -137,7 +140,26 @@ function deriveGraphParts(agentId: string, steps: FlowStep[], inputs: FlowInput[
   return { nodes, edges }
 }
 
+/** Visible steps (not Start, not a body marker) no arrow leads to, like graphrt's "not reachable" warning. */
+function unreachableProblems(nodes: GraphNode[], edges: GraphEdge[]): GraphProblem[] {
+  const targets = new Set(edges.map((edge) => edge.target))
+  return nodes
+    .filter((node) => !node.hidden && node.kind !== 'start' && !targets.has(node.id) && !isBodyRootOfMarker(node, nodes, edges))
+    .map((node) => ({ severity: 'warning' as const, code: 'unreachable', message: `${node.displayTitle} is not reachable from the start, so it never runs`, nodeId: node.id, edgeId: null }))
+}
+
+/** A body step with no marker arrow yet is still reached through its container (the backend wires it). */
+function isBodyRootOfMarker(node: GraphNode, nodes: GraphNode[], edges: GraphEdge[]): boolean {
+  if (!node.parent) return false
+  const marker = nodes.find((candidate) => candidate.parent === node.parent && candidate.hidden)
+  return !marker || !edges.some((edge) => edge.source === marker.id)
+}
+
 function sampleProblems(nodes: GraphNode[], edges: GraphEdge[]): GraphProblem[] {
+  return [...unreachableProblems(nodes, edges), ...unusedEdgeProblems(nodes, edges)]
+}
+
+function unusedEdgeProblems(nodes: GraphNode[], edges: GraphEdge[]): GraphProblem[] {
   return edges
     .filter((edge) => edge.unused)
     .map((edge) => ({
@@ -252,7 +274,30 @@ function saveGraph(agentId: string, baseVersion: number, edit: GraphEdit): SaveG
   return { agent: savedAgent, graph, saved: true, summary, changedStepIds: changes.changedStepIds, versionBefore: baseVersion, versionAfter }
 }
 
+function validateGraph(agentId: string, baseVersion: number, edit: GraphEdit): GraphProblem[] {
+  const base = readGraph(agentId, baseVersion)
+  const parts = graphFromEdit(base, edit)
+  return [...blockingProblems(parts.nodes, parts.edges), ...sampleProblems(parts.nodes, parts.edges)]
+}
+
+function readNotes(agentId: string, requestedVersion?: number): CanvasNoteSet {
+  const version = requestedVersion ?? readStoredAgent(agentId).currentVersion
+  const notes = (storedNotes.get(graphKey(agentId, version)) ?? []).map((note) => ({ ...note }))
+  return { agentId, version, notes }
+}
+
+function writeNotes(agentId: string, version: number, notes: CanvasNote[]): CanvasNoteSet {
+  readStoredAgent(agentId)
+  const noteIds = notes.map((note) => note.noteId)
+  if (new Set(noteIds).size !== noteIds.length) throw new BackendError('invalid_input', 'a note is listed more than once')
+  if (notes.some((note) => note.text.length > 4000)) throw new BackendError('invalid_input', 'a note is longer than 4000 characters')
+  storedNotes.set(graphKey(agentId, version), notes.map((note) => ({ ...note })))
+  return readNotes(agentId, version)
+}
+
 function copyLayoutForward(agentId: string, fromVersion: number, toVersion: number, nodes: GraphNode[]): void {
+  const fromNotes = storedNotes.get(graphKey(agentId, fromVersion))
+  if (fromNotes) storedNotes.set(graphKey(agentId, toVersion), fromNotes.map((note) => ({ ...note })))
   const nodeIds = new Set(nodes.map((node) => node.id))
   const copied = (storedLayouts.get(graphKey(agentId, fromVersion)) ?? []).filter((layout) => nodeIds.has(layout.nodeId))
   storedLayouts.set(graphKey(agentId, toVersion), copied.map((layout) => ({ ...layout })))
@@ -280,6 +325,9 @@ export const sampleAgentGraphBackend = {
   getNodeLayout: (agentId: string, version?: number): Promise<NodeLayoutSet> => respondWith(() => readLayout(agentId, version)),
   saveNodeLayout: (agentId: string, version: number, nodes: NodeLayout[], viewport: CanvasViewport | null): Promise<NodeLayoutSet> =>
     respondWith(() => writeLayout(agentId, version, nodes, viewport)),
+  validateAgentGraph: (agentId: string, baseVersion: number, edit: GraphEdit): Promise<GraphProblem[]> => respondWith(() => validateGraph(agentId, baseVersion, edit)),
+  getCanvasNotes: (agentId: string, version?: number): Promise<CanvasNoteSet> => respondWith(() => readNotes(agentId, version)),
+  saveCanvasNotes: (agentId: string, version: number, notes: CanvasNote[]): Promise<CanvasNoteSet> => respondWith(() => writeNotes(agentId, version, notes)),
   getAgentEditState: (agentId: string): Promise<AgentEditState> =>
     respondWith(() => ({ agentId, builderBusy: busyAgentIds.has(agentId), currentVersion: readStoredAgent(agentId).currentVersion })),
   listenToAgentEditState: (onChange: (change: AgentEditStateChange) => void): (() => void) => {
@@ -303,5 +351,6 @@ export function resetSampleAgentGraphs(): void {
   storedGraphs.clear()
   storedLayouts.clear()
   storedViewports.clear()
+  storedNotes.clear()
   busyAgentIds.clear()
 }

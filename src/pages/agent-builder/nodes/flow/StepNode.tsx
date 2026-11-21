@@ -4,6 +4,7 @@ import { joinClassNames } from '@/components/ui'
 import { containerMinimumSize } from './autoLayout'
 import { compactZoomThreshold, useCanvasNodeActions } from './canvasActions'
 import { Handle, NodeResizer, Position, useStore, type NodeProps } from './flowLibrary'
+import { NodeDecoration } from '../run/NodeDecorations'
 import { NodeKindIcon } from './NodeKindIcon'
 import type { PreviewSegment } from './nodePreview'
 import { cardHeightFor, portOffset } from './nodeGeometry'
@@ -221,6 +222,7 @@ function CompactCard({ data, selected, height }: { data: StepNodeData; selected:
       <span className="line-clamp-2 min-w-0 flex-1 text-[18px] font-semibold leading-tight text-ink">{node.displayTitle}</span>
       {hasMarks && <span aria-label="Has badges" className={joinClassNames('size-2.5 shrink-0 rounded-full', data.setupStatus || data.problems.length > 0 ? 'bg-amber' : 'bg-faint')} />}
       <OutputPorts data={data} height={height} showLabels={false} />
+      <NodeDecoration nodeId={node.id} />
     </div>
   )
 }
@@ -251,6 +253,7 @@ export const StepNodeCard = memo(function StepNodeCard({ data, selected }: NodeP
       <BadgeRow data={data} />
       <ConnectionHint data={data} />
       <OutputPorts data={data} height={height} showLabels />
+      <NodeDecoration nodeId={node.id} />
     </div>
   )
 })
@@ -304,6 +307,7 @@ export const ContainerNodeCard = memo(function ContainerNodeCard({ id, data, sel
       </div>
       <ConnectionHint data={data} />
       <OutputPorts data={data} height={headerPortTop * 2} showLabels={!isCompact} />
+      <NodeDecoration nodeId={node.id} variant="container" />
     </section>
   )
 })

@@ -90,19 +90,25 @@ describe('useAgentGraph', () => {
     expect(saveSpy).not.toHaveBeenCalled()
   })
 
-  it('reports a conflict when the builder saved meanwhile, and keeps the builder’s version on request', async () => {
+  /** A builder change that renames one step, like a chat revision landing meanwhile. */
+  function saveBuilderRename(stepId: string, title: string) {
+    saveNewVersion(agentId, readCurrentSteps(agentId).map((step) => (step.id === stepId ? { ...step, title } : step)), `Renamed ${stepId}`)
+  }
+
+  it('reports a conflict when the builder changed the same step, and keeps the builder’s version on request', async () => {
     const { result } = await renderLoadedHook()
     act(() => result.current.updateNode('write_message', { title: 'Mine' }))
-    saveNewVersion(agentId, readCurrentSteps(agentId), 'Changed by the builder')
+    saveBuilderRename('write_message', 'The builder’s title')
 
     await act(async () => {
       await result.current.save()
     })
     expect(result.current.status).toBe('conflict')
-    expect(result.current.conflict).toEqual({ latestVersion: 8 })
+    expect(result.current.conflict).toMatchObject({ latestVersion: 8, nodes: [{ nodeId: 'write_message', title: 'Write a short message' }] })
 
     await act(async () => result.current.resolveConflict('keep-theirs'))
     expect(result.current.graph?.version).toBe(8)
+    expect(result.current.graph?.nodes.find((node) => node.id === 'write_message')?.title).toBe('The builder’s title')
     expect(result.current.isDirty).toBe(false)
     expect(result.current.status).toBe('idle')
   })
@@ -110,29 +116,57 @@ describe('useAgentGraph', () => {
   it('keeps mine by saving the edit over the latest version', async () => {
     const { result } = await renderLoadedHook()
     act(() => result.current.updateNode('write_message', { title: 'Mine' }))
-    saveNewVersion(agentId, readCurrentSteps(agentId), 'Changed by the builder')
+    saveBuilderRename('write_message', 'The builder’s title')
     await act(async () => {
       await result.current.save()
     })
 
-    await act(async () => result.current.resolveConflict('keep-mine'))
+    await act(async () => result.current.resolveNodeConflict('write_message', 'keep-mine'))
 
     expect(result.current.status).toBe('saved')
     expect(result.current.lastSave).toMatchObject({ versionBefore: 8, versionAfter: 9 })
     expect(result.current.graph?.nodes.find((node) => node.id === 'write_message')?.title).toBe('Mine')
   })
 
-  it('turns a version change from the chat into a reload when clean, a conflict when dirty', async () => {
+  it('re-applies edits of other steps onto the builder’s version without asking', async () => {
+    const { result } = await renderLoadedHook()
+    act(() => result.current.updateNode('write_message', { title: 'Mine' }))
+    saveBuilderRename('search_maps', 'Search the map')
+    await act(async () => {
+      await result.current.save()
+    })
+
+    expect(result.current.status).toBe('idle')
+    expect(result.current.conflict).toBeNull()
+    expect(result.current.lastMerge).toEqual({ latestVersion: 8, reappliedNodeIds: ['write_message'] })
+    expect(result.current.savedGraph?.version).toBe(8)
+    expect(result.current.isDirty).toBe(true)
+    await act(async () => {
+      await result.current.save()
+    })
+    const saved = result.current.graph
+    expect(result.current.lastSave).toMatchObject({ versionBefore: 8, versionAfter: 9 })
+    expect(saved?.nodes.find((node) => node.id === 'write_message')?.title).toBe('Mine')
+    expect(saved?.nodes.find((node) => node.id === 'search_maps')?.title).toBe('Search the map')
+  })
+
+  it('turns a version change from the chat into a reload when clean, a merge or a conflict when dirty', async () => {
     const hook = await renderLoadedHook()
     saveNewVersion(agentId, readCurrentSteps(agentId), 'Chat change')
     hook.rerender({ currentVersion: 8 })
     await waitFor(() => expect(hook.result.current.graph?.version).toBe(8))
 
     act(() => hook.result.current.updateNode('write_message', { title: 'Mine' }))
-    saveNewVersion(agentId, readCurrentSteps(agentId), 'Another chat change')
+    saveBuilderRename('search_maps', 'Search the map')
     hook.rerender({ currentVersion: 9 })
-    await waitFor(() => expect(hook.result.current.status).toBe('conflict'))
+    await waitFor(() => expect(hook.result.current.savedGraph?.version).toBe(9))
+    expect(hook.result.current.status).toBe('idle')
     expect(hook.result.current.graph?.nodes.find((node) => node.id === 'write_message')?.title).toBe('Mine')
+
+    saveBuilderRename('write_message', 'The builder’s title')
+    hook.rerender({ currentVersion: 10 })
+    await waitFor(() => expect(hook.result.current.status).toBe('conflict'))
+    expect(hook.result.current.conflict?.nodes.map((node) => node.nodeId)).toEqual(['write_message'])
   })
 
   it('waits while the builder is changing the agent', async () => {
