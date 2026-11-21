@@ -48,6 +48,11 @@ export interface NodeInspectorProps {
   /** `updateNode`, `removeNodes`, `addEdge`… with a description per edit ("set Retry 2× on Send"). */
   controller: AgentGraphController
   onClose: () => void
+  /**
+   * Prefills the builder chat with a question about the node (never sends it). Optional:
+   * without it the inspector sets the builder page's `ask` search param, which the chat reads.
+   */
+  onAskBuilder?: (text: string) => void
 }
 
 /** Add node palette (palette agent): adds a node from the library. */
