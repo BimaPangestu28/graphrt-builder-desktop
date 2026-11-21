@@ -16,7 +16,7 @@ canvas, inspector, add-node palette and live-run / sync parts on top of it.
 | `graphEdits.ts` | Pure edit functions (`updateGraphNode`, `addGraphEdge`, `createGraphNode`, `uniqueNodeId`, `toGraphEdit`…) | everyone |
 | `contracts.ts` | Props of the phase-2 components | everyone |
 | `NodeCanvas.tsx`, `flow/*` | Canvas: React Flow + ELK auto-layout, read-only render, drag to move | **canvas** |
-| `NodeInspector.tsx` | STUB: step settings | **inspector** |
+| `NodeInspector.tsx`, `inspector/*` | Step settings: header, per-kind panels, schema form, Change action, When this step fails, variable picker (`{{#node.field#}}` chips) | **inspector** |
 | `AddNodePalette.tsx` | STUB: lists offered kinds | **palette** |
 | `RunOverlay.tsx`, `ProblemsPanel.tsx`, `SyncBanner.tsx` | STUB / minimal: live run, problems, builder-busy + conflict | **live/sync** |
 
