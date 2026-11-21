@@ -3,26 +3,39 @@ import { Icon, joinClassNames, StrokeIcon } from '@/components/ui'
 import { describeError } from '@/lib/agentDisplay'
 import type { AgentGraphController } from './useAgentGraph'
 
-const iconButtonClassNames = 'flex size-8 cursor-pointer items-center justify-center rounded-lg border border-line-strong bg-surface text-ink-2 hover:bg-subtle disabled:cursor-default disabled:opacity-50'
-const toolbarButtonClassNames = 'h-8 cursor-pointer rounded-lg border border-line-strong bg-surface px-3 text-[13px] font-medium text-ink hover:bg-subtle disabled:cursor-default disabled:opacity-50'
+const iconButtonClassNames = 'flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-line-strong bg-surface text-ink-2 hover:bg-subtle disabled:cursor-default disabled:opacity-50'
+const toolbarButtonClassNames =
+  'inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-line-strong bg-surface px-3 text-[13px] font-medium text-ink hover:bg-subtle disabled:cursor-default disabled:opacity-50 @max-[46rem]:px-2'
+
+/**
+ * A toolbar label that folds away (kept for screen readers) when the toolbar is narrow,
+ * leaving the button's icon: the toolbar sits in a container query (`@container`).
+ */
+export const foldingLabelClassNames = '@max-[46rem]:sr-only'
+
+/** The save state: a short part that always shows and a detail that folds away when narrow. */
+export interface SaveStateText {
+  summary: string
+  detail: string | null
+}
 
 /** "Saved as v8 · …", "Unsaved changes", the refusal reason… */
-function describeSaveState(controller: AgentGraphController): string {
+export function describeSaveState(controller: AgentGraphController): SaveStateText {
   const version = controller.savedGraph?.version
   switch (controller.status) {
     case 'saving':
-      return 'Saving…'
+      return { summary: 'Saving…', detail: null }
     case 'builder-busy':
-      return 'Waiting for the builder to finish'
+      return { summary: 'Waiting for the builder to finish', detail: null }
     case 'conflict':
-      return 'The builder changed this agent meanwhile'
+      return { summary: 'The builder changed this agent meanwhile', detail: null }
     case 'invalid':
-      return `Not saved: ${controller.saveProblems[0]?.message ?? 'the steps have problems'}`
+      return { summary: `Not saved: ${controller.saveProblems[0]?.message ?? 'the steps have problems'}`, detail: null }
     case 'failed':
-      return `Not saved: ${controller.saveError ? describeError(controller.saveError) : 'something went wrong'}`
+      return { summary: `Not saved: ${controller.saveError ? describeError(controller.saveError) : 'something went wrong'}`, detail: null }
     default:
-      if (controller.isDirty) return 'Unsaved changes'
-      return `Saved as v${version} · changes from chat and nodes both land here`
+      if (controller.isDirty) return { summary: 'Unsaved changes', detail: null }
+      return { summary: `Saved as v${version}`, detail: 'changes from chat and nodes both land here' }
   }
 }
 
@@ -39,11 +52,18 @@ interface NodesToolbarProps {
   extraActions?: ReactNode
 }
 
-/** Add node, Auto-layout, Undo / Redo, the save state and Save (spec A toolbar). */
+/**
+ * Add node, Auto-layout, Undo / Redo, the save state and Save (spec A toolbar). One row:
+ * when the canvas column is narrow, button labels fold to icons and the save state
+ * shortens (the full text stays in its tooltip).
+ */
 export function NodesToolbar({ controller, isPaletteOpen, onTogglePalette, onAutoLayout, onValidate, validationMessage, extraActions }: NodesToolbarProps) {
   const isLocked = controller.builderBusy || controller.status === 'saving'
+  const saveState = validationMessage ? { summary: validationMessage, detail: null } : describeSaveState(controller)
+  const fullSaveState = saveState.detail ? `${saveState.summary} · ${saveState.detail}` : saveState.summary
   return (
-    <div role="toolbar" aria-label="Nodes" className="flex flex-wrap items-center gap-2 border-b border-line bg-surface px-4 py-2">
+    <div className="@container border-b border-line bg-surface">
+    <div role="toolbar" aria-label="Nodes" className="flex items-center gap-2 px-4 py-2 @max-[46rem]:gap-1.5 @max-[46rem]:px-3">
       <button
         type="button"
         aria-pressed={isPaletteOpen}
@@ -52,10 +72,13 @@ export function NodesToolbar({ controller, isPaletteOpen, onTogglePalette, onAut
         className={joinClassNames(toolbarButtonClassNames, 'inline-flex items-center gap-1.5 border-ink bg-ink font-semibold !text-white hover:bg-ink-2', isPaletteOpen && 'ring-2 ring-brand-line')}
       >
         <Icon name="plus" size={14} />
-        Add node
+        <span className={foldingLabelClassNames}>Add node</span>
       </button>
-      <button type="button" onClick={onAutoLayout} disabled={isLocked} className={toolbarButtonClassNames}>
-        Auto-layout
+      <button type="button" onClick={onAutoLayout} disabled={isLocked} title="Auto-layout: place every step again" className={toolbarButtonClassNames}>
+        <StrokeIcon size={14}>
+          <path d="M4 4h6v6H4zM14 4h6v6h-6zM9 14h6v6H9zM7 10v2h10v-2M12 12v2" />
+        </StrokeIcon>
+        <span className={foldingLabelClassNames}>Auto-layout</span>
       </button>
       <span aria-hidden="true" className="h-5 w-px bg-line" />
       <button type="button" aria-label="Undo" title="Undo" onClick={controller.undo} disabled={!controller.canUndo || isLocked} className={iconButtonClassNames}>
@@ -67,7 +90,11 @@ export function NodesToolbar({ controller, isPaletteOpen, onTogglePalette, onAut
         </StrokeIcon>
       </button>
       <span role="status" className="min-w-0 flex-1 truncate text-right text-[12px] text-muted">
-        {validationMessage ?? describeSaveState(controller)}
+        {/* The tooltip holds the full text when the detail folds away or is cut off. */}
+        <span title={fullSaveState}>
+          {saveState.summary}
+          {saveState.detail && <span className="@max-[64rem]:hidden"> · {saveState.detail}</span>}
+        </span>
       </span>
       {onValidate && (
         <button type="button" onClick={onValidate} className={toolbarButtonClassNames}>
@@ -83,6 +110,7 @@ export function NodesToolbar({ controller, isPaletteOpen, onTogglePalette, onAut
       >
         Save
       </button>
+    </div>
     </div>
   )
 }

@@ -4,10 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, 
 import type { AgentGraph, NodeLayout } from '@/api/agentGraphTypes'
 import { checkConnection, SOURCE_HANDLE, type ConnectionCheck } from '@/lib/agentGraphRules'
 import type { NodeCanvasProps } from './contracts'
-import { CanvasNodeActionsContext, type CanvasNodeActions } from './flow/canvasActions'
+import { CanvasNodeActionsContext, ContainerDropHintContext, type CanvasNodeActions } from './flow/canvasActions'
 import { EmptyCanvas, SelectionBar, ShortcutsPanel, ZoomControls } from './flow/CanvasOverlays'
-import { buildAskBuilderText, describeNodeList, editableNodeIds, nudgeLayouts, readCanvasClipboard, writeCanvasClipboard } from './flow/canvasCommands'
+import { buildAskBuilderText, copyToClipboards, describeNodeList, editableNodeIds, nudgeLayouts, readClipboardForPaste } from './flow/canvasCommands'
 import { copyGraphNodes, pasteGraphNodes, pasteOffset, type GraphClipboard } from './flow/clipboard'
+import { findDropContainer } from './flow/containerDrop'
 import {
   applyNodeChanges,
   Background,
@@ -24,12 +25,14 @@ import {
   type NodeChange,
   type OnConnectStartParams,
 } from './flow/flowLibrary'
-import { listNodeMenuItems, NodeContextMenu, type NodeMenuAction } from './flow/NodeContextMenu'
+import { listNodeMenuItems, listPaneMenuItems, NodeContextMenu, type NodeMenuAction, type PaneMenuAction } from './flow/NodeContextMenu'
 import { isMacPlatform, isTypingTarget, nudgeDistance, resolveShortcut, type CanvasShortcutAction } from './flow/shortcuts'
 import { flowEdgeTypes } from './flow/StepEdge'
 import { flowNodeTypes } from './flow/StepNode'
 import { toFlowEdges, toFlowNodes, type StepFlowEdge, type StepFlowNode } from './flow/toFlowElements'
 import { useCanvasLayout, type MeasuredSizes } from './flow/useCanvasLayout'
+import { useCanvasViewportFit } from './flow/useCanvasViewportFit'
+import { useContainerDrag } from './flow/useContainerDrag'
 import { disconnectGraphNodes, reconnectGraphEdge, removeGraphEdges } from './graphEdits'
 import { isNoteFlowNodeId, noteIdOf, noteNodeTypes, toNoteFlowNodes } from './notes/NoteNode'
 
@@ -52,9 +55,16 @@ interface ConnectingFrom {
   viaKeyboard: boolean
 }
 
-interface OpenMenu {
-  nodeIds: string[]
-  position: { x: number; y: number }
+type OpenMenu =
+  | { kind: 'node'; nodeIds: string[]; position: { x: number; y: number } }
+  /** The empty-canvas menu; `flowPoint` is where it was opened, in canvas units. */
+  | { kind: 'pane'; position: { x: number; y: number }; flowPoint: { x: number; y: number } }
+
+const menuSize = { width: 236, height: 240 }
+
+/** Menu position inside the canvas box, kept on screen. */
+function menuPositionIn(box: DOMRect, screenPoint: { x: number; y: number }): { x: number; y: number } {
+  return { x: Math.min(screenPoint.x - box.left, box.width - menuSize.width - 8), y: Math.min(screenPoint.y - box.top, Math.max(8, box.height - menuSize.height - 8)) }
 }
 
 function usePrefersReducedMotion(): boolean {
@@ -73,6 +83,14 @@ function usePrefersReducedMotion(): boolean {
 function continuationHandle(graph: AgentGraph, nodeId: string): string | null {
   const outputs = graph.nodes.find((node) => node.id === nodeId)?.ports.outputs ?? []
   return outputs.find((outputPort) => outputPort.id === SOURCE_HANDLE)?.id ?? outputs[0]?.id ?? null
+}
+
+/** The shift that puts the copied steps' top-left corner at `point`. */
+function pasteShiftTo(clipboard: GraphClipboard, point: { x: number; y: number }): { x: number; y: number } {
+  const copiedIds = new Set(clipboard.nodes.map((node) => node.id))
+  const topLayouts = clipboard.nodes.filter((node) => !node.parent || !copiedIds.has(node.parent)).flatMap((node) => (clipboard.layouts[node.id] ? [clipboard.layouts[node.id]] : []))
+  if (topLayouts.length === 0) return pasteOffset
+  return { x: Math.round(point.x - Math.min(...topLayouts.map((layout) => layout.x))), y: Math.round(point.y - Math.min(...topLayouts.map((layout) => layout.y))) }
 }
 
 function focusedNodeId(): string | null {
@@ -104,6 +122,8 @@ function CanvasBody(props: NodeCanvasProps) {
   const [announcement, setAnnouncement] = useState('')
   const pasteCountRef = useRef(0)
   const canEdit = !readOnly && Boolean(props.onApplyEdit)
+  const graphRef = useRef(graph)
+  graphRef.current = graph
 
   const getFallbackPoint = useCallback(() => {
     const box = containerRef.current?.getBoundingClientRect()
@@ -139,10 +159,28 @@ function CanvasBody(props: NodeCanvasProps) {
       }),
     [flowNodesFromGraph],
   )
+  // Back to where the graph says (a refused drop into a loop snaps the step back).
+  const resetFlowNodes = useCallback(
+    () =>
+      setFlowNodes((current) => {
+        const measuredById = new Map(current.map((flowNode) => [flowNode.id, flowNode.measured]))
+        return flowNodesFromGraph.map((flowNode) => (measuredById.get(flowNode.id) ? { ...flowNode, measured: measuredById.get(flowNode.id) } : flowNode))
+      }),
+    [flowNodesFromGraph],
+  )
   const liveEdgeIds = useMemo(() => selectedEdgeIds.filter((edgeId) => graph.edges.some((edge) => edge.id === edgeId)), [graph, selectedEdgeIds])
   const flowEdges = useMemo(() => toFlowEdges(graph, liveEdgeIds), [graph, liveEdgeIds])
 
   const announce = useCallback((message: string) => setAnnouncement(message), [])
+  const { fitViewOptions, fitAll } = useCanvasViewportFit({
+    containerRef,
+    isReady: mergedPositions !== null,
+    insetLeft: props.overlayInsets?.left ?? 0,
+    duration: motion.duration,
+    focusRequest: props.focusRequest ?? null,
+    selectedNodeId: selectedNodeIds.length === 1 ? selectedNodeIds[0] : null,
+  })
+  const containerDrag = useContainerDrag({ graph, canEdit, mergedPositions, onApplyEdit: props.onApplyEdit, onMoveNodes, announce, resetFlowNodes })
   // React Flow reports the selection again whenever this handler changes; keep it stable.
   const onSelectionChangeRef = useRef(onSelectionChange)
   onSelectionChangeRef.current = onSelectionChange
@@ -166,17 +204,32 @@ function CanvasBody(props: NodeCanvasProps) {
   )
 
   const pasteClipboard = useCallback(
-    (clipboard: GraphClipboard, verb: string) => {
+    (clipboard: GraphClipboard, verb: string, at?: { x: number; y: number }) => {
       if (!canEdit || clipboard.nodes.length === 0) return
+      // Read the graph at paste time: a system clipboard read finishes after this render.
+      const currentGraph = graphRef.current
       pasteCountRef.current += 1
-      const shift = { x: pasteOffset.x * pasteCountRef.current, y: pasteOffset.y * pasteCountRef.current }
-      const result = pasteGraphNodes(graph, clipboard, shift)
-      props.onApplyEdit?.(() => result.graph, `${verb} ${describeNodeList(graph, clipboard.nodes.filter((node) => result.pastedRootIds.includes(result.idMap[node.id])).map((node) => node.id))}`)
+      const shift = at ? pasteShiftTo(clipboard, at) : { x: pasteOffset.x * pasteCountRef.current, y: pasteOffset.y * pasteCountRef.current }
+      const result = pasteGraphNodes(currentGraph, clipboard, shift)
+      props.onApplyEdit?.(() => result.graph, `${verb} ${describeNodeList(result.graph, result.pastedRootIds)}`)
       if (result.layouts.length > 0) onMoveNodes(result.layouts)
       onSelectionChange(result.pastedRootIds)
       announce(`${verb === 'duplicated' ? 'Duplicated' : 'Pasted'} ${result.pastedRootIds.length === 1 ? '1 step' : `${result.pastedRootIds.length} steps`}`)
     },
-    [canEdit, graph, props, onMoveNodes, onSelectionChange, announce],
+    [canEdit, props, onMoveNodes, onSelectionChange, announce],
+  )
+
+  const pasteFromClipboards = useCallback(
+    (at?: { x: number; y: number }) => {
+      if (!canEdit) return
+      readClipboardForPaste()
+        .then((clipboard) => {
+          if (clipboard) pasteClipboard(clipboard, 'pasted', at)
+          else announce('Nothing to paste: copy steps first')
+        })
+        .catch((pasteError: unknown) => console.warn('could not paste the steps', pasteError))
+    },
+    [canEdit, pasteClipboard, announce],
   )
 
   const copyNodes = useCallback(
@@ -236,12 +289,48 @@ function CanvasBody(props: NodeCanvasProps) {
       const box = containerRef.current?.getBoundingClientRect()
       const visibleIds = editableNodeIds(graph, nodeIds)
       if (!box || visibleIds.length === 0) return
-      const menuWidth = 236
-      const menuHeight = 240
-      setMenu({ nodeIds: visibleIds, position: { x: Math.min(screenPoint.x - box.left, box.width - menuWidth - 8), y: Math.min(screenPoint.y - box.top, Math.max(8, box.height - menuHeight - 8)) } })
+      setMenu({ kind: 'node', nodeIds: visibleIds, position: menuPositionIn(box, screenPoint) })
     },
     [graph],
   )
+
+  function openPaneMenu(event: ReactMouseEvent | MouseEvent) {
+    event.preventDefault()
+    const box = containerRef.current?.getBoundingClientRect()
+    if (!box) return
+    const screenPoint = { x: event.clientX, y: event.clientY }
+    setMenu({ kind: 'pane', position: menuPositionIn(box, screenPoint), flowPoint: reactFlow.screenToFlowPosition(screenPoint) })
+  }
+
+  /** The loop (if any) under a canvas point, for "Add node here" inside a loop. */
+  function containerAt(flowPoint: { x: number; y: number }): string | null {
+    const containers = graph.nodes.flatMap((node) => {
+      const internalNode = node.container ? reactFlow.getInternalNode(node.id) : undefined
+      if (!internalNode) return []
+      return [{ id: node.id, box: { ...internalNode.internals.positionAbsolute, width: internalNode.measured?.width ?? 0, height: internalNode.measured?.height ?? 0 } }]
+    })
+    return findDropContainer(containers, flowPoint)
+  }
+
+  function runPaneMenuAction(action: PaneMenuAction, flowPoint: { x: number; y: number }) {
+    switch (action) {
+      case 'add-node-here': {
+        const parentId = containerAt(flowPoint)
+        const parentOrigin = parentId ? reactFlow.getInternalNode(parentId)?.internals.positionAbsolute : null
+        const point = parentOrigin ? { x: flowPoint.x - parentOrigin.x, y: flowPoint.y - parentOrigin.y } : flowPoint
+        props.onRequestAddNode?.({ type: 'at-position', x: Math.round(point.x), y: Math.round(point.y), parentId })
+        return
+      }
+      case 'add-note-here':
+        props.onAddNote?.({ x: Math.round(flowPoint.x), y: Math.round(flowPoint.y) })
+        return
+      case 'paste':
+        pasteFromClipboards(flowPoint)
+        return
+      case 'fit':
+        fitAll()
+    }
+  }
 
   const closeMenu = useCallback(() => setMenu(null), [])
 
@@ -276,8 +365,13 @@ function CanvasBody(props: NodeCanvasProps) {
     }
   }
 
+  const paneMenuItems = useMemo(
+    () => listPaneMenuItems({ isMac, canAddNode: Boolean(props.onRequestAddNode), canAddNote: Boolean(props.onAddNote), canPaste: canEdit }),
+    [isMac, props.onRequestAddNode, props.onAddNote, canEdit],
+  )
+
   const menuItems = useMemo(() => {
-    if (!menu) return []
+    if (!menu || menu.kind !== 'node') return []
     const firstNode = graph.nodes.find((node) => node.id === menu.nodeIds[0])
     return listNodeMenuItems({ isPluginNode: Boolean(firstNode?.plugin), isMac, selectionSize: menu.nodeIds.length }).filter((item) => {
       if (item.action === 'add-after') return Boolean(props.onAddNodeAfter) && Boolean(firstNode?.ports.outputs.length)
@@ -299,13 +393,15 @@ function CanvasBody(props: NodeCanvasProps) {
     [readOnly, props.onConnect, announce],
   )
 
+  const onRequestAddNode = props.onRequestAddNode
   const nodeActions = useMemo<CanvasNodeActions>(
     () => ({
       openNodeMenu: (nodeId, screenPoint) => openMenuForNodes([nodeId], screenPoint),
       startKeyboardConnect,
       resizeContainer: (layout: NodeLayout) => onMoveNodes([{ ...layout, x: Math.round(layout.x), y: Math.round(layout.y), width: Math.round(layout.width ?? 0), height: Math.round(layout.height ?? 0) }]),
+      addNodeOnEdge: !readOnly && onRequestAddNode ? (edgeId: string) => onRequestAddNode({ type: 'on-edge', edgeId }) : undefined,
     }),
-    [openMenuForNodes, startKeyboardConnect, onMoveNodes],
+    [openMenuForNodes, startKeyboardConnect, onMoveNodes, readOnly, onRequestAddNode],
   )
 
   function runShortcut(action: CanvasShortcutAction, event: KeyboardEvent): boolean {
@@ -323,17 +419,15 @@ function CanvasBody(props: NodeCanvasProps) {
       case 'copy': {
         const clipboard = copyNodes(selectedNodeIds)
         if (clipboard) {
-          writeCanvasClipboard(clipboard)
+          void copyToClipboards(clipboard)
           pasteCountRef.current = 0
           announce(`Copied ${describeNodeList(graph, editableNodeIds(graph, selectedNodeIds))}`)
         }
         return true
       }
-      case 'paste': {
-        const clipboard = readCanvasClipboard()
-        if (clipboard) pasteClipboard(clipboard, 'pasted')
+      case 'paste':
+        pasteFromClipboards()
         return true
-      }
       case 'duplicate':
         duplicateNodes(selectedNodeIds)
         return true
@@ -369,7 +463,7 @@ function CanvasBody(props: NodeCanvasProps) {
         void reactFlow.zoomOut(motion)
         return true
       case 'fit':
-        void reactFlow.fitView({ padding: 0.15, ...motion })
+        fitAll()
         return true
       case 'add-node':
         if (readOnly || !props.onOpenPalette) return false
@@ -435,10 +529,12 @@ function CanvasBody(props: NodeCanvasProps) {
     })
   }
 
-  function handleDragStop(_event: unknown, _node: StepFlowNode, draggedFlowNodes: StepFlowNode[]) {
+  function handleDragStop(_event: unknown, primaryNode: StepFlowNode, draggedFlowNodes: StepFlowNode[]) {
     for (const dragged of draggedFlowNodes) if (isNoteFlowNodeId(dragged.id)) props.onMoveNote?.(noteIdOf(dragged.id), dragged.position)
     const draggedNodes = draggedFlowNodes.filter((dragged) => !isNoteFlowNodeId(dragged.id))
     if (draggedNodes.length === 0) return
+    // Into or out of a loop (or kept inside its own): positions are handled there.
+    if (containerDrag.handleStepsDragStop(isNoteFlowNodeId(primaryNode.id) ? draggedNodes[0] : primaryNode, draggedNodes)) return
     onMoveNodes(
       draggedNodes.map((dragged) => ({
         nodeId: dragged.id,
@@ -468,7 +564,11 @@ function CanvasBody(props: NodeCanvasProps) {
 
   function handleNodeContextMenu(event: ReactMouseEvent, node: StepFlowNode) {
     event.preventDefault()
-    if (node.type === 'marker' || isNoteFlowNodeId(node.id)) return
+    if (isNoteFlowNodeId(node.id)) {
+      openPaneMenu(event)
+      return
+    }
+    if (node.type === 'marker') return
     openMenuForNode(node.id, { x: event.clientX, y: event.clientY })
   }
 
@@ -487,6 +587,7 @@ function CanvasBody(props: NodeCanvasProps) {
 
   return (
     <CanvasNodeActionsContext.Provider value={nodeActions}>
+      <ContainerDropHintContext.Provider value={containerDrag.dropHint}>
       <div
         ref={containerRef}
         role="application"
@@ -504,6 +605,7 @@ function CanvasBody(props: NodeCanvasProps) {
           edgeTypes={flowEdgeTypes}
           onNodesChange={handleNodesChange}
           onEdgesChange={handleEdgesChange}
+          onNodeDrag={containerDrag.handleNodeDrag}
           onNodeDragStop={handleDragStop}
           onSelectionChange={handleSelectionChange}
           onMoveEnd={(_event, nextViewport) => onViewportChange(nextViewport)}
@@ -514,10 +616,11 @@ function CanvasBody(props: NodeCanvasProps) {
           onReconnect={handleReconnect}
           onNodeContextMenu={handleNodeContextMenu}
           onSelectionContextMenu={handleSelectionContextMenu}
+          onPaneContextMenu={openPaneMenu}
           onPaneClick={() => setConnectingFrom(null)}
           defaultViewport={viewport ?? undefined}
           fitView={!viewport}
-          fitViewOptions={{ padding: 0.15 }}
+          fitViewOptions={fitViewOptions}
           nodesDraggable={!readOnly}
           nodesConnectable={!readOnly && Boolean(props.onConnect)}
           edgesReconnectable={canEdit}
@@ -525,7 +628,8 @@ function CanvasBody(props: NodeCanvasProps) {
           elementsSelectable
           selectionOnDrag
           selectionMode={SelectionMode.Full}
-          panOnDrag={[1, 2]}
+          // Middle-drag pans (and Space + drag); the right button opens the canvas menu.
+          panOnDrag={[1]}
           panOnScroll
           zoomActivationKeyCode={isMac ? 'Meta' : 'Control'}
           selectionKeyCode={null}
@@ -557,7 +661,8 @@ function CanvasBody(props: NodeCanvasProps) {
           zoom={zoom}
           onZoomIn={() => void reactFlow.zoomIn(motion)}
           onZoomOut={() => void reactFlow.zoomOut(motion)}
-          onFit={() => void reactFlow.fitView({ padding: 0.15, ...motion })}
+          onFit={fitAll}
+          insetLeft={props.overlayInsets?.left ?? 0}
           onShowShortcuts={() => setIsShortcutsOpen((isOpen) => !isOpen)}
         />
         {isShortcutsOpen && <ShortcutsPanel isMac={isMac} onClose={() => setIsShortcutsOpen(false)} />}
@@ -575,7 +680,7 @@ function CanvasBody(props: NodeCanvasProps) {
             Connecting from {describeNodeList(graph, [connectingFrom.nodeId])}: Tab to a step and press Enter · Esc cancels
           </div>
         )}
-        {menu && (
+        {menu?.kind === 'node' && (
           <NodeContextMenu
             position={menu.position}
             title={describeNodeList(graph, menu.nodeIds)}
@@ -585,11 +690,22 @@ function CanvasBody(props: NodeCanvasProps) {
             onClose={closeMenu}
           />
         )}
+        {menu?.kind === 'pane' && (
+          <NodeContextMenu
+            position={menu.position}
+            title="the canvas"
+            items={paneMenuItems}
+            readOnly={readOnly}
+            onAction={(action) => runPaneMenuAction(action, menu.flowPoint)}
+            onClose={closeMenu}
+          />
+        )}
         {isEmpty && <EmptyCanvas readOnly={readOnly} onAddNode={props.onOpenPalette} onWriteInChat={props.onAskBuilder ? () => props.onAskBuilder?.('') : undefined} />}
         <span aria-live="polite" className="sr-only">
           {announcement}
         </span>
       </div>
+      </ContainerDropHintContext.Provider>
     </CanvasNodeActionsContext.Provider>
   )
 }

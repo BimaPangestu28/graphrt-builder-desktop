@@ -72,6 +72,24 @@ export function findFreePosition(desired: CanvasPoint, size: { width: number; he
  */
 export function placeNewNode(anchor: CanvasRect | null, size: { width: number; height: number }, occupied: CanvasRect[], fallback: CanvasPoint, direction: PlacementDirection = 'right'): CanvasPoint {
   if (!anchor) return findFreePosition(fallback, size, occupied, direction)
-  const desired = direction === 'right' ? { x: anchor.x + anchor.width + placementColumnGap, y: anchor.y } : { x: anchor.x + (anchor.width - size.width) / 2, y: anchor.y + anchor.height + placementRowGap }
-  return findFreePosition(desired, size, occupied, direction)
+  return findFreePosition(spotAfter(anchor, size, direction), size, occupied, direction)
+}
+
+/** The spot right after `anchor`: below it (centred) at the top level, right of it inside a loop. */
+export function spotAfter(anchor: CanvasRect, size: { width: number; height: number }, direction: PlacementDirection): CanvasPoint {
+  if (direction === 'right') return { x: anchor.x + anchor.width + placementColumnGap, y: anchor.y }
+  return { x: anchor.x + (anchor.width - size.width) / 2, y: anchor.y + anchor.height + placementRowGap }
+}
+
+/**
+ * How far the steps after an inserted one move so it slots in (spec "Add node after inserts
+ * on the outgoing arrow"): one step plus a gap, down at the top level, right inside a loop.
+ */
+export function insertionShift(size: { width: number; height: number }, direction: PlacementDirection): CanvasPoint {
+  return direction === 'right' ? { x: size.width + placementColumnGap, y: 0 } : { x: 0, y: size.height + placementRowGap }
+}
+
+/** True when `rect` reaches past `spot` along the flow (so it moves to make room). */
+export function isPastSpot(rect: CanvasRect, spot: CanvasPoint, direction: PlacementDirection): boolean {
+  return direction === 'right' ? rect.x + rect.width > spot.x : rect.y + rect.height > spot.y
 }

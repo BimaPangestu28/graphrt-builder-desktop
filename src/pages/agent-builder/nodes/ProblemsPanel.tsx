@@ -10,7 +10,7 @@ const panelButtonClassNames = 'h-7 cursor-pointer rounded-md border border-line-
  * centers it) and Fix with builder (prefills the chat; the user sends it), and why Test is off.
  * After Validate with nothing found it says so; otherwise it renders nothing without problems.
  */
-export function ProblemsPanel({ problems, graph, onSelectNode, onFixWithBuilder, testBlockReason = null, wasValidated = false, onClose }: ProblemsPanelProps) {
+export function ProblemsPanel({ problems, graph, onSelectNode, onShowProblem, onFixWithBuilder, testBlockReason = null, wasValidated = false, onClose }: ProblemsPanelProps) {
   const sorted = sortProblems(problems)
   const errorCount = sorted.filter((problem) => problem.severity === 'error').length
   if (sorted.length === 0) {
@@ -56,7 +56,7 @@ export function ProblemsPanel({ problems, graph, onSelectNode, onFixWithBuilder,
               </div>
               <div className="flex gap-1.5">
                 {nodeId && (
-                  <button type="button" onClick={() => onSelectNode(nodeId)} className={panelButtonClassNames}>
+                  <button type="button" onClick={() => (onShowProblem ? onShowProblem(problem, nodeId) : onSelectNode(nodeId))} className={panelButtonClassNames}>
                     Show node
                   </button>
                 )}

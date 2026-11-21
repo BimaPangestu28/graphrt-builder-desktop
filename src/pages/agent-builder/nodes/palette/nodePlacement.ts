@@ -1,6 +1,5 @@
 import type { AgentGraph, GraphNode, NodeLayout } from '@/api/agentGraphTypes'
 import type { AddNodeAnchor, NodePlacement } from '../contracts'
-import { stepNodeSize } from '../flow/autoLayout'
 import { addGraphNode, createGraphNode, insertGraphNodeAfter, insertGraphNodeAfterNode, insertGraphNodeOnEdge, uniqueNodeId } from '../graphEdits'
 import type { AgentGraphActions } from '../useAgentGraph'
 import type { PaletteAction } from './paletteCatalog'
@@ -10,9 +9,6 @@ import type { PaletteAction } from './paletteCatalog'
  * position) and a position beside its neighbours when they have one. Placement helper the
  * canvas may reuse (spec "Add node after", "+" on an arrow, drop "Insert here").
  */
-
-/** Gap between a node and the one added after it (auto-layout runs left to right). */
-const placementGap = 72
 
 /** The new node for an action: readable unique id from its name, empty config. */
 export function createPaletteNode(graph: AgentGraph, action: Pick<PaletteAction, 'kind' | 'displayName'>): GraphNode {
@@ -47,22 +43,14 @@ function layoutBesides(nodeId: string, position: { x: number; y: number }): Node
 }
 
 /**
- * A position for the new node from its anchor's saved position; null when the anchor has
- * none (auto-layout then places it).
+ * A position for the new node when the anchor fixes one (a drop point). Nodes added after a
+ * step or on an arrow get none: the canvas places them in the direction arrows run in their
+ * scope (below at the top level, right inside a loop) and clear of every neighbour, which a
+ * position worked out here cannot know.
  */
-export function layoutForAnchor(graph: AgentGraph, nodeId: string, anchor: AddNodeAnchor | null, positions: Record<string, NodeLayout>): NodeLayout | null {
-  if (!anchor) return null
-  if (anchor.type === 'at-position') return layoutBesides(nodeId, anchor)
-  if (anchor.type === 'after-node' || anchor.type === 'after-exit') {
-    const anchorLayout = positions[anchor.type === 'after-node' ? anchor.nodeId : anchor.source]
-    if (!anchorLayout) return null
-    return layoutBesides(nodeId, { x: anchorLayout.x + (anchorLayout.width ?? stepNodeSize.width) + placementGap, y: anchorLayout.y })
-  }
-  const edge = graph.edges.find((candidate) => candidate.id === anchor.edgeId)
-  const sourceLayout = edge ? positions[edge.source] : undefined
-  const targetLayout = edge ? positions[edge.target] : undefined
-  if (!sourceLayout || !targetLayout) return null
-  return layoutBesides(nodeId, { x: (sourceLayout.x + targetLayout.x) / 2, y: (sourceLayout.y + targetLayout.y) / 2 + stepNodeSize.height })
+export function layoutForAnchor(_graph: AgentGraph, nodeId: string, anchor: AddNodeAnchor | null, _positions: Record<string, NodeLayout>): NodeLayout | null {
+  if (anchor?.type === 'at-position') return layoutBesides(nodeId, anchor)
+  return null
 }
 
 function titleOf(graph: AgentGraph, nodeId: string): string {

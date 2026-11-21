@@ -62,11 +62,12 @@ describe('node placement', () => {
     expect(dropped.edges).toEqual(graph.edges)
   })
 
-  it('builds one placement: unique id, position beside the anchor, plain-words description, one undo step', async () => {
+  it('builds one placement: unique id, placed by the canvas after its anchor, plain-words description, one undo step', async () => {
     const graph = await loadSampleGraph()
     const placement = buildNodePlacement(graph, { kind: 'llm', displayName: 'Ask a model' }, { type: 'after-node', nodeId: 'write_message' }, { write_message: { nodeId: 'write_message', x: 100, y: 40 } })
     expect(placement.node.id).toBe('ask_a_model')
-    expect(placement.layout).toMatchObject({ nodeId: 'ask_a_model', x: 100 + 240 + 72, y: 40 })
+    // No fixed position: the canvas puts it after Write a short message, clear of its neighbours.
+    expect(placement.layout).toBeNull()
     expect(placement.description).toBe('added Ask a model after Write a short message')
 
     const applyEdit = vi.fn()
@@ -76,7 +77,13 @@ describe('node placement', () => {
     expect(applyEdit.mock.calls[0][1]).toBe('added Ask a model after Write a short message')
     const edited = applyEdit.mock.calls[0][0](graph) as AgentGraph
     expect(edited.nodes.some((candidate) => candidate.id === 'ask_a_model')).toBe(true)
-    expect(moveNodes).toHaveBeenCalledWith([placement.layout])
+    expect(moveNodes).not.toHaveBeenCalled()
+  })
+
+  it('keeps the drop point of a node dropped on the canvas', async () => {
+    const graph = await loadSampleGraph()
+    const placement = buildNodePlacement(graph, formatText, { type: 'at-position', x: 120, y: 340 })
+    expect(placement.layout).toEqual({ nodeId: placement.node.id, x: 120, y: 340, width: null, height: null })
   })
 
   it('drops an anchor that no longer exists', async () => {

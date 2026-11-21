@@ -23,6 +23,30 @@ const problemLabels: Record<string, string> = {
   plugin_not_installed: 'Plugin not installed',
 }
 
+/** A config path named in a problem message (`url`, "tool_parameters.city"), if any. */
+function fieldNamedIn(message: string): string | null {
+  const quoted = message.match(/[`'"]([A-Za-z_][A-Za-z0-9_.]*)[`'"]/)
+  return quoted ? quoted[1] : null
+}
+
+/**
+ * The part of the inspector a problem is about, for "Show node": the error path for an
+ * arrow that is never taken, the model for a model that is not connected, the field a
+ * settings problem names. Null when it is about the step as a whole.
+ *
+ * @param problem - The problem (GraphProblem)
+ * @returns An inspector section target (`InspectorSectionTarget`), or null (string | null)
+ *
+ * @example
+ * inspectorTargetForProblem({ code: 'node_config', message: 'missing `url`', … }) // 'url'
+ */
+export function inspectorTargetForProblem(problem: GraphProblem): string | null {
+  if (problem.code === 'unused_edge') return 'on-error'
+  if (problem.code === 'model_provider_not_set_up') return 'model'
+  if (problem.code === 'node_config' || problem.code === 'placeholder_address') return fieldNamedIn(problem.message)
+  return null
+}
+
 /** Short chip text: "Not connected", "Settings need fixing". */
 export function describeProblemLabel(problem: GraphProblem): string {
   return problemLabels[problem.code] ?? (problem.severity === 'error' ? 'Problem' : 'Check this')

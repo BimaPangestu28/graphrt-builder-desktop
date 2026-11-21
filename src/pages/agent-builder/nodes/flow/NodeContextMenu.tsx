@@ -2,21 +2,29 @@ import { useEffect, useRef, type KeyboardEvent } from 'react'
 import { joinClassNames } from '@/components/ui'
 
 /**
- * The right-click menu of a node (spec I1): Add node after, Change action (plugin
- * steps), Ask the builder about this, Duplicate, Disconnect, Delete. A real menu:
- * arrow keys move, Enter picks, Esc and a click outside close it.
+ * The right-click menus of the canvas (spec I1). On a node: Add node after, Change action
+ * (plugin steps), Ask the builder about this, Duplicate, Disconnect, Delete. On the empty
+ * canvas: Add node here, Add note here, Paste, Fit. A real menu: arrow keys move, Enter
+ * picks, Esc and a click outside close it.
  */
 
 export type NodeMenuAction = 'add-after' | 'change-action' | 'ask-builder' | 'duplicate' | 'disconnect' | 'delete'
 
-interface NodeMenuItem {
-  action: NodeMenuAction
+/** Actions of the empty-canvas menu. */
+export type PaneMenuAction = 'add-node-here' | 'add-note-here' | 'paste' | 'fit'
+
+export interface CanvasMenuItem<Action extends string = string> {
+  action: Action
   label: string
   shortcut?: string
   isDanger?: boolean
   /** Changes the graph: off while the canvas is read-only. */
   edits: boolean
+  /** Draws a line above this entry. */
+  separatorBefore?: boolean
 }
+
+type NodeMenuItem = CanvasMenuItem<NodeMenuAction>
 
 /** Menu entries for a node; Change action only for plugin steps. */
 export function listNodeMenuItems(options: { isPluginNode: boolean; isMac: boolean; selectionSize: number }): NodeMenuItem[] {
@@ -26,23 +34,34 @@ export function listNodeMenuItems(options: { isPluginNode: boolean; isMac: boole
     ...(single ? [{ action: 'add-after' as const, label: 'Add node after', shortcut: 'A', edits: true }] : []),
     ...(single && options.isPluginNode ? [{ action: 'change-action' as const, label: 'Change action', edits: true }] : []),
     { action: 'ask-builder', label: single ? 'Ask the builder about this' : 'Ask the builder about these', edits: false },
-    { action: 'duplicate', label: 'Duplicate', shortcut: `${command}D`, edits: true },
+    { action: 'duplicate', label: 'Duplicate', shortcut: `${command}D`, edits: true, separatorBefore: true },
     { action: 'disconnect', label: 'Disconnect', edits: true },
     { action: 'delete', label: 'Delete', shortcut: '⌫', isDanger: true, edits: true },
   ]
 }
 
-interface NodeContextMenuProps {
+/** Entries of the empty-canvas menu. */
+export function listPaneMenuItems(options: { isMac: boolean; canAddNode: boolean; canAddNote: boolean; canPaste: boolean }): CanvasMenuItem<PaneMenuAction>[] {
+  const command = options.isMac ? '⌘' : 'Ctrl+'
+  return [
+    ...(options.canAddNode ? [{ action: 'add-node-here' as const, label: 'Add node here', shortcut: 'A', edits: true }] : []),
+    ...(options.canAddNote ? [{ action: 'add-note-here' as const, label: 'Add note here', edits: true }] : []),
+    ...(options.canPaste ? [{ action: 'paste' as const, label: 'Paste', shortcut: `${command}V`, edits: true }] : []),
+    { action: 'fit', label: 'Fit the whole agent', shortcut: '⇧1', edits: false, separatorBefore: options.canAddNode || options.canAddNote || options.canPaste },
+  ]
+}
+
+interface NodeContextMenuProps<Action extends string> {
   /** Where it opens, relative to the canvas box. */
   position: { x: number; y: number }
   title: string
-  items: NodeMenuItem[]
+  items: CanvasMenuItem<Action>[]
   readOnly: boolean
-  onAction: (action: NodeMenuAction) => void
+  onAction: (action: Action) => void
   onClose: () => void
 }
 
-export function NodeContextMenu({ position, title, items, readOnly, onAction, onClose }: NodeContextMenuProps) {
+export function NodeContextMenu<Action extends string>({ position, title, items, readOnly, onAction, onClose }: NodeContextMenuProps<Action>) {
   const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -86,7 +105,7 @@ export function NodeContextMenu({ position, title, items, readOnly, onAction, on
     >
       {items.map((item, itemIndex) => (
         <div key={item.action}>
-          {item.action === 'duplicate' && itemIndex > 0 && <div role="separator" className="mx-1 my-1 h-px bg-line" />}
+          {item.separatorBefore && itemIndex > 0 && <div role="separator" className="mx-1 my-1 h-px bg-line" />}
           <button
             type="button"
             role="menuitem"

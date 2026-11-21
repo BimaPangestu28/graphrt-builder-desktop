@@ -16,11 +16,13 @@ interface ZoomControlsProps {
   onZoomOut: () => void
   onFit: () => void
   onShowShortcuts: () => void
+  /** Px covered on the left by a floating panel; the controls sit right of it. */
+  insetLeft?: number
 }
 
-export function ZoomControls({ zoom, onZoomIn, onZoomOut, onFit, onShowShortcuts }: ZoomControlsProps) {
+export function ZoomControls({ zoom, onZoomIn, onZoomOut, onFit, onShowShortcuts, insetLeft = 0 }: ZoomControlsProps) {
   return (
-    <div role="group" aria-label="Zoom" className={joinClassNames(floatingBoxClassNames, 'absolute bottom-4 left-4 z-10 flex items-center gap-0.5 p-0.5')}>
+    <div role="group" aria-label="Zoom" className={joinClassNames(floatingBoxClassNames, 'absolute bottom-4 z-10 flex items-center gap-0.5 p-0.5')} style={{ left: 16 + insetLeft }}>
       <button type="button" aria-label="Zoom out" onClick={onZoomOut} className={iconButtonClassNames}>
         <StrokeIcon size={14}>
           <path d="M5 12h14" />

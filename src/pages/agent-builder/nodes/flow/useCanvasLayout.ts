@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AgentGraph, GraphNode, NodeLayout } from '@/api/agentGraphTypes'
-import { computeAutoLayout, containerMinimumSize, flowDirectionOf, markerNodeSize, mergeLayouts, stepNodeSize } from './autoLayout'
-import { placeNewNode, placementGap, type CanvasPoint, type CanvasRect } from './placement'
+import { computeAutoLayout, containerMinimumSize, endNodeSize, flowDirectionOf, isEndPillNode, markerNodeSize, mergeLayouts, stepNodeSize } from './autoLayout'
+import { findFreePosition, insertionShift, isPastSpot, placeNewNode, placementGap, rectsOverlap, spotAfter, type CanvasPoint, type CanvasRect } from './placement'
 import { cardHeightFor } from './nodeGeometry'
 
 /**
@@ -18,6 +18,7 @@ export type MeasuredSizes = Map<string, { width: number; height: number }>
 /** Nominal size of a node before React Flow has measured it. */
 export function nominalSizeOf(node: GraphNode, layout?: NodeLayout): { width: number; height: number } {
   if (node.hidden) return markerNodeSize
+  if (isEndPillNode(node)) return endNodeSize
   if (node.container) return { width: layout?.width ?? containerMinimumSize.width, height: layout?.height ?? containerMinimumSize.height }
   return { width: stepNodeSize.width, height: Math.max(stepNodeSize.height, cardHeightFor(node.ports.outputs.length)) }
 }
@@ -36,47 +37,92 @@ export interface PlacementInput {
   fallback: CanvasPoint
 }
 
+/** True when `node` was put between two steps: it has an arrow on to a placed sibling. */
+function isInsertedBetween(graph: AgentGraph, node: GraphNode, placed: Record<string, NodeLayout>): boolean {
+  return graph.edges.some((edge) => edge.source === node.id && placed[edge.target] && graph.nodes.find((other) => other.id === edge.target)?.parent === node.parent)
+}
+
 /**
- * Positions for the nodes of `graph` that `known` lacks, each right of the step it
- * follows and clear of its siblings; containers grow to fit new children.
+ * Where a new step goes and which siblings move: a step inserted between two steps takes
+ * the spot after the first and pushes the steps past it along (so the flow stays straight);
+ * any other step goes after its anchor (or at the fallback), nudged into free space.
+ */
+function placeOneNode(graph: AgentGraph, node: GraphNode, placed: Record<string, NodeLayout>, measured: MeasuredSizes, fallback: CanvasPoint): { point: CanvasPoint; moved: NodeLayout[] } {
+  const siblings = graph.nodes.filter((other) => other.id !== node.id && other.parent === node.parent && placed[other.id])
+  const occupied = siblings.map((sibling) => rectOf(sibling, placed[sibling.id], measured))
+  const incoming = graph.edges.find((edge) => edge.target === node.id && placed[edge.source] && graph.nodes.find((other) => other.id === edge.source)?.parent === node.parent)
+  const anchorNode = incoming ? graph.nodes.find((other) => other.id === incoming.source) : undefined
+  const anchor = anchorNode ? rectOf(anchorNode, placed[anchorNode.id], measured) : null
+  const size = nominalSizeOf(node)
+  const direction = flowDirectionOf(node)
+  const containerFallback = { x: placementGap, y: 72 }
+  if (!anchor || !anchorNode || !isInsertedBetween(graph, node, placed)) return { point: placeNewNode(anchor, size, occupied, node.parent ? containerFallback : fallback, direction), moved: [] }
+  const spot = spotAfter(anchor, size, direction)
+  if (!occupied.some((rect) => rectsOverlap({ ...spot, ...size }, rect, placementGap - 1))) return { point: spot, moved: [] }
+  const shift = insertionShift(size, direction)
+  const movedSiblings = siblings.filter((sibling) => sibling.id !== anchorNode.id && isPastSpot(rectOf(sibling, placed[sibling.id], measured), spot, direction))
+  const moved = movedSiblings.map((sibling) => ({ ...placed[sibling.id], x: Math.round(placed[sibling.id].x + shift.x), y: Math.round(placed[sibling.id].y + shift.y) }))
+  const movedIds = new Set(moved.map((layout) => layout.nodeId))
+  const stillOccupied = [
+    ...siblings.filter((sibling) => !movedIds.has(sibling.id)).map((sibling) => rectOf(sibling, placed[sibling.id], measured)),
+    ...movedSiblings.map((sibling, siblingIndex) => rectOf(sibling, moved[siblingIndex], measured)),
+  ]
+  return { point: findFreePosition(spot, size, stillOccupied, direction), moved }
+}
+
+/** The container's layout grown to hold `children` (null when they fit). */
+function grownContainer(graph: AgentGraph, containerId: string, placed: Record<string, NodeLayout>, children: NodeLayout[]): NodeLayout | null {
+  const container = placed[containerId]
+  const containerNode = graph.nodes.find((other) => other.id === containerId)
+  if (!container || !containerNode) return null
+  const containerSize = nominalSizeOf(containerNode, container)
+  let neededWidth = containerSize.width
+  let neededHeight = containerSize.height
+  for (const child of children) {
+    const childNode = graph.nodes.find((other) => other.id === child.nodeId)
+    const childSize = childNode ? nominalSizeOf(childNode, child) : stepNodeSize
+    neededWidth = Math.max(neededWidth, child.x + childSize.width + placementGap)
+    neededHeight = Math.max(neededHeight, child.y + childSize.height + placementGap)
+  }
+  if (neededWidth === containerSize.width && neededHeight === containerSize.height) return null
+  return { ...container, width: neededWidth, height: neededHeight }
+}
+
+/**
+ * Positions for the nodes of `graph` that `known` lacks, each after the step it follows
+ * and clear of its siblings (a step inserted between two pushes the later ones along);
+ * containers grow to fit new children.
  *
- * @returns Layouts for the newly placed nodes and the containers that grew (NodeLayout[])
+ * @returns Layouts for the new nodes, the steps moved to make room and the grown containers (NodeLayout[])
  */
 export function placeUnplacedNodes({ graph, known, measured, fallback }: PlacementInput): NodeLayout[] {
   const placed: Record<string, NodeLayout> = { ...known }
-  const results: NodeLayout[] = []
+  const results = new Map<string, NodeLayout>()
+  const record = (layout: NodeLayout) => {
+    placed[layout.nodeId] = layout
+    results.set(layout.nodeId, layout)
+  }
   for (const node of graph.nodes) {
     if (placed[node.id]) continue
-    const siblings = graph.nodes.filter((other) => other.id !== node.id && other.parent === node.parent && placed[other.id])
-    const occupied = siblings.map((sibling) => rectOf(sibling, placed[sibling.id], measured))
-    const incoming = graph.edges.find((edge) => edge.target === node.id && placed[edge.source] && graph.nodes.find((other) => other.id === edge.source)?.parent === node.parent)
-    const anchorNode = incoming ? graph.nodes.find((other) => other.id === incoming.source) : undefined
-    const anchor = anchorNode ? rectOf(anchorNode, placed[anchorNode.id], measured) : null
+    const { point, moved } = placeOneNode(graph, node, placed, measured, fallback)
     const size = nominalSizeOf(node)
-    const containerFallback = { x: placementGap, y: 72 }
-    const point = placeNewNode(anchor, size, occupied, node.parent ? containerFallback : fallback, flowDirectionOf(node))
     const layout: NodeLayout = { nodeId: node.id, x: Math.round(point.x), y: Math.round(point.y), width: node.container ? size.width : null, height: node.container ? size.height : null }
-    placed[node.id] = layout
-    results.push(layout)
-    if (node.parent && placed[node.parent]) {
-      const container = placed[node.parent]
-      const containerNode = graph.nodes.find((other) => other.id === node.parent) as GraphNode
-      const containerSize = nominalSizeOf(containerNode, container)
-      const neededWidth = layout.x + size.width + placementGap
-      const neededHeight = layout.y + size.height + placementGap
-      if (neededWidth > containerSize.width || neededHeight > containerSize.height) {
-        const grown = { ...container, width: Math.max(containerSize.width, neededWidth), height: Math.max(containerSize.height, neededHeight) }
-        placed[node.parent] = grown
-        results.push(grown)
-      }
-    }
+    for (const movedLayout of moved) record(movedLayout)
+    record(layout)
+    if (!node.parent) continue
+    const grown = grownContainer(graph, node.parent, placed, [layout, ...moved])
+    if (grown) record(grown)
   }
-  return results
+  return [...results.values()]
 }
 
-/** ELK positions for one loaded version (recomputed when the version or agent changes). */
+/**
+ * ELK positions for one loaded version (recomputed when the version or agent changes).
+ * While a newer version of the same agent is laid out, the previous layout stays, so the
+ * canvas never blanks (and React Flow never remounts) after a save.
+ */
 function useVersionAutoLayout(graph: AgentGraph): NodeLayout[] | null {
-  const [autoLayout, setAutoLayout] = useState<{ key: string; layouts: NodeLayout[] } | null>(null)
+  const [autoLayout, setAutoLayout] = useState<{ key: string; agentId: string; layouts: NodeLayout[] } | null>(null)
   const versionKey = `${graph.agentId}@${graph.version}`
   const graphRef = useRef(graph)
   graphRef.current = graph
@@ -84,16 +130,16 @@ function useVersionAutoLayout(graph: AgentGraph): NodeLayout[] | null {
     let isCurrent = true
     const laidOutGraph = graphRef.current
     computeAutoLayout(laidOutGraph)
-      .then((layouts) => isCurrent && setAutoLayout({ key: versionKey, layouts }))
+      .then((layouts) => isCurrent && setAutoLayout({ key: versionKey, agentId: laidOutGraph.agentId, layouts }))
       .catch((layoutError: unknown) => {
         console.warn('auto-layout failed, placing nodes in a row', layoutError)
-        if (isCurrent) setAutoLayout({ key: versionKey, layouts: laidOutGraph.nodes.map((node, nodeIndex) => ({ nodeId: node.id, x: nodeIndex * 300, y: 0 })) })
+        if (isCurrent) setAutoLayout({ key: versionKey, agentId: laidOutGraph.agentId, layouts: laidOutGraph.nodes.map((node, nodeIndex) => ({ nodeId: node.id, x: nodeIndex * 300, y: 0 })) })
       })
     return () => {
       isCurrent = false
     }
   }, [versionKey])
-  return autoLayout && autoLayout.key === versionKey ? autoLayout.layouts : null
+  return autoLayout && (autoLayout.key === versionKey || autoLayout.agentId === graph.agentId) ? autoLayout.layouts : null
 }
 
 export interface CanvasLayoutState {

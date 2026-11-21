@@ -30,13 +30,27 @@ class TestDomMatrixReadOnly {
   }
 }
 
+/** Size React Flow sees for its pane in tests. */
+export const testCanvasSize = { width: 1000, height: 700 }
+
 export function installReactFlowTestEnvironment(): void {
   if (!('ResizeObserver' in window)) Object.defineProperty(window, 'ResizeObserver', { configurable: true, value: TestResizeObserver })
   if (!('DOMMatrixReadOnly' in window)) Object.defineProperty(window, 'DOMMatrixReadOnly', { configurable: true, value: TestDomMatrixReadOnly })
-  // React Flow measures nodes with offsetWidth / offsetHeight, which jsdom leaves at 0.
+  // React Flow measures nodes (and its own pane) with offsetWidth / offsetHeight, which jsdom
+  // leaves at 0: nodes are 200 × 100, the pane a desktop-sized 1000 × 700.
   Object.defineProperties(window.HTMLElement.prototype, {
-    offsetHeight: { configurable: true, get: () => 100 },
-    offsetWidth: { configurable: true, get: () => 200 },
+    offsetHeight: {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.classList.contains('react-flow__renderer') ? testCanvasSize.height : 100
+      },
+    },
+    offsetWidth: {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.classList.contains('react-flow__renderer') ? testCanvasSize.width : 200
+      },
+    },
   })
   if (!('getBBox' in window.SVGElement.prototype)) {
     Object.defineProperty(window.SVGElement.prototype, 'getBBox', { configurable: true, value: () => ({ x: 0, y: 0, width: 0, height: 0 }) })

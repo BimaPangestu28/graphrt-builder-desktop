@@ -125,8 +125,30 @@ with another `nodeId` is ignored. `NodesView.requestInspectorSection(nodeId, sec
 sends one. Fields are found by `data-field-path` (`Field` / `TemplateField` `fieldPath`, schema form
 properties by name), else by a label matching the last path segment.
 
+## Layout and canvas (phase 3)
+
+- **Chat column**: in Nodes the builder page narrows the chat to 360px (spec A) and it folds to a
+  52px rail (`useChatRailPreference`, localStorage, guarded). Windows under 1320px start folded
+  until the viewer chooses. A prefill (Fix with builder, plugin setup) opens it again.
+- **Docked inspector** resizes the canvas; the palette floats (300px) and the canvas fits clear of it
+  (`overlayInsets.left`). `flow/useCanvasViewportFit`: Fit (px padding, max 100%) runs again when the
+  canvas resizes, or keeps the selected step centred when the inspector opens; `focusRequest`
+  centres a step (Show node, palette adds, `requestInspectorSection`).
+- **Toolbar**: one row in a container query; labels fold to icons under 46rem, the save detail under 64rem
+  (tooltip keeps the full text).
+- **Arrows**: branch / error names are drawn at the arrow's middle (`edgeLabelOf`); an exit without an
+  arrow keeps its name beside the port. Hover or select an arrow for "+" (`onRequestAddNode` on-edge).
+- **Loops**: steps drag into and out of loops (`flow/useContainerDrag`): the loop highlights, and
+  `checkReparentNodes` refuses moves that break references (a step reading the loop item stays in;
+  a step whose result is read outside cannot go in). `reparentGraphNodes` drops crossing arrows.
+- **Clipboard**: copy writes `{"graphrt":"nodes","version":1,…}` to the system clipboard too; paste
+  reads and validates it (`parseGraphClipboard`), else the session copy.
+- **Placement**: palette nodes after a step or on an arrow are placed by the canvas; a step inserted
+  between two pushes the later steps along (down at the top level, right in a loop).
+- **Canvas menu** (right-click on empty canvas or a note): Add node here, Add note here, Paste, Fit.
+  Middle-drag or Space + drag pans. Notes resize when selected. End is a pill; cards go compact below 60%.
+
 ## Still open
 
-- Show node selects the step; centering the viewport on it needs the canvas's React Flow instance.
-- Notes cannot be resized yet; the context menu entry (Add note) belongs to the canvas menu.
 - Change action (B2) lists a plugin's other kinds from `getNodeKinds()` filtered by `plugin.name`.
+- Inserting at the top level pushes later steps down but does not re-run ELK; Auto-layout tidies up.

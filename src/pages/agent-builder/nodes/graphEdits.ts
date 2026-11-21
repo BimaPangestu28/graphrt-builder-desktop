@@ -1,4 +1,4 @@
-import type { AgentGraph, EdgeEdit, GraphEdge, GraphEdit, GraphNode, NodeEdit, NodeLayout } from '@/api/agentGraphTypes'
+import type { AgentGraph, EdgeEdit, GraphEdge, GraphEdit, GraphNode, JsonValue, NodeEdit, NodeLayout } from '@/api/agentGraphTypes'
 import { deriveNodePorts, isEdgeUnused, nodeKindTitle, pluginOfKind, SOURCE_HANDLE } from '@/lib/agentGraphRules'
 
 /**
@@ -256,4 +256,136 @@ export function insertGraphNodeAfterNode(graph: AgentGraph, node: GraphNode, anc
   const anchorHandle = continuingHandle(anchor)
   if (!anchorHandle || placedNode.ports.inputs.length === 0) return next
   return addGraphEdge(next, { source: anchor.id, sourceHandle: anchorHandle, target: placedNode.id })
+}
+
+/** Ids of every node inside `containerId` (its body, nested bodies included). */
+export function containerBodyIds(graph: AgentGraph, containerId: string): Set<string> {
+  const body = new Set<string>()
+  let grew = true
+  while (grew) {
+    grew = false
+    for (const node of graph.nodes) {
+      if (node.parent && (node.parent === containerId || body.has(node.parent)) && !body.has(node.id)) {
+        body.add(node.id)
+        grew = true
+      }
+    }
+  }
+  return body
+}
+
+function collectReferencedIds(value: JsonValue, nodeIds: Set<string>, found: Set<string>): void {
+  if (typeof value === 'string') {
+    for (const match of value.matchAll(/\{\{#([^.#}]+)\./g)) if (nodeIds.has(match[1])) found.add(match[1])
+    return
+  }
+  if (Array.isArray(value)) {
+    // A selector: `[node, field, …]` of plain strings.
+    if (value.length >= 2 && value.every((segment) => typeof segment === 'string') && nodeIds.has(value[0] as string)) found.add(value[0] as string)
+    for (const item of value) collectReferencedIds(item, nodeIds, found)
+    return
+  }
+  if (value && typeof value === 'object') for (const item of Object.values(value)) collectReferencedIds(item, nodeIds, found)
+}
+
+/**
+ * Ids of the nodes whose values `node` uses (`{{#id.field#}}` templates and `[id, field]`
+ * selectors anywhere in its config).
+ *
+ * @param graph - Working copy, for the known node ids (AgentGraph)
+ * @param node - The node to read (GraphNode)
+ * @returns Referenced node ids, never the node itself (Set<string>)
+ */
+export function referencedNodeIds(graph: AgentGraph, node: GraphNode): Set<string> {
+  const found = new Set<string>()
+  collectReferencedIds(node.config as JsonValue, new Set(graph.nodes.map((candidate) => candidate.id)), found)
+  found.delete(node.id)
+  return found
+}
+
+/** Whether steps may move into a loop (or out to the top level), and why not. */
+export interface ReparentCheck {
+  allowed: boolean
+  reason: string | null
+}
+
+function titleOfNode(graph: AgentGraph, nodeId: string): string {
+  return graph.nodes.find((node) => node.id === nodeId)?.displayTitle ?? nodeId
+}
+
+function checkLeavingLoop(graph: AgentGraph, node: GraphNode, movedIds: Set<string>): string | null {
+  const oldParent = node.parent as string
+  const oldBody = containerBodyIds(graph, oldParent)
+  const usesLoopValue = [...referencedNodeIds(graph, node)].some((referencedId) => referencedId === oldParent || (oldBody.has(referencedId) && !movedIds.has(referencedId)))
+  if (usesLoopValue) return `${node.displayTitle} uses values from inside ${titleOfNode(graph, oldParent)}`
+  const container = graph.nodes.find((candidate) => candidate.id === oldParent)
+  if (container && referencedNodeIds(graph, container).has(node.id)) return `${container.displayTitle} collects its result from ${node.displayTitle}`
+  return null
+}
+
+function checkEnteringLoop(graph: AgentGraph, node: GraphNode, newParent: string, movedIds: Set<string>): string | null {
+  const newBody = containerBodyIds(graph, newParent)
+  const outsideUser = graph.nodes.find(
+    (candidate) => candidate.id !== newParent && !newBody.has(candidate.id) && !movedIds.has(candidate.id) && referencedNodeIds(graph, candidate).has(node.id),
+  )
+  return outsideUser ? `${outsideUser.displayTitle} uses its result outside ${titleOfNode(graph, newParent)}` : null
+}
+
+function checkOneReparent(graph: AgentGraph, node: GraphNode, newParent: string | null, movedIds: Set<string>): string | null {
+  if (node.hidden) return "Can't move the start of a loop body"
+  if (newParent && (node.kind === 'start' || node.kind === 'end')) return `${node.displayTitle} stays outside loops`
+  if (newParent && node.container) return "A loop can't go inside another loop"
+  if (node.parent && node.parent !== newParent) {
+    const reason = checkLeavingLoop(graph, node, movedIds)
+    if (reason) return reason
+  }
+  if (newParent && newParent !== node.parent) return checkEnteringLoop(graph, node, newParent, movedIds)
+  return null
+}
+
+/**
+ * Checks moving steps into the loop `newParent` (or out to the top level when null)
+ * without breaking value references: a step that reads the loop's item stays in it, and a
+ * step whose result is read outside a loop cannot go in.
+ *
+ * @param graph - Working copy (AgentGraph)
+ * @param nodeIds - Steps to move (string[])
+ * @param newParent - Target loop id, or null for the top level (string | null)
+ * @returns Allowed, or the first reason it is not (ReparentCheck)
+ *
+ * @example
+ * checkReparentNodes(graph, ['write_message'], null)
+ * // { allowed: false, reason: 'Write a short message uses values from inside For each place' }
+ */
+export function checkReparentNodes(graph: AgentGraph, nodeIds: string[], newParent: string | null): ReparentCheck {
+  if (newParent && !graph.nodes.some((node) => node.id === newParent && node.container)) return { allowed: false, reason: 'Steps can only go inside a loop' }
+  const movedIds = new Set(nodeIds)
+  for (const nodeId of nodeIds) {
+    const node = graph.nodes.find((candidate) => candidate.id === nodeId)
+    if (!node) return { allowed: false, reason: `There is no step called ${nodeId}` }
+    const reason = checkOneReparent(graph, node, newParent, movedIds)
+    if (reason) return { allowed: false, reason }
+  }
+  return { allowed: true, reason: null }
+}
+
+/**
+ * Moves steps into the loop `newParent` (or to the top level). Arrows never cross a loop's
+ * edge, so arrows between a moved step and a step left behind are removed; arrows between
+ * the moved steps stay. Run {@link checkReparentNodes} first.
+ *
+ * @param graph - Working copy (AgentGraph)
+ * @param nodeIds - Steps to move (string[])
+ * @param newParent - Target loop id, or null for the top level (string | null)
+ * @returns The graph with the steps re-parented and crossing arrows removed (AgentGraph)
+ */
+export function reparentGraphNodes(graph: AgentGraph, nodeIds: string[], newParent: string | null): AgentGraph {
+  const moved = new Set(nodeIds)
+  const nodes = graph.nodes.map((node) => (moved.has(node.id) ? { ...node, parent: newParent } : node))
+  const parentById = new Map(nodes.map((node) => [node.id, node.parent]))
+  const edges = graph.edges.filter((edge) => {
+    if (!moved.has(edge.source) && !moved.has(edge.target)) return true
+    return parentById.get(edge.source) === parentById.get(edge.target)
+  })
+  return withUnusedFlags({ ...graph, nodes, edges })
 }

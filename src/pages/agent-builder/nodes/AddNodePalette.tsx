@@ -13,6 +13,9 @@ import { usePaletteInstall, type PaletteInstallState } from './palette/usePalett
 import { usePaletteNavigation } from './palette/usePaletteNavigation'
 import { usePaletteUsage } from './palette/usePaletteUsage'
 
+/** Width of the floating palette (spec 34: 300px); the canvas fits clear of it. */
+export const paletteWidth = 300
+
 /**
  * The Add node palette (spec C, C2, N1; artboards 34, 38): browse built-in steps by library
  * group, installed plugins (most used actions first) and catalog plugins; search all of them
@@ -131,7 +134,7 @@ function AddNodePalettePanel({
   return (
     <aside
       aria-label="Add node"
-      className="absolute bottom-3 left-3 top-3 z-10 box-border flex w-[min(340px,calc(100%-24px))] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-[0_8px_28px_rgba(0,0,0,0.10)]"
+      className="absolute bottom-3 left-3 top-3 z-10 box-border flex w-[min(300px,calc(100%-24px))] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-[0_8px_28px_rgba(0,0,0,0.10)]"
       onKeyDown={(event) => {
         if (event.key === 'Escape' && !event.defaultPrevented) onClose()
       }}
