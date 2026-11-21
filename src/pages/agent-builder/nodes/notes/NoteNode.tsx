@@ -1,7 +1,10 @@
 import { createContext, memo, useContext, useEffect, useState, type ReactNode } from 'react'
 import type { CanvasNote, CanvasNoteColor } from '@/api/agentGraphTypes'
 import { joinClassNames } from '@/components/ui'
-import type { Node, NodeProps } from '../flow/flowLibrary'
+import { NodeResizer, type Node, type NodeProps } from '../flow/flowLibrary'
+
+/** Smallest size a note can be resized to (canvas units). */
+export const noteMinimumSize = { w: 140, h: 72 }
 
 /**
  * Sticky notes as React Flow nodes of type `note`, for the canvas to register next to its step
@@ -60,7 +63,7 @@ const colorClassNames: Record<CanvasNoteColor, string> = {
 
 const noteColors = Object.keys(colorClassNames) as CanvasNoteColor[]
 
-/** One sticky note: drag by its top strip, type in it, change its color or delete it. */
+/** One sticky note: drag by its top strip, type in it, resize it, change its color or delete it. */
 export const NoteNodeCard = memo(function NoteNodeCard({ data, selected }: NodeProps<NoteFlowNode>) {
   const { note } = data
   const { updateNote, removeNote, readOnly } = useContext(CanvasNotesContext)
@@ -71,6 +74,14 @@ export const NoteNodeCard = memo(function NoteNodeCard({ data, selected }: NodeP
       data-testid={`canvas-note-${note.noteId}`}
       className={joinClassNames('box-border flex h-full w-full flex-col rounded-lg border shadow-sm', colorClassNames[note.color] ?? colorClassNames.yellow, selected && 'ring-2 ring-brand')}
     >
+      <NodeResizer
+        isVisible={selected && !readOnly}
+        minWidth={noteMinimumSize.w}
+        minHeight={noteMinimumSize.h}
+        lineClassName="container-resize-line"
+        handleClassName="container-resize-handle"
+        onResizeEnd={(_event, params) => updateNote(note.noteId, { x: Math.round(params.x), y: Math.round(params.y), w: Math.round(params.width), h: Math.round(params.height) })}
+      />
       <div className="flex h-6 shrink-0 cursor-grab items-center gap-1 px-2">
         <span className="flex-1 text-[10px] font-semibold tracking-wide text-muted uppercase">Note</span>
         {!readOnly && selected && (

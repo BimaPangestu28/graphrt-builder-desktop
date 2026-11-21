@@ -15,6 +15,13 @@ export const stepNodeSize = { width: 240, height: 112 }
 export const containerMinimumSize = { width: 300, height: 180 }
 /** Size of a hidden body marker (the dot a loop body's arrows start from). */
 export const markerNodeSize = { width: 12, height: 12 }
+/** Size of the End pill (spec A: a rounded pill, not a card). */
+export const endNodeSize = { width: 200, height: 36 }
+
+/** True for the End step, drawn as a pill. */
+export function isEndPillNode(node: Pick<GraphNode, 'kind' | 'hidden'>): boolean {
+  return node.kind === 'end' && !node.hidden
+}
 /** Space for a container's header above its body. */
 const containerHeaderHeight = 64
 const containerPadding = 24
@@ -64,7 +71,8 @@ const containerLayoutOptions: Record<string, string> = {
 type ElkEdge = { id: string; sources: string[]; targets: string[] }
 
 function sizeOf(node: GraphNode): { width: number; height: number } {
-  return node.hidden ? markerNodeSize : stepNodeSize
+  if (node.hidden) return markerNodeSize
+  return isEndPillNode(node) ? endNodeSize : stepNodeSize
 }
 
 function toElkNode(node: GraphNode, childrenByParent: Map<string | null, GraphNode[]>, edgesByScope: Map<string | null, ElkEdge[]>): ElkNodeInput {

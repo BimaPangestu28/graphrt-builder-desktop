@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'rea
 import { splitPaneColumnClassName, splitPaneScrollClassName } from '@/components/layout'
 import { useFollowNewContent } from '@/hooks/useFollowNewContent'
 import type { Agent, BuilderMessage, FlowStep } from '@/api/types'
-import { StrokeIcon, VisuallyHidden } from '@/components/ui'
+import { joinClassNames, StrokeIcon, VisuallyHidden } from '@/components/ui'
 import { assistantBlockClassNames, PanelHeader, UserChatBubble } from './ChatBubbles'
 import { describeDraftActivity } from './draftActivity'
 import type { BuilderAskDraft } from './useBuilderAskDraft'
@@ -225,19 +225,78 @@ interface BuilderChatPanelProps {
   pluginSetupAnchor?: PluginSetupAnchor | null
   /** Request to prefill in the prompt box (from the `ask` search param), left for the user to send. */
   askDraft?: BuilderAskDraft | null
+  /**
+   * Column width: `wide` shares the page with the agent (Steps), `narrow` is the fixed
+   * 360px column of the Nodes view (spec A), `rail` folds it to a thin strip.
+   */
+  layout?: ChatPanelLayout
+  /** Folds or opens the chat (Nodes view); without it there is no fold button. */
+  onToggleCollapsed?: () => void
+}
+
+/** How wide the chat column is drawn. */
+export type ChatPanelLayout = 'wide' | 'narrow' | 'rail'
+
+const chatColumnWidthClassNames: Record<ChatPanelLayout, string> = {
+  wide: 'flex-[1_1_380px]',
+  narrow: 'flex-[0_0_360px]',
+  rail: 'flex-[0_0_52px]',
+}
+
+const railButtonClassNames = 'flex size-9 cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent text-ink-2 hover:bg-subtle'
+
+/** The folded chat: open it, or open it straight into the prompt box. */
+function ChatRail({ onExpand, onWrite }: { onExpand: () => void; onWrite: () => void }) {
+  return (
+    <div className="flex flex-col items-center gap-1 py-3.5">
+      <button type="button" aria-label="Show the chat" title="Show the chat" aria-expanded="false" onClick={onExpand} className={railButtonClassNames}>
+        <StrokeIcon size={16}>
+          <path d="M9 6l6 6-6 6" />
+        </StrokeIcon>
+      </button>
+      <button type="button" aria-label="Describe a change" title="Describe a change" onClick={onWrite} className={railButtonClassNames}>
+        <StrokeIcon size={16}>
+          <path d="M4 5h16v11H9l-5 4z" />
+        </StrokeIcon>
+      </button>
+    </div>
+  )
 }
 
 /** Left column of screen 04: the build conversation plus a box to ask for more changes. */
 export function BuilderChatPanel(props: BuilderChatPanelProps) {
   const { agent, steps, openingExplanation, savedMessages, exchanges, latestRevision, isBusy, undoErrorMessage, onSubmitRequest, onToggleUndo, onStopRequest, isStopping = false, pluginSetupMessage, pluginSetupAnchor, askDraft } = props
+  const { layout = 'wide', onToggleCollapsed } = props
   const chatBodyRef = useFollowNewContent()
+  const sectionRef = useRef<HTMLElement>(null)
+  const isRail = layout === 'rail'
+  // Folded, the conversation stays mounted (hidden) so a half-written request survives.
+  function expandAndFocusPrompt() {
+    onToggleCollapsed?.()
+    window.setTimeout(() => sectionRef.current?.querySelector<HTMLTextAreaElement>('textarea')?.focus(), 0)
+  }
   return (
-    <section aria-label="Chat" className={`box-border flex min-w-0 flex-[1_1_380px] flex-col border-r border-line bg-surface ${splitPaneColumnClassName}`}>
-      <PanelHeader className="justify-between">
-        <span className="font-semibold">Build with chat</span>
+    <section
+      ref={sectionRef}
+      aria-label="Chat"
+      data-layout={layout}
+      className={joinClassNames('box-border flex min-w-0 flex-col border-r border-line bg-surface transition-[flex-basis] duration-200 motion-reduce:transition-none', chatColumnWidthClassNames[layout], splitPaneColumnClassName)}
+    >
+      {isRail && onToggleCollapsed && <ChatRail onExpand={onToggleCollapsed} onWrite={expandAndFocusPrompt} />}
+      <PanelHeader className={joinClassNames('justify-between gap-2', layout === 'narrow' && 'px-5', isRail && 'hidden')}>
+        <span className="flex min-w-0 items-center gap-1.5">
+          {onToggleCollapsed && (
+            <button type="button" aria-label="Hide the chat" title="Hide the chat" aria-expanded="true" onClick={onToggleCollapsed} className={joinClassNames(railButtonClassNames, '-ml-2 size-8')}>
+              <StrokeIcon size={16}>
+                <path d="M15 6l-6 6 6 6" />
+              </StrokeIcon>
+            </button>
+          )}
+          <span className="truncate font-semibold">Build with chat</span>
+        </span>
         <ModelPickerChip label="Model the builder uses" />
       </PanelHeader>
-      <div ref={chatBodyRef} aria-live="polite" className={`flex flex-auto flex-col gap-5 p-6 ${splitPaneScrollClassName}`}>
+      <div ref={chatBodyRef} aria-live="polite" className={joinClassNames('flex flex-auto flex-col gap-5', layout === 'narrow' ? 'p-5' : 'p-6', splitPaneScrollClassName, isRail && 'hidden')}>
         {agent && (
           <>
             <UserChatBubble>{agent.description}</UserChatBubble>
@@ -275,7 +334,9 @@ export function BuilderChatPanel(props: BuilderChatPanelProps) {
           </p>
         )}
       </div>
-      <ChangeRequestForm isBusy={isBusy || !agent} onSubmitRequest={onSubmitRequest} askDraft={askDraft} />
+      <div className={isRail ? 'hidden' : undefined}>
+        <ChangeRequestForm isBusy={isBusy || !agent} onSubmitRequest={onSubmitRequest} askDraft={askDraft} />
+      </div>
     </section>
   )
 }

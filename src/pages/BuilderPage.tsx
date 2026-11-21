@@ -9,7 +9,7 @@ import { useProviderStatuses } from '@/hooks/useProviderStatuses'
 import { useWorkflowSecrets } from '@/hooks/useWorkflowSecrets'
 import { describeError } from '@/lib/agentDisplay'
 import { sampleAgentId } from '@/routes'
-import { BuilderAgentPanel } from './agent-builder/BuilderAgentPanel'
+import { BuilderAgentPanel, type BuilderTabKey } from './agent-builder/BuilderAgentPanel'
 import { BuilderChatPanel } from './agent-builder/BuilderChatPanel'
 import { listBuilderRequirements, listPluginSetupRequirements } from './agent-builder/builderRequirements'
 import { focusPluginSetupMessage, PluginRequirementsMessage } from './agent-builder/PluginRequirementsMessage'
@@ -18,6 +18,7 @@ import { useBuilderAskDraft, type BuilderAskDraft } from './agent-builder/useBui
 import { useBuilderHistory } from './agent-builder/useBuilderHistory'
 import { usePluginSetup } from './agent-builder/usePluginSetup'
 import { usePluginSetupPlacement } from './agent-builder/usePluginSetupPlacement'
+import { useChatRailPreference } from './agent-builder/useChatRailPreference'
 
 const draftStatusLabels: Partial<Record<Agent['status'], string>> = {
   draft: 'Draft · not tested yet',
@@ -68,22 +69,36 @@ export function BuilderPage() {
   useEffect(() => {
     if (urlAskDraft) setAskDraft((current) => ({ text: urlAskDraft.text, sequence: (current?.sequence ?? 0) + 1 }))
   }, [urlAskDraft])
-  // "Fix with builder" in the Nodes view: the same prefill, left for the user to send.
-  const prefillChat = useCallback((text: string) => setAskDraft((current) => ({ text, sequence: (current?.sequence ?? 0) + 1 })), [])
+  // The Nodes view narrows the chat to 360px (spec A) and can fold it to a rail.
+  const [activeTab, setActiveTab] = useState<BuilderTabKey>('steps')
+  const chatRail = useChatRailPreference()
+  const { setCollapsed: setChatCollapsed } = chatRail
+  const chatLayout = activeTab !== 'nodes' ? 'wide' : chatRail.isCollapsed ? 'rail' : 'narrow'
+  // "Fix with builder" in the Nodes view: the same prefill, left for the user to send (the chat opens for it).
+  const prefillChat = useCallback(
+    (text: string) => {
+      setChatCollapsed(false)
+      setAskDraft((current) => ({ text, sequence: (current?.sequence ?? 0) + 1 }))
+    },
+    [setChatCollapsed],
+  )
   const pluginSetup = usePluginSetup(agentId)
   const pluginSetupPlacement = usePluginSetupPlacement(agentId, pluginSetup)
   const { placeAfterRevision, ensurePlaced } = pluginSetupPlacement
   const reloadPluginRequirements = pluginSetup.reload
   const pluginSetupMessageRef = useRef<HTMLDivElement>(null)
+  const isChatFolded = chatLayout === 'rail'
   const showPluginSetup = useCallback(() => {
-    if (pluginSetupMessageRef.current) {
+    // A folded chat opens first; the card is focusable once it shows on the next render.
+    if (isChatFolded) setChatCollapsed(false)
+    if (pluginSetupMessageRef.current && !isChatFolded) {
       focusPluginSetupMessage(pluginSetupMessageRef.current)
       return
     }
-    // The card mounts on this click; focus it once it is in the chat.
-    ensurePlaced()
+    // The card mounts on this click (or the chat unfolds): focus it once it is in the chat.
+    if (!pluginSetupMessageRef.current) ensurePlaced()
     window.setTimeout(() => focusPluginSetupMessage(pluginSetupMessageRef.current), 0)
-  }, [ensurePlaced])
+  }, [ensurePlaced, setChatCollapsed, isChatFolded])
   const reloadAgent = agentState.reload
   const reloadFlowSummary = flowSummaryState.reload
   // A revision may add or drop `env.*` values and plugin steps, so secrets and plugins reload with the steps.
@@ -122,6 +137,8 @@ export function BuilderPage() {
         pluginSetupAnchor={pluginSetupPlacement.anchor}
         askDraft={askDraft}
         pluginSetupMessage={<PluginRequirementsMessage ref={pluginSetupMessageRef} setup={pluginSetup} />}
+        layout={chatLayout}
+        onToggleCollapsed={activeTab === 'nodes' ? chatRail.toggle : undefined}
       />
       {agent ? (
         <BuilderAgentPanel
@@ -140,6 +157,8 @@ export function BuilderPage() {
             void reloadAgentAndSteps(null)
           }}
           onAskBuilder={prefillChat}
+          activeTab={activeTab}
+          onActiveTabChange={setActiveTab}
         />
       ) : (
         <AgentPanelMessage>{agentState.error ? `Could not load this agent: ${describeError(agentState.error)}` : 'Loading agent…'}</AgentPanelMessage>

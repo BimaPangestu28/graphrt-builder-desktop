@@ -64,6 +64,18 @@ export interface NodeCanvasProps {
   notes?: CanvasNote[]
   /** A note dragged to a new position. */
   onMoveNote?: (noteId: string, position: { x: number; y: number }) => void
+  /** Empty-canvas menu "Add note here": a new note at that canvas point. */
+  onAddNote?: (position: { x: number; y: number }) => void
+  /**
+   * Centres a step (Show node in the problems list, a step just added). `sequence`
+   * changes on every request, so asking twice centres it again.
+   */
+  focusRequest?: { nodeId: string; sequence: number } | null
+  /**
+   * Px of the canvas covered by floating panels (the Add node palette on the left); Fit
+   * keeps the graph clear of them and runs again when they open or close.
+   */
+  overlayInsets?: { left?: number }
 }
 
 /** A setup gap shown on a plugin step's card ("Not linked", "Not installed"). */
@@ -190,6 +202,11 @@ export interface ProblemsPanelProps {
   problems: GraphProblem[]
   graph: AgentGraph
   onSelectNode: (nodeId: string) => void
+  /**
+   * "Show node" with the problem itself, so the inspector can open the part it is about;
+   * preferred over `onSelectNode` when given.
+   */
+  onShowProblem?: (problem: GraphProblem, nodeId: string) => void
   /** "Fix with builder": puts a change request in the chat box for the user to send. */
   onFixWithBuilder?: (request: string) => void
   /** Why Test is off, shown under the list; null when it can start. */

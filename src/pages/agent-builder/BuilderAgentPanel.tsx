@@ -17,7 +17,7 @@ const builderTabs = [
   { key: 'source', label: 'Source' },
 ] as const
 
-type BuilderTabKey = (typeof builderTabs)[number]['key']
+export type BuilderTabKey = (typeof builderTabs)[number]['key']
 
 const headerLinkBaseClassNames = 'flex h-9 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-medium no-underline'
 const outlineHeaderLinkClassNames = `${headerLinkBaseClassNames} border border-line-strong bg-surface !text-ink hover:bg-subtle`
@@ -180,6 +180,9 @@ interface BuilderAgentPanelProps {
   onGraphSaved?: (result: SaveGraphResult) => void
   /** "Fix with builder" in the Nodes view: prefills the chat box (the user sends it). */
   onAskBuilder?: (request: string) => void
+  /** The open tab when the page controls it (the chat narrows in Nodes); uncontrolled without it. */
+  activeTab?: BuilderTabKey
+  onActiveTabChange?: (tab: BuilderTabKey) => void
 }
 
 /**
@@ -199,13 +202,23 @@ export function BuilderAgentPanel({
   onAgentRenamed,
   onGraphSaved,
   onAskBuilder,
+  activeTab: controlledTab,
+  onActiveTabChange,
 }: BuilderAgentPanelProps) {
-  const [activeTab, setActiveTab] = useState<BuilderTabKey>('steps')
+  const [uncontrolledTab, setUncontrolledTab] = useState<BuilderTabKey>('steps')
+  const activeTab = controlledTab ?? uncontrolledTab
+  const setActiveTab = useCallback(
+    (tab: BuilderTabKey) => {
+      setUncontrolledTab(tab)
+      onActiveTabChange?.(tab)
+    },
+    [onActiveTabChange],
+  )
   const askBuilder = useAskBuilder()
 
   return (
     <section aria-label="Agent" className={`box-border flex min-w-0 flex-[1_1_440px] flex-col bg-subtle ${splitPaneColumnClassName}`}>
-      <header className="box-border flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-line px-6 py-3">
+      <header className={joinClassNames('box-border flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-line py-3', activeTab === 'nodes' ? 'px-4' : 'px-6')}>
         <BuilderTabList activeTab={activeTab} onSelect={setActiveTab} />
         <BuilderHeaderActions agentId={agent.id} onTestBlocked={arePluginsReady === false ? onShowPluginSetup : undefined} />
       </header>

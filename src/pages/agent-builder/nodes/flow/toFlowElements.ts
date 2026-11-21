@@ -2,18 +2,18 @@ import type { AgentGraph, GraphEdge, GraphNode, GraphProblem, NodeKindInfo, Node
 import { FAIL_BRANCH_HANDLE, type ConnectionCheck } from '@/lib/agentGraphRules'
 import type { NodeSetupStatus } from '../contracts'
 import { MarkerType, type Edge, type Node } from './flowLibrary'
-import { containerMinimumSize, flowDirectionOf, stepNodeSize, type FlowDirection } from './autoLayout'
+import { containerMinimumSize, endNodeSize, flowDirectionOf, isEndPillNode, stepNodeSize, type FlowDirection } from './autoLayout'
 import { describeNodeBadges, describeNodePreview, type NodeBadge, type PreviewSegment } from './nodePreview'
 
 /**
  * Turns an {@link AgentGraph} and positions into React Flow nodes and edges.
  * Node types: `step` (a step card), `container` (For each / Repeat with its body
- * inside), `marker` (the hidden body entry: only its exit port shows). Parents come
- * before their children, as React Flow requires.
+ * inside), `marker` (the hidden body entry: only its exit port shows), `end` (the End
+ * pill). Parents come before their children, as React Flow requires.
  */
 
 /** React Flow node types the canvas registers. */
-export type FlowNodeType = 'step' | 'container' | 'marker'
+export type FlowNodeType = 'step' | 'container' | 'marker' | 'end'
 
 export type { NodeSetupStatus }
 
@@ -49,7 +49,11 @@ export type EdgeKind = 'default' | 'branch' | 'error' | 'unused'
 export interface EdgeData extends Record<string, unknown> {
   edge: GraphEdge
   kind: EdgeKind
-  /** Shown on the arrow ("not used"); branch names show on their port. */
+  /**
+   * Shown on the arrow at its middle: the exit's name for branch and error arrows ("Send",
+   * "On error"), "not used" when its exit is gone. Drawn on the arrow, not beside the port,
+   * so it never sits on a neighbouring arrow.
+   */
   label: string | null
 }
 
@@ -67,6 +71,7 @@ function depthOf(node: GraphNode, nodesById: Map<string, GraphNode>): number {
 
 function flowNodeType(node: GraphNode): FlowNodeType {
   if (node.hidden) return 'marker'
+  if (isEndPillNode(node)) return 'end'
   return node.container ? 'container' : 'step'
 }
 
@@ -112,6 +117,7 @@ function linesOf(node: GraphNode, options: FlowElementOptions): Pick<StepNodeDat
 function initialSizeOf(type: FlowNodeType, layout: NodeLayout | undefined) {
   if (type === 'container') return { width: layout?.width ?? containerMinimumSize.width, height: layout?.height ?? containerMinimumSize.height }
   if (type === 'marker') return undefined
+  if (type === 'end') return { width: endNodeSize.width }
   return { width: stepNodeSize.width }
 }
 
@@ -131,7 +137,8 @@ export function toFlowNodes(graph: AgentGraph, options: FlowElementOptions): Ste
         id: node.id,
         type,
         position: { x: layout?.x ?? 0, y: layout?.y ?? 0 },
-        ...(node.parent && nodesById.has(node.parent) ? { parentId: node.parent, extent: 'parent' as const } : {}),
+        // No `extent: 'parent'`: a step can be dragged out of its loop (the canvas re-parents it on drop).
+        ...(node.parent && nodesById.has(node.parent) ? { parentId: node.parent } : {}),
         style: type === 'container' ? initialSizeOf(type, layout) : undefined,
         width: initialSizeOf(type, layout)?.width,
         height: type === 'container' ? initialSizeOf(type, layout)?.height : undefined,
@@ -176,6 +183,12 @@ function branchLabelOf(edge: GraphEdge, nodesById: Map<string, GraphNode>): stri
   return sourcePort?.label || edge.sourceHandle
 }
 
+/** The words on an arrow: its exit's name, plus "not used" when the exit is gone. */
+export function edgeLabelOf(branchLabel: string | undefined, kind: EdgeKind): string | null {
+  if (kind === 'unused') return branchLabel ? `${branchLabel} · not used` : 'not used'
+  return branchLabel ?? null
+}
+
 function edgeKindOf(edge: GraphEdge): EdgeKind {
   if (edge.unused) return 'unused'
   if (edge.sourceHandle === FAIL_BRANCH_HANDLE) return 'error'
@@ -190,7 +203,6 @@ export function toFlowEdges(graph: AgentGraph, selectedEdgeIds: string[] = []): 
   const nodesById = new Map(graph.nodes.map((node) => [node.id, node]))
   const selected = new Set(selectedEdgeIds)
   return graph.edges
-    
     .filter((edge) => nodesById.has(edge.source) && nodesById.has(edge.target))
     .map((edge) => {
       const branchLabel = branchLabelOf(edge, nodesById)
@@ -209,7 +221,7 @@ export function toFlowEdges(graph: AgentGraph, selectedEdgeIds: string[] = []): 
         markerEnd: { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
         className: `is-${kind}`,
         ariaLabel: `Arrow from ${nodesById.get(edge.source)?.displayTitle}${branchLabel ? ` (${branchLabel})` : ''} to ${nodesById.get(edge.target)?.displayTitle}${kind === 'unused' ? ', not used' : ''}`,
-        data: { edge, kind, label: kind === 'unused' ? 'not used' : null },
+        data: { edge, kind, label: edgeLabelOf(branchLabel, kind) },
       }
     })
 }

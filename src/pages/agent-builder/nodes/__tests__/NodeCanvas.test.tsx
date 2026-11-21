@@ -153,7 +153,8 @@ describe('NodeCanvas', () => {
 
     fireEvent.keyDown(canvas, { key: 'c', metaKey: true })
     fireEvent.keyDown(canvas, { key: 'v', metaKey: true })
-    expect(props.onApplyEdit).toHaveBeenLastCalledWith(expect.any(Function), 'pasted Write a short message')
+    // Paste reads the system clipboard first (none in jsdom), then the session copy.
+    await waitFor(() => expect(props.onApplyEdit).toHaveBeenLastCalledWith(expect.any(Function), 'pasted Write a short message'))
 
     fireEvent.keyDown(canvas, { key: 'ArrowRight' })
     expect(props.onMoveNodes).toHaveBeenLastCalledWith([expect.objectContaining({ nodeId: 'write_message', x: 50, y: 80 })])

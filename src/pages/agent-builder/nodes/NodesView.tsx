@@ -4,7 +4,7 @@ import { stopAgentRevision } from '@/api/builder'
 import { BackendError } from '@/api/client'
 import type { Agent } from '@/api/types'
 import { describeError } from '@/lib/agentDisplay'
-import { AddNodePalette } from './AddNodePalette'
+import { AddNodePalette, paletteWidth } from './AddNodePalette'
 import type { InspectorSectionRequest, InspectorSectionTarget, NodeSetupStatus } from './contracts'
 import { computeAutoLayout } from './flow/autoLayout'
 import { describeNodeList } from './flow/canvasCommands'
@@ -16,7 +16,7 @@ import { PaletteDropZone } from './palette/PaletteDropZone'
 import { CanvasNotesProvider } from './notes/NoteNode'
 import { useCanvasNotes } from './notes/useCanvasNotes'
 import { useAddNodePalette } from './palette/useAddNodePalette'
-import { describeTestBlock, groupProblemsByNode } from './problems/problemDisplay'
+import { describeTestBlock, groupProblemsByNode, inspectorTargetForProblem } from './problems/problemDisplay'
 import { useGraphValidation } from './problems/useGraphValidation'
 import { ProblemsPanel } from './ProblemsPanel'
 import { NodeDecorationsProvider } from './run/NodeDecorations'
@@ -32,6 +32,9 @@ import { useNodeKinds } from './useNodeKinds'
 
 /** Positions are saved this long after the last move or zoom. */
 export const layoutSaveDelayMs = 800
+
+/** Px of the canvas the floating Add node palette covers (its width plus its margin). */
+export const paletteCanvasInset = paletteWidth + 12
 
 /** What the page knows about a plugin the agent needs (the builder's "Needs" list). */
 export interface NodesPluginRequirement {
@@ -125,14 +128,25 @@ export function NodesView({
     setSelectedNodeIdsState((current) => (current.length === nodeIds.length && current.every((nodeId, index) => nodeId === nodeIds[index]) ? current : nodeIds))
   }, [])
   const [isProblemsPanelHidden, setIsProblemsPanelHidden] = useState(false)
+  const [focusRequest, setFocusRequest] = useState<{ nodeId: string; sequence: number } | null>(null)
+  /** Brings a step into view: the canvas centres it (Show node, a step just added, a section request). */
+  const centerNode = useCallback((nodeId: string) => setFocusRequest((current) => ({ nodeId, sequence: (current?.sequence ?? 0) + 1 })), [])
+  // Select a step and bring it into view.
+  const showNode = useCallback(
+    (nodeId: string) => {
+      setSelectedNodeIds([nodeId])
+      centerNode(nodeId)
+    },
+    [setSelectedNodeIds, centerNode],
+  )
   const [requestedSection, setRequestedSection] = useState<InspectorSectionRequest | null>(null)
   /** Opens part of the inspector for `nodeId` ("Change action", a field with a problem). */
   const requestInspectorSection = useCallback(
     (nodeId: string, section: InspectorSectionTarget) => {
-      setSelectedNodeIds([nodeId])
+      showNode(nodeId)
       setRequestedSection((current) => ({ section, nodeId, sequence: (current?.sequence ?? 0) + 1 }))
     },
-    [setSelectedNodeIds],
+    [showNode],
   )
   useLayoutAutosave(controller)
   useGraphAutosave(controller, autosaveDelayMs)
@@ -149,6 +163,7 @@ export function NodesView({
     selectedNodeIds,
     readOnly,
     controller,
+    onNodePlaced: (placement) => showNode(placement.node.id),
   })
   const selectedNode = selectedNodeIds.length === 1 ? (graph?.nodes.find((node) => node.id === selectedNodeIds[0]) ?? null) : null
   const { problems } = validation
@@ -234,6 +249,9 @@ export function NodesView({
                   onAskBuilder={onAskBuilder}
                   notes={canvasNotes.notes}
                   onMoveNote={(noteId, position) => canvasNotes.updateNote(noteId, { x: Math.round(position.x), y: Math.round(position.y) })}
+                  onAddNote={readOnly ? undefined : (position) => canvasNotes.addNote(position)}
+                  focusRequest={focusRequest}
+                  overlayInsets={{ left: palette.isOpen ? paletteCanvasInset : 0 }}
                 />
               </PaletteDropZone>
             </CanvasNotesProvider>
@@ -274,7 +292,13 @@ export function NodesView({
         <ProblemsPanel
           problems={problems}
           graph={graph}
-          onSelectNode={(nodeId) => setSelectedNodeIds([nodeId])}
+          onSelectNode={showNode}
+          onShowProblem={(problem, nodeId) => {
+            // Opens the part the problem is about when it names one; the canvas centres the step either way.
+            const target = problem.nodeId === nodeId ? inspectorTargetForProblem(problem) : null
+            if (target) requestInspectorSection(nodeId, target)
+            else showNode(nodeId)
+          }}
           onFixWithBuilder={onAskBuilder}
           testBlockReason={testBlock?.reason ?? null}
           wasValidated={validation.wasValidated}

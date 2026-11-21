@@ -2,7 +2,7 @@ import { memo, type KeyboardEvent } from 'react'
 import type { NodePort } from '@/api/agentGraphTypes'
 import { joinClassNames } from '@/components/ui'
 import { containerMinimumSize } from './autoLayout'
-import { compactZoomThreshold, useCanvasNodeActions } from './canvasActions'
+import { compactZoomThreshold, useCanvasNodeActions, useContainerDropHint } from './canvasActions'
 import { Handle, NodeResizer, Position, useStore, type NodeProps } from './flowLibrary'
 import { NodeDecoration } from '../run/NodeDecorations'
 import { NodeKindIcon } from './NodeKindIcon'
@@ -16,9 +16,9 @@ import type { StepFlowNode, StepNodeData } from './toFlowElements'
  * exit port shows). Ports are focusable: Enter on one starts an arrow from it.
  */
 
-/** True while the canvas is zoomed out far enough for compact cards. */
+/** True while the canvas is zoomed out far enough for compact cards (below 60%). */
 function useIsCompact(): boolean {
-  return useStore((state) => state.transform[2] <= compactZoomThreshold)
+  return useStore((state) => state.transform[2] < compactZoomThreshold)
 }
 
 function portLabel(outputPort: NodePort): string {
@@ -35,7 +35,10 @@ interface OutputPortsProps {
   data: StepNodeData
   /** Height of the card, for exits along its right edge (direction 'right'). */
   height: number
-  /** Shows the port names next to branch exits (hidden on compact cards). */
+  /**
+   * Shows the names of branch exits that have no arrow ("Skip": nothing follows). Exits with
+   * an arrow are named on the arrow itself (`StepEdge`), so labels never cover other arrows.
+   */
   showLabels: boolean
 }
 
@@ -91,14 +94,15 @@ function OutputPorts({ data, height, showLabels }: OutputPortsProps) {
                 </svg>
               )}
             </Handle>
-            {showLabels && isNamed && (
+            {showLabels && isNamed && !isConnected && (
               <span
                 aria-hidden="true"
                 className={joinClassNames(
                   'pointer-events-none absolute z-[1] whitespace-nowrap rounded-md border px-1.5 py-px text-[11px] font-semibold',
-                  flowDirection === 'down' ? 'top-full mt-1.5 translate-x-2' : 'left-full ml-2 -translate-y-[calc(100%+3px)]',
+                  // Right of the port and below its line: arrows from the exits above stay clear.
+                  flowDirection === 'down' ? 'top-full mt-1.5 translate-x-2' : 'left-full ml-2 translate-y-[3px]',
                   portLabelToneClassNames[outputPort.role],
-                  !isConnected && 'opacity-60',
+                  'opacity-60',
                 )}
                 style={placement}
               >
@@ -262,18 +266,33 @@ export const StepNodeCard = memo(function StepNodeCard({ data, selected }: NodeP
 export const ContainerNodeCard = memo(function ContainerNodeCard({ id, data, selected }: NodeProps<StepFlowNode>) {
   const isCompact = useIsCompact()
   const { resizeContainer } = useCanvasNodeActions()
+  const dropHint = useContainerDropHint(id)
   const { node } = data
   const headerPortTop = 30
   return (
     <section
       data-testid={`node-${node.id}`}
       aria-label={`${node.displayTitle}, a loop`}
+      data-drop-target={dropHint ? (dropHint.allowed ? 'allowed' : 'refused') : undefined}
       className={joinClassNames(
         'step-card relative box-border h-full w-full rounded-2xl border-2 border-dashed bg-subtle/90',
         selected ? 'border-brand' : 'border-line-heavy',
+        dropHint?.allowed && 'border-brand bg-brand-soft/60',
+        dropHint && !dropHint.allowed && 'border-danger bg-danger-soft/50',
         connectionStateClassName(data),
       )}
     >
+      {dropHint && (
+        <span
+          role="status"
+          className={joinClassNames(
+            'pointer-events-none absolute -top-3 left-12 z-10 max-w-[calc(100%-4rem)] truncate rounded-md px-1.5 py-px text-[11px] font-semibold text-white',
+            dropHint.allowed ? 'bg-brand' : 'bg-danger',
+          )}
+        >
+          {dropHint.allowed ? `Drop to move into ${node.displayTitle}` : dropHint.reason}
+        </span>
+      )}
       <NodeResizer
         isVisible={selected && !data.readOnly}
         minWidth={containerMinimumSize.width}
@@ -312,6 +331,36 @@ export const ContainerNodeCard = memo(function ContainerNodeCard({ id, data, sel
   )
 })
 
+/** The End step as a pill (spec A): a check, "End" and what it returns. */
+export const EndNodePill = memo(function EndNodePill({ data, selected }: NodeProps<StepFlowNode>) {
+  const { node } = data
+  const detail = node.detail && node.detail !== node.displayTitle ? node.detail : null
+  return (
+    <div
+      data-testid={`node-${node.id}`}
+      data-shape="pill"
+      title={detail ? `${node.displayTitle} · ${detail}` : node.displayTitle}
+      className={joinClassNames(
+        'step-card relative box-border flex h-9 w-[200px] items-center gap-2 rounded-full bg-surface px-3 text-[12px] text-ink-2 shadow-sm',
+        selected ? 'border-2 border-brand' : 'border border-line-strong hover:border-line-heavy',
+        data.problems.length > 0 && !selected && 'border-amber-line',
+        connectionStateClassName(data),
+      )}
+    >
+      <InputPort data={data} top={18} />
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-ok-strong">
+        <path d="M5 12.5l4.5 4.5L19 7.5" />
+      </svg>
+      <span className="min-w-0 truncate">
+        <b className="font-semibold text-ink">{node.displayTitle}</b>
+        {detail && ` · ${detail}`}
+      </span>
+      <ConnectionHint data={data} />
+      <NodeDecoration nodeId={node.id} />
+    </div>
+  )
+})
+
 /** The hidden entry of a loop body: only the exit port its first arrows leave from shows. */
 export const MarkerNodeDot = memo(function MarkerNodeDot({ data }: NodeProps<StepFlowNode>) {
   return (
@@ -321,4 +370,4 @@ export const MarkerNodeDot = memo(function MarkerNodeDot({ data }: NodeProps<Ste
   )
 })
 
-export const flowNodeTypes = { step: StepNodeCard, container: ContainerNodeCard, marker: MarkerNodeDot }
+export const flowNodeTypes = { step: StepNodeCard, container: ContainerNodeCard, marker: MarkerNodeDot, end: EndNodePill }
