@@ -15,12 +15,12 @@ const categoryTintClassNames: Record<PluginCategory, string> = {
   other: 'bg-chip text-ink-2',
 }
 
-export type PluginTileSize = 'md' | 'lg'
+export type PluginTileSize = 'sm' | 'md' | 'lg'
 
 /** Size and corner radius of a plugin tile, shared by the monogram and {@link PluginIcon}. */
-export const pluginTileSizeClassNames: Record<PluginTileSize, string> = { md: 'size-9 rounded-[10px]', lg: 'size-12 rounded-xl' }
+export const pluginTileSizeClassNames: Record<PluginTileSize, string> = { sm: 'size-7 rounded-lg', md: 'size-9 rounded-[10px]', lg: 'size-12 rounded-xl' }
 
-const monogramTextClassNames: Record<PluginTileSize, string> = { md: 'text-[12px]', lg: 'text-[15px]' }
+const monogramTextClassNames: Record<PluginTileSize, string> = { sm: 'text-[11px]', md: 'text-[12px]', lg: 'text-[15px]' }
 
 /**
  * Two-letter tile standing in for a plugin icon (when the catalog has none or it cannot be

@@ -77,7 +77,9 @@ describe('canvas elements', () => {
     expect(container.width).toBeGreaterThan(240)
     expect(byId.write_message.x).toBeGreaterThanOrEqual(0)
     expect(byId.write_message.x + 240).toBeLessThanOrEqual(container.width! + 1)
-    expect(byId.search_maps.x).toBeGreaterThan(byId.ask_input.x)
+    // Top level runs down, a loop body runs right.
+    expect(byId.search_maps.y).toBeGreaterThan(byId.ask_input.y)
+    expect(byId.approve_message.x).toBeGreaterThan(byId.write_message.x)
   })
 
   it('prefers saved positions over auto-layout', () => {

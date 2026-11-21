@@ -32,6 +32,33 @@ export interface NodeCanvasProps {
   onConnect?: (edge: EdgeEdit) => void
   /** Phase 2: nodes or arrows deleted with the keyboard. */
   onDelete?: (selection: { nodeIds: string[]; edgeIds: string[] }) => void
+  /** Library entries by kind: plugin names on cards, "Not installed" for catalog plugins. */
+  kindsByKind?: Record<string, NodeKindInfo>
+  /** Setup gaps of the plugins the steps use, by plugin name ("Not linked"). */
+  pluginStatuses?: Record<string, NodeSetupStatus>
+  /**
+   * Compound edits (paste, duplicate, disconnect, reconnect) as one undo step:
+   * `useAgentGraph().applyEdit`. Without it those actions are off.
+   */
+  onApplyEdit?: (change: (graph: AgentGraph) => AgentGraph, description?: string) => void
+  onUndo?: () => void
+  onRedo?: () => void
+  /** "Add node" (toolbar key A, empty state): opens the palette. */
+  onOpenPalette?: () => void
+  /** Context menu "Add node after": opens the palette to add a step after this exit. */
+  onAddNodeAfter?: (from: { source: string; sourceHandle: string }) => void
+  /** Context menu "Change action" (plugin steps): opens the inspector's action picker. */
+  onChangeAction?: (nodeId: string) => void
+  /** Enter on a node: open its settings in the inspector. */
+  onOpenNodeSettings?: (nodeId: string) => void
+  /** "Ask the builder about this": pre-fills the chat with `text` (never sends). Empty text only focuses the chat. */
+  onAskBuilder?: (text: string) => void
+}
+
+/** A setup gap shown on a plugin step's card ("Not linked", "Not installed"). */
+export interface NodeSetupStatus {
+  label: string
+  tone: 'amber' | 'danger'
 }
 
 /** Inspector (inspector agent): edits the selected node through `controller` actions. */
@@ -53,6 +80,11 @@ export interface NodeInspectorProps {
    * without it the inspector sets the builder page's `ask` search param, which the chat reads.
    */
   onAskBuilder?: (text: string) => void
+  /**
+   * Set by the canvas context menu's "Change action": open that part of the settings
+   * for `node`. `sequence` changes on every request, so asking twice opens it again.
+   */
+  requestedSection?: { section: 'change-action'; sequence: number } | null
 }
 
 /** Add node palette (palette agent): adds a node from the library. */
@@ -64,6 +96,12 @@ export interface AddNodePaletteProps {
   /** Adds `node` (build it with `createGraphNode` and `uniqueNodeId` from `graphEdits.ts`). */
   onAddNode: (node: GraphNode, options: { connectFrom?: EdgeEdit; position?: NodeLayout }) => void
   onClose: () => void
+  /**
+   * Set when the palette was opened from a node's "Add node after" (canvas). NodesView
+   * wires the added node in after this exit (and before what it led to); the palette may
+   * show "Adding after …" and should put new nodes in the same container as `source`.
+   */
+  insertAfter?: { source: string; sourceHandle: string } | null
 }
 
 /** Live run overlay (live/sync agent): run state per node and edge during a test run. */
