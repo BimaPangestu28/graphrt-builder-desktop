@@ -8,6 +8,7 @@ import { assistantBlockClassNames, PanelHeader, UserChatBubble } from './ChatBub
 import { describeDraftActivity } from './draftActivity'
 import type { BuilderAskDraft } from './useBuilderAskDraft'
 import { CompactDraftStepList } from './DraftPreviewParts'
+import { NodesEditNotice } from './nodes/sync/NodesEditNotice'
 import { SavedChatMessages } from './SavedChatMessages'
 import type { ChatExchange, LatestRevision } from './useAgentRevisions'
 import type { PluginSetupAnchor } from './usePluginSetupPlacement'
@@ -222,19 +223,29 @@ export function BuilderChatPanel(props: BuilderChatPanelProps) {
             <SavedChatMessages messages={savedMessages} />
           </>
         )}
-        {exchanges.map((exchange) => (
-          <div key={exchange.id} className="flex flex-col gap-5">
-            <UserChatBubble>{exchange.request}</UserChatBubble>
-            <ChangeReply
-              exchange={exchange}
-              steps={steps}
-              undoableRevision={latestRevision?.exchangeId === exchange.id ? latestRevision : null}
-              isBusy={isBusy}
-              onToggleUndo={onToggleUndo}
-            />
-            {pluginSetupAnchor === exchange.id && exchange.status !== 'pending' && pluginSetupMessage}
-          </div>
-        ))}
+        {exchanges.map((exchange) => {
+          const undoableRevision = latestRevision?.exchangeId === exchange.id ? latestRevision : null
+          if (exchange.source === 'nodes') {
+            return (
+              <NodesEditNotice
+                key={exchange.id}
+                summary={exchange.reply}
+                versionAfter={exchange.versionAfter ?? 0}
+                versionBefore={undoableRevision?.versionBefore ?? 0}
+                isUndone={undoableRevision ? undoableRevision.isUndone : null}
+                isBusy={isBusy}
+                onToggleUndo={onToggleUndo}
+              />
+            )
+          }
+          return (
+            <div key={exchange.id} className="flex flex-col gap-5">
+              <UserChatBubble>{exchange.request}</UserChatBubble>
+              <ChangeReply exchange={exchange} steps={steps} undoableRevision={undoableRevision} isBusy={isBusy} onToggleUndo={onToggleUndo} />
+              {pluginSetupAnchor === exchange.id && exchange.status !== 'pending' && pluginSetupMessage}
+            </div>
+          )
+        })}
         {undoErrorMessage && (
           <p role="alert" className="m-0 text-danger">
             {undoErrorMessage}

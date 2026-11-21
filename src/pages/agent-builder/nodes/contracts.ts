@@ -1,4 +1,5 @@
-import type { AgentGraph, CanvasViewport, EdgeEdit, GraphNode, GraphProblem, NodeKindInfo, NodeLayout } from '@/api/agentGraphTypes'
+import type { AgentGraph, CanvasNote, CanvasViewport, EdgeEdit, GraphNode, GraphProblem, NodeKindInfo, NodeLayout } from '@/api/agentGraphTypes'
+import type { NodesLiveRun } from './run/useNodesLiveRun'
 import type { AgentGraphController } from './useAgentGraph'
 
 /**
@@ -59,6 +60,10 @@ export interface NodeCanvasProps {
    * Drops from the palette are handled around the canvas (`palette/PaletteDropZone`).
    */
   onRequestAddNode?: (anchor: AddNodeAnchor) => void
+  /** Sticky notes drawn under the steps (`notes/NoteNode.tsx`); their edits go through `CanvasNotesProvider`. */
+  notes?: CanvasNote[]
+  /** A note dragged to a new position. */
+  onMoveNote?: (noteId: string, position: { x: number; y: number }) => void
 }
 
 /** A setup gap shown on a plugin step's card ("Not linked", "Not installed"). */
@@ -153,6 +158,10 @@ export interface RunOverlayProps {
   graph: AgentGraph
   /** The test run being shown, or null when none runs. */
   runId: string | null
+  /** The shown run mapped onto the graph (`useNodesLiveRun`); nothing is drawn without it. */
+  live?: NodesLiveRun
+  /** Problems to mark on arrows (`edgeId`). */
+  problems?: GraphProblem[]
 }
 
 /** Problems list (live/sync agent): what blocks Test and saving, clickable to the node. */
@@ -161,6 +170,13 @@ export interface ProblemsPanelProps {
   problems: GraphProblem[]
   graph: AgentGraph
   onSelectNode: (nodeId: string) => void
+  /** "Fix with builder": puts a change request in the chat box for the user to send. */
+  onFixWithBuilder?: (request: string) => void
+  /** Why Test is off, shown under the list; null when it can start. */
+  testBlockReason?: string | null
+  /** True right after Validate ran (the panel then also says when nothing was found). */
+  wasValidated?: boolean
+  onClose?: () => void
 }
 
 /** Sync banner (live/sync agent): builder busy, conflicts, save state. */

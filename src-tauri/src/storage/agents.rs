@@ -238,6 +238,7 @@ fn append_version(connection: &Connection, agent: &Agent, flow_yaml: &str, chang
     )?;
     // Chat changes and restores keep the Nodes view positions of the steps they keep.
     super::node_layouts::copy_layout_forward(connection, &agent.id, agent.current_version, next_version, flow_yaml)?;
+    super::canvas_notes::copy_notes_forward(connection, &agent.id, agent.current_version, next_version)?;
     Ok(())
 }
 

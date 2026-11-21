@@ -7,11 +7,12 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::agent_builder::edit_lock;
 use crate::agent_graph::library::{self, LibrarySources, NodeKindInfo};
-use crate::agent_graph::{self, AgentEditState, AgentGraph, GraphContext, GraphEdit, SaveGraphResult};
+use crate::agent_graph::{self, AgentEditState, AgentGraph, GraphContext, GraphEdit, GraphProblem, SaveGraphResult};
 use crate::credentials;
 use crate::error::AppResult;
 use crate::flow;
 use crate::state::AppState;
+use crate::storage::canvas_notes::{CanvasNote, CanvasNoteSet};
 use crate::storage::node_layouts::{CanvasViewport, NodeLayout, NodeLayoutSet};
 
 /// Emitted with an [`EditStateChange`] whenever the builder starts or stops changing an agent.
@@ -71,6 +72,19 @@ pub fn save_agent_graph(
     })
 }
 
+/// The problems an edited graph would have on `base_version`; saves nothing (Validate).
+#[tauri::command]
+pub fn validate_agent_graph(
+    state: State<'_, AppState>,
+    agent_id: String,
+    base_version: i64,
+    edit: GraphEdit,
+) -> AppResult<Vec<GraphProblem>> {
+    with_graph_context(&state, |context| {
+        agent_graph::validate_agent_graph(&state.db, &agent_id, base_version, &edit, context)
+    })
+}
+
 /// Saved positions of `version` (current when absent) and the agent's canvas viewport.
 #[tauri::command]
 pub fn get_node_layout(state: State<'_, AppState>, agent_id: String, version: Option<i64>) -> AppResult<NodeLayoutSet> {
@@ -91,6 +105,31 @@ pub fn save_node_layout(
     viewport: Option<CanvasViewport>,
 ) -> AppResult<NodeLayoutSet> {
     state.db.save_node_layout(&agent_id, version, &nodes, viewport)
+}
+
+/// Sticky notes on the canvas of `version` (current when absent).
+#[tauri::command]
+pub fn get_canvas_notes(
+    state: State<'_, AppState>,
+    agent_id: String,
+    version: Option<i64>,
+) -> AppResult<CanvasNoteSet> {
+    let version = match version {
+        Some(version) => version,
+        None => state.db.get_agent(&agent_id)?.current_version,
+    };
+    state.db.get_canvas_notes(&agent_id, version)
+}
+
+/// Replaces the sticky notes of `version` (adds no version; copied forward to new ones).
+#[tauri::command]
+pub fn save_canvas_notes(
+    state: State<'_, AppState>,
+    agent_id: String,
+    version: i64,
+    notes: Vec<CanvasNote>,
+) -> AppResult<CanvasNoteSet> {
+    state.db.save_canvas_notes(&agent_id, version, &notes)
 }
 
 /// Whether the builder is changing the agent right now (cheap; also see [`AGENT_EDIT_STATE_EVENT`]).

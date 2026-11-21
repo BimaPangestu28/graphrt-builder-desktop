@@ -2,6 +2,8 @@ import type {
   AgentEditState,
   AgentEditStateChange,
   AgentGraph,
+  CanvasNote,
+  CanvasNoteSet,
   CanvasViewport,
   GraphEdit,
   GraphProblem,
@@ -48,6 +50,33 @@ export function getNodeKinds(): Promise<NodeKindInfo[]> {
 export function saveAgentGraph(agentId: string, baseVersion: number, edit: GraphEdit): Promise<SaveGraphResult> {
   if (!isDesktopApp()) return sampleAgentGraphBackend.saveAgentGraph(agentId, baseVersion, edit)
   return callBackend('save_agent_graph', { agentId, baseVersion, edit })
+}
+
+/**
+ * The problems `edit` would have on `baseVersion`, without saving (Validate). Works while
+ * the builder is busy and on an older version too.
+ *
+ * @throws BackendError - `not_found` for an unknown agent or version; `invalid_input` for a malformed edit
+ */
+export function validateAgentGraph(agentId: string, baseVersion: number, edit: GraphEdit): Promise<GraphProblem[]> {
+  if (!isDesktopApp()) return sampleAgentGraphBackend.validateAgentGraph(agentId, baseVersion, edit)
+  return callBackend('validate_agent_graph', { agentId, baseVersion, edit })
+}
+
+/** Sticky notes on the canvas of a version (current when omitted). */
+export function getCanvasNotes(agentId: string, version?: number): Promise<CanvasNoteSet> {
+  if (!isDesktopApp()) return sampleAgentGraphBackend.getCanvasNotes(agentId, version)
+  return callBackend('get_canvas_notes', { agentId, version: version ?? null })
+}
+
+/**
+ * Replaces the notes of a version (adds no version; new versions copy them forward).
+ *
+ * @throws BackendError - `invalid_input` for a repeated id, a bad size or color, or a text over 4,000 characters
+ */
+export function saveCanvasNotes(agentId: string, version: number, notes: CanvasNote[]): Promise<CanvasNoteSet> {
+  if (!isDesktopApp()) return sampleAgentGraphBackend.saveCanvasNotes(agentId, version, notes)
+  return callBackend('save_canvas_notes', { agentId, version, notes })
 }
 
 /** Saved positions of a version (current when omitted) and the agent's canvas viewport. */

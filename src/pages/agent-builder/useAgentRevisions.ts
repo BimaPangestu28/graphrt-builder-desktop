@@ -19,6 +19,18 @@ export interface ChatExchange {
   draft: DraftPreview | null
   /** Stage of the progress update that carried a preview, or null when the latest update had none. */
   writingStage: BuildStage | null
+  /** `nodes`: a save from the Nodes view ("Edited in Nodes: …"), with no request; `chat` when absent. */
+  source?: 'chat' | 'nodes'
+  /** Version the change created (Nodes saves). */
+  versionAfter?: number
+}
+
+/** What a Nodes view save reports to the chat. */
+export interface NodesEdit {
+  summary: string
+  changedStepIds: string[]
+  versionBefore: number
+  versionAfter: number
 }
 
 /** The last successful change, so Undo/Redo can switch between its two versions. */
@@ -107,9 +119,29 @@ export function useAgentRevisions({ agentId, currentVersion, onAgentChanged }: U
     }
   }
 
+  /** Notes a save from the Nodes view in the chat; it becomes the change Undo restores. */
+  function recordNodesEdit(nodesEdit: NodesEdit) {
+    const exchangeId = exchanges.length + 1
+    const exchange: ChatExchange = {
+      id: exchangeId,
+      request: '',
+      status: 'done',
+      reply: nodesEdit.summary,
+      changedStepIds: nodesEdit.changedStepIds,
+      explanation: '',
+      draft: null,
+      writingStage: null,
+      source: 'nodes',
+      versionAfter: nodesEdit.versionAfter,
+    }
+    setExchanges((previousExchanges) => [...previousExchanges, exchange])
+    setLatestRevision({ exchangeId, versionBefore: nodesEdit.versionBefore, versionAfter: nodesEdit.versionAfter, isUndone: false })
+    setUndoErrorMessage(null)
+  }
+
   const highlightedStepIds = new Set<string>()
   const latestExchange = exchanges.find((exchange) => exchange.id === latestRevision?.exchangeId)
   if (latestRevision && !latestRevision.isUndone && latestExchange) latestExchange.changedStepIds.forEach((stepId) => highlightedStepIds.add(stepId))
 
-  return { exchanges, latestRevision, highlightedStepIds, isBusy, undoErrorMessage, sendChangeRequest, toggleUndo }
+  return { exchanges, latestRevision, highlightedStepIds, isBusy, undoErrorMessage, sendChangeRequest, toggleUndo, recordNodesEdit }
 }

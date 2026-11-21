@@ -31,6 +31,10 @@ import { flowNodeTypes } from './flow/StepNode'
 import { toFlowEdges, toFlowNodes, type StepFlowEdge, type StepFlowNode } from './flow/toFlowElements'
 import { useCanvasLayout, type MeasuredSizes } from './flow/useCanvasLayout'
 import { disconnectGraphNodes, reconnectGraphEdge, removeGraphEdges } from './graphEdits'
+import { isNoteFlowNodeId, noteIdOf, noteNodeTypes, toNoteFlowNodes } from './notes/NoteNode'
+
+/** Step renderers plus the sticky notes (`notes/NoteNode.tsx`). */
+const canvasNodeTypes = { ...flowNodeTypes, ...noteNodeTypes }
 
 /**
  * The Nodes canvas (spec A, I1, N1): step cards with their ports, arrows, loop
@@ -115,12 +119,14 @@ function CanvasBody(props: NodeCanvasProps) {
     return Object.fromEntries(graph.nodes.filter((node) => !node.hidden && node.id !== connectingFrom.nodeId).map((node) => [node.id, checkConnection(graph, { ...ends, target: node.id })]))
   }, [graph, connectingFrom])
 
+  // Sticky notes ride along with the steps (drawn under them); handlers tell them apart by id.
+  const noteFlowNodes = useMemo(() => toNoteFlowNodes(props.notes ?? []) as unknown as StepFlowNode[], [props.notes])
   const flowNodesFromGraph = useMemo(
     () =>
       mergedPositions
-        ? toFlowNodes(graph, { positions: mergedPositions, kindNames, kindsByKind, pluginStatuses, selectedNodeIds, connectionChecks, connectSourceId: connectingFrom?.nodeId ?? null, readOnly })
+        ? [...noteFlowNodes, ...toFlowNodes(graph, { positions: mergedPositions, kindNames, kindsByKind, pluginStatuses, selectedNodeIds, connectionChecks, connectSourceId: connectingFrom?.nodeId ?? null, readOnly })]
         : [],
-    [graph, mergedPositions, kindNames, kindsByKind, pluginStatuses, selectedNodeIds, connectionChecks, connectingFrom, readOnly],
+    [noteFlowNodes, graph, mergedPositions, kindNames, kindsByKind, pluginStatuses, selectedNodeIds, connectionChecks, connectingFrom, readOnly],
   )
   const [flowNodes, setFlowNodes] = useState<StepFlowNode[]>(flowNodesFromGraph)
   // Keep React Flow's measured sizes across rebuilds: a node whose size did not change is
@@ -137,6 +143,12 @@ function CanvasBody(props: NodeCanvasProps) {
   const flowEdges = useMemo(() => toFlowEdges(graph, liveEdgeIds), [graph, liveEdgeIds])
 
   const announce = useCallback((message: string) => setAnnouncement(message), [])
+  // React Flow reports the selection again whenever this handler changes; keep it stable.
+  const onSelectionChangeRef = useRef(onSelectionChange)
+  onSelectionChangeRef.current = onSelectionChange
+  const handleSelectionChange = useCallback(({ nodes }: { nodes: StepFlowNode[] }) => {
+    onSelectionChangeRef.current(nodes.filter((node) => node.type !== 'marker' && !isNoteFlowNodeId(node.id)).map((node) => node.id))
+  }, [])
 
   // ----- edits -----
 
@@ -423,7 +435,10 @@ function CanvasBody(props: NodeCanvasProps) {
     })
   }
 
-  function handleDragStop(_event: unknown, _node: StepFlowNode, draggedNodes: StepFlowNode[]) {
+  function handleDragStop(_event: unknown, _node: StepFlowNode, draggedFlowNodes: StepFlowNode[]) {
+    for (const dragged of draggedFlowNodes) if (isNoteFlowNodeId(dragged.id)) props.onMoveNote?.(noteIdOf(dragged.id), dragged.position)
+    const draggedNodes = draggedFlowNodes.filter((dragged) => !isNoteFlowNodeId(dragged.id))
+    if (draggedNodes.length === 0) return
     onMoveNodes(
       draggedNodes.map((dragged) => ({
         nodeId: dragged.id,
@@ -453,14 +468,14 @@ function CanvasBody(props: NodeCanvasProps) {
 
   function handleNodeContextMenu(event: ReactMouseEvent, node: StepFlowNode) {
     event.preventDefault()
-    if (node.type === 'marker') return
+    if (node.type === 'marker' || isNoteFlowNodeId(node.id)) return
     openMenuForNode(node.id, { x: event.clientX, y: event.clientY })
   }
 
   function handleSelectionContextMenu(event: ReactMouseEvent, nodes: StepFlowNode[]) {
     event.preventDefault()
     openMenuForNodes(
-      nodes.map((node) => node.id),
+      nodes.filter((node) => !isNoteFlowNodeId(node.id)).map((node) => node.id),
       { x: event.clientX, y: event.clientY },
     )
   }
@@ -485,12 +500,12 @@ function CanvasBody(props: NodeCanvasProps) {
         <ReactFlow<StepFlowNode, StepFlowEdge>
           nodes={flowNodes}
           edges={flowEdges}
-          nodeTypes={flowNodeTypes}
+          nodeTypes={canvasNodeTypes}
           edgeTypes={flowEdgeTypes}
           onNodesChange={handleNodesChange}
           onEdgesChange={handleEdgesChange}
           onNodeDragStop={handleDragStop}
-          onSelectionChange={({ nodes }) => onSelectionChange(nodes.filter((node) => node.type !== 'marker').map((node) => node.id))}
+          onSelectionChange={handleSelectionChange}
           onMoveEnd={(_event, nextViewport) => onViewportChange(nextViewport)}
           onConnect={(connection) => connect({ source: connection.source, sourceHandle: connection.sourceHandle, target: connection.target })}
           onConnectStart={handleConnectStart}
@@ -531,7 +546,7 @@ function CanvasBody(props: NodeCanvasProps) {
             zoomable
             ariaLabel="Minimap of the whole agent"
             className="node-minimap"
-            nodeColor={(flowNode) => (flowNode.data.node.needsApproval ? '#F5C77E' : flowNode.type === 'container' ? 'rgba(244,244,245,0.6)' : '#D4D4D8')}
+            nodeColor={(flowNode) => (isNoteFlowNodeId(flowNode.id) ? '#FEF9C3' : flowNode.data.node.needsApproval ? '#F5C77E' : flowNode.type === 'container' ? 'rgba(244,244,245,0.6)' : '#D4D4D8')}
             nodeStrokeColor={(flowNode) => (flowNode.type === 'container' ? '#A1A1AA' : 'transparent')}
             nodeBorderRadius={4}
             maskColor="rgba(244, 244, 245, 0.55)"

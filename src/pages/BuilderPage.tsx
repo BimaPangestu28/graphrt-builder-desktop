@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import type { Agent } from '@/api/types'
 import { AppShell, splitPaneMainClassName, type SidebarProps } from '@/components/layout'
@@ -14,7 +14,7 @@ import { BuilderChatPanel } from './agent-builder/BuilderChatPanel'
 import { listBuilderRequirements, listPluginSetupRequirements } from './agent-builder/builderRequirements'
 import { focusPluginSetupMessage, PluginRequirementsMessage } from './agent-builder/PluginRequirementsMessage'
 import { useAgentRevisions } from './agent-builder/useAgentRevisions'
-import { useBuilderAskDraft } from './agent-builder/useBuilderAskDraft'
+import { useBuilderAskDraft, type BuilderAskDraft } from './agent-builder/useBuilderAskDraft'
 import { useBuilderHistory } from './agent-builder/useBuilderHistory'
 import { usePluginSetup } from './agent-builder/usePluginSetup'
 import { usePluginSetupPlacement } from './agent-builder/usePluginSetupPlacement'
@@ -63,7 +63,13 @@ export function BuilderPage() {
     },
     [reloadWorkflowSecrets],
   )
-  const askDraft = useBuilderAskDraft()
+  const urlAskDraft = useBuilderAskDraft()
+  const [askDraft, setAskDraft] = useState<BuilderAskDraft | null>(null)
+  useEffect(() => {
+    if (urlAskDraft) setAskDraft((current) => ({ text: urlAskDraft.text, sequence: (current?.sequence ?? 0) + 1 }))
+  }, [urlAskDraft])
+  // "Fix with builder" in the Nodes view: the same prefill, left for the user to send.
+  const prefillChat = useCallback((text: string) => setAskDraft((current) => ({ text, sequence: (current?.sequence ?? 0) + 1 })), [])
   const pluginSetup = usePluginSetup(agentId)
   const pluginSetupPlacement = usePluginSetupPlacement(agentId, pluginSetup)
   const { placeAfterRevision, ensurePlaced } = pluginSetupPlacement
@@ -127,7 +133,11 @@ export function BuilderPage() {
           onPluginSessionChange={reloadPluginRequirements}
           arePluginsReady={pluginSetup.isReady !== false}
           onAgentRenamed={reloadAgent}
-          onGraphSaved={() => void reloadAgentAndSteps(null)}
+          onGraphSaved={(result) => {
+            if (result.saved) revisions.recordNodesEdit(result)
+            void reloadAgentAndSteps(null)
+          }}
+          onAskBuilder={prefillChat}
         />
       ) : (
         <AgentPanelMessage>{agentState.error ? `Could not load this agent: ${describeError(agentState.error)}` : 'Loading agent…'}</AgentPanelMessage>

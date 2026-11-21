@@ -298,6 +298,32 @@ pub fn save_agent_graph(
     })
 }
 
+/// The problems `edit` would have on `base_version`, without saving anything (the
+/// Nodes view's Validate button, and drafts that are not saved yet). Unlike
+/// [`save_agent_graph`] this also works while the builder is busy and on an old version.
+///
+/// # Errors
+/// `NotFound` for an unknown agent or version; `InvalidInput` for a malformed edit.
+pub fn validate_agent_graph(
+    db: &Database,
+    agent_id: &str,
+    base_version: i64,
+    edit: &GraphEdit,
+    context: &GraphContext<'_>,
+) -> AppResult<Vec<GraphProblem>> {
+    let agent = db.get_agent(agent_id)?;
+    let flow_yaml = if base_version == agent.current_version {
+        agent.flow_yaml
+    } else {
+        db.get_agent_version(agent_id, base_version)?.flow_yaml
+    };
+    let base = EditableDocument::parse(&flow_yaml)?;
+    let edited = base.apply_edit(edit)?;
+    let edited_yaml = base.to_yaml(&edited)?;
+    let source = GraphSource { agent_id, version: base_version, latest_version: agent.current_version };
+    Ok(graph_from_yaml(source, &edited_yaml, context).problems)
+}
+
 /// Whether the builder is changing the agent, and its current version.
 ///
 /// # Errors

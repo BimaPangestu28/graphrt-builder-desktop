@@ -3,6 +3,7 @@ import { conflictLatestVersion, getAgentEditState, getAgentGraph, getNodeLayout,
 import type { AgentGraph, CanvasViewport, EdgeEdit, GraphNode, GraphProblem, NodeLayout, SaveGraphResult } from '@/api/agentGraphTypes'
 import { BackendError } from '@/api/client'
 import { addGraphEdge, addGraphNode, isSameGraph, removeGraphEdges, removeGraphNodes, toGraphEdit, updateGraphNode, type NodeChanges } from './graphEdits'
+import { mergeGraphEdits, type ConflictChoice, type NodeMergeConflict } from './sync/graphMerge'
 
 /**
  * Local edit state of the Nodes view: the saved graph, a working copy with undo /
@@ -17,7 +18,7 @@ export type GraphSaveStatus =
   | 'saving'
   /** The last save added a version (see `lastSave`). */
   | 'saved'
-  /** The agent moved on (chat change, another window): pick Keep mine / Keep the builder's. */
+  /** The agent moved on and my edits touch steps it changed too: Keep mine / Keep the builder's per step (`conflict.nodes`). */
   | 'conflict'
   /** The builder is changing the agent; the edit stays local until it is done. */
   | 'builder-busy'
@@ -30,7 +31,8 @@ export interface UseAgentGraphOptions {
   agentId: string
   /**
    * The agent's current version as the builder page knows it. When it moves (a chat
-   * change or Undo landed) the graph reloads, or, with unsaved edits, `conflict` is set.
+   * change or Undo landed) the graph reloads, or, with unsaved edits, the edits are merged onto
+   * it per step (see `sync/graphMerge.ts`); `conflict` is set for steps both sides changed.
    */
   currentVersion: number | null
   /** Called after a save added a version (reload the agent, steps and chat there). */
@@ -64,11 +66,20 @@ export interface AgentGraphState {
   builderBusy: boolean
   status: GraphSaveStatus
   /** Set while `status` is `conflict`. */
-  conflict: { latestVersion: number } | null
+  conflict: GraphConflict | null
+  /** The last time my edits were merged onto a newer version (the queue re-applied); null before. */
+  lastMerge: { latestVersion: number; reappliedNodeIds: string[] } | null
   /** Blocking problems of the last refused save (`status` `invalid`). */
   saveProblems: GraphProblem[]
   saveError: Error | null
   lastSave: SaveGraphResult | null
+}
+
+/** My edits and a newer version touch the same steps. */
+export interface GraphConflict {
+  latestVersion: number
+  /** Steps both changed, still to decide (Keep mine / Keep the builder's per step). */
+  nodes: NodeMergeConflict[]
 }
 
 export interface AgentGraphActions {
@@ -88,8 +99,13 @@ export interface AgentGraphActions {
    * nothing was sent (no edits, builder busy) or the save was refused (see `status`).
    */
   save: (description?: string) => Promise<SaveGraphResult | null>
-  /** `keep-mine` saves the working copy over the latest version; `keep-theirs` drops it and loads the latest. */
-  resolveConflict: (choice: 'keep-mine' | 'keep-theirs') => Promise<void>
+  /**
+   * Decides every open conflicting step at once, then saves the merged edits onto the latest
+   * version (`keep-theirs` with nothing else of mine left just loads the latest).
+   */
+  resolveConflict: (choice: ConflictChoice) => Promise<void>
+  /** Decides one conflicting step; the merge is saved once every step is decided. */
+  resolveNodeConflict: (nodeId: string, choice: ConflictChoice) => Promise<void>
   /** Loads the current version again (local edits are dropped). */
   reload: () => Promise<void>
   /** Records new positions locally (not undoable, adds no version). */
@@ -139,7 +155,11 @@ export function useAgentGraph({ agentId, currentVersion, onSaved }: UseAgentGrap
   const [isLayoutDirty, setIsLayoutDirty] = useState(false)
   const [builderBusy, setBuilderBusy] = useState(false)
   const [status, setStatus] = useState<GraphSaveStatus>('idle')
-  const [conflict, setConflict] = useState<{ latestVersion: number } | null>(null)
+  const [conflict, setConflict] = useState<GraphConflict | null>(null)
+  const [lastMerge, setLastMerge] = useState<AgentGraphState['lastMerge']>(null)
+  /** The three graphs of an open merge and the decisions made so far. */
+  const pendingMergeRef = useRef<{ base: AgentGraph; mine: AgentGraph; theirs: AgentGraph; choices: Record<string, ConflictChoice> } | null>(null)
+  const catchingUpRef = useRef<number | null>(null)
   const [saveProblems, setSaveProblems] = useState<GraphProblem[]>([])
   const [saveError, setSaveError] = useState<Error | null>(null)
   const [lastSave, setLastSave] = useState<SaveGraphResult | null>(null)
@@ -170,6 +190,7 @@ export function useAgentGraph({ agentId, currentVersion, onSaved }: UseAgentGrap
       setIsLayoutDirty(false)
       setLoadError(null)
       setConflict(null)
+      pendingMergeRef.current = null
       setSaveProblems([])
       setStatus('idle')
     } catch (rawError) {
@@ -202,16 +223,6 @@ export function useAgentGraph({ agentId, currentVersion, onSaved }: UseAgentGrap
     }
   }, [agentId])
 
-  // A version saved elsewhere (chat change, Undo, another window).
-  useEffect(() => {
-    if (currentVersion === null || !savedGraph || currentVersion <= savedGraph.version) return
-    if (isDirty) {
-      setConflict({ latestVersion: currentVersion })
-      setStatus('conflict')
-      return
-    }
-    void reload()
-  }, [currentVersion, savedGraph, isDirty, reload])
 
   const applyEdit = useCallback(
     (change: (current: AgentGraph) => AgentGraph, description?: string) => {
@@ -245,12 +256,6 @@ export function useAgentGraph({ agentId, currentVersion, onSaved }: UseAgentGrap
   }, [future, graph, pendingDescriptions])
 
   const recordSaveFailure = useCallback((rawError: unknown) => {
-    const latestVersion = conflictLatestVersion(rawError)
-    if (latestVersion !== null) {
-      setConflict({ latestVersion })
-      setStatus('conflict')
-      return
-    }
     if (rawError instanceof BackendError && rawError.code === 'builder_busy') {
       setBuilderBusy(true)
       setStatus('builder-busy')
@@ -267,8 +272,8 @@ export function useAgentGraph({ agentId, currentVersion, onSaved }: UseAgentGrap
   }, [])
 
   const saveOnto = useCallback(
-    async (baseVersion: number, description?: string): Promise<SaveGraphResult | null> => {
-      if (!graph) return null
+    async (baseVersion: number, description?: string, graphToSave: AgentGraph | null = graph): Promise<SaveGraphResult | null> => {
+      if (!graphToSave) return null
       if (builderBusy) {
         setStatus('builder-busy')
         return null
@@ -278,21 +283,83 @@ export function useAgentGraph({ agentId, currentVersion, onSaved }: UseAgentGrap
       setSaveProblems([])
       const summaryWords = description ?? (pendingDescriptions.length > 0 ? pendingDescriptions.join(', ') : null)
       try {
-        const result = await saveAgentGraph(agentId, baseVersion, toGraphEdit(graph, { description: summaryWords, layout: layoutFor(graph, positions) }))
+        const result = await saveAgentGraph(agentId, baseVersion, toGraphEdit(graphToSave, { description: summaryWords, layout: layoutFor(graphToSave, positions) }))
         showSavedGraph(result.graph)
         setConflict(null)
+        pendingMergeRef.current = null
         setIsLayoutDirty(false)
         setLastSave(result)
         setStatus(result.saved ? 'saved' : 'idle')
         if (result.saved) onSavedRef.current?.(result)
         return result
       } catch (rawError) {
+        const latestVersion = conflictLatestVersion(rawError)
+        if (latestVersion !== null) {
+          setStatus('idle')
+          await catchUpRef.current(latestVersion)
+          return null
+        }
         recordSaveFailure(rawError)
         return null
       }
     },
     [agentId, graph, builderBusy, pendingDescriptions, positions, showSavedGraph, recordSaveFailure],
   )
+
+  /** Shows a merge: the merged working copy over the latest version, conflicts if any. */
+  const showMerge = useCallback(
+    (merge: { base: AgentGraph; mine: AgentGraph; theirs: AgentGraph; choices: Record<string, ConflictChoice> }) => {
+      const result = mergeGraphEdits(merge.base, merge.mine, merge.theirs, merge.choices)
+      setSavedGraph(merge.theirs)
+      setGraph(result.merged)
+      setPast([])
+      setFuture([])
+      if (result.conflicts.length > 0) {
+        pendingMergeRef.current = merge
+        setConflict({ latestVersion: merge.theirs.version, nodes: result.conflicts })
+        setStatus('conflict')
+      } else {
+        pendingMergeRef.current = null
+        setConflict(null)
+        setStatus('idle')
+      }
+      return result
+    },
+    [],
+  )
+
+  /** Loads the latest version and merges my unsaved edits onto it, step by step. */
+  const catchUpWithLatest = useCallback(
+    async (latestVersion: number) => {
+      if (!graph || !savedGraph || catchingUpRef.current === latestVersion) return
+      catchingUpRef.current = latestVersion
+      try {
+        const [latest, latestLayout] = await Promise.all([getAgentGraph(agentId), getNodeLayout(agentId)])
+        // Steps the builder added get its positions; mine stay where I put them.
+        setPositions((current) => ({ ...positionsById(latestLayout.nodes), ...current }))
+        const result = showMerge({ base: savedGraph, mine: graph, theirs: latest, choices: {} })
+        setLastMerge({ latestVersion: latest.version, reappliedNodeIds: result.reappliedNodeIds })
+      } catch (rawError) {
+        setSaveError(toError(rawError))
+        setStatus('failed')
+      } finally {
+        catchingUpRef.current = null
+      }
+    },
+    [agentId, graph, savedGraph, showMerge],
+  )
+  const catchUpRef = useRef(catchUpWithLatest)
+  catchUpRef.current = catchUpWithLatest
+
+  // A version saved elsewhere (chat change, Undo, another window).
+  useEffect(() => {
+    if (currentVersion === null || !savedGraph || currentVersion <= savedGraph.version || status === 'conflict') return
+    if (isDirty) {
+      void catchUpWithLatest(currentVersion)
+      return
+    }
+    void reload()
+  }, [currentVersion, savedGraph, isDirty, status, reload, catchUpWithLatest])
 
   const save = useCallback(
     async (description?: string) => {
@@ -302,16 +369,34 @@ export function useAgentGraph({ agentId, currentVersion, onSaved }: UseAgentGrap
     [savedGraph, isDirty, saveOnto],
   )
 
-  const resolveConflict = useCallback(
-    async (choice: 'keep-mine' | 'keep-theirs') => {
-      if (choice === 'keep-theirs' || !conflict) {
+  /** Applies decisions; once none is open, saves the merge (or just shows the latest when nothing of mine is left). */
+  const decideConflicts = useCallback(
+    async (choices: Record<string, ConflictChoice>) => {
+      const merge = pendingMergeRef.current
+      if (!merge) {
         await reload()
         return
       }
-      await saveOnto(conflict.latestVersion)
+      const result = showMerge({ ...merge, choices: { ...merge.choices, ...choices } })
+      if (result.conflicts.length > 0) return
+      if (isSameGraph(result.merged, merge.theirs)) {
+        showSavedGraph(merge.theirs)
+        return
+      }
+      await saveOnto(merge.theirs.version, undefined, result.merged)
     },
-    [conflict, reload, saveOnto],
+    [reload, showMerge, showSavedGraph, saveOnto],
   )
+
+  const resolveConflict = useCallback(
+    async (choice: ConflictChoice) => {
+      const openNodeIds = conflict?.nodes.map((node) => node.nodeId) ?? []
+      await decideConflicts(Object.fromEntries(openNodeIds.map((nodeId) => [nodeId, choice])))
+    },
+    [conflict, decideConflicts],
+  )
+
+  const resolveNodeConflict = useCallback((nodeId: string, choice: ConflictChoice) => decideConflicts({ [nodeId]: choice }), [decideConflicts])
 
   const moveNodes = useCallback((layouts: NodeLayout[]) => {
     if (layouts.length === 0) return
@@ -350,6 +435,7 @@ export function useAgentGraph({ agentId, currentVersion, onSaved }: UseAgentGrap
     builderBusy,
     status,
     conflict,
+    lastMerge,
     saveProblems,
     saveError,
     lastSave,
@@ -364,6 +450,7 @@ export function useAgentGraph({ agentId, currentVersion, onSaved }: UseAgentGrap
     discardChanges,
     save,
     resolveConflict,
+    resolveNodeConflict,
     reload,
     moveNodes,
     setViewport,
