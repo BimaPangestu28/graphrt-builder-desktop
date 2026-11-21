@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { getAppSettings, updateAppSettings } from '@/api/appSettings'
 import { resetSampleAppSettings } from '@/api/sampleBackend/appSettings'
@@ -61,6 +61,7 @@ function holdDownloadAtHalf(): () => void {
 beforeEach(() => {
   resetSampleAppSettings()
   vi.clearAllMocks()
+  window.localStorage.removeItem('graphrt.updateToast.dismissedVersion')
   mockedUpdates.isUpdaterAvailable.mockReturnValue(true)
   mockedUpdates.getCurrentVersion.mockResolvedValue('0.1.0')
   mockedUpdates.checkForUpdate.mockResolvedValue(null)
@@ -176,6 +177,41 @@ describe('Update ready banner', () => {
     fireEvent.click(within(banner).getByRole('button', { name: 'Restart to update' }))
     expect(await within(banner).findByRole('alert')).toHaveTextContent('Could not install the update: disk full')
     expect(within(banner).getByRole('button', { name: 'Restart to update' })).toBeInTheDocument()
+  })
+
+  it('remembers "Later" for that version after the app restarts, and shows a newer version again', async () => {
+    const firstApp = renderApp(routePaths.home)
+    fireEvent.click(within(await screen.findByRole('region', { name: 'Update ready' })).getByRole('button', { name: 'Later' }))
+    firstApp.unmount()
+    renderApp(routePaths.home)
+    await waitFor(() => expect(mockedUpdates.downloadUpdate).toHaveBeenCalled())
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(screen.queryByRole('region', { name: 'Update ready' })).not.toBeInTheDocument()
+    cleanup()
+    mockedUpdates.checkForUpdate.mockResolvedValue({ ...newerVersion, version: '0.3.0' })
+    renderApp(routePaths.home)
+    expect(await screen.findByRole('region', { name: 'Update ready' })).toHaveTextContent('graphrt 0.3.0 is ready')
+  })
+
+  it('announces an available update when automatic download is off, and downloads it on Update', async () => {
+    await updateAppSettings({ ...(await getAppSettings()), autoDownloadUpdates: false })
+    renderApp(routePaths.home)
+    const toast = await screen.findByRole('region', { name: 'Update available' })
+    expect(toast).toHaveTextContent('graphrt 0.2.0 is available')
+    expect(toast).toHaveTextContent('You have 0.1.0')
+    expect(mockedUpdates.downloadUpdate).not.toHaveBeenCalled()
+    fireEvent.click(within(toast).getByRole('button', { name: 'Update' }))
+    expect(await screen.findByRole('region', { name: 'Update ready' })).toHaveTextContent('graphrt 0.2.0 is ready')
+  })
+
+  it('shows download progress in the corner, which can be hidden', async () => {
+    holdDownloadAtHalf()
+    renderApp(routePaths.home)
+    const toast = await screen.findByRole('region', { name: 'Downloading update' })
+    expect(toast).toHaveTextContent('Downloading graphrt 0.2.0… 50%')
+    expect(within(toast).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50')
+    fireEvent.click(within(toast).getByRole('button', { name: 'Hide' }))
+    expect(screen.queryByRole('region', { name: 'Downloading update' })).not.toBeInTheDocument()
   })
 
   it('stays hidden on Settings, which has its own Updates section', async () => {
