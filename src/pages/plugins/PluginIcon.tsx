@@ -28,7 +28,7 @@ export function PluginIcon({ name, iconUrl, category, size = 'md' }: PluginIconP
     <span
       aria-hidden="true"
       data-testid="plugin-icon"
-      className={joinClassNames('flex shrink-0 items-center justify-center overflow-hidden border border-line bg-surface p-1.5', pluginTileSizeClassNames[size])}
+      className={joinClassNames('flex shrink-0 items-center justify-center overflow-hidden border border-line bg-surface', size === 'sm' ? 'p-1' : 'p-1.5', pluginTileSizeClassNames[size])}
     >
       <img src={iconDataUrl} alt="" draggable={false} className="size-full object-contain" onError={() => setFailedDataUrl(iconDataUrl)} />
     </span>

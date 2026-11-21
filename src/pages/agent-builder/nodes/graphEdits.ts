@@ -119,6 +119,45 @@ export function removeGraphEdges(graph: AgentGraph, edgeIds: string[]): AgentGra
   return { ...graph, edges: graph.edges.filter((edge) => !removed.has(edge.id)) }
 }
 
+/** Removes every arrow into or out of `nodeIds` (context menu Disconnect). */
+export function disconnectGraphNodes(graph: AgentGraph, nodeIds: string[]): AgentGraph {
+  const disconnected = new Set(nodeIds)
+  const edges = graph.edges.filter((edge) => !disconnected.has(edge.source) && !disconnected.has(edge.target))
+  return edges.length === graph.edges.length ? graph : { ...graph, edges }
+}
+
+/**
+ * Moves one end of an arrow (drag an arrow end to another port). Keeps the arrow's
+ * document id when the source stays the same.
+ */
+export function reconnectGraphEdge(graph: AgentGraph, edgeId: string, edgeEdit: EdgeEdit): AgentGraph {
+  const existing = graph.edges.find((edge) => edge.id === edgeId)
+  if (!existing) return graph
+  const documentId = existing.source === edgeEdit.source ? existing.documentId : null
+  return addGraphEdge(removeGraphEdges(graph, [edgeId]), { ...edgeEdit, documentId })
+}
+
+/**
+ * Adds `node` after `from` (spec I1 "Add node after"): an arrow from `from`'s exit to
+ * the node, and when that exit already led somewhere, the node is put in between
+ * (the old arrows now leave from the node's default exit).
+ *
+ * @param graph - Working graph (AgentGraph)
+ * @param node - The new node (GraphNode)
+ * @param from - The step and exit to add it after (EdgeEdit without target)
+ * @returns The graph with the node wired in (AgentGraph)
+ */
+export function insertGraphNodeAfter(graph: AgentGraph, node: GraphNode, from: { source: string; sourceHandle?: string | null }): AgentGraph {
+  const sourceHandle = from.sourceHandle || SOURCE_HANDLE
+  const withNode = addGraphNode(graph, node)
+  const followingEdges = graph.edges.filter((edge) => edge.source === from.source && edge.sourceHandle === sourceHandle)
+  const canContinue = node.ports.outputs.some((outputPort) => outputPort.id === SOURCE_HANDLE)
+  let nextGraph = addGraphEdge(canContinue ? removeGraphEdges(withNode, followingEdges.map((edge) => edge.id)) : withNode, { source: from.source, sourceHandle, target: node.id })
+  if (!canContinue) return nextGraph
+  for (const edge of followingEdges) nextGraph = addGraphEdge(nextGraph, { source: node.id, sourceHandle: SOURCE_HANDLE, target: edge.target })
+  return nextGraph
+}
+
 /** A node id not used yet, from a readable base (`write_message`, `write_message_2`…). */
 export function uniqueNodeId(graph: AgentGraph, base: string): string {
   const cleanBase = base.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || 'step'

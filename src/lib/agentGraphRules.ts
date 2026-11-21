@@ -115,3 +115,68 @@ export function isEdgeUnused(edge: Pick<GraphEdge, 'sourceHandle'>, source: Pick
   if (!source) return false
   return !source.ports.outputs.some((outputPort) => outputPort.id === edge.sourceHandle)
 }
+
+/** Whether an arrow may be drawn, and why not (shown on the target while dragging). */
+export type ConnectionCheck = { allowed: true } | { allowed: false; reason: string }
+
+/** The two ends of an arrow being drawn. */
+export interface ConnectionEnds {
+  source: string
+  /** Exit of the source; null or empty for the default exit. */
+  sourceHandle?: string | null
+  target: string
+}
+
+/** True when arrows lead from `from` to `to`, so an arrow `to` → `from` would close a circle. */
+function leadsTo(edges: Pick<GraphEdge, 'source' | 'target'>[], from: string, to: string): boolean {
+  const targetsBySource = new Map<string, string[]>()
+  for (const edge of edges) targetsBySource.set(edge.source, [...(targetsBySource.get(edge.source) ?? []), edge.target])
+  const visited = new Set<string>()
+  const pending = [from]
+  while (pending.length > 0) {
+    const current = pending.pop() as string
+    if (current === to) return true
+    if (visited.has(current)) continue
+    visited.add(current)
+    pending.push(...(targetsBySource.get(current) ?? []))
+  }
+  return false
+}
+
+function describeCrossScope(nodesById: Map<string, GraphNode>, source: GraphNode, target: GraphNode): string {
+  const titleOf = (nodeId: string) => nodesById.get(nodeId)?.displayTitle ?? nodeId
+  if (source.parent) return `Can't connect: steps inside ${titleOf(source.parent)} can't link to steps outside it`
+  return `Can't connect: steps outside ${titleOf(target.parent as string)} can't link to steps inside it`
+}
+
+/**
+ * The graphrt graph rules for a new arrow (spec I1): no arrow into Start or a body
+ * entry, none across a loop boundary, no circles, none from a step to itself, no
+ * duplicate, and only from an exit the source has.
+ *
+ * @param graph - The working graph (nodes and edges)
+ * @param ends - Source, its exit and target of the arrow (ConnectionEnds)
+ * @returns `{ allowed: true }`, or `{ allowed: false, reason }` in plain words (ConnectionCheck)
+ *
+ * @example
+ * checkConnection(graph, { source: 'write_message', target: 'start' })
+ * // { allowed: false, reason: "Can't connect: Start never has arrows coming in" }
+ */
+export function checkConnection(graph: { nodes: GraphNode[]; edges: GraphEdge[] }, ends: ConnectionEnds): ConnectionCheck {
+  const nodesById = new Map(graph.nodes.map((node) => [node.id, node]))
+  const source = nodesById.get(ends.source)
+  const target = nodesById.get(ends.target)
+  const sourceHandle = ends.sourceHandle || SOURCE_HANDLE
+  if (!source || !target) return { allowed: false, reason: "Can't connect: that step no longer exists" }
+  if (source.id === target.id) return { allowed: false, reason: "Can't connect a step to itself" }
+  if (target.ports.inputs.length === 0) {
+    return { allowed: false, reason: target.kind === 'start' ? "Can't connect: Start never has arrows coming in" : "Can't connect: this step has no input" }
+  }
+  if (!source.ports.outputs.some((outputPort) => outputPort.id === sourceHandle)) return { allowed: false, reason: `Can't connect: ${source.displayTitle} has no such exit` }
+  if (source.parent !== target.parent) return { allowed: false, reason: describeCrossScope(nodesById, source, target) }
+  if (graph.edges.some((edge) => edge.source === source.id && edge.sourceHandle === sourceHandle && edge.target === target.id)) {
+    return { allowed: false, reason: 'Already connected' }
+  }
+  if (leadsTo(graph.edges, target.id, source.id)) return { allowed: false, reason: "Can't connect: that would make a circle of steps" }
+  return { allowed: true }
+}

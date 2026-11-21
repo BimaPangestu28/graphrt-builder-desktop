@@ -1,18 +1,22 @@
 import type { AgentGraph, GraphNode, NodeLayout } from '@/api/agentGraphTypes'
 
 /**
- * Auto-layout with ELK (elkjs, layered, left to right). Containers (For each,
- * Repeat) are laid out with their body inside them; child positions are relative
- * to their container, the same convention React Flow and the saved positions use.
+ * Auto-layout with ELK (elkjs, layered). The top level runs top to bottom and a
+ * loop body (For each, Repeat) left to right inside its container (spec A), which
+ * fits the builder's narrow Nodes column. Arrows never cross a container boundary,
+ * so each scope is laid out on its own; child positions are relative to their
+ * container, the same convention React Flow and the saved positions use.
  * ELK is loaded on first use so it stays out of the main bundle.
  */
 
 /** Size of a step card on the canvas. */
-export const stepNodeSize = { width: 240, height: 76 }
+export const stepNodeSize = { width: 240, height: 112 }
+/** Smallest container (For each / Repeat) a resize allows, and the size of an empty one. */
+export const containerMinimumSize = { width: 300, height: 180 }
 /** Size of a hidden body marker (the dot a loop body's arrows start from). */
 export const markerNodeSize = { width: 12, height: 12 }
 /** Space for a container's header above its body. */
-const containerHeaderHeight = 56
+const containerHeaderHeight = 64
 const containerPadding = 24
 
 interface ElkNodeInput {
@@ -33,30 +37,45 @@ interface ElkNodeOutput {
   children?: ElkNodeOutput[]
 }
 
+/** Which way arrows run in a scope: down at the top level, right inside a loop. */
+export type FlowDirection = 'down' | 'right'
+
+/** The direction of the scope a node sits in. */
+export function flowDirectionOf(node: Pick<GraphNode, 'parent'>): FlowDirection {
+  return node.parent ? 'right' : 'down'
+}
+
 const rootLayoutOptions: Record<string, string> = {
   'elk.algorithm': 'layered',
-  'elk.direction': 'RIGHT',
-  'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
-  'elk.layered.spacing.nodeNodeBetweenLayers': '72',
-  'elk.spacing.nodeNode': '40',
+  'elk.direction': 'DOWN',
+  'elk.layered.spacing.nodeNodeBetweenLayers': '56',
+  'elk.spacing.nodeNode': '48',
+  'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF',
 }
 
 const containerLayoutOptions: Record<string, string> = {
-  'elk.padding': `[top=${containerHeaderHeight},left=${containerPadding},bottom=${containerPadding},right=${containerPadding}]`,
+  'elk.algorithm': 'layered',
+  'elk.direction': 'RIGHT',
+  'elk.layered.spacing.nodeNodeBetweenLayers': '64',
+  'elk.spacing.nodeNode': '32',
+  'elk.padding': `[top=${containerHeaderHeight},left=${containerPadding},bottom=${containerPadding},right=${containerPadding + 40}]`,
 }
+
+type ElkEdge = { id: string; sources: string[]; targets: string[] }
 
 function sizeOf(node: GraphNode): { width: number; height: number } {
   return node.hidden ? markerNodeSize : stepNodeSize
 }
 
-function toElkNode(node: GraphNode, childrenByParent: Map<string | null, GraphNode[]>): ElkNodeInput {
+function toElkNode(node: GraphNode, childrenByParent: Map<string | null, GraphNode[]>, edgesByScope: Map<string | null, ElkEdge[]>): ElkNodeInput {
   const children = childrenByParent.get(node.id) ?? []
   if (!node.container) return { id: node.id, ...sizeOf(node) }
   return {
     id: node.id,
     layoutOptions: containerLayoutOptions,
-    children: children.length > 0 ? children.map((child) => toElkNode(child, childrenByParent)) : undefined,
-    ...(children.length === 0 ? stepNodeSize : {}),
+    children: children.length > 0 ? children.map((child) => toElkNode(child, childrenByParent, edgesByScope)) : undefined,
+    edges: children.length > 0 ? (edgesByScope.get(node.id) ?? []) : undefined,
+    ...(children.length === 0 ? containerMinimumSize : {}),
   }
 }
 
@@ -67,7 +86,7 @@ function collectLayouts(node: ElkNodeOutput, layouts: NodeLayout[]): void {
   }
 }
 
-/** The ELK graph of `graph`: nodes nested in their containers, every arrow at the root. */
+/** The ELK graph of `graph`: nodes nested in their containers, each arrow in its scope (cross-scope ones are left out). */
 export function toElkGraph(graph: AgentGraph): ElkNodeInput {
   const childrenByParent = new Map<string | null, GraphNode[]>()
   for (const node of graph.nodes) {
@@ -75,14 +94,19 @@ export function toElkGraph(graph: AgentGraph): ElkNodeInput {
     siblings.push(node)
     childrenByParent.set(node.parent, siblings)
   }
-  const nodeIds = new Set(graph.nodes.map((node) => node.id))
+  const nodesById = new Map(graph.nodes.map((node) => [node.id, node]))
+  const edgesByScope = new Map<string | null, ElkEdge[]>()
+  for (const edge of graph.edges) {
+    const source = nodesById.get(edge.source)
+    const target = nodesById.get(edge.target)
+    if (!source || !target || source.parent !== target.parent) continue
+    edgesByScope.set(source.parent, [...(edgesByScope.get(source.parent) ?? []), { id: edge.id, sources: [edge.source], targets: [edge.target] }])
+  }
   return {
     id: 'root',
     layoutOptions: rootLayoutOptions,
-    children: (childrenByParent.get(null) ?? []).map((node) => toElkNode(node, childrenByParent)),
-    edges: graph.edges
-      .filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target))
-      .map((edge) => ({ id: edge.id, sources: [edge.source], targets: [edge.target] })),
+    children: (childrenByParent.get(null) ?? []).map((node) => toElkNode(node, childrenByParent, edgesByScope)),
+    edges: edgesByScope.get(null) ?? [],
   }
 }
 

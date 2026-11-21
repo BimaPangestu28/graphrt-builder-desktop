@@ -1,10 +1,10 @@
 import { splitPaneColumnClassName, splitPaneScrollClassName } from '@/components/layout'
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useCallback, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import type { SaveGraphResult } from '@/api/agentGraphTypes'
 import type { Agent, FlowSummary } from '@/api/types'
 import { joinClassNames } from '@/components/ui'
-import { agentPath } from '@/routes'
+import { agentPath, builderAskParam } from '@/routes'
 import { AgentIdentityHeader } from './AgentIdentityHeader'
 import { AgentRequirementsList, type BuilderRequirement } from './AgentRequirementsList'
 import { BuilderStepCard } from './BuilderStepCard'
@@ -127,6 +127,32 @@ function RunsTabContent({ agentId }: { agentId: string }) {
   )
 }
 
+/**
+ * "Ask the builder about this" from the Nodes canvas: hands the text to the chat box
+ * through the `ask` param (the builder page pre-fills it and never sends it), or only
+ * focuses the chat box when there is no text ("Write in chat").
+ */
+function useAskBuilder(): (text: string) => void {
+  const [, setSearchParams] = useSearchParams()
+  return useCallback(
+    (text: string) => {
+      if (text.trim()) {
+        setSearchParams(
+          (currentParams) => {
+            const nextParams = new URLSearchParams(currentParams)
+            nextParams.set(builderAskParam, text)
+            return nextParams
+          },
+          { replace: true },
+        )
+        return
+      }
+      document.querySelector<HTMLTextAreaElement>('section[aria-label="Chat"] textarea')?.focus()
+    },
+    [setSearchParams],
+  )
+}
+
 /** The graphrt workflow document of the current version, as stored. */
 function SourceTabContent({ flowYaml }: { flowYaml: string }) {
   return (
@@ -172,6 +198,7 @@ export function BuilderAgentPanel({
   onGraphSaved,
 }: BuilderAgentPanelProps) {
   const [activeTab, setActiveTab] = useState<BuilderTabKey>('steps')
+  const askBuilder = useAskBuilder()
 
   return (
     <section aria-label="Agent" className={`box-border flex min-w-0 flex-[1_1_440px] flex-col bg-subtle ${splitPaneColumnClassName}`}>
@@ -182,7 +209,7 @@ export function BuilderAgentPanel({
 
       {activeTab === 'nodes' ? (
         <div role="tabpanel" id="builder-panel-nodes" aria-labelledby="builder-tab-nodes" className="flex min-h-0 flex-1 flex-col">
-          <NodesView agent={agent} onGraphSaved={onGraphSaved} />
+          <NodesView agent={agent} onGraphSaved={onGraphSaved} pluginRequirements={requirements} onAskBuilder={askBuilder} />
         </div>
       ) : (
         <div role="tabpanel" id={`builder-panel-${activeTab}`} aria-labelledby={`builder-tab-${activeTab}`} className={`flex flex-col gap-6 p-6 ${splitPaneScrollClassName}`}>
