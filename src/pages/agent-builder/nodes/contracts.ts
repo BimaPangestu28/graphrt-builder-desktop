@@ -53,6 +53,12 @@ export interface NodeCanvasProps {
   onOpenNodeSettings?: (nodeId: string) => void
   /** "Ask the builder about this": pre-fills the chat with `text` (never sends). Empty text only focuses the chat. */
   onAskBuilder?: (text: string) => void
+  /**
+   * Phase 2: opens the Add node palette at an anchor: context menu "Add node after"
+   * (`{ type: 'after-node', nodeId }`) and the "+" on an arrow (`{ type: 'on-edge', edgeId }`).
+   * Drops from the palette are handled around the canvas (`palette/PaletteDropZone`).
+   */
+  onRequestAddNode?: (anchor: AddNodeAnchor) => void
 }
 
 /** A setup gap shown on a plugin step's card ("Not linked", "Not installed"). */
@@ -87,6 +93,32 @@ export interface NodeInspectorProps {
   requestedSection?: { section: 'change-action'; sequence: number } | null
 }
 
+/**
+ * Where the Add node palette puts the node it adds:
+ * - `after-node`: on the node's outgoing default arrow (the selected node)
+ * - `after-exit`: after one exit of a node, before what it led to (canvas context menu "Add node after")
+ * - `on-edge`: between the arrow's two steps (the "+" on an arrow, a drop on an arrow)
+ * - `at-position`: unconnected at a canvas position (a drop on empty canvas; relative to `parentId` when set)
+ */
+export type AddNodeAnchor =
+  | { type: 'after-node'; nodeId: string }
+  | { type: 'after-exit'; source: string; sourceHandle: string }
+  | { type: 'on-edge'; edgeId: string }
+  | { type: 'at-position'; x: number; y: number; parentId?: string | null }
+
+/**
+ * A node the palette adds, with where it goes. Apply it as ONE undo step:
+ * `applyNodePlacement(controller, placement)` from `palette/nodePlacement.ts`.
+ */
+export interface NodePlacement {
+  node: GraphNode
+  anchor: AddNodeAnchor | null
+  /** Its canvas position when one can be worked out; null lets auto-layout place it. */
+  layout: NodeLayout | null
+  /** Plain-words edit description ("added Format text after Ask a model"). */
+  description: string
+}
+
 /** Add node palette (palette agent): adds a node from the library. */
 export interface AddNodePaletteProps {
   isOpen: boolean
@@ -102,6 +134,18 @@ export interface AddNodePaletteProps {
    * show "Adding after …" and should put new nodes in the same container as `source`.
    */
   insertAfter?: { source: string; sourceHandle: string } | null
+  /** Where a click / Enter adds (selected node, context node, arrow); null: unconnected. */
+  anchor?: AddNodeAnchor | null
+  /** Saved positions, to place the new node beside its anchor. */
+  positions?: Record<string, NodeLayout>
+  /** Adds the node with its arrows as one edit; preferred over `onAddNode` when given. */
+  onPlaceNode?: (placement: NodePlacement) => void
+  /** After a catalog plugin was installed (with approval): reload the node library. */
+  onPluginInstalled?: (pluginName: string) => void | Promise<void>
+  /** A kind dropped on the canvas that needs an install approval first (opens the palette on it). */
+  requestedKind?: { kind: string; anchor: AddNodeAnchor | null; requestId: number } | null
+  /** A palette row started (kind) or ended (null) a drag, for the drop ghost's name. */
+  onDragKindChange?: (kind: string | null) => void
 }
 
 /** Live run overlay (live/sync agent): run state per node and edge during a test run. */
