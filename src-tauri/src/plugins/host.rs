@@ -44,6 +44,8 @@ pub(crate) struct PluginState {
     /// Full node descriptors (for the builder prompt and action checks).
     pub descriptors: Vec<graphrt_core::catalog::NodeDescriptor>,
     pub tools: Vec<String>,
+    /// The tools as the manifest declares them (description, JSON Schema of the arguments).
+    pub tool_specs: Vec<graphrt_core::tool::ToolSpec>,
     pub trusted: bool,
     pub load_error: Option<String>,
     pub warnings: Vec<String>,
@@ -262,6 +264,7 @@ fn state_from_manifest(manifest: &LoadedManifest, trusted: &BTreeSet<String>) ->
         permissions: PluginPermissions::from(&plugin.permissions),
         descriptors: plugin.nodes.clone(),
         tools: plugin.tools.iter().map(|tool| tool.name.clone()).collect(),
+        tool_specs: plugin.tools.clone(),
         trusted: trusted.contains(&plugin.name),
         load_error: None,
         warnings: Vec::new(),
@@ -276,6 +279,7 @@ fn failed_state(dir: &Path, message: String) -> PluginState {
         permissions: PluginPermissions::default(),
         descriptors: Vec::new(),
         tools: Vec::new(),
+        tool_specs: Vec::new(),
         trusted: false,
         load_error: Some(message),
         warnings: Vec::new(),

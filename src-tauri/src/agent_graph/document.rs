@@ -12,9 +12,9 @@
 
 use std::collections::HashSet;
 
-use graphrt_core::dsl::{EdgeDoc, ErrorStrategy, NodeDoc, NodePolicy, RetryPolicy};
+use graphrt_core::dsl::{EdgeDoc, ErrorStrategy, NodeDoc, NodePolicy, RetryPolicy, VariableDecl};
 use graphrt_core::graph::SOURCE_HANDLE;
-use graphrt_core::{IndexMap, Value, Workflow};
+use graphrt_core::{IndexMap, Value, ValueType, Workflow};
 use serde_json::{Map, Value as Json};
 
 use super::model::{EdgeEdit, GraphEdit, NodeEdit, OnErrorStrategy, OnErrorView, RetryView};
@@ -87,6 +87,9 @@ impl EditableDocument {
         let mut workflow = self.workflow.clone();
         workflow.graph.nodes = nodes;
         workflow.graph.edges = edges;
+        for secret_name in &edit.declare_secrets {
+            declare_secret(&mut workflow, secret_name)?;
+        }
         Ok(workflow)
     }
 
@@ -106,10 +109,60 @@ impl EditableDocument {
         graph.insert("nodes".into(), nodes);
         graph.insert("edges".into(), Json::Array(workflow.graph.edges.iter().map(edge_json).collect()));
         document.insert("graph".into(), Json::Object(graph));
+        write_new_env_declarations(&mut document, workflow)?;
         let yaml = serde_saphyr::to_string(&Json::Object(document))
             .map_err(|error| AppError::Workflow(format!("could not write the workflow document: {error}")))?;
         Ok(format!("{}{yaml}", self.leading_comments))
     }
+}
+
+/// Adds `env: { name, type: secret }` unless the workflow declares `secret_name` already.
+///
+/// # Errors
+/// `InvalidInput` for a name that is not a valid secret name (letters, digits, `_`).
+fn declare_secret(workflow: &mut Workflow, secret_name: &str) -> AppResult<()> {
+    let secret_name = secret_name.trim();
+    let is_valid = secret_name.chars().next().is_some_and(|first| first.is_ascii_alphabetic() || first == '_')
+        && secret_name.chars().all(|character| character.is_ascii_alphanumeric() || character == '_');
+    if !is_valid {
+        return Err(AppError::InvalidInput(format!("`{secret_name}` is not a valid secret name")));
+    }
+    if workflow.env.iter().any(|declaration| declaration.name == secret_name) {
+        return Ok(());
+    }
+    workflow.env.push(VariableDecl {
+        name: secret_name.to_owned(),
+        ty: ValueType::Secret,
+        value: None,
+        description: None,
+    });
+    Ok(())
+}
+
+/// Appends the `env` declarations of `workflow` the raw document does not have (new
+/// secrets from [`declare_secret`]); the existing ones stay exactly as written.
+fn write_new_env_declarations(document: &mut Map<String, Json>, workflow: &Workflow) -> AppResult<()> {
+    let mut env = match document.remove("env") {
+        Some(Json::Array(env)) => env,
+        Some(other) => {
+            document.insert("env".into(), other);
+            return Ok(());
+        }
+        None => Vec::new(),
+    };
+    let written: HashSet<String> =
+        env.iter().filter_map(|entry| entry.get("name").and_then(Json::as_str).map(str::to_owned)).collect();
+    for declaration in workflow.env.iter().filter(|declaration| !written.contains(&declaration.name)) {
+        env.push(serde_json::json!({ "name": declaration.name, "type": declaration_type(declaration)? }));
+    }
+    if !env.is_empty() {
+        document.insert("env".into(), Json::Array(env));
+    }
+    Ok(())
+}
+
+fn declaration_type(declaration: &VariableDecl) -> AppResult<Json> {
+    serde_json::to_value(declaration.ty).map_err(|error| AppError::Workflow(error.to_string()))
 }
 
 fn parse_raw(text: &str) -> AppResult<Json> {

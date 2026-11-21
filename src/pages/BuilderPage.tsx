@@ -117,6 +117,8 @@ export function BuilderPage() {
         undoErrorMessage={revisions.undoErrorMessage}
         onSubmitRequest={(request) => void revisions.sendChangeRequest(request)}
         onToggleUndo={() => void revisions.toggleUndo()}
+        onStopRequest={() => void revisions.stopChangeRequest()}
+        isStopping={revisions.isStopping}
         pluginSetupAnchor={pluginSetupPlacement.anchor}
         askDraft={askDraft}
         pluginSetupMessage={<PluginRequirementsMessage ref={pluginSetupMessageRef} setup={pluginSetup} />}

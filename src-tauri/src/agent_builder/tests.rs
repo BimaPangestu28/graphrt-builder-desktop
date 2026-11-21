@@ -544,7 +544,54 @@ async fn revise_from_chat(
     instruction: &str,
 ) -> AppResult<RevisionResult> {
     let revision = revise_agent_with_model(db, builder, agent_id, instruction, &|_| {});
-    history::revise_with_chat_history(db, agent_id, instruction, revision).await
+    stoppable_revision_with_history(db, agent_id, instruction, revision).await
+}
+
+/// A model whose reply never arrives, like a slow provider; counts the calls it got.
+#[derive(Debug, Default)]
+struct StalledModel {
+    calls: std::sync::atomic::AtomicUsize,
+}
+
+impl ChatModel for StalledModel {
+    fn chat(&self, _request: ChatRequest) -> futures::future::BoxFuture<'_, Result<graphrt_llm::ChatStream, LlmError>> {
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Box::pin(std::future::pending())
+    }
+}
+
+#[tokio::test]
+async fn stopping_a_chat_revision_releases_the_agent_and_notes_it_in_the_chat() {
+    use crate::storage::models::{BuilderMessageStatus, STOPPED_REPLY_TEXT};
+    let db = test_database();
+    let agent = create_cafe_agent(&db);
+    let model = Arc::new(StalledModel::default());
+    let builder = BuilderModel {
+        model: model.clone(),
+        choice: ModelChoice { provider: ModelProvider::Openai, name: "gpt-4o-mini".into() },
+        available_providers: vec!["openai".into()],
+    };
+    let stop_while_drafting = async {
+        // Wait until the revision holds the edit lock and has asked the model.
+        while model.calls.load(std::sync::atomic::Ordering::SeqCst) == 0 {
+            tokio::task::yield_now().await;
+        }
+        assert!(edit_lock::is_builder_editing(&agent.id), "the Nodes view waits while the builder works");
+        assert!(stop::stop_revisions(&agent.id));
+    };
+
+    let (outcome, ()) =
+        tokio::join!(revise_from_chat(&db, &builder, &agent.id, "Make it friendlier"), stop_while_drafting);
+
+    assert!(matches!(outcome, Err(AppError::Stopped)));
+    assert!(!edit_lock::is_builder_editing(&agent.id), "stopping releases the edit lock");
+    let messages = db.list_builder_messages(&agent.id).unwrap();
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].text, "Make it friendlier");
+    assert_eq!(messages[1].text, STOPPED_REPLY_TEXT);
+    assert_eq!(messages[1].status, BuilderMessageStatus::Done);
+    assert_eq!((messages[1].version_before, messages[1].version_after), (Some(1), None));
+    assert_eq!(db.get_agent(&agent.id).unwrap().current_version, 1, "nothing was saved");
 }
 
 #[tokio::test]

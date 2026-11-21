@@ -40,10 +40,16 @@ Tests that render the canvas call `installReactFlowTestEnvironment()` from
 | `getAgentEditState` / `listenToAgentEditState` | `get_agent_edit_state` / event `agent-edit-state` | builder busy |
 | `validateAgentGraph(agentId, baseVersion, edit)` | `validate_agent_graph` | problems of an unsaved edit; saves nothing, works while busy |
 | `getCanvasNotes` / `saveCanvasNotes` | `get_canvas_notes` / `save_canvas_notes` | sticky notes per version (`canvas_notes` table), copied forward to every new version |
+| `getToolInputSchemas()` | `get_tool_input_schemas` | JSON Schema of each plugin tool (manifest) and MCP tool (cached from the server's last Test connection); `inputSchema: null` when unknown |
+| `stopAgentRevision(agentId)` (`src/api/builder.ts`) | `stop_agent_revision` | Stop the builder: the running chat revision ends with `stopped`, saves nothing, releases the edit lock, chat notes "Stopped by you" |
 
 Types: `src/api/agentGraphTypes.ts` (mirrors `src-tauri/src/agent_graph/model.rs`).
 The sample backend (`src/api/sampleBackend/agentGraph.ts`) behaves the same in the
 browser preview and tests; `setSampleBuilderBusy` and `resetSampleAgentGraphs` help tests.
+
+`GraphEdit.declareSecrets`: secret names to add to the document's `env` (`type: secret`) when missing.
+`toGraphEdit` sends the working graph's secret `env` names, so adding one to `graph.env` (the HTTP
+sign-in picker does, `inspector/SecretPicker.tsx`) declares it on save.
 
 Save errors (`BackendError.code`):
 - `builder_busy`: a chat change is running. The hook sets `status: 'builder-busy'`.
@@ -108,9 +114,19 @@ and `save` does not call the backend.
 - **Autosave** (spec S1): `useGraphAutosave` saves 1.5 s after the last edit; refused edits are not resent
   until they change. `NodesView autosaveDelayMs={null}` turns it off (tests).
 
+## Inspector requests (`requestedSection`)
+
+`NodeInspector` takes `requestedSection: { section, sequence, nodeId? }` (`contracts.ts`). `section` is
+`change-action` (opens the action picker), `on-error`, another `InspectorSection` `sectionKey` (`sign-in`,
+`inputs`, `tool`, `tools`, `time-limit`) or a field's config path (`url`, `config.timeout.read`,
+`authorization.config.api_key`, `tool_parameters.city`). The section opens (closed ones look inside
+themselves first), the control scrolls into view and gets focus. Each `sequence` is handled once; a request
+with another `nodeId` is ignored. `NodesView.requestInspectorSection(nodeId, section)` selects the node and
+sends one. Fields are found by `data-field-path` (`Field` / `TemplateField` `fieldPath`, schema form
+properties by name), else by a label matching the last path segment.
+
 ## Still open
 
-- Stop the builder: no backend command to cancel a running revision yet (`onStopBuilder` is unwired).
 - Show node selects the step; centering the viewport on it needs the canvas's React Flow instance.
 - Notes cannot be resized yet; the context menu entry (Add note) belongs to the canvas menu.
 - Change action (B2) lists a plugin's other kinds from `getNodeKinds()` filtered by `plugin.name`.

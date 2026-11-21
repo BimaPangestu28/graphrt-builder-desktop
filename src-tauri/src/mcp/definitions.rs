@@ -53,6 +53,10 @@ pub enum McpServerTransport {
 pub struct McpToolInfo {
     pub name: String,
     pub description: String,
+    /// JSON Schema of the tool's arguments (`inputSchema` of `tools/list`), kept so the
+    /// Nodes view shows the tool's inputs as a form. Absent for checks made before it was kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_schema: Option<serde_json::Value>,
 }
 
 /// Result of the latest "Test connection".

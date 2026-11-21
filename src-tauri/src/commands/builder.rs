@@ -43,6 +43,14 @@ pub async fn revise_agent(
     agent_builder::revise_agent_from_chat(&state.db, &state.credentials, &agent_id, &instruction, &report).await
 }
 
+/// "Stop the builder": cancels the running chat change of `agent_id` (its model call is
+/// dropped, the Nodes view can edit again and the chat notes "Stopped by you").
+/// Returns false when no change was running.
+#[tauri::command]
+pub fn stop_agent_revision(agent_id: String) -> bool {
+    agent_builder::stop::stop_revisions(&agent_id)
+}
+
 /// The agent's saved builder chat, oldest first, shown before new changes on screen 04.
 #[tauri::command]
 pub fn list_builder_messages(state: State<'_, AppState>, agent_id: String) -> AppResult<Vec<BuilderMessage>> {

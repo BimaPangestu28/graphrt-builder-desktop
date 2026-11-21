@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { restoreAgentVersion } from '@/api/agents'
-import { reviseAgent } from '@/api/builder'
-import type { BuildProgress, BuildStage, DraftPreview } from '@/api/types'
+import { reviseAgent, stopAgentRevision } from '@/api/builder'
+import { BackendError } from '@/api/client'
+import { stoppedReplyText, type BuildProgress, type BuildStage, type DraftPreview } from '@/api/types'
 import { describeError } from '@/lib/agentDisplay'
 import { describeFailedChange } from './ChatBubbles'
 
@@ -9,7 +10,8 @@ import { describeFailedChange } from './ChatBubbles'
 export interface ChatExchange {
   id: number
   request: string
-  status: 'pending' | 'done' | 'failed'
+  /** `stopped`: the user stopped it ("Stopped by you"), nothing was saved. */
+  status: 'pending' | 'done' | 'failed' | 'stopped'
   /** Latest stage message while pending ("Updating the steps…"), the backend summary once done, or the error message when it failed. */
   reply: string
   changedStepIds: string[]
@@ -53,8 +55,9 @@ interface UseAgentRevisionsOptions {
 }
 
 /**
- * Chat changes on screen 04: Send calls `reviseAgent` (a new version), and Undo / Redo
- * restore the version before / after the last change (restoring also adds a version,
+ * Chat changes on screen 04: Send calls `reviseAgent` (a new version), Stop cancels the
+ * change in progress (`stopAgentRevision`: nothing is saved, "Stopped by you"), and Undo /
+ * Redo restore the version before / after the last change (restoring also adds a version,
  * history is never rewritten).
  *
  * @returns Exchanges, the undoable revision, ids to highlight, and the actions
@@ -64,6 +67,7 @@ export function useAgentRevisions({ agentId, currentVersion, onAgentChanged }: U
   const [latestRevision, setLatestRevision] = useState<LatestRevision | null>(null)
   const [isBusy, setIsBusy] = useState(false)
   const [undoErrorMessage, setUndoErrorMessage] = useState<string | null>(null)
+  const [isStopping, setIsStopping] = useState(false)
 
   function updateExchange(exchangeId: number, changes: Partial<ChatExchange>) {
     setExchanges((previousExchanges) => previousExchanges.map((exchange) => (exchange.id === exchangeId ? { ...exchange, ...changes } : exchange)))
@@ -97,9 +101,27 @@ export function useAgentRevisions({ agentId, currentVersion, onAgentChanged }: U
       })
       setLatestRevision({ exchangeId, versionBefore: currentVersion, versionAfter: revision.agent.currentVersion, isUndone: false })
     } catch (revisionError) {
+      if (revisionError instanceof BackendError && revisionError.code === 'stopped') {
+        updateExchange(exchangeId, { status: 'stopped', reply: stoppedReplyText, draft: null, writingStage: null })
+        return
+      }
       updateExchange(exchangeId, { status: 'failed', reply: describeFailedChange(describeError(revisionError)), draft: null, writingStage: null })
     } finally {
       setIsBusy(false)
+      setIsStopping(false)
+    }
+  }
+
+  /** Stops the change in progress (its pending exchange then shows "Stopped by you"). */
+  async function stopChangeRequest() {
+    if (isStopping) return
+    setIsStopping(true)
+    try {
+      const wasRunning = await stopAgentRevision(agentId)
+      if (!wasRunning) setIsStopping(false)
+    } catch (stopError) {
+      console.warn('could not stop the builder', stopError)
+      setIsStopping(false)
     }
   }
 
@@ -143,5 +165,5 @@ export function useAgentRevisions({ agentId, currentVersion, onAgentChanged }: U
   const latestExchange = exchanges.find((exchange) => exchange.id === latestRevision?.exchangeId)
   if (latestRevision && !latestRevision.isUndone && latestExchange) latestExchange.changedStepIds.forEach((stepId) => highlightedStepIds.add(stepId))
 
-  return { exchanges, latestRevision, highlightedStepIds, isBusy, undoErrorMessage, sendChangeRequest, toggleUndo, recordNodesEdit }
+  return { exchanges, latestRevision, highlightedStepIds, isBusy, isStopping, undoErrorMessage, sendChangeRequest, stopChangeRequest, toggleUndo, recordNodesEdit }
 }

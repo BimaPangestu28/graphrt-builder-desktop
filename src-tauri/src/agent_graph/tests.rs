@@ -330,6 +330,40 @@ fn the_users_description_is_used_for_the_summary() {
 }
 
 #[test]
+fn secrets_a_step_now_uses_are_declared_in_env_once() {
+    let db = Database::open_in_memory().unwrap();
+    let agent_id = create_agent(&db, APPROVAL_LOOP);
+    let registry = flow::builtin_node_registry();
+    let context = GraphContext::new(&registry);
+    let mut edit = edit_of(&load_agent_graph(&db, &agent_id, None, &context).unwrap());
+    // MAPS_API_KEY is declared already; CRM_TOKEN is new.
+    edit.declare_secrets = vec!["CRM_TOKEN".into(), "MAPS_API_KEY".into()];
+
+    let result = save_agent_graph(&db, &agent_id, 1, &edit, &context).unwrap();
+
+    assert!(result.saved);
+    let env: Vec<(&str, bool)> = result.graph.env.iter().map(|var| (var.name.as_str(), var.is_secret)).collect();
+    assert_eq!(
+        env,
+        [("MAPS_API_KEY", true), ("WHATSAPP_TOKEN", true), ("WHATSAPP_PHONE_NUMBER_ID", false), ("CRM_TOKEN", true)]
+    );
+    let saved_yaml = db.get_agent(&agent_id).unwrap().flow_yaml;
+    assert_eq!(saved_yaml.matches("CRM_TOKEN").count(), 1, "{saved_yaml}");
+    assert!(flow::compile_draft(&saved_yaml).is_ok(), "{saved_yaml}");
+
+    let mut again = edit_of(&result.graph);
+    again.declare_secrets = vec!["CRM_TOKEN".into()];
+    assert!(
+        !save_agent_graph(&db, &agent_id, 2, &again, &context).unwrap().saved,
+        "declaring it twice changes nothing"
+    );
+
+    let mut invalid = edit_of(&result.graph);
+    invalid.declare_secrets = vec!["not a name".into()];
+    assert!(matches!(save_agent_graph(&db, &agent_id, 2, &invalid, &context), Err(AppError::InvalidInput(_))));
+}
+
+#[test]
 fn an_edit_that_changes_nothing_saves_nothing() {
     let db = Database::open_in_memory().unwrap();
     let agent_id = create_agent(&db, SIMPLE_ANSWER);
@@ -523,7 +557,13 @@ fn unknown_agents_and_versions_are_not_found() {
     assert!(matches!(load_agent_graph(&db, "ghost", None, &context), Err(AppError::NotFound(_))));
     let agent_id = create_agent(&db, SIMPLE_ANSWER);
     assert!(matches!(load_agent_graph(&db, &agent_id, Some(7), &context), Err(AppError::NotFound(_))));
-    let edit = GraphEdit { nodes: Vec::new(), edges: Vec::new(), description: None, layout: None };
+    let edit = GraphEdit {
+        nodes: Vec::new(),
+        edges: Vec::new(),
+        description: None,
+        layout: None,
+        declare_secrets: Vec::new(),
+    };
     assert!(matches!(save_agent_graph(&db, "ghost", 1, &edit, &context), Err(AppError::NotFound(_))));
 }
 

@@ -57,6 +57,9 @@ interface ChangeReplyProps {
   undoableRevision: LatestRevision | null
   isBusy: boolean
   onToggleUndo: () => void
+  /** Stops the change while it runs. */
+  onStop?: () => void
+  isStopping: boolean
 }
 
 /**
@@ -66,12 +69,27 @@ interface ChangeReplyProps {
  * opt out of it (`aria-live="off"`) and screen readers hear stage changes and the final
  * reply instead of every token.
  */
-function LiveChangeReply({ exchange }: { exchange: ChatExchange }) {
+function LiveChangeReply({ exchange, onStop, isStopping }: { exchange: ChatExchange; onStop?: () => void; isStopping: boolean }) {
   const hasExplanation = exchange.explanation.trim().length > 0
   const activity = exchange.writingStage && exchange.draft ? describeDraftActivity(exchange.writingStage, exchange.draft.outputTokens) : null
+  const stopButton = onStop && (
+    <button type="button" onClick={onStop} disabled={isStopping} className={`${outlineButtonClassNames} h-7 shrink-0 px-2.5 text-[12px]`}>
+      {isStopping ? 'Stopping…' : 'Stop'}
+    </button>
+  )
   return (
     <div className={`${assistantBlockClassNames} gap-2.5`}>
-      {hasExplanation ? <VisuallyHidden>{exchange.reply}</VisuallyHidden> : <p className="m-0 leading-[1.55] text-body">{exchange.reply}</p>}
+      {hasExplanation ? (
+        <>
+          <VisuallyHidden>{exchange.reply}</VisuallyHidden>
+          {stopButton && <div className="flex justify-end">{stopButton}</div>}
+        </>
+      ) : (
+        <div className="flex items-center justify-between gap-3">
+          <p className="m-0 leading-[1.55] text-body">{exchange.reply}</p>
+          {stopButton}
+        </div>
+      )}
       {(hasExplanation || exchange.draft) && (
         <div aria-live="off" className="flex flex-col gap-2.5">
           {hasExplanation && <p className="m-0 leading-[1.55]">{exchange.explanation}</p>}
@@ -92,8 +110,9 @@ function describeUndone(undoableRevision: LatestRevision): string {
 }
 
 /** Reply to a change request: progress, the explanation and summary with changed steps, and Undo/Redo. */
-function ChangeReply({ exchange, steps, undoableRevision, isBusy, onToggleUndo }: ChangeReplyProps) {
-  if (exchange.status === 'pending') return <LiveChangeReply exchange={exchange} />
+function ChangeReply({ exchange, steps, undoableRevision, isBusy, onToggleUndo, onStop, isStopping }: ChangeReplyProps) {
+  if (exchange.status === 'pending') return <LiveChangeReply exchange={exchange} onStop={onStop} isStopping={isStopping} />
+  if (exchange.status === 'stopped') return <p className="m-0 max-w-[92%] leading-[1.55] text-muted">{exchange.reply}</p>
   if (exchange.status === 'failed') return <p className="m-0 max-w-[92%] leading-[1.55] text-danger">{exchange.reply}</p>
   const changedSteps = steps.filter((flowStep) => exchange.changedStepIds.includes(flowStep.id))
   const isUndone = undoableRevision?.isUndone ?? false
@@ -196,6 +215,10 @@ interface BuilderChatPanelProps {
   undoErrorMessage: string | null
   onSubmitRequest: (request: string) => void
   onToggleUndo: () => void
+  /** "Stop" next to "Working on it…": cancels the change in progress. */
+  onStopRequest?: () => void
+  /** True between Stop and the change ending. */
+  isStopping?: boolean
   /** The plugin setup message, shown at `pluginSetupAnchor`. */
   pluginSetupMessage?: ReactNode
   /** "opening": first builder message · exchange id: under that revision's reply · null: not shown. */
@@ -206,7 +229,7 @@ interface BuilderChatPanelProps {
 
 /** Left column of screen 04: the build conversation plus a box to ask for more changes. */
 export function BuilderChatPanel(props: BuilderChatPanelProps) {
-  const { agent, steps, openingExplanation, savedMessages, exchanges, latestRevision, isBusy, undoErrorMessage, onSubmitRequest, onToggleUndo, pluginSetupMessage, pluginSetupAnchor, askDraft } = props
+  const { agent, steps, openingExplanation, savedMessages, exchanges, latestRevision, isBusy, undoErrorMessage, onSubmitRequest, onToggleUndo, onStopRequest, isStopping = false, pluginSetupMessage, pluginSetupAnchor, askDraft } = props
   const chatBodyRef = useFollowNewContent()
   return (
     <section aria-label="Chat" className={`box-border flex min-w-0 flex-[1_1_380px] flex-col border-r border-line bg-surface ${splitPaneColumnClassName}`}>
@@ -241,7 +264,7 @@ export function BuilderChatPanel(props: BuilderChatPanelProps) {
           return (
             <div key={exchange.id} className="flex flex-col gap-5">
               <UserChatBubble>{exchange.request}</UserChatBubble>
-              <ChangeReply exchange={exchange} steps={steps} undoableRevision={undoableRevision} isBusy={isBusy} onToggleUndo={onToggleUndo} />
+              <ChangeReply exchange={exchange} steps={steps} undoableRevision={undoableRevision} isBusy={isBusy} onToggleUndo={onToggleUndo} onStop={onStopRequest} isStopping={isStopping} />
               {pluginSetupAnchor === exchange.id && exchange.status !== 'pending' && pluginSetupMessage}
             </div>
           )

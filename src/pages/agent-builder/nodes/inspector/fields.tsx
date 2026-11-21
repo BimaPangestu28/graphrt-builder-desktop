@@ -1,5 +1,6 @@
-import { useEffect, useId, useState, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Icon, joinClassNames } from '@/components/ui'
+import { fieldPathAttribute, findFieldControl, firstFocusable, isSectionKeyTarget, revealElement, sectionContentAttribute, useSectionRequest } from './sectionRequest'
 
 /**
  * Form building blocks of the step inspector, styled like the spec's B-boards: small
@@ -15,11 +16,71 @@ export const hintClassName = 'm-0 text-[12px] leading-normal text-muted'
 export const linkButtonClassName = 'cursor-pointer self-start border-0 bg-transparent p-0 text-[12px] font-medium text-brand hover:text-brand-strong disabled:cursor-not-allowed disabled:opacity-50'
 
 /** A collapsible group of settings ("Inputs", "When this step fails"). */
-export function InspectorSection({ title, defaultOpen = true, children, badge }: { title: string; defaultOpen?: boolean; children: ReactNode; badge?: ReactNode }) {
+interface InspectorSectionProps {
+  title: string
+  defaultOpen?: boolean
+  children: ReactNode
+  badge?: ReactNode
+  /** Key a `requestedSection` can name to open this section (`on-error`, `sign-in`). */
+  sectionKey?: string
+}
+
+/**
+ * Opens the section for a matching `requestedSection` (its key, or a field inside it) and
+ * reveals the target. A closed section renders its body hidden for one pass to look for
+ * the field; a section that does not hold it closes that body again.
+ */
+function useSectionRequestHandling(sectionKey: string | undefined, isOpen: boolean, open: () => void) {
+  const { request, claim } = useSectionRequest()
+  const [probedSequence, setProbedSequence] = useState<number | null>(null)
+  const [revealTarget, setRevealTarget] = useState<{ fieldPath: string | null } | null>(null)
+  const handledSequenceRef = useRef<number | null>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const sectionRef = useRef<HTMLElement>(null)
+
+  useLayoutEffect(() => {
+    if (!request || handledSequenceRef.current === request.sequence) return
+    if (sectionKey && request.section === sectionKey) {
+      handledSequenceRef.current = request.sequence
+      if (!claim(request.sequence)) return
+      open()
+      setRevealTarget({ fieldPath: null })
+      return
+    }
+    if (isSectionKeyTarget(request.section)) {
+      // Another section's key (`change-action`): nothing to look for in here.
+      handledSequenceRef.current = request.sequence
+      return
+    }
+    if (!isOpen && probedSequence !== request.sequence) {
+      setProbedSequence(request.sequence)
+      return
+    }
+    handledSequenceRef.current = request.sequence
+    setProbedSequence(null)
+    if (findFieldControl(contentRef.current, request.section) && claim(request.sequence)) {
+      open()
+      setRevealTarget({ fieldPath: request.section })
+    }
+  }, [request, claim, sectionKey, isOpen, probedSequence, open])
+
+  useEffect(() => {
+    if (!revealTarget || !isOpen) return
+    const control = revealTarget.fieldPath ? findFieldControl(contentRef.current, revealTarget.fieldPath) : (firstFocusable(contentRef.current) ?? firstFocusable(sectionRef.current))
+    revealElement(control)
+    setRevealTarget(null)
+  }, [revealTarget, isOpen])
+
+  return { isProbing: probedSequence !== null, contentRef, sectionRef }
+}
+
+export function InspectorSection({ title, defaultOpen = true, children, badge, sectionKey }: InspectorSectionProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen)
   const contentId = useId()
+  const openRef = useRef(() => setIsOpen(true))
+  const { isProbing, contentRef, sectionRef } = useSectionRequestHandling(sectionKey, isOpen, openRef.current)
   return (
-    <section className="flex flex-col gap-2.5 border-t border-chip pt-3">
+    <section ref={sectionRef} data-section-key={sectionKey} className="flex scroll-mt-3 flex-col gap-2.5 border-t border-chip pt-3">
       <h3 className="m-0 text-[13px] font-semibold">
         <button
           type="button"
@@ -37,8 +98,8 @@ export function InspectorSection({ title, defaultOpen = true, children, badge }:
           </span>
         </button>
       </h3>
-      {isOpen && (
-        <div id={contentId} className="flex flex-col gap-3">
+      {(isOpen || isProbing) && (
+        <div id={contentId} ref={contentRef} hidden={!isOpen} {...{ [sectionContentAttribute]: '' }} className="flex flex-col gap-3">
           {children}
         </div>
       )}
@@ -47,9 +108,28 @@ export function InspectorSection({ title, defaultOpen = true, children, badge }:
 }
 
 /** A labelled field with an optional hint and an inline problem. */
-export function Field({ label, htmlFor, required, hint, error, warning, children }: { label: ReactNode; htmlFor?: string; required?: boolean; hint?: ReactNode; error?: string | null; warning?: string | null; children: ReactNode }) {
+export function Field({
+  label,
+  htmlFor,
+  required,
+  hint,
+  error,
+  warning,
+  children,
+  fieldPath,
+}: {
+  label: ReactNode
+  htmlFor?: string
+  required?: boolean
+  hint?: ReactNode
+  error?: string | null
+  warning?: string | null
+  children: ReactNode
+  /** Config path a `requestedSection` can name to focus this field (`url`, `authorization.config.api_key`). */
+  fieldPath?: string
+}) {
   return (
-    <div className="flex min-w-0 flex-col gap-1.5">
+    <div className="flex min-w-0 flex-col gap-1.5" {...(fieldPath ? { [fieldPathAttribute]: fieldPath } : {})}>
       <label htmlFor={htmlFor} className={labelClassName}>
         {label}
         {required && (

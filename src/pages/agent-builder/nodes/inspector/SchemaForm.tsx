@@ -4,6 +4,7 @@ import { isEmptyConfigValue, isJsonObject, type JsonObject } from './configPaths
 import { Field, NumberInput, SelectInput, ToggleRow } from './fields'
 import { useInspector } from './InspectorContext'
 import { readSelector } from './references'
+import { fieldPathAttribute } from './sectionRequest'
 import { SelectorField } from './SelectorField'
 import { TemplateField } from './TemplateField'
 
@@ -109,10 +110,20 @@ interface SchemaPropertyFieldProps {
   requiredMessage?: string
   /** Extra line under the field ("Kept: both actions use it"). */
   note?: string
+  /** Path a `requestedSection` names it by; defaults to `name` (tool inputs use `tool_parameters.<name>`). */
+  fieldPath?: string
 }
 
-/** One schema property as an input. */
-export function SchemaPropertyField({ name, property, value, required, onChange, requiredMessage, note }: SchemaPropertyFieldProps) {
+/** One schema property as an input, findable by a `requestedSection` naming its config path. */
+export function SchemaPropertyField(props: SchemaPropertyFieldProps) {
+  return (
+    <div className="contents" {...{ [fieldPathAttribute]: props.fieldPath ?? props.name }}>
+      <SchemaPropertyInput {...props} />
+    </div>
+  )
+}
+
+function SchemaPropertyInput({ name, property, value, required, onChange, requiredMessage, note }: SchemaPropertyFieldProps) {
   const { readOnly } = useInspector()
   const label = propertyLabel(name, property)
   const description = typeof property.description === 'string' ? property.description : undefined

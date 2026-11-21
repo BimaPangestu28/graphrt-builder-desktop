@@ -42,6 +42,8 @@ export type McpServerTransport = { kind: 'stdio'; command: string; args: string[
 export interface McpToolInfo {
   name: string
   description: string
+  /** JSON Schema of the tool's arguments from the last connection test; absent for older checks. */
+  inputSchema?: Record<string, unknown>
 }
 
 /** Outcome of the latest "Test connection". */

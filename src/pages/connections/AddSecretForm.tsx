@@ -12,8 +12,8 @@ const textInputClassNames =
   'box-border h-9 min-w-0 rounded-[9px] border border-line-strong bg-surface px-3 text-[14px] font-normal text-ink outline-none focus:border-ink'
 
 interface AddSecretFormProps {
-  /** Reloads the list after the secret was saved. */
-  onAdded: () => Promise<void>
+  /** Reloads the list after the secret was saved; gets the saved name (never the value). */
+  onAdded: (secretName: string) => Promise<void>
   /** Folds the form away again. */
   onClose: () => void
 }
@@ -48,7 +48,7 @@ export function AddSecretForm({ onAdded, onClose }: AddSecretFormProps) {
       setSecretNote('')
       setHasTriedSaving(false)
       setSavedName(name)
-      await onAdded()
+      await onAdded(name)
     } catch (saveError) {
       setErrorMessage(`Could not save ${name}: ${describeError(saveError)}`)
     } finally {

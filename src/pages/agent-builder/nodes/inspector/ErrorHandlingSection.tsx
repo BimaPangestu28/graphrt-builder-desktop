@@ -101,7 +101,7 @@ export function ErrorHandlingSection() {
   // Approvals and tools set `timeout_ms` in their own panel (expiry, tool wait).
   const ownsTimeout = node.kind === 'human-input' || node.kind === 'tool'
   return (
-    <InspectorSection title="When this step fails" defaultOpen={onError.strategy !== 'fail' || retry.maxRetries > 0}>
+    <InspectorSection title="When this step fails" sectionKey="on-error" defaultOpen={onError.strategy !== 'fail' || retry.maxRetries > 0}>
       <div className="flex flex-col gap-2">
         <span className="text-[12px] font-medium text-ink-2">Try again</span>
         <div className="flex flex-wrap items-center gap-2">

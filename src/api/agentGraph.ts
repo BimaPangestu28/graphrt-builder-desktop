@@ -11,9 +11,11 @@ import type {
   NodeLayout,
   NodeLayoutSet,
   SaveGraphResult,
+  ToolInputSchema,
 } from './agentGraphTypes'
 import { BackendError, callBackend, isDesktopApp, listenToBackend } from './client'
 import { sampleAgentGraphBackend } from './sampleBackend/agentGraph'
+import { listSampleToolInputSchemas } from './sampleBackend/sampleToolSchemas'
 
 /**
  * The builder's Nodes view: an agent version as a graph, the node library, saving
@@ -89,6 +91,16 @@ export function getNodeLayout(agentId: string, version?: number): Promise<NodeLa
 export function saveNodeLayout(agentId: string, version: number, nodes: NodeLayout[], viewport?: CanvasViewport | null): Promise<NodeLayoutSet> {
   if (!isDesktopApp()) return sampleAgentGraphBackend.saveNodeLayout(agentId, version, nodes, viewport ?? null)
   return callBackend('save_node_layout', { agentId, version, nodes, viewport: viewport ?? null })
+}
+
+/**
+ * Input schemas of the plugin tools (from their manifests) and MCP server tools (from each
+ * server's last connection test), for the "Use a tool" inputs form. Agents used as tools
+ * are not listed: their inputs come from `listAgentSteps`.
+ */
+export function getToolInputSchemas(): Promise<ToolInputSchema[]> {
+  if (!isDesktopApp()) return listSampleToolInputSchemas()
+  return callBackend('get_tool_input_schemas')
 }
 
 /** Whether the builder is changing the agent right now. */

@@ -387,6 +387,18 @@ impl PluginService {
             .collect()
     }
 
+    /// The tools of every loaded plugin as their manifests declare them, by plugin name
+    /// (tool provider). Plugins that failed to load have none.
+    pub fn tool_specs(&self) -> Vec<(String, Vec<graphrt_core::tool::ToolSpec>)> {
+        let snapshot = self.snapshot();
+        snapshot
+            .plugins
+            .iter()
+            .filter(|plugin| plugin.is_loaded() && !plugin.tool_specs.is_empty())
+            .map(|plugin| (plugin.name.clone(), plugin.tool_specs.clone()))
+            .collect()
+    }
+
     /// What people see for each plugin the app knows (installed ones, then the known
     /// catalog), keyed by technical name. Reading the install records may fail; the
     /// installed plugins then fall back to their catalog or humanized names.

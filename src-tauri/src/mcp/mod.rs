@@ -118,5 +118,8 @@ async fn list_server_tools(
     let listed = connection.refresh().await;
     connection.close().await;
     let specs = listed.map_err(|error| error.message)?;
-    Ok(specs.into_iter().map(|spec| McpToolInfo { name: spec.name, description: spec.description }).collect())
+    Ok(specs
+        .into_iter()
+        .map(|spec| McpToolInfo { name: spec.name, description: spec.description, input_schema: Some(spec.parameters) })
+        .collect())
 }

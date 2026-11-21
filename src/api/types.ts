@@ -209,6 +209,9 @@ export interface RevisionResult {
   explanation: string
 }
 
+/** The builder's reply to a change the user stopped (same words as the desktop backend). */
+export const stoppedReplyText = 'Stopped by you'
+
 /** One saved message of an agent's builder chat (mirrors `storage::models::BuilderMessage`). */
 export interface BuilderMessage {
   id: string
@@ -249,3 +252,5 @@ export type BackendErrorCode =
   | 'builder_busy'
   /** save_agent_graph: the edited graph has blocking problems (`details.problems`). */
   | 'invalid_graph'
+  /** revise_agent: the user stopped the change ("Stop the builder"); nothing was saved. */
+  | 'stopped'

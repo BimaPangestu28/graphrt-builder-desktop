@@ -5,7 +5,7 @@
 
 use std::future::Future;
 
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::storage::models::{Agent, NewBuilderMessage};
 use crate::storage::Database;
 
@@ -16,7 +16,8 @@ pub const BUILD_REPLY_TEXT: &str = "Your agent is ready";
 
 /// Runs a chat revision, then saves the request and the builder's reply: the
 /// summary, explanation, changed steps and versions, or the error message when
-/// it failed (`AppError` messages never contain secrets).
+/// it failed (`AppError` messages never contain secrets), or "Stopped by you"
+/// when the user stopped it.
 pub(crate) async fn revise_with_chat_history(
     db: &Database,
     agent_id: &str,
@@ -38,6 +39,7 @@ pub(crate) async fn revise_with_chat_history(
                 (version_before, revision.agent.current_version),
             )
         },
+        Err(AppError::Stopped) => NewBuilderMessage::builder_stopped(version_before),
         Err(error) => NewBuilderMessage::builder_failure(&error.to_string(), version_before),
     };
     save_messages(db, agent_id, &[NewBuilderMessage::user_request(instruction, version_before), reply]);

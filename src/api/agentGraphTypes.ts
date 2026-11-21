@@ -189,6 +189,8 @@ export interface GraphEdit {
   description?: string | null
   /** Positions to save for the new version. */
   layout?: NodeLayout[] | null
+  /** Saved secrets a step now uses: each one the document does not declare yet is added to `env` (`type: secret`). */
+  declareSecrets?: string[]
 }
 
 export interface SaveGraphResult {
@@ -285,4 +287,18 @@ export interface CanvasNoteSet {
   agentId: string
   version: number
   notes: CanvasNote[]
+}
+
+/**
+ * A plugin or MCP server tool and the JSON Schema of its arguments (`get_tool_input_schemas`,
+ * mirrors `agent_graph::tool_schemas::ToolInputSchema`), for "Use a tool" inputs as a form.
+ */
+export interface ToolInputSchema {
+  /** `provider_id`: the plugin or MCP server name. */
+  provider: string
+  name: string
+  description: string
+  source: 'plugin' | 'mcp'
+  /** Null when unknown (a server tested before schemas were kept): inputs are typed by name. */
+  inputSchema: Record<string, unknown> | null
 }

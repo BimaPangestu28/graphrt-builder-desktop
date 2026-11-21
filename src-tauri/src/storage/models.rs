@@ -192,6 +192,9 @@ pub struct BuilderMessage {
     pub created_at: String,
 }
 
+/// Text of the builder's reply to a change the user stopped.
+pub const STOPPED_REPLY_TEXT: &str = "Stopped by you";
+
 /// Fields of a builder chat message to save; id and timestamp are assigned by storage.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NewBuilderMessage {
@@ -227,6 +230,19 @@ impl NewBuilderMessage {
             status: BuilderMessageStatus::Done,
             version_before: versions.0,
             version_after: Some(versions.1),
+            changed_step_ids: Vec::new(),
+        }
+    }
+
+    /// A builder reply saying the user stopped the change before it was saved ("Stopped by you").
+    pub fn builder_stopped(version_before: Option<i64>) -> Self {
+        Self {
+            role: BuilderMessageRole::Builder,
+            text: STOPPED_REPLY_TEXT.to_owned(),
+            explanation: None,
+            status: BuilderMessageStatus::Done,
+            version_before,
+            version_after: None,
             changed_step_ids: Vec::new(),
         }
     }

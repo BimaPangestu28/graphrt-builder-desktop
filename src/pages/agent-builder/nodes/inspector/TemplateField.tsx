@@ -33,17 +33,35 @@ function createChip(path: string[], graph: AgentGraph, groups: ValueGroup[]): HT
   return chip
 }
 
+/**
+ * A zero-width space beside a chip that has no text next to it. Chips are not editable,
+ * so without a text node after (or before) one the caret has nowhere to go: WebKit puts
+ * typed text inside the chip or drops the caret. Never saved (see {@link serializeEditor}).
+ */
+const caretSpot = '​'
+
+function isChip(node: Node | null): boolean {
+  return node instanceof HTMLElement && node.hasAttribute(referenceAttribute)
+}
+
+/** Adds a {@link caretSpot} text node on each side of `chip` that has no text node. */
+function ensureCaretSpots(chip: Node): void {
+  if (chip.previousSibling === null || isChip(chip.previousSibling)) chip.parentNode?.insertBefore(document.createTextNode(caretSpot), chip)
+  if (chip.nextSibling === null || isChip(chip.nextSibling)) chip.parentNode?.insertBefore(document.createTextNode(caretSpot), chip.nextSibling)
+}
+
 function renderTemplateInto(element: HTMLElement, template: string, graph: AgentGraph, groups: ValueGroup[]): void {
   const nodes = parseTemplate(template).map((part) => (part.type === 'text' ? document.createTextNode(part.text) : createChip(part.path, graph, groups)))
   element.replaceChildren(...nodes)
+  nodes.filter(isChip).forEach(ensureCaretSpots)
 }
 
-/** The template text an editor's DOM stands for (chips back to `{{#…#}}`). */
+/** The template text an editor's DOM stands for (chips back to `{{#…#}}`, caret spots dropped). */
 export function serializeEditor(element: Node): string {
   let text = ''
   element.childNodes.forEach((child, index) => {
     if (child.nodeType === Node.TEXT_NODE) {
-      text += child.textContent ?? ''
+      text += (child.textContent ?? '').replaceAll(caretSpot, '')
       return
     }
     if (!(child instanceof HTMLElement)) return
@@ -78,6 +96,35 @@ function insertNodeAtRange(editor: HTMLElement, node: Node, savedRange: Range | 
   selection?.addRange(range)
 }
 
+/**
+ * Inserts a chip at the saved caret (or at the end), gives the editor focus back and
+ * puts the caret right after the chip, so typing goes on after it.
+ *
+ * @returns The caret after the chip, to remember for the next insert (Range)
+ */
+function insertChipAtCaret(editor: HTMLElement, chip: HTMLElement, savedRange: Range | null): Range {
+  const range = savedRange && editor.contains(savedRange.commonAncestorContainer) ? savedRange : null
+  if (range) {
+    range.deleteContents()
+    range.insertNode(chip)
+  } else {
+    editor.appendChild(chip)
+  }
+  ensureCaretSpots(chip)
+  // Empty text nodes left by splitting a text node at its edge only confuse the caret.
+  for (const child of [...editor.childNodes]) if (child.nodeType === Node.TEXT_NODE && child.textContent === '') child.remove()
+  const after = chip.nextSibling ?? editor.appendChild(document.createTextNode(caretSpot))
+  editor.focus()
+  const caret = document.createRange()
+  // Inside the text after the chip (after a caret spot), never "after the chip" in the editor.
+  caret.setStart(after, after.textContent === caretSpot ? 1 : 0)
+  caret.collapse(true)
+  const selection = window.getSelection()
+  selection?.removeAllRanges()
+  selection?.addRange(caret)
+  return caret.cloneRange()
+}
+
 interface TemplateFieldProps {
   label: ReactNode
   value: string
@@ -90,6 +137,8 @@ interface TemplateFieldProps {
   error?: string | null
   /** Accessible name when `label` is not plain text. */
   ariaLabel?: string
+  /** Config path a `requestedSection` can name to focus this field (`url`). */
+  fieldPath?: string
 }
 
 /** Invalid references of a template, with plain words, for the messages under the field. */
@@ -100,7 +149,7 @@ function referenceProblems(template: string, graph: AgentGraph, groups: ValueGro
   })
 }
 
-export function TemplateField({ label, value, onCommit, required, multiline = false, placeholder, hint, error, ariaLabel }: TemplateFieldProps) {
+export function TemplateField({ label, value, onCommit, required, multiline = false, placeholder, hint, error, ariaLabel, fieldPath }: TemplateFieldProps) {
   const { graph, valueGroups, readOnly } = useInspector()
   const editorId = useId()
   const editorRef = useRef<HTMLDivElement>(null)
@@ -141,7 +190,8 @@ export function TemplateField({ label, value, onCommit, required, multiline = fa
       commit(`${draft}${formatReference(path)}`)
       return
     }
-    insertNodeAtRange(editor, createChip(path, graph, valueGroups), savedRangeRef.current)
+    // Focus moves back into the editor here, so the commit below does not rebuild its DOM.
+    savedRangeRef.current = insertChipAtCaret(editor, createChip(path, graph, valueGroups), savedRangeRef.current)
     commit(serializeEditor(editor))
   }
 
@@ -149,7 +199,7 @@ export function TemplateField({ label, value, onCommit, required, multiline = fa
   const isEmpty = draft.trim() === ''
 
   return (
-    <Field label={label} htmlFor={editorId} required={required} hint={hint} error={error ?? (required && isEmpty ? 'Required' : null)}>
+    <Field label={label} htmlFor={editorId} fieldPath={fieldPath} required={required} hint={hint} error={error ?? (required && isEmpty ? 'Required' : null)}>
       {showAsText ? (
         <textarea
           id={editorId}

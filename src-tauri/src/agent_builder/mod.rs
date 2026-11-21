@@ -13,6 +13,7 @@
 //! - `diff`: compares two flow summaries for the revision summary.
 //! - `history`: saves the builder chat (requests and replies) per agent.
 //! - `edit_lock`: which agents a revision is changing (the Nodes view waits meanwhile).
+//! - `stop`: "Stop the builder" cancels a running chat revision.
 //!
 //! The public functions resolve the model from the user's credentials; the
 //! `*_with_model` functions hold the logic and take any [`ChatModel`], so tests
@@ -25,6 +26,7 @@ pub mod history;
 mod kind;
 mod live;
 mod prompt;
+pub mod stop;
 #[cfg(test)]
 mod tests;
 
@@ -126,7 +128,9 @@ pub async fn revise_agent(
 }
 
 /// [`revise_agent`] for a request typed in the builder chat: the request and the
-/// builder's reply (or the failure) are saved to the agent's chat history.
+/// builder's reply (or the failure) are saved to the agent's chat history. The user
+/// can stop it meanwhile ([`stop::stop_revisions`]): it then ends with `AppError::Stopped`,
+/// saves nothing and notes "Stopped by you" in the chat.
 pub async fn revise_agent_from_chat(
     db: &Database,
     credentials: &CredentialStore,
@@ -135,7 +139,18 @@ pub async fn revise_agent_from_chat(
     on_progress: &(dyn Fn(BuildProgress) + Send + Sync),
 ) -> AppResult<RevisionResult> {
     let revision = revise_agent(db, credentials, agent_id, instruction, on_progress);
-    history::revise_with_chat_history(db, agent_id, instruction, revision).await
+    stoppable_revision_with_history(db, agent_id, instruction, revision).await
+}
+
+/// Runs a chat revision that the user can stop, and saves it to the chat history.
+pub(crate) async fn stoppable_revision_with_history(
+    db: &Database,
+    agent_id: &str,
+    instruction: &str,
+    revision: impl std::future::Future<Output = AppResult<RevisionResult>>,
+) -> AppResult<RevisionResult> {
+    let stoppable = stop::run_stoppable(agent_id, revision);
+    history::revise_with_chat_history(db, agent_id, instruction, stoppable).await
 }
 
 /// Picks the default model and its client from the user's stored keys.
