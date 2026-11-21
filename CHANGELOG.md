@@ -7,6 +7,10 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ## [Unreleased]
 
+### Changed
+
+- **Update popup in the corner**: the bottom-right toast now also appears when a new version is available (Update / Later, with "You have X") and while it downloads (progress, Hide), not only once it is ready. "Later" is remembered for that version across restarts; a newer version shows it again.
+
 ### Added
 
 - **Plugin source and publisher**: catalog entries (v1 and v2) may carry `source` (`official`
