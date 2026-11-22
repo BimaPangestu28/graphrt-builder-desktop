@@ -5,6 +5,7 @@ import { describeDeadline } from '@/pages/agent-run/approvalDisplay'
 import { LiveBrowserView } from '@/pages/agent-run/LiveBrowserView'
 import { formatDurationMs, formatElapsedClock } from '@/pages/agent-run/runProgress'
 import { describeProblemLabel } from '../problems/problemDisplay'
+import { useCanvasNow } from './CanvasClock'
 import type { LoopRunProgress, NodeRunStatus, NodeRunView, RunCanvasState } from './nodeRunStates'
 
 /**
@@ -13,6 +14,9 @@ import type { LoopRunProgress, NodeRunStatus, NodeRunView, RunCanvasState } from
  * (`flow/StepNode.tsx`, canvas agent) render {@link NodeDecoration} inside each card, which must
  * be `position: relative`. Arrow states are drawn by `RunCanvasStyles`, without touching the
  * canvas code.
+ *
+ * The value holds no clock: live times are read from `CanvasClock` by the leaf badges only, so
+ * the provider value (memoized by `NodesView`) changes only when the run or the problems do.
  */
 export interface NodeDecorationsValue {
   /** The shown run, or null when none. */
@@ -20,13 +24,11 @@ export interface NodeDecorationsValue {
   problemsByNode: Record<string, GraphProblem[]>
   /** Live browser pictures of running steps by node id (null: waiting for the first one). */
   liveViews: Map<string, string | null>
-  /** Current time in ms, ticking while a run is active. */
-  now: number
   /** Opens the question a waiting node asks (Review). */
   onReviewApproval?: (nodeId: string) => void
 }
 
-const emptyDecorations: NodeDecorationsValue = { run: null, problemsByNode: {}, liveViews: new Map(), now: 0 }
+const emptyDecorations: NodeDecorationsValue = { run: null, problemsByNode: {}, liveViews: new Map() }
 
 const NodeDecorationsContext = createContext<NodeDecorationsValue>(emptyDecorations)
 
@@ -79,14 +81,21 @@ function StatusIcon({ status }: { status: NodeRunStatus }) {
   return null
 }
 
-function describeTiming(view: NodeRunView, now: number): string | null {
-  if (view.status === 'running' && view.startedAt) return formatElapsedClock(now - Date.parse(view.startedAt))
-  if (view.durationMs !== null && ['done', 'fallback', 'failed', 'error-path'].includes(view.status)) return formatDurationMs(view.durationMs)
+const finishedStatuses: ReadonlySet<NodeRunStatus> = new Set(['done', 'fallback', 'failed', 'error-path'])
+
+/** "· 0:42" since a running step started; the only part of a card that follows the clock. */
+function ElapsedTime({ startedAt }: { startedAt: string }) {
+  const now = useCanvasNow()
+  return <span className="font-medium opacity-80">· {formatElapsedClock(now - Date.parse(startedAt))}</span>
+}
+
+function RunTiming({ view }: { view: NodeRunView }) {
+  if (view.status === 'running' && view.startedAt) return <ElapsedTime startedAt={view.startedAt} />
+  if (view.durationMs !== null && finishedStatuses.has(view.status)) return <span className="font-medium opacity-80">· {formatDurationMs(view.durationMs)}</span>
   return null
 }
 
-function RunStatusChip({ view, now }: { view: NodeRunView; now: number }) {
-  const timing = describeTiming(view, now)
+function RunStatusChip({ view }: { view: NodeRunView }) {
   return (
     <span
       data-testid={`run-status-${view.nodeId}`}
@@ -95,7 +104,7 @@ function RunStatusChip({ view, now }: { view: NodeRunView; now: number }) {
     >
       <StatusIcon status={view.status} />
       {statusLabels[view.status]}
-      {timing && <span className="font-medium opacity-80">· {timing}</span>}
+      <RunTiming view={view} />
     </span>
   )
 }
@@ -122,7 +131,14 @@ function LoopCounters({ loop }: { loop: LoopRunProgress }) {
 }
 
 /** The lines under a card: error, attempts, handled-error outcome, question deadline and Review. */
-function RunDetailLines({ view, now, onReview }: { view: NodeRunView; now: number; onReview?: (nodeId: string) => void }) {
+/** "Answer within 4 min": follows the clock, so it reads it itself. */
+function ApprovalDeadline({ approval }: { approval: NonNullable<NodeRunView['approval']> }) {
+  const deadline = describeDeadline(approval, useCanvasNow())
+  if (!deadline) return null
+  return <span className="font-medium text-amber-strong">{deadline}</span>
+}
+
+function RunDetailLines({ view, onReview }: { view: NodeRunView; onReview?: (nodeId: string) => void }) {
   const lines: ReactNode[] = []
   if (view.errorMessage && view.status !== 'done') lines.push(<span key="error" className="text-danger">{view.errorMessage}</span>)
   if (view.attempt > 1 || (view.maxAttempts > 1 && ['failed', 'error-path'].includes(view.status))) {
@@ -131,8 +147,7 @@ function RunDetailLines({ view, now, onReview }: { view: NodeRunView; now: numbe
   if (view.status === 'error-path') lines.push(<span key="handled" className="font-medium text-danger">Going to the error path · success path skipped</span>)
   if (view.status === 'fallback') lines.push(<span key="handled" className="font-medium text-amber-strong">Continued with fallback values</span>)
   if (view.itemsDoneCount !== null && view.itemsDoneCount > 0) lines.push(<span key="items" className="text-muted">{view.itemsDoneCount} done</span>)
-  const deadline = view.approval ? describeDeadline(view.approval, now) : null
-  if (deadline) lines.push(<span key="deadline" className="font-medium text-amber-strong">{deadline}</span>)
+  if (view.approval?.expiresAt) lines.push(<ApprovalDeadline key="deadline" approval={view.approval} />)
   if (view.status === 'waiting' && view.approval && onReview) {
     lines.push(
       <button
@@ -189,7 +204,7 @@ export interface NodeDecorationProps {
  * <div className="relative …"><NodeHeading … /><NodeDecoration nodeId={node.id} /></div>
  */
 export function NodeDecoration({ nodeId, variant = 'step' }: NodeDecorationProps) {
-  const { run, problemsByNode, liveViews, now, onReviewApproval } = useNodeDecorations()
+  const { run, problemsByNode, liveViews, onReviewApproval } = useNodeDecorations()
   const view = run?.nodes[nodeId]
   const problems = problemsByNode[nodeId] ?? []
   if (!view) {
@@ -208,14 +223,14 @@ export function NodeDecoration({ nodeId, variant = 'step' }: NodeDecorationProps
     <>
       {outline && <span aria-hidden="true" className={joinClassNames('pointer-events-none absolute -inset-[2px] rounded-[14px] border-2', outline)} />}
       {view.status === 'skipped' && <span aria-hidden="true" className="pointer-events-none absolute inset-0 rounded-xl bg-surface/50" />}
-      <RunStatusChip view={view} now={now} />
+      <RunStatusChip view={view} />
       {variant === 'container' && view.loop && (
         <div className="absolute top-3 right-3 z-10 rounded-md bg-surface/90 px-1.5 py-1">
           <LoopCounters loop={view.loop} />
         </div>
       )}
       <div className="absolute top-[calc(100%+6px)] left-0 z-10 flex w-full flex-col gap-1.5" data-testid={`run-details-${nodeId}`}>
-        <RunDetailLines view={view} now={now} onReview={onReviewApproval} />
+        <RunDetailLines view={view} onReview={onReviewApproval} />
         {variant === 'step' && view.loop && <LoopCounters loop={view.loop} />}
         {hasLiveView && <LiveBrowserView image={liveImage} />}
       </div>

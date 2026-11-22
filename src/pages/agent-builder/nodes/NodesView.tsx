@@ -21,7 +21,8 @@ import { useAddNodePalette } from './palette/useAddNodePalette'
 import { describeTestBlock, groupProblemsByNode, inspectorTargetForProblem } from './problems/problemDisplay'
 import { useGraphValidation } from './problems/useGraphValidation'
 import { ProblemsPanel } from './ProblemsPanel'
-import { NodeDecorationsProvider } from './run/NodeDecorations'
+import { CanvasClockProvider } from './run/CanvasClock'
+import { NodeDecorationsProvider, type NodeDecorationsValue } from './run/NodeDecorations'
 import { NodesRunActions } from './run/NodesRunActions'
 import { RunBar } from './run/RunBar'
 import { runCanvasScopeAttribute } from './run/RunCanvasStyles'
@@ -175,6 +176,15 @@ export function NodesView({
   const problemsByNode = useMemo(() => (graph ? groupProblemsByNode(problems, graph) : {}), [graph, problems])
   const testBlock = graph ? describeTestBlock({ problems, graph, builderBusy: controller.builderBusy, isSaving, arePluginsReady }) : null
   const pluginStatuses = useMemo(() => toPluginStatuses(pluginRequirements ?? []), [pluginRequirements])
+  const { runState, liveViews, setReviewNodeId } = live
+  // Memoized so the providers' consumers (every node card and note) re-render only when
+  // what they draw changed; the ticking clock has its own context (CanvasClockProvider).
+  const decorations = useMemo<NodeDecorationsValue>(
+    () => ({ run: runState, problemsByNode, liveViews, onReviewApproval: setReviewNodeId }),
+    [runState, problemsByNode, liveViews, setReviewNodeId],
+  )
+  const { updateNote, removeNote } = canvasNotes
+  const noteActions = useMemo(() => ({ updateNote, removeNote, readOnly }), [updateNote, removeNote, readOnly])
   const canvasColumnRef = useRef<HTMLDivElement>(null)
   const canvasColumnSize = useElementSize(canvasColumnRef, graph !== null)
 
@@ -202,117 +212,119 @@ export function NodesView({
   if (!graph) return <p className="m-0 p-6 text-muted">Loading the steps…</p>
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col" data-testid="nodes-view">
-      <NodesToolbar
-        controller={controller}
-        isPaletteOpen={palette.isOpen}
-        onTogglePalette={palette.toggle}
-        onAutoLayout={() => void placeAllNodes()}
-        extraActions={
-          <NodesRunActions
-            problems={problems}
-            isValidating={validation.isValidating}
-            onValidate={() => void validateNow()}
-            onAddNote={() => canvasNotes.addNote(notePositionFor(controller.viewport))}
-            canAddNote={!readOnly}
-            testBlock={testBlock}
-            isStarting={live.testRun.isStarting}
-            isRunActive={live.isActive}
-            onTest={() => void startTest()}
-          />
-        }
-      />
-      <SyncBanner controller={controller} onStopBuilder={() => void stopBuilder(agent.id)} />
-      <RunBar agentId={agent.id} graph={graph} live={live} />
-      <div className="flex min-h-0 flex-1">
-        <div ref={canvasColumnRef} className="relative min-w-0 flex-1 overflow-hidden" {...{ [runCanvasScopeAttribute]: '' }}>
-          <NodeDecorationsProvider value={{ run: live.runState, problemsByNode, liveViews: live.liveViews, now: live.now, onReviewApproval: live.setReviewNodeId }}>
-            <CanvasNotesProvider value={{ updateNote: canvasNotes.updateNote, removeNote: canvasNotes.removeNote, readOnly }}>
-              <PaletteDropZone graph={graph} readOnly={readOnly} {...palette.dropZoneProps}>
-                <NodeCanvas
-                  graph={graph}
-                  positions={controller.positions}
-                  viewport={controller.viewport}
-                  kindNames={kindNames}
-                  kindsByKind={kindsByKind}
-                  pluginStatuses={pluginStatuses}
-                  selectedNodeIds={selectedNodeIds}
-                  readOnly={readOnly}
-                  onSelectionChange={setSelectedNodeIds}
-                  onMoveNodes={moveNodes}
-                  onViewportChange={controller.setViewport}
-                  onConnect={(edge) => controller.addEdge(edge, `connected ${describeNodeList(graph, [edge.source])} to ${describeNodeList(graph, [edge.target])}`)}
-                  onDelete={({ nodeIds, edgeIds }) =>
-                    applyEdit((current) => removeGraphEdges(removeGraphNodes(current, nodeIds), edgeIds), nodeIds.length > 0 ? `deleted ${describeNodeList(graph, nodeIds)}` : 'deleted an arrow')
-                  }
-                  onApplyEdit={applyEdit}
-                  onUndo={controller.undo}
-                  onRedo={controller.redo}
-                  onOpenPalette={() => palette.open()}
-                  onAddNodeAfter={(from) => palette.open({ type: 'after-exit', source: from.source, sourceHandle: from.sourceHandle })}
-                  onRequestAddNode={palette.open}
-                  onChangeAction={(nodeId) => requestInspectorSection(nodeId, 'change-action')}
-                  onOpenNodeSettings={(nodeId) => setSelectedNodeIds([nodeId])}
-                  onAskBuilder={onAskBuilder}
-                  notes={canvasNotes.notes}
-                  onMoveNote={(noteId, position) => canvasNotes.updateNote(noteId, { x: Math.round(position.x), y: Math.round(position.y) })}
-                  onAddNote={readOnly ? undefined : (position) => canvasNotes.addNote(position)}
-                  focusRequest={focusRequest}
-                  overlayInsets={{ left: palette.isOpen ? paletteCanvasInset : 0 }}
-                />
-              </PaletteDropZone>
-            </CanvasNotesProvider>
-          </NodeDecorationsProvider>
-          {onFoldChat && isCompactCanvas(canvasColumnSize) && <FoldChatHint onFoldChat={onFoldChat} isTight={isTinyCanvas(canvasColumnSize)} />}
-          <RunOverlay graph={graph} runId={live.testRun.runId} live={live} problems={problems} />
-          <AddNodePalette
-            isOpen={palette.isOpen}
-            nodeKinds={nodeKinds}
+    <CanvasClockProvider isTicking={live.isActive}>
+      <div className="flex min-h-0 flex-1 flex-col" data-testid="nodes-view">
+        <NodesToolbar
+          controller={controller}
+          isPaletteOpen={palette.isOpen}
+          onTogglePalette={palette.toggle}
+          onAutoLayout={() => void placeAllNodes()}
+          extraActions={
+            <NodesRunActions
+              problems={problems}
+              isValidating={validation.isValidating}
+              onValidate={() => void validateNow()}
+              onAddNote={() => canvasNotes.addNote(notePositionFor(controller.viewport))}
+              canAddNote={!readOnly}
+              testBlock={testBlock}
+              isStarting={live.testRun.isStarting}
+              isRunActive={live.isActive}
+              onTest={() => void startTest()}
+            />
+          }
+        />
+        <SyncBanner controller={controller} onStopBuilder={() => void stopBuilder(agent.id)} />
+        <RunBar agentId={agent.id} graph={graph} live={live} />
+        <div className="flex min-h-0 flex-1">
+          <div ref={canvasColumnRef} className="relative min-w-0 flex-1 overflow-hidden" {...{ [runCanvasScopeAttribute]: '' }}>
+            <NodeDecorationsProvider value={decorations}>
+              <CanvasNotesProvider value={noteActions}>
+                <PaletteDropZone graph={graph} readOnly={readOnly} {...palette.dropZoneProps}>
+                  <NodeCanvas
+                    graph={graph}
+                    positions={controller.positions}
+                    viewport={controller.viewport}
+                    kindNames={kindNames}
+                    kindsByKind={kindsByKind}
+                    pluginStatuses={pluginStatuses}
+                    selectedNodeIds={selectedNodeIds}
+                    readOnly={readOnly}
+                    onSelectionChange={setSelectedNodeIds}
+                    onMoveNodes={moveNodes}
+                    onViewportChange={controller.setViewport}
+                    onConnect={(edge) => controller.addEdge(edge, `connected ${describeNodeList(graph, [edge.source])} to ${describeNodeList(graph, [edge.target])}`)}
+                    onDelete={({ nodeIds, edgeIds }) =>
+                      applyEdit((current) => removeGraphEdges(removeGraphNodes(current, nodeIds), edgeIds), nodeIds.length > 0 ? `deleted ${describeNodeList(graph, nodeIds)}` : 'deleted an arrow')
+                    }
+                    onApplyEdit={applyEdit}
+                    onUndo={controller.undo}
+                    onRedo={controller.redo}
+                    onOpenPalette={() => palette.open()}
+                    onAddNodeAfter={(from) => palette.open({ type: 'after-exit', source: from.source, sourceHandle: from.sourceHandle })}
+                    onRequestAddNode={palette.open}
+                    onChangeAction={(nodeId) => requestInspectorSection(nodeId, 'change-action')}
+                    onOpenNodeSettings={(nodeId) => setSelectedNodeIds([nodeId])}
+                    onAskBuilder={onAskBuilder}
+                    notes={canvasNotes.notes}
+                    onMoveNote={(noteId, position) => canvasNotes.updateNote(noteId, { x: Math.round(position.x), y: Math.round(position.y) })}
+                    onAddNote={readOnly ? undefined : (position) => canvasNotes.addNote(position)}
+                    focusRequest={focusRequest}
+                    overlayInsets={{ left: palette.isOpen ? paletteCanvasInset : 0 }}
+                  />
+                </PaletteDropZone>
+              </CanvasNotesProvider>
+            </NodeDecorationsProvider>
+            {onFoldChat && isCompactCanvas(canvasColumnSize) && <FoldChatHint onFoldChat={onFoldChat} isTight={isTinyCanvas(canvasColumnSize)} />}
+            <RunOverlay graph={graph} runId={live.testRun.runId} live={live} problems={problems} />
+            <AddNodePalette
+              isOpen={palette.isOpen}
+              nodeKinds={nodeKinds}
+              graph={graph}
+              readOnly={readOnly}
+              onAddNode={(node, options) => {
+                // One applyEdit: two actions in one handler would each start from this render's graph.
+                controller.applyEdit((current) => {
+                  const withNode = addGraphNode(current, node)
+                  return options.connectFrom ? addGraphEdge(withNode, options.connectFrom) : withNode
+                }, `added ${node.displayTitle}`)
+                if (options.position) moveNodes([options.position])
+              }}
+              onClose={palette.close}
+              onPluginInstalled={() => reloadNodeKinds()}
+              {...palette.paletteProps}
+            />
+          </div>
+          <NodeInspector
+            node={selectedNode}
             graph={graph}
-            readOnly={readOnly}
-            onAddNode={(node, options) => {
-              // One applyEdit: two actions in one handler would each start from this render's graph.
-              controller.applyEdit((current) => {
-                const withNode = addGraphNode(current, node)
-                return options.connectFrom ? addGraphEdge(withNode, options.connectFrom) : withNode
-              }, `added ${node.displayTitle}`)
-              if (options.position) moveNodes([options.position])
-            }}
-            onClose={palette.close}
-            onPluginInstalled={() => reloadNodeKinds()}
-            {...palette.paletteProps}
+            kindInfo={selectedNode ? (kindsByKind[selectedNode.kind] ?? null) : null}
+            nodeKinds={nodeKinds}
+            problems={selectedNode ? (problemsByNode[selectedNode.id] ?? []) : []}
+            readOnly={isSaving}
+            controller={controller}
+            onClose={() => setSelectedNodeIds([])}
+            requestedSection={requestedSection}
+            onAskBuilder={onAskBuilder}
           />
         </div>
-        <NodeInspector
-          node={selectedNode}
-          graph={graph}
-          kindInfo={selectedNode ? (kindsByKind[selectedNode.kind] ?? null) : null}
-          nodeKinds={nodeKinds}
-          problems={selectedNode ? (problemsByNode[selectedNode.id] ?? []) : []}
-          readOnly={isSaving}
-          controller={controller}
-          onClose={() => setSelectedNodeIds([])}
-          requestedSection={requestedSection}
-          onAskBuilder={onAskBuilder}
-        />
+        {!isProblemsPanelHidden && (
+          <ProblemsPanel
+            problems={problems}
+            graph={graph}
+            onSelectNode={showNode}
+            onShowProblem={(problem, nodeId) => {
+              // Opens the part the problem is about when it names one; the canvas centres the step either way.
+              const target = problem.nodeId === nodeId ? inspectorTargetForProblem(problem) : null
+              if (target) requestInspectorSection(nodeId, target)
+              else showNode(nodeId)
+            }}
+            onFixWithBuilder={onAskBuilder}
+            testBlockReason={testBlock?.reason ?? null}
+            wasValidated={validation.wasValidated}
+            onClose={() => setIsProblemsPanelHidden(true)}
+          />
+        )}
       </div>
-      {!isProblemsPanelHidden && (
-        <ProblemsPanel
-          problems={problems}
-          graph={graph}
-          onSelectNode={showNode}
-          onShowProblem={(problem, nodeId) => {
-            // Opens the part the problem is about when it names one; the canvas centres the step either way.
-            const target = problem.nodeId === nodeId ? inspectorTargetForProblem(problem) : null
-            if (target) requestInspectorSection(nodeId, target)
-            else showNode(nodeId)
-          }}
-          onFixWithBuilder={onAskBuilder}
-          testBlockReason={testBlock?.reason ?? null}
-          wasValidated={validation.wasValidated}
-          onClose={() => setIsProblemsPanelHidden(true)}
-        />
-      )}
-    </div>
+    </CanvasClockProvider>
   )
 }
