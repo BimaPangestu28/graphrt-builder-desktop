@@ -33,6 +33,11 @@ releases may contain breaking changes; they are called out under **Changed**.
   (the 1 GiB file cap plus room for headers), and a raw pass over the headers refuses any GNU
   long-name / long-link entry or pax header over 64 KiB before it would be read into memory, and
   any pax header that overrides an entry size. Catalog tarballs and sideloaded archives alike.
+- **Sideloaded folders cannot be swapped while they are copied**: each folder is checked again
+  right before it is read (still a real folder, not a link or junction, and still inside the
+  chosen folder once resolved), and each file is opened without following links (`O_NOFOLLOW`
+  on Unix; `FILE_FLAG_OPEN_REPARSE_POINT` on Windows, refusing reparse points) and must be the
+  file that was listed (same device and inode on Unix).
 
 ## [0.1.3] - 2026-11-22
 

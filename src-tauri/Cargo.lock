@@ -1789,6 +1789,7 @@ dependencies = [
  "graphrt-rag",
  "indexmap 2.14.2",
  "keyring",
+ "libc",
  "log",
  "regex",
  "reqwest",

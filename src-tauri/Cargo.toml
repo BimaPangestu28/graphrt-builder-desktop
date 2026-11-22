@@ -78,6 +78,10 @@ tauri-plugin-single-instance = "2"
 tauri-plugin-updater = { version = "=2.14.1", default-features = false, features = ["rustls-tls", "zip"] }
 tauri-plugin-process = "=2.4.0"
 
+# Sideloading opens each file with O_NOFOLLOW, so a link swapped in is never followed
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 # "Keep the computer awake while an agent runs" on Windows (SetThreadExecutionState)
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.60", features = ["Win32_System_Power"] }
