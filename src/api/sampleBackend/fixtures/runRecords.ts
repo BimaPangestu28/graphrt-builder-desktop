@@ -1,46 +1,7 @@
+import type { RunRecord } from '@/pages/runs/runRecordTypes'
 import { routePaths } from '@/routes'
 
-/**
- * Mock run history for screen 20 (Runs). Newest first, as the runner keeps them for 30 days.
- */
-/** `stopped`: the user stopped the run (backend `aborted`); not a failure. */
-export type RunStatus = 'running' | 'done' | 'needsYou' | 'failed' | 'stopped'
-
-export interface RunStep {
-  label: string
-  detail: string
-  isDone: boolean
-}
-
-export interface RunRecord {
-  id: string
-  /** Backend agent id, when the record comes from the runs API. */
-  agentId?: string
-  agentName: string
-  startedBy: string
-  when: string
-  /** Plain-language result, possibly Markdown (shown as a clamped preview). */
-  result: string
-  /** Full text behind the preview for the hover title, e.g. the raw error. Defaults to `result`. */
-  resultTitle?: string
-  status: RunStatus
-  /** Subtitle of the detail panel: date, duration and AI cost. */
-  timing: string
-  steps: RunStep[]
-  output: string
-  rawLog: string[]
-  /** Optional screen to jump to for a run that needs attention. */
-  followUp?: { label: string; path: string }
-}
-
-export const runStatusLabels: Record<RunStatus, string> = {
-  running: 'Running',
-  done: 'Done',
-  needsYou: 'Needs you',
-  failed: 'Failed',
-  stopped: 'Stopped',
-}
-
+/** Sample run history for screen 20 (Runs). Newest first, as the runner keeps them for 30 days. */
 export const runRecords: RunRecord[] = [
   {
     id: 'lead-tracker-1340',
@@ -148,4 +109,4 @@ export const runRecords: RunRecord[] = [
 ]
 
 /** Run shown in the detail panel when the screen opens, as in the mockup. */
-export const defaultSelectedRunId = 'maps-leads-0900'
+export const sampleSelectedRunId = 'maps-leads-0900'

@@ -44,7 +44,7 @@ export interface AppSettings {
 
 /**
  * Mirrors `RunLimitsSettings` in `src-tauri/src/desktop/run_limits.rs`; defaults and allowed
- * ranges are in `src/data/runLimits.ts`.
+ * ranges are in `src/lib/runLimits.ts`.
  */
 export interface RunLimits {
   /** Time for one step unless the step sets its own time limit, in seconds. */

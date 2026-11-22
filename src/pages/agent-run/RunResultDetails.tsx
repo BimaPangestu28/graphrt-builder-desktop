@@ -1,4 +1,4 @@
-import type { RunResultStat } from '@/data/testRun'
+import type { RunResultStat } from '@/pages/agent-run/testRunTypes'
 import type { RunResultTable } from './runResultSummary'
 import { StatusPill } from './StatusPill'
 

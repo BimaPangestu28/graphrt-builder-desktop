@@ -1,5 +1,5 @@
 import type { McpServerDefinition, WorkflowSecretOverview } from '@/api/connectionTypes'
-import type { Connection, ConnectionState } from '@/data/connections'
+import type { Connection, ConnectionState } from '@/api/appConnectionTypes'
 import { connectionsTabPath } from '@/routes'
 import { buildConnectionsTabs, isConnectionsTab, resolveConnectionsRootPath, type ConnectionsTabSources } from './connectionsTabs'
 

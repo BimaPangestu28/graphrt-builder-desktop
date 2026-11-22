@@ -1,5 +1,5 @@
 import { LinkButton, joinClassNames } from '@/components/ui'
-import type { AttentionItem } from '@/data/homeDashboard'
+import type { AttentionItem } from '@/pages/home-dashboard/homeDashboardTypes'
 import { HomeSectionHeader } from './HomeSectionHeader'
 import { toPreviewText } from '@/lib/previewText'
 

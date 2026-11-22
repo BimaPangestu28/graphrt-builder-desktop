@@ -12,7 +12,7 @@ import {
   missedRunPolicyLabels,
   modelFallbackOptions,
   runHistoryRetentionChoices,
-} from '@/data/settings'
+} from '@/lib/settings'
 import { describeError } from '@/lib/agentDisplay'
 import { connectionsTabPath } from '@/routes'
 import { useOnboardingTour } from '../onboarding/onboardingTourContext'

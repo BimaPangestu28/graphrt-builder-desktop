@@ -1,5 +1,5 @@
 import type { RunSummary } from '@/api/runSummaryTypes'
-import type { RunResultStat } from '@/data/testRun'
+import type { RunResultStat } from '@/pages/agent-run/testRunTypes'
 import type { StatusPillTone } from './StatusPill'
 import { formatCounterLabel, formatCounterValue } from './runCounters'
 

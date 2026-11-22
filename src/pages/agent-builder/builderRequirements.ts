@@ -1,7 +1,7 @@
 import type { PluginRequirement } from '@/api/pluginRequirementTypes'
 import { getCredentialStoreShortName } from '@/lib/platform'
 import type { ProviderStatus, WorkflowSecretStatus } from '@/api/types'
-import { appRequirementsByAgentId } from '@/data/mapsLeadsAgent'
+import { getPreviewContent } from '@/api/previewContent'
 import { getProviderName } from '@/lib/agentDisplay'
 import { agentPath, connectionsTabPath, pluginDetailPath } from '@/routes'
 import type { BuilderRequirement } from './AgentRequirementsList'
@@ -24,7 +24,8 @@ export function listBuilderRequirements(
   providerStatuses: ProviderStatus[] | null,
   workflowSecrets: WorkflowSecretStatus[] | null = null,
 ): BuilderRequirement[] {
-  const appRequirements = (appRequirementsByAgentId[agentId] ?? []).map((requirement) => ({
+  // The backend does not report app connections yet; only the browser preview has some.
+  const appRequirements = (getPreviewContent()?.appRequirementsByAgentId[agentId] ?? []).map((requirement) => ({
     ...requirement,
     connectPath: agentPath('connectWhatsApp', agentId),
   }))

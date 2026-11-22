@@ -1,7 +1,7 @@
 /**
- * Screen 10 (Scheduler): the design's sample triggers (event and webhook ones are shown in the
- * browser preview only), the rule choices, and helpers to lay a week out on the calendar grid.
- * Past runs come from the backend (`listScheduledRuns`).
+ * Screen 10 (Scheduler): the calendar's trigger and entry shapes, the rule choices, and helpers to
+ * lay a week out on the calendar grid. Triggers and past runs come from the backend (`listTriggers`,
+ * `listScheduledRuns`); the browser preview's sample triggers live in the sample backend.
  * Dates are plain "YYYY-MM-DD" strings handled in UTC so the grid never shifts with the machine's time zone.
  */
 
@@ -19,18 +19,6 @@ export interface ScheduleTrigger {
   recurrence?: { hour: number; weekdays: number[] }
 }
 
-/** Weekday numbers follow Date#getUTCDay: 0 = Sunday, 1 = Monday ... 6 = Saturday. */
-const everyDay = [0, 1, 2, 3, 4, 5, 6]
-const weekdaysOnly = [1, 2, 3, 4, 5]
-
-export const initialScheduleTriggers: ScheduleTrigger[] = [
-  { id: 'maps-leads', agentName: 'Maps leads to WhatsApp', shortName: 'Maps leads', description: 'Weekdays at 09:00', iconKind: 'schedule', isEnabled: true, recurrence: { hour: 9, weekdays: weekdaysOnly } },
-  { id: 'morning-digest', agentName: 'Morning email digest', shortName: 'Email digest', description: 'Every day at 07:00', iconKind: 'schedule', isEnabled: true, recurrence: { hour: 7, weekdays: everyDay } },
-  { id: 'reply-drafts', agentName: 'Reply drafts', shortName: 'Reply drafts', description: 'When a new Google review arrives · checks every 15 min', iconKind: 'email', isEnabled: true },
-  { id: 'form-responses', agentName: 'Form responses to sheet', shortName: 'Form responses', description: 'Webhook · localhost:7420/hooks/form', iconKind: 'webhook', isEnabled: true },
-  { id: 'invoice-reminders', agentName: 'Invoice reminders', shortName: 'Invoices', description: 'Mondays at 10:00', iconKind: 'schedule', isEnabled: false, recurrence: { hour: 10, weekdays: [1] } },
-]
-
 export type RunOutcome = 'done' | 'failed' | 'needsYou' | 'running'
 
 /** A run a schedule started, placed on its trigger's row (see `schedulerViewModel.toPastRuns`). */
@@ -42,11 +30,6 @@ export interface PastRun {
   /** Text under the agent name, e.g. "14 sent". */
   summary: string
 }
-
-/** The mock "today" the browser preview is pinned to (a Wednesday), so it matches the design. */
-export const scheduleToday = '2026-11-18'
-/** Time zone of the browser preview's sample schedules. */
-export const scheduleTimeZone = 'Asia/Jakarta'
 
 /** First and last hour row of the calendar. */
 export const calendarFirstHour = 6

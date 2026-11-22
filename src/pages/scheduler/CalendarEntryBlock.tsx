@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import { joinClassNames } from '@/components/ui'
-import type { CalendarEntry, CalendarEntryKind } from '@/data/scheduler'
+import type { CalendarEntry, CalendarEntryKind } from '@/lib/scheduleCalendar'
 import { routePaths } from '@/routes'
 
 const entryKindClassNames: Record<CalendarEntryKind, string> = {

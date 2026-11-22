@@ -6,7 +6,7 @@ import { resetSampleBuilder, sampleBuildDrafts, sampleBuilderBackend, sampleBuil
 import { setSampleDelayScale } from '@/api/sampleBackend/sampleResponse'
 import { resetSampleCredentials, sampleCredentialsBackend } from '@/api/sampleBackend/credentials'
 import { resetSamplePlugins, samplePluginsBackend, setSampleAgentPluginNeeds } from '@/api/sampleBackend/plugins'
-import { openBuilderDelayMs } from '@/data/mapsLeadsAgent'
+import { openBuilderDelayMs } from '@/pages/agent-builder/useAgentBuild'
 import { agentPath, connectionsTabPath, routePaths } from '@/routes'
 import { GeneratingPage } from '../GeneratingPage'
 

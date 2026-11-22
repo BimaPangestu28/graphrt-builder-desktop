@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { defaultRunLimits, findInvalidRunLimit } from '@/data/runLimits'
+import { defaultRunLimits, findInvalidRunLimit } from '@/lib/runLimits'
 import { RunLimitsPanel } from './RunLimitsPanel'
 
 /** Settings › Runner › Run limits: editable within safe bounds, with Reset to defaults. */

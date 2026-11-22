@@ -1,6 +1,6 @@
 import type { FlowStep } from '@/api/types'
 import { joinClassNames } from '@/components/ui'
-import type { BuilderStepTone } from '@/data/mapsLeadsAgent'
+import type { BuilderStepTone } from './StepNumberBadge'
 import { StepNumberBadge } from './StepNumberBadge'
 
 interface BuilderStepCardProps {

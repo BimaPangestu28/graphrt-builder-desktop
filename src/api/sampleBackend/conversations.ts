@@ -11,16 +11,16 @@ import {
   type ConversationStatus,
   type MessageAuthor,
 } from '../conversationTypes'
-import { initialTryItMessages } from '@/data/chatbotSetup'
-import { inboxConversations, type ChatMessage, type InboxConversation } from '@/data/inbox'
-import { searchKnowledgePassages } from '@/data/knowledge'
+import { initialTryItMessages } from '@/api/sampleBackend/fixtures/chatbotSetup'
+import { inboxConversations, type ChatMessage, type InboxConversation } from '@/api/sampleBackend/fixtures/inbox'
+import { searchKnowledgePassages } from '@/api/sampleBackend/fixtures/knowledgePassages'
 import { readStoredAgent } from './sampleAgentStore'
 import { requireText, respondWith } from './sampleResponse'
 
 /**
  * Sample conversations for the browser preview and tests, kept in memory.
  *
- * - Seeded from the Inbox mockup (`src/data/inbox.ts`): six WhatsApp chats of the
+ * - Seeded from the Inbox mockup (`fixtures/inbox.ts`): six WhatsApp chats of the
  *   "catering-assistant" chatbot, three of them waiting for you.
  * - The sample bot answers from the mock knowledge (`searchKnowledgePassages`) and hands the
  *   chat over (`not_sure`) when nothing matches, like the hand-off outputs of a real workflow.

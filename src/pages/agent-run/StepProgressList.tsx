@@ -1,6 +1,6 @@
 import { useId, useState } from 'react'
 import { Spinner, StrokeIcon, VisuallyHidden, joinClassNames } from '@/components/ui'
-import type { TestRunStepState } from '@/data/testRun'
+import type { TestRunStepState } from '@/pages/agent-run/testRunTypes'
 import { useLiveBrowserFrames } from '@/hooks/useLiveBrowserFrames'
 import { LiveBrowserView } from './LiveBrowserView'
 import { pickStepLiveViews } from './liveBrowserFrames'

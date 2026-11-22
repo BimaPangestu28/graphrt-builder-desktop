@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import type { ChatbotChannel, ChatbotPersona, HandoffRules } from '@/api/chatbotSetupTypes'
 import { joinClassNames } from '@/components/ui'
-import { chatbotToneOptions, handoffRuleOptions } from '@/data/chatbotSetup'
+import { chatbotToneOptions, handoffRuleOptions } from '@/pages/chatbot-setup/chatbotSetupOptions'
 import { routePaths } from '@/routes'
 import { CheckboxRow, LabeledField, SectionHeading, fieldControlClassNames } from '../knowledge/FormControls'
 

@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { isDesktopApp } from '@/api/client'
+import { getPreviewContent } from '@/api/previewContent'
 import { listScheduledRuns } from '@/api/scheduleRules'
 import type { Trigger } from '@/api/types'
 import { AppShell, PageFrame } from '@/components/layout'
 import { StrokeIcon } from '@/components/ui'
-import { buildCalendarEntries, formatWeekRange, getWeekDates, scheduleTimeZone, scheduleToday, type PastRun, type ScheduleTrigger } from '@/data/scheduler'
+import { buildCalendarEntries, formatWeekRange, getWeekDates, type PastRun, type ScheduleTrigger } from '@/lib/scheduleCalendar'
 import { useAgentNames } from '@/hooks/useAgentNames'
 import { useLoadedData } from '@/hooks/useRunData'
 import { useTriggers } from '@/hooks/useTriggers'
@@ -17,7 +18,7 @@ import { ScheduleList } from './scheduler/ScheduleList'
 import { ScheduleRulesPanel } from './scheduler/ScheduleRulesPanel'
 import { ScheduleToolbar, type ScheduleViewMode } from './scheduler/ScheduleToolbar'
 import { TriggersPanel } from './scheduler/TriggersPanel'
-import { getRunHistoryWindow, mockEventTriggers, sortLikeMockup, toPastRuns, toScheduleTrigger } from './scheduler/schedulerViewModel'
+import { getRunHistoryWindow, sortTriggersByOrder, toPastRuns, toScheduleTrigger } from './scheduler/schedulerViewModel'
 
 /** Dark promo card pointing to moving schedules onto a server so they run with the computer off. */
 function RemoteRunnerPromo() {
@@ -37,7 +38,8 @@ function RemoteRunnerPromo() {
 /** The calendar's zone: the first schedule's, else this computer's (the preview is pinned to the design's). */
 function resolveTimezone(triggers: Trigger[]): string {
   if (triggers[0]) return triggers[0].timezone
-  if (!isDesktopApp()) return scheduleTimeZone
+  const previewTimeZone = getPreviewContent()?.scheduler.timeZone
+  if (previewTimeZone) return previewTimeZone
   return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 }
 
@@ -48,10 +50,15 @@ function resolveTimezone(triggers: Trigger[]): string {
 function useSchedulerTriggers() {
   const getAgentName = useAgentNames()
   const { triggers, error, toggleError, setEnabled } = useTriggers()
-  const [mockTriggers, setMockTriggers] = useState(() => (isDesktopApp() ? [] : mockEventTriggers))
+  const schedulerPreview = getPreviewContent()?.scheduler ?? null
+  const [mockTriggers, setMockTriggers] = useState(() => schedulerPreview?.eventTriggers ?? [])
 
-  const backendTriggers = triggers.map((trigger) => toScheduleTrigger(trigger, getAgentName(trigger.agentId)))
-  const scheduleTriggers: ScheduleTrigger[] = sortLikeMockup([...backendTriggers, ...mockTriggers])
+  const backendTriggers = triggers.map((trigger) => {
+    const agentName = getAgentName(trigger.agentId)
+    return toScheduleTrigger(trigger, agentName, schedulerPreview?.shortNamesByAgentId.get(trigger.agentId))
+  })
+  const allTriggers = [...backendTriggers, ...mockTriggers]
+  const scheduleTriggers: ScheduleTrigger[] = schedulerPreview ? sortTriggersByOrder(allTriggers, schedulerPreview.triggerOrderById) : allTriggers
 
   const toggleTrigger = (triggerId: string) => {
     const backendTrigger = triggers.find((trigger) => trigger.id === triggerId)
@@ -85,7 +92,7 @@ export function SchedulerPage() {
   const [weekOffset, setWeekOffset] = useState(0)
   const { triggers, scheduleTriggers, timezone, error, toggleTrigger } = useSchedulerTriggers()
 
-  const todayIsoDate = isDesktopApp() ? formatZonedIsoDate(new Date(), timezone) : scheduleToday
+  const todayIsoDate = getPreviewContent()?.scheduler.todayIsoDate ?? formatZonedIsoDate(new Date(), timezone)
   const weekDates = getWeekDates(todayIsoDate, weekOffset)
   const { pastRuns, error: historyError } = usePastRuns(weekDates, triggers, timezone)
   const visibleDates = viewMode === 'day' ? [weekDates.includes(todayIsoDate) ? todayIsoDate : weekDates[0]] : weekDates

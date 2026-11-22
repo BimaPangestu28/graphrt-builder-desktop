@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import type { RunRecord } from '@/data/runs'
+import type { RunRecord } from '@/pages/runs/runRecordTypes'
 import { StepProgressList } from '@/pages/agent-run/StepProgressList'
 import type { RunStepView } from '@/pages/agent-run/runSteps'
 import { agentPath, routePaths } from '@/routes'

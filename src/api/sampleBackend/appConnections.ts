@@ -1,4 +1,4 @@
-import type { Connection } from '@/data/connections'
+import type { Connection } from '@/api/appConnectionTypes'
 import { respondWith } from './sampleResponse'
 
 /**

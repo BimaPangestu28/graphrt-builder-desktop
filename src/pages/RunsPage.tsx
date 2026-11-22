@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import type { Run } from '@/api/types'
 import { AppShell, PageFrame, PageTitleBlock } from '@/components/layout'
 import { joinClassNames } from '@/components/ui'
-import { defaultSelectedRunId } from '@/data/runs'
+import { getPreviewContent } from '@/api/previewContent'
 import { useAgentNames, type AgentNameLookup } from '@/hooks/useAgentNames'
 import { getVersionFlowSummary } from '@/api/versions'
 import { useNow } from '@/hooks/useNow'
@@ -99,7 +99,7 @@ export function RunsPage() {
   const [statusFilter, setStatusFilter] = useState<RunsStatusFilter>('all')
   // `?runId=` (from Home's recent runs and other links) selects that run; otherwise the default.
   const [searchParams] = useSearchParams()
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(searchParams.get('runId') ?? defaultSelectedRunId)
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(searchParams.get('runId') ?? getPreviewContent()?.selectedRunId ?? null)
   const getAgentName = useAgentNames()
   const allRunsData = useRuns()
   const visibleRunsData = useRuns(toRunFilter(agentFilter, statusFilter))

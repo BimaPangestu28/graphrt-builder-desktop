@@ -1,5 +1,5 @@
 import type { ChatbotChannel, ChatbotSettings, ChatbotSetup } from '../chatbotSetupTypes'
-import { sampleChatbotPersona, sampleHandoffRules } from '@/data/chatbotSetup'
+import { sampleChatbotPersona, sampleHandoffRules } from '@/api/sampleBackend/fixtures/chatbotSetup'
 import { sampleKnowledgeBackend } from './knowledge'
 import { respondWith } from './sampleResponse'
 

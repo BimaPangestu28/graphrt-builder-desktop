@@ -25,8 +25,6 @@ export interface TeamActivity {
   parts: Array<{ text: string; isMember?: boolean }>
 }
 
-export const teamName = 'Catering sales team'
-
 export const teamGoalMessage = 'Get us 20 new catering clients in Bandar Lampung this month. Focus on cafes and offices'
 
 export const teamPlan: TeamPlanItem[] = [

@@ -10,6 +10,9 @@ import { toError } from '@/lib/errors'
  */
 export const buildChecklistStages: BuildStage[] = ['understanding', 'drafting', 'repairing', 'checking', 'done']
 
+/** Pause between a finished build (03) and opening the builder (04), so the last checklist line can be read. */
+export const openBuilderDelayMs = 1200
+
 export interface AgentBuildState {
   /** Index into {@link buildChecklistStages}; equal to its length once the agent is saved. */
   runningItemIndex: number

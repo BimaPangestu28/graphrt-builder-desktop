@@ -1,6 +1,6 @@
 import type { ProviderModels } from '@/api/modelCatalogTypes'
 import type { ModelChoice, ModelProvider, ProviderStatus } from '@/api/types'
-import { isLocalCliProvider, localCliDefaultModelName, localCliShortNames, modelProviderNames, recommendedModels } from '@/data/settings'
+import { isLocalCliProvider, localCliDefaultModelName, localCliShortNames, modelProviderNames, recommendedModels } from '@/lib/settings'
 
 /** Label of the local CLIs' `default` model id: the CLI picks its own model. */
 export const localCliDefaultModelLabel = 'CLI default'

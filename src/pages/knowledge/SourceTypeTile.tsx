@@ -1,5 +1,5 @@
 import { joinClassNames } from '@/components/ui'
-import type { KnowledgeSourceType } from '@/data/knowledge'
+import type { KnowledgeSourceType } from './knowledgeDisplay'
 
 const sourceTypeClassNames: Record<KnowledgeSourceType, string> = {
   PDF: 'bg-danger-soft text-danger',

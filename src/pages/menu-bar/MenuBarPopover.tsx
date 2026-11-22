@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { LinkButton, LogoMark, StatusDot, joinClassNames } from '@/components/ui'
-import { menuBarAttentionItems, nextScheduledRun, runningAgent, type MenuBarAttentionItem } from '@/data/menuBar'
+import { menuBarAttentionItems, nextScheduledRun, runningAgent, type MenuBarAttentionItem } from '@/pages/menu-bar/menuBarIllustration'
 import { routePaths } from '@/routes'
 
 const attentionToneClassNames: Record<MenuBarAttentionItem['tone'], string> = {

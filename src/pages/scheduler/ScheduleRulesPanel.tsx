@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { isDesktopApp } from '@/api/client'
-import { concurrencyOptions, ifMacAsleepOptions } from '@/data/scheduler'
+import { concurrencyOptions, ifMacAsleepOptions } from '@/lib/scheduleCalendar'
 import { missedRunPolicyByOption, toMissedRunPolicy } from '@/lib/schedule'
 import { useScheduleRules } from './useScheduleRules'
 

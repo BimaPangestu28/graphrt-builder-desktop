@@ -1,5 +1,5 @@
 import type { McpServerDefinition, WorkflowSecretOverview } from '@/api/connectionTypes'
-import type { Connection } from '@/data/connections'
+import type { Connection } from '@/api/appConnectionTypes'
 import { connectionsTabPath, legacyConnectionsPluginsSection, routePaths, type ConnectionsTab } from '@/routes'
 import { isSecretMissing } from './secretDisplay'
 

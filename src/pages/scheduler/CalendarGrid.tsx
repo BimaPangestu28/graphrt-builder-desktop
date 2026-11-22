@@ -1,5 +1,5 @@
 import { joinClassNames } from '@/components/ui'
-import { calendarFirstHour, getCalendarHourLabels, getDayOfMonth, getWeekdayName, type CalendarEntry } from '@/data/scheduler'
+import { calendarFirstHour, getCalendarHourLabels, getDayOfMonth, getWeekdayName, type CalendarEntry } from '@/lib/scheduleCalendar'
 import { CalendarEntryBlock } from './CalendarEntryBlock'
 
 interface CalendarGridProps {

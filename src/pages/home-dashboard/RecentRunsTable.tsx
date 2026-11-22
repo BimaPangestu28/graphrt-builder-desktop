@@ -1,7 +1,7 @@
 import type { MouseEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { joinClassNames } from '@/components/ui'
-import type { RecentRun, RecentRunStatus } from '@/data/homeDashboard'
+import type { RecentRun, RecentRunStatus } from '@/pages/home-dashboard/homeDashboardTypes'
 import { StatusPill, type StatusPillTone } from '@/pages/agent-run/StatusPill'
 import { routePaths } from '@/routes'
 import { HomeSectionHeader } from './HomeSectionHeader'

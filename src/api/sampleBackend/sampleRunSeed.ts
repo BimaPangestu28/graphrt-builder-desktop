@@ -1,5 +1,6 @@
 import type { GraphrtEvent, Run, RunStatus, RunTrigger } from '../types'
-import { runRecords, type RunRecord } from '@/data/runs'
+import { runRecords } from '@/api/sampleBackend/fixtures/runRecords'
+import type { RunRecord } from '@/pages/runs/runRecordTypes'
 
 /**
  * Seed history for the sample runs backend, built from the Runs screen (20) mock data.

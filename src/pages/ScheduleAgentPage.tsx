@@ -9,7 +9,7 @@ import {
   scheduleTimeZoneOptions,
   type AgentScheduleSettings,
   type ApprovalMode,
-} from '@/data/scheduleAgent'
+} from '@/pages/schedule-agent/scheduleOptions'
 import { useSchedulePreview } from '@/hooks/useTriggers'
 import { buildCronExpression, formatFireTime, toMissedRunPolicy } from '@/lib/schedule'
 import { agentPath, routePaths, sampleAgentId } from '@/routes'

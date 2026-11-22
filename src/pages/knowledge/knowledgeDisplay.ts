@@ -1,6 +1,8 @@
 import type { KnowledgeBase, KnowledgePassage, KnowledgeSource } from '@/api/knowledgeTypes'
-import type { KnowledgeSourceType } from '@/data/knowledge'
 import { detectSourceType } from './SourceTypeTile'
+
+/** File type badge of a knowledge source: PDF, spreadsheet, text or web page. */
+export type KnowledgeSourceType = 'PDF' | 'XLS' | 'TXT' | 'WEB'
 
 /**
  * Turns knowledge records into the words and labels screens 17 and 18 show.

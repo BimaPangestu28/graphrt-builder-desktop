@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { StrokeIcon, joinClassNames } from '@/components/ui'
-import type { ScheduleTrigger, TriggerIconKind } from '@/data/scheduler'
+import type { ScheduleTrigger, TriggerIconKind } from '@/lib/scheduleCalendar'
 
 const triggerIconPaths: Record<TriggerIconKind, ReactNode> = {
   schedule: (

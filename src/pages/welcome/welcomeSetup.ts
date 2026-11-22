@@ -1,6 +1,6 @@
 import { setApiKey, setDefaultModel, setLocalCliEnabled, setOllamaBaseUrl, setWelcomeChoice } from '@/api/credentials'
 import type { ModelProvider, WelcomeChoice } from '@/api/types'
-import { isLocalCliProvider } from '@/data/settings'
+import { isLocalCliProvider } from '@/lib/settings'
 import { recommendedModelFor } from '@/lib/modelChoices'
 import { routePaths } from '@/routes'
 
