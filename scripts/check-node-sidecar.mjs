@@ -37,14 +37,30 @@ function sidecarProblem(targetTriple) {
   if (sidecarSize === 0) return `empty ${sidecarPath}`;
   // The lipo'd universal binary has no stamp; its arch binaries are checked separately.
   if (targetTriple === "universal-apple-darwin") return undefined;
-  let stampVersion = "";
+  let stampWords = [];
   try {
-    stampVersion = readFileSync(`${sidecarPath}.stamp`, "utf8").split(" ")[0];
+    stampWords = readFileSync(`${sidecarPath}.stamp`, "utf8").trim().split(" ");
   } catch {
     return `no version stamp next to ${sidecarPath}`;
   }
+  const stampVersion = stampWords[0];
   if (stampVersion !== pinnedVersion) return `${sidecarPath} is Node ${stampVersion}, expected ${pinnedVersion}`;
+  if (needsStrippedSidecar(targetTriple) && !stampWords.includes("stripped")) {
+    return `${sidecarPath} was fetched before stripping was added (about 22 MB bigger)`;
+  }
   return undefined;
+}
+
+/**
+ * Release builds ship the stripped sidecar that scripts/fetch-node.sh makes (Windows binaries
+ * are never stripped). A sidecar fetched before stripping existed keeps a stamp without
+ * "stripped" and would silently ship 22 MB of debug symbols, so release builds refuse it;
+ * dev builds don't care. GRAPHRT_SKIP_NODE_STRIP=1 opts out, matching fetch-node.sh.
+ */
+function needsStrippedSidecar(targetTriple) {
+  const isReleaseBuild = process.env.TAURI_ENV_DEBUG === "false";
+  const stripSkipped = process.env.GRAPHRT_SKIP_NODE_STRIP === "1";
+  return isReleaseBuild && !stripSkipped && !targetTriple.includes("windows");
 }
 
 const requestedTarget = process.env.TAURI_ENV_TARGET_TRIPLE || hostTargetTriple();
