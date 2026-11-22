@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect, useState, type ComponentType, type LazyExoticComponent } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { hasFinishedWelcome } from './lib/firstLaunch'
+import { prefetchWhenIdle, type ChunkLoader } from './lib/prefetchWhenIdle'
 import { agentRoutePatterns, connectionsTabPattern, knowledgeDetailPattern, pluginDetailPattern, routePaths } from './routes'
 import { ScreenLoading } from './components/layout/ScreenLoading'
 
@@ -49,6 +50,22 @@ const VersionHistoryPage = lazyScreen(() => import('./pages/VersionHistoryPage')
 const MenuBarPage = lazyScreen(() => import('./pages/MenuBarPage'), 'MenuBarPage')
 const PluginsPage = lazyScreen(() => import('./pages/PluginsPage'), 'PluginsPage')
 const PluginDetailPage = lazyScreen(() => import('./pages/PluginDetailPage'), 'PluginDetailPage')
+
+/**
+ * Screens most visits reach from Home, warmed up once the window is idle (production
+ * only: tests and the dev server load each screen when it is opened). The Nodes canvas
+ * and the ELK worker stay on demand.
+ */
+const idlePrefetchedScreens: readonly ChunkLoader[] = [
+  () => import('./pages/HomePage'),
+  () => import('./pages/BuilderPage'),
+  () => import('./pages/RunsPage'),
+  () => import('./pages/TestRunPage'),
+  () => import('./pages/RunResultPage'),
+  () => import('./pages/ConnectionsPage'),
+  () => import('./pages/SettingsPage'),
+  () => import('./pages/PluginsPage'),
+]
 
 /** Screen components keyed by route, in canvas order. */
 const screenRoutes = [
@@ -99,6 +116,7 @@ function StartRedirect() {
 }
 
 export function App() {
+  useEffect(() => (__IDLE_PREFETCH__ ? prefetchWhenIdle(idlePrefetchedScreens) : undefined), [])
   return (
     <Suspense fallback={<ScreenLoading />}>
       <Routes>

@@ -23,6 +23,9 @@ export default defineConfig(({ mode }) => ({
     // dead code, and the sample backend and its fixtures drop out of the bundle.
     // `pnpm dev` (browser preview, tauri dev) and tests keep it.
     __SAMPLE_BACKEND__: JSON.stringify(mode !== 'production'),
+    // Background loading of common screens (src/lib/prefetchWhenIdle.ts): production only,
+    // so tests and the dev server do not load every screen.
+    __IDLE_PREFETCH__: JSON.stringify(mode === 'production'),
   },
   server: { port: 5173, strictPort: true },
   build: {
