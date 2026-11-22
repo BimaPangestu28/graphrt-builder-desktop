@@ -26,27 +26,27 @@ export const SUPPORTED_KNOWLEDGE_EXTENSIONS = [
 ] as const
 
 export function listKnowledgeBases(): Promise<KnowledgeBase[]> {
-  if (!isDesktopApp()) return sampleKnowledgeBackend.listKnowledgeBases()
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleKnowledgeBackend.listKnowledgeBases()
   return callBackend('list_knowledge_bases')
 }
 
 export function getKnowledgeBase(knowledgeBaseId: string): Promise<KnowledgeBaseDetail> {
-  if (!isDesktopApp()) return sampleKnowledgeBackend.getKnowledgeBase(knowledgeBaseId)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleKnowledgeBackend.getKnowledgeBase(knowledgeBaseId)
   return callBackend('get_knowledge_base', { knowledgeBaseId })
 }
 
 export function createKnowledgeBase(name: string, description = ''): Promise<KnowledgeBase> {
-  if (!isDesktopApp()) return sampleKnowledgeBackend.createKnowledgeBase(name, description)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleKnowledgeBackend.createKnowledgeBase(name, description)
   return callBackend('create_knowledge_base', { name, description })
 }
 
 export function renameKnowledgeBase(knowledgeBaseId: string, name: string): Promise<KnowledgeBase> {
-  if (!isDesktopApp()) return sampleKnowledgeBackend.renameKnowledgeBase(knowledgeBaseId, name)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleKnowledgeBackend.renameKnowledgeBase(knowledgeBaseId, name)
   return callBackend('rename_knowledge_base', { knowledgeBaseId, name })
 }
 
 export function deleteKnowledgeBase(knowledgeBaseId: string): Promise<void> {
-  if (!isDesktopApp()) return sampleKnowledgeBackend.deleteKnowledgeBase(knowledgeBaseId)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleKnowledgeBackend.deleteKnowledgeBase(knowledgeBaseId)
   return callBackend('delete_knowledge_base', { knowledgeBaseId })
 }
 
@@ -56,24 +56,24 @@ export function deleteKnowledgeBase(knowledgeBaseId: string): Promise<void> {
  * @throws BackendError - `invalid_input` for an unreadable type, a missing path or a duplicate
  */
 export function addKnowledgeSource(knowledgeBaseId: string, kind: KnowledgeSourceKind, location: string): Promise<KnowledgeSource> {
-  if (!isDesktopApp()) return sampleKnowledgeBackend.addKnowledgeSource(knowledgeBaseId, kind, location)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleKnowledgeBackend.addKnowledgeSource(knowledgeBaseId, kind, location)
   return callBackend('add_knowledge_source', { knowledgeBaseId, kind, location })
 }
 
 export function removeKnowledgeSource(sourceId: string): Promise<void> {
-  if (!isDesktopApp()) return sampleKnowledgeBackend.removeKnowledgeSource(sourceId)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleKnowledgeBackend.removeKnowledgeSource(sourceId)
   return callBackend('remove_knowledge_source', { sourceId })
 }
 
 /** Re-reads every source in the background; unchanged files are skipped. */
 export function syncKnowledgeBase(knowledgeBaseId: string): Promise<KnowledgeBase> {
-  if (!isDesktopApp()) return sampleKnowledgeBackend.syncKnowledgeBase(knowledgeBaseId)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleKnowledgeBackend.syncKnowledgeBase(knowledgeBaseId)
   return callBackend('sync_knowledge_base', { knowledgeBaseId })
 }
 
 /** Saves settings. A different embedding model re-indexes the knowledge base in the background. */
 export function updateKnowledgeSettings(knowledgeBaseId: string, settings: KnowledgeSettings): Promise<KnowledgeBase> {
-  if (!isDesktopApp()) return sampleKnowledgeBackend.updateKnowledgeSettings(knowledgeBaseId, settings)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleKnowledgeBackend.updateKnowledgeSettings(knowledgeBaseId, settings)
   return callBackend('update_knowledge_settings', { knowledgeBaseId, settings })
 }
 
@@ -85,13 +85,13 @@ export function updateKnowledgeSettings(knowledgeBaseId: string, settings: Knowl
  * @param limit - Most passages to return (1 to 50)
  */
 export function searchKnowledge(query: string, knowledgeBaseIds?: string[], limit = 8): Promise<KnowledgePassage[]> {
-  if (!isDesktopApp()) return sampleKnowledgeBackend.searchKnowledge(query, knowledgeBaseIds, limit)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleKnowledgeBackend.searchKnowledge(query, knowledgeBaseIds, limit)
   return callBackend('search_knowledge', { query, knowledgeBaseIds: knowledgeBaseIds ?? null, limit })
 }
 
 /** Listens to sync progress. Returns an unsubscribe function. */
 export function subscribeToKnowledgeEvents(onKnowledgeEvent: (event: KnowledgeEvent) => void): Promise<() => void> {
-  if (!isDesktopApp()) return sampleKnowledgeBackend.subscribeToKnowledgeEvents(onKnowledgeEvent)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleKnowledgeBackend.subscribeToKnowledgeEvents(onKnowledgeEvent)
   return listenToBackend(KNOWLEDGE_EVENT, onKnowledgeEvent)
 }
 
@@ -127,7 +127,7 @@ export async function pickKnowledgeFolder(title: string): Promise<string | null>
  * the browser preview uses HTML drag and drop instead). Returns an unsubscribe function.
  */
 export async function subscribeToDroppedPaths(onPathsDropped: (paths: string[]) => void): Promise<() => void> {
-  if (!isDesktopApp()) return () => {}
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return () => {}
   const { getCurrentWebview } = await import('@tauri-apps/api/webview')
   return getCurrentWebview().onDragDropEvent((event) => {
     if (event.payload.type === 'drop' && event.payload.paths.length > 0) onPathsDropped(event.payload.paths)

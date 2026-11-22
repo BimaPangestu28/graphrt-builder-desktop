@@ -7,13 +7,13 @@ import type { Run } from './types'
 
 /** Every problem the backend detects now: failed runs, missing keys, plugins, browser, schedules. */
 export function listProblems(): Promise<Problem[]> {
-  if (!isDesktopApp()) return sampleProblemsBackend.listProblems()
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleProblemsBackend.listProblems()
   return callBackend('list_problems')
 }
 
 /** One failed run explained: cause, fix, steps and graphrt's error. */
 export function getFailedRunReport(runId: string): Promise<FailedRunReport> {
-  if (!isDesktopApp()) return sampleProblemsBackend.getFailedRunReport(runId)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleProblemsBackend.getFailedRunReport(runId)
   return callBackend('get_failed_run_report', { runId })
 }
 
@@ -22,6 +22,6 @@ export function getFailedRunReport(runId: string): Promise<FailedRunReport> {
  * run, so this always starts from the beginning.
  */
 export function retryRun(runId: string): Promise<Run> {
-  if (!isDesktopApp()) return sampleProblemsBackend.retryRun(runId)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleProblemsBackend.retryRun(runId)
   return callBackend('retry_run', { runId })
 }

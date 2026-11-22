@@ -7,7 +7,9 @@ import type { BackendErrorCode } from './types'
  *
  * In the desktop app every call goes through Tauri `invoke`. In the browser
  * (`pnpm dev`) and in tests there is no backend, so feature modules fall back to
- * sample data: they check {@link isDesktopApp} and return mocks instead.
+ * sample data: they check `__SAMPLE_BACKEND__ && !isDesktopApp()` and return mocks
+ * instead. `__SAMPLE_BACKEND__` is a build-time constant (see vite.config.ts), false in
+ * the production desktop build, so the sample backend is not shipped there.
  */
 
 /** True inside the Tauri window; false in a plain browser or jsdom. */
@@ -112,7 +114,7 @@ export async function callBackend<Result>(command: string, commandArguments?: Re
  * it is a no-op.
  */
 export async function listenToBackend<Payload>(eventName: string, onPayload: (payload: Payload) => void): Promise<() => void> {
-  if (!isDesktopApp()) return () => {}
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return () => {}
   const { listen } = await import('@tauri-apps/api/event')
   return listen<Payload>(eventName, (event) => onPayload(event.payload))
 }

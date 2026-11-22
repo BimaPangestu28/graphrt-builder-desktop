@@ -28,7 +28,7 @@ import { samplePluginsBackend, subscribeToSampleBrowserRuntimeEvents, subscribeT
  * @param refresh - Fetch the catalog again instead of using the saved copy (boolean)
  */
 export function listPluginCatalog(refresh = false): Promise<PluginCatalog> {
-  if (!isDesktopApp()) return samplePluginsBackend.listPluginCatalog(refresh)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return samplePluginsBackend.listPluginCatalog(refresh)
   return callBackend('list_plugin_catalog', { refresh })
 }
 
@@ -42,12 +42,12 @@ export function listPluginCatalog(refresh = false): Promise<PluginCatalog> {
  * @throws BackendError - `not_found` when the catalog does not list the plugin
  */
 export function listPluginCatalogSteps(name: string): Promise<PluginNodeInfo[]> {
-  if (!isDesktopApp()) return samplePluginsBackend.listPluginCatalogSteps(name)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return samplePluginsBackend.listPluginCatalogSteps(name)
   return callBackend('list_plugin_catalog_steps', { name })
 }
 
 export function listInstalledPlugins(): Promise<InstalledPlugin[]> {
-  if (!isDesktopApp()) return samplePluginsBackend.listInstalledPlugins()
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return samplePluginsBackend.listInstalledPlugins()
   return callBackend('list_installed_plugins')
 }
 
@@ -62,7 +62,7 @@ export function listInstalledPlugins(): Promise<InstalledPlugin[]> {
  *   already or when the plugin asks for more than `approvedPermissions`
  */
 export function installPlugin(name: string, approvedPermissions: PluginPermissions): Promise<InstalledPlugin> {
-  if (!isDesktopApp()) return samplePluginsBackend.installPlugin(name, approvedPermissions)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return samplePluginsBackend.installPlugin(name, approvedPermissions)
   return callBackend('install_plugin', { name, permissions: approvedPermissions })
 }
 
@@ -77,7 +77,7 @@ export type LocalPluginPickKind = 'folder' | 'archive'
  * @returns The absolute path, or null when the picker was closed (string | null)
  */
 export async function pickLocalPluginPath(kind: LocalPluginPickKind): Promise<string | null> {
-  if (!isDesktopApp()) return samplePluginsBackend.pickLocalPluginPath(kind)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return samplePluginsBackend.pickLocalPluginPath(kind)
   const { open } = await import('@tauri-apps/plugin-dialog')
   const picked =
     kind === 'folder'
@@ -101,13 +101,13 @@ export async function pickLocalPluginPath(kind: LocalPluginPickKind): Promise<st
  * const installedPlugin = await installLocalPlugin('/Users/me/code/my-plugin')
  */
 export function installLocalPlugin(path: string, replace = false): Promise<InstalledPlugin> {
-  if (!isDesktopApp()) return samplePluginsBackend.installLocalPlugin(path, replace)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return samplePluginsBackend.installLocalPlugin(path, replace)
   return callBackend('install_local_plugin', { path, replace })
 }
 
 /** Installs the catalog version over the installed one (when `updateAvailable`). */
 export function updatePlugin(name: string): Promise<InstalledPlugin> {
-  if (!isDesktopApp()) return samplePluginsBackend.updatePlugin(name)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return samplePluginsBackend.updatePlugin(name)
   return callBackend('update_plugin', { name })
 }
 
@@ -119,18 +119,18 @@ export function updatePlugin(name: string): Promise<InstalledPlugin> {
  * @throws BackendError - when there is no catalog (offline and never fetched)
  */
 export function updateAllPlugins(): Promise<PluginBulkUpdateSummary> {
-  if (!isDesktopApp()) return samplePluginsBackend.updateAllPlugins()
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return samplePluginsBackend.updateAllPlugins()
   return callBackend('update_all_plugins')
 }
 
 /** Plugins graphrt updated by itself, newest first (at most 20). */
 export function listPluginAutoUpdates(): Promise<PluginAutoUpdate[]> {
-  if (!isDesktopApp()) return samplePluginsBackend.listPluginAutoUpdates()
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return samplePluginsBackend.listPluginAutoUpdates()
   return callBackend('list_plugin_auto_updates')
 }
 
 export function removePlugin(name: string): Promise<void> {
-  if (!isDesktopApp()) return samplePluginsBackend.removePlugin(name)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return samplePluginsBackend.removePlugin(name)
   return callBackend('remove_plugin', { name })
 }
 
@@ -145,7 +145,7 @@ export function removePlugin(name: string): Promise<void> {
  *   installed plugin asks for more than them (it stays untrusted)
  */
 export function setPluginTrusted(name: string, trusted: boolean, approvedPermissions: PluginPermissions | null): Promise<InstalledPlugin> {
-  if (!isDesktopApp()) return samplePluginsBackend.setPluginTrusted(name, trusted, approvedPermissions ?? undefined)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return samplePluginsBackend.setPluginTrusted(name, trusted, approvedPermissions ?? undefined)
   return callBackend('set_plugin_trusted', { name, trusted, permissions: approvedPermissions })
 }
 
@@ -154,23 +154,23 @@ export function setPluginTrusted(name: string, trusted: boolean, approvedPermiss
  * The value is never read back; the returned plugin only says it is `configured`.
  */
 export function setPluginConfig(name: string, variable: string, value: string): Promise<InstalledPlugin> {
-  if (!isDesktopApp()) return samplePluginsBackend.setPluginConfig(name, variable, value)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return samplePluginsBackend.setPluginConfig(name, variable, value)
   return callBackend('set_plugin_config', { name, variable, value })
 }
 
 export function deletePluginConfig(name: string, variable: string): Promise<InstalledPlugin> {
-  if (!isDesktopApp()) return samplePluginsBackend.deletePluginConfig(name, variable)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return samplePluginsBackend.deletePluginConfig(name, variable)
   return callBackend('delete_plugin_config', { name, variable })
 }
 
 export function getBrowserRuntimeStatus(): Promise<BrowserRuntimeStatus> {
-  if (!isDesktopApp()) return samplePluginsBackend.getBrowserRuntimeStatus()
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return samplePluginsBackend.getBrowserRuntimeStatus()
   return callBackend('browser_runtime_status')
 }
 
 /** Installs Chromium for browser plugins. Progress arrives through {@link listenToBrowserRuntimeEvents}. */
 export function installBrowserRuntime(): Promise<void> {
-  if (!isDesktopApp()) return samplePluginsBackend.installBrowserRuntime()
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return samplePluginsBackend.installBrowserRuntime()
   return callBackend('install_browser_runtime')
 }
 
@@ -187,7 +187,7 @@ export function installBrowserRuntime(): Promise<void> {
  * const result = await runPluginAction('whatsapp-web', 'whatsapp-web.get_status', {})
  */
 export function runPluginAction(name: string, kind: string, config: Record<string, unknown> = {}): Promise<PluginActionResult> {
-  if (!isDesktopApp()) return samplePluginsBackend.runPluginAction(name, kind, config)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return samplePluginsBackend.runPluginAction(name, kind, config)
   return callBackend('run_plugin_action', { name, kind, config })
 }
 
@@ -203,7 +203,7 @@ export function runPluginAction(name: string, kind: string, config: Record<strin
  * const sessionState = await checkPluginSession('whatsapp-web') // "linked"
  */
 export function checkPluginSession(name: string): Promise<PluginSessionState> {
-  if (!isDesktopApp()) return samplePluginsBackend.checkPluginSession(name)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return samplePluginsBackend.checkPluginSession(name)
   return callBackend('check_plugin_session', { name })
 }
 
@@ -214,7 +214,7 @@ export function checkPluginSession(name: string): Promise<PluginSessionState> {
  * @throws BackendError - `not_found` when the plugin has no README link
  */
 export function openPluginReadme(name: string): Promise<void> {
-  if (!isDesktopApp()) return samplePluginsBackend.openPluginReadme(name)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return samplePluginsBackend.openPluginReadme(name)
   return callBackend('open_plugin_readme', { name })
 }
 
@@ -225,7 +225,7 @@ export function openPluginReadme(name: string): Promise<void> {
  * @throws BackendError - `not_found` when the plugin has no repository link
  */
 export function openPluginRepository(name: string): Promise<void> {
-  if (!isDesktopApp()) return samplePluginsBackend.openPluginRepository(name)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return samplePluginsBackend.openPluginRepository(name)
   return callBackend('open_plugin_repository', { name })
 }
 
@@ -242,19 +242,19 @@ export function openPluginRepository(name: string): Promise<void> {
  * const iconDataUrl = await getPluginIcon('whatsapp-web')
  */
 export function getPluginIcon(name: string): Promise<string | null> {
-  if (!isDesktopApp()) return samplePluginsBackend.getPluginIcon(name)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return samplePluginsBackend.getPluginIcon(name)
   return callBackend('get_plugin_icon', { name })
 }
 
 /** Subscribes to `plugin-event` (install progress, load errors, list changes). Resolves to the unsubscribe function. */
 export function listenToPluginEvents(onEvent: (pluginEvent: PluginEvent) => void): Promise<() => void> {
-  if (!isDesktopApp()) return Promise.resolve(subscribeToSamplePluginEvents(onEvent))
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return Promise.resolve(subscribeToSamplePluginEvents(onEvent))
   return listenToBackend<PluginEvent>(PLUGIN_EVENT_NAME, onEvent)
 }
 
 /** Subscribes to browser runtime install progress (`node-runtime-event`). Resolves to the unsubscribe function. */
 export function listenToBrowserRuntimeEvents(onEvent: (runtimeEvent: BrowserRuntimeEvent) => void): Promise<() => void> {
-  if (!isDesktopApp()) return Promise.resolve(subscribeToSampleBrowserRuntimeEvents(onEvent))
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return Promise.resolve(subscribeToSampleBrowserRuntimeEvents(onEvent))
   return listenToBackend<BrowserRuntimeEvent>(BROWSER_RUNTIME_EVENT_NAME, onEvent)
 }
 
@@ -269,6 +269,6 @@ export function readPluginActionData(result: PluginActionResult): Record<string,
  * settings, browser). Empty when the workflow uses no plugin steps.
  */
 export function listAgentPluginRequirements(agentId: string): Promise<PluginRequirement[]> {
-  if (!isDesktopApp()) return samplePluginsBackend.listAgentPluginRequirements(agentId)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return samplePluginsBackend.listAgentPluginRequirements(agentId)
   return callBackend('list_agent_plugin_requirements', { agentId })
 }

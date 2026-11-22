@@ -13,6 +13,6 @@ import type { UsageSummary } from './usageSummaryTypes'
  * const month = await getUsageSummary(new Date(2026, 10, 1).toISOString())
  */
 export function getUsageSummary(fromDate: string): Promise<UsageSummary> {
-  if (!isDesktopApp()) return sampleUsageSummaryBackend.getUsageSummary(fromDate)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleUsageSummaryBackend.getUsageSummary(fromDate)
   return callBackend('get_usage_summary', { fromDate })
 }

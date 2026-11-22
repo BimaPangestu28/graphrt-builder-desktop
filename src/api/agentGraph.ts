@@ -32,13 +32,13 @@ export const agentEditStateEvent = 'agent-edit-state'
  * @throws BackendError - `not_found` for an unknown agent or version
  */
 export function getAgentGraph(agentId: string, version?: number): Promise<AgentGraph> {
-  if (!isDesktopApp()) return sampleAgentGraphBackend.getAgentGraph(agentId, version)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleAgentGraphBackend.getAgentGraph(agentId, version)
   return callBackend('get_agent_graph', { agentId, version: version ?? null })
 }
 
 /** Every node kind the app offers or can read: builtins first, then plugin actions. */
 export function getNodeKinds(): Promise<NodeKindInfo[]> {
-  if (!isDesktopApp()) return sampleAgentGraphBackend.getNodeKinds()
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleAgentGraphBackend.getNodeKinds()
   return callBackend('get_node_kinds')
 }
 
@@ -50,7 +50,7 @@ export function getNodeKinds(): Promise<NodeKindInfo[]> {
  * (see {@link invalidGraphProblems}); `invalid_input` for a malformed edit
  */
 export function saveAgentGraph(agentId: string, baseVersion: number, edit: GraphEdit): Promise<SaveGraphResult> {
-  if (!isDesktopApp()) return sampleAgentGraphBackend.saveAgentGraph(agentId, baseVersion, edit)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleAgentGraphBackend.saveAgentGraph(agentId, baseVersion, edit)
   return callBackend('save_agent_graph', { agentId, baseVersion, edit })
 }
 
@@ -61,13 +61,13 @@ export function saveAgentGraph(agentId: string, baseVersion: number, edit: Graph
  * @throws BackendError - `not_found` for an unknown agent or version; `invalid_input` for a malformed edit
  */
 export function validateAgentGraph(agentId: string, baseVersion: number, edit: GraphEdit): Promise<GraphProblem[]> {
-  if (!isDesktopApp()) return sampleAgentGraphBackend.validateAgentGraph(agentId, baseVersion, edit)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleAgentGraphBackend.validateAgentGraph(agentId, baseVersion, edit)
   return callBackend('validate_agent_graph', { agentId, baseVersion, edit })
 }
 
 /** Sticky notes on the canvas of a version (current when omitted). */
 export function getCanvasNotes(agentId: string, version?: number): Promise<CanvasNoteSet> {
-  if (!isDesktopApp()) return sampleAgentGraphBackend.getCanvasNotes(agentId, version)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleAgentGraphBackend.getCanvasNotes(agentId, version)
   return callBackend('get_canvas_notes', { agentId, version: version ?? null })
 }
 
@@ -77,19 +77,19 @@ export function getCanvasNotes(agentId: string, version?: number): Promise<Canva
  * @throws BackendError - `invalid_input` for a repeated id, a bad size or color, or a text over 4,000 characters
  */
 export function saveCanvasNotes(agentId: string, version: number, notes: CanvasNote[]): Promise<CanvasNoteSet> {
-  if (!isDesktopApp()) return sampleAgentGraphBackend.saveCanvasNotes(agentId, version, notes)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleAgentGraphBackend.saveCanvasNotes(agentId, version, notes)
   return callBackend('save_canvas_notes', { agentId, version, notes })
 }
 
 /** Saved positions of a version (current when omitted) and the agent's canvas viewport. */
 export function getNodeLayout(agentId: string, version?: number): Promise<NodeLayoutSet> {
-  if (!isDesktopApp()) return sampleAgentGraphBackend.getNodeLayout(agentId, version)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleAgentGraphBackend.getNodeLayout(agentId, version)
   return callBackend('get_node_layout', { agentId, version: version ?? null })
 }
 
 /** Replaces a version's positions (adds no version) and saves the viewport when given. */
 export function saveNodeLayout(agentId: string, version: number, nodes: NodeLayout[], viewport?: CanvasViewport | null): Promise<NodeLayoutSet> {
-  if (!isDesktopApp()) return sampleAgentGraphBackend.saveNodeLayout(agentId, version, nodes, viewport ?? null)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleAgentGraphBackend.saveNodeLayout(agentId, version, nodes, viewport ?? null)
   return callBackend('save_node_layout', { agentId, version, nodes, viewport: viewport ?? null })
 }
 
@@ -99,13 +99,13 @@ export function saveNodeLayout(agentId: string, version: number, nodes: NodeLayo
  * are not listed: their inputs come from `listAgentSteps`.
  */
 export function getToolInputSchemas(): Promise<ToolInputSchema[]> {
-  if (!isDesktopApp()) return listSampleToolInputSchemas()
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return listSampleToolInputSchemas()
   return callBackend('get_tool_input_schemas')
 }
 
 /** Whether the builder is changing the agent right now. */
 export function getAgentEditState(agentId: string): Promise<AgentEditState> {
-  if (!isDesktopApp()) return sampleAgentGraphBackend.getAgentEditState(agentId)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleAgentGraphBackend.getAgentEditState(agentId)
   return callBackend('get_agent_edit_state', { agentId })
 }
 
@@ -115,7 +115,7 @@ export function getAgentEditState(agentId: string): Promise<AgentEditState> {
  * @returns Unsubscribe function
  */
 export function listenToAgentEditState(onChange: (change: AgentEditStateChange) => void): Promise<() => void> {
-  if (!isDesktopApp()) return Promise.resolve(sampleAgentGraphBackend.listenToAgentEditState(onChange))
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return Promise.resolve(sampleAgentGraphBackend.listenToAgentEditState(onChange))
   return listenToBackend<AgentEditStateChange>(agentEditStateEvent, onChange)
 }
 

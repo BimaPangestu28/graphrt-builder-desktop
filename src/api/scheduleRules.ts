@@ -6,12 +6,12 @@ import type { Run } from './types'
 /** Scheduler screen (10): enforced schedule rules and the runs schedules started. */
 
 export function getScheduleRules(): Promise<ScheduleRules> {
-  if (!isDesktopApp()) return sampleScheduleRulesBackend.getScheduleRules()
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleScheduleRulesBackend.getScheduleRules()
   return callBackend('get_schedule_rules')
 }
 
 export function updateScheduleRules(rules: ScheduleRules): Promise<ScheduleRules> {
-  if (!isDesktopApp()) return sampleScheduleRulesBackend.updateScheduleRules(rules)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleScheduleRulesBackend.updateScheduleRules(rules)
   return callBackend('update_schedule_rules', { rules })
 }
 
@@ -22,6 +22,6 @@ export function updateScheduleRules(rules: ScheduleRules): Promise<ScheduleRules
  * @param until - RFC 3339 end, exclusive (string)
  */
 export function listScheduledRuns(since: string, until: string): Promise<Run[]> {
-  if (!isDesktopApp()) return sampleScheduleRulesBackend.listScheduledRuns(since, until)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleScheduleRulesBackend.listScheduledRuns(since, until)
   return callBackend('list_scheduled_runs', { since, until })
 }

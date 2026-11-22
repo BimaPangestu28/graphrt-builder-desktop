@@ -15,7 +15,7 @@ import type { AgentRunStats, RunSummary } from './runSummaryTypes'
  * const summary = await getRunSummary(runId)
  */
 export function getRunSummary(runId: string): Promise<RunSummary> {
-  if (!isDesktopApp()) return sampleRunSummaryBackend.getRunSummary(runId)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleRunSummaryBackend.getRunSummary(runId)
   return callBackend('get_run_summary', { runId })
 }
 
@@ -27,6 +27,6 @@ export function getRunSummary(runId: string): Promise<RunSummary> {
  * @throws BackendError - `not_found` when `agentId` names no agent
  */
 export function listAgentRunStats(agentId?: string): Promise<AgentRunStats[]> {
-  if (!isDesktopApp()) return sampleRunSummaryBackend.listAgentRunStats(agentId)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleRunSummaryBackend.listAgentRunStats(agentId)
   return callBackend('list_agent_run_stats', { agentId: agentId ?? null })
 }

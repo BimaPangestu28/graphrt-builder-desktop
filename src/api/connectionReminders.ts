@@ -11,6 +11,6 @@ import { sampleConnectionRemindersBackend } from './sampleBackend/connectionRemi
  * @returns Reminders, most urgent first (ConnectionReminder[])
  */
 export function listConnectionReminders(): Promise<ConnectionReminder[]> {
-  if (!isDesktopApp()) return sampleConnectionRemindersBackend.listConnectionReminders()
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleConnectionRemindersBackend.listConnectionReminders()
   return Promise.resolve([])
 }
