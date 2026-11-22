@@ -7,6 +7,10 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ## [Unreleased]
 
+### Fixed
+
+- Release builds refuse a Node.js sidecar fetched before stripping was added (its stamp lacks "stripped"), so a stale 22 MB-larger binary can no longer ship by accident. Dev builds are unaffected; `GRAPHRT_SKIP_NODE_STRIP=1` opts out.
+
 ## [0.1.4] - 2026-11-22
 
 ### Security
