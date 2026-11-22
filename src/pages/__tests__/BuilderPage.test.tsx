@@ -4,6 +4,7 @@ import { BackendError } from '@/api/client'
 import { resetSampleAgents, sampleAgentsBackend } from '@/api/sampleBackend/agents'
 import { resetSampleBuilder, sampleBuilderBackend, sampleBuildTiming } from '@/api/sampleBackend/builder'
 import { appendStoredBuilderMessages } from '@/api/sampleBackend/sampleAgentStore'
+import { setSampleDelayScale } from '@/api/sampleBackend/sampleResponse'
 import { isSampleWorkflowSecretConfigured, resetSampleCredentials, sampleCredentialsBackend } from '@/api/sampleBackend/credentials'
 import { resetSamplePlugins, samplePluginsBackend, setSampleAgentPluginNeeds, setSampleBrowserRuntimeStatus } from '@/api/sampleBackend/plugins'
 import type { BuildProgress, WorkflowSecretStatus } from '@/api/types'
@@ -178,6 +179,8 @@ describe('BuilderPage', () => {
   })
 
   it('stops a change in progress from the chat: nothing is saved and the chat says so', async () => {
+    // The change must still be running when Stop is clicked
+    setSampleDelayScale(1)
     sampleBuildTiming.revisionStageDelayMs = 200
     const firstVisit = renderBuilderPage()
     await screen.findByText('Write a short message')
