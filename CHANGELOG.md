@@ -7,6 +7,10 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ## [Unreleased]
 
+### Added
+
+- `scripts/release-macos-local.sh`: build (or reuse a build), sign with Developer ID, notarize and staple the app and dmg, sign the updater bundle, write `latest.json` and publish a GitHub release from a Mac. Notarizes with an App Store Connect API key (`NOTARY_KEY`, `NOTARY_KEY_ID`, `NOTARY_ISSUER`) or a notarytool keychain profile.
+
 ### Fixed
 
 - Release builds refuse a Node.js sidecar fetched before stripping was added (its stamp lacks "stripped"), so a stale 22 MB-larger binary can no longer ship by accident. Dev builds are unaffected; `GRAPHRT_SKIP_NODE_STRIP=1` opts out.
