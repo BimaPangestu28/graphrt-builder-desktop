@@ -62,7 +62,7 @@ describe('NodeCanvas', () => {
     renderCanvas(graph, { pluginStatuses: { 'whatsapp-web': { label: 'Not linked', tone: 'amber' } } })
     await findFlowNode('send_whatsapp')
     const sendCard = screen.getByTestId('node-send_whatsapp')
-    expect(sendCard).toHaveTextContent('Whatsapp Web · send_message')
+    expect(sendCard).toHaveTextContent('WhatsApp Web · send_message')
     expect(sendCard).toHaveTextContent('Not linked')
     expect(within(sendCard).getByText('write message')).toBeInTheDocument()
     expect(screen.getByTestId('node-approve_message').className).toContain('bg-amber-tint')

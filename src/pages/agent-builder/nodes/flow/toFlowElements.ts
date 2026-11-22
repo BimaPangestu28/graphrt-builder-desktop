@@ -1,5 +1,6 @@
 import type { AgentGraph, GraphEdge, GraphNode, GraphProblem, NodeKindInfo, NodeLayout } from '@/api/agentGraphTypes'
 import { FAIL_BRANCH_HANDLE, type ConnectionCheck } from '@/lib/agentGraphRules'
+import { pluginDisplayName } from '@/lib/pluginDisplayName'
 import type { NodeSetupStatus } from '../contracts'
 import { MarkerType, type Edge, type Node } from './flowLibrary'
 import { containerMinimumSize, endNodeSize, flowDirectionOf, isEndPillNode, stepNodeSize, type FlowDirection } from './autoLayout'
@@ -89,10 +90,6 @@ export interface FlowElementOptions {
   readOnly?: boolean
 }
 
-function humanizePluginName(pluginName: string): string {
-  return pluginName.replace(/[-_]/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
-}
-
 function setupStatusOf(node: GraphNode, options: FlowElementOptions): NodeSetupStatus | null {
   if (!node.plugin) return null
   const known = options.pluginStatuses?.[node.plugin]
@@ -106,7 +103,8 @@ function linesOf(node: GraphNode, options: FlowElementOptions): Pick<StepNodeDat
   const kindInfo = options.kindsByKind?.[node.kind]
   const kindName = options.kindNames?.[node.kind] ?? kindInfo?.displayName ?? null
   if (node.plugin) {
-    const pluginName = kindInfo?.plugin?.displayName ?? humanizePluginName(node.plugin)
+    // Same label as the plugin pages and the builder's Needs list ("WhatsApp API", not "Whatsapp Api").
+    const pluginName = pluginDisplayName({ name: node.plugin, displayName: kindInfo?.plugin?.displayName })
     return { kindName, pluginLine: `${pluginName} · ${kindName ?? node.kind.slice(node.plugin.length + 1)}`, subtitle: node.kind }
   }
   const subtitle = [kindName ?? node.kind, node.detail].filter(Boolean).join(' · ')
