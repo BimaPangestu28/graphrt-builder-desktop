@@ -67,7 +67,7 @@ pub async fn list_provider_statuses(
     .await
 }
 
-/// Turns the Claude Code / Codex CLI provider on or off (Experimental, opt-in) and
+/// Turns a local CLI provider (Claude Code, Codex, Gemini CLI, …) on or off (Experimental, opt-in) and
 /// returns its new status.
 #[tauri::command]
 pub async fn set_local_cli_enabled(
@@ -94,7 +94,7 @@ pub async fn check_local_cli(provider: ModelProvider) -> AppResult<LocalCliCheck
 /// Where Ollama is downloaded from.
 const OLLAMA_DOWNLOAD_URL: &str = "https://ollama.com/download";
 
-/// Opens the install page of Claude Code, Codex or Ollama in the default browser (fixed
+/// Opens the official install page of a local CLI or Ollama in the default browser (fixed
 /// addresses only; the frontend names the provider, never a URL).
 #[tauri::command]
 pub fn open_model_install_page(provider: ModelProvider) -> AppResult<()> {
@@ -112,6 +112,16 @@ pub enum WelcomeChoice {
     ClaudeCodeCli,
     #[serde(rename = "codex-cli")]
     CodexCli,
+    #[serde(rename = "gemini-cli")]
+    GeminiCli,
+    #[serde(rename = "cursor-cli")]
+    CursorCli,
+    #[serde(rename = "copilot-cli")]
+    CopilotCli,
+    #[serde(rename = "opencode-cli")]
+    OpencodeCli,
+    #[serde(rename = "qwen-code-cli")]
+    QwenCodeCli,
     #[serde(rename = "ollama")]
     Ollama,
     #[serde(rename = "api-key")]

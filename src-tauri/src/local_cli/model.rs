@@ -18,7 +18,8 @@ use tokio::process::{Child, ChildStdout, Command};
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
-use super::command::{build_args, is_valid_model_name, INSTRUCTIONS_FILE_NAME};
+use super::adapter::{CallPlan, InstructionsDelivery, PromptDelivery};
+use super::command::{is_valid_model_name, plan_call, INSTRUCTIONS_FILE_NAME};
 use super::detect::Detection;
 use super::parse::{parser_for, CliOutputParser};
 use super::prompt::{first_json_object, prepare_prompt, CliPrompt};
@@ -61,9 +62,11 @@ impl LocalCliModel {
             .tempdir()
             .map_err(|error| LlmError::Config(format!("could not make a working folder for {name}: {error}")))?;
         let instructions_path = self.write_instructions(&prompt, workdir.path())?;
-        let args = build_args(self.cli, &self.detection, &request.model, workdir.path(), instructions_path.as_deref());
-        let mut child = self.spawn(&binary, &args, workdir.path())?;
-        write_prompt(&mut child, prompt.prompt.clone());
+        let plan = plan_call(self.cli, &self.detection, &request.model, workdir.path(), instructions_path.as_deref());
+        let stdin_text = self.deliver_prompt(&prompt, workdir.path())?;
+        write_workdir_files(&plan, workdir.path())?;
+        let mut child = self.spawn(&binary, &plan, workdir.path())?;
+        write_prompt(&mut child, stdin_text);
         let stderr_tail = collect_stderr_tail(&mut child);
         let stdout = child.stdout.take().ok_or_else(|| LlmError::Config(format!("{name} has no output")))?;
         let state = CallState {
@@ -83,9 +86,11 @@ impl LocalCliModel {
         Ok(Box::pin(futures::stream::unfold(state, next_delta)))
     }
 
-    /// Claude Code reads its system prompt from a file; Codex gets it in the prompt.
+    /// The instructions file for CLIs reading their system prompt from one (Claude Code's
+    /// flag, Gemini CLI's environment variable); the others get it in the prompt.
     fn write_instructions(&self, prompt: &CliPrompt, workdir: &std::path::Path) -> Result<Option<PathBuf>, LlmError> {
-        if self.cli != LocalCli::ClaudeCode || prompt.instructions.trim().is_empty() {
+        let uses_file = !matches!(self.cli.adapter().instructions_delivery(), InstructionsDelivery::InPrompt);
+        if !uses_file || prompt.instructions.trim().is_empty() {
             return Ok(None);
         }
         let path = workdir.join(INSTRUCTIONS_FILE_NAME);
@@ -94,10 +99,24 @@ impl LocalCliModel {
         Ok(Some(path))
     }
 
-    fn spawn(&self, binary: &std::path::Path, args: &[String], workdir: &std::path::Path) -> Result<Child, LlmError> {
+    /// What goes to stdin: the prompt, or nothing when the adapter takes it as a rules
+    /// file in the working directory (then written there).
+    fn deliver_prompt(&self, prompt: &CliPrompt, workdir: &std::path::Path) -> Result<String, LlmError> {
+        match self.cli.adapter().prompt_delivery() {
+            PromptDelivery::Stdin => Ok(prompt.prompt.clone()),
+            PromptDelivery::WorkdirRulesFile(file_name) => {
+                std::fs::write(workdir.join(file_name), &prompt.prompt)
+                    .map_err(|error| LlmError::Config(format!("could not write the prompt file: {error}")))?;
+                Ok(String::new())
+            }
+        }
+    }
+
+    fn spawn(&self, binary: &std::path::Path, plan: &CallPlan, workdir: &std::path::Path) -> Result<Child, LlmError> {
         let mut command = Command::new(binary);
         command
-            .args(args)
+            .args(&plan.args)
+            .envs(plan.env.iter().map(|(name, value)| (name.as_str(), value.as_str())))
             .current_dir(workdir)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -119,6 +138,17 @@ impl ChatModel for LocalCliModel {
     fn chat(&self, request: ChatRequest) -> BoxFuture<'_, Result<ChatStream, LlmError>> {
         Box::pin(self.clone().start(request))
     }
+}
+
+/// The adapter's working-folder files (e.g. a project config denying every tool).
+fn write_workdir_files(plan: &CallPlan, workdir: &std::path::Path) -> Result<(), LlmError> {
+    for (relative_path, content) in &plan.files {
+        let path = workdir.join(relative_path);
+        let written =
+            path.parent().map_or(Ok(()), std::fs::create_dir_all).and_then(|()| std::fs::write(&path, content));
+        written.map_err(|error| LlmError::Config(format!("could not prepare the working folder: {error}")))?;
+    }
+    Ok(())
 }
 
 /// Writes the prompt and closes stdin so the CLI starts answering.
@@ -186,7 +216,12 @@ impl CallState {
         match tokio::time::timeout_at(self.deadline, self.lines.next_line()).await {
             Err(_elapsed) => self.fail(timeout_error(self.cli, self.timeout)).await,
             Ok(Ok(Some(line))) => match self.parser.parse_line(&line) {
-                Ok(deltas) => self.accept(deltas),
+                Ok(deltas) => {
+                    self.accept(deltas);
+                    if self.parser.is_complete() {
+                        self.complete_early().await;
+                    }
+                }
                 Err(error) => self.fail(error).await,
             },
             Ok(Ok(None)) => self.finish().await,
@@ -201,6 +236,13 @@ impl CallState {
     async fn fail(&mut self, error: LlmError) {
         let _kill_result = self.child.kill().await;
         self.pending.push_back(Err(error));
+        self.is_done = true;
+    }
+
+    /// The parser has the whole answer: stop the process instead of waiting for it.
+    async fn complete_early(&mut self) {
+        let _kill_result = self.child.kill().await;
+        self.flush_forced_tool(None);
         self.is_done = true;
     }
 

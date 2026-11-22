@@ -8,6 +8,7 @@
 
 use graphrt_llm::{ChatRequest, ContentPart, LlmError, Message, ResponseFormat, Role, ToolChoice};
 
+use super::adapter::{InstructionsDelivery, PLAIN_TEXT_PREAMBLE};
 use super::LocalCli;
 
 /// What one CLI call sends.
@@ -53,9 +54,14 @@ pub fn prepare_prompt(cli: LocalCli, request: &ChatRequest) -> Result<CliPrompt,
     }
     let instructions = instructions.into_iter().filter(|text| !text.trim().is_empty()).collect::<Vec<_>>().join("\n\n");
     let prompt = conversation_text(&conversation);
-    let prompt = match cli {
-        LocalCli::ClaudeCode => prompt,
-        LocalCli::Codex => codex_prompt(&instructions, &prompt),
+    let (instructions, prompt) = match cli.adapter().instructions_delivery() {
+        InstructionsDelivery::FileFlag(_) => (instructions, prompt),
+        // The file replaces the CLI's whole built-in (coding agent) system prompt.
+        InstructionsDelivery::FileEnv(_) => (replacement_system_prompt(&instructions), prompt),
+        InstructionsDelivery::InPrompt => {
+            let text = in_prompt_text(&instructions, &prompt);
+            (instructions, text)
+        }
     };
     Ok(CliPrompt { instructions, prompt, forced_tool })
 }
@@ -124,13 +130,19 @@ fn conversation_text(conversation: &[&Message]) -> String {
     transcript
 }
 
-/// Codex takes no system prompt flag: the instructions go on top, with a reminder that
-/// this is a plain text task (its sandbox is read-only anyway).
-fn codex_prompt(instructions: &str, prompt: &str) -> String {
-    let mut text = String::from(
-        "You are used as a plain text model. Do not run commands, read or change files, or browse: \
-         answer only from the text below.\n",
-    );
+/// A system prompt replacing a CLI's built-in one (Gemini CLI, Qwen Code): the
+/// plain-text reminder, then graphrt's instructions.
+fn replacement_system_prompt(instructions: &str) -> String {
+    if instructions.trim().is_empty() {
+        return PLAIN_TEXT_PREAMBLE.trim_end().to_owned();
+    }
+    format!("{PLAIN_TEXT_PREAMBLE}\n{instructions}")
+}
+
+/// For a CLI without a system prompt file (Codex and most others): the instructions go
+/// on top, with a reminder that this is a plain text task (its tools are off anyway).
+fn in_prompt_text(instructions: &str, prompt: &str) -> String {
+    let mut text = String::from(PLAIN_TEXT_PREAMBLE);
     if !instructions.trim().is_empty() {
         text.push_str(&format!("\n# Instructions\n{instructions}\n"));
     }

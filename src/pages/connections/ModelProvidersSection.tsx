@@ -3,7 +3,7 @@ import { deleteApiKey, setApiKey, setDefaultModel } from '@/api/credentials'
 import type { ModelChoice, ModelProvider } from '@/api/types'
 import { Button } from '@/components/ui'
 import { connectionCategoryTitles } from '@/data/connections'
-import { isLocalCliProvider } from '@/data/settings'
+import { isLocalCliProvider, primaryLocalCliProviders } from '@/data/settings'
 import { useAvailableModels } from '@/hooks/useAvailableModels'
 import { describeError } from '@/lib/agentDisplay'
 import { getCredentialStoreName } from '@/lib/platform'
@@ -11,6 +11,7 @@ import { recommendedModelFor } from '@/lib/modelChoices'
 import { ConnectionCard } from './ConnectionCard'
 import { ConnectionsNotice, ConnectionsSection } from './ConnectionsSection'
 import { LocalCliCard } from './LocalCliCard'
+import { MoreLocalCliSection } from './MoreLocalCliSection'
 import type { ModelConnection } from './modelConnections'
 import { ProviderKeyForm } from './ProviderKeyForm'
 
@@ -66,7 +67,9 @@ interface ModelProvidersSectionProps {
 /**
  * The AI models tab of screen 21: one card per provider, the default one highlighted, backed by the keychain commands: Add key / Replace key open
  * an inline form that calls `setApiKey`; Remove calls `deleteApiKey`. Below them, the
- * Experimental local CLIs (Claude Code, Codex on this computer) get their own cards.
+ * Experimental local CLIs (Claude Code, Codex on this computer) get their own cards, and
+ * the other CLIs follow under "More AI tools on this computer" (found ones first, the
+ * rest collapsed under "Other AI tools you can use").
  */
 export function ModelProvidersSection({ connections, defaultModel, loadError, onKeysChanged }: ModelProvidersSectionProps) {
   const availableModelsState = useAvailableModels()
@@ -158,13 +161,15 @@ export function ModelProvidersSection({ connections, defaultModel, loadError, on
   }
 
   const keyedConnections = connections?.filter((connection) => !isLocalCliProvider(connection.provider)) ?? []
-  const localCliConnections = connections?.filter((connection) => isLocalCliProvider(connection.provider)) ?? []
+  const isPrimaryLocalCli = (connection: ModelConnection) => (primaryLocalCliProviders as readonly string[]).includes(connection.provider)
+  const localCliConnections = connections?.filter((connection) => isLocalCliProvider(connection.provider) && isPrimaryLocalCli(connection)) ?? []
+  const moreLocalCliConnections = connections?.filter((connection) => isLocalCliProvider(connection.provider) && !isPrimaryLocalCli(connection)) ?? []
 
   return (
     <ConnectionsSection
       id="connections-models"
       title={connectionCategoryTitles.models}
-      description={`The models your agents think with: an API key, a local model with Ollama, or Claude Code / Codex already signed in on this computer. Keys stay in ${getCredentialStoreName()}; new agents use the default`}
+      description={`The models your agents think with: an API key, a local model with Ollama, or an AI tool already signed in on this computer (Claude Code, Codex, Gemini CLI and more). Keys stay in ${getCredentialStoreName()}; new agents use the default`}
     >
       {loadError && <ConnectionsNotice tone="danger">Could not load AI models: {describeError(loadError)}</ConnectionsNotice>}
       {!loadError && !connections && <ConnectionsNotice>Loading AI models…</ConnectionsNotice>}
@@ -182,6 +187,7 @@ export function ModelProvidersSection({ connections, defaultModel, loadError, on
           <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,360px),1fr))] gap-3">{localCliConnections.map(renderLocalCliCard)}</div>
         </div>
       )}
+      <MoreLocalCliSection connections={moreLocalCliConnections} renderCard={renderLocalCliCard} />
       {removeErrorMessage && (
         <p aria-live="polite" className="m-0 text-[13px] text-danger">
           {removeErrorMessage}

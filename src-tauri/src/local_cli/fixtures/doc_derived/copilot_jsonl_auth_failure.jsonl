@@ -1,0 +1,3 @@
+# doc-derived (hand-written, not recorded): GitHub Copilot CLI JSONL when sign-in fails: an error record, then the final result record with a non-zero exit status (changelog 1.0.110); message text is an assumption
+{"type":"session.error","data":{"errorType":"authentication","message":"No authentication information found. Run copilot and use /login to sign in."}}
+{"type":"result","sessionId":"fixture-session","exitCode":1,"timestamp":"2026-11-22T00:00:00.100Z"}

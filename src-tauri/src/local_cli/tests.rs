@@ -6,10 +6,10 @@ use std::time::{Duration, Instant};
 use graphrt_core::tool::ToolSpec;
 use graphrt_llm::{ChatDelta, ChatModel, ChatRequest, FinishReason, LlmError, Message, ResponseFormat, ToolChoice};
 
+use super::adapters::{self, claude_models, parse_codex_catalog};
 use super::capability::capability_gap;
 use super::command::{build_args, is_valid_model_name};
 use super::detect::{self, Detection, Locator};
-use super::models::{claude_models, parse_codex_catalog};
 use super::parse::{classify_failure, failure_text, parser_for};
 use super::prompt::{first_json_object, prepare_prompt};
 use super::*;
@@ -306,7 +306,7 @@ fn model_names_that_look_like_flags_are_refused() {
 #[test]
 fn claude_models_are_the_help_aliases_plus_the_base_ones() {
     let help = "  --model <model>   Model for the current session. Use an alias for the latest model (e.g. 'fable',\n                    'opus', or 'sonnet') or a model's full name.\n  -n, --name <name>  Set a name 'ignored'";
-    let aliases = detect::claude_model_aliases(help);
+    let aliases = adapters::claude_model_aliases(help);
     assert_eq!(aliases, ["fable", "opus", "sonnet"]);
     let ids: Vec<String> = claude_models(&aliases).into_iter().map(|model| model.id).collect();
     assert_eq!(ids, ["sonnet", "opus", "haiku", "fable"]);
@@ -322,11 +322,11 @@ fn codex_catalog_lists_visible_models_by_priority() {
 #[test]
 fn sign_in_statuses_are_read_without_the_account_details() {
     let claude = r#"{"loggedIn": true, "authMethod": "claude.ai", "email": "someone@example.com"}"#;
-    assert_eq!(detect::parse_claude_auth_status(claude), SignInState::SignedIn);
-    assert_eq!(detect::parse_claude_auth_status(r#"{"loggedIn": false}"#), SignInState::SignedOut);
-    assert_eq!(detect::parse_claude_auth_status("error: unknown command 'auth'"), SignInState::Unknown);
-    assert_eq!(detect::parse_codex_login_status(true, "Logged in using ChatGPT"), SignInState::SignedIn);
-    assert_eq!(detect::parse_codex_login_status(false, "Not logged in"), SignInState::SignedOut);
+    assert_eq!(adapters::parse_claude_auth_status(claude), SignInState::SignedIn);
+    assert_eq!(adapters::parse_claude_auth_status(r#"{"loggedIn": false}"#), SignInState::SignedOut);
+    assert_eq!(adapters::parse_claude_auth_status("error: unknown command 'auth'"), SignInState::Unknown);
+    assert_eq!(adapters::parse_codex_login_status(true, "Logged in using ChatGPT"), SignInState::SignedIn);
+    assert_eq!(adapters::parse_codex_login_status(false, "Not logged in"), SignInState::SignedOut);
     assert_eq!(detect::parse_login_shell_path("Welcome!\n__GRAPHRT_PATH__/a:/b"), Some("/a:/b".into()));
 }
 
@@ -510,8 +510,10 @@ esac"#;
         }
     }
 
+    /// Waits up to 15 s: macOS checks every new script before its first run, which can
+    /// take a while when many tests start fake CLIs at once.
     async fn wait_for_pid(pid_file: &Path) -> u32 {
-        for _ in 0..100 {
+        for _ in 0..500 {
             if let Some(pid) = std::fs::read_to_string(pid_file).ok().and_then(|text| text.trim().parse().ok()) {
                 return pid;
             }

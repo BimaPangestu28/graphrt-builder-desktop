@@ -1,0 +1,7 @@
+# doc-derived (hand-written, not recorded): Cursor CLI --output-format stream-json --stream-partial-output, shapes from cursor.com/docs/cli/reference/output-format (deltas carry timestamp_ms; the final flush has none)
+{"type":"system","subtype":"init","apiKeySource":"login","cwd":"/tmp/graphrt-cli-x","session_id":"fixture-session","model":"Claude 4 Sonnet","permissionMode":"default"}
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Answer the task in this project's AGENTS.md rules."}]},"session_id":"fixture-session"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Halo "}]},"session_id":"fixture-session","timestamp_ms":1795356000100}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"dari Cursor."}]},"session_id":"fixture-session","timestamp_ms":1795356000200}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Halo dari Cursor."}]},"session_id":"fixture-session"}
+{"type":"result","subtype":"success","is_error":false,"duration_ms":1234,"duration_api_ms":1234,"result":"Halo dari Cursor.","session_id":"fixture-session","request_id":"fixture-request"}

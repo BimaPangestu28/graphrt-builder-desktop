@@ -1,0 +1,4 @@
+# doc-derived (hand-written, not recorded): Cursor CLI --output-format stream-json without partial output: one complete assistant message, then the result (cursor.com/docs/cli/reference/output-format)
+{"type":"system","subtype":"init","apiKeySource":"login","cwd":"/tmp/graphrt-cli-x","session_id":"fixture-session","model":"GPT-5","permissionMode":"default"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"{\"city\": \"Bandung\"}"}]},"session_id":"fixture-session"}
+{"type":"result","subtype":"success","is_error":false,"duration_ms":900,"duration_api_ms":900,"result":"{\"city\": \"Bandung\"}","session_id":"fixture-session"}

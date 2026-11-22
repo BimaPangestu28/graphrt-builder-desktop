@@ -34,27 +34,61 @@ export const modelProviderNames: Record<ModelProvider, string> = {
   ollama: 'Ollama',
   'claude-code-cli': 'Claude Code (on this computer)',
   'codex-cli': 'Codex (on this computer)',
+  'gemini-cli': 'Gemini CLI (on this computer)',
+  'cursor-cli': 'Cursor CLI (on this computer)',
+  'copilot-cli': 'GitHub Copilot CLI (on this computer)',
+  'opencode-cli': 'OpenCode (on this computer)',
+  'qwen-code-cli': 'Qwen Code (on this computer)',
 }
 
-/** The local CLI providers, in the backend's order. */
-export const localCliProviders: readonly LocalCliProvider[] = ['claude-code-cli', 'codex-cli']
+/** The local CLI providers, in the backend's order (`LocalCli::ALL`). */
+export const localCliProviders: readonly LocalCliProvider[] = [
+  'claude-code-cli',
+  'codex-cli',
+  'gemini-cli',
+  'cursor-cli',
+  'copilot-cli',
+  'opencode-cli',
+  'qwen-code-cli',
+]
+
+/** The local CLIs offered up front (Welcome cards, always shown on Connections). */
+export const primaryLocalCliProviders: readonly LocalCliProvider[] = ['claude-code-cli', 'codex-cli']
+
+/** The other local CLIs, behind "More AI tools on this computer" on Welcome. */
+export const moreLocalCliProviders: readonly LocalCliProvider[] = localCliProviders.filter((provider) => !primaryLocalCliProviders.includes(provider))
 
 /** Short names of the local CLIs ("Claude Code"), for sentences. */
 export const localCliShortNames: Record<LocalCliProvider, string> = {
   'claude-code-cli': 'Claude Code',
   'codex-cli': 'Codex',
+  'gemini-cli': 'Gemini CLI',
+  'cursor-cli': 'Cursor CLI',
+  'copilot-cli': 'GitHub Copilot CLI',
+  'opencode-cli': 'OpenCode',
+  'qwen-code-cli': 'Qwen Code',
 }
 
 /** The command a user types in Terminal to sign a local CLI in. */
 export const localCliCommands: Record<LocalCliProvider, string> = {
   'claude-code-cli': 'claude',
   'codex-cli': 'codex',
+  'gemini-cli': 'gemini',
+  'cursor-cli': 'cursor-agent login',
+  'copilot-cli': 'copilot',
+  'opencode-cli': 'opencode auth login',
+  'qwen-code-cli': 'qwen',
 }
 
 /** Whose plan a local CLI's usage counts against. */
 export const localCliPlanNames: Record<LocalCliProvider, string> = {
   'claude-code-cli': 'Claude',
   'codex-cli': 'ChatGPT',
+  'gemini-cli': 'Google (Gemini)',
+  'cursor-cli': 'Cursor',
+  'copilot-cli': 'GitHub Copilot',
+  'opencode-cli': 'AI provider',
+  'qwen-code-cli': 'Qwen',
 }
 
 /** The model id that means "use the CLI's own default model". */
@@ -62,7 +96,7 @@ export const localCliDefaultModelName = 'default'
 
 /** True for the providers that run the user's own signed-in CLI. */
 export function isLocalCliProvider(provider: string): provider is LocalCliProvider {
-  return provider === 'claude-code-cli' || provider === 'codex-cli'
+  return (localCliProviders as readonly string[]).includes(provider)
 }
 
 /**
@@ -73,7 +107,8 @@ export function isLocalCliProvider(provider: string): provider is LocalCliProvid
  */
 export function describeLocalCliUsageNote(provider: LocalCliProvider): string {
   const shortName = localCliShortNames[provider]
-  return `Experimental · uses your ${shortName} sign-in on this computer. Usage counts against your ${localCliPlanNames[provider]} plan and its limits. For apps you share with others, use an API key.`
+  const planText = provider === 'opencode-cli' ? 'the AI provider accounts OpenCode is signed in to' : `your ${localCliPlanNames[provider]} plan`
+  return `Experimental · uses your ${shortName} sign-in on this computer. Usage counts against ${planText} and its limits. For apps you share with others, use an API key.`
 }
 
 /**

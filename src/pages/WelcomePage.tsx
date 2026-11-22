@@ -4,11 +4,12 @@ import { listAvailableModels, listProviderStatuses } from '@/api/credentials'
 import type { ProviderModels } from '@/api/modelCatalogTypes'
 import type { LocalCliProvider, ProviderStatus, WelcomeChoice } from '@/api/types'
 import { Badge, LogoMark } from '@/components/ui'
-import { localCliProviders, localCliShortNames } from '@/data/settings'
+import { localCliShortNames, primaryLocalCliProviders } from '@/data/settings'
 import { useAsyncData } from '@/hooks/useAsyncData'
 import { describeError } from '@/lib/agentDisplay'
 import { getTrayAreaName } from '@/lib/platform'
 import { ApiKeyFields, LocalCliChoiceDetails, OllamaChoiceDetails } from './welcome/WelcomeChoiceDetails'
+import { MoreLocalCliTools } from './welcome/MoreLocalCliTools'
 import { WelcomeChoiceCard } from './welcome/WelcomeChoiceCard'
 import { pathAfterWelcome, saveWelcomeSetup, type ApiKeyProvider } from './welcome/welcomeSetup'
 
@@ -85,7 +86,8 @@ function useWelcomeForm() {
 /**
  * Screen 01 · Welcome, the first launch: "How should graphrt think?". No key is needed to
  * start: the user can use Claude Code or Codex already signed in on this computer
- * (Experimental, detected automatically), a local model with Ollama, an API key, or skip
+ * (Experimental, detected automatically; Gemini CLI, Cursor CLI, GitHub Copilot CLI,
+ * OpenCode and Qwen Code under "More AI tools on this computer"), a local model with Ollama, an API key, or skip
  * and explore first. Continue saves that setup and remembers the choice (so `/` stops
  * showing Welcome), then opens the New agent screen, or Home after Skip.
  */
@@ -114,7 +116,7 @@ export function WelcomePage() {
           <span aria-hidden="true" className="text-[12px] font-semibold text-muted">
             Already on this computer
           </span>
-          {localCliProviders.map((provider) => (
+          {primaryLocalCliProviders.map((provider) => (
             <WelcomeChoiceCard
               key={provider}
               {...choiceCardProps}
@@ -125,6 +127,7 @@ export function WelcomePage() {
               details={<LocalCliChoiceDetails provider={provider} status={detection.statuses?.find((status) => status.provider === provider)} />}
             />
           ))}
+          <MoreLocalCliTools statuses={detection.statuses} selectedChoice={form.choice} onSelect={form.setChoice} />
           <WelcomeChoiceCard {...choiceCardProps} value="ollama" title="Local model with Ollama" details={<OllamaChoiceDetails isRunning={detection.isOllamaRunning} />} />
           <span aria-hidden="true" className="mt-2 text-[12px] font-semibold text-muted">
             Or bring your own key
