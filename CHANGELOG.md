@@ -26,6 +26,9 @@ releases may contain breaking changes; they are called out under **Changed**.
   of `source: community` plugins (by the catalog entry or the install record) in the
   background, even when they ask for nothing new; they are left in `needs_approval`. "Update
   all" still offers them, with the usual permission limit.
+- **Catalog entry and tarball must describe the same release**: installs and updates refuse a
+  downloaded manifest whose `version` differs from the catalog entry's or whose `name` is not
+  the entry's name, before anything is replaced.
 
 ## [0.1.3] - 2026-11-22
 

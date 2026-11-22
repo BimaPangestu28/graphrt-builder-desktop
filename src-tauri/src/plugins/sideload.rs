@@ -269,7 +269,12 @@ impl PluginService {
         let plugins_dir = self.plugins_dir.clone();
         let manifest = tokio::task::spawn_blocking(move || {
             let base_registry = crate::flow::builtin_node_registry();
-            let checks = install::InstallChecks { base_registry: &base_registry, permission_limit: None };
+            // No catalog entry to match: the version is whatever the manifest says.
+            let checks = install::InstallChecks {
+                base_registry: &base_registry,
+                permission_limit: None,
+                expected_version: None,
+            };
             install::finish_install(staged, &plugins_dir, &checks)
         })
         .await

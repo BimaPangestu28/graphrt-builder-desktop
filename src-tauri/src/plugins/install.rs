@@ -57,6 +57,9 @@ pub(super) struct InstallChecks<'registry> {
     /// into place (automatic updates never bring in new permissions; an install the
     /// user approved never brings in more than the card showed).
     pub permission_limit: Option<PermissionLimit>,
+    /// For catalog installs and updates: the catalog entry's version, which the downloaded
+    /// manifest must state exactly (the name is checked for every install, see [`finish_install`]).
+    pub expected_version: Option<String>,
 }
 
 /// The most a plugin being installed may ask for, and where that limit comes from.
@@ -107,6 +110,7 @@ pub(super) fn finish_install(
 ) -> AppResult<LoadedManifest> {
     let StagedPlugin { staging, dir, name } = staged;
     check_loads(&dir, &name, checks.base_registry)?;
+    check_release(&dir, &name, checks.expected_version.as_deref())?;
     if let Some(limit) = &checks.permission_limit {
         check_permission_limit(&dir, &name, limit)?;
     }
@@ -128,6 +132,24 @@ fn check_loads(dir: &Path, name: &str, base_registry: &graphrt_core::Registry) -
     let mut registry = base_registry.clone();
     let mut tools = graphrt_core::tool::ToolRegistry::new();
     host.register(&mut registry, &mut tools).map_err(|error| rejected(error.to_string()))
+}
+
+/// Refuses a manifest that does not name `name` or (when given) state `expected_version`:
+/// the catalog entry and its tarball must describe the same release.
+fn check_release(dir: &Path, name: &str, expected_version: Option<&str>) -> AppResult<()> {
+    let manifest = read_plugin(dir).map_err(AppError::InvalidInput)?;
+    let (manifest_name, manifest_version) = (&manifest.manifest.name, &manifest.manifest.version);
+    if manifest_name != name {
+        return Err(AppError::InvalidInput(format!(
+            "the downloaded plugin calls itself {manifest_name}, not {name}; nothing was installed"
+        )));
+    }
+    match expected_version {
+        Some(expected) if expected != manifest_version => Err(AppError::InvalidInput(format!(
+            "the catalog lists plugin {name} {expected} but the download is {manifest_version}; nothing was installed"
+        ))),
+        _ => Ok(()),
+    }
 }
 
 /// Refuses a plugin whose manifest asks for more than `limit`. The catalog said it

@@ -645,9 +645,10 @@ impl PluginService {
         let plugins_dir = self.plugins_dir.clone();
         let plugin_name = name.to_owned();
         let permission_limit = mode.permission_limit.clone();
+        let expected_version = Some(entry.version.clone());
         let manifest = tokio::task::spawn_blocking(move || {
             let base_registry = crate::flow::builtin_node_registry();
-            let checks = install::InstallChecks { base_registry: &base_registry, permission_limit };
+            let checks = install::InstallChecks { base_registry: &base_registry, permission_limit, expected_version };
             install::install_tarball(&plugins_dir, &plugin_name, &tarball, &checks)
         })
         .await

@@ -93,3 +93,52 @@ async fn trusting_with_the_permissions_shown_works_and_untrusting_needs_no_appro
     assert!(trusted.trusted);
     assert!(!untrusted.trusted);
 }
+
+/// The fixture files with `from` replaced by `to` in the manifest.
+fn files_with_manifest_change(from: &str, to: &str) -> Vec<(String, Vec<u8>)> {
+    let mut files = fixture_files();
+    let manifest = String::from_utf8(files[0].1.clone()).unwrap();
+    assert!(manifest.contains(from));
+    files[0].1 = manifest.replace(from, to).into_bytes();
+    files
+}
+
+#[tokio::test]
+async fn a_tarball_whose_manifest_version_differs_from_the_catalog_is_refused() {
+    let fixture = Fixture::new();
+    // The catalog says 1.0.1, the tarball's manifest still says 1.0.0.
+    fixture.publish("1.0.1", good_tarball());
+
+    let error = fixture.service.install(PLUGIN, &echo_catalog_permissions()).await.unwrap_err();
+
+    assert!(
+        matches!(&error, AppError::InvalidInput(message) if message.contains("1.0.1") && message.contains("1.0.0")),
+        "{error}"
+    );
+    assert_nothing_installed(&fixture);
+}
+
+#[tokio::test]
+async fn an_update_whose_manifest_version_differs_from_the_catalog_keeps_the_installed_version() {
+    let fixture = installed_fixture().await;
+    let files = files_with_manifest_change("\"version\": \"1.0.0\"", "\"version\": \"1.0.5\"");
+    fixture.publish("1.1.0", tarball(&files, &[]));
+    fixture.service.catalog(true).await.unwrap();
+
+    let error = fixture.service.update(PLUGIN).await.unwrap_err();
+
+    assert!(matches!(&error, AppError::InvalidInput(message) if message.contains("1.0.5")), "{error}");
+    assert_eq!(fixture.service.installed(PLUGIN).unwrap().version, "1.0.0");
+}
+
+#[tokio::test]
+async fn a_tarball_whose_manifest_names_another_plugin_is_refused() {
+    let fixture = Fixture::new();
+    let files = files_with_manifest_change("\"name\": \"fixture-echo\"", "\"name\": \"other-echo\"");
+    fixture.publish("1.0.0", tarball(&files, &[]));
+
+    let error = fixture.service.install(PLUGIN, &echo_catalog_permissions()).await.unwrap_err();
+
+    assert!(matches!(&error, AppError::InvalidInput(message) if message.contains("other-echo")), "{error}");
+    assert_nothing_installed(&fixture);
+}
