@@ -7,6 +7,8 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-11-22
+
 ### Security
 
 - **"It asks before anything is sent" has no more side doors** (builder `validate_draft` and the
@@ -627,7 +629,8 @@ connected to the graphrt runtime**, so no agent actually runs.
 - The mobile companion screens from the design are not built.
 - macOS builds are unsigned.
 
-[Unreleased]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.0...v0.1.1
