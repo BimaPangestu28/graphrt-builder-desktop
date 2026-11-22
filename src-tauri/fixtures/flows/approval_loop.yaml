@@ -1,5 +1,6 @@
-# Finds cafes in an area and sends each one a WhatsApp offer,
-# asking the user to approve every message before it is sent.
+# Finds cafes in an area and sends each one a WhatsApp offer, asking the user
+# before the search (it sends the area and the Maps key to Google) and before
+# every message.
 version: "1"
 name: cafe-whatsapp-offers
 description: Find cafes on Google Maps and send each a WhatsApp offer, asking me before each message.
@@ -15,6 +16,14 @@ graph:
         - { variable: area, type: text-input, required: true, label: Area to search }
         - { variable: offer, type: paragraph, required: true, label: Offer to send }
         - { variable: max_cafes, type: number, required: false, default: 10 }
+
+    - id: confirm_search
+      type: human-input
+      title: Ask before searching
+      prompt: "Search Google Maps for cafes in {{#start.area#}}? Your Maps key goes to Google with the search."
+      actions:
+        - { id: search, title: Search }
+        - { id: cancel, title: Cancel }
 
     - id: find_cafes
       type: http-request
@@ -117,7 +126,8 @@ graph:
         - { variable: messages_sent, value_selector: [write_report, structured_output, messages_sent] }
 
   edges:
-    - { source: start, target: find_cafes }
+    - { source: start, target: confirm_search }
+    - { source: confirm_search, target: find_cafes, handle: search }
     - { source: find_cafes, target: each_cafe }
     - { source: each_cafe_start, target: draft_message }
     - { source: draft_message, target: approve_message }

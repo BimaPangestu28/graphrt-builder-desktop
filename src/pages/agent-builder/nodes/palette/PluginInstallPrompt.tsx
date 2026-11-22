@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import type { PluginCatalogEntry } from '@/api/pluginTypes'
 import { Button, buttonClassNames } from '@/components/ui'
 import type { PluginInstallProgress } from '@/hooks/usePlugins'
-import { describeCommunityInstallNote, describeInstallProgress, describePermissionChips } from '@/pages/plugins/pluginDisplay'
+import { describeCommunityInstallNote, describeInstallProgress, describePermissionChips, pluginInstallTrustNote } from '@/pages/plugins/pluginDisplay'
 import { PluginIcon } from '@/pages/plugins/PluginIcon'
 import type { PendingInstall } from './usePaletteInstall'
 
@@ -66,6 +66,7 @@ export function PluginInstallPrompt({ pending, placementText, catalogEntry, isIn
         {communityNote && `${communityNote} `}
         {describeInstallAsks(catalogEntry)}
       </p>
+      <p className="m-0 text-[12px] font-medium leading-normal text-ink-2">{pluginInstallTrustNote}</p>
       {isInstalling && progress && (
         <span role="status" className="text-[12px] text-ink-2">
           {describeInstallProgress(progress)}

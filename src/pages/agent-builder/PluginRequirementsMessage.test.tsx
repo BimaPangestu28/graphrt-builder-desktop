@@ -42,6 +42,7 @@ describe('plugin setup message in the build chat', () => {
     expect(screen.getByRole('group', { name: 'This agent needs 2 plugins · 0 ready' })).toBeInTheDocument()
     expect(whatsAppApiCard).toHaveTextContent('Used by: Send WhatsApp')
     expect(whatsAppApiCard).toHaveTextContent('Not installed')
+    expect(whatsAppApiCard).toHaveTextContent('Installing a plugin runs its code on this computer. Trust only plugins you know.')
     const permissions = within(whatsAppApiCard).getByRole('list', { name: 'What WhatsApp Cloud API asks for' })
     expect(permissions).toHaveTextContent('Uses the internet')
     expect(permissions).toHaveTextContent('Asks for secrets or tokens: WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID')

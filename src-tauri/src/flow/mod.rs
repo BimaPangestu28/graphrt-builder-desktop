@@ -4,11 +4,15 @@
 
 mod approval;
 mod placeholders;
+mod sending;
 mod summary;
+#[cfg(test)]
+pub(crate) mod test_fixtures;
 
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
+pub(crate) use approval::{read_timeout_choice, TimeoutChoice, TimeoutSend};
 
 /// One step as listed in the builder.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -133,6 +137,28 @@ pub fn compile_flow(flow_yaml: &str) -> AppResult<graphrt_core::Graph> {
     compile_with(flow_yaml, &node_registry())
 }
 
+/// [`compile_flow`], with the env variables named in `secret_env_names`
+/// declared `type: secret` whatever the document says: a value the app supplies
+/// from the keychain is always a masked secret, and graphrt checks supplied env
+/// values against their declared type.
+///
+/// # Errors
+/// Same as [`compile_flow`].
+pub fn compile_flow_with_secret_env(flow_yaml: &str, secret_env_names: &[String]) -> AppResult<graphrt_core::Graph> {
+    if secret_env_names.is_empty() {
+        return compile_flow(flow_yaml);
+    }
+    if is_blank_document(flow_yaml) {
+        return Err(AppError::InvalidInput("the workflow document is empty".into()));
+    }
+    let mut workflow =
+        graphrt_core::Workflow::parse(flow_yaml).map_err(|error| AppError::Workflow(error.to_string()))?;
+    for declaration in workflow.env.iter_mut().filter(|declaration| secret_env_names.contains(&declaration.name)) {
+        declaration.ty = graphrt_core::value::ValueType::Secret;
+    }
+    graphrt_core::Graph::build(workflow, &node_registry()).map_err(|error| AppError::Workflow(error.to_string()))
+}
+
 /// Compiles the document with [`draft_node_registry`]: catalog plugin steps
 /// that are not installed are accepted (their config checked against the
 /// catalog's schema). For validation and display only; runs use [`compile_flow`].
@@ -185,7 +211,7 @@ pub fn summarize_flow(flow_yaml: &str) -> AppResult<FlowSummary> {
     Ok(summary::summarize_graph(&graph))
 }
 
-/// Titles of steps that send data out (HTTP POST/PUT/PATCH/DELETE) on a path
+/// Titles of steps that send data out (see [`is_sending_node`]) on a path
 /// that does not first stop at a `human-input` approval. Empty means the flow
 /// keeps the promise "it asks you before anything is sent".
 ///
@@ -194,6 +220,32 @@ pub fn summarize_flow(flow_yaml: &str) -> AppResult<FlowSummary> {
 pub fn find_unapproved_sending_steps(flow_yaml: &str) -> AppResult<Vec<String>> {
     let graph = compile_draft(flow_yaml)?;
     Ok(approval::unapproved_sending_steps(&graph))
+}
+
+/// Approval steps whose time limit answers with a button that leads to a step
+/// that sends, each as a plain-language message: such an approval sends without
+/// asking once nobody answers in time.
+///
+/// # Errors
+/// Same as [`compile_flow`]: the document is compiled first.
+pub fn find_timeouts_that_send(flow_yaml: &str) -> AppResult<Vec<String>> {
+    let graph = compile_draft(flow_yaml)?;
+    Ok(approval::timeouts_that_send(&graph).iter().map(timeout_send_message).collect())
+}
+
+/// Approval steps of a compiled graph whose time limit answers into a send
+/// (see [`find_timeouts_that_send`]).
+pub(crate) fn timeouts_that_send(graph: &graphrt_core::Graph) -> Vec<TimeoutSend> {
+    approval::timeouts_that_send(graph)
+}
+
+/// "Ask before sending answers `send` by itself when its time runs out, and that leads to Send it".
+pub(crate) fn timeout_send_message(timeout: &TimeoutSend) -> String {
+    format!(
+        "{} answers `{}` by itself when its time runs out, and that leads to {}, which sends without asking: \
+         set its `on_timeout` to `stop` or to a button that does not lead to a send",
+        timeout.approval_label, timeout.action, timeout.sending_step_label
+    )
 }
 
 /// HTTP steps whose URL points at a placeholder address such as `api.example.com`,
@@ -270,8 +322,10 @@ pub fn start_inputs(workflow: &graphrt_core::Workflow) -> Vec<FlowInput> {
         .collect()
 }
 
-/// Whether a node of this kind and config sends data out (writing HTTP methods and
-/// plugin steps that send or change something), so it must sit behind an approval.
+/// Whether a node of this kind and config sends data out (writing HTTP methods,
+/// HTTP requests carrying values, plugin and tool steps that send or change
+/// something, agents with sending tools that do not ask first), so it must sit
+/// behind an approval.
 pub fn is_sending_node(kind: &str, config: &serde_json::Map<String, serde_json::Value>) -> bool {
     approval::is_sending_kind(kind, config)
 }

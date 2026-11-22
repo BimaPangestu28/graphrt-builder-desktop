@@ -40,6 +40,10 @@ search keywords, the message or offer to send, how many items. Never hard-code t
 email or post, submits a form) or spends money (orders, pays, books) must come right after a `human-input` step \
 that shows exactly what will be sent or bought, with actions such as `send` and `skip`. Connect only the approving \
 action to that step. Inside an `iteration` that contains `human-input`, set `is_parallel: false`.
+- The app also counts as sending: any `http-request` (GET included) whose URL, params, headers, authorization or \
+body reads a `{{#…#}}` value, `tool` steps and plugin steps that change something, and `agent` steps with such \
+tools unless `require_approval` lists each of them. Put a `human-input` before those too. A `human-input` with a \
+time limit must use `on_timeout: stop` or a button that does not lead to a sending step.
 - Keys and tokens for third-party services go under `env` with `type: secret` and are read as `{{#env.NAME#}}`. \
 Never write a real or made-up key into the document.
 - Every `llm`, `agent`, `question-classifier` and `parameter-extractor` node uses \

@@ -396,6 +396,10 @@ describe('BuilderPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
     expect(reviseAgentSpy).toHaveBeenCalledWith('maps-leads', fixRequest, expect.any(Function))
+    // Let the change finish so no state update lands after the test environment is gone.
+    await act(async () => {
+      await reviseAgentSpy.mock.results[0].value
+    })
   })
 
   it('leaves the chat box empty without an ask param', async () => {

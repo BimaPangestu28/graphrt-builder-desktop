@@ -358,7 +358,7 @@ async fn missing_credentials_are_reported() {
 
 /// Like the cafe fixture but the message is sent without asking first.
 fn approval_loop_without_approval() -> String {
-    APPROVAL_LOOP
+    flow::test_fixtures::without_search_confirmation(APPROVAL_LOOP)
         .replace("    - { source: draft_message, target: approve_message }\n", "    - { source: draft_message, target: send_message }\n")
         .replace("    - { source: approve_message, target: send_message, handle: send }\n", "")
         .replace(
@@ -429,7 +429,13 @@ async fn drafting_streams_the_explanation_and_step_titles() {
     assert_eq!(last.explanation, "I find cafes and ask you before each message.");
     assert_eq!(
         last.step_titles,
-        ["Find cafes on Google Maps", "For each cafe", "Send the WhatsApp message", "Write the run report"]
+        [
+            "Ask before searching",
+            "Find cafes on Google Maps",
+            "For each cafe",
+            "Send the WhatsApp message",
+            "Write the run report"
+        ]
     );
     assert!(last.output_tokens > 0);
     // Previews belong to the drafting stage; stage-only messages carry none.
@@ -707,7 +713,7 @@ const MAPS_WHATSAPP_OUTREACH: &str = include_str!("../../fixtures/flows/maps_wha
 /// The template's prompt, from the same file the New agent screen reads.
 fn maps_whatsapp_template_prompt() -> String {
     let template: serde_json::Value =
-        serde_json::from_str(include_str!("../../../src/data/mapsWhatsAppTemplate.json")).unwrap();
+        serde_json::from_str(include_str!("../../../src/pages/new-agent/mapsWhatsAppTemplate.json")).unwrap();
     template["prompt"].as_str().unwrap().to_owned()
 }
 
@@ -768,4 +774,75 @@ async fn a_maps_whatsapp_draft_that_sends_without_asking_is_rejected() {
     assert_ne!(without_approval, MAPS_WHATSAPP_OUTREACH, "fixture edges changed; update this test");
     assert!(unapproved.unwrap_err().contains("Send it on WhatsApp"));
     assert!(unknown.unwrap_err().contains("whatsapp-web.send_text"));
+}
+
+/// What a draft of each bypass trick is refused with: the step it names.
+fn expected_problem_part(trick: &str) -> &'static str {
+    if trick.contains("time runs out") {
+        "Ask before posting answers `send`"
+    } else {
+        "send data without asking the user first"
+    }
+}
+
+#[test]
+fn validate_draft_refuses_every_approval_bypass_trick() {
+    let (_, builder) = mock_builder(&[]);
+    for (trick, draft, _) in flow::test_fixtures::approval_bypass_drafts() {
+        let problem = validate_draft(&draft, &builder).expect_err(trick);
+        assert!(problem.contains(expected_problem_part(trick)), "{trick}: {problem}");
+    }
+    assert!(validate_draft(&flow::test_fixtures::timeout_draft_repaired(), &builder).is_ok());
+}
+
+/// A prompt-injected builder reply using each trick goes back to the model with the
+/// reason, and only the repaired draft is saved.
+#[tokio::test]
+async fn an_injected_draft_using_any_bypass_trick_is_repaired_before_it_is_saved() {
+    for (trick, injected, _) in flow::test_fixtures::approval_bypass_drafts() {
+        let repaired = if trick.contains("time runs out") {
+            flow::test_fixtures::timeout_draft_repaired()
+        } else {
+            SIMPLE_ANSWER.to_owned()
+        };
+        let db = test_database();
+        let (mock, builder) =
+            mock_builder(&[fenced_reply("Helpful agent", &injected), fenced_reply("Helpful agent", &repaired)]);
+        let progress = ProgressLog::default();
+
+        let agent = build_agent_with_model(&db, &builder, request("Answer my question", None), &|update| {
+            progress.record(update)
+        })
+        .await
+        .unwrap_or_else(|error| panic!("{trick}: {error}"));
+
+        assert_eq!(agent.flow_yaml.trim(), repaired.trim(), "{trick}");
+        let repair_text = mock.requests()[1].messages[3].text();
+        assert!(repair_text.contains(expected_problem_part(trick)), "{trick}: {repair_text}");
+        assert!(progress.stages().contains(&BuildStage::Repairing), "{trick}");
+    }
+}
+
+#[test]
+fn validate_draft_refuses_codex_output_reaching_a_search_without_an_approval() {
+    let (_, mut builder) = mock_builder(&[]);
+    builder.available_providers.push("codex-cli".into());
+    let unapproved = flow::test_fixtures::model_output_into_a_search("codex-cli", true, false);
+    let problem = validate_draft(&unapproved, &builder).unwrap_err();
+    assert!(problem.contains("Search places") && problem.contains("without asking"), "{problem}");
+    let approved = flow::test_fixtures::model_output_into_a_search("codex-cli", true, true);
+    assert!(validate_draft(&approved, &builder).is_ok(), "{:?}", validate_draft(&approved, &builder));
+}
+
+#[tokio::test]
+async fn an_injected_draft_that_never_stops_bypassing_is_not_saved() {
+    let (_, injected, _) = flow::test_fixtures::approval_bypass_drafts().remove(1);
+    let replies = vec![fenced_reply("Helpful agent", &injected); MAX_REPAIR_ATTEMPTS + 1];
+    let db = test_database();
+    let (_mock, builder) = mock_builder(&replies);
+
+    let result = build_agent_with_model(&db, &builder, request("Answer my question", None), &|_| {}).await;
+
+    assert!(matches!(&result, Err(AppError::Workflow(message)) if message.contains("without asking")), "{result:?}");
+    assert!(db.list_agents().unwrap().is_empty());
 }

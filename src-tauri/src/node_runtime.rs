@@ -376,10 +376,19 @@ impl NodeRuntime {
     /// that Playwright's CLI and the bundled Node. Concurrent calls run one after
     /// another; a call that finds the browser installed returns at once.
     /// Progress goes to the Tauri event `node-runtime-event`.
+    ///
+    /// # Errors
+    /// `InvalidInput` when `plugin_dir`, or the Playwright CLI found for it, is
+    /// not inside the app's plugins folder: the installer runs that file with
+    /// Node, so only code of an installed plugin may be used.
     pub async fn install_browser_runtime_for(&self, plugin_dir: &Path) -> AppResult<()> {
         let _pending = PendingInstall::begin(&self.install_guard.pending_installs);
         let _exclusive = self.install_guard.lock.lock().await;
-        let playwright = PlaywrightPackage::locate(plugin_dir)?;
+        let plugins_root = canonical_dir(&self.plugins_dir)?;
+        let plugin_dir = require_inside(&plugins_root, plugin_dir, "the plugin folder")?;
+        let playwright = PlaywrightPackage::locate(&plugin_dir)?;
+        require_inside(&plugins_root, &playwright.cli, "the Playwright installer")?;
+        let plugin_dir = plugin_dir.as_path();
         if installed_status(&self.browsers_dir, &playwright.required_browser_dirs()?) == BrowserRuntimeStatus::Installed
         {
             self.events.send(NodeRuntimeEvent::BrowserInstallFinished { already_installed: true });
@@ -680,17 +689,92 @@ fn read_node_version(node_executable: &Path) -> AppResult<String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-fn run_playwright_install(request: &BrowserInstallRequest, on_progress: &ProgressCallback) -> AppResult<()> {
+fn canonical_dir(dir: &Path) -> AppResult<PathBuf> {
+    std::fs::canonicalize(dir).map_err(|error| {
+        AppError::InvalidInput(format!("no installed plugin ships Playwright ({}: {error})", dir.display()))
+    })
+}
+
+/// `path` resolved (links followed) when it lies inside `root` (already canonical).
+fn require_inside(root: &Path, path: &Path, what: &str) -> AppResult<PathBuf> {
+    let resolved = std::fs::canonicalize(path)
+        .map_err(|error| AppError::InvalidInput(format!("{what} {} cannot be read: {error}", path.display())))?;
+    if resolved.starts_with(root) {
+        Ok(resolved)
+    } else {
+        log::warn!("refused to run the browser installer from {} (outside {})", resolved.display(), root.display());
+        Err(AppError::InvalidInput(format!(
+            "{what} {} is not inside the plugins folder; only installed plugins can install the browser",
+            path.display()
+        )))
+    }
+}
+
+/// Variables of the app's own environment the Playwright installer may see:
+/// the home folder (Playwright's default cache and Node need it), the temp
+/// folder, Windows system folders Node cannot start without, and Playwright's
+/// own settings and the proxy settings (download host, proxy) so a user's setup still applies.
+const INSTALLER_PASSTHROUGH_ENV: &[&str] = &[
+    "HOME",
+    "USERPROFILE",
+    "TMPDIR",
+    "TEMP",
+    "TMP",
+    "SYSTEMROOT",
+    "SystemRoot",
+    "WINDIR",
+    "LOCALAPPDATA",
+    "HTTPS_PROXY",
+    "HTTP_PROXY",
+    "NO_PROXY",
+    "https_proxy",
+    "http_proxy",
+    "no_proxy",
+];
+/// Prefix of Playwright's own environment settings.
+const PLAYWRIGHT_ENV_PREFIX: &str = "PLAYWRIGHT_";
+
+/// The whole environment of the installer: the allowed variables of `app_env`,
+/// then `request_env` (`PATH`, `PLAYWRIGHT_BROWSERS_PATH`), which wins.
+/// Nothing else of the app's environment (API keys, tokens) reaches it.
+fn installer_env(
+    app_env: impl IntoIterator<Item = (OsString, OsString)>,
+    request_env: &[(String, String)],
+) -> Vec<(OsString, OsString)> {
+    let mut env: Vec<(OsString, OsString)> = app_env
+        .into_iter()
+        .filter(|(key, _)| {
+            let key = key.to_string_lossy();
+            INSTALLER_PASSTHROUGH_ENV.contains(&key.as_ref()) || key.starts_with(PLAYWRIGHT_ENV_PREFIX)
+        })
+        .filter(|(key, _)| !request_env.iter().any(|(request_key, _)| OsString::from(request_key) == *key))
+        .collect();
+    env.extend(request_env.iter().map(|(key, value)| (OsString::from(key), OsString::from(value))));
+    env
+}
+
+/// `node <playwright cli> install chromium` in the plugin folder, with a cleared
+/// environment (see [`installer_env`]).
+fn playwright_install_command(
+    request: &BrowserInstallRequest,
+    app_env: impl IntoIterator<Item = (OsString, OsString)>,
+) -> Command {
     let mut command = Command::new(&request.node_executable);
     command
         .arg(&request.playwright_cli)
         .args(["install", "chromium"])
         .current_dir(&request.working_dir)
-        .envs(request.env.iter().map(|(key, value)| (key, value)))
+        .env_clear()
+        .envs(installer_env(app_env, &request.env))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     hide_console_window(&mut command);
+    command
+}
+
+fn run_playwright_install(request: &BrowserInstallRequest, on_progress: &ProgressCallback) -> AppResult<()> {
+    let mut command = playwright_install_command(request, std::env::vars_os());
     let mut child = command
         .spawn()
         .map_err(|error| AppError::Internal(format!("cannot start the Playwright installer: {error}")))?;
@@ -1093,6 +1177,104 @@ mod tests {
             serde_json::json!({ "type": "browser_install_started", "pluginDir": "/p" })
         );
     }
+    #[tokio::test]
+    async fn a_plugin_folder_outside_the_plugins_folder_is_refused() {
+        let temp = tempfile::tempdir().unwrap();
+        let outside = temp.path().join("elsewhere/evil");
+        write_playwright_plugin(&outside, "1.65.1", "1255");
+        let installer = Arc::new(FakeInstaller::new(temp.path().join(BROWSERS_DIR_NAME), "1255"));
+        std::fs::create_dir_all(temp.path().join(PLUGINS_DIR_NAME)).unwrap();
+        let runtime =
+            NodeRuntime::with_parts(temp.path().to_path_buf(), bundled_location(temp.path()), installer.clone());
+
+        let error = runtime.install_browser_runtime_for(&outside).await.unwrap_err();
+        assert_eq!(error.code(), "invalid_input");
+        assert!(error.to_string().contains("not inside the plugins folder"), "{error}");
+        let sneaky = temp.path().join(PLUGINS_DIR_NAME).join("../elsewhere/evil");
+        assert_eq!(runtime.install_browser_runtime_for(&sneaky).await.unwrap_err().code(), "invalid_input");
+        #[cfg(unix)]
+        {
+            let linked = temp.path().join(PLUGINS_DIR_NAME).join("linked");
+            std::os::unix::fs::symlink(&outside, &linked).unwrap();
+            assert_eq!(runtime.install_browser_runtime_for(&linked).await.unwrap_err().code(), "invalid_input");
+        }
+        assert_eq!(installer.runs.load(Ordering::SeqCst), 0, "the installer never ran");
+    }
+
+    #[test]
+    fn the_installer_sees_only_path_home_temp_proxy_and_playwright_settings() {
+        let app_env = [
+            ("HOME", "/Users/me"),
+            ("PATH", "/usr/bin"),
+            ("OPENAI_API_KEY", "sk-live"),
+            ("GH_TOKEN", "ghp_x"),
+            ("PLAYWRIGHT_DOWNLOAD_HOST", "https://mirror.test"),
+            ("PLAYWRIGHT_BROWSERS_PATH", "/somewhere/else"),
+            ("HTTPS_PROXY", "http://proxy.test:3128"),
+        ]
+        .map(|(key, value)| (OsString::from(key), OsString::from(value)));
+        let request_env = vec![
+            ("PATH".to_owned(), "/node/bin:/usr/bin".to_owned()),
+            ("PLAYWRIGHT_BROWSERS_PATH".to_owned(), "/b".to_owned()),
+        ];
+
+        let env: Vec<(String, String)> = installer_env(app_env, &request_env)
+            .into_iter()
+            .map(|(key, value)| (key.to_string_lossy().into_owned(), value.to_string_lossy().into_owned()))
+            .collect();
+
+        let pairs: Vec<(&str, &str)> = env.iter().map(|(key, value)| (key.as_str(), value.as_str())).collect();
+        assert_eq!(
+            pairs,
+            [
+                ("HOME", "/Users/me"),
+                ("PLAYWRIGHT_DOWNLOAD_HOST", "https://mirror.test"),
+                ("HTTPS_PROXY", "http://proxy.test:3128"),
+                ("PATH", "/node/bin:/usr/bin"),
+                ("PLAYWRIGHT_BROWSERS_PATH", "/b"),
+            ]
+        );
+    }
+
+    #[test]
+    fn the_install_command_runs_the_plugins_cli_in_its_folder() {
+        let request = BrowserInstallRequest {
+            node_executable: PathBuf::from("/app/graphrt-node"),
+            playwright_cli: PathBuf::from("/data/plugins/p/node_modules/playwright/cli.js"),
+            working_dir: PathBuf::from("/data/plugins/p"),
+            env: vec![("PATH".to_owned(), "/app".to_owned())],
+        };
+        let command = playwright_install_command(&request, [(OsString::from("AWS_SECRET_ACCESS_KEY"), "x".into())]);
+        assert_eq!(command.get_program(), "/app/graphrt-node");
+        let args: Vec<&OsStr> = command.get_args().collect();
+        assert_eq!(args, ["/data/plugins/p/node_modules/playwright/cli.js", "install", "chromium"]);
+        assert_eq!(command.get_current_dir(), Some(Path::new("/data/plugins/p")));
+        let envs: Vec<(&OsStr, Option<&OsStr>)> = command.get_envs().collect();
+        assert_eq!(envs, [(OsStr::new("PATH"), Some(OsStr::new("/app")))]);
+    }
+
+    /// The cleared environment for real: `sh` stands in for Node and prints what it sees.
+    #[cfg(unix)]
+    #[test]
+    fn the_installer_process_does_not_inherit_the_apps_environment() {
+        let temp = tempfile::tempdir().unwrap();
+        let script = temp.path().join("cli.js");
+        std::fs::write(&script, "env\n").unwrap();
+        let request = BrowserInstallRequest {
+            node_executable: PathBuf::from("/bin/sh"),
+            playwright_cli: script,
+            working_dir: temp.path().to_path_buf(),
+            env: vec![("PATH".to_owned(), "/usr/bin:/bin".to_owned())],
+        };
+        let app_env = [("GRAPHRT_TEST_LEAK", "leaked"), ("HOME", "/Users/me")]
+            .map(|(key, value)| (OsString::from(key), OsString::from(value)));
+        let output = playwright_install_command(&request, app_env).output().unwrap();
+        let seen = String::from_utf8_lossy(&output.stdout);
+        assert!(seen.contains("HOME=/Users/me") && seen.contains("PATH=/usr/bin:/bin"), "{seen}");
+        assert!(!seen.contains("GRAPHRT_TEST_LEAK"), "{seen}");
+        assert!(!seen.contains("CARGO"), "the test runner's own variables must not reach it: {seen}");
+    }
+
     /// Real download with Playwright's CLI (network, ~250 MB). Run with
     /// `GRAPHRT_TEST_NODE=<node> GRAPHRT_TEST_PLAYWRIGHT_PLUGIN=<plugin dir>
     /// GRAPHRT_TEST_DATA_DIR=<dir> cargo test real_playwright -- --ignored`.
@@ -1108,6 +1290,7 @@ mod tests {
             NodeLocation { executable: Some(node), source: NodeSource::Bundled },
             Arc::new(PlaywrightCliInstaller),
         )
+        .with_plugins_dir(plugin_dir.parent().unwrap().to_path_buf())
         .with_event_sink(events.clone());
         runtime.install_browser_runtime_for(&plugin_dir).await.unwrap();
         assert_eq!(runtime.browser_runtime_status_for(&plugin_dir).unwrap(), BrowserRuntimeStatus::Installed);

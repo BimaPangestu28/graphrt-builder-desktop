@@ -9,6 +9,40 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ### Security
 
+- **"It asks before anything is sent" has no more side doors** (builder `validate_draft` and the
+  Nodes view): HTTP methods are read the way graphrt-http reads them (trimmed, any case), so
+  `" Post "` counts as writing; any `http-request` (GET included) whose URL, params, headers,
+  authorization or body reads a `{{#…#}}` value (inputs, earlier steps, `env` secrets), or that
+  has a body, now sends; `tool` steps and plugin steps send unless their operation clearly only
+  reads (a conservative name check: unknown names send; graphrt-plugins manifests have no
+  "sends" field to read instead); `agent` steps send when a sending tool is not listed in their
+  own `require_approval`; steps that reach outside and read output of a model step on Codex
+  (`output_needs_send_approval`), directly or through other steps, send. An approval whose
+  `on_timeout` answers with a button that leads to a sending step is a blocking problem
+  (`approval_timeout_sends`, "Sends when time runs out"); only `stop` or a non-sending button is
+  allowed, and a run of such a flow saved earlier stops on timeout instead. The cafe example now
+  asks before its Maps search, and the builder prompt explains the rules.
+- **Keychain values are always masked**: env values read from the keychain are passed as
+  graphrt secrets even when the document leaves out `type: secret`, so a draft cannot unmask a
+  stored key in events, stored runs or prompts. Plain document defaults (`value:`) stay plain.
+  A stored non-secret setting read in a model prompt now reaches it masked; use a document
+  default or a run input for text the model should read.
+- **Chromium install runs with a clean environment** from an installed plugin only: the
+  Playwright installer gets `PATH`, `PLAYWRIGHT_BROWSERS_PATH`, home and temp folders, proxy and
+  `PLAYWRIGHT_*` settings, nothing else of the app's environment (API keys, tokens), and
+  `install_browser_runtime` refuses a plugin folder (or a Playwright CLI it resolves to,
+  links followed) outside the app's plugins folder.
+- **MCP bearer tokens only over HTTPS**: an MCP server with a bearer token must use
+  `https://`, or `http://` to `localhost`, `127.0.0.1` or `::1`; a definition saved earlier with
+  plain `http://` does not send its token.
+- **Plugin downloads reach public addresses only**: catalog and tarball downloads (and their
+  redirects) refuse hosts that are or resolve to loopback, private, link-local (cloud metadata)
+  or reserved addresses, using graphrt-http's egress rules in the connection's DNS resolver.
+- **Installing a plugin says it runs code**: the install approval on the Plugins page, the
+  plugin page, the Add node palette and the builder's plugin card say "Installing a plugin runs
+  its code on this computer. Trust only plugins you know."
+- **Dependencies**: react-router-dom 7.18.5 (React Router open redirect / XSS advisories),
+  vite 6.4.5, vitest 4.1.12 (no tinypool), @vitejs/plugin-react 4.7.0; `pnpm audit` is clean.
 - **Codex on this computer runs no commands**: `--sandbox read-only` still let Codex run shell
   commands that read the whole disk, and `codex exec` never asks. Every call now also switches
   its tools off (`-c features.shell_tool=false`, `features.unified_exec=false`, images, browser,

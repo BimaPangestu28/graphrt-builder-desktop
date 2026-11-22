@@ -104,6 +104,8 @@ export type GraphProblemCode =
   | 'unreachable'
   | 'compile_warning'
   | 'send_without_approval'
+  /** An approval answers by itself on timeout with a button that leads to a send. */
+  | 'approval_timeout_sends'
   | 'placeholder_address'
   | 'model_provider_not_set_up'
   /** A step needs something its model can't do, e.g. tools through a local CLI. */

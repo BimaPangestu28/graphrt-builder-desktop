@@ -39,6 +39,7 @@ mod optional_settings;
 mod placeholder;
 mod prompt_guide;
 pub mod requirements;
+mod sending;
 pub(crate) mod session;
 mod settings;
 mod sideload;
@@ -64,6 +65,7 @@ use models::{
     PluginPermissions,
 };
 pub use prompt_guide::installed_plugins_guide;
+pub use sending::{is_sending_operation, is_sending_plugin_kind};
 
 use crate::credentials::CredentialStore;
 use crate::error::{AppError, AppResult};
@@ -964,16 +966,4 @@ fn validate_name(name: &str) -> AppResult<()> {
     } else {
         Err(AppError::InvalidInput(format!("`{name}` is not a valid plugin name")))
     }
-}
-
-/// Whether a plugin node kind sends or changes something in the outside world
-/// (`whatsapp-api.send_text`, `x-api.create_post`...), so the builder's
-/// approval check treats it like a writing HTTP request.
-pub fn is_sending_plugin_kind(kind: &str) -> bool {
-    const WRITING_PREFIXES: &[&str] = &[
-        "send", "post", "publish", "create", "update", "delete", "reply", "upload", "comment", "like", "follow", "mark",
-    ];
-    let Some((_, operation)) = kind.split_once('.') else { return false };
-    let operation = operation.to_ascii_lowercase();
-    WRITING_PREFIXES.iter().any(|prefix| operation.starts_with(prefix))
 }

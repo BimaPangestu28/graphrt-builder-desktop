@@ -199,6 +199,9 @@ export function describePluginSource(source: PluginSource): { label: string; ton
   return null
 }
 
+/** Shown wherever a plugin can be installed: installing runs third-party code on this computer. */
+export const pluginInstallTrustNote = 'Installing a plugin runs its code on this computer. Trust only plugins you know.'
+
 /**
  * The sentence the install confirmation adds for a community plugin, or null for others.
  * e.g. "Reviewed by the graphrt maintainers, but maintained by Acme Inc."

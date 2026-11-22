@@ -64,6 +64,8 @@ pub mod problem_codes {
     pub const COMPILE_WARNING: &str = "compile_warning";
     /// A step sends data on a path without an approval first.
     pub const SEND_WITHOUT_APPROVAL: &str = "send_without_approval";
+    /// An approval answers by itself on timeout with a button that leads to a send.
+    pub const APPROVAL_TIMEOUT_SENDS: &str = "approval_timeout_sends";
     /// An HTTP step calls `api.example.com` or a similar stand-in.
     pub const PLACEHOLDER_ADDRESS: &str = "placeholder_address";
     /// A model step uses a provider that is not connected.

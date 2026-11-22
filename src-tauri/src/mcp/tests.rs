@@ -131,6 +131,34 @@ fn runtime_config_reads_the_named_secrets() {
 }
 
 #[test]
+fn a_bearer_token_needs_https_unless_the_server_is_on_this_computer() {
+    for url in ["http://mcp.remote.test/mcp", "http://192.168.1.20:8080/mcp", "http://localhost.evil.test/mcp"] {
+        let error = validate_input(http_input("remote", url, Some("REMOTE_TOKEN"))).unwrap_err();
+        assert!(error.to_string().contains("only sent over https://"), "{url}: {error}");
+    }
+    for url in [
+        "https://mcp.remote.test/mcp",
+        "http://localhost:3000/mcp",
+        "http://LOCALHOST/mcp",
+        "http://127.0.0.1:8080/mcp",
+        "http://[::1]:8080/mcp",
+    ] {
+        assert!(validate_input(http_input("remote", url, Some("REMOTE_TOKEN"))).is_ok(), "{url}");
+    }
+    assert!(validate_input(http_input("open", "http://mcp.remote.test/mcp", None)).is_ok(), "no token, no rule");
+}
+
+#[test]
+fn a_stored_definition_never_sends_its_token_over_plain_http() {
+    let credentials = CredentialStore::in_memory();
+    credentials.set_workflow_secret("REMOTE_TOKEN", "bearer-value").unwrap();
+    let mut definition =
+        validate_input(http_input("remote", "https://mcp.remote.test/mcp", Some("REMOTE_TOKEN"))).unwrap();
+    definition.transport = McpServerTransport::Http { url: "http://mcp.remote.test/mcp".into() };
+    assert!(matches!(runtime_config(&definition, &credentials), Err(AppError::InvalidInput(_))));
+}
+
+#[test]
 fn bare_commands_resolve_through_path_and_pathext() {
     let first_dir = tempfile::tempdir().unwrap();
     let node_dir = tempfile::tempdir().unwrap();
