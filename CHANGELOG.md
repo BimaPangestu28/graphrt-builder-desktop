@@ -56,6 +56,9 @@ releases may contain breaking changes; they are called out under **Changed**.
   as `plugin-catalog-v2.seen` next to the saved catalogs), a missing or unusable v2 no longer
   falls back to v1 `index.json`; the saved v2 copy is used and the problem is logged. A saved
   v1 copy is ignored from then on.
+- **Detail prune on case-insensitive file systems**: on macOS and Windows, pruning compares
+  saved detail file names ignoring case, so a listed version saved with another case is not
+  removed (a saved file is still checked against the index checksum before use).
 
 ## [0.1.3] - 2026-11-22
 

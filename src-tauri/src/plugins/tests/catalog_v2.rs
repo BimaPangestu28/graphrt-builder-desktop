@@ -466,3 +466,19 @@ async fn once_v2_was_fetched_a_saved_v1_copy_is_ignored() {
     assert!(catalog.from_cache);
     assert_eq!(fixture.restarted().known_catalog().unwrap().schema, 2);
 }
+
+#[test]
+fn prune_compares_file_names_like_the_file_system_does() {
+    let dir = tempfile::tempdir().unwrap();
+    let downloader = Arc::new(FakeDownloader::default());
+    let store = detail_store(dir.path(), &downloader);
+    let (listed, bytes) = detail_file("fixture-mail", "2.0.0-Beta", "Beta", "https://plugins.example.test/beta.json");
+    // On a case-insensitive file system the saved file may carry another case than the index.
+    std::fs::write(dir.path().join("fixture-mail@2.0.0-beta.json"), bytes).unwrap();
+
+    let removed = store.prune(&[listed]);
+
+    let ignores_case = cfg!(any(target_os = "macos", windows));
+    assert_eq!(removed, usize::from(!ignores_case));
+    assert_eq!(dir.path().join("fixture-mail@2.0.0-beta.json").exists(), ignores_case);
+}

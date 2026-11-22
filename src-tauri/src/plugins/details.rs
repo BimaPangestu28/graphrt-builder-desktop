@@ -219,18 +219,21 @@ impl DetailStore {
     }
 
     /// Removes saved and in-memory details of versions not in `keep`. Returns how many
-    /// files were removed.
+    /// files were removed. On macOS and Windows file names are compared ignoring case, as
+    /// their file systems do: `x@1.0-Beta.json` and `x@1.0-beta.json` are the same file there,
+    /// so a listed version is never removed because its file was saved with another case.
     pub fn prune(&self, keep: &[DetailRef]) -> usize {
-        let keep: HashSet<String> = keep.iter().map(DetailRef::file_name).collect();
+        let keep_keys: HashSet<String> = keep.iter().map(DetailRef::file_name).collect();
         if let Ok(mut loaded) = self.loaded.lock() {
-            loaded.retain(|key, _| keep.contains(key));
+            loaded.retain(|key, _| keep_keys.contains(key));
         }
+        let keep: HashSet<String> = keep_keys.iter().map(|name| file_system_name(name)).collect();
         let Ok(entries) = std::fs::read_dir(&self.dir) else { return 0 };
         let mut removed_count = 0;
         for entry in entries.filter_map(Result::ok) {
             let file_name = entry.file_name().to_string_lossy().into_owned();
             // Hidden files are downloads being written right now (see `write_atomically`).
-            if keep.contains(&file_name) || file_name.starts_with('.') || !entry.path().is_file() {
+            if keep.contains(&file_system_name(&file_name)) || file_name.starts_with('.') || !entry.path().is_file() {
                 continue;
             }
             match std::fs::remove_file(entry.path()) {
@@ -256,6 +259,18 @@ impl DetailStore {
         if let Err(error) = write_atomically(&self.dir, file_name, bytes) {
             log::warn!("could not save the plugin detail {file_name}: {error}");
         }
+    }
+}
+
+/// Whether file names differ only by case on this platform's usual file system.
+const FILE_NAMES_IGNORE_CASE: bool = cfg!(any(target_os = "macos", windows));
+
+/// `file_name` as the file system compares it (lower-cased where names ignore case).
+fn file_system_name(file_name: &str) -> String {
+    if FILE_NAMES_IGNORE_CASE {
+        file_name.to_lowercase()
+    } else {
+        file_name.to_owned()
     }
 }
 
