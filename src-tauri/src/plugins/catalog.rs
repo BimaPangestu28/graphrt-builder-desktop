@@ -2,6 +2,7 @@
 //! `catalog` release): parsing, validation, the on-disk saved copies and the
 //! "available vs installed" view.
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::time::SystemTime;
 
@@ -90,7 +91,44 @@ pub(super) fn parse_catalog_as(bytes: &[u8], expected_schema: u32) -> AppResult<
             false
         }
     });
+    drop_duplicate_names(&mut index.plugins);
     Ok(index)
+}
+
+/// Keeps one entry per plugin name: the first official one, else the first one (logged),
+/// so a community entry can never shadow or be confused with an official plugin.
+fn drop_duplicate_names(plugins: &mut Vec<CatalogPlugin>) {
+    let mut kept_index_by_name: HashMap<&str, usize> = HashMap::new();
+    for (index, plugin) in plugins.iter().enumerate() {
+        let is_official = super::source::catalog_entry_source(plugin) == super::source::PluginSource::Official;
+        match kept_index_by_name.get(plugin.name.as_str()) {
+            None => {
+                kept_index_by_name.insert(&plugin.name, index);
+            }
+            Some(&kept) => {
+                let kept_is_official =
+                    super::source::catalog_entry_source(&plugins[kept]) == super::source::PluginSource::Official;
+                if is_official && !kept_is_official {
+                    kept_index_by_name.insert(&plugin.name, index);
+                }
+            }
+        }
+    }
+    let kept: std::collections::HashSet<usize> = kept_index_by_name.into_values().collect();
+    let mut index = 0;
+    plugins.retain(|plugin| {
+        let keep = kept.contains(&index);
+        if !keep {
+            log::warn!(
+                "dropping a duplicate catalog entry `{}` ({} {})",
+                plugin.name,
+                plugin.version,
+                plugin.source.as_deref().unwrap_or("official")
+            );
+        }
+        index += 1;
+        keep
+    });
 }
 
 fn validate_entry(plugin: &CatalogPlugin) -> AppResult<()> {
@@ -341,5 +379,52 @@ mod version_order_tests {
         assert!(!is_newer_version("0.2.0", "0.2.0"));
         assert!(!is_newer_version("1.2.0-beta.1", "1.2.0"));
         assert!(!is_newer_version("latest", "0.1.0"), "unparseable never counts");
+    }
+}
+
+#[cfg(test)]
+mod parse_tests {
+    use super::{parse_catalog, parse_catalog_v2};
+
+    fn entry(name: &str, description: &str, source: Option<&str>) -> serde_json::Value {
+        let mut entry = serde_json::json!({
+            "name": name, "version": "1.0.0", "description": description,
+            "tarball_url": format!("https://plugins.example.test/{name}.tar.gz"), "sha256": "a".repeat(64)
+        });
+        if let Some(source) = source {
+            entry["source"] = source.into();
+        }
+        entry
+    }
+
+    fn catalog(schema: u32, entries: Vec<serde_json::Value>) -> Vec<u8> {
+        serde_json::to_vec(&serde_json::json!({ "schema": schema, "plugins": entries })).unwrap()
+    }
+
+    fn descriptions(index: &crate::plugins::models::CatalogIndex) -> Vec<(&str, &str)> {
+        index.plugins.iter().map(|plugin| (plugin.name.as_str(), plugin.description.as_str())).collect()
+    }
+
+    #[test]
+    fn duplicate_names_keep_the_official_entry() {
+        let bytes = catalog(
+            1,
+            vec![
+                entry("acme", "community copy", Some("community")),
+                entry("other", "other", None),
+                entry("acme", "official", Some("official")),
+                entry("acme", "second official", None),
+            ],
+        );
+        let index = parse_catalog(&bytes).unwrap();
+        assert_eq!(descriptions(&index), vec![("other", "other"), ("acme", "official")]);
+    }
+
+    #[test]
+    fn duplicate_community_names_keep_the_first_entry() {
+        let bytes =
+            catalog(2, vec![entry("acme", "first", Some("community")), entry("acme", "second", Some("community"))]);
+        let index = parse_catalog_v2(&bytes).unwrap();
+        assert_eq!(descriptions(&index), vec![("acme", "first")]);
     }
 }

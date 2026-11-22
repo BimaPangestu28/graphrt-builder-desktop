@@ -38,6 +38,9 @@ releases may contain breaking changes; they are called out under **Changed**.
   chosen folder once resolved), and each file is opened without following links (`O_NOFOLLOW`
   on Unix; `FILE_FLAG_OPEN_REPARSE_POINT` on Windows, refusing reparse points) and must be the
   file that was listed (same device and inode on Unix).
+- **One catalog entry per plugin name**: when a catalog lists a name twice, the official entry
+  is kept (else the first one) and the others are dropped and logged, so a community entry can
+  never stand in for an official plugin.
 
 ## [0.1.3] - 2026-11-22
 
