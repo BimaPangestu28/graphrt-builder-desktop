@@ -13,6 +13,7 @@ import type {
   PluginInstallStage,
   PluginNodeInfo,
   PluginPermissions,
+  PluginRuntimeInfo,
   PluginSource,
 } from '../pluginTypes'
 import type { FlowStep } from '../types'
@@ -55,6 +56,8 @@ type SampleCatalogLabels = Pick<PluginCatalogEntry, 'source' | 'publisher' | 're
 interface SamplePluginsState {
   installedByName: Map<string, SampleInstalledRecord>
   browserRuntimeStatus: BrowserRuntimeStatus
+  /** The plugin runtime (Node.js); installed unless a test removes it. */
+  pluginRuntimeStatus: BrowserRuntimeStatus
   /** Whether the sample personal WhatsApp session is linked (after `whatsapp-web.login`). */
   isWhatsAppWebLoggedIn: boolean
   /** Plugins each agent uses besides `<plugin>.<kind>` steps (tests may change them). */
@@ -76,6 +79,7 @@ function createInitialState(): SamplePluginsState {
   return {
     installedByName,
     browserRuntimeStatus: 'not_installed',
+    pluginRuntimeStatus: 'installed',
     isWhatsAppWebLoggedIn: false,
     pluginNeedsByAgentId: { ...samplePluginNeedsByAgentId },
     autoUpdates: [],
@@ -137,6 +141,7 @@ function toLocalInstalledPlugin(installedRecord: SampleInstalledRecord, localPat
     permissions: copyPermissions(installedRecord.permissions),
     trusted: installedRecord.trusted,
     needsBrowser: false,
+    needsNodeRuntime: true,
     nodes: seed?.nodes.map((node) => ({ ...node })) ?? [],
     tools: seed ? [...seed.tools] : [],
     config: installedRecord.permissions.env.map((variable) => ({ name: variable, configured: installedRecord.configuredVariables.has(variable), optional: isOptionalSampleSetting(variable) })),
@@ -163,6 +168,7 @@ function toInstalledPlugin(installedRecord: SampleInstalledRecord): InstalledPlu
     permissions: copyPermissions(installedRecord.permissions),
     trusted: installedRecord.trusted,
     needsBrowser: seed.needsBrowser,
+    needsNodeRuntime: true,
     nodes: seed.nodes.map((node) => ({ ...node })),
     tools: [...seed.tools],
     config: seed.permissions.env.map((variable) => ({
@@ -324,6 +330,42 @@ function installSampleBrowserRuntime(): void {
   browserRuntimeListeners.forEach((listener) => listener({ message: 'Chromium is ready', percent: 100 }))
 }
 
+const samplePluginRuntimeVersion = '22.23.5'
+
+function readSamplePluginRuntimeInfo(): PluginRuntimeInfo {
+  const isInstalled = pluginsState.pluginRuntimeStatus === 'installed'
+  return {
+    status: pluginsState.pluginRuntimeStatus,
+    version: isInstalled ? `v${samplePluginRuntimeVersion}` : null,
+    pinnedVersion: samplePluginRuntimeVersion,
+    path: isInstalled ? `[APP DATA]/runtime/node-${samplePluginRuntimeVersion}/node` : null,
+    source: isInstalled ? 'downloaded' : 'missing',
+    removable: isInstalled,
+    downloadable: true,
+    browserStatus: pluginsState.browserRuntimeStatus,
+    browsersPath: '[HOME]/Library/Caches/ms-playwright',
+  }
+}
+
+function installSamplePluginRuntime(): void {
+  pluginsState.pluginRuntimeStatus = 'installing'
+  browserRuntimeListeners.forEach((listener) => listener({ type: 'node_install_started', version: samplePluginRuntimeVersion }))
+  browserRuntimeListeners.forEach((listener) => listener({ type: 'node_install_progress', message: 'Downloading Node.js', percent: 50 }))
+  pluginsState.pluginRuntimeStatus = 'installed'
+  browserRuntimeListeners.forEach((listener) => listener({ type: 'node_install_finished', alreadyInstalled: false }))
+}
+
+function removeSamplePluginRuntime(): boolean {
+  const wasInstalled = pluginsState.pluginRuntimeStatus === 'installed'
+  pluginsState.pluginRuntimeStatus = 'not_installed'
+  emitPluginEvent({ type: 'plugins_changed' })
+  return wasInstalled
+}
+
+function requireSamplePluginRuntime(): void {
+  if (pluginsState.pluginRuntimeStatus !== 'installed') throw new BackendError('invalid_input', 'the plugin runtime (Node.js) is not installed; install it from Plugins or Settings')
+}
+
 /** @throws BackendError - `invalid_input` when not installed, not trusted, or the kind is not declared */
 function requireRunnablePlugin(name: string, kind: string): SampleInstalledRecord {
   const installedRecord = pluginsState.installedByName.get(name)
@@ -366,6 +408,7 @@ function checkSamplePluginSession(name: string): PluginSessionState {
 
 function runSamplePluginAction(name: string, kind: string): PluginActionResult {
   const installedRecord = requireRunnablePlugin(name, kind)
+  requireSamplePluginRuntime()
   if (findSeed(name).needsBrowser) requireBrowserRuntime()
   if (kind === 'whatsapp-api.get_business_profile') return readSampleBusinessProfile(installedRecord)
   if (kind === 'whatsapp-web.get_status') return readSampleWhatsAppWebStatus()
@@ -394,6 +437,7 @@ function toPluginRequirement(seed: SamplePluginSeed, usedBySteps: string[]): Plu
   const requiredSettings = sampleRequiredPluginSettings[seed.name] ?? []
   const missingConfig = requiredSettings.filter((variable) => !installedRecord?.configuredVariables.has(variable))
   const browserReady = !seed.needsBrowser || pluginsState.browserRuntimeStatus === 'installed'
+  const nodeRuntimeReady = pluginsState.pluginRuntimeStatus === 'installed'
   const installed = installedRecord !== undefined
   const trusted = installedRecord?.trusted ?? false
   const needsSession = sampleSessionPluginNames.includes(seed.name)
@@ -411,9 +455,11 @@ function toPluginRequirement(seed: SamplePluginSeed, usedBySteps: string[]): Plu
     trustNotNeeded,
     missingConfig,
     browserReady,
+    needsNodeRuntime: true,
+    nodeRuntimeReady,
     needsSession,
     sessionLinked,
-    ready: installed && (trusted || trustNotNeeded) && missingConfig.length === 0 && browserReady && sessionLinked,
+    ready: installed && (trusted || trustNotNeeded) && missingConfig.length === 0 && browserReady && nodeRuntimeReady && sessionLinked,
   }
 }
 
@@ -498,6 +544,9 @@ export const samplePluginsBackend = {
   deletePluginConfig: (name: string, variable: string): Promise<InstalledPlugin> => respondWith(() => deleteSamplePluginConfig(name, variable)),
   getBrowserRuntimeStatus: (): Promise<BrowserRuntimeStatus> => respondWith(() => pluginsState.browserRuntimeStatus),
   installBrowserRuntime: (): Promise<void> => respondWith(installSampleBrowserRuntime),
+  getPluginRuntimeInfo: (): Promise<PluginRuntimeInfo> => respondWith(readSamplePluginRuntimeInfo),
+  installPluginRuntime: (): Promise<void> => respondWith(installSamplePluginRuntime),
+  removePluginRuntime: (): Promise<boolean> => respondWith(removeSamplePluginRuntime),
   runPluginAction: (name: string, kind: string, _config: Record<string, unknown>): Promise<PluginActionResult> =>
     respondWith(() => runSamplePluginAction(name, kind)),
   checkPluginSession: (name: string): Promise<PluginSessionState> => respondWith(() => checkSamplePluginSession(name)),
@@ -524,6 +573,11 @@ export function subscribeToSampleBrowserRuntimeEvents(onEvent: (runtimeEvent: Br
 /** Sends a sample `plugin-event` to every subscriber (tests that show progress mid-install). */
 export function emitSamplePluginEvent(pluginEvent: PluginEvent): void {
   emitPluginEvent(pluginEvent)
+}
+
+/** Sets the sample plugin runtime (Node.js) status (tests of the missing-runtime flows). */
+export function setSamplePluginRuntimeStatus(status: BrowserRuntimeStatus): void {
+  pluginsState.pluginRuntimeStatus = status
 }
 
 /** Sets the sample browser runtime status (tests that start with it installed). */

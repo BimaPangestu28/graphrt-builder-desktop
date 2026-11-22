@@ -2,7 +2,7 @@ import type { ProblemAction } from '@/api/problemTypes'
 import { agentPath, connectionsTabPath, routePaths } from '@/routes'
 
 /**
- * Where a problem button goes. Commands (`retry_run`, `install_browser`) have no path;
+ * Where a problem button goes. Commands (`retry_run`, `install_browser`, `install_plugin_runtime`) have no path;
  * {@link ProblemActionControl} runs them instead.
  *
  * @param action - Problem action from the backend (ProblemAction)
@@ -22,6 +22,7 @@ export function getProblemActionPath(action: ProblemAction): string | null {
       return action.agentId ? agentPath('scheduleAgent', action.agentId) : routePaths.scheduler
     case 'retry_run':
     case 'install_browser':
+    case 'install_plugin_runtime':
       return null
   }
 }

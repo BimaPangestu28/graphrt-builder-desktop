@@ -30,10 +30,14 @@ export interface PluginRequirement {
   missingConfig: string[]
   /** Chromium installed (always true when not needed). */
   browserReady: boolean
+  /** Runs on Node.js, so it needs the plugin runtime (true for every catalog plugin). */
+  needsNodeRuntime: boolean
+  /** The plugin runtime is installed (always true when not needed). */
+  nodeRuntimeReady: boolean
   /** Only works with a linked account session (whatsapp-web: linked by scanning a QR code). */
   needsSession: boolean
   /** The session is known to be linked (always true when not needed). Never checked counts as not linked. */
   sessionLinked: boolean
-  /** Installed, trusted if needed, settings set, browser ready and session linked: the agent can run. */
+  /** Installed, trusted if needed, settings set, runtimes ready and session linked: the agent can run. */
   ready: boolean
 }

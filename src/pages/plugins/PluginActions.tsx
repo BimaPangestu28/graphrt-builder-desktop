@@ -12,14 +12,25 @@ function isBusy(item: PluginListItem, plugins: PluginsState): boolean {
   return plugins.operationByName[item.name] !== undefined
 }
 
+interface PluginInstallButtonProps extends PluginActionProps {
+  ariaLabel?: string
+  /** The approval next to the button says the plugin runtime downloads too (see `pluginRuntimeInstallNote`). */
+  withPluginRuntime?: boolean
+}
+
 /**
  * Installs right away: render it only where what the plugin asks for is on screen next
  * to it (the detail page, or the card's approval step), so the click is an informed OK.
  */
-export function PluginInstallButton({ item, plugins, size = 'sm', ariaLabel }: PluginActionProps & { ariaLabel?: string }) {
+export function PluginInstallButton({ item, plugins, size = 'sm', ariaLabel, withPluginRuntime = false }: PluginInstallButtonProps) {
   const isInstalling = plugins.operationByName[item.name] === 'installing'
   return (
-    <Button size={size} aria-label={ariaLabel ?? `Install ${item.displayName}`} disabled={isBusy(item, plugins)} onClick={() => void plugins.install(item.name, item.permissions)}>
+    <Button
+      size={size}
+      aria-label={ariaLabel ?? `Install ${item.displayName}`}
+      disabled={isBusy(item, plugins)}
+      onClick={() => void plugins.install(item.name, item.permissions, { withPluginRuntime })}
+    >
       {isInstalling ? 'Installing…' : 'Install'}
     </Button>
   )

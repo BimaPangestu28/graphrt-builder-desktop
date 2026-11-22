@@ -15,6 +15,7 @@ import {
   RemoteRunnerSection,
   RunnerSection,
 } from './settings/SettingsSections'
+import { PluginRuntimeSection } from './settings/PluginRuntimeSection'
 import { RunLimitsPanel } from './settings/RunLimitsPanel'
 import { UpdatesSection } from './settings/UpdatesSection'
 import { useAppSettings, type AppSettingsState } from './settings/useAppSettings'
@@ -116,6 +117,7 @@ function SettingsSectionContent({ activeSection, onSelectSection, appSettingsSta
           ) : (
             <AppSettingsPlaceholder appSettingsState={appSettingsState} />
           )}
+          <PluginRuntimeSection />
           {privacySection}
           {sectionProps.showsPreviewOnlySettings && <RemoteRunnerBanner onConnectServer={() => onSelectSection('remote')} />}
         </>

@@ -2,12 +2,14 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Badge, Button, buttonClassNames } from '@/components/ui'
 import type { PluginsState } from '@/hooks/usePlugins'
+import { isPluginRuntimeMissing, usePluginRuntime } from '@/hooks/usePluginRuntime'
 import { pluginDetailPath } from '@/routes'
 import { PluginInstallButton, PluginOperationFeedback, PluginUpdateButton } from './PluginActions'
 import { pluginCategoryLabels } from './pluginCategories'
 import { describeCommunityInstallNote, describeMaturity, pluginInstallTrustNote, describePermissionChips, describePluginSource, describePluginStatus, describeStepCount, itemNeedsAttention, type PluginListItem } from './pluginDisplay'
 import { PluginIcon } from './PluginIcon'
 import { PluginPermissionChips } from './PluginPermissionList'
+import { pluginRuntimeInstallNote } from './PluginRuntimeCard'
 
 interface PluginCatalogCardProps {
   item: PluginListItem
@@ -24,16 +26,19 @@ function describeCardMeta(item: PluginListItem): string {
 /**
  * "Install" on a card first asks: it names what the plugin gets, says it starts untrusted,
  * and installs only after the second click. Nothing installs from a single stray click.
+ * While the plugin runtime (Node.js) is missing it says the same click downloads it too.
  */
 function InstallApproval({ item, plugins, onCancel }: { item: PluginListItem; plugins: PluginsState; onCancel: () => void }) {
   const asksFor = describePermissionChips(item.permissions, item.needsBrowser)
   const isInstalling = plugins.operationByName[item.name] === 'installing'
   const communityNote = describeCommunityInstallNote(item)
+  const needsPluginRuntime = isPluginRuntimeMissing(usePluginRuntime())
   return (
     <div role="group" aria-label={`Install ${item.displayName}?`} className="flex flex-col gap-2 rounded-lg bg-subtle p-2.5">
       <p className="m-0 text-[12px] leading-normal text-body">
         {communityNote && `${communityNote} `}Runs its code on this computer{asksFor.length > 0 ? ` and asks for: ${asksFor.join(', ')}` : ''}. It starts untrusted, without settings or secrets.
       </p>
+      {needsPluginRuntime && <p className="m-0 text-[12px] leading-normal text-body">{pluginRuntimeInstallNote}</p>}
       <p className="m-0 text-[12px] font-medium leading-normal text-ink-2">{pluginInstallTrustNote}</p>
       <div className="flex justify-end gap-2">
         {!isInstalling && (
@@ -41,7 +46,7 @@ function InstallApproval({ item, plugins, onCancel }: { item: PluginListItem; pl
             Cancel
           </Button>
         )}
-        <PluginInstallButton item={item} plugins={plugins} ariaLabel={`Confirm install ${item.displayName}`} />
+        <PluginInstallButton item={item} plugins={plugins} ariaLabel={`Confirm install ${item.displayName}`} withPluginRuntime={needsPluginRuntime} />
       </div>
     </div>
   )

@@ -12,13 +12,15 @@ import {
   type PluginEvent,
   type PluginNodeInfo,
   type PluginPermissions,
+  type PluginRuntimeInfo,
 } from './pluginTypes'
 import type { PluginRequirement, PluginSessionState } from './pluginRequirementTypes'
 import { samplePluginsBackend, subscribeToSampleBrowserRuntimeEvents, subscribeToSamplePluginEvents } from './sampleBackend/plugins'
 
 /**
  * graphrt plugins: the online catalog, installed plugins with their trust and settings,
- * the browser runtime some plugins need, and one-off plugin actions (e.g. linking
+ * the plugin runtime (Node.js) every plugin runs on and the browser runtime some plugins
+ * need, and one-off plugin actions (e.g. linking
  * WhatsApp). Outside the desktop app every call goes to the sample plugins backend.
  */
 
@@ -174,6 +176,35 @@ export function installBrowserRuntime(): Promise<void> {
   return callBackend('install_browser_runtime')
 }
 
+/** The plugin runtime (Node.js) and browser runtime status, version and location. */
+export function getPluginRuntimeInfo(): Promise<PluginRuntimeInfo> {
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return samplePluginsBackend.getPluginRuntimeInfo()
+  return callBackend('node_runtime_info')
+}
+
+/**
+ * Downloads the plugin runtime (the pinned Node.js release, about 30 MB) from nodejs.org,
+ * checks it against the checksum built into the app and installs it. Call it only for an
+ * explicit user action (an Install button, or installing a plugin with the download shown).
+ * Progress arrives through {@link listenToBrowserRuntimeEvents} (`node_install_*` events).
+ *
+ * @throws BackendError - `internal` when offline or the download fails; `invalid_input` for a checksum mismatch
+ */
+export function installPluginRuntime(): Promise<void> {
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return samplePluginsBackend.installPluginRuntime()
+  return callBackend('install_node_runtime')
+}
+
+/**
+ * Removes the downloaded plugin runtime. Plugins stop working until it is installed again.
+ *
+ * @returns Whether anything was removed (boolean)
+ */
+export function removePluginRuntime(): Promise<boolean> {
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return samplePluginsBackend.removePluginRuntime()
+  return callBackend('remove_node_runtime')
+}
+
 /**
  * Runs one node kind a trusted plugin declares and returns its outputs.
  *
@@ -252,7 +283,7 @@ export function listenToPluginEvents(onEvent: (pluginEvent: PluginEvent) => void
   return listenToBackend<PluginEvent>(PLUGIN_EVENT_NAME, onEvent)
 }
 
-/** Subscribes to browser runtime install progress (`node-runtime-event`). Resolves to the unsubscribe function. */
+/** Subscribes to plugin and browser runtime install progress (`node-runtime-event`). Resolves to the unsubscribe function. */
 export function listenToBrowserRuntimeEvents(onEvent: (runtimeEvent: BrowserRuntimeEvent) => void): Promise<() => void> {
   if (__SAMPLE_BACKEND__ && !isDesktopApp()) return Promise.resolve(subscribeToSampleBrowserRuntimeEvents(onEvent))
   return listenToBackend<BrowserRuntimeEvent>(BROWSER_RUNTIME_EVENT_NAME, onEvent)

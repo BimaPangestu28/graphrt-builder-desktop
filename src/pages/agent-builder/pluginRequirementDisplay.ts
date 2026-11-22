@@ -5,6 +5,11 @@ import type { PluginRequirement } from '@/api/pluginRequirementTypes'
  * the summary line, what each plugin asks for, its state and which approval it needs.
  */
 
+/** The plugin runtime (Node.js) still has to be downloaded for this plugin. */
+export function needsPluginRuntimeDownload(requirement: PluginRequirement): boolean {
+  return requirement.needsNodeRuntime && !requirement.nodeRuntimeReady
+}
+
 /** Download size of the browser runtime, shown before the user starts it. */
 export const browserDownloadSizeNote = 'about 150 MB download, once for all browser plugins'
 
@@ -60,6 +65,7 @@ export function describeRequirementState(requirement: PluginRequirement): string
   if (!requirement.installed) return 'Not installed'
   if (!requirement.trusted && !requirement.trustNotNeeded) return 'Needs your trust'
   if (requirement.missingConfig.length > 0) return `Needs ${pluralize(requirement.missingConfig.length, 'setting', 'settings')}`
+  if (needsPluginRuntimeDownload(requirement)) return 'Needs the plugin runtime'
   if (!requirement.browserReady) return 'Needs the browser'
   return 'Not linked'
 }
@@ -70,5 +76,5 @@ export function describeRequirementState(requirement: PluginRequirement): string
  */
 export function needsOnlySessionLink(requirement: PluginRequirement): boolean {
   if (!requirement.needsSession || requirement.sessionLinked) return false
-  return !needsPluginApproval(requirement) && requirement.missingConfig.length === 0 && requirement.browserReady
+  return !needsPluginApproval(requirement) && requirement.missingConfig.length === 0 && requirement.browserReady && !needsPluginRuntimeDownload(requirement)
 }

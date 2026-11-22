@@ -7,6 +7,7 @@ import { OpenRunNavigation } from './hooks/useOpenRunNavigation'
 import { installFrontendErrorReporting } from './lib/frontendErrorReporting'
 import { CrashReportNotice } from './pages/crash-reports/CrashReportNotice'
 import { OnboardingTourProvider } from './pages/onboarding/OnboardingTourProvider'
+import { PluginRuntimeNotice } from './pages/plugins/PluginRuntimeNotice'
 import { AppUpdateProvider } from './pages/updates/AppUpdateProvider'
 import './index.css'
 
@@ -27,6 +28,7 @@ createRoot(rootElement).render(
           </OnboardingTourProvider>
         </AppUpdateProvider>
         <CrashReportNotice />
+        <PluginRuntimeNotice />
       </HashRouter>
     </AppErrorBoundary>
   </StrictMode>,

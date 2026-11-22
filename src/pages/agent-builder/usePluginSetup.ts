@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { checkPluginSession, installPlugin, listAgentPluginRequirements, listenToPluginEvents, setPluginConfig, setPluginTrusted } from '@/api/plugins'
+import { checkPluginSession, installPlugin, installPluginRuntime, listAgentPluginRequirements, listenToPluginEvents, setPluginConfig, setPluginTrusted } from '@/api/plugins'
 import type { PluginRequirement } from '@/api/pluginRequirementTypes'
 import type { PluginEvent } from '@/api/pluginTypes'
 import { useBackendSubscription } from '@/hooks/useBackendSubscription'
 import { useBrowserRuntime } from '@/hooks/useBrowserRuntime'
+import { usePluginRuntime } from '@/hooks/usePluginRuntime'
 import { toInstallProgress } from '@/hooks/usePlugins'
 import { describeError } from '@/lib/agentDisplay'
 import { describeInstallProgress } from '../plugins/pluginDisplay'
-import { arePluginRequirementsReady, needsOnlySessionLink, needsPluginApproval } from './pluginRequirementDisplay'
+import { arePluginRequirementsReady, needsOnlySessionLink, needsPluginApproval, needsPluginRuntimeDownload } from './pluginRequirementDisplay'
 
 /** Browser runtime download as the setup card shows it. */
 export interface BrowserDownloadState {
@@ -34,13 +35,16 @@ export interface PluginSetupState {
   errorByName: Record<string, string>
   isApprovingAll: boolean
   browserDownload: BrowserDownloadState
-  /** Installs the plugin when missing, then trusts it when it asks for secrets. */
+  /** The plugin runtime (Node.js) download, same shape as the browser's. */
+  pluginRuntimeDownload: BrowserDownloadState
+  /** Installs the plugin when missing, trusts it when it asks for secrets, then downloads the plugin runtime when missing (the card says so). */
   approvePlugin: (name: string) => Promise<void>
   /** Approves every plugin that still needs it, one after the other. */
   approveAllPlugins: () => Promise<void>
   /** Saves a setting to the keychain; rejects with the error so the input can show it. */
   saveSetting: (name: string, variable: string, value: string) => Promise<void>
   downloadBrowser: () => Promise<void>
+  downloadPluginRuntime: () => Promise<void>
 }
 
 /** Loads `listAgentPluginRequirements`; answers that arrive after a newer request are dropped. */
@@ -123,14 +127,16 @@ function useInstallProgressLines(reload: () => Promise<unknown>) {
 }
 
 /**
- * Install, then trust when needed, for one requirement. Both calls carry the permissions the
- * card showed: the backend refuses a downloaded or installed plugin asking for more, so a
- * catalog that understates its tarball never gets trusted with more than the user saw.
+ * Install, then trust when needed, for one requirement, then the plugin runtime when it is
+ * missing (the card lists that download next to the approval). Both plugin calls carry the
+ * permissions the card showed: the backend refuses a downloaded or installed plugin asking
+ * for more, so a catalog that understates its tarball never gets trusted with more than the user saw.
  */
 async function installAndTrust(requirement: PluginRequirement): Promise<void> {
   const shownPermissions = { network: requirement.permissions.network, secrets: requirement.permissions.secrets, env: [...requirement.permissions.env] }
   if (!requirement.installed) await installPlugin(requirement.name, shownPermissions)
   if (!requirement.trusted && !requirement.trustNotNeeded) await setPluginTrusted(requirement.name, true, shownPermissions)
+  if (needsPluginRuntimeDownload(requirement)) await installPluginRuntime()
 }
 
 /** The approvals (one plugin or all of them) with their busy and error state. */
@@ -180,7 +186,7 @@ function usePluginApprovals(requirements: PluginRequirement[] | null, reload: ()
 
 /**
  * What an agent needs from plugins (`listAgentPluginRequirements`) and the actions that
- * complete it from the build chat: install & trust, settings, the browser runtime. Every
+ * complete it from the build chat: install & trust, settings, the plugin and browser runtimes. Every
  * action reloads the requirements, so the card and the "Needs" panel stay in sync.
  *
  * @param agentId - The agent, or null before the build saved it (nothing loads then) (string | null)
@@ -193,6 +199,8 @@ export function usePluginSetup(agentId: string | null): PluginSetupState {
   const approvals = usePluginApprovals(requirements, reload, clearProgress)
   const browserRuntime = useBrowserRuntime()
   const installBrowserRuntime = browserRuntime.install
+  const pluginRuntime = usePluginRuntime()
+  const installPluginRuntimeNow = pluginRuntime.install
 
   const saveSetting = useCallback(
     async (name: string, variable: string, value: string) => {
@@ -207,6 +215,11 @@ export function usePluginSetup(agentId: string | null): PluginSetupState {
     await reload()
   }, [installBrowserRuntime, reload])
 
+  const downloadPluginRuntime = useCallback(async () => {
+    await installPluginRuntimeNow()
+    await reload()
+  }, [installPluginRuntimeNow, reload])
+
   return {
     requirements,
     loadError,
@@ -215,7 +228,9 @@ export function usePluginSetup(agentId: string | null): PluginSetupState {
     progressByName,
     ...approvals,
     browserDownload: { isDownloading: browserRuntime.isInstalling, progressText: browserRuntime.progressText, errorMessage: browserRuntime.installError },
+    pluginRuntimeDownload: { isDownloading: pluginRuntime.isInstalling, progressText: pluginRuntime.progressText, errorMessage: pluginRuntime.installError },
     saveSetting,
     downloadBrowser,
+    downloadPluginRuntime,
   }
 }

@@ -88,8 +88,8 @@ jobs:
       - name: cargo fmt
         if: runner.os == 'macOS'
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
-      # No Node sidecar here on purpose: build.rs drops `externalBin` for debug
-      # builds without it, so fmt / clippy / tests stay network-free.
+      # The app bundles no Node.js (it downloads the pinned release on demand), so fmt /
+      # clippy / tests stay network-free; build.rs compiles the pinned checksums in.
       # Each OS compiles its own `cfg` code (keep awake, tray icon, credential store).
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
       # Tests that touch the real OS credential store are #[ignore]d.
@@ -122,10 +122,10 @@ jobs:
         with:
           workspaces: src-tauri -> target
       - run: pnpm install --frozen-lockfile
-      # The Node.js sidecar for the runner's target (checksum + signature verified).
-      - name: Fetch bundled Node.js
+      # The Node.js archive checksums the app pins must match Node's GPG-signed SHASUMS256.txt.
+      - name: Verify pinned Node.js checksums
         shell: bash
         env:
           GRAPHRT_REQUIRE_NODE_SIGNATURE: "1"
-        run: scripts/fetch-node.sh
+        run: scripts/fetch-node.sh --verify-checksums
       - run: pnpm tauri build --no-bundle

@@ -5,12 +5,15 @@ import { WhatsAppWebLinkPanel } from '../connect-whatsapp/WhatsAppWebLinkPanel'
 import { PluginConfigForm } from '../plugins/PluginConfigForm'
 import { PluginIcon } from '../plugins/PluginIcon'
 import { pluginInstallTrustNote } from '../plugins/pluginDisplay'
+import { pluginRuntimeInstallNote } from '../plugins/PluginRuntimeCard'
+import { pluginRuntimeDownloadSizeNote } from '@/api/pluginTypes'
 import {
   browserDownloadSizeNote,
   describeApprovalAction,
   describeRequirementPermissions,
   describeRequirementState,
   needsPluginApproval,
+  needsPluginRuntimeDownload,
 } from './pluginRequirementDisplay'
 import type { PluginSetupState } from './usePluginSetup'
 
@@ -84,6 +87,29 @@ function BrowserDownloadAction({ setup }: { setup: PluginSetupState }) {
   )
 }
 
+/** Downloads the plugin runtime (Node.js) when the plugin is set up but the runtime is missing (e.g. after an update). */
+function PluginRuntimeDownloadAction({ setup }: { setup: PluginSetupState }) {
+  const { isDownloading, progressText, errorMessage } = setup.pluginRuntimeDownload
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap items-center gap-3">
+        <Button size="sm" variant="secondary" disabled={isDownloading} onClick={() => void setup.downloadPluginRuntime()}>
+          {isDownloading ? 'Downloading…' : 'Install plugin runtime'}
+        </Button>
+        <span className="text-[12px] text-muted">Node.js · {pluginRuntimeDownloadSizeNote}, once for all plugins</span>
+      </div>
+      <span role="status" className="text-[13px] text-ink-2">
+        {isDownloading ? (progressText ?? 'Starting the download…') : ''}
+      </span>
+      {errorMessage && (
+        <span role="alert" className="text-[13px] text-danger">
+          Could not install the plugin runtime: {errorMessage}
+        </span>
+      )}
+    </div>
+  )
+}
+
 function ReadyLine() {
   return (
     <span className="flex items-center gap-2 text-[13px] font-medium text-ok-strong">
@@ -97,7 +123,7 @@ function ReadyLine() {
   )
 }
 
-/** Only what is still missing, in order: approval, settings (once installed), browser, then "Ready". */
+/** Only what is still missing, in order: approval, settings (once installed), plugin runtime, browser, then "Ready". */
 function RequirementActions({ requirement, setup }: PluginRequirementCardProps) {
   if (requirement.ready) return <ReadyLine />
   const showsSettings = requirement.installed && requirement.missingConfig.length > 0
@@ -112,6 +138,7 @@ function RequirementActions({ requirement, setup }: PluginRequirementCardProps) 
           onClear={async () => {}}
         />
       )}
+      {needsPluginRuntimeDownload(requirement) && !needsPluginApproval(requirement) && <PluginRuntimeDownloadAction setup={setup} />}
       {requirement.needsBrowser && !requirement.browserReady && <BrowserDownloadAction setup={setup} />}
     </div>
   )
@@ -138,6 +165,7 @@ export function PluginRequirementCard({ requirement, setup }: PluginRequirementC
           <li key={line}>{line}</li>
         ))}
       </ul>
+      {needsPluginApproval(requirement) && needsPluginRuntimeDownload(requirement) && <p className="m-0 text-[12px] text-body">{pluginRuntimeInstallNote}</p>}
       {!requirement.installed && <p className="m-0 text-[12px] font-medium text-ink-2">{pluginInstallTrustNote}</p>}
       <RequirementActions requirement={requirement} setup={setup} />
       {canLinkWhatsAppWeb(requirement) && <WhatsAppWebLinkPanel onSessionChange={setup.reload} />}

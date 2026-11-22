@@ -10,7 +10,7 @@ use crate::state::AppState;
 use crate::storage::models::Run;
 
 /// Every problem the app can detect right now (failed runs, missing keys,
-/// plugins, the browser runtime, schedules).
+/// plugins, the plugin and browser runtimes, schedules).
 #[tauri::command]
 pub fn list_problems(state: State<'_, AppState>) -> AppResult<Vec<Problem>> {
     let plugins = state.plugins.list_installed()?;
@@ -19,6 +19,7 @@ pub fn list_problems(state: State<'_, AppState>) -> AppResult<Vec<Problem>> {
         credentials: &state.credentials,
         plugins: &plugins,
         browser_status: state.plugins.browser_runtime_status(),
+        plugin_runtime_status: state.plugins.plugin_runtime_status(),
     };
     problems::collect_problems(&sources)
 }

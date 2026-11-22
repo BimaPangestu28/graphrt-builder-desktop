@@ -2,9 +2,11 @@ import type { ReactNode } from 'react'
 import type { InstalledPlugin } from '@/api/pluginTypes'
 import { Icon, VisuallyHidden, joinClassNames } from '@/components/ui'
 import type { BrowserRuntimeState } from '@/hooks/useBrowserRuntime'
+import type { PluginRuntimeState } from '@/hooks/usePluginRuntime'
 import type { PluginsState } from '@/hooks/usePlugins'
 import { whatsAppWebPluginName } from '../connect-whatsapp/useWhatsAppActions'
 import { BrowserRuntimeCard } from './BrowserRuntimeCard'
+import { PluginRuntimeCard } from './PluginRuntimeCard'
 import { PluginSettings } from './PluginSettings'
 import { PluginTrustToggle } from './PluginTrustToggle'
 import { WhatsAppWebLinkSection } from './WhatsAppWebLinkSection'
@@ -76,16 +78,17 @@ interface BuildStepsInput {
   installed: InstalledPlugin
   plugins: PluginsState
   browserRuntime: BrowserRuntimeState
+  pluginRuntime: PluginRuntimeState
 }
 
 /**
- * What a person does after installing, top to bottom: install (done), trust, the browser
- * runtime when the plugin needs it, linking the account (whatsapp-web: QR code), then
+ * What a person does after installing, top to bottom: install (done), trust, the plugin
+ * runtime (Node.js) while it is missing, the browser runtime when the plugin needs it, linking the account (whatsapp-web: QR code), then
  * settings with required ones first and optional ones folded.
  *
  * @returns The steps that apply to this plugin (PluginSetupStep[])
  */
-export function buildPluginSetupSteps({ installed, plugins, browserRuntime }: BuildStepsInput): PluginSetupStep[] {
+export function buildPluginSetupSteps({ installed, plugins, browserRuntime, pluginRuntime }: BuildStepsInput): PluginSetupStep[] {
   const isBrowserReady = browserRuntime.status === 'installed'
   const steps: PluginSetupStep[] = [
     { id: 'install', title: 'Install', summary: `v${installed.version} on this computer`, isDone: true },
@@ -104,6 +107,9 @@ export function buildPluginSetupSteps({ installed, plugins, browserRuntime }: Bu
       ),
     },
   ]
+  if (installed.needsNodeRuntime && pluginRuntime.status !== 'installed') {
+    steps.push({ id: 'runtime', title: 'Plugin runtime', isDone: false, content: <PluginRuntimeCard runtime={pluginRuntime} isEmbedded /> })
+  }
   if (installed.needsBrowser) {
     steps.push({ id: 'browser', title: 'Browser runtime', isDone: isBrowserReady, content: <BrowserRuntimeCard runtime={browserRuntime} isEmbedded /> })
   }

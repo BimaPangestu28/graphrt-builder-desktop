@@ -12,11 +12,20 @@ export type ProblemKind =
   | 'plugin_not_loaded'
   | 'plugin_untrusted'
   | 'browser_missing'
+  | 'plugin_runtime_missing'
   | 'schedule_invalid'
   | 'schedule_failing'
 
 /** What a problem button does; each maps to a screen or a command. */
-export type ProblemActionKind = 'open_run' | 'retry_run' | 'open_connections' | 'open_plugins' | 'open_builder' | 'open_schedule' | 'install_browser'
+export type ProblemActionKind =
+  | 'open_run'
+  | 'retry_run'
+  | 'open_connections'
+  | 'open_plugins'
+  | 'open_builder'
+  | 'open_schedule'
+  | 'install_browser'
+  | 'install_plugin_runtime'
 
 export interface ProblemAction {
   kind: ProblemActionKind

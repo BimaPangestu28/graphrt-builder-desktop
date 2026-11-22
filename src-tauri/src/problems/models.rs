@@ -21,6 +21,8 @@ pub enum ProblemKind {
     PluginUntrusted,
     /// An agent uses a browser (Playwright) plugin but Chromium is not installed.
     BrowserMissing,
+    /// An agent uses a plugin but the plugin runtime (Node.js) is not installed.
+    PluginRuntimeMissing,
     /// An enabled schedule whose cron expression or time zone no longer parses.
     ScheduleInvalid,
     /// An agent's last scheduled runs all failed.
@@ -45,6 +47,8 @@ pub enum ProblemActionKind {
     OpenSchedule,
     /// Install Chromium for browser plugins (`install_browser_runtime`).
     InstallBrowser,
+    /// Download the plugin runtime, Node.js (`install_node_runtime`).
+    InstallPluginRuntime,
 }
 
 /// One button on a problem.

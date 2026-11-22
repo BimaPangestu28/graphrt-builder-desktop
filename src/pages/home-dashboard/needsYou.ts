@@ -19,7 +19,7 @@ import { buildConnectionReminderItems, buildInboxAttentionItem, buildPausedRunIt
 export const needsYouKindOrder: AttentionKind[] = ['approval', 'chat', 'failed_run', 'setup', 'schedule', 'connection']
 
 /** Problems that mean an agent cannot run until something is installed, trusted or filled in. */
-const setupProblemKinds = new Set<ProblemKind>(['missing_credentials', 'plugin_missing', 'plugin_not_loaded', 'plugin_untrusted', 'browser_missing'])
+const setupProblemKinds = new Set<ProblemKind>(['missing_credentials', 'plugin_missing', 'plugin_not_loaded', 'plugin_untrusted', 'browser_missing', 'plugin_runtime_missing'])
 
 /** True for a problem that keeps an agent from running until it is set up. */
 export function isSetupProblem(problem: Problem): boolean {
@@ -48,6 +48,7 @@ export function describePluginGap(requirement: PluginRequirement): string {
   if (!requirement.installed) return `${pluginLabel} isn't installed`
   if (!requirement.trusted && !requirement.trustNotNeeded) return `${pluginLabel} isn't trusted yet`
   if (requirement.missingConfig.length > 0) return `${pluginLabel} needs ${requirement.missingConfig.join(', ')}`
+  if (requirement.needsNodeRuntime && !requirement.nodeRuntimeReady) return `${pluginLabel} needs the plugin runtime installed`
   if (!requirement.browserReady) return `${pluginLabel} needs the browser installed`
   if (requirement.needsSession && !requirement.sessionLinked) return `${pluginLabel} isn't linked yet`
   return `${pluginLabel} isn't ready`

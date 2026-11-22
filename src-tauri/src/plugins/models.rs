@@ -347,6 +347,8 @@ pub struct InstalledPlugin {
     pub permissions: PluginPermissions,
     pub trusted: bool,
     pub needs_browser: bool,
+    /// Runs on Node, so it needs the plugin runtime (downloaded on demand).
+    pub needs_node_runtime: bool,
     pub nodes: Vec<PluginNodeInfo>,
     pub tools: Vec<String>,
     pub config: Vec<PluginConfigStatus>,

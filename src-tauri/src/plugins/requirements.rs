@@ -37,6 +37,10 @@ pub struct PluginRequirement {
     pub trust_not_needed: bool,
     pub missing_config: Vec<String>,
     pub browser_ready: bool,
+    /// Runs on Node, so it needs the plugin runtime (true for every catalog plugin).
+    pub needs_node_runtime: bool,
+    /// The plugin runtime is installed (always true when not needed).
+    pub node_runtime_ready: bool,
     /// The plugin only works with a linked account session (WhatsApp Web by QR code).
     pub needs_session: bool,
     /// The session is known to be linked (always true when not needed). A session never
@@ -96,6 +100,8 @@ pub(crate) struct RequirementSources<'a> {
     pub credentials: &'a CredentialStore,
     /// Whether Chromium is ready for the named plugin.
     pub browser_ready: &'a dyn Fn(&str) -> bool,
+    /// Whether the plugin runtime (Node) is installed.
+    pub node_runtime_ready: bool,
     /// For plugins that need a linked account session (see `session.rs`): whether it is
     /// known to be linked. `None` for plugins without a session.
     pub session_linked: &'a dyn Fn(&str) -> Option<bool>,
@@ -176,11 +182,19 @@ fn requirement(usage: PluginUsage, sources: &RequirementSources<'_>) -> AppResul
     // Settings and plaintext secrets only reach trusted plugins (see `host.rs`).
     let trust_not_needed = !permissions.secrets && permissions.env.is_empty();
     let browser_ready = !needs_browser || (sources.browser_ready)(name);
+    // Installed plugins say whether they run on Node; every catalog plugin does.
+    let needs_node_runtime =
+        sources.installed.iter().find(|plugin| plugin.name == name).is_none_or(|plugin| plugin.needs_node);
+    let node_runtime_ready = !needs_node_runtime || sources.node_runtime_ready;
     let session_state = (sources.session_linked)(name);
     let needs_session = session_state.is_some();
     let session_linked = session_state.unwrap_or(true);
-    let ready =
-        installed && (trusted || trust_not_needed) && missing_config.is_empty() && browser_ready && session_linked;
+    let ready = installed
+        && (trusted || trust_not_needed)
+        && missing_config.is_empty()
+        && browser_ready
+        && node_runtime_ready
+        && session_linked;
     let display_name = resolve_display_name(
         name,
         [
@@ -205,6 +219,8 @@ fn requirement(usage: PluginUsage, sources: &RequirementSources<'_>) -> AppResul
         trust_not_needed,
         missing_config,
         browser_ready,
+        needs_node_runtime,
+        node_runtime_ready,
         needs_session,
         session_linked,
         ready,

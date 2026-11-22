@@ -129,6 +129,8 @@ export interface InstalledPlugin {
   /** The user trusts it: it receives its settings and plaintext secrets. */
   trusted: boolean
   needsBrowser: boolean
+  /** Runs on Node.js, so it needs the plugin runtime (downloaded on demand, see {@link PluginRuntimeInfo}). */
+  needsNodeRuntime: boolean
   nodes: PluginNodeInfo[]
   tools: string[]
   /** One entry per `permissions.env` variable. */
@@ -151,6 +153,36 @@ export interface InstalledPlugin {
 }
 
 export type BrowserRuntimeStatus = 'not_installed' | 'installing' | 'installed'
+
+/** Whether the plugin runtime (Node.js, which plugins run on) is installed. */
+export type PluginRuntimeStatus = BrowserRuntimeStatus
+
+/** Where the app's Node.js comes from: `downloaded` in release builds; `development` / `system` only in debug builds. */
+export type PluginRuntimeSource = 'downloaded' | 'development' | 'system' | 'missing'
+
+/** Download size of the plugin runtime, shown before the user starts it (the archives are 26-36 MB). */
+export const pluginRuntimeDownloadSizeNote = 'about 30 MB download'
+
+/**
+ * The plugin runtime and browser runtime (`node_runtime_info`). graphrt no longer bundles
+ * Node.js: it downloads the pinned official release from nodejs.org the first time the
+ * user installs or sets up a plugin, and checks it against a checksum built into the app.
+ */
+export interface PluginRuntimeInfo {
+  status: PluginRuntimeStatus
+  /** `node --version` output such as "v22.23.5"; null when missing or it fails to run. */
+  version: string | null
+  /** The version the app downloads, e.g. "22.23.5". */
+  pinnedVersion: string
+  path: string | null
+  source: PluginRuntimeSource
+  /** The downloaded runtime can be removed (Settings). */
+  removable: boolean
+  /** The app can download Node.js for this computer. */
+  downloadable: boolean
+  browserStatus: BrowserRuntimeStatus
+  browsersPath: string
+}
 
 /** Result of a one-off plugin action (e.g. `whatsapp-web.login`): the node's outputs. */
 export interface PluginActionResult {
@@ -176,14 +208,23 @@ export type PluginEvent =
 export const PLUGIN_EVENT_NAME = 'plugin-event'
 
 /**
- * Payload of the Tauri event `node-runtime-event` (browser runtime install progress).
- * Owned by the Node runtime side: the app only reads `message` and `percent` when present.
+ * Payload of the Tauri event `node-runtime-event`: install progress of the browser runtime
+ * (`browser_install_*` types, with a `line` of installer output) and of the plugin runtime
+ * (`node_install_*` types, with `message` and `percent`). Only those fields are read.
  */
 export interface BrowserRuntimeEvent {
+  type?: string
   message?: string
+  /** One line of the browser installer's output. */
+  line?: string
   /** 0 to 100. */
-  percent?: number
+  percent?: number | null
   [field: string]: unknown
+}
+
+/** True for a `node-runtime-event` about the plugin runtime (Node.js) rather than the browser. */
+export function isPluginRuntimeEvent(runtimeEvent: BrowserRuntimeEvent): boolean {
+  return typeof runtimeEvent.type === 'string' && runtimeEvent.type.startsWith('node_install_')
 }
 
 /** Tauri event name for {@link BrowserRuntimeEvent}. */

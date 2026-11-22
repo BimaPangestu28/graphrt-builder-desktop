@@ -15,6 +15,8 @@ function requirement(overrides: Partial<PluginRequirement> = {}): PluginRequirem
     trustNotNeeded: true,
     missingConfig: [],
     browserReady: false,
+    needsNodeRuntime: true,
+    nodeRuntimeReady: true,
     needsSession: false,
     sessionLinked: true,
     ready: false,

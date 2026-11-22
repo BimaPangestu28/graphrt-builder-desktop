@@ -26,7 +26,7 @@ use self::models::{Problem, ProblemAction, ProblemActionKind, ProblemKind};
 use self::needs::{provider_display_name, read_flow_needs, FlowNeeds};
 use crate::credentials::CredentialStore;
 use crate::error::AppResult;
-use crate::node_runtime::BrowserRuntimeStatus;
+use crate::node_runtime::{BrowserRuntimeStatus, PluginRuntimeStatus};
 use crate::plugins::display_name::humanize_plugin_name;
 use crate::plugins::models::InstalledPlugin;
 use crate::scheduler::ZonedSchedule;
@@ -45,6 +45,7 @@ pub struct ProblemSources<'a> {
     /// From `PluginService::list_installed`.
     pub plugins: &'a [InstalledPlugin],
     pub browser_status: BrowserRuntimeStatus,
+    pub plugin_runtime_status: PluginRuntimeStatus,
 }
 
 /// Agents with what their flow needs, read once.
@@ -73,6 +74,7 @@ pub fn collect_problems(sources: &ProblemSources<'_>) -> AppResult<Vec<Problem>>
     let mut problems = failed_run_problems(sources.db, &recent_runs, &agent_names)?;
     problems.extend(credential_problems(sources, &agents)?);
     problems.extend(plugin_problems(sources.plugins, &agents));
+    problems.extend(plugin_runtime_problems(sources, &agents));
     problems.extend(browser_problems(sources, &agents));
     problems.extend(schedule_problems(&triggers, &recent_runs, &agent_names));
     Ok(problems)
@@ -249,6 +251,46 @@ fn plugin_problems(plugins: &[InstalledPlugin], agents: &[AgentContext]) -> Vec<
         }
     }
     problems
+}
+
+/// Agents using an installed plugin that runs on Node while the plugin runtime is missing
+/// (for example after updating from 0.1.x, which bundled Node).
+fn plugin_runtime_problems(sources: &ProblemSources<'_>, agents: &[AgentContext]) -> Vec<Problem> {
+    if sources.plugin_runtime_status != PluginRuntimeStatus::NotInstalled {
+        return Vec::new();
+    }
+    let users = plugin_users(agents);
+    let mut agent_names: Vec<String> = sources
+        .plugins
+        .iter()
+        .filter(|plugin| plugin.needs_node_runtime)
+        .filter_map(|plugin| users.get(&plugin.name))
+        .flatten()
+        .cloned()
+        .collect();
+    agent_names.sort();
+    agent_names.dedup();
+    if agent_names.is_empty() {
+        return Vec::new();
+    }
+    vec![Problem {
+        id: "plugin_runtime_missing".into(),
+        kind: ProblemKind::PluginRuntimeMissing,
+        title: "The plugin runtime is not installed".into(),
+        detail: format!(
+            "{} use plugins, which run on Node.js. It is a one-time download of about 30 MB",
+            agent_names.join(", ")
+        ),
+        needs_attention: true,
+        agent_id: None,
+        agent_name: None,
+        run_id: None,
+        occurred_at: None,
+        actions: vec![
+            ProblemAction::new(ProblemActionKind::InstallPluginRuntime, "Install the plugin runtime"),
+            ProblemAction::new(ProblemActionKind::OpenPlugins, "Open plugins"),
+        ],
+    }]
 }
 
 fn browser_problems(sources: &ProblemSources<'_>, agents: &[AgentContext]) -> Vec<Problem> {

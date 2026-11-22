@@ -1,49 +1,53 @@
-//! The Node.js runtime graphrt plugins run on.
+//! The Node.js runtime graphrt plugins run on ("the plugin runtime").
 //!
-//! graphrt's process plugins declare `"command": "node"`. The desktop app ships
-//! its own Node as a Tauri sidecar (`binaries/graphrt-node-<target-triple>`, fetched and
-//! checksum-verified at build time by `scripts/fetch-node.sh`), so users never
-//! install Node themselves. Plugins that drive a browser (Playwright:
-//! `google-maps-scraper`, `whatsapp-web`) get Chromium downloaded on demand.
+//! graphrt's process plugins declare `"command": "node"`. The app does not bundle Node (it
+//! was 79% of the macOS app): the first time something needs it (installing or running a
+//! plugin, installing the browser runtime) the user is asked, and the official Node.js
+//! release pinned at build time is downloaded from nodejs.org, checked against its pinned
+//! SHA-256 and installed into `<app data>/runtime/node-<version>/` (see [`release`]).
+//! Nothing is downloaded without that action: [`NodeRuntime::install_node_runtime`] is only
+//! called by the `install_node_runtime` command.
 //!
-//! Browsers go into Playwright's *default* cache (`~/Library/Caches/ms-playwright`,
-//! `%USERPROFILE%\AppData\Local\ms-playwright`, `~/.cache/ms-playwright`), not
-//! the app data folder: graphrt starts plugins with a cleared environment
-//! (only `PATH`, `HOME`, `USERPROFILE`, ... pass through), so a plugin's
+//! Where `node` comes from, in order ([`NodeRuntime::node_location`]):
+//!
+//! 1. the downloaded runtime (`<app data>/runtime/node-<pinned version>/node[.exe]`);
+//! 2. debug builds only: the development copy `src-tauri/binaries/graphrt-node-<triple>`
+//!    from `scripts/fetch-node.sh` (skipped with `GRAPHRT_IGNORE_DEV_NODE=1`, to try the
+//!    download flow);
+//! 3. debug builds only: a `node` on PATH (logged). Release builds never use either.
+//!
+//! Plugins that drive a browser (Playwright: `google-maps-scraper`, `whatsapp-web`) also get
+//! Chromium downloaded on demand. Browsers go into Playwright's *default* cache
+//! (`~/Library/Caches/ms-playwright`, `%USERPROFILE%\AppData\Local\ms-playwright`,
+//! `~/.cache/ms-playwright`), not the app data folder: graphrt starts plugins with a cleared
+//! environment (only `PATH`, `HOME`, `USERPROFILE`, ... pass through), so a plugin's
 //! Playwright resolves exactly that folder unless the host also injects
-//! `PLAYWRIGHT_BROWSERS_PATH`. [`NodeRuntime::plugin_process_env`] still
-//! returns `PLAYWRIGHT_BROWSERS_PATH` (same folder), so both cases agree.
+//! `PLAYWRIGHT_BROWSERS_PATH`. [`NodeRuntime::plugin_process_env`] still returns
+//! `PLAYWRIGHT_BROWSERS_PATH` (same folder), so both cases agree.
 //!
-//! Where the sidecar lives at run time (Tauri copies it next to the main
-//! executable and strips the target triple):
+//! CONTRACT: the plugin host calls [`NodeRuntime::plugin_process_env`] and
+//! [`NodeRuntime::node_command_path`] for every plugin process and
+//! [`NodeRuntime::browser_runtime_status_for`] / [`NodeRuntime::install_browser_runtime_for`]
+//! for plugins that need a browser.
 //!
-//! - macOS app: `graphrt.app/Contents/MacOS/graphrt-node`
-//! - Windows: `graphrt-node.exe` next to `graphrt.exe`
-//! - Linux deb / AppImage: `usr/bin/graphrt-node` next to `usr/bin/graphrt`
-//! - `tauri dev` / `cargo run`: `target/<profile>/graphrt-node` (copied by tauri-build)
-//!
-//! Debug builds fall back to a `node` on PATH (logged); release builds never do.
-//!
-//! CONTRACT: the plugin host calls [`NodeRuntime::plugin_process_env`] for every
-//! plugin process and [`NodeRuntime::browser_runtime_status_for`] /
-//! [`NodeRuntime::install_browser_runtime_for`] for plugins that need a browser.
-//!
-//! How that env reaches a plugin: graphrt-plugin (rev 32bcd7a) spawns
-//! `runtime.command` after `env_clear()`, copies `PATH`, `HOME`, ... from the
-//! *app's* environment, then applies `ProcessRuntime::env`. A macOS app started
-//! from Finder has `PATH=/usr/bin:/bin:/usr/sbin:/sbin`, so a bare `node` is not
-//! found unless the host edits the parsed manifest before `PluginHost::add`:
-//! set `command` to [`NodeRuntime::node_executable`] (absolute, so no PATH
-//! lookup is involved) when it is `"node"`, and merge
-//! [`NodeRuntime::plugin_process_env`] into `ProcessRuntime::env` (so `node`
-//! spawned by the plugin itself, and `PLAYWRIGHT_BROWSERS_PATH`, work too).
+//! How that env reaches a plugin: graphrt-plugin (rev 32bcd7a) spawns `runtime.command` after
+//! `env_clear()`, copies `PATH`, `HOME`, ... from the *app's* environment, then applies
+//! `ProcessRuntime::env`. A macOS app started from Finder has `PATH=/usr/bin:/bin:/usr/sbin:/sbin`,
+//! so a bare `node` is not found unless the host edits the parsed manifest before
+//! `PluginHost::add`: set `command` to [`NodeRuntime::node_command_path`] (absolute, so no PATH
+//! lookup is involved) when it is `"node"`, and merge [`NodeRuntime::plugin_process_env`] into
+//! `ProcessRuntime::env` (so `node` spawned by the plugin itself, and
+//! `PLAYWRIGHT_BROWSERS_PATH`, work too). Both point at the download location even before
+//! the runtime is installed, so installing it needs no plugin reload to take effect.
 //! `PluginHost::add` does not re-validate the manifest, so this is allowed.
+
+pub mod release;
 
 use std::ffi::{OsStr, OsString};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -52,6 +56,8 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
 use crate::error::{AppError, AppResult};
+use crate::plugins::download::{Downloader, ProgressCallback as DownloadProgressCallback};
+use release::{ExecutableCheck, NodeArchive, NODE_VERSION};
 
 /// Name of the Tauri event carrying [`NodeRuntimeEvent`].
 pub const NODE_RUNTIME_EVENT: &str = "node-runtime-event";
@@ -66,17 +72,17 @@ pub const PLUGINS_DIR_NAME: &str = "plugins";
 
 /// Downloading Chromium is ~150 MB; give slow connections time, but not forever.
 const BROWSER_INSTALL_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+/// The Node archive is ~30 MB.
+const NODE_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(15 * 60);
+/// Node download progress is reported at most every this many bytes.
+const NODE_PROGRESS_STEP_BYTES: u64 = 512 * 1024;
 /// How deep under the plugins folder a plugin's `node_modules` may sit.
 const PLUGIN_SEARCH_DEPTH: usize = 3;
 /// Playwright writes this file into a browser folder once it is fully extracted.
 const INSTALLATION_COMPLETE_MARKER: &str = "INSTALLATION_COMPLETE";
+/// Set to `1` to ignore the development copy of Node in debug builds.
+const IGNORE_DEV_NODE_ENV: &str = "GRAPHRT_IGNORE_DEV_NODE";
 
-/// The bundled sidecar is `graphrt-node`, not `node`: Linux packages install it
-/// into `/usr/bin`, where `node` would clash with the distribution's nodejs.
-#[cfg(windows)]
-const SIDECAR_FILE_NAME: &str = "graphrt-node.exe";
-#[cfg(not(windows))]
-const SIDECAR_FILE_NAME: &str = "graphrt-node";
 /// A system-wide Node, only looked for on PATH in debug builds.
 #[cfg(windows)]
 const SYSTEM_NODE_FILE_NAME: &str = "node.exe";
@@ -92,12 +98,17 @@ pub enum BrowserRuntimeStatus {
     Installed,
 }
 
+/// Whether a usable Node (the plugin runtime) is there. Same values as [`BrowserRuntimeStatus`].
+pub type PluginRuntimeStatus = BrowserRuntimeStatus;
+
 /// Where the `node` executable came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NodeSource {
-    /// The sidecar shipped with the app.
-    Bundled,
+    /// Downloaded by the app into `<app data>/runtime` (the only source in release builds).
+    Downloaded,
+    /// The development copy from `scripts/fetch-node.sh` (debug builds only).
+    Development,
     /// A `node` found on PATH (debug builds only).
     System,
     /// No usable Node was found.
@@ -111,21 +122,33 @@ pub struct NodeLocation {
     pub source: NodeSource,
 }
 
-/// What the settings screen shows about the runtime (`node_runtime_info`).
+impl NodeLocation {
+    pub const MISSING: Self = Self { executable: None, source: NodeSource::Missing };
+}
+
+/// What the settings screen shows about the runtimes (`node_runtime_info`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NodeRuntimeInfo {
+    /// Whether plugins can start (a usable Node is there, or being installed).
+    pub status: PluginRuntimeStatus,
     /// `node --version` output such as `v22.23.5`; `None` when Node is missing or fails to run.
     pub version: Option<String>,
+    /// The version the app downloads, e.g. `22.23.5`.
+    pub pinned_version: String,
     pub path: Option<String>,
     pub source: NodeSource,
+    /// The downloaded runtime can be removed (Settings › Remove).
+    pub removable: bool,
+    /// The app can download Node for this computer.
+    pub downloadable: bool,
     pub browser_status: BrowserRuntimeStatus,
     pub browsers_path: String,
 }
 
-/// Browser install progress. Serialized as
-/// `{ "type": "browser_install_progress", "line": "..." }`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// Runtime install progress. Serialized with a snake_case `type` tag and camelCase fields,
+/// e.g. `{ "type": "node_install_progress", "message": "...", "percent": 40 }`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum NodeRuntimeEvent {
     /// Playwright's installer started for the plugin in `plugin_dir`.
@@ -141,6 +164,25 @@ pub enum NodeRuntimeEvent {
         already_installed: bool,
     },
     BrowserInstallFailed {
+        message: String,
+    },
+    /// The plugin runtime (Node.js) download started.
+    NodeInstallStarted {
+        version: String,
+    },
+    /// Download or install progress of the plugin runtime.
+    NodeInstallProgress {
+        message: String,
+        /// 0 to 100 while downloading, when the size is known.
+        percent: Option<f64>,
+        received_bytes: Option<u64>,
+        total_bytes: Option<u64>,
+    },
+    /// The plugin runtime is ready; `already_installed` when nothing was downloaded.
+    NodeInstallFinished {
+        already_installed: bool,
+    },
+    NodeInstallFailed {
         message: String,
     },
 }
@@ -212,17 +254,36 @@ impl BrowserInstaller for PlaywrightCliInstaller {
 }
 
 /// Where Node and the browser cache live; built once at start-up. Cheap to clone.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct NodeRuntime {
-    node_location: NodeLocation,
+    /// `<app data>/runtime`, where Node is downloaded to.
+    runtime_dir: PathBuf,
+    /// The Node used while none is downloaded: the development copy or PATH (debug builds), else missing.
+    fallback_location: NodeLocation,
+    /// The archive this computer downloads; `None` on platforms Node is not offered for.
+    node_archive: Option<NodeArchive>,
+    downloader: Option<Arc<dyn Downloader>>,
+    executable_check: Arc<ExecutableCheck>,
     browsers_dir: PathBuf,
     plugins_dir: PathBuf,
     installer: Arc<dyn BrowserInstaller>,
     events: Arc<dyn NodeRuntimeEventSink>,
     install_guard: Arc<InstallGuard>,
+    node_install_guard: Arc<InstallGuard>,
 }
 
-/// Serializes browser installs and counts the ones requested or running.
+impl std::fmt::Debug for NodeRuntime {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("NodeRuntime")
+            .field("runtime_dir", &self.runtime_dir)
+            .field("fallback_location", &self.fallback_location)
+            .field("browsers_dir", &self.browsers_dir)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Serializes installs of one runtime and counts the ones requested or running.
 #[derive(Debug, Default)]
 struct InstallGuard {
     lock: tokio::sync::Mutex<()>,
@@ -246,23 +307,16 @@ impl Drop for PendingInstall<'_> {
 }
 
 impl NodeRuntime {
-    /// Resolves the bundled Node next to the app executable and the browser
-    /// cache: Playwright's default cache (see the module docs), or
-    /// `app_data_dir/browsers` when the home folder is unknown.
+    /// Looks for Node (see the module docs) and the browser cache: Playwright's default
+    /// cache, or `app_data_dir/browsers` when the home folder is unknown. Downloads go
+    /// through `downloader` (see [`Self::with_downloader`]).
     pub fn new(app_data_dir: PathBuf) -> Self {
-        let node_location = match std::env::current_exe() {
-            Ok(executable) => {
-                let executable_dir = executable.parent().map(Path::to_path_buf).unwrap_or_default();
-                let system_path = std::env::var_os("PATH");
-                resolve_node_location(&executable_dir, cfg!(debug_assertions), system_path.as_deref())
-            }
-            Err(error) => {
-                log::error!("cannot locate the app executable to find the bundled Node: {error}");
-                NodeLocation { executable: None, source: NodeSource::Missing }
-            }
-        };
-        log_node_location(&node_location);
-        let runtime = Self::with_parts(app_data_dir, node_location, Arc::new(PlaywrightCliInstaller));
+        let system_path = std::env::var_os("PATH");
+        let ignore_dev_node = std::env::var(IGNORE_DEV_NODE_ENV).is_ok_and(|value| value == "1");
+        let dev_node = (cfg!(debug_assertions) && !ignore_dev_node).then(development_node_path);
+        let fallback = resolve_fallback_location(dev_node.as_deref(), cfg!(debug_assertions), system_path.as_deref());
+        let runtime = Self::with_parts(app_data_dir, fallback, Arc::new(PlaywrightCliInstaller));
+        log_node_location(&runtime.node_location());
         let home_dir = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(PathBuf::from);
         match playwright_default_cache_dir(std::env::consts::OS, home_dir.as_deref()) {
             Some(cache_dir) => runtime.with_browsers_dir(cache_dir),
@@ -279,20 +333,25 @@ impl NodeRuntime {
         self
     }
 
-    /// Builds a runtime from an already resolved Node and a browser installer
-    /// (tests and callers that want a fake installer).
+    /// Builds a runtime whose Node, while none is downloaded, is `fallback_location`, with a
+    /// browser installer (tests and callers that want a fake installer).
     pub fn with_parts(
         app_data_dir: PathBuf,
-        node_location: NodeLocation,
+        fallback_location: NodeLocation,
         installer: Arc<dyn BrowserInstaller>,
     ) -> Self {
         Self {
-            node_location,
+            runtime_dir: app_data_dir.join(release::RUNTIME_DIR_NAME),
+            fallback_location,
+            node_archive: release::archive_for_this_computer().ok().copied(),
+            downloader: None,
+            executable_check: Arc::new(check_node_runs),
             browsers_dir: app_data_dir.join(BROWSERS_DIR_NAME),
             plugins_dir: app_data_dir.join(PLUGINS_DIR_NAME),
             installer,
             events: Arc::new(LogNodeRuntimeEvents),
             install_guard: Arc::new(InstallGuard::default()),
+            node_install_guard: Arc::new(InstallGuard::default()),
         }
     }
 
@@ -308,19 +367,45 @@ impl NodeRuntime {
         self
     }
 
-    /// Absolute path of the bundled `node` executable.
+    /// The HTTPS client [`Self::install_node_runtime`] downloads with.
+    pub fn with_downloader(mut self, downloader: Arc<dyn Downloader>) -> Self {
+        self.downloader = Some(downloader);
+        self
+    }
+
+    /// Tests: a different archive (a fixture with its own checksum) and executable check.
+    #[cfg(test)]
+    fn with_node_archive(mut self, archive: Option<NodeArchive>, check: Arc<ExecutableCheck>) -> Self {
+        self.node_archive = archive;
+        self.executable_check = check;
+        self
+    }
+
+    /// The Node plugins run on right now: the downloaded runtime, else the fallback.
+    pub fn node_location(&self) -> NodeLocation {
+        let downloaded = release::installed_executable(&self.runtime_dir);
+        if is_usable_executable(&downloaded) {
+            return NodeLocation { executable: Some(downloaded), source: NodeSource::Downloaded };
+        }
+        self.fallback_location.clone()
+    }
+
+    /// Absolute path of the `node` executable.
+    ///
+    /// # Errors
+    /// `InvalidInput` when the plugin runtime is not installed.
     pub fn node_executable(&self) -> AppResult<PathBuf> {
-        self.node_location.executable.clone().ok_or_else(|| {
-            AppError::Internal(
-                "the bundled Node.js runtime is missing from the app; reinstall graphrt \
-                 (developers: run scripts/fetch-node.sh)"
-                    .into(),
+        self.node_location().executable.ok_or_else(|| {
+            AppError::InvalidInput(
+                "the plugin runtime (Node.js) is not installed; install it from Plugins or Settings".into(),
             )
         })
     }
 
-    pub fn node_location(&self) -> &NodeLocation {
-        &self.node_location
+    /// What `"command": "node"` becomes: the current Node, else where the runtime will be
+    /// installed (so plugins start once it is, and fail with that path until then).
+    pub fn node_command_path(&self) -> PathBuf {
+        self.node_location().executable.unwrap_or_else(|| release::installed_executable(&self.runtime_dir))
     }
 
     /// Folder Playwright keeps its browsers in (`PLAYWRIGHT_BROWSERS_PATH`).
@@ -328,12 +413,133 @@ impl NodeRuntime {
         &self.browsers_dir
     }
 
-    /// Extra environment for a plugin process: `PATH` starting with the bundled
-    /// Node's folder (so `"command": "node"` finds it) and
-    /// `PLAYWRIGHT_BROWSERS_PATH` pointing at the app's browser cache.
+    /// Extra environment for a plugin process: `PATH` starting with Node's folder (so a
+    /// plugin spawning `node` finds it) and `PLAYWRIGHT_BROWSERS_PATH` pointing at the browser cache.
     pub fn plugin_process_env(&self) -> Vec<(String, String)> {
-        let node_dir = self.node_location.executable.as_deref().and_then(Path::parent);
-        compose_plugin_env(node_dir, std::env::var_os("PATH"), &self.browsers_dir)
+        let node_command = self.node_command_path();
+        compose_plugin_env(node_command.parent(), std::env::var_os("PATH"), &self.browsers_dir)
+    }
+
+    /// Whether plugins can start: a usable Node is there (or one is being downloaded).
+    pub fn node_runtime_status(&self) -> PluginRuntimeStatus {
+        if self.node_install_guard.pending_installs.load(Ordering::SeqCst) > 0 {
+            return PluginRuntimeStatus::Installing;
+        }
+        if self.node_location().executable.is_some() {
+            PluginRuntimeStatus::Installed
+        } else {
+            PluginRuntimeStatus::NotInstalled
+        }
+    }
+
+    /// Downloads and installs the pinned Node.js release (see [`release`]), unless it is
+    /// already downloaded. Concurrent calls run one after another. Progress goes to the
+    /// Tauri event `node-runtime-event`. Only call this for an explicit user action.
+    ///
+    /// # Errors
+    /// `InvalidInput` on a platform Node is not offered for, a checksum mismatch or an
+    /// unusable archive; `Internal` when the download fails (offline) or files cannot be
+    /// written. Nothing is installed on error.
+    pub async fn install_node_runtime(&self) -> AppResult<()> {
+        let _pending = PendingInstall::begin(&self.node_install_guard.pending_installs);
+        let _exclusive = self.node_install_guard.lock.lock().await;
+        if is_usable_executable(&release::installed_executable(&self.runtime_dir)) {
+            self.events.send(NodeRuntimeEvent::NodeInstallFinished { already_installed: true });
+            return Ok(());
+        }
+        self.events.send(NodeRuntimeEvent::NodeInstallStarted { version: NODE_VERSION.to_owned() });
+        let result = self.download_and_install_node().await;
+        match &result {
+            Ok(path) => {
+                log::info!("installed the plugin runtime Node.js v{NODE_VERSION} at {}", path.display());
+                self.events.send(NodeRuntimeEvent::NodeInstallFinished { already_installed: false });
+            }
+            Err(error) => {
+                log::warn!("could not install the plugin runtime: {error}");
+                self.events.send(NodeRuntimeEvent::NodeInstallFailed { message: error.to_string() });
+            }
+        }
+        result.map(|_| ())
+    }
+
+    async fn download_and_install_node(&self) -> AppResult<PathBuf> {
+        let archive = self.node_archive.ok_or_else(|| {
+            AppError::InvalidInput(format!(
+                "the plugin runtime is not available for this computer ({} {})",
+                std::env::consts::OS,
+                std::env::consts::ARCH
+            ))
+        })?;
+        let url = release::download_url(&archive);
+        if !release::is_allowed_download_url(&url) {
+            return Err(AppError::InvalidInput(format!("refused to download the plugin runtime from {url}")));
+        }
+        let downloader = self
+            .downloader
+            .clone()
+            .ok_or_else(|| AppError::Internal("the plugin runtime cannot be downloaded: no download client".into()))?;
+        let archive_bytes = downloader
+            .fetch(&url, release::MAX_ARCHIVE_BYTES, NODE_DOWNLOAD_TIMEOUT, Some(self.node_download_progress()))
+            .await
+            .map_err(describe_download_error)?;
+        self.send_node_step("Checking and installing Node.js…");
+        let runtime_dir = self.runtime_dir.clone();
+        let check = self.executable_check.clone();
+        tokio::task::spawn_blocking(move || {
+            release::install_from_archive(&runtime_dir, &archive_bytes, &archive, check.as_ref())
+        })
+        .await
+        .map_err(|error| AppError::Internal(format!("the plugin runtime install task stopped: {error}")))?
+    }
+
+    fn send_node_step(&self, message: &str) {
+        self.events.send(NodeRuntimeEvent::NodeInstallProgress {
+            message: message.to_owned(),
+            percent: None,
+            received_bytes: None,
+            total_bytes: None,
+        });
+    }
+
+    /// Download progress as `node_install_progress` events, at most every [`NODE_PROGRESS_STEP_BYTES`].
+    fn node_download_progress(&self) -> DownloadProgressCallback {
+        let events = self.events.clone();
+        let last_reported = Arc::new(AtomicU64::new(0));
+        Arc::new(move |received: u64, total: Option<u64>| {
+            let previous = last_reported.load(Ordering::Relaxed);
+            let finished = total.is_some_and(|total| received >= total);
+            if received < previous.saturating_add(NODE_PROGRESS_STEP_BYTES) && !finished && previous != 0 {
+                return;
+            }
+            last_reported.store(received.max(1), Ordering::Relaxed);
+            let percent =
+                total.filter(|total| *total > 0).map(|total| (received as f64 * 100.0 / total as f64).min(100.0));
+            events.send(NodeRuntimeEvent::NodeInstallProgress {
+                message: "Downloading Node.js".to_owned(),
+                percent,
+                received_bytes: Some(received),
+                total_bytes: total,
+            });
+        })
+    }
+
+    /// Removes the downloaded runtime (Settings › Remove). Plugins stop working until it is
+    /// installed again; a development copy or PATH Node (debug builds) takes over.
+    /// Returns whether anything was removed.
+    ///
+    /// # Errors
+    /// `InvalidInput` while the runtime is being installed; `Internal` when it cannot be
+    /// deleted (on Windows: while a plugin still runs).
+    pub async fn remove_node_runtime(&self) -> AppResult<bool> {
+        let Ok(_exclusive) = self.node_install_guard.lock.try_lock() else {
+            return Err(AppError::InvalidInput(
+                "the plugin runtime is being installed; try again when it is done".into(),
+            ));
+        };
+        let runtime_dir = self.runtime_dir.clone();
+        tokio::task::spawn_blocking(move || release::remove_downloaded(&runtime_dir))
+            .await
+            .map_err(|error| AppError::Internal(format!("the remove task stopped: {error}")))?
     }
 
     /// Whether any Playwright Chromium is installed (or an install is under way).
@@ -373,14 +579,15 @@ impl NodeRuntime {
     }
 
     /// Downloads the Chromium build the plugin's Playwright version needs, with
-    /// that Playwright's CLI and the bundled Node. Concurrent calls run one after
+    /// that Playwright's CLI and Node. Concurrent calls run one after
     /// another; a call that finds the browser installed returns at once.
     /// Progress goes to the Tauri event `node-runtime-event`.
     ///
     /// # Errors
     /// `InvalidInput` when `plugin_dir`, or the Playwright CLI found for it, is
     /// not inside the app's plugins folder: the installer runs that file with
-    /// Node, so only code of an installed plugin may be used.
+    /// Node, so only code of an installed plugin may be used. `InvalidInput` too
+    /// when the plugin runtime (Node) is not installed.
     pub async fn install_browser_runtime_for(&self, plugin_dir: &Path) -> AppResult<()> {
         let _pending = PendingInstall::begin(&self.install_guard.pending_installs);
         let _exclusive = self.install_guard.lock.lock().await;
@@ -402,9 +609,10 @@ impl NodeRuntime {
         result
     }
 
-    /// Version, path and browser status for the settings screen.
+    /// Runtime status, version, path and browser status for the settings screen.
     pub async fn info(&self) -> NodeRuntimeInfo {
-        let version = match self.node_location.executable.clone() {
+        let location = self.node_location();
+        let version = match location.executable.clone() {
             Some(executable) => tokio::task::spawn_blocking(move || read_node_version(&executable))
                 .await
                 .unwrap_or_else(|error| Err(AppError::Internal(error.to_string())))
@@ -413,9 +621,13 @@ impl NodeRuntime {
             None => None,
         };
         NodeRuntimeInfo {
+            status: self.node_runtime_status(),
             version,
-            path: self.node_location.executable.as_ref().map(|path| path.display().to_string()),
-            source: self.node_location.source,
+            pinned_version: NODE_VERSION.to_owned(),
+            path: location.executable.as_ref().map(|path| path.display().to_string()),
+            source: location.source,
+            removable: location.source == NodeSource::Downloaded,
+            downloadable: self.node_archive.is_some(),
             browser_status: self.browser_runtime_status(),
             browsers_path: self.browsers_dir.display().to_string(),
         }
@@ -444,43 +656,64 @@ impl NodeRuntime {
     }
 }
 
-fn log_node_location(location: &NodeLocation) {
-    match (location.source, &location.executable) {
-        (NodeSource::Bundled, Some(path)) => log::info!("using the bundled Node at {}", path.display()),
-        (NodeSource::System, Some(path)) => {
-            log::warn!("bundled Node not found; using {} from PATH (debug build only)", path.display())
-        }
-        _ => log::error!("no Node.js runtime found: plugins will not start (run scripts/fetch-node.sh)"),
+/// A clear message for a failed runtime download (usually: offline).
+fn describe_download_error(error: AppError) -> AppError {
+    match error {
+        AppError::Internal(detail) => AppError::Internal(format!(
+            "could not download the plugin runtime from nodejs.org; check the internet connection and try again ({detail})"
+        )),
+        other => other,
     }
 }
 
-/// Finds the sidecar next to the executable; with `allow_system_fallback`
-/// (debug builds) falls back to the first `node` on `system_path`.
-pub fn resolve_node_location(
-    executable_dir: &Path,
+/// Runs the staged executable once: `node --version` must print the pinned version.
+fn check_node_runs(executable: &Path) -> AppResult<()> {
+    let version = read_node_version(executable).map_err(|error| {
+        AppError::InvalidInput(format!("the downloaded plugin runtime does not start on this computer: {error}"))
+    })?;
+    if version == format!("v{NODE_VERSION}") {
+        Ok(())
+    } else {
+        Err(AppError::InvalidInput(format!(
+            "the downloaded plugin runtime reports {version}, expected v{NODE_VERSION}"
+        )))
+    }
+}
+
+fn log_node_location(location: &NodeLocation) {
+    match (location.source, &location.executable) {
+        (NodeSource::Downloaded, Some(path)) => log::info!("using the downloaded plugin runtime at {}", path.display()),
+        (NodeSource::Development, Some(path)) => log::info!("using the development Node at {}", path.display()),
+        (NodeSource::System, Some(path)) => {
+            log::warn!("no downloaded Node; using {} from PATH (debug build only)", path.display())
+        }
+        _ => log::info!("the plugin runtime (Node.js) is not installed yet; plugins ask for it when needed"),
+    }
+}
+
+/// `src-tauri/binaries/graphrt-node-<target triple>[.exe]` from `scripts/fetch-node.sh`.
+fn development_node_path() -> PathBuf {
+    let extension = if cfg!(windows) { ".exe" } else { "" };
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("binaries")
+        .join(format!("graphrt-node-{}{extension}", env!("GRAPHRT_TARGET_TRIPLE")))
+}
+
+/// The Node used while none is downloaded: `dev_node` when usable, else (with
+/// `allow_system_fallback`, debug builds) the first `node` on `system_path`.
+pub fn resolve_fallback_location(
+    dev_node: Option<&Path>,
     allow_system_fallback: bool,
     system_path: Option<&OsStr>,
 ) -> NodeLocation {
-    if let Some(sidecar) = sidecar_candidates(executable_dir).into_iter().find(|path| is_usable_executable(path)) {
-        return NodeLocation { executable: Some(sidecar), source: NodeSource::Bundled };
+    if let Some(dev_node) = dev_node.filter(|path| is_usable_executable(path)) {
+        return NodeLocation { executable: Some(dev_node.to_path_buf()), source: NodeSource::Development };
     }
     let from_path = if allow_system_fallback { system_path.and_then(find_node_on_path) } else { None };
     match from_path {
         Some(executable) => NodeLocation { executable: Some(executable), source: NodeSource::System },
-        None => NodeLocation { executable: None, source: NodeSource::Missing },
+        None => NodeLocation::MISSING,
     }
-}
-
-/// `<exe dir>/graphrt-node` covers bundles and `target/<profile>`; test binaries run
-/// from `target/<profile>/deps`, so its parent is tried too.
-fn sidecar_candidates(executable_dir: &Path) -> Vec<PathBuf> {
-    let mut candidates = vec![executable_dir.join(SIDECAR_FILE_NAME)];
-    if executable_dir.file_name() == Some(OsStr::new("deps")) {
-        if let Some(profile_dir) = executable_dir.parent() {
-            candidates.push(profile_dir.join(SIDECAR_FILE_NAME));
-        }
-    }
-    candidates
 }
 
 fn find_node_on_path(system_path: &OsStr) -> Option<PathBuf> {
@@ -951,58 +1184,275 @@ mod tests {
     }
 
     fn bundled_location(dir: &Path) -> NodeLocation {
-        let executable = dir.join("bin").join(SIDECAR_FILE_NAME);
+        let executable = dir.join("bin").join(SYSTEM_NODE_FILE_NAME);
         write_executable(&executable);
-        NodeLocation { executable: Some(executable), source: NodeSource::Bundled }
+        NodeLocation { executable: Some(executable), source: NodeSource::Development }
     }
 
     #[test]
-    fn finds_the_sidecar_in_a_macos_bundle() {
+    fn uses_the_development_copy_then_path_only_when_allowed() {
         let temp = tempfile::tempdir().unwrap();
-        let macos_dir = temp.path().join("graphrt.app/Contents/MacOS");
-        write_executable(&macos_dir.join(SIDECAR_FILE_NAME));
-        let location = resolve_node_location(&macos_dir, false, None);
-        assert_eq!(location.source, NodeSource::Bundled);
-        assert_eq!(location.executable, Some(macos_dir.join(SIDECAR_FILE_NAME)));
-    }
+        let dev_node = temp.path().join("binaries/graphrt-node-test");
+        write_executable(&dev_node);
+        let location = resolve_fallback_location(Some(&dev_node), false, None);
+        assert_eq!(location, NodeLocation { executable: Some(dev_node.clone()), source: NodeSource::Development });
 
-    #[test]
-    fn finds_the_sidecar_in_the_dev_target_dir_from_tests() {
-        let temp = tempfile::tempdir().unwrap();
-        let profile_dir = temp.path().join("target/debug");
-        write_executable(&profile_dir.join(SIDECAR_FILE_NAME));
-        let location = resolve_node_location(&profile_dir.join("deps"), false, None);
-        assert_eq!(location.executable, Some(profile_dir.join(SIDECAR_FILE_NAME)));
-    }
-
-    #[test]
-    fn ignores_an_empty_placeholder_and_falls_back_to_path_only_when_allowed() {
-        let temp = tempfile::tempdir().unwrap();
-        let app_dir = temp.path().join("app");
-        std::fs::create_dir_all(&app_dir).unwrap();
-        std::fs::write(app_dir.join(SIDECAR_FILE_NAME), b"").unwrap();
+        // An empty placeholder is not a Node.
+        std::fs::write(&dev_node, b"").unwrap();
         let system_dir = temp.path().join("usr/local/bin");
         write_executable(&system_dir.join(SYSTEM_NODE_FILE_NAME));
         let system_path = std::env::join_paths([temp.path().join("missing"), system_dir.clone()]).unwrap();
-
-        let debug_location = resolve_node_location(&app_dir, true, Some(&system_path));
+        let debug_location = resolve_fallback_location(Some(&dev_node), true, Some(&system_path));
         assert_eq!(debug_location.source, NodeSource::System);
         assert_eq!(debug_location.executable, Some(system_dir.join(SYSTEM_NODE_FILE_NAME)));
 
-        let release_location = resolve_node_location(&app_dir, false, Some(&system_path));
-        assert_eq!(release_location, NodeLocation { executable: None, source: NodeSource::Missing });
+        let release_location = resolve_fallback_location(None, false, Some(&system_path));
+        assert_eq!(release_location, NodeLocation::MISSING);
     }
 
     #[test]
-    fn missing_node_is_a_clear_error() {
+    fn the_development_copy_is_the_fetch_node_output_for_this_target() {
+        let path = development_node_path();
+        assert!(path.starts_with(Path::new(env!("CARGO_MANIFEST_DIR")).join("binaries")));
+        let file_name = path.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(file_name.starts_with(&format!("graphrt-node-{}", env!("GRAPHRT_TARGET_TRIPLE"))), "{file_name}");
+    }
+
+    #[test]
+    fn missing_node_is_a_clear_error_and_plugins_point_at_the_download_location() {
+        let temp = tempfile::tempdir().unwrap();
+        let runtime =
+            NodeRuntime::with_parts(temp.path().to_path_buf(), NodeLocation::MISSING, Arc::new(PlaywrightCliInstaller));
+        let message = runtime.node_executable().unwrap_err().to_string();
+        assert!(message.contains("plugin runtime (Node.js) is not installed"), "{message}");
+        assert_eq!(runtime.node_runtime_status(), PluginRuntimeStatus::NotInstalled);
+        let expected = release::installed_executable(&temp.path().join(release::RUNTIME_DIR_NAME));
+        assert_eq!(runtime.node_command_path(), expected);
+        let env = runtime.plugin_process_env();
+        let path_value = &env.iter().find(|(key, _)| key == "PATH").unwrap().1;
+        assert_eq!(std::env::split_paths(path_value).next().as_deref(), expected.parent());
+    }
+
+    #[test]
+    fn a_downloaded_runtime_wins_over_the_fallback() {
         let temp = tempfile::tempdir().unwrap();
         let runtime = NodeRuntime::with_parts(
             temp.path().to_path_buf(),
-            NodeLocation { executable: None, source: NodeSource::Missing },
+            bundled_location(temp.path()),
             Arc::new(PlaywrightCliInstaller),
         );
-        let message = runtime.node_executable().unwrap_err().to_string();
-        assert!(message.contains("fetch-node.sh"), "{message}");
+        assert_eq!(runtime.node_location().source, NodeSource::Development);
+        let downloaded = release::installed_executable(&temp.path().join(release::RUNTIME_DIR_NAME));
+        write_executable(&downloaded);
+        assert_eq!(
+            runtime.node_location(),
+            NodeLocation { executable: Some(downloaded), source: NodeSource::Downloaded }
+        );
+        assert_eq!(runtime.node_runtime_status(), PluginRuntimeStatus::Installed);
+    }
+
+    /// Serves one fixture for the pinned URL; counts requests; can pretend to be offline.
+    #[derive(Debug)]
+    struct FixtureDownloader {
+        body: Vec<u8>,
+        offline: bool,
+        requests: Mutex<Vec<String>>,
+    }
+
+    impl Downloader for FixtureDownloader {
+        fn fetch(
+            &self,
+            url: &str,
+            max_bytes: u64,
+            _timeout: Duration,
+            progress: Option<DownloadProgressCallback>,
+        ) -> BoxFuture<'_, AppResult<Vec<u8>>> {
+            self.requests.lock().unwrap().push(url.to_owned());
+            assert_eq!(max_bytes, release::MAX_ARCHIVE_BYTES);
+            let body = self.body.clone();
+            let offline = self.offline;
+            Box::pin(async move {
+                if offline {
+                    return Err(AppError::Internal("download failed: error sending request: dns error".into()));
+                }
+                if let Some(progress) = progress {
+                    let total = body.len() as u64;
+                    progress(total / 2, Some(total));
+                    progress(total, Some(total));
+                }
+                Ok(body)
+            })
+        }
+    }
+
+    /// A `.tar.xz` laid out like Node's darwin-arm64 archive whose `bin/node` is a shell
+    /// script printing the pinned version, and a pinned archive entry with its checksum.
+    fn fixture_node_archive() -> (Vec<u8>, NodeArchive) {
+        let member = format!("node-v{NODE_VERSION}-darwin-arm64/bin/node");
+        let script = format!("#!/bin/sh\necho v{NODE_VERSION}\n");
+        let mut header = tar::Header::new_gnu();
+        header.set_size(script.len() as u64);
+        header.set_mode(0o755);
+        let mut builder = tar::Builder::new(Vec::new());
+        builder.append_data(&mut header, &member, script.as_bytes()).unwrap();
+        let tar_bytes = builder.into_inner().unwrap();
+        let mut compressed = Vec::new();
+        let mut writer = lzma_rust2::XzWriter::new(&mut compressed, lzma_rust2::XzOptions::default()).unwrap();
+        std::io::Write::write_all(&mut writer, &tar_bytes).unwrap();
+        writer.finish().unwrap();
+        let pinned = release::archive_for("darwin-arm64").unwrap();
+        let sha256: &'static str = Box::leak(crate::plugins::archive::sha256_hex(&compressed).into_boxed_str());
+        (compressed, NodeArchive { sha256, ..*pinned })
+    }
+
+    fn runtime_with_fixture(
+        data_dir: &Path,
+        offline: bool,
+        check: Arc<ExecutableCheck>,
+    ) -> (NodeRuntime, Arc<FixtureDownloader>, Arc<CollectedEvents>) {
+        let (body, archive) = fixture_node_archive();
+        let downloader = Arc::new(FixtureDownloader { body, offline, requests: Mutex::new(Vec::new()) });
+        let events = Arc::new(CollectedEvents::default());
+        let runtime =
+            NodeRuntime::with_parts(data_dir.to_path_buf(), NodeLocation::MISSING, Arc::new(PlaywrightCliInstaller))
+                .with_downloader(downloader.clone())
+                .with_event_sink(events.clone())
+                .with_node_archive(Some(archive), check);
+        (runtime, downloader, events)
+    }
+
+    #[tokio::test]
+    async fn installs_the_runtime_from_the_pinned_url_then_removes_it() {
+        let temp = tempfile::tempdir().unwrap();
+        // On Unix the fixture's `node` is a real shell script, so the real check runs it.
+        let check: Arc<ExecutableCheck> =
+            if cfg!(unix) { Arc::new(check_node_runs) } else { Arc::new(|_: &Path| Ok(())) };
+        let (runtime, downloader, events) = runtime_with_fixture(temp.path(), false, check);
+
+        let first = runtime.clone();
+        let first_install = tokio::spawn(async move { first.install_node_runtime().await });
+        let second = runtime.clone();
+        let second_install = tokio::spawn(async move { second.install_node_runtime().await });
+        first_install.await.unwrap().unwrap();
+        second_install.await.unwrap().unwrap();
+
+        let requests = downloader.requests.lock().unwrap().clone();
+        assert_eq!(requests.len(), 1, "concurrent installs download once");
+        assert_eq!(
+            requests[0],
+            format!("https://nodejs.org/dist/v{NODE_VERSION}/node-v{NODE_VERSION}-darwin-arm64.tar.xz")
+        );
+        let location = runtime.node_location();
+        assert_eq!(location.source, NodeSource::Downloaded);
+        assert_eq!(runtime.node_runtime_status(), PluginRuntimeStatus::Installed);
+        let info = runtime.info().await;
+        assert!(info.removable && info.downloadable);
+        assert_eq!(info.pinned_version, NODE_VERSION);
+        if cfg!(unix) {
+            assert_eq!(info.version, Some(format!("v{NODE_VERSION}")));
+        }
+
+        let sent = events.0.lock().unwrap().clone();
+        assert!(sent.contains(&NodeRuntimeEvent::NodeInstallStarted { version: NODE_VERSION.to_owned() }));
+        assert!(sent.iter().any(|event| matches!(event, NodeRuntimeEvent::NodeInstallProgress { percent: Some(percent), .. } if *percent == 100.0)));
+        assert!(sent.contains(&NodeRuntimeEvent::NodeInstallFinished { already_installed: false }));
+        assert!(sent.contains(&NodeRuntimeEvent::NodeInstallFinished { already_installed: true }));
+
+        assert!(runtime.remove_node_runtime().await.unwrap());
+        assert_eq!(runtime.node_runtime_status(), PluginRuntimeStatus::NotInstalled);
+        assert!(!runtime.info().await.removable);
+    }
+
+    #[tokio::test]
+    async fn offline_installs_fail_clearly_and_leave_nothing() {
+        let temp = tempfile::tempdir().unwrap();
+        let (runtime, _, events) = runtime_with_fixture(temp.path(), true, Arc::new(|_: &Path| Ok(())));
+        let error = runtime.install_node_runtime().await.unwrap_err();
+        assert!(error.to_string().contains("check the internet connection"), "{error}");
+        assert_eq!(runtime.node_runtime_status(), PluginRuntimeStatus::NotInstalled);
+        assert!(events
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|event| matches!(event, NodeRuntimeEvent::NodeInstallFailed { .. })));
+    }
+
+    #[tokio::test]
+    async fn a_binary_that_does_not_run_is_not_installed() {
+        let temp = tempfile::tempdir().unwrap();
+        let check: Arc<ExecutableCheck> = Arc::new(|_: &Path| Err(AppError::InvalidInput("bad CPU type".into())));
+        let (runtime, _, _) = runtime_with_fixture(temp.path(), false, check);
+        assert!(runtime.install_node_runtime().await.is_err());
+        assert!(!release::install_dir(&temp.path().join(release::RUNTIME_DIR_NAME)).exists());
+    }
+
+    #[tokio::test]
+    async fn unsupported_computers_and_missing_clients_are_refused() {
+        let temp = tempfile::tempdir().unwrap();
+        let (runtime, downloader, _) = runtime_with_fixture(temp.path(), false, Arc::new(|_: &Path| Ok(())));
+        let unsupported = runtime.clone().with_node_archive(None, Arc::new(|_: &Path| Ok(())));
+        let error = unsupported.install_node_runtime().await.unwrap_err();
+        assert!(error.to_string().contains("not available for this computer"), "{error}");
+        assert!(!unsupported.info().await.downloadable);
+        assert!(downloader.requests.lock().unwrap().is_empty());
+
+        let no_client =
+            NodeRuntime::with_parts(temp.path().to_path_buf(), NodeLocation::MISSING, Arc::new(PlaywrightCliInstaller));
+        if no_client.node_archive.is_some() {
+            assert!(no_client.install_node_runtime().await.is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn the_browser_install_needs_the_plugin_runtime() {
+        let temp = tempfile::tempdir().unwrap();
+        let plugin_dir = temp.path().join(PLUGINS_DIR_NAME).join("google-maps-scraper");
+        write_playwright_plugin(&plugin_dir, "1.65.1", "1255");
+        let installer = Arc::new(FakeInstaller::new(temp.path().join(BROWSERS_DIR_NAME), "1255"));
+        let runtime = NodeRuntime::with_parts(temp.path().to_path_buf(), NodeLocation::MISSING, installer.clone());
+        let error = runtime.install_browser_runtime_for(&plugin_dir).await.unwrap_err();
+        assert!(error.to_string().contains("plugin runtime"), "{error}");
+        assert_eq!(installer.runs.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn node_events_serialize_for_the_frontend() {
+        let event = NodeRuntimeEvent::NodeInstallProgress {
+            message: "Downloading Node.js".into(),
+            percent: Some(40.0),
+            received_bytes: Some(4),
+            total_bytes: Some(10),
+        };
+        assert_eq!(
+            serde_json::to_value(event).unwrap(),
+            serde_json::json!({
+                "type": "node_install_progress",
+                "message": "Downloading Node.js",
+                "percent": 40.0,
+                "receivedBytes": 4,
+                "totalBytes": 10,
+            })
+        );
+    }
+
+    /// The real archive from nodejs.org (network, ~26-36 MB), installed and run. Run with
+    /// `cargo test real_node_download -- --ignored`.
+    #[tokio::test]
+    #[ignore = "downloads Node.js from nodejs.org"]
+    async fn real_node_download_installs_a_working_node() {
+        let temp = tempfile::tempdir().unwrap();
+        let downloader = Arc::new(crate::plugins::download::HttpsDownloader::new().unwrap());
+        let runtime =
+            NodeRuntime::with_parts(temp.path().to_path_buf(), NodeLocation::MISSING, Arc::new(PlaywrightCliInstaller))
+                .with_downloader(downloader);
+        runtime.install_node_runtime().await.unwrap();
+        assert_eq!(runtime.info().await.version, Some(format!("v{NODE_VERSION}")));
+        if let Ok(target) = std::env::var("GRAPHRT_TEST_KEEP_NODE_AT") {
+            let target = PathBuf::from(target);
+            std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+            std::fs::copy(runtime.node_executable().unwrap(), target).unwrap();
+        }
     }
 
     #[test]
@@ -1287,7 +1737,7 @@ mod tests {
         let events = Arc::new(CollectedEvents::default());
         let runtime = NodeRuntime::with_parts(
             data_dir,
-            NodeLocation { executable: Some(node), source: NodeSource::Bundled },
+            NodeLocation { executable: Some(node), source: NodeSource::Development },
             Arc::new(PlaywrightCliInstaller),
         )
         .with_plugins_dir(plugin_dir.parent().unwrap().to_path_buf())
