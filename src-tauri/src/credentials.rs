@@ -33,7 +33,7 @@ pub const SETTING_WELCOME_CHOICE: &str = "welcome_choice";
 const DEFAULT_OLLAMA_BASE_URL: &str = "http://localhost:11434";
 
 /// Every provider, in the order the UI lists them.
-const ALL_PROVIDERS: [ModelProvider; 7] = [
+const ALL_PROVIDERS: [ModelProvider; 12] = [
     ModelProvider::Openai,
     ModelProvider::Anthropic,
     ModelProvider::Gemini,
@@ -41,6 +41,11 @@ const ALL_PROVIDERS: [ModelProvider; 7] = [
     ModelProvider::Ollama,
     ModelProvider::ClaudeCodeCli,
     ModelProvider::CodexCli,
+    ModelProvider::GeminiCli,
+    ModelProvider::CursorCli,
+    ModelProvider::CopilotCli,
+    ModelProvider::OpencodeCli,
+    ModelProvider::QwenCodeCli,
 ];
 
 /// Key-based providers in fallback order, with the small model recommended for each.
@@ -73,11 +78,26 @@ pub enum ModelProvider {
     /// The user's own OpenAI Codex CLI and its sign-in (Experimental, opt-in).
     #[serde(rename = "codex-cli")]
     CodexCli,
+    /// The user's own Google Gemini CLI and its sign-in (Experimental, opt-in).
+    #[serde(rename = "gemini-cli")]
+    GeminiCli,
+    /// The user's own Cursor CLI (`cursor-agent`) and its sign-in (Experimental, opt-in).
+    #[serde(rename = "cursor-cli")]
+    CursorCli,
+    /// The user's own GitHub Copilot CLI and its sign-in (Experimental, opt-in).
+    #[serde(rename = "copilot-cli")]
+    CopilotCli,
+    /// The user's own OpenCode and its provider sign-ins (Experimental, opt-in).
+    #[serde(rename = "opencode-cli")]
+    OpencodeCli,
+    /// The user's own Qwen Code CLI and its sign-in (Experimental, opt-in).
+    #[serde(rename = "qwen-code-cli")]
+    QwenCodeCli,
 }
 
 impl ModelProvider {
     /// The graphrt provider name, identical to the serde name.
-    fn registry_name(self) -> &'static str {
+    pub fn registry_name(self) -> &'static str {
         match self {
             Self::Openai => "openai",
             Self::Anthropic => "anthropic",
@@ -86,6 +106,11 @@ impl ModelProvider {
             Self::Ollama => "ollama",
             Self::ClaudeCodeCli => "claude-code-cli",
             Self::CodexCli => "codex-cli",
+            Self::GeminiCli => "gemini-cli",
+            Self::CursorCli => "cursor-cli",
+            Self::CopilotCli => "copilot-cli",
+            Self::OpencodeCli => "opencode-cli",
+            Self::QwenCodeCli => "qwen-code-cli",
         }
     }
 
@@ -96,19 +121,12 @@ impl ModelProvider {
 
     /// The local CLI behind this provider, if it is one.
     pub fn local_cli(self) -> Option<LocalCli> {
-        match self {
-            Self::ClaudeCodeCli => Some(LocalCli::ClaudeCode),
-            Self::CodexCli => Some(LocalCli::Codex),
-            _ => None,
-        }
+        LocalCli::from_provider_name(self.registry_name())
     }
 
-    /// The provider of a local CLI.
+    /// The provider of a local CLI (they share the provider name).
     pub fn for_local_cli(cli: LocalCli) -> Self {
-        match cli {
-            LocalCli::ClaudeCode => Self::ClaudeCodeCli,
-            LocalCli::Codex => Self::CodexCli,
-        }
+        Self::from_registry_name(cli.provider_name()).expect("every local CLI has a model provider")
     }
 
     /// Whether the provider takes an API key (not Ollama, not the local CLIs).
@@ -517,7 +535,14 @@ fn build_keyed_model(provider: ModelProvider, api_key: String) -> AppResult<Arc<
             let config = OpenAiConfig::new(DEEPSEEK_BASE_URL, Some(api_key));
             Arc::new(OpenAiModel::new(config).map_err(|error| model_error(provider, &error))?)
         }
-        ModelProvider::Ollama | ModelProvider::ClaudeCodeCli | ModelProvider::CodexCli => {
+        ModelProvider::Ollama
+        | ModelProvider::ClaudeCodeCli
+        | ModelProvider::CodexCli
+        | ModelProvider::GeminiCli
+        | ModelProvider::CursorCli
+        | ModelProvider::CopilotCli
+        | ModelProvider::OpencodeCli
+        | ModelProvider::QwenCodeCli => {
             return Err(AppError::Internal(format!("{} does not use an API key", provider.registry_name())))
         }
     };
@@ -598,7 +623,7 @@ pub fn default_model(store: &CredentialStore, db: &Database) -> AppResult<ModelC
 
 /// What `MissingCredentials` names when no model can be used at all.
 pub const NO_MODEL_CONNECTED: &str =
-    "an AI model (connect Claude Code, Codex, Ollama or an API key in Connections > AI models)";
+    "an AI model (connect Claude Code, Codex, another AI tool on this computer, Ollama or an API key in Connections > AI models)";
 
 /// Whether `provider` can be used right now (key stored, Ollama, or a CLI turned on and installed).
 pub fn is_provider_ready(store: &CredentialStore, db: &Database, provider: ModelProvider) -> AppResult<bool> {
@@ -698,7 +723,8 @@ mod tests {
         let providers: Vec<ModelProvider> = statuses.iter().map(|status| status.provider).collect();
         assert_eq!(providers, ALL_PROVIDERS.to_vec());
         let configured: Vec<bool> = statuses.iter().map(|status| status.configured).collect();
-        assert_eq!(configured, vec![false, true, false, false, true, false, false]);
+        assert_eq!(configured, vec![false, true, false, false, true, false, false, false, false, false, false, false]);
+        assert!(statuses[5..].iter().all(|status| status.local_cli.is_some()), "every local CLI reports its detection");
         assert_eq!(statuses[4].base_url.as_deref(), Some(DEFAULT_OLLAMA_BASE_URL));
         assert!(statuses[..4].iter().all(|status| status.base_url.is_none()));
         assert!(statuses[..5].iter().all(|status| status.local_cli.is_none()));

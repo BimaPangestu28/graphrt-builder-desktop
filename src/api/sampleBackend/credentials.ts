@@ -15,6 +15,7 @@ import type {
 } from '../types'
 import { readSampleMcpServers } from './mcpServers'
 import { requireText, respondWith } from './sampleResponse'
+import { isLocalCliProvider, localCliProviders, localCliShortNames } from '@/data/settings'
 
 /**
  * Sample provider keys for the browser preview and tests. Only whether a key is set
@@ -56,7 +57,7 @@ function createInitialState(): SampleCredentialsState {
   }
 }
 
-/** What the preview "detects": Claude Code installed and signed in, Codex not installed. */
+/** What the preview "detects": Claude Code installed and signed in, Gemini CLI installed, the others not installed. */
 const sampleLocalCliDetections: Record<LocalCliProvider, Omit<LocalCliStatus, 'enabled'>> = {
   'claude-code-cli': {
     installed: true,
@@ -72,14 +73,48 @@ const sampleLocalCliDetections: Record<LocalCliProvider, Omit<LocalCliStatus, 'e
     signIn: 'unknown',
     installUrl: 'https://developers.openai.com/codex/cli',
   },
+  'gemini-cli': {
+    installed: true,
+    version: '0.71.0',
+    path: '/opt/homebrew/bin/gemini',
+    signIn: 'unknown',
+    installUrl: 'https://github.com/google-gemini/gemini-cli',
+  },
+  'cursor-cli': {
+    installed: false,
+    version: null,
+    path: null,
+    signIn: 'unknown',
+    installUrl: 'https://cursor.com/docs/cli/installation',
+  },
+  'copilot-cli': {
+    installed: false,
+    version: null,
+    path: null,
+    signIn: 'unknown',
+    installUrl: 'https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli',
+  },
+  'opencode-cli': {
+    installed: false,
+    version: null,
+    path: null,
+    signIn: 'unknown',
+    installUrl: 'https://opencode.ai/docs/',
+  },
+  'qwen-code-cli': {
+    installed: false,
+    version: null,
+    path: null,
+    signIn: 'unknown',
+    installUrl: 'https://github.com/QwenLM/qwen-code',
+  },
 }
 
-const localCliProviderOrder: LocalCliProvider[] = ['claude-code-cli', 'codex-cli']
-const localCliShortNames: Record<LocalCliProvider, string> = { 'claude-code-cli': 'Claude Code', 'codex-cli': 'Codex' }
+const localCliProviderOrder = localCliProviders
 const ollamaDownloadUrl = 'https://ollama.com/download'
 
 function isLocalCli(provider: ModelProvider): provider is LocalCliProvider {
-  return provider === 'claude-code-cli' || provider === 'codex-cli'
+  return isLocalCliProvider(provider)
 }
 
 function readLocalCliStatus(provider: LocalCliProvider): LocalCliStatus {
@@ -314,6 +349,17 @@ const sampleModelIdsByProvider: Record<ModelProvider, AvailableModel[]> = {
     { id: 'haiku', displayName: 'Haiku (latest)' },
   ],
   'codex-cli': [{ id: 'default', displayName: 'CLI default' }, ...listedModels(['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex'])],
+  'gemini-cli': [
+    { id: 'default', displayName: 'CLI default' },
+    { id: 'auto', displayName: 'Auto' },
+    { id: 'pro', displayName: 'Pro (latest)' },
+    { id: 'flash', displayName: 'Flash (latest)' },
+    { id: 'flash-lite', displayName: 'Flash-Lite (latest)' },
+  ],
+  'cursor-cli': [{ id: 'default', displayName: 'CLI default' }, { id: 'auto', displayName: 'Auto' }],
+  'copilot-cli': [{ id: 'default', displayName: 'CLI default' }, { id: 'auto', displayName: 'Auto' }],
+  'opencode-cli': [{ id: 'default', displayName: 'CLI default' }],
+  'qwen-code-cli': [{ id: 'default', displayName: 'CLI default' }, ...listedModels(['qwen3-coder-plus'])],
 }
 
 function listedModels(modelIds: string[]): AvailableModel[] {

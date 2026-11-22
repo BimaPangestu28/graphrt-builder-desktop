@@ -8,7 +8,7 @@
 //! | Gemini    | `GET …/v1beta/models` (generateContent)    |
 //! | DeepSeek  | `GET https://api.deepseek.com/v1/models`   |
 //! | Ollama    | `GET <base_url>/api/tags` (pulled models)  |
-//! | Claude Code / Codex (local CLIs) | the CLI itself, no usage spent (`local_cli::list_models`) |
+//! | Local CLIs (Claude Code, Codex, Gemini CLI, …) | the CLI itself, no usage spent (`local_cli::list_models`) |
 //!
 //! Lists are filtered to models that can chat (OpenAI also lists embeddings,
 //! speech and image models) and cached for [`CACHE_TTL`]. A provider that cannot
@@ -40,7 +40,7 @@ const GEMINI_MODELS_URL: &str = "https://generativelanguage.googleapis.com/v1bet
 const DEEPSEEK_MODELS_URL: &str = "https://api.deepseek.com/v1/models";
 
 /// Providers in the order the picker lists them.
-const LISTED_PROVIDERS: [ModelProvider; 7] = [
+const LISTED_PROVIDERS: [ModelProvider; 12] = [
     ModelProvider::Openai,
     ModelProvider::Anthropic,
     ModelProvider::Gemini,
@@ -48,6 +48,11 @@ const LISTED_PROVIDERS: [ModelProvider; 7] = [
     ModelProvider::Ollama,
     ModelProvider::ClaudeCodeCli,
     ModelProvider::CodexCli,
+    ModelProvider::GeminiCli,
+    ModelProvider::CursorCli,
+    ModelProvider::CopilotCli,
+    ModelProvider::OpencodeCli,
+    ModelProvider::QwenCodeCli,
 ];
 
 /// One model a provider offers.
@@ -219,7 +224,8 @@ fn provider_request(
         ModelProvider::Gemini => {
             ProviderRequest { url: GEMINI_MODELS_URL.to_owned(), headers: vec![("x-goog-api-key", api_key)] }
         }
-        ModelProvider::Ollama | ModelProvider::ClaudeCodeCli | ModelProvider::CodexCli => return Ok(None),
+        // Ollama is handled above; the local CLIs list their models themselves.
+        _ => return Ok(None),
     };
     Ok(Some(request))
 }
@@ -242,7 +248,7 @@ pub fn parse_models(provider: ModelProvider, body: &Json) -> Vec<AvailableModel>
             .filter_map(|model| model.get("name")?.as_str().map(plain_model))
             .filter(|model| !model.id.contains("embed"))
             .collect(),
-        ModelProvider::ClaudeCodeCli | ModelProvider::CodexCli => Vec::new(),
+        _ => Vec::new(),
     };
     models.sort_by(|first, second| first.id.cmp(&second.id));
     models.dedup_by(|first, second| first.id == second.id);

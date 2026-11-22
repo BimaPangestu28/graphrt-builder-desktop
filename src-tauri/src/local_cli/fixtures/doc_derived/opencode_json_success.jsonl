@@ -1,0 +1,4 @@
+# doc-derived (hand-written, not recorded): OpenCode run --format json events, shapes from packages/opencode/src/cli/cmd/run.ts (emit) and packages/sdk/js/src/v2/gen/types.gen.ts (TextPart, StepFinishPart)
+{"type":"step_start","timestamp":1795356000000,"sessionID":"ses_fixture","part":{"id":"prt_1","sessionID":"ses_fixture","messageID":"msg_1","type":"step-start"}}
+{"type":"text","timestamp":1795356001000,"sessionID":"ses_fixture","part":{"id":"prt_2","sessionID":"ses_fixture","messageID":"msg_1","type":"text","text":"Hello from OpenCode.","time":{"start":1795356000500,"end":1795356001000}}}
+{"type":"step_finish","timestamp":1795356001100,"sessionID":"ses_fixture","part":{"id":"prt_3","sessionID":"ses_fixture","messageID":"msg_1","type":"step-finish","reason":"stop","cost":0.0004,"tokens":{"total":1310,"input":1200,"output":10,"reasoning":0,"cache":{"read":100,"write":0}}}}

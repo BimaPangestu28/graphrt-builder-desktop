@@ -171,15 +171,7 @@ fn resolve_builder_model(db: &Database, credentials: &CredentialStore) -> AppRes
 
 /// graphrt `model.provider` name of a provider (same as its serde name).
 fn provider_name(provider: ModelProvider) -> &'static str {
-    match provider {
-        ModelProvider::Openai => "openai",
-        ModelProvider::Anthropic => "anthropic",
-        ModelProvider::Gemini => "gemini",
-        ModelProvider::Deepseek => "deepseek",
-        ModelProvider::Ollama => "ollama",
-        ModelProvider::ClaudeCodeCli => "claude-code-cli",
-        ModelProvider::CodexCli => "codex-cli",
-    }
+    provider.registry_name()
 }
 
 /// [`build_agent`] with an explicit model.

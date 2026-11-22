@@ -172,6 +172,36 @@ describe('sample credentials backend', () => {
         baseUrl: null,
         localCli: { enabled: false, installed: false, version: null, path: null, signIn: 'unknown', installUrl: 'https://developers.openai.com/codex/cli' },
       },
+      {
+        provider: 'gemini-cli',
+        configured: false,
+        baseUrl: null,
+        localCli: { enabled: false, installed: true, version: '0.71.0', path: '/opt/homebrew/bin/gemini', signIn: 'unknown', installUrl: 'https://github.com/google-gemini/gemini-cli' },
+      },
+      {
+        provider: 'cursor-cli',
+        configured: false,
+        baseUrl: null,
+        localCli: { enabled: false, installed: false, version: null, path: null, signIn: 'unknown', installUrl: 'https://cursor.com/docs/cli/installation' },
+      },
+      {
+        provider: 'copilot-cli',
+        configured: false,
+        baseUrl: null,
+        localCli: { enabled: false, installed: false, version: null, path: null, signIn: 'unknown', installUrl: 'https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli' },
+      },
+      {
+        provider: 'opencode-cli',
+        configured: false,
+        baseUrl: null,
+        localCli: { enabled: false, installed: false, version: null, path: null, signIn: 'unknown', installUrl: 'https://opencode.ai/docs/' },
+      },
+      {
+        provider: 'qwen-code-cli',
+        configured: false,
+        baseUrl: null,
+        localCli: { enabled: false, installed: false, version: null, path: null, signIn: 'unknown', installUrl: 'https://github.com/QwenLM/qwen-code' },
+      },
     ])
     expect(await sampleCredentialsBackend.getDefaultModel()).toEqual({ provider: 'openai', name: 'gpt-4o-mini' })
     expect(await sampleCredentialsBackend.getWelcomeChoice()).toBeNull()

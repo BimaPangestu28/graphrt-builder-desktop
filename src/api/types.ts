@@ -119,7 +119,7 @@ export interface NewTrigger {
 export type ModelProvider = 'openai' | 'anthropic' | 'gemini' | 'deepseek' | 'ollama' | LocalCliProvider
 
 /** The user's own signed-in command-line tools graphrt can think with (Experimental, opt-in). */
-export type LocalCliProvider = 'claude-code-cli' | 'codex-cli'
+export type LocalCliProvider = 'claude-code-cli' | 'codex-cli' | 'gemini-cli' | 'cursor-cli' | 'copilot-cli' | 'opencode-cli' | 'qwen-code-cli'
 
 /** Whether a local CLI's own status command reports a signed-in account (no usage spent). */
 export type LocalCliSignIn = 'signed_in' | 'signed_out' | 'unknown'
@@ -156,7 +156,7 @@ export interface LocalCliCheckResult {
 }
 
 /** What the user picked on the first-launch Welcome screen. */
-export type WelcomeChoice = 'claude-code-cli' | 'codex-cli' | 'ollama' | 'api-key' | 'skip'
+export type WelcomeChoice = LocalCliProvider | 'ollama' | 'api-key' | 'skip'
 
 /** Providers with an install / download page graphrt can open in the browser. */
 export type InstallableModelProvider = LocalCliProvider | 'ollama'

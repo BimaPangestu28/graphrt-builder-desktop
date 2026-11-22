@@ -1,0 +1,3 @@
+# doc-derived (hand-written, not recorded): Cursor CLI stream-json tool_call "started" event with writeToolCall args (cursor.com/docs/cli/reference/output-format); graphrt's deny-all permissions should prevent it
+{"type":"system","subtype":"init","apiKeySource":"login","cwd":"/tmp/graphrt-cli-x","session_id":"fixture-session","model":"Auto","permissionMode":"default"}
+{"type":"tool_call","subtype":"started","call_id":"call-1","tool_call":{"writeToolCall":{"args":{"path":"notes.txt","fileText":"hi","toolCallId":"call-1"}}},"session_id":"fixture-session"}

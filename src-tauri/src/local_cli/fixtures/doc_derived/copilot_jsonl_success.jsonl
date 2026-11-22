@@ -1,0 +1,6 @@
+# doc-derived (hand-written, not recorded): GitHub Copilot CLI --output-format json (JSONL). The record schema of prompt runs is not documented field by field: the type/data envelope and assistant.message data.content follow github/copilot-cli issue #3544, the final result record with exitCode the changelog (1.0.109/1.0.110); other fields are assumptions the parser reads leniently
+{"type":"session.start","data":{"sessionId":"fixture-session","model":"claude-sonnet-5.5"}}
+{"type":"assistant.message_delta","data":{"messageId":"m1","deltaContent":"Hello "}}
+{"type":"assistant.message_delta","data":{"messageId":"m1","deltaContent":"from Copilot."}}
+{"type":"assistant.message","data":{"messageId":"m1","content":"Hello from Copilot."}}
+{"type":"result","sessionId":"fixture-session","exitCode":0,"usage":{"inputTokens":210,"outputTokens":12},"timestamp":"2026-11-22T00:00:02.000Z"}

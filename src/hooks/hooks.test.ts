@@ -78,7 +78,7 @@ describe('data hooks', () => {
   it('useProviderStatuses returns statuses with the default model', async () => {
     const { result } = renderHook(() => useProviderStatuses())
     await waitFor(() => expect(result.current.data?.defaultModel).toEqual({ provider: 'openai', name: 'gpt-4o-mini' }))
-    expect(result.current.data?.statuses).toHaveLength(7)
+    expect(result.current.data?.statuses).toHaveLength(12)
   })
 
   it('surfaces backend errors', async () => {

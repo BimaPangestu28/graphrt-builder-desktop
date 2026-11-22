@@ -1,0 +1,4 @@
+# doc-derived (hand-written, not recorded): Gemini CLI stream-json tool_use event (packages/core/src/output/types.ts); graphrt's deny-all policy should prevent it
+{"type":"init","timestamp":"2026-11-22T00:00:00.000Z","session_id":"fixture-session","model":"gemini-2.5-pro"}
+{"type":"tool_use","timestamp":"2026-11-22T00:00:01.000Z","tool_name":"run_shell_command","tool_id":"tool-1","parameters":{"command":"ls"}}
+{"type":"result","timestamp":"2026-11-22T00:00:02.000Z","status":"success","stats":{"total_tokens":10,"input_tokens":5,"output_tokens":5}}

@@ -70,6 +70,44 @@ releases may contain breaking changes; they are called out under **Changed**.
   signature never falls back to v1, and v1 must be signed too. Details, icons and tarballs stay
   covered by the sha256 values in the signed index.
 
+### Added
+
+- **More AI tools already signed in on this computer (Experimental)**: Gemini CLI
+  (`gemini-cli`), Cursor CLI (`cursor-cli`), GitHub Copilot CLI (`copilot-cli`), OpenCode
+  (`opencode-cli`) and Qwen Code (`qwen-code-cli`) join Claude Code and Codex, with the same
+  rules: off until the user turns them on, never the automatic default, no usage spent until
+  "Check connection", credential files never read and no secret on the command line, and every
+  call runs in a throwaway folder with no tools, no file writes and no shell:
+  - Gemini CLI: prompt on stdin, `--output-format stream-json --approval-mode default` and a
+    `--policy` file denying every tool (`toolName = "*"`), `GEMINI_SYSTEM_MD` replacing the
+    built-in coding prompt, `--skip-trust` for the throwaway folder.
+  - Cursor CLI: `-p --output-format stream-json --mode ask --trust`, a workspace
+    `.cursor/cli.json` denying shell, read, write, web and MCP tools; its docs only take the
+    prompt as an argument, so the prompt goes into the workspace's `AGENTS.md` and the
+    argument is a fixed request.
+  - GitHub Copilot CLI: prompt on stdin, `--output-format json`, `--deny-tool` for shell,
+    write, read, url and memory plus `--excluded-tools` for every built-in tool,
+    `--disable-builtin-mcps --no-ask-user --no-custom-instructions`.
+  - OpenCode: `opencode run --format json --agent graphrt-text-only` with an inline config
+    agent whose permission is `{"*": "deny"}` (also `OPENCODE_PERMISSION`), CLAUDE.md and
+    project config loading off; models from `opencode models`, sign-in from `opencode auth list`.
+  - Qwen Code: prompt on stdin, `--output-format stream-json --approval-mode default
+    --exclude-tools …`, `--extensions none`, `--max-tool-calls 0`, `--chat-recording false`,
+    `QWEN_SYSTEM_MD`.
+  A tool-use event from any of them stops the call with a plain message. Detection reports
+  "Not installed" with the official install page (opened through `open_model_install_page`'s
+  fixed allowlist). Welcome keeps Claude Code and Codex up front and lists the others under a
+  compact "More AI tools on this computer" disclosure; Connections › AI models gets a card per
+  found tool, with the ones not installed collapsed under "Other AI tools you can use"; model
+  pickers list a tool's models once it is turned on.
+
+### Changed
+
+- **Local CLI providers are a per-CLI adapter registry** (`local_cli/adapter.rs`,
+  `local_cli/adapters/*`): each CLI's flags, output parser, sign-in status and models live in
+  one adapter citing its official docs; detection, the subprocess, timeouts, cancellation,
+  prompts and capability errors are shared. Claude Code and Codex behave as before.
+
 ## [0.1.3] - 2026-11-22
 
 ### Added

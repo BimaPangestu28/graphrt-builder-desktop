@@ -33,6 +33,11 @@ const providerNames: Record<ModelProvider, string> = {
   ollama: 'Ollama',
   'claude-code-cli': 'Claude Code (on this computer)',
   'codex-cli': 'Codex (on this computer)',
+  'gemini-cli': 'Gemini CLI (on this computer)',
+  'cursor-cli': 'Cursor CLI (on this computer)',
+  'copilot-cli': 'GitHub Copilot CLI (on this computer)',
+  'opencode-cli': 'OpenCode (on this computer)',
+  'qwen-code-cli': 'Qwen Code (on this computer)',
 }
 
 /** Sidebar dot colour for an agent status (active → ok, paused → paused, draft/tested → brand). */

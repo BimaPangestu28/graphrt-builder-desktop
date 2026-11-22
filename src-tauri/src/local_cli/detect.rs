@@ -1,4 +1,4 @@
-//! Finding the Claude Code / Codex binaries and what they support.
+//! Finding the local CLI binaries and what they support.
 //!
 //! GUI apps on macOS (and some Linux desktops) do not inherit the shell `PATH`, so
 //! besides `PATH` the common install folders are searched, and on macOS/Linux the
@@ -95,22 +95,31 @@ impl Locator {
 
 /// Finds and inspects `cli`.
 pub fn detect(cli: LocalCli, locator: &Locator) -> Detection {
-    let Some(binary) = find_binary(cli, locator) else {
-        return Detection::default();
-    };
-    let child_path = locator.child_path(&binary);
-    let path_env = child_path.as_deref();
-    let version = run_quick(&binary, &["--version"], path_env, QUICK_COMMAND_TIMEOUT)
-        .and_then(|output| first_line(&output.stdout).or_else(|| first_line(&output.stderr)));
-    let help_args: &[&str] = match cli {
-        LocalCli::ClaudeCode => &["--help"],
-        LocalCli::Codex => &["exec", "--help"],
-    };
-    let help =
-        run_quick(&binary, help_args, path_env, QUICK_COMMAND_TIMEOUT).map(|output| output.stdout).unwrap_or_default();
-    let sign_in = read_sign_in(cli, &binary, path_env);
-    let model_aliases = if cli == LocalCli::ClaudeCode { claude_model_aliases(&help) } else { Vec::new() };
-    Detection { flags: help_flags(&help), binary: Some(binary), version, sign_in, child_path, model_aliases }
+    let adapter = cli.adapter();
+    for binary in find_binaries(cli, locator) {
+        let child_path = locator.child_path(&binary);
+        let path_env = child_path.as_deref();
+        let help = run_quick(&binary, adapter.help_args(), path_env, QUICK_COMMAND_TIMEOUT)
+            .map(|output| format!("{}\n{}", output.stdout, output.stderr))
+            .unwrap_or_default();
+        let file_name = binary.file_stem().map(|stem| stem.to_string_lossy().into_owned()).unwrap_or_default();
+        if !adapter.is_own_binary(&file_name, &help) {
+            continue;
+        }
+        let version = run_quick(&binary, &["--version"], path_env, QUICK_COMMAND_TIMEOUT)
+            .and_then(|output| first_line(&output.stdout).or_else(|| first_line(&output.stderr)));
+        let sign_in = read_sign_in(cli, &binary, path_env);
+        let model_aliases = adapter.model_aliases_from_help(&help);
+        return Detection {
+            flags: help_flags(&help),
+            binary: Some(binary),
+            version,
+            sign_in,
+            child_path,
+            model_aliases,
+        };
+    }
+    Detection::default()
 }
 
 /// Detections by CLI, with when each was made.
@@ -146,12 +155,19 @@ pub fn cached(cli: LocalCli, refresh: bool) -> Arc<Detection> {
 
 /// The first executable named like `cli` in the locator's folders.
 pub fn find_binary(cli: LocalCli, locator: &Locator) -> Option<PathBuf> {
-    let names = executable_names(cli.binary_name());
-    locator
-        .search_dirs()
-        .into_iter()
-        .flat_map(|dir| names.iter().map(move |name| dir.join(name)))
-        .find(|candidate| is_executable(candidate))
+    find_binaries(cli, locator).into_iter().next()
+}
+
+/// Every executable named like `cli`: each of its names in turn (Cursor's `cursor-agent`
+/// before the generic `agent`), each through the locator's folders in order.
+fn find_binaries(cli: LocalCli, locator: &Locator) -> Vec<PathBuf> {
+    let dirs = locator.search_dirs();
+    cli.binary_names()
+        .iter()
+        .flat_map(|binary_name| executable_names(binary_name))
+        .flat_map(|name| dirs.iter().map(move |dir| dir.join(&name)))
+        .filter(|candidate| is_executable(candidate))
+        .collect()
 }
 
 fn executable_names(binary_name: &str) -> Vec<String> {
@@ -179,13 +195,15 @@ fn home_dir() -> Option<PathBuf> {
         .filter(|home| home.is_absolute())
 }
 
-/// Folders the official installers and package managers put CLIs in.
+/// Folders the official installers and package managers put CLIs in (`~/.local/bin`:
+/// Claude Code, Cursor CLI; `~/.opencode/bin`: the OpenCode installer).
 pub fn common_install_dirs(home: &Path) -> Vec<PathBuf> {
     let mut dirs = vec![
         home.join(".claude").join("local"),
         home.join(".local").join("bin"),
         home.join(".npm-global").join("bin"),
         home.join(".bun").join("bin"),
+        home.join(".opencode").join("bin"),
         home.join(".volta").join("bin"),
     ];
     if cfg!(windows) {
@@ -246,55 +264,14 @@ pub fn help_flags(help: &str) -> BTreeSet<String> {
     flag.find_iter(help).map(|found| found.as_str().to_owned()).collect()
 }
 
-/// The quoted aliases in the `--model` description of `claude --help`
-/// ("Use an alias for the latest model (e.g. 'fable', 'opus', or 'sonnet')").
-pub fn claude_model_aliases(help: &str) -> Vec<String> {
-    static ALIAS: OnceLock<regex::Regex> = OnceLock::new();
-    let alias = ALIAS.get_or_init(|| regex::Regex::new(r"'([a-z][a-z0-9.-]*)'").expect("alias pattern is valid"));
-    let Some((_, after_flag)) = help.split_once("--model <") else {
-        return Vec::new();
-    };
-    let description = after_flag.split("\n  -").next().unwrap_or_default();
-    alias.captures_iter(description).map(|captures| captures[1].to_owned()).collect()
-}
-
-/// The CLI's own sign-in status command; anything unreadable is `Unknown`.
+/// The CLI's own sign-in status command; anything unreadable (or no such command) is `Unknown`.
 fn read_sign_in(cli: LocalCli, binary: &Path, path_env: Option<&OsStr>) -> SignInState {
-    let args: &[&str] = match cli {
-        LocalCli::ClaudeCode => &["auth", "status", "--json"],
-        LocalCli::Codex => &["login", "status"],
+    let adapter = cli.adapter();
+    let Some(args) = adapter.sign_in_args() else {
+        return SignInState::Unknown;
     };
     match run_quick(binary, args, path_env, QUICK_COMMAND_TIMEOUT) {
-        Some(output) => match cli {
-            LocalCli::ClaudeCode => parse_claude_auth_status(&output.stdout),
-            LocalCli::Codex => {
-                parse_codex_login_status(output.success, &format!("{}\n{}", output.stdout, output.stderr))
-            }
-        },
+        Some(output) => adapter.parse_sign_in(&output),
         None => SignInState::Unknown,
-    }
-}
-
-/// `claude auth status --json`: only `loggedIn` is read (the rest names the account).
-pub fn parse_claude_auth_status(stdout: &str) -> SignInState {
-    let logged_in = serde_json::from_str::<serde_json::Value>(stdout.trim())
-        .ok()
-        .and_then(|status| status.get("loggedIn").and_then(serde_json::Value::as_bool));
-    match logged_in {
-        Some(true) => SignInState::SignedIn,
-        Some(false) => SignInState::SignedOut,
-        None => SignInState::Unknown,
-    }
-}
-
-/// `codex login status`: "Logged in using ChatGPT" (exit 0) or "Not logged in" (exit 1).
-pub fn parse_codex_login_status(success: bool, output: &str) -> SignInState {
-    let lowered = output.to_ascii_lowercase();
-    if lowered.contains("not logged in") {
-        SignInState::SignedOut
-    } else if success && lowered.contains("logged in") {
-        SignInState::SignedIn
-    } else {
-        SignInState::Unknown
     }
 }

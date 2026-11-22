@@ -264,6 +264,44 @@ describe('ConnectionsPage local CLI models', () => {
   })
 })
 
+describe('ConnectionsPage more local CLI tools', () => {
+  function getMoreToolsGroup() {
+    return screen.getByRole('group', { name: 'More AI tools on this computer' })
+  }
+
+  it('shows found tools as cards and collapses the ones that are not installed', async () => {
+    renderConnectionsPage()
+    expect(await screen.findByText('Installed · 0.71.0')).toBeInTheDocument()
+    const group = getMoreToolsGroup()
+    expect(within(group).getByRole('button', { name: 'Turn on Gemini CLI' })).toBeInTheDocument()
+    expect(within(group).getByText('Sign-in not confirmed yet')).toBeInTheDocument()
+    const other = within(group).getByText('Other AI tools you can use').closest('details') as HTMLDetailsElement
+    expect(other.open).toBe(false)
+    expect(within(other).getByText('· Cursor CLI, GitHub Copilot CLI, OpenCode, Qwen Code')).toBeInTheDocument()
+    expect(within(other).queryByText('Installed · 0.71.0')).not.toBeInTheDocument()
+    expect(within(other).getByRole('link', { name: 'How to install OpenCode' })).toHaveAttribute('href', 'https://opencode.ai/docs/')
+    expect(within(other).getByRole('button', { name: 'Detect GitHub Copilot CLI again' })).toBeInTheDocument()
+    expect(within(other).queryByRole('button', { name: 'Turn on Qwen Code' })).not.toBeInTheDocument()
+    expect(within(group).getByText(/Usage counts against the AI provider accounts OpenCode is signed in to/)).toBeInTheDocument()
+    // Claude Code and Codex keep their own group.
+    expect(within(screen.getByRole('group', { name: 'Already signed in on this computer' })).queryByText('Installed · 0.71.0')).not.toBeInTheDocument()
+  })
+
+  it('turns Gemini CLI on and then offers its models', async () => {
+    const setLocalCliEnabledSpy = vi.spyOn(sampleCredentialsBackend, 'setLocalCliEnabled')
+    const checkLocalCliSpy = vi.spyOn(sampleCredentialsBackend, 'checkLocalCli')
+    renderConnectionsPage()
+    expect(screen.queryByRole('combobox', { name: 'Gemini CLI model' })).not.toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: 'Turn on Gemini CLI' }))
+    expect(await screen.findByRole('button', { name: 'Turn off Gemini CLI' })).toBeInTheDocument()
+    expect(setLocalCliEnabledSpy).toHaveBeenCalledWith('gemini-cli', true)
+    expect(checkLocalCliSpy).not.toHaveBeenCalled()
+    const modelSelect = await screen.findByRole('combobox', { name: 'Gemini CLI model' })
+    expect(await within(modelSelect).findByRole('option', { name: 'Flash (latest)' })).toBeInTheDocument()
+    expect(within(modelSelect).getAllByRole('option')[0]).toHaveTextContent('CLI default')
+  })
+})
+
 describe('ConnectionsPage secrets', () => {
   async function openSecretsPanel() {
     renderConnectionsPage('/connections/secrets')

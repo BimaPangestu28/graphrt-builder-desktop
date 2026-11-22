@@ -73,4 +73,31 @@ describe('local CLI models in pickers', () => {
     expect(describeCompactModelChoice({ provider: 'claude-code-cli', name: 'default' })).toBe('Claude Code · CLI default')
     expect(describeModelChoice({ provider: 'codex-cli', name: 'default' })).toBe('Codex (on this computer) CLI default')
   })
+  it('lists the other CLIs\' models only once they are turned on', () => {
+    const geminiStatus = (enabled: boolean): ProviderStatus => ({
+      provider: 'gemini-cli',
+      configured: enabled,
+      baseUrl: null,
+      localCli: { enabled, installed: true, version: '0.71.0', path: '/opt/homebrew/bin/gemini', signIn: 'unknown', installUrl: 'https://github.com/google-gemini/gemini-cli' },
+    })
+    const cursorMissing: ProviderStatus = {
+      provider: 'cursor-cli',
+      configured: false,
+      baseUrl: null,
+      localCli: { enabled: false, installed: false, version: null, path: null, signIn: 'unknown', installUrl: 'https://cursor.com/docs/cli/installation' },
+    }
+    const catalog: ProviderModels[] = [
+      { provider: 'gemini-cli', models: [{ id: 'default', displayName: 'CLI default' }, { id: 'flash', displayName: 'Flash (latest)' }], error: null },
+    ]
+    const openai = { provider: 'openai' as const, name: 'gpt-4o-mini' }
+    const groupsWhenOff = buildModelOptionGroups(openai, [...statuses, geminiStatus(false), cursorMissing], catalog)
+    expect(groupsWhenOff.map((group) => group.provider)).not.toContain('gemini-cli')
+    const groupsWhenOn = buildModelOptionGroups(openai, [...statuses, geminiStatus(true), cursorMissing], catalog)
+    const geminiGroup = groupsWhenOn.find((group) => group.provider === 'gemini-cli')
+    expect(geminiGroup?.label).toBe('Gemini CLI (on this computer)')
+    expect(geminiGroup?.choices.map((choice) => choice.name)).toEqual(['default', 'flash'])
+    expect(groupsWhenOn.map((group) => group.provider)).not.toContain('cursor-cli')
+    expect(describeCompactModelChoice({ provider: 'opencode-cli', name: 'anthropic/claude-sonnet-5-5' })).toBe('OpenCode · anthropic/claude-sonnet-5-5')
+    expect(recommendedModelFor('qwen-code-cli')).toEqual({ provider: 'qwen-code-cli', name: 'default' })
+  })
 })

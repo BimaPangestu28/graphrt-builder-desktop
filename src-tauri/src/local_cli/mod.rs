@@ -1,26 +1,33 @@
-//! Local CLI model providers: the user's own, already signed-in Claude Code (`claude`)
-//! and OpenAI Codex (`codex`) command-line tools, run as subprocesses (Experimental).
+//! Local CLI model providers: the user's own, already signed-in AI command-line tools
+//! (Claude Code, Codex, Gemini CLI, Cursor CLI, GitHub Copilot CLI, OpenCode, Qwen Code),
+//! run as subprocesses (Experimental, each off until the user turns it on).
 //!
 //! graphrt never reads, copies or logs the CLIs' credential files or tokens and never
 //! passes a secret on the command line: it only invokes the binary, the way the user
 //! would in a terminal, and the CLI signs in with whatever it already has.
 //!
-//! Each call runs in a throwaway working directory with no tools (Claude Code:
-//! `--tools ""`; Codex: `--sandbox read-only`), so the model cannot touch the user's
-//! files. Calls have a timeout and the process is killed when the call is dropped
-//! (Stop run, Stop the builder).
+//! Each call runs in a throwaway working directory with no tools (each CLI's own
+//! sandbox / approval / allowed-tools switches, see `adapters/`), so the model cannot
+//! touch the user's files or run commands. Calls have a timeout and the process is
+//! killed when the call is dropped (Stop run, Stop the builder).
 //!
 //! Layout:
+//! - `adapter`: the [`adapter::CliAdapter`] contract; `adapters`: one per CLI (flags,
+//!   output parser, sign-in status, models), each citing the CLI's official docs.
 //! - `detect`: finds the binaries (PATH, common install folders, a login shell on
 //!   macOS/Linux where GUI apps do not inherit the shell PATH), their version, the flags
 //!   their `--help` lists and whether they are signed in (their own status commands).
 //! - `prompt`: turns a graphrt `ChatRequest` into instructions + one prompt text.
-//! - `command`: the exact command lines.
-//! - `parse`: Claude Code `stream-json` and Codex `exec --json` output into graphrt deltas.
+//! - `command`: the command line of one call (delegates to the adapter).
+//! - `parse`: shared output-parsing helpers and plain-language failures.
 //! - `model`: the `graphrt_llm::ChatModel` running a call.
 //! - `check`: "Check connection" (one tiny prompt, only when the user asks).
 //! - `models`: the model choices each CLI offers.
 
+pub mod adapter;
+#[cfg(test)]
+mod adapter_tests;
+mod adapters;
 pub mod capability;
 mod check;
 mod command;
@@ -35,6 +42,8 @@ mod tests;
 
 use serde::{Deserialize, Serialize};
 
+use adapter::{CliAdapter, CliInfo};
+
 pub use check::{check_connection, LocalCliCheck};
 pub use model::LocalCliModel;
 pub use models::list_models;
@@ -47,42 +56,57 @@ pub const CALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10 
 pub enum LocalCli {
     ClaudeCode,
     Codex,
+    GeminiCli,
+    CursorCli,
+    CopilotCli,
+    OpenCode,
+    QwenCode,
 }
 
 impl LocalCli {
-    /// Every CLI, in the order the UI lists them.
-    pub const ALL: [LocalCli; 2] = [LocalCli::ClaudeCode, LocalCli::Codex];
+    /// Every CLI, in the order the UI lists them (Claude Code and Codex first).
+    pub const ALL: [LocalCli; 7] = [
+        LocalCli::ClaudeCode,
+        LocalCli::Codex,
+        LocalCli::GeminiCli,
+        LocalCli::CursorCli,
+        LocalCli::CopilotCli,
+        LocalCli::OpenCode,
+        LocalCli::QwenCode,
+    ];
+
+    /// The adapter holding everything specific to this CLI.
+    pub fn adapter(self) -> &'static dyn CliAdapter {
+        adapters::adapter_for(self)
+    }
+
+    fn info(self) -> &'static CliInfo {
+        self.adapter().info()
+    }
 
     /// Name shown to the user.
     pub fn display_name(self) -> &'static str {
-        match self {
-            Self::ClaudeCode => "Claude Code",
-            Self::Codex => "Codex",
-        }
+        self.info().display_name
     }
 
-    /// The command the user types in a terminal.
+    /// The command the user types in a terminal (the first of its executable names).
     pub fn binary_name(self) -> &'static str {
-        match self {
-            Self::ClaudeCode => "claude",
-            Self::Codex => "codex",
-        }
+        self.info().binary_names[0]
     }
 
-    /// Where the user learns to install it.
+    /// Every executable name it may be installed as, in the order they are looked for.
+    pub fn binary_names(self) -> &'static [&'static str] {
+        self.info().binary_names
+    }
+
+    /// Where the user learns to install it (the official page).
     pub fn install_url(self) -> &'static str {
-        match self {
-            Self::ClaudeCode => "https://docs.claude.com/en/docs/claude-code/setup",
-            Self::Codex => "https://developers.openai.com/codex/cli",
-        }
+        self.info().install_url
     }
 
     /// The graphrt `model.provider` name (also the serde name of the `ModelProvider`).
     pub fn provider_name(self) -> &'static str {
-        match self {
-            Self::ClaudeCode => "claude-code-cli",
-            Self::Codex => "codex-cli",
-        }
+        self.info().provider_name
     }
 
     /// Parses a graphrt provider name.
@@ -92,26 +116,17 @@ impl LocalCli {
 
     /// Setting key remembering that the user turned this CLI on in graphrt.
     pub fn enabled_setting_key(self) -> &'static str {
-        match self {
-            Self::ClaudeCode => "local_cli_enabled.claude-code-cli",
-            Self::Codex => "local_cli_enabled.codex-cli",
-        }
+        self.info().enabled_setting_key
     }
 
     /// What to tell the user when the CLI is not signed in.
     pub fn sign_in_hint(self) -> &'static str {
-        match self {
-            Self::ClaudeCode => "open Terminal, run `claude` and sign in",
-            Self::Codex => "open Terminal, run `codex login` and sign in",
-        }
+        self.info().sign_in_hint
     }
 
     /// The plan the CLI's usage counts against.
     pub fn plan_name(self) -> &'static str {
-        match self {
-            Self::ClaudeCode => "Claude",
-            Self::Codex => "ChatGPT",
-        }
+        self.info().plan_name
     }
 }
 

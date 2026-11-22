@@ -1,0 +1,3 @@
+# doc-derived (hand-written, not recorded): OpenCode run --format json "error" event with a ProviderAuthError ({name, data: {providerID, message}}, packages/sdk/js/src/v2/gen/types.gen.ts); the process then exits 1
+{"type":"step_start","timestamp":1795356000000,"sessionID":"ses_fixture","part":{"id":"prt_1","sessionID":"ses_fixture","messageID":"msg_1","type":"step-start"}}
+{"type":"error","timestamp":1795356000100,"sessionID":"ses_fixture","error":{"name":"ProviderAuthError","data":{"providerID":"anthropic","message":"Unauthorized: invalid credentials for anthropic"}}}

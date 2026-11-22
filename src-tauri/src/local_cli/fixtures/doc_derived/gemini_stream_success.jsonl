@@ -1,0 +1,6 @@
+# doc-derived (hand-written, not recorded): Gemini CLI --output-format stream-json, event shapes from google-gemini/gemini-cli docs/cli/headless.md and packages/core/src/output/types.ts
+{"type":"init","timestamp":"2026-11-22T00:00:00.000Z","session_id":"fixture-session","model":"gemini-2.5-flash"}
+{"type":"message","timestamp":"2026-11-22T00:00:00.010Z","role":"user","content":"Say hello"}
+{"type":"message","timestamp":"2026-11-22T00:00:01.000Z","role":"assistant","content":"Hello ","delta":true}
+{"type":"message","timestamp":"2026-11-22T00:00:01.100Z","role":"assistant","content":"from Gemini.","delta":true}
+{"type":"result","timestamp":"2026-11-22T00:00:01.200Z","status":"success","stats":{"total_tokens":130,"input_tokens":120,"output_tokens":10,"cached":0,"input":120,"duration_ms":1200,"tool_calls":0,"models":{"gemini-2.5-flash":{"total_tokens":130,"input_tokens":120,"output_tokens":10,"cached":0,"input":120}}}}
