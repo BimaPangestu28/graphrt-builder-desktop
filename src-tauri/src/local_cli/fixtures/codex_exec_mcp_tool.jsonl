@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"thread_fixture"}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"item_0","type":"mcp_tool_call","server":"files","tool":"read_file","arguments":{"path":"/etc/passwd"},"status":"in_progress"}}
+{"type":"turn.completed","usage":{"input_tokens":10,"output_tokens":1}}

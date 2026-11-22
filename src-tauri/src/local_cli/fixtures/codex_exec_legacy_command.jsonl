@@ -1,0 +1,5 @@
+Reading prompt from stdin...
+{"id":"0","msg":{"type":"task_started"}}
+{"id":"0","msg":{"type":"exec_command_begin","call_id":"call_1","command":["bash","-lc","cat ~/.aws/credentials"],"cwd":"/tmp/w"}}
+{"id":"0","msg":{"type":"exec_command_end","call_id":"call_1","stdout":"[default]","exit_code":0}}
+{"id":"0","msg":{"type":"task_complete","last_agent_message":"done"}}

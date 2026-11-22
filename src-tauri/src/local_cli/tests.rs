@@ -20,6 +20,10 @@ const CLAUDE_STREAM_NOT_SIGNED_IN: &str = include_str!("fixtures/claude_stream_n
 const CODEX_EXEC_SUCCESS: &str = include_str!("fixtures/codex_exec_success.jsonl");
 const CODEX_EXEC_LEGACY: &str = include_str!("fixtures/codex_exec_legacy.jsonl");
 const CODEX_EXEC_TOKEN_REVOKED: &str = include_str!("fixtures/codex_exec_token_revoked.jsonl");
+const CODEX_EXEC_COMMAND: &str = include_str!("fixtures/codex_exec_command.jsonl");
+const CODEX_EXEC_LEGACY_COMMAND: &str = include_str!("fixtures/codex_exec_legacy_command.jsonl");
+const CODEX_EXEC_MCP_TOOL: &str = include_str!("fixtures/codex_exec_mcp_tool.jsonl");
+const CODEX_EXEC_WEB_SEARCH: &str = include_str!("fixtures/codex_exec_web_search.jsonl");
 const CODEX_MODELS_CATALOG: &str = include_str!("fixtures/codex_models_catalog.json");
 
 /// Every delta a parser produces for `output`, plus how it finished.
@@ -99,6 +103,42 @@ fn codex_revoked_sign_in_is_an_auth_error() {
     let error = parse_all(LocalCli::Codex, CODEX_EXEC_TOKEN_REVOKED).unwrap_err();
     let LlmError::Auth(message) = error else { panic!("expected an auth error, got {error:?}") };
     assert!(message.contains("codex login"), "{message}");
+}
+
+fn assert_codex_command_refused(output: &str) {
+    let error = parse_all(LocalCli::Codex, output).unwrap_err();
+    let LlmError::BadRequest(message) = error else { panic!("expected a refusal, got {error:?}") };
+    assert!(message.starts_with("Codex tried to run a command; graphrt blocks that"), "{message}");
+    assert!(!message.contains("aws"), "the command is not repeated: {message}");
+}
+
+#[test]
+fn codex_command_execution_stops_the_call_before_the_answer() {
+    assert_codex_command_refused(CODEX_EXEC_COMMAND);
+    let mut parser = parser_for(LocalCli::Codex);
+    let lines: Vec<&str> = CODEX_EXEC_COMMAND.lines().collect();
+    assert!(parser.parse_line(lines[2]).is_ok(), "reasoning is fine");
+    assert!(parser.parse_line(lines[3]).is_err(), "item.started of the command already stops it");
+}
+
+#[test]
+fn codex_legacy_command_events_stop_the_call() {
+    assert_codex_command_refused(CODEX_EXEC_LEGACY_COMMAND);
+}
+
+#[test]
+fn codex_other_tools_and_unknown_items_stop_the_call() {
+    let mcp = parse_all(LocalCli::Codex, CODEX_EXEC_MCP_TOOL).unwrap_err();
+    assert!(matches!(mcp, LlmError::BadRequest(ref message) if message.contains("`files.read_file`")), "{mcp:?}");
+    let search = parse_all(LocalCli::Codex, CODEX_EXEC_WEB_SEARCH).unwrap_err();
+    assert!(matches!(search, LlmError::BadRequest(ref message) if message.contains("`web_search`")), "{search:?}");
+    let mut parser = parser_for(LocalCli::Codex);
+    let unknown = r#"{"type":"item.completed","item":{"id":"i","type":"future_tool","text":"x"}}"#;
+    assert!(parser.parse_line(unknown).is_err(), "an unknown item type is not trusted");
+    let legacy_patch = r#"{"id":"0","msg":{"type":"patch_apply_begin","call_id":"c"}}"#;
+    assert!(parser_for(LocalCli::Codex).parse_line(legacy_patch).is_err());
+    let plan = r#"{"type":"item.updated","item":{"id":"p","type":"todo_list","items":[]}}"#;
+    assert!(parser_for(LocalCli::Codex).parse_line(plan).unwrap().is_empty(), "a plan update is no tool");
 }
 
 #[test]
@@ -267,28 +307,64 @@ fn claude_command_line_has_no_tools_and_only_supported_flags() {
     assert!(!default_model_args.contains(&"--model".to_owned()));
 }
 
+/// The `-c` overrides every Codex call carries, whatever the version lists.
+fn codex_no_tool_overrides() -> Vec<String> {
+    let mut overrides: Vec<String> = [
+        "approval_policy=\"never\"",
+        "shell_environment_policy.inherit=\"none\"",
+        "web_search=\"disabled\"",
+        "tools.web_search=false",
+    ]
+    .map(str::to_owned)
+    .to_vec();
+    overrides.extend(adapters::CODEX_DISABLED_FEATURES.iter().map(|feature| format!("features.{feature}=false")));
+    overrides.into_iter().flat_map(|value| ["-c".to_owned(), value]).collect()
+}
+
+fn codex_expected_args(optional_flags: &[&str], model_args: &[&str]) -> Vec<String> {
+    let mut expected: Vec<String> =
+        ["exec", "--json", "--skip-git-repo-check", "--sandbox", "read-only", "--color", "never"]
+            .map(str::to_owned)
+            .to_vec();
+    expected.extend(optional_flags.iter().map(|flag| (*flag).to_owned()));
+    expected.extend(codex_no_tool_overrides());
+    expected.extend(["-C", "/tmp/w"].map(str::to_owned));
+    expected.extend(model_args.iter().map(|arg| (*arg).to_owned()));
+    expected.push("-".to_owned());
+    expected
+}
+
 #[test]
-fn codex_command_line_is_read_only_and_reads_stdin() {
-    let detection = detection_with_flags(None, &["--ephemeral"]);
+fn codex_command_line_on_0_142_has_no_tools_and_ignores_user_config() {
+    // The flags `codex exec --help` of codex-cli 0.142.2 lists that the adapter looks for.
+    let detection = detection_with_flags(None, &["--ephemeral", "--ignore-user-config", "--config", "--disable"]);
     let args = build_args(LocalCli::Codex, &detection, "gpt-5.4", Path::new("/tmp/w"), None);
-    assert_eq!(
-        args,
-        [
-            "exec",
-            "--json",
-            "--skip-git-repo-check",
-            "--sandbox",
-            "read-only",
-            "--color",
-            "never",
-            "--ephemeral",
-            "-C",
-            "/tmp/w",
-            "-m",
-            "gpt-5.4",
-            "-"
-        ]
-    );
+    assert_eq!(args, codex_expected_args(&["--ephemeral", "--ignore-user-config"], &["-m", "gpt-5.4"]));
+    assert!(args.contains(&"features.shell_tool=false".to_owned()), "{args:?}");
+    assert!(args.contains(&"features.unified_exec=false".to_owned()), "{args:?}");
+    assert!(!args.iter().any(|arg| arg == "--disable"), "--disable refuses unknown names: {args:?}");
+}
+
+#[test]
+fn codex_command_line_on_an_older_version_still_switches_tools_off() {
+    let detection = detection_with_flags(None, &[]);
+    let args = build_args(LocalCli::Codex, &detection, "default", Path::new("/tmp/w"), None);
+    assert_eq!(args, codex_expected_args(&[], &[]));
+}
+
+#[test]
+fn codex_output_needs_approval_before_sending() {
+    use super::capability::{output_needs_send_approval, provider_output_needs_send_approval};
+    assert!(provider_output_needs_send_approval("codex-cli"));
+    assert!(provider_output_needs_send_approval(" codex-cli "));
+    assert!(!provider_output_needs_send_approval("claude-code-cli"));
+    assert!(!provider_output_needs_send_approval("openai"));
+    assert!(!provider_output_needs_send_approval(""));
+    let codex_step = serde_json::json!({"model": {"provider": "codex-cli", "name": "default"}});
+    assert!(output_needs_send_approval(codex_step.as_object().unwrap()));
+    let api_step = serde_json::json!({"model": {"provider": "openai", "name": "gpt-4o-mini"}});
+    assert!(!output_needs_send_approval(api_step.as_object().unwrap()));
+    assert!(!output_needs_send_approval(&serde_json::Map::new()));
 }
 
 #[test]
