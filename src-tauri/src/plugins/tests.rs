@@ -17,8 +17,10 @@ use crate::error::{AppError, AppResult};
 use crate::node_runtime::NodeRuntime;
 use crate::storage::Database;
 
+mod approval;
 mod auto_update;
 mod catalog_plugins;
+mod catalog_signature;
 mod catalog_v2;
 mod plugin_display_names;
 mod plugin_icons;
@@ -40,13 +42,44 @@ pub(crate) struct FakeDownloader {
     requests: Mutex<Vec<String>>,
 }
 
+/// A throwaway minisign key pair made for this test run only: fixture catalogs are signed
+/// with it and test services trust only it. Never a real catalog key.
+static TEST_CATALOG_KEY_PAIR: std::sync::LazyLock<minisign::KeyPair> =
+    std::sync::LazyLock::new(|| minisign::KeyPair::generate_unencrypted_keypair().unwrap());
+
+/// A `.minisig` of `bytes` made with `key_pair`.
+pub(crate) fn minisign_signature(key_pair: &minisign::KeyPair, bytes: &[u8]) -> Vec<u8> {
+    minisign::sign(Some(&key_pair.pk), &key_pair.sk, bytes, None, None).unwrap().into_string().into_bytes()
+}
+
+/// The keys test services trust: only [`TEST_CATALOG_KEY_PAIR`].
+pub(super) fn test_catalog_keys() -> super::catalog_signature::CatalogKeys {
+    super::catalog_signature::CatalogKeys::from_base64(&[&TEST_CATALOG_KEY_PAIR.pk.to_base64()])
+}
+
+/// Whether `url` is a catalog index (served with a signature by [`FakeDownloader::serve`]).
+fn is_index_url(url: &str) -> bool {
+    url.ends_with("/index.json") || url.ends_with("/index-v2.json")
+}
+
 impl FakeDownloader {
+    /// Serves `bytes` at `url`; a catalog index also gets its `.minisig` signed with the test key.
     fn serve(&self, url: &str, bytes: Vec<u8>) {
+        if is_index_url(url) {
+            let signature = minisign_signature(&TEST_CATALOG_KEY_PAIR, &bytes);
+            self.files.lock().unwrap().insert(format!("{url}.minisig"), signature);
+        }
+        self.files.lock().unwrap().insert(url.to_owned(), bytes);
+    }
+
+    /// Serves `bytes` at `url` exactly, without adding or changing any signature.
+    fn serve_raw(&self, url: &str, bytes: Vec<u8>) {
         self.files.lock().unwrap().insert(url.to_owned(), bytes);
     }
 
     fn forget(&self, url: &str) {
         self.files.lock().unwrap().remove(url);
+        self.files.lock().unwrap().remove(&format!("{url}.minisig"));
     }
 
     /// How many times `url` was asked for.
@@ -202,6 +235,17 @@ fn catalog_of_entries(entries_json: &str) -> super::models::CatalogIndex {
     super::catalog::parse_catalog(&serde_json::to_vec(&catalog).unwrap()).unwrap()
 }
 
+/// What the fixture catalog entry says the echo plugin asks for (what the install card shows).
+pub(crate) fn echo_catalog_permissions() -> super::models::PluginPermissions {
+    super::models::PluginPermissions { network: false, secrets: true, env: vec!["FIXTURE_ECHO_TOKEN".into()] }
+}
+
+/// Trusts an installed plugin the way its trust toggle does: approving what it asks for.
+pub(crate) async fn trust(service: &PluginService, name: &str) -> AppResult<super::models::InstalledPlugin> {
+    let approved = service.installed(name)?.permissions;
+    service.set_trusted(name, true, Some(&approved)).await
+}
+
 pub(crate) struct Fixture {
     pub app_data: tempfile::TempDir,
     pub service: PluginService,
@@ -263,7 +307,7 @@ fn build_service(
     downloader: &Arc<FakeDownloader>,
     events: &Arc<RecordedEvents>,
 ) -> PluginService {
-    PluginService::new(PluginServiceConfig {
+    let config = PluginServiceConfig {
         app_data_dir: app_data.to_path_buf(),
         catalog_url: CATALOG_URL.to_owned(),
         db: db.clone(),
@@ -271,14 +315,15 @@ fn build_service(
         node_runtime: Arc::new(NodeRuntime::new(app_data.to_path_buf())),
         downloader: downloader.clone(),
         events: events.clone(),
-    })
+    };
+    PluginService::with_catalog_keys(config, test_catalog_keys())
 }
 
 /// A fixture with the echo plugin installed.
 pub(crate) async fn installed_fixture() -> Fixture {
     let fixture = Fixture::new();
     fixture.publish("1.0.0", good_tarball());
-    fixture.service.install(PLUGIN).await.unwrap();
+    fixture.service.install(PLUGIN, &echo_catalog_permissions()).await.unwrap();
     fixture
 }
 
@@ -293,7 +338,7 @@ async fn install_from_catalog_loads_the_plugin_and_its_node_kinds() {
     let fixture = Fixture::new();
     fixture.publish("1.0.0", good_tarball());
 
-    let installed = fixture.service.install(PLUGIN).await.unwrap();
+    let installed = fixture.service.install(PLUGIN, &echo_catalog_permissions()).await.unwrap();
 
     assert_eq!(installed.version, "1.0.0");
     assert!(installed.needs_browser);
@@ -314,7 +359,7 @@ async fn install_from_catalog_loads_the_plugin_and_its_node_kinds() {
 #[tokio::test]
 async fn removing_a_plugin_drops_its_kinds_trust_and_settings() {
     let fixture = installed_fixture().await;
-    fixture.service.set_trusted(PLUGIN, true).await.unwrap();
+    trust(&fixture.service, PLUGIN).await.unwrap();
     fixture.service.set_config(PLUGIN, "FIXTURE_ECHO_TOKEN", "token-value").await.unwrap();
 
     fixture.service.remove(PLUGIN).await.unwrap();
@@ -332,7 +377,7 @@ async fn checksum_mismatch_with_the_catalog_is_rejected() {
     fixture.downloader.serve(CATALOG_URL, catalog_json("1.0.0", TARBALL_URL, &"0".repeat(64), tarball.len()));
     fixture.downloader.serve(TARBALL_URL, tarball);
 
-    let error = fixture.service.install(PLUGIN).await.unwrap_err();
+    let error = fixture.service.install(PLUGIN, &echo_catalog_permissions()).await.unwrap_err();
 
     assert!(matches!(&error, AppError::InvalidInput(message) if message.contains("checksum")), "{error}");
     assert_nothing_installed(&fixture);
@@ -342,7 +387,7 @@ async fn checksum_mismatch_with_the_catalog_is_rejected() {
 async fn assert_archive_rejected(raw_entries: &[RawEntry]) -> Fixture {
     let fixture = Fixture::new();
     fixture.publish("1.0.0", tarball(&fixture_files(), raw_entries));
-    let error = fixture.service.install(PLUGIN).await.unwrap_err();
+    let error = fixture.service.install(PLUGIN, &echo_catalog_permissions()).await.unwrap_err();
     assert!(matches!(error, AppError::InvalidInput(_)), "{error}");
     assert_nothing_installed(&fixture);
     fixture
@@ -371,6 +416,71 @@ async fn files_outside_the_plugin_folder_are_rejected() {
     assert_archive_rejected(&[RawEntry::File { path: "other-plugin/plugin.mjs", contents: b"x" }]).await;
 }
 
+/// The fixture tarball preceded by one extension header (`entry_type`) of `size` bytes of `fill`.
+fn tarball_with_extension_header(entry_type: tar::EntryType, size: usize, fill: &[u8]) -> Vec<u8> {
+    let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+    let mut builder = tar::Builder::new(encoder);
+    let mut extension = tar::Header::new_gnu();
+    extension.set_entry_type(entry_type);
+    extension.set_mode(0o644);
+    extension.set_size(size as u64);
+    let name = &mut extension.as_gnu_mut().unwrap().name;
+    name[..13].copy_from_slice(b"././@LongLink");
+    extension.set_cksum();
+    let contents: Vec<u8> = fill.iter().copied().cycle().take(size).collect();
+    builder.append(&extension, contents.as_slice()).unwrap();
+    for (path, contents) in fixture_files() {
+        let mut header = tar::Header::new_gnu();
+        header.set_mode(0o644);
+        header.set_size(contents.len() as u64);
+        builder.append_data(&mut header, path, contents.as_slice()).unwrap();
+    }
+    builder.into_inner().unwrap().finish().unwrap()
+}
+
+async fn assert_tarball_rejected(tarball_bytes: Vec<u8>, expected_message: &str) {
+    let fixture = Fixture::new();
+    fixture.publish("1.0.0", tarball_bytes.clone());
+    let error = fixture.service.install(PLUGIN, &echo_catalog_permissions()).await.unwrap_err();
+    assert!(matches!(&error, AppError::InvalidInput(message) if message.contains(expected_message)), "{error}");
+    assert_nothing_installed(&fixture);
+    let sideload_error = super::archive::tarball_top_dir(&tarball_bytes).unwrap_err();
+    assert!(sideload_error.to_string().contains(expected_message), "{sideload_error}");
+}
+
+#[tokio::test]
+async fn oversized_gnu_long_names_and_links_are_rejected_before_they_are_read() {
+    let one_mib = 1024 * 1024;
+    assert_tarball_rejected(tarball_with_extension_header(tar::EntryType::GNULongName, one_mib, b"a"), "header").await;
+    assert_tarball_rejected(tarball_with_extension_header(tar::EntryType::GNULongLink, one_mib, b"b"), "header").await;
+}
+
+#[tokio::test]
+async fn oversized_pax_headers_are_rejected_before_they_are_read() {
+    let one_mib = 1024 * 1024;
+    let record = b"30 comment=aaaaaaaaaaaaaaaaaaa\n";
+    assert_tarball_rejected(tarball_with_extension_header(tar::EntryType::XHeader, one_mib, record), "header").await;
+    assert_tarball_rejected(tarball_with_extension_header(tar::EntryType::XGlobalHeader, one_mib, record), "header")
+        .await;
+}
+
+#[tokio::test]
+async fn pax_headers_that_change_an_entry_size_are_rejected() {
+    let record = b"16 size=1000000\n";
+    assert_tarball_rejected(tarball_with_extension_header(tar::EntryType::XHeader, record.len(), record), "size").await;
+}
+
+#[test]
+fn small_extension_headers_are_still_accepted() {
+    let long_name = b"fixture-echo/README.md\0";
+    let bytes = tarball_with_extension_header(tar::EntryType::GNULongName, long_name.len(), long_name);
+    let destination = tempfile::tempdir().unwrap();
+    let plugin_dir = super::archive::extract_plugin_tarball(&bytes, PLUGIN, destination.path()).unwrap();
+    // The long name renames the entry after it (the manifest).
+    assert!(plugin_dir.join("README.md").is_file());
+    assert!(plugin_dir.join("plugin.mjs").is_file());
+}
+
 #[tokio::test]
 async fn a_plugin_failing_its_manifest_checksums_leaves_nothing_behind() {
     let mut files = fixture_files();
@@ -378,7 +488,7 @@ async fn a_plugin_failing_its_manifest_checksums_leaves_nothing_behind() {
     let fixture = Fixture::new();
     fixture.publish("1.0.0", tarball(&files, &[]));
 
-    let error = fixture.service.install(PLUGIN).await.unwrap_err();
+    let error = fixture.service.install(PLUGIN, &echo_catalog_permissions()).await.unwrap_err();
 
     assert!(matches!(&error, AppError::InvalidInput(message) if message.contains("checksum")), "{error}");
     assert_nothing_installed(&fixture);
@@ -402,7 +512,7 @@ async fn a_failed_update_keeps_the_installed_version() {
 #[tokio::test]
 async fn an_update_asking_for_more_permissions_drops_trust() {
     let fixture = installed_fixture().await;
-    fixture.service.set_trusted(PLUGIN, true).await.unwrap();
+    trust(&fixture.service, PLUGIN).await.unwrap();
     let mut files = fixture_files();
     let manifest = String::from_utf8(files[0].1.clone()).unwrap();
     files[0].1 = manifest
@@ -451,7 +561,7 @@ async fn non_https_downloads_are_refused() {
 
     // The entry is dropped from the catalog, so it cannot be installed.
     assert!(fixture.service.catalog(true).await.unwrap().plugins.is_empty());
-    assert!(matches!(fixture.service.install(PLUGIN).await, Err(AppError::NotFound(_))));
+    assert!(matches!(fixture.service.install(PLUGIN, &echo_catalog_permissions()).await, Err(AppError::NotFound(_))));
     assert!(super::download::require_https("http://example.com/index.json").is_err());
     assert!(super::download::require_https("file:///etc/passwd").is_err());
 }
@@ -535,7 +645,7 @@ async fn catalog_with_an_unknown_schema_is_rejected() {
 #[tokio::test]
 async fn trust_and_settings_persist_across_restarts() {
     let fixture = installed_fixture().await;
-    fixture.service.set_trusted(PLUGIN, true).await.unwrap();
+    trust(&fixture.service, PLUGIN).await.unwrap();
     let configured = fixture.service.set_config(PLUGIN, "FIXTURE_ECHO_TOKEN", "token-value").await.unwrap();
     assert!(configured.config.iter().all(|status| status.configured));
 
@@ -548,7 +658,7 @@ async fn trust_and_settings_persist_across_restarts() {
 
     let cleared = restarted.delete_config(PLUGIN, "FIXTURE_ECHO_TOKEN").await.unwrap();
     assert!(!cleared.config[0].configured);
-    let untrusted = restarted.set_trusted(PLUGIN, false).await.unwrap();
+    let untrusted = restarted.set_trusted(PLUGIN, false, None).await.unwrap();
     assert!(!untrusted.trusted);
 }
 
@@ -557,13 +667,13 @@ async fn settings_the_plugin_does_not_request_are_refused() {
     let fixture = installed_fixture().await;
     let error = fixture.service.set_config(PLUGIN, "HOME", "/tmp").await.unwrap_err();
     assert!(matches!(error, AppError::InvalidInput(_)));
-    assert!(matches!(fixture.service.set_trusted("missing", true).await, Err(AppError::NotFound(_))));
+    assert!(matches!(trust(&fixture.service, "missing").await, Err(AppError::NotFound(_))));
 }
 
 #[tokio::test]
 async fn setting_values_never_appear_in_listings_or_debug_output() {
     let fixture = installed_fixture().await;
-    fixture.service.set_trusted(PLUGIN, true).await.unwrap();
+    trust(&fixture.service, PLUGIN).await.unwrap();
     fixture.service.set_config(PLUGIN, "FIXTURE_ECHO_TOKEN", "very-secret-token").await.unwrap();
     let listing = serde_json::to_string(&fixture.service.list_installed().unwrap()).unwrap();
     assert!(!listing.contains("very-secret-token"));
@@ -575,7 +685,7 @@ async fn prompt_guide_lists_installed_plugin_steps() {
     let fixture = Fixture::new();
     assert_eq!(fixture.service.prompt_guide(), "");
     fixture.publish("1.0.0", good_tarball());
-    fixture.service.install(PLUGIN).await.unwrap();
+    fixture.service.install(PLUGIN, &echo_catalog_permissions()).await.unwrap();
 
     let guide = fixture.service.prompt_guide();
 
@@ -593,7 +703,7 @@ async fn actions_are_refused_for_untrusted_plugins_and_undeclared_kinds() {
     let untrusted = fixture.service.run_action(PLUGIN, "fixture-echo.echo", serde_json::json!({ "text": "hi" })).await;
     assert!(matches!(untrusted, Err(AppError::InvalidInput(message)) if message.contains("trust")));
 
-    fixture.service.set_trusted(PLUGIN, true).await.unwrap();
+    trust(&fixture.service, PLUGIN).await.unwrap();
     let undeclared = fixture.service.run_action(PLUGIN, "fixture-echo.format_disk", serde_json::Value::Null).await;
     assert!(matches!(undeclared, Err(AppError::InvalidInput(_))));
     let other_namespace = fixture.service.run_action(PLUGIN, "http-request", serde_json::Value::Null).await;
@@ -670,7 +780,7 @@ async fn actions_run_the_plugin_with_keychain_settings_only() {
         return;
     }
     let fixture = installed_fixture().await;
-    fixture.service.set_trusted(PLUGIN, true).await.unwrap();
+    trust(&fixture.service, PLUGIN).await.unwrap();
 
     let without_setting =
         fixture.service.run_action(PLUGIN, "fixture-echo.echo", serde_json::json!({ "text": "hello" })).await.unwrap();
@@ -702,12 +812,15 @@ async fn live_catalog_installs_every_plugin() {
     let catalog = service.catalog(true).await.unwrap();
     assert!(!catalog.plugins.is_empty());
     for entry in &catalog.plugins {
-        let installed = service.install(&entry.name).await.unwrap_or_else(|error| panic!("{}: {error}", entry.name));
+        let installed = service
+            .install(&entry.name, &entry.permissions)
+            .await
+            .unwrap_or_else(|error| panic!("{}: {error}", entry.name));
         assert_eq!(installed.load_error, None, "{}", entry.name);
         assert!(service.node_registry().contains(&entry.nodes[0].kind), "{}", entry.name);
     }
     if node_is_available() {
-        service.set_trusted("whatsapp-api", true).await.unwrap();
+        trust(&service, "whatsapp-api").await.unwrap();
         let tools = service.snapshot();
         assert!(tools.tools.get("whatsapp-api").is_some());
     }

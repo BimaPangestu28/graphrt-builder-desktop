@@ -29,7 +29,20 @@ impl PluginPermissions {
     /// True when `self` asks for something `previous` did not (more env
     /// variables, or plaintext secrets). Used to drop trust on update.
     pub fn asks_for_more_than(&self, previous: &PluginPermissions) -> bool {
-        (self.secrets && !previous.secrets) || self.env.iter().any(|variable| !previous.env.contains(variable))
+        !self.requests_beyond(previous).is_empty()
+    }
+
+    /// What `self` asks for that `approved` does not grant, as words for an error message
+    /// (`"plaintext secrets"`, `"the setting FOO"`); empty when it asks for nothing more.
+    /// Network access is informational and never counts.
+    pub fn requests_beyond(&self, approved: &PluginPermissions) -> Vec<String> {
+        let secrets = (self.secrets && !approved.secrets).then(|| "plaintext secrets".to_owned());
+        let settings = self
+            .env
+            .iter()
+            .filter(|variable| !approved.env.contains(variable))
+            .map(|variable| format!("the setting {variable}"));
+        secrets.into_iter().chain(settings).collect()
     }
 }
 
@@ -304,6 +317,9 @@ pub struct PluginCatalog {
     pub from_cache: bool,
     /// When this session last fetched the catalog (RFC 3339), or `None` for a saved copy.
     pub fetched_at: Option<String>,
+    /// For a saved copy: why the online catalog could not be used (offline, or an index
+    /// whose signature is missing or invalid).
+    pub fetch_error: Option<String>,
 }
 
 /// Whether one requested variable has a value in the keychain.

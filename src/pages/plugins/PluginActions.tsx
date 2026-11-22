@@ -19,7 +19,7 @@ function isBusy(item: PluginListItem, plugins: PluginsState): boolean {
 export function PluginInstallButton({ item, plugins, size = 'sm', ariaLabel }: PluginActionProps & { ariaLabel?: string }) {
   const isInstalling = plugins.operationByName[item.name] === 'installing'
   return (
-    <Button size={size} aria-label={ariaLabel ?? `Install ${item.displayName}`} disabled={isBusy(item, plugins)} onClick={() => void plugins.install(item.name)}>
+    <Button size={size} aria-label={ariaLabel ?? `Install ${item.displayName}`} disabled={isBusy(item, plugins)} onClick={() => void plugins.install(item.name, item.permissions)}>
       {isInstalling ? 'Installing…' : 'Install'}
     </Button>
   )

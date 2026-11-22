@@ -1,17 +1,22 @@
-//! Catalog v2 plugin details: the immutable `plugin-<name>-<version>.json` files that
-//! carry each version's full nodes (`config_schema`, `outputs`, descriptions) and tools.
+//! Catalog v2 plugin details: the immutable `plugin-<name>-<version>.json` release assets
+//! that carry each version's full nodes (`config_schema`, `outputs`, descriptions) and tools.
 //!
 //! - A detail is fetched lazily (plugin page, install, builder) or by the background
 //!   sync that runs after every successful `index-v2.json` fetch ([`DetailStore::sync_missing`]).
 //! - Every download is checked against the index entry: HTTPS only, at most
 //!   `detail_size_bytes` (itself capped at [`MAX_DETAIL_BYTES`]), the `detail_sha256`
 //!   checksum, schema 2 and the same name and version.
-//! - Verified details are kept on disk as `plugin-details/<name>-<version>.json`. A
-//!   released version never changes, so they are kept forever, except that versions
-//!   the index no longer lists are pruned ([`DetailStore::prune`]). Offline, only
-//!   these saved details are used.
+//! - Verified details are kept on disk as `plugin-details/<name>@<version>.json`. `@` is
+//!   allowed in neither a plugin name nor a detail version (`catalog::is_safe_version`), so
+//!   the key is unambiguous (`a` + `b-1.0.0` and `a-b` + `1.0.0` would share
+//!   `a-b-1.0.0.json` with a dash). A released version never changes, so details are kept
+//!   forever, except that versions the index no longer lists are pruned
+//!   ([`DetailStore::prune`]). Offline, only these saved details are used. Files saved
+//!   under the old dash names cannot be told apart, so they are removed when the store
+//!   opens and fetched again.
 //! - Saved files are checked against the index's checksum again when first read in a
-//!   session, then kept in memory.
+//!   session, then kept in memory with that checksum; a memory copy is only used while
+//!   the index still lists the same checksum.
 //!
 //! [`resolve_catalog`] turns a v2 index into the shape every consumer reads: each
 //! entry's `nodes` come from its detail when cached, else from its `node_kinds`
@@ -60,9 +65,10 @@ impl DetailRef {
         })
     }
 
-    /// `<name>-<version>.json`: the saved file's name and the in-memory key.
+    /// `<name>@<version>.json`: the saved file's name and the in-memory key. Injective:
+    /// `@` appears in neither part (see the module docs).
     pub fn file_name(&self) -> String {
-        format!("{}-{}.json", self.name, self.version)
+        format!("{}@{}.json", self.name, self.version)
     }
 }
 
@@ -88,8 +94,9 @@ pub(super) struct DetailSyncReport {
 pub(super) struct DetailStore {
     dir: PathBuf,
     downloader: Arc<dyn Downloader>,
-    /// Details read or downloaded this session, by [`DetailRef::file_name`].
-    loaded: Mutex<HashMap<String, Arc<PluginDetail>>>,
+    /// Details read or downloaded this session with the checksum they were verified
+    /// against, by [`DetailRef::file_name`].
+    loaded: Mutex<HashMap<String, VerifiedDetail>>,
     /// Details whose last download failed this session, by [`DetailRef::file_name`]: the
     /// builder skips them so it never waits on a broken link twice.
     failed: Mutex<HashSet<String>>,
@@ -102,20 +109,39 @@ pub(super) enum RetryFailed {
     No,
 }
 
+/// A detail kept in memory and the index checksum its bytes matched.
+#[derive(Debug, Clone)]
+struct VerifiedDetail {
+    sha256: String,
+    detail: Arc<PluginDetail>,
+}
+
 impl DetailStore {
+    /// Opens the store over `dir`, removing details saved under the old ambiguous names.
     pub fn new(dir: PathBuf, downloader: Arc<dyn Downloader>) -> Self {
+        remove_legacy_files(&dir);
         Self { dir, downloader, loaded: Mutex::new(HashMap::new()), failed: Mutex::new(HashSet::new()) }
     }
 
     /// The detail if it is in memory or saved (and still matches the index), never fetched.
+    /// A memory copy verified against another checksum is not used: the saved file is read
+    /// and checked again, else `None` (the caller fetches it).
     pub fn cached(&self, reference: &DetailRef) -> Option<Arc<PluginDetail>> {
         let key = reference.file_name();
-        if let Some(detail) = self.loaded.lock().ok().and_then(|loaded| loaded.get(&key).cloned()) {
-            return Some(detail);
+        let in_memory = self.loaded.lock().ok().and_then(|loaded| loaded.get(&key).cloned());
+        if let Some(verified) = in_memory {
+            if verified.sha256.eq_ignore_ascii_case(reference.sha256.trim()) {
+                return Some(verified.detail);
+            }
+            log::info!(
+                "the catalog lists another checksum for the detail of plugin {} {}; checking it again",
+                reference.name,
+                reference.version
+            );
         }
         let bytes = std::fs::read(self.dir.join(&key)).ok()?;
         match verify_detail(reference, &bytes) {
-            Ok(detail) => Some(self.remember(key, detail)),
+            Ok(detail) => Some(self.remember(key, reference, detail)),
             Err(error) => {
                 log::warn!("ignoring the saved detail of plugin {} {}: {error}", reference.name, reference.version);
                 None
@@ -139,7 +165,7 @@ impl DetailStore {
                 if let Ok(mut failed) = self.failed.lock() {
                     failed.remove(&key);
                 }
-                Ok(self.remember(key, detail))
+                Ok(self.remember(key, reference, detail))
             }
             Err(error) => {
                 if let Ok(mut failed) = self.failed.lock() {
@@ -193,18 +219,21 @@ impl DetailStore {
     }
 
     /// Removes saved and in-memory details of versions not in `keep`. Returns how many
-    /// files were removed.
+    /// files were removed. On macOS and Windows file names are compared ignoring case, as
+    /// their file systems do: `x@1.0-Beta.json` and `x@1.0-beta.json` are the same file there,
+    /// so a listed version is never removed because its file was saved with another case.
     pub fn prune(&self, keep: &[DetailRef]) -> usize {
-        let keep: HashSet<String> = keep.iter().map(DetailRef::file_name).collect();
+        let keep_keys: HashSet<String> = keep.iter().map(DetailRef::file_name).collect();
         if let Ok(mut loaded) = self.loaded.lock() {
-            loaded.retain(|key, _| keep.contains(key));
+            loaded.retain(|key, _| keep_keys.contains(key));
         }
+        let keep: HashSet<String> = keep_keys.iter().map(|name| file_system_name(name)).collect();
         let Ok(entries) = std::fs::read_dir(&self.dir) else { return 0 };
         let mut removed_count = 0;
         for entry in entries.filter_map(Result::ok) {
             let file_name = entry.file_name().to_string_lossy().into_owned();
             // Hidden files are downloads being written right now (see `write_atomically`).
-            if keep.contains(&file_name) || file_name.starts_with('.') || !entry.path().is_file() {
+            if keep.contains(&file_system_name(&file_name)) || file_name.starts_with('.') || !entry.path().is_file() {
                 continue;
             }
             match std::fs::remove_file(entry.path()) {
@@ -215,10 +244,11 @@ impl DetailStore {
         removed_count
     }
 
-    fn remember(&self, key: String, detail: PluginDetail) -> Arc<PluginDetail> {
+    fn remember(&self, key: String, reference: &DetailRef, detail: PluginDetail) -> Arc<PluginDetail> {
         let detail = Arc::new(detail);
+        let verified = VerifiedDetail { sha256: reference.sha256.trim().to_ascii_lowercase(), detail: detail.clone() };
         if let Ok(mut loaded) = self.loaded.lock() {
-            loaded.insert(key, detail.clone());
+            loaded.insert(key, verified);
         }
         detail
     }
@@ -229,6 +259,39 @@ impl DetailStore {
         if let Err(error) = write_atomically(&self.dir, file_name, bytes) {
             log::warn!("could not save the plugin detail {file_name}: {error}");
         }
+    }
+}
+
+/// Whether file names differ only by case on this platform's usual file system.
+const FILE_NAMES_IGNORE_CASE: bool = cfg!(any(target_os = "macos", windows));
+
+/// `file_name` as the file system compares it (lower-cased where names ignore case).
+fn file_system_name(file_name: &str) -> String {
+    if FILE_NAMES_IGNORE_CASE {
+        file_name.to_lowercase()
+    } else {
+        file_name.to_owned()
+    }
+}
+
+/// Removes details saved as `<name>-<version>.json` (before the `@` key): such a name may
+/// belong to two different plugin versions, so the file cannot be trusted to be either.
+fn remove_legacy_files(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let mut removed_count = 0;
+    for entry in entries.filter_map(Result::ok) {
+        let file_name = entry.file_name().to_string_lossy().into_owned();
+        let is_legacy = file_name.ends_with(".json") && !file_name.contains('@') && !file_name.starts_with('.');
+        if !is_legacy || !entry.path().is_file() {
+            continue;
+        }
+        match std::fs::remove_file(entry.path()) {
+            Ok(()) => removed_count += 1,
+            Err(error) => log::warn!("could not remove the old plugin detail {file_name}: {error}"),
+        }
+    }
+    if removed_count > 0 {
+        log::info!("removed {removed_count} plugin details saved under the old file names; they are fetched again");
     }
 }
 

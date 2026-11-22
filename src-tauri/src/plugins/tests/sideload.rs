@@ -204,7 +204,7 @@ async fn a_folder_with_a_broken_checksum_is_refused_like_a_catalog_plugin() {
 async fn a_name_installed_from_the_catalog_is_only_replaced_once_confirmed() {
     let fixture = installed_fixture().await;
     fixture.set_developer_mode(true);
-    fixture.service.set_trusted(PLUGIN, true).await.unwrap();
+    trust(&fixture.service, PLUGIN).await.unwrap();
     fixture.service.set_config(PLUGIN, "FIXTURE_ECHO_TOKEN", "catalog-token").await.unwrap();
     let picked = tempfile::tempdir().unwrap();
     let folder = plugin_folder(picked.path(), "9.0.0");
@@ -234,7 +234,7 @@ async fn a_local_plugin_is_reinstalled_without_asking_and_starts_untrusted_again
     let picked = tempfile::tempdir().unwrap();
     let folder = plugin_folder(picked.path(), "1.0.0");
     fixture.service.install_local(&path_text(&folder), false).await.unwrap();
-    fixture.service.set_trusted(PLUGIN, true).await.unwrap();
+    trust(&fixture.service, PLUGIN).await.unwrap();
     plugin_folder(picked.path(), "1.0.1");
 
     let reinstalled = fixture.service.install_local(&path_text(&folder), false).await.unwrap();
@@ -262,7 +262,10 @@ async fn local_plugins_are_never_matched_against_catalog_updates() {
     let AutoUpdateOutcome::Checked { summary, .. } = outcome else { panic!("{outcome:?}") };
     assert!(summary.updated.is_empty() && summary.needs_approval.is_empty() && summary.failed.is_empty());
     assert!(matches!(fixture.service.update(PLUGIN).await, Err(AppError::InvalidInput(_))));
-    assert!(matches!(fixture.service.install(PLUGIN).await, Err(AppError::InvalidInput(_))));
+    assert!(matches!(
+        fixture.service.install(PLUGIN, &echo_catalog_permissions()).await,
+        Err(AppError::InvalidInput(_))
+    ));
     let still_local = fixture.service.installed(PLUGIN).unwrap();
     assert_eq!((still_local.version.as_str(), still_local.source), ("1.0.0", PluginSource::Local));
     assert!(matches!(fixture.service.readme_url(PLUGIN), Err(AppError::NotFound(_))), "no catalog README");
@@ -301,7 +304,7 @@ async fn community_source_publisher_and_repository_reach_the_catalog_and_the_ins
     let json = serde_json::to_value(&entry).unwrap();
     assert_eq!((json["source"].as_str(), json["publisher"].as_str()), (Some("community"), Some("Acme Inc.")));
 
-    let installed = fixture.service.install(PLUGIN).await.unwrap();
+    let installed = fixture.service.install(PLUGIN, &echo_catalog_permissions()).await.unwrap();
     assert_eq!(installed.source, PluginSource::Community);
     assert_eq!(installed.publisher.as_deref(), Some("Acme Inc."));
     assert_eq!(fixture.service.repository_url(PLUGIN).unwrap(), "https://github.com/acme/fixture-echo");

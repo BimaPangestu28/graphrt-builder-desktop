@@ -91,7 +91,7 @@ export interface PluginAutoUpdate extends PluginVersionChange {
 /** What "Update all" did. */
 export interface PluginBulkUpdateSummary {
   updated: PluginVersionChange[]
-  /** Updates left alone because they ask for more permissions. */
+  /** Updates left alone because they ask for more permissions (automatic updates also leave community plugins here). */
   needsApproval: string[]
   failed: Array<{ name: string; message: string }>
 }
@@ -104,6 +104,8 @@ export interface PluginCatalog {
   fromCache: boolean
   /** When the app last fetched the catalog this session (RFC 3339), or null for a saved copy. */
   fetchedAt: string | null
+  /** For a saved copy: why the online catalog was not used (offline, or a missing or invalid signature). */
+  fetchError: string | null
 }
 
 /** Whether a setting the plugin requests has a value in the keychain. Values are never returned. */

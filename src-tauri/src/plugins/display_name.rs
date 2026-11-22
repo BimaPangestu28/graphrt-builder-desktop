@@ -43,14 +43,48 @@ const LOWERCASE_JOINING_WORDS: &[&str] =
     &["a", "an", "and", "as", "at", "by", "for", "in", "of", "on", "or", "the", "to", "via", "with"];
 
 /// The curated display name, trimmed, or `None` when it is blank, longer than
-/// [`MAX_DISPLAY_NAME_CHARS`] or contains control characters.
-/// `"  GitHub "` gives `Some("GitHub")`; `"a\nb"` gives `None`.
+/// [`MAX_DISPLAY_NAME_CHARS`] or contains control or invisible format characters (bidi
+/// overrides, zero-width characters: see [`is_format_character`]), which could make one
+/// name look like another. `"  GitHub "` gives `Some("GitHub")`; `"a\nb"` gives `None`.
 pub(crate) fn validate_display_name(raw: &str) -> Option<String> {
     let trimmed = raw.trim();
     let is_valid = !trimmed.is_empty()
         && trimmed.chars().count() <= MAX_DISPLAY_NAME_CHARS
-        && !trimmed.chars().any(char::is_control);
+        && !trimmed.chars().any(|character| character.is_control() || is_format_character(character));
     is_valid.then(|| trimmed.to_owned())
+}
+
+/// Ranges of the Unicode general category `Cf` (format characters), Unicode 15.1
+/// (`DerivedGeneralCategory.txt`). The standard library has no category lookup.
+const FORMAT_CHARACTER_RANGES: &[(u32, u32)] = &[
+    (0x00AD, 0x00AD),
+    (0x0600, 0x0605),
+    (0x061C, 0x061C),
+    (0x06DD, 0x06DD),
+    (0x070F, 0x070F),
+    (0x0890, 0x0891),
+    (0x08E2, 0x08E2),
+    (0x180E, 0x180E),
+    (0x200B, 0x200F),
+    (0x202A, 0x202E),
+    (0x2060, 0x2064),
+    (0x2066, 0x206F),
+    (0xFEFF, 0xFEFF),
+    (0xFFF9, 0xFFFB),
+    (0x110BD, 0x110BD),
+    (0x110CD, 0x110CD),
+    (0x13430, 0x1343F),
+    (0x1BCA0, 0x1BCA3),
+    (0x1D173, 0x1D17A),
+    (0xE0001, 0xE0001),
+    (0xE0020, 0xE007F),
+];
+
+/// Whether `character` is a Unicode format character (`Cf`): invisible characters such as
+/// bidi overrides and isolates, zero-width spaces and joiners, soft hyphens and tags.
+pub(crate) fn is_format_character(character: char) -> bool {
+    let code_point = u32::from(character);
+    FORMAT_CHARACTER_RANGES.iter().any(|(first, last)| (*first..=*last).contains(&code_point))
 }
 
 /// A plugin name as words people read: `currency-rates` → "Currency Rates",
@@ -147,6 +181,23 @@ mod tests {
             validate_display_name(&"é".repeat(MAX_DISPLAY_NAME_CHARS)).map(|name| name.chars().count()),
             Some(60)
         );
+    }
+
+    #[test]
+    fn names_with_invisible_format_characters_are_refused() {
+        for spoofed in [
+            "WhatsApp\u{202E}IPA",    // right-to-left override
+            "Whats\u{200B}App",       // zero-width space
+            "Whats\u{200D}App",       // zero-width joiner
+            "\u{2066}GitHub\u{2069}", // bidi isolates
+            "Git\u{00AD}Hub",         // soft hyphen
+            "\u{FEFF}GitHub",         // byte order mark
+            "Git\u{E0041}Hub",        // tag character
+        ] {
+            assert_eq!(validate_display_name(spoofed), None, "{spoofed:?}");
+        }
+        assert_eq!(validate_display_name("Café Tools"), Some("Café Tools".to_owned()));
+        assert_eq!(validate_display_name("日本語ツール"), Some("日本語ツール".to_owned()));
     }
 
     #[test]

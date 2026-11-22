@@ -261,12 +261,23 @@ describe('PluginsPage', () => {
 
     it('says so when only the saved catalog could be shown', async () => {
       await renderLoadedPluginsPage()
-      const savedCopy = { ...(await samplePluginsBackend.listPluginCatalog(false)), fromCache: true, fetchedAt: null }
+      const savedCopy = { ...(await samplePluginsBackend.listPluginCatalog(false)), fromCache: true, fetchedAt: null, fetchError: null }
       vi.spyOn(samplePluginsBackend, 'listPluginCatalog').mockResolvedValue(savedCopy)
 
       fireEvent.click(screen.getByRole('button', { name: 'Check for updates' }))
 
       expect(await screen.findByRole('alert')).toHaveTextContent(/last saved copy/)
+    })
+
+    it('says why when the online catalog was refused for its signature', async () => {
+      const refusal = 'invalid input: the plugin catalog signature is not valid: no trusted key signed it'
+      const savedCopy = { ...(await samplePluginsBackend.listPluginCatalog(false)), fromCache: true, fetchedAt: null, fetchError: refusal }
+      vi.spyOn(samplePluginsBackend, 'listPluginCatalog').mockResolvedValue(savedCopy)
+      await renderLoadedPluginsPage()
+
+      expect(screen.getByText(/The online catalog was refused/)).toHaveTextContent('no trusted key signed it')
+      fireEvent.click(screen.getByRole('button', { name: 'Check for updates' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent('signature is not valid: no trusted key signed it, so the last saved copy is shown')
     })
 
     it('refetches a catalog older than 10 minutes in the background when the page opens', async () => {

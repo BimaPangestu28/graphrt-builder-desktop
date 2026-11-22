@@ -8,9 +8,15 @@
 //!   links, devices, absolute paths or `..`). Its top folder names the plugin.
 //! - A folder is copied by this module with the same caps. Links (symlinks, Windows
 //!   junctions) and special files anywhere inside are refused, never followed, so nothing
-//!   outside the chosen folder is read. `.git` folders are skipped. Each file is checked to
-//!   be the one listed (same device and inode on Unix) before it is copied, and copied with
-//!   `create_new` into a fresh staging folder.
+//!   outside the chosen folder is read. `.git` folders are skipped. Because the folder can
+//!   change while it is copied:
+//!   - each folder is checked again right before it is read (`symlink_metadata`: still a
+//!     real folder, not a link or junction) and its resolved path must still be inside the
+//!     chosen folder ([`check_directory_before_entering`]);
+//!   - each file is opened without following links (`O_NOFOLLOW` on Unix,
+//!     `FILE_FLAG_OPEN_REPARSE_POINT` on Windows, refusing reparse points), then the opened
+//!     file must be the one listed (same device and inode on Unix) ([`open_listed_file`]);
+//!   - files are copied with `create_new` into a fresh staging folder.
 //! - The staged copy is then loaded exactly like a catalog plugin (`install::finish_install`:
 //!   manifest rules, the manifest's `checksums` verified by graphrt, node kind registration)
 //!   and swapped into `<plugins>/<name>`. A folder inside the plugins folder (or one that
@@ -147,27 +153,42 @@ struct CopyBudget {
 }
 
 /// Copies the plain files and folders of `source_root` into the new folder `destination_root`.
+/// `source_root` is the resolved (canonical) folder the user picked.
 fn copy_folder(source_root: &Path, destination_root: &Path) -> AppResult<()> {
     std::fs::create_dir(destination_root).map_err(|error| io_error(destination_root, &error))?;
-    copy_folder_contents(source_root, destination_root, Path::new(""), &mut CopyBudget::default())
+    let mut copy = FolderCopy { source_root, budget: CopyBudget::default() };
+    copy.copy_contents(source_root, destination_root, Path::new(""))
+}
+
+/// One folder copy: the chosen folder every path must stay in, and the caps used so far.
+struct FolderCopy<'root> {
+    source_root: &'root Path,
+    budget: CopyBudget,
+}
+
+impl FolderCopy<'_> {
+    fn copy_contents(&mut self, source_dir: &Path, destination_dir: &Path, relative: &Path) -> AppResult<()> {
+        if relative.components().count() > MAX_FOLDER_DEPTH {
+            return Err(AppError::InvalidInput("the plugin folder is nested too deeply".into()));
+        }
+        check_directory_before_entering(self.source_root, source_dir, relative)?;
+        copy_folder_contents(source_dir, destination_dir, relative, self)
+    }
 }
 
 fn copy_folder_contents(
     source_dir: &Path,
     destination_dir: &Path,
     relative: &Path,
-    budget: &mut CopyBudget,
+    copy: &mut FolderCopy<'_>,
 ) -> AppResult<()> {
-    if relative.components().count() > MAX_FOLDER_DEPTH {
-        return Err(AppError::InvalidInput("the plugin folder is nested too deeply".into()));
-    }
     let mut entries = std::fs::read_dir(source_dir)
         .and_then(|entries| entries.collect::<Result<Vec<_>, _>>())
         .map_err(|error| io_error(source_dir, &error))?;
     entries.sort_by_key(std::fs::DirEntry::file_name);
     for entry in entries {
-        budget.entries += 1;
-        if budget.entries > MAX_ENTRIES {
+        copy.budget.entries += 1;
+        if copy.budget.entries > MAX_ENTRIES {
             return Err(AppError::InvalidInput("the plugin folder has too many files".into()));
         }
         let file_name = entry.file_name();
@@ -182,9 +203,9 @@ fn copy_folder_contents(
                 continue;
             }
             std::fs::create_dir(&target).map_err(|error| io_error(&target, &error))?;
-            copy_folder_contents(&entry.path(), &target, &relative_path, budget)?;
+            copy.copy_contents(&entry.path(), &target, &relative_path)?;
         } else if file_type.is_file() {
-            copy_file(&entry.path(), &target, &relative_path, budget)?;
+            copy_file(&entry.path(), &target, &relative_path, &mut copy.budget)?;
         } else {
             return Err(refused(&relative_path, "a special file"));
         }
@@ -192,14 +213,84 @@ fn copy_folder_contents(
     Ok(())
 }
 
+/// Checks `dir` right before it is read: still a real folder (a link or junction swapped in
+/// after it was listed is refused, never followed) whose resolved path is still inside
+/// `source_root` (canonical).
+///
+/// # Errors
+/// `InvalidInput` when it changed or resolves elsewhere; `Internal` when it cannot be read.
+fn check_directory_before_entering(source_root: &Path, dir: &Path, relative: &Path) -> AppResult<()> {
+    let metadata = std::fs::symlink_metadata(dir).map_err(|error| io_error(dir, &error))?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() || is_reparse_point(&metadata) {
+        return Err(refused(relative, "a folder that changed while it was copied"));
+    }
+    let resolved = std::fs::canonicalize(dir).map_err(|error| io_error(dir, &error))?;
+    if !resolved.starts_with(source_root) {
+        return Err(refused(relative, "a folder outside the chosen folder"));
+    }
+    Ok(())
+}
+
+/// Opens `source` without following links and checks it is the plain file `listed`
+/// (`symlink_metadata` taken when the folder was listed).
+///
+/// # Errors
+/// `InvalidInput` when it is a link, a reparse point or another file than the one listed.
+fn open_listed_file(source: &Path, listed: &std::fs::Metadata, relative: &Path) -> AppResult<std::fs::File> {
+    let changed = || refused(relative, "a file that changed while it was copied");
+    if !listed.is_file() {
+        return Err(changed());
+    }
+    // A link swapped in makes the open fail (ELOOP on Unix): the file changed.
+    let file = open_without_following(source).map_err(|_| changed())?;
+    let opened = file.metadata().map_err(|error| io_error(source, &error))?;
+    if !opened.is_file() || is_reparse_point(&opened) || !is_same_file(listed, &opened) {
+        return Err(changed());
+    }
+    Ok(file)
+}
+
+/// Opens a file for reading, refusing to follow a symlink at `path` itself.
+#[cfg(unix)]
+fn open_without_following(path: &Path) -> std::io::Result<std::fs::File> {
+    use std::os::unix::fs::OpenOptionsExt;
+    std::fs::OpenOptions::new().read(true).custom_flags(libc::O_NOFOLLOW).open(path)
+}
+
+/// Opens a file for reading; a reparse point (symlink, junction) is opened itself, not its
+/// target, so [`is_reparse_point`] on the opened file catches it.
+#[cfg(windows)]
+fn open_without_following(path: &Path) -> std::io::Result<std::fs::File> {
+    use std::os::windows::fs::OpenOptionsExt;
+    /// `FILE_FLAG_OPEN_REPARSE_POINT` (winbase.h).
+    const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+    std::fs::OpenOptions::new().read(true).custom_flags(FILE_FLAG_OPEN_REPARSE_POINT).open(path)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn open_without_following(path: &Path) -> std::io::Result<std::fs::File> {
+    std::fs::File::open(path)
+}
+
+/// Whether `metadata` is a Windows reparse point (symlink, junction, mount point).
+#[cfg(windows)]
+fn is_reparse_point(metadata: &std::fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    /// `FILE_ATTRIBUTE_REPARSE_POINT` (winnt.h).
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0000_0400;
+    metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+}
+
+#[cfg(not(windows))]
+fn is_reparse_point(_metadata: &std::fs::Metadata) -> bool {
+    false
+}
+
 /// Copies one file after checking the opened file is the plain file that was listed.
 fn copy_file(source: &Path, target: &Path, relative: &Path, budget: &mut CopyBudget) -> AppResult<()> {
     let listed = std::fs::symlink_metadata(source).map_err(|error| io_error(source, &error))?;
-    let mut file = std::fs::File::open(source).map_err(|error| io_error(source, &error))?;
+    let mut file = open_listed_file(source, &listed, relative)?;
     let opened = file.metadata().map_err(|error| io_error(source, &error))?;
-    if !listed.is_file() || !opened.is_file() || !is_same_file(&listed, &opened) {
-        return Err(refused(relative, "a file that changed while it was copied"));
-    }
     budget.bytes = budget.bytes.saturating_add(opened.len());
     if budget.bytes > MAX_EXTRACTED_BYTES {
         return Err(AppError::InvalidInput("the plugin folder is too large".into()));
@@ -269,7 +360,12 @@ impl PluginService {
         let plugins_dir = self.plugins_dir.clone();
         let manifest = tokio::task::spawn_blocking(move || {
             let base_registry = crate::flow::builtin_node_registry();
-            let checks = install::InstallChecks { base_registry: &base_registry, permission_limit: None };
+            // No catalog entry to match: the version is whatever the manifest says.
+            let checks = install::InstallChecks {
+                base_registry: &base_registry,
+                permission_limit: None,
+                expected_version: None,
+            };
             install::finish_install(staged, &plugins_dir, &checks)
         })
         .await
@@ -321,5 +417,69 @@ impl PluginService {
                 log::warn!("could not delete the {variable} setting of plugin {name}: {error}");
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod race_tests {
+    use super::*;
+
+    fn canonical_tempdir() -> (tempfile::TempDir, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(dir.path()).unwrap();
+        (dir, root)
+    }
+
+    #[test]
+    fn a_real_subfolder_is_entered() {
+        let (_dir, root) = canonical_tempdir();
+        std::fs::create_dir(root.join("lib")).unwrap();
+        assert!(check_directory_before_entering(&root, &root.join("lib"), Path::new("lib")).is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_folder_swapped_for_a_link_is_not_entered() {
+        let (_dir, root) = canonical_tempdir();
+        let (_outside_dir, outside) = canonical_tempdir();
+        std::os::unix::fs::symlink(&outside, root.join("lib")).unwrap();
+        let error = check_directory_before_entering(&root, &root.join("lib"), Path::new("lib")).unwrap_err();
+        assert!(error.to_string().contains("changed while it was copied"), "{error}");
+    }
+
+    #[test]
+    fn a_folder_resolving_outside_the_chosen_folder_is_not_entered() {
+        let (_dir, root) = canonical_tempdir();
+        let (_outside_dir, outside) = canonical_tempdir();
+        let error = check_directory_before_entering(&root, &outside, Path::new("lib")).unwrap_err();
+        assert!(error.to_string().contains("outside the chosen folder"), "{error}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn files_are_opened_without_following_links() {
+        let (_dir, root) = canonical_tempdir();
+        std::fs::write(root.join("real.mjs"), b"real").unwrap();
+        std::os::unix::fs::symlink(root.join("real.mjs"), root.join("link.mjs")).unwrap();
+        let listed = std::fs::symlink_metadata(root.join("link.mjs")).unwrap();
+        assert!(open_listed_file(&root.join("link.mjs"), &listed, Path::new("link.mjs")).is_err());
+        assert!(open_without_following(&root.join("link.mjs")).is_err(), "O_NOFOLLOW refuses the link itself");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_file_replaced_after_it_was_listed_is_refused() {
+        let (_dir, root) = canonical_tempdir();
+        let path = root.join("plugin.mjs");
+        std::fs::write(&path, b"listed").unwrap();
+        let listed = std::fs::symlink_metadata(&path).unwrap();
+        std::fs::write(root.join("other.mjs"), b"swapped in").unwrap();
+        std::fs::rename(root.join("other.mjs"), &path).unwrap();
+
+        let error = open_listed_file(&path, &listed, Path::new("plugin.mjs")).unwrap_err();
+
+        assert!(error.to_string().contains("changed while it was copied"), "{error}");
+        let unchanged = std::fs::symlink_metadata(&path).unwrap();
+        assert!(open_listed_file(&path, &unchanged, Path::new("plugin.mjs")).is_ok());
     }
 }

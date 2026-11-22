@@ -5,8 +5,15 @@
 //!   missing (404), not valid JSON, too large or uses an unknown schema, v1 `index.json`
 //!   is fetched as before (at most [`catalog::MAX_CATALOG_BYTES`]). A network error or
 //!   timeout does not fall back: v1 sits on the same host, so the saved copy is used.
+//! - Every index must carry a valid minisign signature (`<index url>.minisig`, see
+//!   `catalog_signature`), checked before it is parsed. A missing or invalid v2 signature
+//!   never falls back to v1 (v1 must be signed too): the saved copy is used, and the error
+//!   is logged and returned with the catalog (`fetch_error`).
+//! - Once a v2 index was fetched on this computer (remembered on disk), v1 is never used
+//!   again, neither fetched nor read from its saved copy: a broken or removed v2 means the
+//!   saved v2 copy is used (logged), so nobody can downgrade the app to the older format.
 //! - Each catalog is saved under its own name (`plugin-catalog-v2.json`,
-//!   `plugin-catalog.json`); offline, the more recently saved one is used.
+//!   `plugin-catalog.json`); offline, the more recently saved one is used (only v2 once v2 was fetched).
 //! - After a v2 fetch, details of versions the index no longer lists are pruned and the
 //!   missing ones are fetched in the background ([`PluginService::spawn_detail_sync`]),
 //!   never blocking the caller. When new details arrive the process-wide catalog is
@@ -19,6 +26,7 @@ use std::time::{Duration, Instant};
 use chrono::{DateTime, SecondsFormat, Utc};
 
 use super::catalog::{self, CatalogOrigin, CATALOG_SCHEMA_V2};
+use super::catalog_signature::{self, MAX_SIGNATURE_BYTES, REQUIRE_CATALOG_SIGNATURE};
 use super::details::{self, DetailRef, DetailStore, RetryFailed};
 use super::download::require_https;
 use super::models::{CatalogIndex, CatalogPlugin, PluginCatalog, PluginNodeInfo};
@@ -35,10 +43,27 @@ pub(super) struct FetchedCatalog {
 /// The session's fetched catalog, shared with the background detail sync.
 pub(super) type CatalogSlot = Arc<Mutex<Option<FetchedCatalog>>>;
 
+/// Why a downloaded index could not be used.
+#[derive(Debug)]
+enum IndexError {
+    /// Fetching or parsing failed (missing, not JSON, unknown schema, network).
+    Unusable(AppError),
+    /// The signature is missing or does not verify: never a reason to try another index.
+    Signature(AppError),
+}
+
+impl IndexError {
+    fn into_app_error(self) -> AppError {
+        match self {
+            Self::Unusable(error) | Self::Signature(error) => error,
+        }
+    }
+}
+
 /// Whether a failed `index-v2.json` fetch means "use v1": the server answered but the
-/// document is missing or unusable. Network errors and timeouts do not count.
-fn falls_back_to_v1(error: &AppError) -> bool {
-    matches!(error, AppError::NotFound(_) | AppError::InvalidInput(_))
+/// document is missing or unusable. Network errors, timeouts and signature failures do not count.
+fn falls_back_to_v1(error: &IndexError) -> bool {
+    matches!(error, IndexError::Unusable(AppError::NotFound(_) | AppError::InvalidInput(_)))
 }
 
 impl PluginService {
@@ -52,14 +77,21 @@ impl PluginService {
         let (index, origin) = match in_memory {
             Some(fetched) => (
                 self.resolve(&fetched.index),
-                CatalogOrigin { from_cache: false, fetched_at: Some(rfc3339(fetched.fetched_at)) },
+                CatalogOrigin { from_cache: false, fetched_at: Some(rfc3339(fetched.fetched_at)), fetch_error: None },
             ),
             None => match self.download_catalog().await {
                 Ok(fetched) => (
                     self.resolve(&fetched.index),
-                    CatalogOrigin { from_cache: false, fetched_at: Some(rfc3339(fetched.fetched_at)) },
+                    CatalogOrigin {
+                        from_cache: false,
+                        fetched_at: Some(rfc3339(fetched.fetched_at)),
+                        fetch_error: None,
+                    },
                 ),
-                Err(error) => (self.saved_catalog_or(error)?, CatalogOrigin { from_cache: true, fetched_at: None }),
+                Err(error) => {
+                    let fetch_error = Some(error.to_string());
+                    (self.saved_catalog_or(error)?, CatalogOrigin { from_cache: true, fetched_at: None, fetch_error })
+                }
             },
         };
         Ok(catalog::catalog_view(&index, &self.catalog_matched_plugins(), origin))
@@ -178,33 +210,79 @@ impl PluginService {
             {
                 Ok(index) => {
                     log::info!("plugin catalog: using index-v2.json ({} plugins)", index.plugins.len());
+                    self.catalog_files.remember_v2();
                     return Ok(index);
                 }
+                Err(error) if falls_back_to_v1(&error) && self.catalog_files.has_seen_v2() => {
+                    let error = error.into_app_error();
+                    log::warn!("plugin catalog: index-v2.json is not usable ({error}); not falling back to v1 after v2 was used, the saved v2 copy is used");
+                    return Err(error);
+                }
                 Err(error) if falls_back_to_v1(&error) => {
+                    let error = error.into_app_error();
                     log::info!("plugin catalog: index-v2.json is not usable ({error}); falling back to v1 index.json");
                 }
-                Err(error) => return Err(error),
+                Err(error) => {
+                    let error = error.into_app_error();
+                    log::warn!("plugin catalog: index-v2.json is refused ({error}); the saved copy is used");
+                    return Err(error);
+                }
             }
         }
         let index = self
             .download_and_parse(&self.catalog_url, catalog::MAX_CATALOG_BYTES, timeout, catalog::parse_catalog)
-            .await?;
+            .await
+            .map_err(|error| {
+                let error = error.into_app_error();
+                log::warn!("plugin catalog: index.json is not usable ({error})");
+                error
+            })?;
         log::info!("plugin catalog: using v1 index.json ({} plugins)", index.plugins.len());
         Ok(index)
     }
 
+    /// Downloads an index and its signature, verifies the bytes, then parses and saves both.
     async fn download_and_parse(
         &self,
         url: &str,
         max_bytes: u64,
         timeout: Duration,
         parse: fn(&[u8]) -> AppResult<CatalogIndex>,
-    ) -> AppResult<CatalogIndex> {
-        require_https(url)?;
-        let bytes = self.downloader.fetch(url, max_bytes, timeout, None).await?;
-        let index = parse(&bytes)?;
-        catalog::write_cache(self.catalog_files.for_schema(index.schema), &bytes);
+    ) -> Result<CatalogIndex, IndexError> {
+        require_https(url).map_err(IndexError::Unusable)?;
+        let bytes = self.downloader.fetch(url, max_bytes, timeout, None).await.map_err(IndexError::Unusable)?;
+        let signature = self.download_signature(url, &bytes, timeout).await.map_err(IndexError::Signature)?;
+        let mut index = parse(&bytes).map_err(IndexError::Unusable)?;
+        self.catalog_files.save(index.schema, &bytes, signature.as_deref());
+        catalog::restrict_asset_urls(&mut index, self.catalog_files.asset_prefix.as_deref());
         Ok(index)
+    }
+
+    /// Downloads `<url>.minisig` and checks it signs `bytes` with a trusted key. Returns the
+    /// signature text, or `None` for an unsigned index when signatures are not required.
+    ///
+    /// # Errors
+    /// `InvalidInput` when the signature is missing, too large, unreadable or does not verify.
+    async fn download_signature(&self, url: &str, bytes: &[u8], timeout: Duration) -> AppResult<Option<String>> {
+        let signature_url = catalog_signature::signature_location(url);
+        let signature_bytes = match self.downloader.fetch(&signature_url, MAX_SIGNATURE_BYTES, timeout, None).await {
+            Ok(signature_bytes) => signature_bytes,
+            Err(error) if !REQUIRE_CATALOG_SIGNATURE => {
+                log::warn!(
+                    "plugin catalog {url} is not signed ({error}); accepted because signatures are not required"
+                );
+                return Ok(None);
+            }
+            Err(error) => {
+                return Err(AppError::InvalidInput(format!(
+                    "the plugin catalog signature is not valid: {signature_url} could not be downloaded ({error})"
+                )))
+            }
+        };
+        let signature = String::from_utf8(signature_bytes)
+            .map_err(|_| AppError::InvalidInput("the plugin catalog signature is not valid: it is not text".into()))?;
+        self.catalog_files.keys.verify(bytes, &signature)?;
+        Ok(Some(signature))
     }
 
     /// Publishes the known catalog process-wide (the app's service only).

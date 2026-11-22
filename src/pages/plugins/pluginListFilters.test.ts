@@ -68,7 +68,7 @@ function buildSampleItems() {
       catalogEntry('email-tool', { installedVersion: '1.0.0', permissions: { network: true, secrets: true, env: [] } }),
     ],
     generatedAt: null,
-    fromCache: false, fetchedAt: null,
+    fromCache: false, fetchedAt: null, fetchError: null,
   }
   return buildPluginListItems(catalog, [
     installedPlugin('stripe', { version: '0.9.0' }),

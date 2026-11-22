@@ -11,6 +11,7 @@ import {
   type PluginCatalog,
   type PluginEvent,
   type PluginNodeInfo,
+  type PluginPermissions,
 } from './pluginTypes'
 import type { PluginRequirement, PluginSessionState } from './pluginRequirementTypes'
 import { samplePluginsBackend, subscribeToSampleBrowserRuntimeEvents, subscribeToSamplePluginEvents } from './sampleBackend/plugins'
@@ -54,11 +55,15 @@ export function listInstalledPlugins(): Promise<InstalledPlugin[]> {
  * Downloads, verifies and loads a catalog plugin. Progress arrives as `install_progress`
  * events (see {@link listenToPluginEvents}). New plugins start untrusted.
  *
- * @throws BackendError - e.g. `not_found` for an unknown plugin, `invalid_input` when installed already
+ * @param name - Plugin name, e.g. "whatsapp-api" (string)
+ * @param approvedPermissions - What the screen showed next to the Install button and the user
+ *   approved; a downloaded plugin asking for more is refused and nothing is installed (PluginPermissions)
+ * @throws BackendError - e.g. `not_found` for an unknown plugin, `invalid_input` when installed
+ *   already or when the plugin asks for more than `approvedPermissions`
  */
-export function installPlugin(name: string): Promise<InstalledPlugin> {
-  if (!isDesktopApp()) return samplePluginsBackend.installPlugin(name)
-  return callBackend('install_plugin', { name })
+export function installPlugin(name: string, approvedPermissions: PluginPermissions): Promise<InstalledPlugin> {
+  if (!isDesktopApp()) return samplePluginsBackend.installPlugin(name, approvedPermissions)
+  return callBackend('install_plugin', { name, permissions: approvedPermissions })
 }
 
 /** What to pick for {@link pickLocalPluginPath}: a plugin folder or a `.tar.gz` archive. */
@@ -129,10 +134,19 @@ export function removePlugin(name: string): Promise<void> {
   return callBackend('remove_plugin', { name })
 }
 
-/** Trusted plugins receive their settings and plaintext secrets and may run actions. */
-export function setPluginTrusted(name: string, trusted: boolean): Promise<InstalledPlugin> {
-  if (!isDesktopApp()) return samplePluginsBackend.setPluginTrusted(name, trusted)
-  return callBackend('set_plugin_trusted', { name, trusted })
+/**
+ * Trusted plugins receive their settings and plaintext secrets and may run actions.
+ *
+ * @param name - Plugin name (string)
+ * @param trusted - Trust (true) or stop trusting (false) (boolean)
+ * @param approvedPermissions - What the screen showed next to the trust control; required to
+ *   trust, ignored when untrusting (PluginPermissions | null)
+ * @throws BackendError - `invalid_input` when trusting without `approvedPermissions` or when the
+ *   installed plugin asks for more than them (it stays untrusted)
+ */
+export function setPluginTrusted(name: string, trusted: boolean, approvedPermissions: PluginPermissions | null): Promise<InstalledPlugin> {
+  if (!isDesktopApp()) return samplePluginsBackend.setPluginTrusted(name, trusted, approvedPermissions ?? undefined)
+  return callBackend('set_plugin_trusted', { name, trusted, permissions: approvedPermissions })
 }
 
 /**

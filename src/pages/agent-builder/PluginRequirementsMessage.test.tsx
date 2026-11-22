@@ -10,6 +10,13 @@ import {
 } from '@/api/sampleBackend/plugins'
 import { AgentPluginSetupMessage } from './PluginRequirementsMessage'
 
+/** What the whatsapp-api card shows (its catalog entry), so what "Install & trust" approves. */
+const whatsAppApiPermissions = {
+  network: true,
+  secrets: true,
+  env: ['WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID', 'WHATSAPP_BUSINESS_ACCOUNT_ID', 'WHATSAPP_GRAPH_VERSION'],
+}
+
 function renderSetupMessage() {
   return render(<AgentPluginSetupMessage agentId="maps-leads" />)
 }
@@ -52,7 +59,9 @@ describe('plugin setup message in the build chat', () => {
     setSampleAgentPluginNeeds('maps-leads', [{ pluginName: 'whatsapp-api', stepId: 'send_whatsapp' }])
     const installPlugin = samplePluginsBackend.installPlugin
     let finishInstall: () => void = () => {}
-    const installSpy = vi.spyOn(samplePluginsBackend, 'installPlugin').mockImplementation((name) => new Promise<void>((resolve) => (finishInstall = resolve)).then(() => installPlugin(name)))
+    const installSpy = vi
+      .spyOn(samplePluginsBackend, 'installPlugin')
+      .mockImplementation((name, approvedPermissions) => new Promise<void>((resolve) => (finishInstall = resolve)).then(() => installPlugin(name, approvedPermissions)))
     const trustSpy = vi.spyOn(samplePluginsBackend, 'setPluginTrusted')
     const configSpy = vi.spyOn(samplePluginsBackend, 'setPluginConfig')
     renderSetupMessage()
@@ -66,8 +75,8 @@ describe('plugin setup message in the build chat', () => {
 
     await act(async () => finishInstall())
     expect(await within(card).findByLabelText('WHATSAPP_ACCESS_TOKEN')).toHaveAttribute('type', 'password')
-    expect(installSpy).toHaveBeenCalledWith('whatsapp-api')
-    expect(trustSpy).toHaveBeenCalledWith('whatsapp-api', true)
+    expect(installSpy).toHaveBeenCalledWith('whatsapp-api', whatsAppApiPermissions)
+    expect(trustSpy).toHaveBeenCalledWith('whatsapp-api', true, whatsAppApiPermissions)
     expect(installSpy.mock.invocationCallOrder[0]).toBeLessThan(trustSpy.mock.invocationCallOrder[0])
     expect(card).toHaveTextContent('Needs 2 settings')
 
@@ -122,8 +131,11 @@ describe('plugin setup message in the build chat', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Install all & trust' }))
     expect(await screen.findByRole('group', { name: 'This agent needs 2 plugins · 1 ready' })).toBeInTheDocument()
-    expect(installSpy.mock.calls).toEqual([['whatsapp-api'], ['website-check']])
-    expect(trustSpy.mock.calls).toEqual([['whatsapp-api', true]])
+    expect(installSpy.mock.calls).toEqual([
+      ['whatsapp-api', whatsAppApiPermissions],
+      ['website-check', { network: true, secrets: false, env: [] }],
+    ])
+    expect(trustSpy.mock.calls).toEqual([['whatsapp-api', true, whatsAppApiPermissions]])
     expect(screen.queryByRole('button', { name: 'Install all & trust' })).not.toBeInTheDocument()
     expect(within(screen.getByRole('article', { name: 'Website Check' })).getByText('Ready', { selector: 'span.font-medium' })).toBeInTheDocument()
   })
@@ -153,6 +165,20 @@ describe('plugin setup message in the build chat', () => {
     const card = await findCard('WhatsApp Cloud API')
     fireEvent.click(within(card).getByRole('button', { name: 'Install & trust WhatsApp Cloud API' }))
     expect(await within(card).findByRole('alert')).toHaveTextContent('Could not set up WhatsApp Cloud API: Checksum mismatch')
+  })
+
+  it('never trusts a plugin whose install was refused for asking more than the card showed', async () => {
+    setSampleAgentPluginNeeds('maps-leads', [{ pluginName: 'whatsapp-api', stepId: 'send_whatsapp' }])
+    const installSpy = vi
+      .spyOn(samplePluginsBackend, 'installPlugin')
+      .mockRejectedValue(new Error('plugin whatsapp-api 0.3.0 asks for more than you approved (the setting EXTRA); nothing was installed'))
+    const trustSpy = vi.spyOn(samplePluginsBackend, 'setPluginTrusted')
+    renderSetupMessage()
+    const card = await findCard('WhatsApp Cloud API')
+    fireEvent.click(within(card).getByRole('button', { name: 'Install & trust WhatsApp Cloud API' }))
+    expect(await within(card).findByRole('alert')).toHaveTextContent('asks for more than you approved')
+    expect(installSpy).toHaveBeenCalledWith('whatsapp-api', whatsAppApiPermissions)
+    expect(trustSpy).not.toHaveBeenCalled()
   })
 
   it('renders nothing for an agent without plugins', async () => {

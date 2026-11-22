@@ -17,13 +17,19 @@
 //! - Sideloaded (`local`) plugins are skipped: never auto-updated, never matched against
 //!   the catalog, even when it lists a plugin of the same name
 //!   ([`PluginService::catalog_matched_plugins`]).
+//! - Community plugins (`source: community` in the catalog entry or in the install record)
+//!   are never updated here, whatever they ask for: their code comes from a third party, so
+//!   each new version waits for the user and is listed in `needs_approval`
+//!   ([`hold_back_community`]).
 //! - Every automatic update is remembered (name, from → to, when) in the settings
 //!   table (`plugins.auto_updated`, newest first, at most [`HISTORY_LIMIT`]) so Home
 //!   can say "Updated google-maps-scraper to 0.2.1".
 //!
 //! "Update all" on Home uses the same rule ([`PluginService::update_all_ready`]),
-//! started by the user, so it neither waits for idle runs nor records history.
+//! started by the user, so it neither waits for idle runs nor records history. It does
+//! offer community updates (the user asked for them), with the same permission limit.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -31,8 +37,8 @@ use serde::{Deserialize, Serialize};
 
 use super::catalog::update_asks_for_more;
 use super::host::PluginState;
-use super::models::{CatalogIndex, PluginPermissions};
-use super::{InstallMode, PluginService};
+use super::models::{CatalogIndex, PluginPermissions, PluginSource};
+use super::{settings, source, InstallMode, PluginService};
 use crate::desktop::app_settings::AppSettings;
 use crate::error::AppResult;
 use crate::storage::Database;
@@ -81,7 +87,8 @@ pub struct PluginUpdateFailure {
 #[serde(rename_all = "camelCase")]
 pub struct PluginBulkUpdateSummary {
     pub updated: Vec<PluginVersionChange>,
-    /// Updates left for the user because they ask for more permissions.
+    /// Updates left for the user because they ask for more permissions (and, for
+    /// automatic updates, every community plugin update).
     pub needs_approval: Vec<String>,
     pub failed: Vec<PluginUpdateFailure>,
 }
@@ -122,6 +129,23 @@ pub(super) struct ReadyUpdate {
 pub(super) struct UpdatePlan {
     pub ready: Vec<ReadyUpdate>,
     pub needs_approval: Vec<String>,
+}
+
+/// Moves the ready updates of community plugins (`community` names) to `needs_approval`:
+/// automatic updates never install third-party code the user has not looked at.
+pub(super) fn hold_back_community(plan: UpdatePlan, community: &HashSet<String>) -> UpdatePlan {
+    let (held, ready): (Vec<ReadyUpdate>, Vec<ReadyUpdate>) =
+        plan.ready.into_iter().partition(|update| community.contains(&update.change.name));
+    let mut needs_approval = plan.needs_approval;
+    for update in held {
+        log::info!(
+            "plugin {} {} is a community plugin; the update waits for the user",
+            update.change.name,
+            update.change.to_version
+        );
+        needs_approval.push(update.change.name);
+    }
+    UpdatePlan { ready, needs_approval }
 }
 
 /// Splits the installed plugins with a newer catalog version (the same rule as the
@@ -178,11 +202,36 @@ impl PluginService {
             Err(error) => return AutoUpdateOutcome::CatalogUnavailable(error.to_string()),
         };
         let plan = plan_updates(&index, &self.catalog_matched_plugins());
+        let plan = hold_back_community(plan, &self.community_plugin_names(&index));
         let (summary, stopped_for_runs) = self.apply_plan(plan, true).await;
         if let Err(error) = record_auto_updates(&self.db, &summary.updated, &crate::storage::now_rfc3339()) {
             log::warn!("could not remember the automatic plugin updates: {error}");
         }
         AutoUpdateOutcome::Checked { summary, stopped_for_runs }
+    }
+
+    /// Plugins that are community plugins by the catalog entry or by their install record.
+    /// An unreadable install record counts every installed plugin as community (safe side).
+    fn community_plugin_names(&self, index: &CatalogIndex) -> HashSet<String> {
+        let mut names: HashSet<String> = index
+            .plugins
+            .iter()
+            .filter(|entry| source::catalog_entry_source(entry) == PluginSource::Community)
+            .map(|entry| entry.name.clone())
+            .collect();
+        match settings::install_records(&self.db) {
+            Ok(records) => names.extend(
+                records
+                    .into_iter()
+                    .filter(|(_, record)| record.source == PluginSource::Community)
+                    .map(|(name, _)| name),
+            ),
+            Err(error) => {
+                log::warn!("could not read the plugin install records; no plugin updates by itself: {error}");
+                names.extend(self.snapshot().plugins.iter().map(|plugin| plugin.name.clone()));
+            }
+        }
+        names
     }
 
     /// The remembered automatic updates, newest first.

@@ -74,7 +74,7 @@ fn catalogs_without_display_name_show_the_humanized_name() {
 #[tokio::test]
 async fn installed_plugins_keep_their_display_name_without_any_catalog() {
     let fixture = fixture_with_display_name(DISPLAY_NAME);
-    let installed = fixture.service.install(PLUGIN).await.unwrap();
+    let installed = fixture.service.install(PLUGIN, &echo_catalog_permissions()).await.unwrap();
     assert_eq!(installed.display_name, DISPLAY_NAME);
 
     std::fs::remove_file(fixture.app_data.path().join("plugin-catalog.json")).unwrap();

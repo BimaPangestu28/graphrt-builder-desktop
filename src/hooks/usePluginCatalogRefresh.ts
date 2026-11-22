@@ -62,7 +62,9 @@ export function usePluginCatalogRefresh(plugins: PluginsState): PluginCatalogRef
     setRefreshError(null)
     try {
       const refreshedCatalog = await listPluginCatalog(true)
-      if (refreshedCatalog.fromCache && isMountedRef.current) setRefreshError('the catalog could not be reached, so the last saved copy is shown')
+      if (refreshedCatalog.fromCache && isMountedRef.current) {
+        setRefreshError(refreshedCatalog.fetchError ? `${refreshedCatalog.fetchError}, so the last saved copy is shown` : 'the catalog could not be reached, so the last saved copy is shown')
+      }
       await reload()
     } catch (refreshFailure) {
       if (isMountedRef.current) setRefreshError(describeError(refreshFailure))

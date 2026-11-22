@@ -7,6 +7,69 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ## [Unreleased]
 
+### Security
+
+- **Approving a plugin never trusts more than you saw**: installing now carries the permissions
+  shown next to the Install button (the builder's requirement card, the Plugins page, Connect
+  WhatsApp, the Add node palette) as the limit for the downloaded manifest, so a catalog entry
+  that lists fewer settings or no secrets than its tarball is refused and nothing is installed.
+  Trusting (`set_plugin_trusted`) now needs the approved permissions too and is refused, with
+  the extra settings or secrets named, when the installed manifest asks for more; untrusting
+  needs no approval. The `install_plugin` command takes `permissions`, `set_plugin_trusted`
+  takes `permissions` when trusting.
+- **Plugin detail cache keys no longer collide**: saved catalog v2 details are named
+  `plugin-details/<name>@<version>.json` (`@` is valid in neither part), so `a` + `b-1.0.0` and
+  `a-b` + `1.0.0` no longer share one file. Details saved under the old dash names are removed
+  and fetched again. A detail kept in memory is only reused while the index lists the same
+  `detail_sha256`; otherwise it is checked again or refetched.
+- **Community plugin updates wait for you**: automatic updates no longer install new versions
+  of `source: community` plugins (by the catalog entry or the install record) in the
+  background, even when they ask for nothing new; they are left in `needs_approval`. "Update
+  all" still offers them, with the usual permission limit.
+- **Catalog entry and tarball must describe the same release**: installs and updates refuse a
+  downloaded manifest whose `version` differs from the catalog entry's or whose `name` is not
+  the entry's name, before anything is replaced.
+- **Plugin archives cannot exhaust memory with headers**: the decompressed tar stream is capped
+  (the 1 GiB file cap plus room for headers), and a raw pass over the headers refuses any GNU
+  long-name / long-link entry or pax header over 64 KiB before it would be read into memory, and
+  any pax header that overrides an entry size. Catalog tarballs and sideloaded archives alike.
+- **Sideloaded folders cannot be swapped while they are copied**: each folder is checked again
+  right before it is read (still a real folder, not a link or junction, and still inside the
+  chosen folder once resolved), and each file is opened without following links (`O_NOFOLLOW`
+  on Unix; `FILE_FLAG_OPEN_REPARSE_POINT` on Windows, refusing reparse points) and must be the
+  file that was listed (same device and inode on Unix).
+- **One catalog entry per plugin name**: when a catalog lists a name twice, the official entry
+  is kept (else the first one) and the others are dropped and logged, so a community entry can
+  never stand in for an official plugin.
+- **Plugin names and publishers cannot be spoofed with invisible characters**: catalog
+  `display_name` and `publisher` values with Unicode format characters (`Cf`: bidi overrides
+  and isolates, zero-width characters, soft hyphens, tags) are dropped like those with control
+  characters, and a community entry's `display_name` or `publisher` containing "official" or
+  "graphrt" (any case) is dropped. The entry stays listed under its humanized name.
+- **Catalog assets must come from the catalog's own releases**: `tarball_url`, `icon_url` and
+  `detail_url` must be under the catalog repository's `/releases/download/` (by default
+  `https://github.com/BimaPangestu28/graphrt-plugins/releases/download/`; the prefix comes
+  from the configured catalog URL, or its folder for a catalog not on GitHub releases),
+  checked on the normalized URL. Entries with a tarball elsewhere are dropped; an icon or
+  detail link elsewhere only loses that field. Redirects to GitHub's asset hosts still work.
+- **No downgrade from catalog v2 to v1**: once `index-v2.json` was fetched on a computer (kept
+  as `plugin-catalog-v2.seen` next to the saved catalogs), a missing or unusable v2 no longer
+  falls back to v1 `index.json`; the saved v2 copy is used and the problem is logged. A saved
+  v1 copy is ignored from then on.
+- **Detail prune on case-insensitive file systems**: on macOS and Windows, pruning compares
+  saved detail file names ignoring case, so a listed version saved with another case is not
+  removed (a saved file is still checked against the index checksum before use).
+- **The plugin catalog must be signed**: after `index-v2.json` or `index.json` is downloaded,
+  `<index url>.minisig` (at most 4 KB) is downloaded and the index bytes must verify against a
+  built-in minisign public key (a list, so a key rotation can ship two keys; currently key id
+  `CB1AEE339F05C2BD`) before they are parsed. There is no grace mode
+  (`REQUIRE_CATALOG_SIGNATURE`) and no user setting to change the keys. A missing or invalid
+  signature makes the index unusable: the saved copy is used, the error is logged and returned
+  as the catalog's new `fetchError` (shown on the Plugins page). The saved copy keeps its
+  `.minisig` and is verified again whenever it is read. A v2 index with a bad or missing
+  signature never falls back to v1, and v1 must be signed too. Details, icons and tarballs stay
+  covered by the sha256 values in the signed index.
+
 ## [0.1.3] - 2026-11-22
 
 ### Added

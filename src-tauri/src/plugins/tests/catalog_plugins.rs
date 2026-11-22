@@ -51,7 +51,7 @@ graph:
 async fn fixture_with_catalog() -> Fixture {
     let fixture = Fixture::new();
     fixture.publish_with_extras("1.0.0", good_tarball());
-    fixture.service.install(PLUGIN).await.unwrap();
+    fixture.service.install(PLUGIN, &echo_catalog_permissions()).await.unwrap();
     fixture
 }
 
@@ -192,7 +192,7 @@ async fn requirements_report_install_trust_settings_and_browser_state() {
 #[tokio::test]
 async fn an_installed_trusted_configured_plugin_is_ready_once_the_browser_is() {
     let fixture = fixture_with_catalog().await;
-    fixture.service.set_trusted(PLUGIN, true).await.unwrap();
+    trust(&fixture.service, PLUGIN).await.unwrap();
     fixture.service.set_config(PLUGIN, "FIXTURE_ECHO_TOKEN", "token").await.unwrap();
     let snapshot = fixture.service.snapshot();
     let records = BTreeMap::from([(
@@ -280,4 +280,32 @@ async fn flows_without_plugins_need_nothing() {
     let simple = include_str!("../../../fixtures/flows/simple_answer.yaml");
     assert!(fixture.service.requirements(simple).unwrap().is_empty());
     assert!(fixture.service.requirements("not: [a workflow").unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_catalog_entry_whose_tarball_is_on_another_host_is_dropped() {
+    let fixture = Fixture::new();
+    let tarball = good_tarball();
+    let sha = super::super::archive::sha256_hex(&tarball);
+    let mut catalog: serde_json::Value = serde_json::from_slice(&catalog_json_with_extras(
+        "1.0.0",
+        "https://elsewhere.test/fixture-echo.tar.gz",
+        &sha,
+        tarball.len(),
+    ))
+    .unwrap();
+    catalog["plugins"][1]["icon_url"] = "https://elsewhere.test/mail.svg".into();
+    fixture.downloader.serve(CATALOG_URL, serde_json::to_vec(&catalog).unwrap());
+    fixture.downloader.serve("https://elsewhere.test/fixture-echo.tar.gz", tarball);
+
+    let listed = fixture.service.catalog(true).await.unwrap();
+
+    assert!(listed.plugins.iter().all(|entry| entry.name != PLUGIN), "the entry is dropped");
+    let mail = listed.plugins.iter().find(|entry| entry.name == "fixture-mail").unwrap();
+    assert_eq!(mail.icon_url, None, "only the icon is dropped");
+    assert!(matches!(fixture.service.install(PLUGIN, &echo_catalog_permissions()).await, Err(AppError::NotFound(_))));
+    fixture.downloader.forget(CATALOG_URL);
+    let saved = fixture.restarted().catalog(false).await.unwrap();
+    assert!(saved.from_cache);
+    assert!(saved.plugins.iter().all(|entry| entry.name != PLUGIN), "also when read from the saved copy");
 }

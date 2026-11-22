@@ -7,7 +7,7 @@ use tauri::State;
 use crate::error::AppResult;
 use crate::node_runtime::BrowserRuntimeStatus;
 use crate::plugins::auto_update::{PluginAutoUpdate, PluginBulkUpdateSummary};
-use crate::plugins::models::{InstalledPlugin, PluginActionResult, PluginCatalog, PluginNodeInfo};
+use crate::plugins::models::{InstalledPlugin, PluginActionResult, PluginCatalog, PluginNodeInfo, PluginPermissions};
 use crate::plugins::requirements::PluginRequirement;
 use crate::plugins::session::SessionState;
 use crate::state::AppState;
@@ -29,9 +29,15 @@ pub fn list_installed_plugins(state: State<'_, AppState>) -> AppResult<Vec<Insta
     state.plugins.list_installed()
 }
 
+/// `permissions` is what the install card showed and the user approved; a downloaded
+/// plugin asking for more is refused.
 #[tauri::command]
-pub async fn install_plugin(state: State<'_, AppState>, name: String) -> AppResult<InstalledPlugin> {
-    state.plugins.install(name.trim()).await
+pub async fn install_plugin(
+    state: State<'_, AppState>,
+    name: String,
+    permissions: PluginPermissions,
+) -> AppResult<InstalledPlugin> {
+    state.plugins.install(name.trim(), &permissions).await
 }
 
 /// Installs a plugin from a folder or `.tar.gz` on this computer (Developer mode only).
@@ -67,10 +73,17 @@ pub async fn remove_plugin(state: State<'_, AppState>, name: String) -> AppResul
     state.plugins.remove(name.trim()).await
 }
 
-/// Trusting grants the plugin its requested settings and plaintext secrets.
+/// Trusting grants the plugin its requested settings and plaintext secrets. Trusting needs
+/// `permissions`, what the user saw and approved; it is refused when the installed plugin
+/// asks for more.
 #[tauri::command]
-pub async fn set_plugin_trusted(state: State<'_, AppState>, name: String, trusted: bool) -> AppResult<InstalledPlugin> {
-    state.plugins.set_trusted(name.trim(), trusted).await
+pub async fn set_plugin_trusted(
+    state: State<'_, AppState>,
+    name: String,
+    trusted: bool,
+    permissions: Option<PluginPermissions>,
+) -> AppResult<InstalledPlugin> {
+    state.plugins.set_trusted(name.trim(), trusted, permissions.as_ref()).await
 }
 
 #[tauri::command]

@@ -122,10 +122,15 @@ function useInstallProgressLines(reload: () => Promise<unknown>) {
   return { progressByName, clearProgress }
 }
 
-/** Install, then trust when needed, for one requirement. */
+/**
+ * Install, then trust when needed, for one requirement. Both calls carry the permissions the
+ * card showed: the backend refuses a downloaded or installed plugin asking for more, so a
+ * catalog that understates its tarball never gets trusted with more than the user saw.
+ */
 async function installAndTrust(requirement: PluginRequirement): Promise<void> {
-  if (!requirement.installed) await installPlugin(requirement.name)
-  if (!requirement.trusted && !requirement.trustNotNeeded) await setPluginTrusted(requirement.name, true)
+  const shownPermissions = { network: requirement.permissions.network, secrets: requirement.permissions.secrets, env: [...requirement.permissions.env] }
+  if (!requirement.installed) await installPlugin(requirement.name, shownPermissions)
+  if (!requirement.trusted && !requirement.trustNotNeeded) await setPluginTrusted(requirement.name, true, shownPermissions)
 }
 
 /** The approvals (one plugin or all of them) with their busy and error state. */
