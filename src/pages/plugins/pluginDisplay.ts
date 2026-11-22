@@ -240,11 +240,6 @@ export function describeInstallProgress(progress: PluginInstallProgress): string
   return `${stageLabel}…`
 }
 
-/** Settings the plugin requests that have no value yet. */
-export function listMissingSettings(installedPlugin: InstalledPlugin): string[] {
-  return installedPlugin.config.filter((setting) => !setting.configured).map((setting) => setting.name)
-}
-
 /**
  * Whether a plugin's steps can run: it loaded, and it is trusted when it asks for
  * settings or secrets (untrusted plugins never receive them). Manifests do not say

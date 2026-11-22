@@ -10,13 +10,6 @@ const statusDotTones: Record<AgentStatus, StatusDotTone> = {
   tested: 'brand',
 }
 
-const statusLabels: Record<AgentStatus, string> = {
-  active: 'Active',
-  paused: 'Paused',
-  draft: 'Draft',
-  tested: 'Tested',
-}
-
 /** Kind tag shown next to an agent name; plain task agents have none. */
 const kindLabels: Record<AgentKind, string | undefined> = {
   task: undefined,
@@ -43,11 +36,6 @@ const providerNames: Record<ModelProvider, string> = {
 /** Sidebar dot colour for an agent status (active → ok, paused → paused, draft/tested → brand). */
 export function getStatusDotTone(status: AgentStatus): StatusDotTone {
   return statusDotTones[status]
-}
-
-/** "Active", "Paused", "Draft" or "Tested". */
-export function getStatusLabel(status: AgentStatus): string {
-  return statusLabels[status]
 }
 
 /** "Chatbot", "Chain", "Team", or undefined for task agents. */
