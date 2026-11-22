@@ -75,7 +75,11 @@ fi
 built_version="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app_path/Contents/Info.plist")"
 [ "$built_version" = "$version" ] || { echo "built app is $built_version, expected $version" >&2; exit 1; }
 codesign --verify --deep --strict "$app_path"
-"$app_path/Contents/MacOS/graphrt-node" -e 1
+# Node.js is downloaded on demand, never bundled: a stray sidecar would add ~110 MB.
+if [ -e "$app_path/Contents/MacOS/graphrt-node" ]; then
+  echo "the app bundles graphrt-node; release builds must not (see scripts/fetch-node.sh)" >&2
+  exit 1
+fi
 
 ditto -c -k --keepParent "$app_path" "$work_dir/graphrt.zip"
 notarize_and_staple "$work_dir/graphrt.zip" "$app_path"

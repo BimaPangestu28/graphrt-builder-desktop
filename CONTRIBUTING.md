@@ -11,7 +11,7 @@ for your system:
 
 - **macOS**: Xcode Command Line Tools (`xcode-select --install`).
 - **Windows**: Microsoft C++ Build Tools with "Desktop development with C++",
-  WebView2 (preinstalled on Windows 11) and Git for Windows. Run
+  WebView2 (preinstalled on Windows 11) and Git for Windows. Run the optional
   `scripts/fetch-node.sh` from Git Bash (it needs bash, curl, unzip or
   PowerShell, and gpg, all included); `pnpm` commands work in any shell.
 - **Linux** (Debian / Ubuntu 22.04+; package names for other distributions are on
@@ -27,7 +27,7 @@ Then:
 
 ```sh
 pnpm install
-scripts/fetch-node.sh   # bundled Node.js sidecar (see below); Windows: in Git Bash
+scripts/fetch-node.sh   # optional local Node.js for debug builds (see below); Windows: in Git Bash
 pnpm dev:desktop   # desktop window with hot reload
 pnpm dev           # interface only, in the browser at http://localhost:5173
 ```
@@ -52,28 +52,35 @@ pnpm dev           # interface only, in the browser at http://localhost:5173
 
 Open `#/screens` to jump to any screen.
 
-### Bundled Node.js
+### The plugin runtime (Node.js, downloaded on demand)
 
-graphrt plugins are Node programs, so the app ships Node as a Tauri sidecar
-(`bundle.externalBin: ["binaries/graphrt-node"]`). `scripts/fetch-node.sh [<target-triple>...]`
-downloads the version pinned in `scripts/node-version` from nodejs.org, checks it
-against `SHASUMS256.txt` (whose signature is verified against pinned Node.js
-release keys when `gpg` is installed; CI makes gpg mandatory with
-`GRAPHRT_REQUIRE_NODE_SIGNATURE=1`) and writes `src-tauri/binaries/graphrt-node-<triple>[.exe]`
-(gitignored). Supported targets: `aarch64-apple-darwin`, `x86_64-apple-darwin`,
-`universal-apple-darwin`, `x86_64-pc-windows-msvc`, `aarch64-pc-windows-msvc`,
-`x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu`. The default target is the host; `universal-apple-darwin` fetches
-both macOS arches and lipo's them into `node-universal-apple-darwin`, which Tauri
-needs for `--target universal-apple-darwin`.
+graphrt plugins are Node programs. The app does **not** bundle Node: the first time the
+user installs or sets up a plugin the UI asks (agents whose plugins lack it also show it under problems), and
+`src-tauri/src/node_runtime/release.rs` downloads the official archive of the version in
+`scripts/node-version` from `https://nodejs.org/dist/v<version>/` (that exact URL only,
+size-capped), checks it against the SHA-256 pinned per platform in
+`scripts/node-checksums.txt`, extracts only `bin/node` (`node.exe` on Windows) and installs
+it atomically as `<app data>/runtime/node-<version>/node`, after running `node --version`.
 
-- `pnpm dev:desktop` / `pnpm build:desktop` run `scripts/check-node-sidecar.mjs`
-  first and stop with the fetch command when the sidecar is missing or outdated.
-  Nothing is downloaded automatically, so builds never hit the network by surprise.
-- `cargo test` / `cargo clippy` / `cargo build` (debug) work without the sidecar:
-  `src-tauri/build.rs` then drops `externalBin` and warns; the app falls back to
-  a `node` on PATH in debug builds only. Release cargo builds fail without it.
-- To upgrade Node, change `scripts/node-version`, run `scripts/fetch-node.sh`
-  and commit `src-tauri/licenses/node-LICENSE.txt` if the script updated it.
+- **The pin.** `src-tauri/build.rs` compiles `scripts/node-version` and
+  `scripts/node-checksums.txt` into the binary and fails the build when they disagree.
+  `scripts/fetch-node.sh --update-checksums` writes the checksums file from the
+  GPG-verified `SHASUMS256.txt` (signature checked against pinned Node.js release keys);
+  CI runs `scripts/fetch-node.sh --verify-checksums` with `GRAPHRT_REQUIRE_NODE_SIGNATURE=1`.
+- **To upgrade Node**: change `scripts/node-version`, run
+  `scripts/fetch-node.sh --update-checksums`, commit both files.
+- **macOS signing**: Node's release binaries carry the Node.js project's Developer ID,
+  hardened runtime and their own JIT / library-validation entitlements, so the downloaded
+  `node` (spawned as a separate process) JITs and loads native addons such as `sharp`
+  regardless of graphrt's entitlements. The app's HTTP client sets no quarantine flag
+  (one is removed defensively), so Gatekeeper does not prompt.
+- **Development copy (optional).** `scripts/fetch-node.sh [<target-triple>...]` puts the same
+  official binary at `src-tauri/binaries/graphrt-node-<triple>[.exe]` (gitignored). Debug
+  builds use it when present (`GRAPHRT_IGNORE_DEV_NODE=1` skips it, to try the download
+  flow), then a `node` on PATH. Release builds use only the downloaded runtime.
+  `scripts/check-node-sidecar.mjs` (before `pnpm dev:desktop`) only warns about a missing
+  or stale copy. `cargo test` / `cargo clippy` never need the network; the real download is
+  an ignored test: `cargo test real_node_download -- --ignored`.
 
 ## Before opening a pull request
 

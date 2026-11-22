@@ -199,6 +199,7 @@ describe('Needs you', () => {
     expect(describePluginGap(buildRequirement({ installed: false }))).toBe("WhatsApp Cloud API isn't installed")
     expect(describePluginGap(buildRequirement({ trusted: false }))).toBe("WhatsApp Cloud API isn't trusted yet")
     expect(describePluginGap(buildRequirement({ trusted: false, trustNotNeeded: true, browserReady: false }))).toBe('WhatsApp Cloud API needs the browser installed')
+    expect(describePluginGap(buildRequirement({ trusted: false, trustNotNeeded: true, nodeRuntimeReady: false }))).toBe('WhatsApp Cloud API needs the plugin runtime installed')
     expect(describePluginGap(buildRequirement({ name: 'whatsapp-web', displayName: 'WhatsApp Web', needsSession: true, sessionLinked: false }))).toBe("WhatsApp Web isn't linked yet")
   })
 })

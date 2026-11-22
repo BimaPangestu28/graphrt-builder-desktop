@@ -7,13 +7,19 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ## [Unreleased]
 
+### Changed
+
+- **The app no longer bundles Node.js** (it was 79% of the macOS app). Apple Silicon release build: `graphrt.app` 114.5 MiB → 28.2 MiB, updater `.app.tar.gz` 44.6 → 12.9 MiB, `.dmg` 50.0 → 13.9 MiB (the app binary grows 0.2 MB for the xz/zip readers). Plugins run on the "plugin runtime", the official Node.js release pinned in `scripts/node-version`, which graphrt downloads from nodejs.org the first time it is needed and only after the user says so: installing a plugin shows "Also downloads the plugin runtime (Node.js, about 30 MB download)" in the same approval, and the Plugins page, plugin pages, the builder's plugin card, Home's problems and Settings › Runner › Plugin runtime offer **Install plugin runtime**. The archive's SHA-256 is pinned per platform in `scripts/node-checksums.txt` (generated from Node's GPG-signed `SHASUMS256.txt` by `scripts/fetch-node.sh --update-checksums`, verified in CI) and compiled into the app by `build.rs`; only `https://nodejs.org/dist/v<version>/<archive>` is fetched (size-capped), only `bin/node` is extracted, and it is installed atomically into `<app data>/runtime/node-<version>/` after `node --version` checks out. Offline, the install fails with a clear message and can be retried. Settings can remove it again.
+- **Updating from 0.1.x**: installed plugins need the runtime once. A notice ("Your plugins need a one-time download") offers **Download now** or **Later**; nothing downloads until the user clicks. "Later" is remembered for that Node version, and the Plugins page banner, the plugin's setup steps, the builder card and Home's problem list keep offering it. A run whose plugin could not start for lack of it is explained as "The plugin runtime is not installed", with an install button.
+- `scripts/fetch-node.sh` now maintains the checksum pin (`--update-checksums`, `--verify-checksums`) and, optionally, a development copy in `src-tauri/binaries/` that debug builds use (unstripped, exactly as released). Release builds and CI no longer fetch or bundle Node; `scripts/check-node-sidecar.mjs` only warns before `pnpm dev:desktop`; the release script refuses an app that still contains `graphrt-node`.
+
 ### Added
 
 - `scripts/release-macos-local.sh`: build (or reuse a build), sign with Developer ID, notarize and staple the app and dmg, sign the updater bundle, write `latest.json` and publish a GitHub release from a Mac. Notarizes with an App Store Connect API key (`NOTARY_KEY`, `NOTARY_KEY_ID`, `NOTARY_ISSUER`) or a notarytool keychain profile.
 
 ### Fixed
 
-- Release builds refuse a Node.js sidecar fetched before stripping was added (its stamp lacks "stripped"), so a stale 22 MB-larger binary can no longer ship by accident. Dev builds are unaffected; `GRAPHRT_SKIP_NODE_STRIP=1` opts out.
+- The browser runtime's install progress shows Playwright's output lines again (the app read only `message`, while the backend sends `line`).
 
 ## [0.1.4] - 2026-11-22
 

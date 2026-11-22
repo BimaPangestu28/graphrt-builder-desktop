@@ -21,6 +21,15 @@ use crate::storage::Database;
 /// Error stored by `fail_interrupted_runs` for runs cut off by a quit or crash.
 const INTERRUPTED_RUN_MESSAGE: &str = "The app closed while this run was in progress";
 /// Words in graphrt / provider errors that mean a sign-in or key was refused.
+/// graphrt's error when a plugin process cannot start because the plugin runtime is not
+/// installed yet: `cannot run `<app data>/runtime/node-<version>/node`: No such file...`.
+const PLUGIN_RUNTIME_MARKERS: &[&str] = &["runtime/node-", "runtime\\node-"];
+
+/// Whether `lowered` (a lowercased error) says a plugin could not start because Node is missing.
+fn is_missing_plugin_runtime(lowered: &str) -> bool {
+    lowered.contains("cannot run `") && contains_any(lowered, PLUGIN_RUNTIME_MARKERS)
+}
+
 const SIGNED_OUT_MARKERS: &[&str] = &[
     "401",
     "403",
@@ -166,6 +175,16 @@ pub(super) fn explain_failure(run: &Run, facts: &FailureFacts) -> FailureExplana
             ),
             fix_steps: vec!["Retry from the start".into()],
             fix_action: None,
+        };
+    }
+    if is_missing_plugin_runtime(&lowered) {
+        return FailureExplanation {
+            title: "The plugin runtime is not installed".into(),
+            explanation: format!(
+                "{step} uses a plugin, and plugins run on Node.js, which graphrt downloads once (about 30 MB). {nothing_after}"
+            ),
+            fix_steps: vec!["Install the plugin runtime".into(), retry_step],
+            fix_action: Some(ProblemAction::new(ProblemActionKind::InstallPluginRuntime, "Install the plugin runtime")),
         };
     }
     if contains_any(&lowered, SIGNED_OUT_MARKERS) {

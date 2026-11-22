@@ -208,6 +208,24 @@ fn failed_run_report_lists_steps_and_graphrt_error() {
 }
 
 #[test]
+fn a_plugin_that_cannot_start_without_the_runtime_offers_to_install_it() {
+    let fixture = Fixture::new();
+    let agent = fixture.agent("Answers", SIMPLE_ANSWER);
+    let run = fixture.db.insert_run(&agent.id, 1, RunTrigger::Manual).unwrap();
+    let error = "plugin call failed: cannot run `/Users/me/Library/Application Support/com.graphrt.desktop/runtime/node-22.23.5/node`: No such file or directory (os error 2)";
+    fixture.db.finish_run(&run.id, RunStatus::Failed, None, Some(error)).unwrap();
+    let report = failed_run_report(&fixture.db, &run.id).unwrap();
+    assert_eq!(report.title, "The plugin runtime is not installed");
+    assert_eq!(report.fix_action.map(|action| action.kind), Some(ProblemActionKind::InstallPluginRuntime));
+
+    let windows = fixture.db.insert_run(&agent.id, 1, RunTrigger::Manual).unwrap();
+    let windows_error =
+        r"cannot run `C:\Users\me\AppData\Roaming\com.graphrt.desktop\runtime\node-22.23.5\node.exe`: not found";
+    fixture.db.finish_run(&windows.id, RunStatus::Failed, None, Some(windows_error)).unwrap();
+    assert_eq!(failed_run_report(&fixture.db, &windows.id).unwrap().title, "The plugin runtime is not installed");
+}
+
+#[test]
 fn signed_out_and_interrupted_runs_get_their_own_explanation() {
     let fixture = Fixture::new();
     let agent = fixture.agent("Answers", SIMPLE_ANSWER);

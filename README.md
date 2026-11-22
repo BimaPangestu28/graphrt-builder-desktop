@@ -30,7 +30,7 @@ Building from source needs:
 - Rust 1.90+ (stable)
 - The [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your system:
   - **macOS**: Xcode Command Line Tools (`xcode-select --install`)
-  - **Windows**: Microsoft C++ Build Tools ("Desktop development with C++"), WebView2, and Git for Windows (its Git Bash runs `scripts/fetch-node.sh`)
+  - **Windows**: Microsoft C++ Build Tools ("Desktop development with C++"), WebView2, and Git for Windows (its Git Bash runs the optional `scripts/fetch-node.sh`)
   - **Linux** (Debian / Ubuntu; see the Tauri page for Fedora, Arch, openSUSE):
     ```bash
     sudo apt install build-essential pkg-config file patchelf libwebkit2gtk-4.1-dev \
@@ -51,16 +51,22 @@ on macOS, `sha256sum -c SHA256SUMS --ignore-missing` on Linux,
 | Windows x64 | `graphrt_<version>_x64-setup.exe` (NSIS) or `graphrt_<version>_x64_en-US.msi` | Run the installer; the `.exe` installs for your user only, without admin rights |
 | Linux x64 / arm64 | `.AppImage`, `.deb` or `.rpm` (`amd64` / `x86_64` or `arm64` / `aarch64`) | `.deb`: `sudo apt install ./graphrt_<version>_amd64.deb`; `.rpm`: `sudo dnf install ./graphrt-<version>-1.x86_64.rpm`; `.AppImage`: `chmod +x` it and run it (needs FUSE 2, `libfuse2` on Ubuntu) |
 
-The app ships its own **Node.js 22 LTS** runtime, which graphrt plugins run on,
-so you do not need to install Node. It adds about 110 MB per architecture to the
-installed app (about 37 MB to the download); the universal macOS app carries both
-architectures (about +225 MB installed, +75 MB download). Plugins that drive a
+graphrt plugins run on **Node.js 22 LTS** ("the plugin runtime"), which you do not
+need to install yourself, and which the app does not bundle either (it used to be 79% of
+the macOS app). The first time you install or set up a plugin, graphrt asks to download
+it: the official release pinned in `scripts/node-version` comes from nodejs.org (about
+30 MB; about 110 MB on disk), is checked against a SHA-256 built into the app (taken
+from Node's GPG-signed `SHASUMS256.txt`) and goes to `runtime/node-<version>/` in the
+app data folder. Nothing downloads without your OK; offline, the install says so and
+can be retried. Settings > Runner > Plugin runtime shows it and can remove it.
+Updating from 0.1.x (which bundled Node): installed plugins need the runtime once;
+a notice offers **Download now** (or **Later**; the Plugins page, plugin pages, the
+builder and Home keep offering it), and nothing downloads until you click.
+Plugins that drive a
 browser (Google Maps scraper, WhatsApp Web) download Chromium on first use into
 Playwright's usual cache (`~/Library/Caches/ms-playwright` on macOS,
 `%USERPROFILE%\AppData\Local\ms-playwright` on Windows, `~/.cache/ms-playwright`
-on Linux): roughly 250 MB to download and 600 MB on disk. Node's licence and the
-notices of the libraries it bundles ship inside the app at
-`licenses/node-LICENSE.txt` (in `graphrt.app/Contents/Resources` on macOS).
+on Linux): roughly 250 MB to download and 600 MB on disk.
 
 > **Builds are not signed yet.** **macOS**: on first launch, right-click the app in
 > Applications and choose **Open**, then confirm. On macOS 15 or later, if there is
@@ -93,12 +99,11 @@ signature does not match is rejected. On Linux, in-app updates replace the
 ### From source
 ```bash
 pnpm install
-scripts/fetch-node.sh   # bundled Node.js sidecar for this machine (once, ~40 MB download)
+scripts/fetch-node.sh   # optional: a local Node.js for debug builds (~30 MB download)
                         # Windows: run it in Git Bash, or `bash scripts/fetch-node.sh`
 ```
-`pnpm dev:desktop` and `pnpm build:desktop` stop with a message pointing at
-`scripts/fetch-node.sh` when the sidecar is missing or outdated. `cargo test` and
-`cargo clippy` do not need it.
+Without it, debug builds use the plugin runtime the app downloads (or a `node` on PATH).
+Release builds bundle no Node. `cargo test` and `cargo clippy` need no network.
 
 ## Quick Start
 ```bash
@@ -133,7 +138,8 @@ src-tauri/            Rust shell (Tauri 2): window, bundling, future local runne
 ## Configuration
 - Window size, app identifier and CSP: `src-tauri/tauri.conf.json`
 - Update endpoint and the updater's public key: `plugins.updater` in `src-tauri/tauri.conf.json`
-- Bundled Node.js version: `scripts/node-version` (fetched by `scripts/fetch-node.sh`)
+- Plugin runtime (Node.js) version: `scripts/node-version`, with its archive checksums in
+  `scripts/node-checksums.txt` (`scripts/fetch-node.sh --update-checksums`)
 - Design tokens (colors, font): `src/index.css`
 
 ## Privacy

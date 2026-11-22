@@ -1,11 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Signed (hardened runtime) macOS builds: the bundled Node sidecar (graphrt-node)
-  runs V8, which compiles JavaScript at run time and needs the first two exceptions.
-  Plugins also ship native Node addons (e.g. sharp, @napi-rs/canvas, ssh2) that are
-  signed by their authors or not at all, so library validation must be off for
-  graphrt-node to load them. The app's own code does not rely on these.
+  Signed (hardened runtime) macOS builds. Up to 0.1.x the app bundled Node.js as a
+  sidecar that inherited these exceptions (V8's JIT, unsigned native addons such as
+  sharp). Node is now downloaded on demand into the app data folder and runs as its
+  own process under its own signature: the Node.js project signs its release binaries
+  with its Developer ID and hardened runtime plus allow-jit, allow-unsigned-executable-memory
+  and disable-library-validation, so these entitlements of graphrt no longer apply to it
+  (verified: a hardened parent without them starts the downloaded node, which loads sharp).
+  The app's own code does not rely on them; they are kept for now so this change does
+  not alter the signing setup, and can be dropped after a signed, notarized build is
+  verified without them.
 -->
 <plist version="1.0">
 <dict>
