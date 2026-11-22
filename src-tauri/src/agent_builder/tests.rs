@@ -221,6 +221,26 @@ async fn unavailable_model_provider_is_sent_back_for_repair() {
 }
 
 #[tokio::test]
+async fn steps_a_local_cli_cannot_run_are_sent_back_for_repair() {
+    let db = test_database();
+    let cli_draft = SIMPLE_ANSWER.replace(
+        "      model:\n        provider: openai\n        name: gpt-4o-mini\n",
+        "      vision: { enabled: true }\n      model:\n        provider: claude-code-cli\n        name: default\n",
+    );
+    let (mock, mut builder) =
+        mock_builder(&[fenced_reply("Quick answers", &cli_draft), fenced_reply("Quick answers", SIMPLE_ANSWER)]);
+    builder.available_providers = vec!["openai".into(), "claude-code-cli".into()];
+    builder.choice = ModelChoice { provider: ModelProvider::ClaudeCodeCli, name: "default".into() };
+
+    build_agent_with_model(&db, &builder, request("Answer a question", None), &|_| {}).await.unwrap();
+
+    let system_prompt = mock.requests()[0].messages[0].text();
+    assert!(system_prompt.contains("cannot call tools and cannot read images"), "the builder is told up front");
+    let repair_text = mock.requests()[1].messages[3].text();
+    assert!(repair_text.contains("can't read images"), "{repair_text}");
+}
+
+#[tokio::test]
 async fn reply_without_document_is_repaired() {
     let db = test_database();
     let (_mock, builder) =

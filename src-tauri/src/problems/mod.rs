@@ -117,6 +117,15 @@ fn failed_run_problems(db: &Database, runs: &[Run], agent_names: &HashMap<&str, 
     Ok(problems)
 }
 
+/// "OpenAI key", or "Claude Code turned on" for a local CLI provider.
+fn missing_provider_label(provider: &str) -> String {
+    if crate::local_cli::LocalCli::from_provider_name(provider).is_some() {
+        format!("{} turned on in Connections", provider_display_name(provider))
+    } else {
+        format!("{} key", provider_display_name(provider))
+    }
+}
+
 /// What one agent is missing, in plain words ("OpenAI key", "WEATHER_TOKEN").
 struct MissingItems {
     labels: Vec<String>,
@@ -136,7 +145,7 @@ fn missing_items(sources: &ProblemSources<'_>, needs: &FlowNeeds) -> AppResult<M
         .model_providers
         .iter()
         .filter(|provider| !is_configured(provider))
-        .map(|provider| format!("{} key", provider_display_name(provider)))
+        .map(|provider| missing_provider_label(provider))
         .collect();
     for env_need in needs.env.iter().filter(|env_need| env_need.required) {
         if !sources.credentials.has_workflow_secret(&env_need.name)? {

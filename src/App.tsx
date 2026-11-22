@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
-import { hasUsableModelProvider } from './lib/firstLaunch'
+import { hasFinishedWelcome } from './lib/firstLaunch'
 import { agentRoutePatterns, connectionsTabPattern, knowledgeDetailPattern, pluginDetailPattern, routePaths } from './routes'
 import { ScreenIndexPage } from './pages/ScreenIndexPage'
 import { WelcomePage } from './pages/WelcomePage'
@@ -63,12 +63,12 @@ const screenRoutes = [
   { path: pluginDetailPattern, element: <PluginDetailPage /> },
 ]
 
-/** `/`: Welcome until a model provider is set up (first launch), Home afterwards. */
+/** `/`: Welcome on first launch (until a choice is made or a model is connected), Home afterwards. */
 function StartRedirect() {
   const [isProviderReady, setIsProviderReady] = useState<boolean | null>(null)
   useEffect(() => {
     let isMounted = true
-    void hasUsableModelProvider().then((isReady) => {
+    void hasFinishedWelcome().then((isReady) => {
       if (isMounted) setIsProviderReady(isReady)
     })
     return () => {

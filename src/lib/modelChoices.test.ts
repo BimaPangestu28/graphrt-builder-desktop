@@ -1,12 +1,12 @@
 import type { ProviderModels } from '@/api/modelCatalogTypes'
 import type { ProviderStatus } from '@/api/types'
-import { buildModelOptionGroups } from './modelChoices'
+import { buildModelOptionGroups, describeCompactModelChoice, describeModelChoice, describeModelName, recommendedModelFor } from './modelChoices'
 
 const statuses: ProviderStatus[] = [
-  { provider: 'openai', configured: true, baseUrl: null },
-  { provider: 'anthropic', configured: false, baseUrl: null },
-  { provider: 'deepseek', configured: true, baseUrl: null },
-  { provider: 'ollama', configured: true, baseUrl: 'http://localhost:11434' },
+  { provider: 'openai', configured: true, baseUrl: null, localCli: null },
+  { provider: 'anthropic', configured: false, baseUrl: null, localCli: null },
+  { provider: 'deepseek', configured: true, baseUrl: null, localCli: null },
+  { provider: 'ollama', configured: true, baseUrl: 'http://localhost:11434', localCli: null },
 ]
 
 describe('buildModelOptionGroups', () => {
@@ -37,5 +37,40 @@ describe('buildModelOptionGroups', () => {
     const withOllama: ProviderModels[] = [{ provider: 'ollama', models: [{ id: 'qwen2.5:14b', displayName: null }], error: null }]
     expect(buildModelOptionGroups({ provider: 'openai', name: 'gpt-4o-mini' }, statuses, []).map((group) => group.provider)).not.toContain('ollama')
     expect(buildModelOptionGroups({ provider: 'openai', name: 'gpt-4o-mini' }, statuses, withOllama).map((group) => group.provider)).toContain('ollama')
+  })
+})
+
+describe('local CLI models in pickers', () => {
+  const claudeCodeStatus: ProviderStatus = {
+    provider: 'claude-code-cli',
+    configured: true,
+    baseUrl: null,
+    localCli: { enabled: true, installed: true, version: '2.1.330 (Claude Code)', path: '/Users/you/.local/bin/claude', signIn: 'signed_in', installUrl: 'https://docs.claude.com/en/docs/claude-code/setup' },
+  }
+  const codexOffStatus: ProviderStatus = {
+    provider: 'codex-cli',
+    configured: false,
+    baseUrl: null,
+    localCli: { enabled: false, installed: true, version: 'codex-cli 0.142.2', path: '/usr/local/bin/codex', signIn: 'signed_in', installUrl: 'https://developers.openai.com/codex/cli' },
+  }
+
+  it('groups a turned-on CLI under its provider with CLI default first, and leaves out one that is off', () => {
+    const catalog: ProviderModels[] = [
+      { provider: 'claude-code-cli', models: [{ id: 'sonnet', displayName: 'Sonnet (latest)' }, { id: 'default', displayName: 'CLI default' }], error: null },
+    ]
+    const groups = buildModelOptionGroups({ provider: 'openai', name: 'gpt-4o-mini' }, [...statuses, claudeCodeStatus, codexOffStatus], catalog)
+    const claudeCodeGroup = groups.find((group) => group.provider === 'claude-code-cli')
+    expect(claudeCodeGroup?.label).toBe('Claude Code (on this computer)')
+    expect(claudeCodeGroup?.choices.map((choice) => choice.name)).toEqual(['default', 'sonnet'])
+    expect(groups.map((group) => group.provider)).not.toContain('codex-cli')
+  })
+
+  it('labels the CLI default model "CLI default" and recommends it', () => {
+    expect(recommendedModelFor('codex-cli')).toEqual({ provider: 'codex-cli', name: 'default' })
+    expect(describeModelName({ provider: 'claude-code-cli', name: 'default' })).toBe('CLI default')
+    expect(describeModelName({ provider: 'claude-code-cli', name: 'opus' })).toBe('opus')
+    expect(describeModelName({ provider: 'openai', name: 'default' })).toBe('default')
+    expect(describeCompactModelChoice({ provider: 'claude-code-cli', name: 'default' })).toBe('Claude Code · CLI default')
+    expect(describeModelChoice({ provider: 'codex-cli', name: 'default' })).toBe('Codex (on this computer) CLI default')
   })
 })

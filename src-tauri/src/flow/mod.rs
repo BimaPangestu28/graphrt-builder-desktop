@@ -206,6 +206,24 @@ pub fn find_placeholder_http_steps(flow_yaml: &str) -> AppResult<Vec<String>> {
     Ok(placeholders::placeholder_http_steps(&graph))
 }
 
+/// Steps a local CLI model provider cannot run (a "Run an agent" step with tools,
+/// images), each as a plain-language message naming the step.
+///
+/// # Errors
+/// Same as [`compile_flow`]: the document is compiled first.
+pub fn find_local_cli_capability_gaps(flow_yaml: &str) -> AppResult<Vec<String>> {
+    let graph = compile_draft(flow_yaml)?;
+    Ok(graph
+        .nodes()
+        .iter()
+        .filter_map(|node| {
+            let gap = crate::local_cli::capability::capability_gap(&node.kind, &node.doc.config)?;
+            let title = describe_node(&node.kind, node.doc.title.as_deref(), &node.doc.config).title;
+            Some(gap.message(&title))
+        })
+        .collect())
+}
+
 /// How the builder and run screens describe one node, from its kind, title and config.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NodeDescription {

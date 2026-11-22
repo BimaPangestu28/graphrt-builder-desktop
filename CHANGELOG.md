@@ -7,6 +7,36 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ## [Unreleased]
 
+### Added
+
+- **Use Claude Code or Codex already signed in on this computer (Experimental)**: two new
+  model providers, `claude-code-cli` and `codex-cli`, run the user's own installed CLI as a
+  subprocess, the way they would in a terminal. graphrt never reads, copies or logs their
+  credential files or tokens and never puts a secret on the command line (the prompt goes
+  through stdin, Claude Code's system prompt through a file). Each call runs in a throwaway
+  working folder with no tools (Claude Code `-p --output-format stream-json --tools ""` plus
+  `--safe-mode` and friends when the installed version lists them; Codex `exec --json
+  --sandbox read-only --ephemeral`), streams its answer, has a timeout, and the process is
+  killed on Stop run / Stop the builder. Detection looks in `PATH`, the common install folders
+  and the login shell's `PATH` (macOS GUI apps do not inherit it) and reads the version and the
+  CLI's own sign-in status; no prompt is sent until "Check connection". Both are off until the
+  user turns them on, never the automatic default, and say that usage counts against the
+  Claude / ChatGPT plan (API keys stay the recommended path for shared apps). Plain text,
+  structured output and "Extract parameters" work; "Run an agent" steps with tools and image
+  input are reported by graph validation and the builder before a run. New commands:
+  `set_local_cli_enabled`, `check_local_cli`, `open_model_install_page`,
+  `get_welcome_choice` / `set_welcome_choice`; `list_provider_statuses` takes `refresh` and
+  reports `localCli` detection.
+
+### Changed
+
+- **First launch asks "How should graphrt think?"**: Claude Code or Codex on this computer
+  (detected, with install links), a local model with Ollama, an API key, or "Skip for now —
+  explore first". No key is needed to start; the choice is remembered. Connections › AI models
+  gets cards for both CLIs (Turn on, Check connection, Use by default, model choice, Detect
+  again), model pickers list their models, and "add an API key" messages now point to all the
+  ways to connect a model. A missing model reads "not set up yet: an AI model (…)".
+
 ## [0.1.2] - 2026-11-21
 
 ### Changed

@@ -43,6 +43,7 @@ pub mod error;
 pub mod flow;
 pub mod knowledge;
 pub mod live_view;
+pub mod local_cli;
 pub mod mcp;
 pub mod model_catalog;
 pub mod node_runtime;
@@ -183,6 +184,11 @@ pub fn run() {
             commands::credentials::set_default_model,
             commands::credentials::set_ollama_base_url,
             commands::credentials::list_available_models,
+            commands::credentials::set_local_cli_enabled,
+            commands::credentials::check_local_cli,
+            commands::credentials::open_model_install_page,
+            commands::credentials::get_welcome_choice,
+            commands::credentials::set_welcome_choice,
             commands::credentials::list_workflow_secrets,
             commands::credentials::set_workflow_secret,
             commands::credentials::add_workflow_secret,

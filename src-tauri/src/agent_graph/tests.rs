@@ -275,6 +275,19 @@ fn model_providers_that_are_not_set_up_are_errors() {
 }
 
 #[test]
+fn steps_a_local_cli_cannot_run_are_errors() {
+    let registry = flow::builtin_node_registry();
+    let cli_flow = SIMPLE_ANSWER.replace(
+        "      model:\n        provider: openai\n        name: gpt-4o-mini\n",
+        "      vision: { enabled: true }\n      model:\n        provider: claude-code-cli\n        name: default\n",
+    );
+    let graph = graph_of(&cli_flow, &registry);
+    let problem = graph.problems.iter().find(|problem| problem.code == problem_codes::MODEL_CAPABILITY).unwrap();
+    assert_eq!(problem.node_id.as_deref(), Some("answer_question"));
+    assert!(problem.message.contains("Claude Code (on this computer), which can't read images"), "{}", problem.message);
+}
+
+#[test]
 fn an_unreadable_document_gives_an_empty_graph_with_the_reason() {
     let registry = flow::builtin_node_registry();
     let graph = graph_of("graph: [unclosed", &registry);

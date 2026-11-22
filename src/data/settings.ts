@@ -1,6 +1,6 @@
 /** Static option lists and labels for screen 22 · Settings. */
 
-import type { ModelChoice, ModelProvider } from '@/api/types'
+import type { LocalCliProvider, ModelChoice, ModelProvider } from '@/api/types'
 
 export type SettingsSectionKey = 'general' | 'runner' | 'notifications' | 'privacy' | 'remote' | 'updates' | 'about'
 
@@ -32,6 +32,48 @@ export const modelProviderNames: Record<ModelProvider, string> = {
   gemini: 'Google Gemini',
   deepseek: 'DeepSeek',
   ollama: 'Ollama',
+  'claude-code-cli': 'Claude Code (on this computer)',
+  'codex-cli': 'Codex (on this computer)',
+}
+
+/** The local CLI providers, in the backend's order. */
+export const localCliProviders: readonly LocalCliProvider[] = ['claude-code-cli', 'codex-cli']
+
+/** Short names of the local CLIs ("Claude Code"), for sentences. */
+export const localCliShortNames: Record<LocalCliProvider, string> = {
+  'claude-code-cli': 'Claude Code',
+  'codex-cli': 'Codex',
+}
+
+/** The command a user types in Terminal to sign a local CLI in. */
+export const localCliCommands: Record<LocalCliProvider, string> = {
+  'claude-code-cli': 'claude',
+  'codex-cli': 'codex',
+}
+
+/** Whose plan a local CLI's usage counts against. */
+export const localCliPlanNames: Record<LocalCliProvider, string> = {
+  'claude-code-cli': 'Claude',
+  'codex-cli': 'ChatGPT',
+}
+
+/** The model id that means "use the CLI's own default model". */
+export const localCliDefaultModelName = 'default'
+
+/** True for the providers that run the user's own signed-in CLI. */
+export function isLocalCliProvider(provider: string): provider is LocalCliProvider {
+  return provider === 'claude-code-cli' || provider === 'codex-cli'
+}
+
+/**
+ * The note every local CLI choice carries: Experimental, whose sign-in and plan it uses.
+ *
+ * @param provider - The local CLI (LocalCliProvider)
+ * @returns One plain-language paragraph (string)
+ */
+export function describeLocalCliUsageNote(provider: LocalCliProvider): string {
+  const shortName = localCliShortNames[provider]
+  return `Experimental · uses your ${shortName} sign-in on this computer. Usage counts against your ${localCliPlanNames[provider]} plan and its limits. For apps you share with others, use an API key.`
 }
 
 /**

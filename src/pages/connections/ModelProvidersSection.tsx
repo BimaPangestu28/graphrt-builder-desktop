@@ -1,13 +1,16 @@
 import { useState } from 'react'
 import { deleteApiKey, setApiKey, setDefaultModel } from '@/api/credentials'
-import type { ModelProvider } from '@/api/types'
+import type { ModelChoice, ModelProvider } from '@/api/types'
 import { Button } from '@/components/ui'
 import { connectionCategoryTitles } from '@/data/connections'
+import { isLocalCliProvider } from '@/data/settings'
+import { useAvailableModels } from '@/hooks/useAvailableModels'
 import { describeError } from '@/lib/agentDisplay'
 import { getCredentialStoreName } from '@/lib/platform'
 import { recommendedModelFor } from '@/lib/modelChoices'
 import { ConnectionCard } from './ConnectionCard'
 import { ConnectionsNotice, ConnectionsSection } from './ConnectionsSection'
+import { LocalCliCard } from './LocalCliCard'
 import type { ModelConnection } from './modelConnections'
 import { ProviderKeyForm } from './ProviderKeyForm'
 
@@ -53,6 +56,8 @@ function KeyActions({ connection, isRemoving, isMakingDefault, onReplace, onRemo
 
 interface ModelProvidersSectionProps {
   connections: ModelConnection[] | null
+  /** The stored default model, null while loading. */
+  defaultModel: ModelChoice | null
   loadError: Error | null
   /** Reloads provider statuses after a key changed. */
   onKeysChanged: () => Promise<void>
@@ -60,9 +65,11 @@ interface ModelProvidersSectionProps {
 
 /**
  * The AI models tab of screen 21: one card per provider, the default one highlighted, backed by the keychain commands: Add key / Replace key open
- * an inline form that calls `setApiKey`; Remove calls `deleteApiKey`.
+ * an inline form that calls `setApiKey`; Remove calls `deleteApiKey`. Below them, the
+ * Experimental local CLIs (Claude Code, Codex on this computer) get their own cards.
  */
-export function ModelProvidersSection({ connections, loadError, onKeysChanged }: ModelProvidersSectionProps) {
+export function ModelProvidersSection({ connections, defaultModel, loadError, onKeysChanged }: ModelProvidersSectionProps) {
+  const availableModelsState = useAvailableModels()
   const [editingProvider, setEditingProvider] = useState<ModelProvider | null>(null)
   const [removingProvider, setRemovingProvider] = useState<ModelProvider | null>(null)
   const [removeErrorMessage, setRemoveErrorMessage] = useState<string | null>(null)
@@ -128,15 +135,53 @@ export function ModelProvidersSection({ connections, loadError, onKeysChanged }:
     return <ConnectionCard key={connection.id} connection={connection} onSetUp={() => setEditingProvider(connection.provider)} footer={footer} />
   }
 
+  /** After a CLI was turned on or off: statuses, the default and its model list may all change. */
+  async function reloadAfterLocalCliChange() {
+    await onKeysChanged()
+    await availableModelsState.reload()
+  }
+
+  function renderLocalCliCard(connection: ModelConnection) {
+    if (!isLocalCliProvider(connection.provider) || !connection.localCli || !defaultModel) return null
+    const providerModels = availableModelsState.data?.find((list) => list.provider === connection.provider)?.models ?? null
+    return (
+      <LocalCliCard
+        key={connection.id}
+        connection={connection}
+        provider={connection.provider}
+        localCli={connection.localCli}
+        defaultModel={defaultModel}
+        models={providerModels}
+        onChanged={reloadAfterLocalCliChange}
+      />
+    )
+  }
+
+  const keyedConnections = connections?.filter((connection) => !isLocalCliProvider(connection.provider)) ?? []
+  const localCliConnections = connections?.filter((connection) => isLocalCliProvider(connection.provider)) ?? []
+
   return (
     <ConnectionsSection
       id="connections-models"
       title={connectionCategoryTitles.models}
-      description={`The models your agents think with. Keys stay in ${getCredentialStoreName()}; new agents use the default`}
+      description={`The models your agents think with: an API key, a local model with Ollama, or Claude Code / Codex already signed in on this computer. Keys stay in ${getCredentialStoreName()}; new agents use the default`}
     >
       {loadError && <ConnectionsNotice tone="danger">Could not load AI models: {describeError(loadError)}</ConnectionsNotice>}
       {!loadError && !connections && <ConnectionsNotice>Loading AI models…</ConnectionsNotice>}
-      {connections && <div className={connectionCardGridClassNames}>{connections.map(renderCard)}</div>}
+      {connections && <div className={connectionCardGridClassNames}>{keyedConnections.map(renderCard)}</div>}
+      {localCliConnections.length > 0 && (
+        <div role="group" aria-labelledby="connections-local-cli-h" className="flex min-w-0 flex-col gap-3 pt-2">
+          <div className="flex flex-col gap-0.5">
+            <h3 id="connections-local-cli-h" className="m-0 text-[14px] font-semibold">
+              Already signed in on this computer
+            </h3>
+            <p className="m-0 text-[13px] leading-normal text-muted">
+              Experimental: graphrt can think with your own Claude Code or Codex. Each stays off until you turn it on
+            </p>
+          </div>
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,360px),1fr))] gap-3">{localCliConnections.map(renderLocalCliCard)}</div>
+        </div>
+      )}
       {removeErrorMessage && (
         <p aria-live="polite" className="m-0 text-[13px] text-danger">
           {removeErrorMessage}

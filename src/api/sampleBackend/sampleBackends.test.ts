@@ -148,13 +148,60 @@ describe('sample credentials backend', () => {
 
   it('starts with OpenAI and the local Ollama configured', async () => {
     expect(await sampleCredentialsBackend.listProviderStatuses()).toEqual([
-      { provider: 'openai', configured: true, baseUrl: null },
-      { provider: 'anthropic', configured: false, baseUrl: null },
-      { provider: 'gemini', configured: false, baseUrl: null },
-      { provider: 'deepseek', configured: false, baseUrl: null },
-      { provider: 'ollama', configured: true, baseUrl: 'http://localhost:11434' },
+      { provider: 'openai', configured: true, baseUrl: null, localCli: null },
+      { provider: 'anthropic', configured: false, baseUrl: null, localCli: null },
+      { provider: 'gemini', configured: false, baseUrl: null, localCli: null },
+      { provider: 'deepseek', configured: false, baseUrl: null, localCli: null },
+      { provider: 'ollama', configured: true, baseUrl: 'http://localhost:11434', localCli: null },
+      {
+        provider: 'claude-code-cli',
+        configured: false,
+        baseUrl: null,
+        localCli: {
+          enabled: false,
+          installed: true,
+          version: '2.1.330 (Claude Code)',
+          path: '/Users/you/.local/bin/claude',
+          signIn: 'signed_in',
+          installUrl: 'https://docs.claude.com/en/docs/claude-code/setup',
+        },
+      },
+      {
+        provider: 'codex-cli',
+        configured: false,
+        baseUrl: null,
+        localCli: { enabled: false, installed: false, version: null, path: null, signIn: 'unknown', installUrl: 'https://developers.openai.com/codex/cli' },
+      },
     ])
     expect(await sampleCredentialsBackend.getDefaultModel()).toEqual({ provider: 'openai', name: 'gpt-4o-mini' })
+    expect(await sampleCredentialsBackend.getWelcomeChoice()).toBeNull()
+  })
+
+  it('turns a local CLI on and off, falling back to another default when it was the default', async () => {
+    await expectBackendError(sampleCredentialsBackend.setDefaultModel({ provider: 'claude-code-cli', name: 'default' }), 'invalid_input')
+    const enabledStatus = await sampleCredentialsBackend.setLocalCliEnabled('claude-code-cli', true)
+    expect(enabledStatus).toMatchObject({ provider: 'claude-code-cli', configured: true, localCli: { enabled: true } })
+    await sampleCredentialsBackend.setDefaultModel({ provider: 'claude-code-cli', name: 'default' })
+    const catalog = await sampleCredentialsBackend.listAvailableModels(false)
+    expect(catalog.find((list) => list.provider === 'claude-code-cli')?.models[0]).toEqual({ id: 'default', displayName: 'CLI default' })
+    expect(await sampleCredentialsBackend.checkLocalCli('claude-code-cli')).toEqual({ ok: true, message: 'Claude Code answered in 2.1 s' })
+
+    await sampleCredentialsBackend.setLocalCliEnabled('claude-code-cli', false)
+    expect(await sampleCredentialsBackend.getDefaultModel()).toEqual({ provider: 'openai', name: 'gpt-4o-mini' })
+    expect((await sampleCredentialsBackend.checkLocalCli('claude-code-cli')).ok).toBe(false)
+  })
+
+  it('refuses a local CLI that is not installed and a provider that is not a CLI', async () => {
+    await expectBackendError(sampleCredentialsBackend.setLocalCliEnabled('codex-cli', true), 'invalid_input')
+    await expectBackendError(sampleCredentialsBackend.setLocalCliEnabled('openai' as 'codex-cli', true), 'invalid_input')
+    expect(await sampleCredentialsBackend.checkLocalCli('codex-cli')).toEqual({ ok: false, message: 'Codex is not installed on this computer' })
+  })
+
+  it('remembers the Welcome choice until reset', async () => {
+    await sampleCredentialsBackend.setWelcomeChoice('skip')
+    expect(await sampleCredentialsBackend.getWelcomeChoice()).toBe('skip')
+    resetSampleCredentials()
+    expect(await sampleCredentialsBackend.getWelcomeChoice()).toBeNull()
   })
 
   it('sets and deletes keys, rejecting blank keys and Ollama', async () => {
@@ -170,7 +217,7 @@ describe('sample credentials backend', () => {
   it('stores the Ollama address and default model', async () => {
     await sampleCredentialsBackend.setOllamaBaseUrl('http://studio.local:11434')
     await sampleCredentialsBackend.setDefaultModel({ provider: 'ollama', name: 'llama3.2' })
-    expect((await sampleCredentialsBackend.listProviderStatuses()).at(-1)?.baseUrl).toBe('http://studio.local:11434')
+    expect((await sampleCredentialsBackend.listProviderStatuses()).find((status) => status.provider === 'ollama')?.baseUrl).toBe('http://studio.local:11434')
     expect(await sampleCredentialsBackend.getDefaultModel()).toEqual({ provider: 'ollama', name: 'llama3.2' })
     await expectBackendError(sampleCredentialsBackend.setOllamaBaseUrl('studio.local'), 'invalid_input')
   })

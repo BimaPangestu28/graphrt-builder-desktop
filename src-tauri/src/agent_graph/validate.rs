@@ -52,7 +52,23 @@ pub(super) fn validate_workflow(
     if let Some(available_providers) = context.available_providers {
         problems.extend(provider_problems(workflow, nodes, available_providers));
     }
+    problems.extend(capability_problems(workflow, nodes));
     problems
+}
+
+/// Model steps whose provider is a local CLI but that need tools or images.
+fn capability_problems(workflow: &Workflow, nodes: &[GraphNodeView]) -> Vec<GraphProblem> {
+    workflow
+        .graph
+        .nodes
+        .iter()
+        .filter(|node| MODEL_KINDS.contains(&node.kind.as_str()))
+        .filter_map(|node| {
+            let gap = crate::local_cli::capability::capability_gap(&node.kind, &node.config)?;
+            let message = gap.message(&display_title(nodes, &node.id));
+            Some(problem(ProblemSeverity::Error, problem_codes::MODEL_CAPABILITY, message, Some(node.id.clone()), None))
+        })
+        .collect()
 }
 
 /// The problem for a document graphrt cannot read at all.

@@ -1,0 +1,7 @@
+Reading prompt from stdin...
+{"id":"0","msg":{"type":"task_started"}}
+{"id":"0","msg":{"type":"agent_message_delta","delta":"Hello "}}
+{"id":"0","msg":{"type":"agent_message_delta","delta":"there."}}
+{"id":"0","msg":{"type":"agent_message","message":"Hello there."}}
+{"id":"0","msg":{"type":"token_count","info":{"total_token_usage":{"input_tokens":50,"output_tokens":4}}}}
+{"id":"0","msg":{"type":"task_complete","last_agent_message":"Hello there."}}

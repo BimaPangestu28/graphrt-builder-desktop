@@ -80,6 +80,26 @@ export const initialConnections: Connection[] = [
     availableDescription: 'DeepSeek V3 and R1 (deepseek-chat, deepseek-reasoner)',
     setupActionLabel: 'Add key',
   },
+  {
+    id: 'claude-code-cli',
+    name: 'Claude Code (on this computer)',
+    category: 'models',
+    state: 'available',
+    connectedLabel: 'Turned on',
+    connectedDescription: 'Uses your Claude Code sign-in',
+    availableDescription: 'Your signed-in Claude Code app',
+    setupActionLabel: 'Connect',
+  },
+  {
+    id: 'codex-cli',
+    name: 'Codex (on this computer)',
+    category: 'models',
+    state: 'available',
+    connectedLabel: 'Turned on',
+    connectedDescription: 'Uses your Codex sign-in',
+    availableDescription: 'Your signed-in Codex app',
+    setupActionLabel: 'Connect',
+  },
 ]
 
 export const connectionCategoryTitles: Record<ConnectionCategory, string> = {

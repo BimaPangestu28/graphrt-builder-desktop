@@ -200,6 +200,70 @@ describe('ConnectionsPage AI models and apps', () => {
   })
 })
 
+describe('ConnectionsPage local CLI models', () => {
+  function getLocalCliGroup() {
+    return screen.getByRole('group', { name: 'Already signed in on this computer' })
+  }
+
+  it('shows Claude Code and Codex as Experimental cards with what was detected', async () => {
+    renderConnectionsPage()
+    expect(await screen.findByText('Installed · 2.1.330 (Claude Code)')).toBeInTheDocument()
+    const group = getLocalCliGroup()
+    expect(within(group).getAllByText('Experimental')).toHaveLength(2)
+    expect(within(group).getByText('Signed in')).toBeInTheDocument()
+    expect(within(group).getByText('Off')).toBeInTheDocument()
+    expect(within(group).getAllByText('Not installed')).toHaveLength(2)
+    expect(within(group).getByRole('link', { name: 'How to install Codex' })).toHaveAttribute('href', 'https://developers.openai.com/codex/cli')
+    expect(within(group).getByText(/Usage counts against your ChatGPT plan/)).toBeInTheDocument()
+    expect(within(group).queryByRole('button', { name: 'Turn on Codex' })).not.toBeInTheDocument()
+    // The tab count does not include CLIs that are off.
+    expect(getTab(/^AI models/)).toHaveAccessibleName('AI models 2 connected')
+  })
+
+  it('turns Claude Code on, checks the connection on request and makes it the default with a chosen model', async () => {
+    const setLocalCliEnabledSpy = vi.spyOn(sampleCredentialsBackend, 'setLocalCliEnabled')
+    const checkLocalCliSpy = vi.spyOn(sampleCredentialsBackend, 'checkLocalCli')
+    const setDefaultModelSpy = vi.spyOn(sampleCredentialsBackend, 'setDefaultModel')
+    renderConnectionsPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Turn on Claude Code' }))
+    expect(await screen.findByRole('button', { name: 'Turn off Claude Code' })).toBeInTheDocument()
+    expect(setLocalCliEnabledSpy).toHaveBeenCalledWith('claude-code-cli', true)
+    expect(checkLocalCliSpy).not.toHaveBeenCalled()
+    expect(getTab(/^AI models/)).toHaveAccessibleName('AI models 3 connected')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Check Claude Code connection' }))
+    expect(await screen.findByText('Claude Code answered in 2.1 s')).toBeInTheDocument()
+
+    const modelSelect = await screen.findByRole('combobox', { name: 'Claude Code model' })
+    await within(modelSelect).findByRole('option', { name: 'Sonnet (latest)' })
+    expect(within(modelSelect).getAllByRole('option')[0]).toHaveTextContent('CLI default')
+    fireEvent.change(modelSelect, { target: { value: 'sonnet' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Use Claude Code (on this computer) by default' }))
+    expect(await screen.findByText('Model new agents use')).toBeInTheDocument()
+    expect(setDefaultModelSpy).toHaveBeenCalledWith({ provider: 'claude-code-cli', name: 'sonnet' })
+    expect(screen.getByRole('combobox', { name: 'Claude Code model' })).toHaveValue('sonnet')
+    expect(screen.queryByRole('button', { name: 'Use Claude Code (on this computer) by default' })).not.toBeInTheDocument()
+  })
+
+  it('turns Claude Code off again, and the default falls back', async () => {
+    await sampleCredentialsBackend.setLocalCliEnabled('claude-code-cli', true)
+    await sampleCredentialsBackend.setDefaultModel({ provider: 'claude-code-cli', name: 'default' })
+    renderConnectionsPage()
+    expect(await screen.findByText('Model new agents use')).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Claude Code model' })).toHaveValue('default')
+    fireEvent.click(screen.getByRole('button', { name: 'Turn off Claude Code' }))
+    expect(await screen.findByRole('button', { name: 'Turn on Claude Code' })).toBeInTheDocument()
+    expect(await sampleCredentialsBackend.getDefaultModel()).toEqual({ provider: 'openai', name: 'gpt-4o-mini' })
+  })
+
+  it('looks for the CLIs again on Detect again', async () => {
+    const listProviderStatusesSpy = vi.spyOn(sampleCredentialsBackend, 'listProviderStatuses')
+    renderConnectionsPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Detect Codex again' }))
+    await waitFor(() => expect(listProviderStatusesSpy).toHaveBeenCalledWith(true))
+  })
+})
+
 describe('ConnectionsPage secrets', () => {
   async function openSecretsPanel() {
     renderConnectionsPage('/connections/secrets')

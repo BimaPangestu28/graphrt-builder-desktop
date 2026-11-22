@@ -1,7 +1,7 @@
 import { useId } from 'react'
 import { useAvailableModels } from '@/hooks/useAvailableModels'
 import { useProviderStatuses } from '@/hooks/useProviderStatuses'
-import { buildModelOptionGroups, modelChoiceKey } from '@/lib/modelChoices'
+import { buildModelOptionGroups, describeModelName, modelChoiceKey } from '@/lib/modelChoices'
 import { readConfigNumber, readConfigObject, readConfigText, type ConfigPath } from './configPaths'
 import { Field, inputClassName, NumberInput } from './fields'
 import { useInspector } from './InspectorContext'
@@ -59,7 +59,7 @@ export function ModelField({ path = ['model'], showParams = false }: ModelFieldP
             <optgroup key={group.provider} label={group.label}>
               {group.choices.map((choice) => (
                 <option key={modelChoiceKey(choice)} value={modelChoiceKey(choice)}>
-                  {choice.provider} · {choice.name}
+                  {choice.provider} · {describeModelName(choice)}
                 </option>
               ))}
             </optgroup>

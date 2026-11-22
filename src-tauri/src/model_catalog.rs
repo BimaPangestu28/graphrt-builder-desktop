@@ -8,6 +8,7 @@
 //! | Gemini    | `GET …/v1beta/models` (generateContent)    |
 //! | DeepSeek  | `GET https://api.deepseek.com/v1/models`   |
 //! | Ollama    | `GET <base_url>/api/tags` (pulled models)  |
+//! | Claude Code / Codex (local CLIs) | the CLI itself, no usage spent (`local_cli::list_models`) |
 //!
 //! Lists are filtered to models that can chat (OpenAI also lists embeddings,
 //! speech and image models) and cached for [`CACHE_TTL`]. A provider that cannot
@@ -39,12 +40,14 @@ const GEMINI_MODELS_URL: &str = "https://generativelanguage.googleapis.com/v1bet
 const DEEPSEEK_MODELS_URL: &str = "https://api.deepseek.com/v1/models";
 
 /// Providers in the order the picker lists them.
-const LISTED_PROVIDERS: [ModelProvider; 5] = [
+const LISTED_PROVIDERS: [ModelProvider; 7] = [
     ModelProvider::Openai,
     ModelProvider::Anthropic,
     ModelProvider::Gemini,
     ModelProvider::Deepseek,
     ModelProvider::Ollama,
+    ModelProvider::ClaudeCodeCli,
+    ModelProvider::CodexCli,
 ];
 
 /// One model a provider offers.
@@ -112,6 +115,10 @@ impl ModelCatalog {
             if !status.configured {
                 continue;
             }
+            if let Some(cli) = provider.local_cli() {
+                requests.push(Box::pin(local_cli_models(provider, cli)) as BoxFuture<'_, ProviderModels>);
+                continue;
+            }
             if !refresh {
                 if let Some(cached) = self.cached(provider) {
                     requests.push(Box::pin(futures::future::ready(cached)) as BoxFuture<'_, ProviderModels>);
@@ -163,6 +170,21 @@ impl ModelCatalog {
     }
 }
 
+/// The models a local CLI offers (read from the CLI itself, off the async runtime).
+async fn local_cli_models(provider: ModelProvider, cli: crate::local_cli::LocalCli) -> ProviderModels {
+    let listing = tokio::task::spawn_blocking(move || {
+        let detection = crate::local_cli::detect::cached(cli, false);
+        crate::local_cli::list_models(cli, &detection)
+    })
+    .await;
+    match listing {
+        Ok(models) => ProviderModels { provider, models, error: None },
+        Err(error) => {
+            ProviderModels { provider, models: Vec::new(), error: Some(format!("could not list models: {error}")) }
+        }
+    }
+}
+
 struct ProviderRequest {
     url: String,
     headers: Vec<(&'static str, String)>,
@@ -197,7 +219,7 @@ fn provider_request(
         ModelProvider::Gemini => {
             ProviderRequest { url: GEMINI_MODELS_URL.to_owned(), headers: vec![("x-goog-api-key", api_key)] }
         }
-        ModelProvider::Ollama => return Ok(None),
+        ModelProvider::Ollama | ModelProvider::ClaudeCodeCli | ModelProvider::CodexCli => return Ok(None),
     };
     Ok(Some(request))
 }
@@ -220,6 +242,7 @@ pub fn parse_models(provider: ModelProvider, body: &Json) -> Vec<AvailableModel>
             .filter_map(|model| model.get("name")?.as_str().map(plain_model))
             .filter(|model| !model.id.contains("embed"))
             .collect(),
+        ModelProvider::ClaudeCodeCli | ModelProvider::CodexCli => Vec::new(),
     };
     models.sort_by(|first, second| first.id.cmp(&second.id));
     models.dedup_by(|first, second| first.id == second.id);

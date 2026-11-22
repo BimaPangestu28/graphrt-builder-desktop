@@ -85,6 +85,7 @@ fn system_prompt(model: &ModelChoice, reply_format: &str, saved_secret_names: &[
     let rules = append_plugin_guide(rules);
     let rules = append_mcp_guide(rules);
     let rules = append_saved_secrets_guide(rules, saved_secret_names);
+    let rules = append_local_cli_guide(rules, model);
     format!(
         "{ROLE}\n\n# Rules\n{rules}\n\n# Reply format\n{reply_format}\n\n# Workflow format\n{guide}\n\n\
          # Example: answer one question\n```yaml\n{simple_answer}\n```\n\n\
@@ -92,6 +93,19 @@ fn system_prompt(model: &ModelChoice, reply_format: &str, saved_secret_names: &[
         guide = flow::workflow_format_guide().trim_end(),
         simple_answer = EXAMPLE_SIMPLE_ANSWER.trim_end(),
         approval_loop = EXAMPLE_APPROVAL_LOOP.trim_end(),
+    )
+}
+
+/// A local CLI model (Claude Code, Codex) answers text only: tell the builder to keep
+/// model steps to plain text so the draft can run on it.
+fn append_local_cli_guide(rules: String, model: &ModelChoice) -> String {
+    let Some(cli) = model.provider.local_cli() else { return rules };
+    format!(
+        "{rules}\n- The model `{provider}` is {name} running on the user's computer: it answers text (and JSON) \
+         only. It cannot call tools and cannot read images, so do not write `agent` steps with `tools` or \
+         `vision` for it; use `llm` steps (structured output is fine) and do the tool work with other steps.",
+        provider = cli.provider_name(),
+        name = cli.display_name()
     )
 }
 

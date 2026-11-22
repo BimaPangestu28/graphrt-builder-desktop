@@ -242,14 +242,14 @@ describe('Agent card state', () => {
 })
 
 describe('Getting started', () => {
-  const connected: ProviderStatus[] = [{ provider: 'openai', configured: true, baseUrl: null }]
+  const connected: ProviderStatus[] = [{ provider: 'openai', configured: true, baseUrl: null, localCli: null }]
 
   function buildGettingStarted(changes: Partial<GettingStartedSources>): GettingStartedSources {
     return { providerStatuses: [], agents: [], runs: [], triggers: [], pluginRequirements: new Map(), agentIdsNeedingSetup: new Set(), ...changes }
   }
 
   it('starts with nothing done on a fresh install', () => {
-    const steps = deriveGettingStartedSteps(buildGettingStarted({ providerStatuses: [{ provider: 'openai', configured: false, baseUrl: null }] }))
+    const steps = deriveGettingStartedSteps(buildGettingStarted({ providerStatuses: [{ provider: 'openai', configured: false, baseUrl: null, localCli: null }] }))
     expect(steps.map((step) => [step.id, step.isDone])).toEqual([
       ['model', false],
       ['agent', false],
@@ -259,6 +259,26 @@ describe('Getting started', () => {
     ])
     expect(steps[0].path).toBe(connectionsTabPath('models'))
     expect(steps[1].path).toBe(routePaths.newAgent)
+  })
+
+  it('counts Ollama as a connected model only when it is the default', () => {
+    const ollamaOnly: ProviderStatus[] = [{ provider: 'ollama', configured: true, baseUrl: 'http://localhost:11434', localCli: null }]
+    const notDefault = deriveGettingStartedSteps(buildGettingStarted({ providerStatuses: ollamaOnly, defaultModel: { provider: 'openai', name: 'gpt-4o-mini' } }))
+    const asDefault = deriveGettingStartedSteps(buildGettingStarted({ providerStatuses: ollamaOnly, defaultModel: { provider: 'ollama', name: 'llama3.2' } }))
+    expect(notDefault[0].isDone).toBe(false)
+    expect(asDefault[0].isDone).toBe(true)
+  })
+
+  it('counts a turned-on local CLI as a connected model', () => {
+    const claudeCodeOn: ProviderStatus[] = [
+      {
+        provider: 'claude-code-cli',
+        configured: true,
+        baseUrl: null,
+        localCli: { enabled: true, installed: true, version: '2.1.330 (Claude Code)', path: null, signIn: 'signed_in', installUrl: 'https://docs.claude.com/en/docs/claude-code/setup' },
+      },
+    ]
+    expect(deriveGettingStartedSteps(buildGettingStarted({ providerStatuses: claudeCodeOn }))[0].isDone).toBe(true)
   })
 
   it('follows a draft agent whose plugins are not ready', () => {

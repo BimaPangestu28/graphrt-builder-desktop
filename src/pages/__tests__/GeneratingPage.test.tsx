@@ -172,8 +172,8 @@ describe('GeneratingPage', () => {
     await sampleCredentialsBackend.deleteApiKey('openai')
     renderGeneratingPage()
     await advanceBy(0)
-    expect(screen.getByRole('alert')).toHaveTextContent('Add an AI key to build agents')
-    fireEvent.click(screen.getByRole('link', { name: 'Open Connections' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('Connect a model to build agents')
+    fireEvent.click(screen.getByRole('link', { name: 'Choose a model in Connections' }))
     expect(screen.getByText('Connections screen')).toBeInTheDocument()
   })
 

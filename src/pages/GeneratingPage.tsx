@@ -101,11 +101,14 @@ function BuildErrorNotice({ buildError, onRetry }: { buildError: Error; onRetry:
   const isMissingCredentials = buildError instanceof BackendError && buildError.code === 'missing_credentials'
   return (
     <div role="alert" className="flex max-w-[92%] flex-col items-start gap-2.5 rounded-[14px] border border-danger-line bg-danger-tint p-[18px]">
-      <span className="font-semibold">{isMissingCredentials ? 'Add an AI key to build agents' : 'Could not build the agent'}</span>
+      <span className="font-semibold">{isMissingCredentials ? 'Connect a model to build agents' : 'Could not build the agent'}</span>
       <span className="leading-normal text-danger-deep">{describeError(buildError)}</span>
+      {isMissingCredentials && (
+        <span className="leading-normal text-body">Use Claude Code or Codex on this computer, a local model with Ollama, or an API key</span>
+      )}
       {isMissingCredentials ? (
         <Link to={connectionsTabPath('models')} className="font-medium">
-          Open Connections
+          Choose a model in Connections
         </Link>
       ) : (
         <button

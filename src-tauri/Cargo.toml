@@ -37,7 +37,7 @@ graphrt-plugin = { git = "https://github.com/BimaPangestu28/graphrt", rev = "32b
 # MCP servers configured in Connections > Advanced: their tools for `tool` / `agent` nodes (stdio and Streamable HTTP)
 graphrt-mcp = { git = "https://github.com/BimaPangestu28/graphrt", rev = "32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088" }
 
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "process", "io-util"] }
 futures = "0.3"
 indexmap = { version = "2", features = ["serde"] }
 # Writing workflow documents edited in the Nodes view back to YAML (same crate graphrt-core reads them with).
@@ -64,6 +64,8 @@ flate2 = "1"
 base64 = "0.22"
 # Crash reports: redacting tokens, keys and emails before a report is written.
 regex = "1"
+# Local CLI providers (Claude Code, Codex) run in a throwaway working directory.
+tempfile = "3"
 
 # Launch at login and one running instance are desktop-only
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
@@ -79,6 +81,3 @@ tauri-plugin-process = "=2.4.0"
 # "Keep the computer awake while an agent runs" on Windows (SetThreadExecutionState)
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.60", features = ["Win32_System_Power"] }
-
-[dev-dependencies]
-tempfile = "3"

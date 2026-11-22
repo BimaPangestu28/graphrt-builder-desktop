@@ -100,11 +100,11 @@ async function reportStage(
   }
 }
 
-/** @throws BackendError - `missing_credentials` when the default model's provider has no key */
+/** @throws BackendError - `missing_credentials` when no model is connected yet (the default's provider is not set up) */
 function requireUsableModel(): void {
   const defaultModel = readSampleDefaultModel()
   if (!isSampleProviderConfigured(defaultModel.provider)) {
-    throw new BackendError('missing_credentials', `Add a ${defaultModel.provider} API key in Connections first`)
+    throw new BackendError('missing_credentials', 'No model is connected yet: pick Claude Code, Codex, Ollama or an API key in Connections')
   }
 }
 

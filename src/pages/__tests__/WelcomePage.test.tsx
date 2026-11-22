@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { resetSampleCredentials, sampleCredentialsBackend } from '@/api/sampleBackend/credentials'
@@ -11,6 +11,7 @@ function renderWelcomePage() {
       <Routes>
         <Route path={routePaths.welcome} element={<WelcomePage />} />
         <Route path={routePaths.newAgent} element={<p>New agent screen</p>} />
+        <Route path={routePaths.home} element={<p>Home screen</p>} />
       </Routes>
     </MemoryRouter>,
   )
@@ -20,72 +21,142 @@ function typeApiKey(apiKey: string) {
   fireEvent.change(screen.getByLabelText('API key'), { target: { value: apiKey } })
 }
 
+function getContinueButton() {
+  return screen.getByRole('button', { name: 'Continue' })
+}
+
 describe('WelcomePage', () => {
   beforeEach(() => resetSampleCredentials())
   afterEach(() => vi.restoreAllMocks())
 
-  it('shows the onboarding heading with the credits option disabled', () => {
+  it('asks how graphrt should think, says no key is needed and starts with nothing picked', async () => {
     renderWelcomePage()
-    expect(screen.getByRole('heading', { name: 'Agents that run on your computer' })).toBeInTheDocument()
-    expect(screen.getByRole('radio', { name: /graphrt credits/ })).toBeDisabled()
-    expect(screen.getByRole('radio', { name: /My own API key/ })).toBeChecked()
+    expect(screen.getByRole('heading', { name: 'How should graphrt think?' })).toBeInTheDocument()
+    expect(screen.getByText(/No API key needed to start/)).toBeInTheDocument()
+    expect(await screen.findByText('Found · 2.1.330 (Claude Code)')).toBeInTheDocument()
+    expect(screen.getAllByRole('radio').every((radio) => !(radio as HTMLInputElement).checked)).toBe(true)
+    expect(getContinueButton()).toBeDisabled()
+    expect(screen.queryByText(/graphrt credits/)).not.toBeInTheDocument()
+    expect(screen.getAllByText('Experimental')).toHaveLength(2)
+    expect(screen.getByText(/Usage counts against your Claude plan and its limits/)).toBeInTheDocument()
   })
 
-  it('blocks Continue without a key, except for a local Ollama model', () => {
+  it('shows Codex as not installed with a link to its install guide', async () => {
+    const openPageSpy = vi.spyOn(sampleCredentialsBackend, 'openModelInstallPage').mockResolvedValue(undefined)
     renderWelcomePage()
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
+    const installLink = await screen.findByRole('link', { name: 'How to install Codex' })
+    expect(installLink).toHaveAttribute('href', 'https://developers.openai.com/codex/cli')
+    expect(screen.getByRole('radio', { name: 'Use Codex on this computer' })).toBeDisabled()
+    fireEvent.click(installLink)
+    expect(openPageSpy).toHaveBeenCalledWith('codex-cli')
+  })
+
+  it('turns Claude Code on, makes its CLI default model the default and remembers the choice', async () => {
+    const setLocalCliEnabledSpy = vi.spyOn(sampleCredentialsBackend, 'setLocalCliEnabled')
+    const setDefaultModelSpy = vi.spyOn(sampleCredentialsBackend, 'setDefaultModel')
+    const setWelcomeChoiceSpy = vi.spyOn(sampleCredentialsBackend, 'setWelcomeChoice')
+    renderWelcomePage()
+    const claudeCodeRadio = await screen.findByRole('radio', { name: 'Use Claude Code on this computer' })
+    await screen.findByText('Found · 2.1.330 (Claude Code)')
+    fireEvent.click(claudeCodeRadio)
+    fireEvent.click(getContinueButton())
+    expect(await screen.findByText('New agent screen')).toBeInTheDocument()
+    expect(setLocalCliEnabledSpy).toHaveBeenCalledWith('claude-code-cli', true)
+    expect(setDefaultModelSpy).toHaveBeenCalledWith({ provider: 'claude-code-cli', name: 'default' })
+    expect(setWelcomeChoiceSpy).toHaveBeenCalledWith('claude-code-cli')
+  })
+
+  it('opens the key fields only for the API key choice and needs a key there', async () => {
+    renderWelcomePage()
+    expect(screen.queryByLabelText('API key')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('radio', { name: 'Add an API key' }))
+    expect(getContinueButton()).toBeDisabled()
     typeApiKey('sk-test')
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled()
-    typeApiKey('')
-    fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'Ollama (local)' } })
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled()
+    expect(getContinueButton()).toBeEnabled()
+    fireEvent.click(screen.getByRole('radio', { name: 'Local model with Ollama' }))
+    expect(screen.queryByLabelText('API key')).not.toBeInTheDocument()
+    expect(getContinueButton()).toBeEnabled()
   })
 
-  it('saves the key and default model, then goes to the new agent screen', async () => {
+  it('saves the key and recommended model, then goes to the new agent screen', async () => {
     const setApiKeySpy = vi.spyOn(sampleCredentialsBackend, 'setApiKey')
     const setDefaultModelSpy = vi.spyOn(sampleCredentialsBackend, 'setDefaultModel')
+    const setWelcomeChoiceSpy = vi.spyOn(sampleCredentialsBackend, 'setWelcomeChoice')
     renderWelcomePage()
     fireEvent.click(screen.getByRole('checkbox', { name: /Keep agents running/ }))
     expect(screen.getByRole('checkbox', { name: /Keep agents running/ })).not.toBeChecked()
-    fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'Anthropic' } })
+    fireEvent.click(screen.getByRole('radio', { name: 'Add an API key' }))
+    fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'anthropic' } })
     typeApiKey('  sk-ant-test  ')
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    fireEvent.click(getContinueButton())
     expect(screen.getByRole('button', { name: 'Saving…' })).toBeDisabled()
     expect(await screen.findByText('New agent screen')).toBeInTheDocument()
     expect(setApiKeySpy).toHaveBeenCalledWith('anthropic', 'sk-ant-test')
     expect(setDefaultModelSpy).toHaveBeenCalledWith({ provider: 'anthropic', name: 'claude-haiku-5-5' })
+    expect(setWelcomeChoiceSpy).toHaveBeenCalledWith('api-key')
   })
 
   it('saves a DeepSeek key with deepseek-chat as the default model', async () => {
-    const setApiKeySpy = vi.spyOn(sampleCredentialsBackend, 'setApiKey')
     const setDefaultModelSpy = vi.spyOn(sampleCredentialsBackend, 'setDefaultModel')
     renderWelcomePage()
-    fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'DeepSeek' } })
+    fireEvent.click(screen.getByRole('radio', { name: 'Add an API key' }))
+    fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'deepseek' } })
     typeApiKey('sk-deepseek-test')
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    fireEvent.click(getContinueButton())
     expect(await screen.findByText('New agent screen')).toBeInTheDocument()
-    expect(setApiKeySpy).toHaveBeenCalledWith('deepseek', 'sk-deepseek-test')
     expect(setDefaultModelSpy).toHaveBeenCalledWith({ provider: 'deepseek', name: 'deepseek-chat' })
   })
 
-  it('saves the Ollama address instead of a key for a local model', async () => {
+  it('saves the Ollama address and llama3.2 for a local model, showing that Ollama runs', async () => {
     const setApiKeySpy = vi.spyOn(sampleCredentialsBackend, 'setApiKey')
     const setOllamaBaseUrlSpy = vi.spyOn(sampleCredentialsBackend, 'setOllamaBaseUrl')
+    const setDefaultModelSpy = vi.spyOn(sampleCredentialsBackend, 'setDefaultModel')
     renderWelcomePage()
-    fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'Ollama (local)' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    expect(await screen.findByText('Running on this computer')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('radio', { name: 'Local model with Ollama' }))
+    fireEvent.click(getContinueButton())
     expect(await screen.findByText('New agent screen')).toBeInTheDocument()
     expect(setOllamaBaseUrlSpy).toHaveBeenCalledWith('http://localhost:11434')
+    expect(setDefaultModelSpy).toHaveBeenCalledWith({ provider: 'ollama', name: 'llama3.2' })
     expect(setApiKeySpy).not.toHaveBeenCalled()
+  })
+
+  it('offers the Ollama download when it is not running', async () => {
+    vi.spyOn(sampleCredentialsBackend, 'listAvailableModels').mockResolvedValue([])
+    renderWelcomePage()
+    const ollamaCard = (await screen.findByText('Not running')).closest('div') as HTMLElement
+    expect(within(ollamaCard).getByRole('link', { name: 'Download Ollama' })).toHaveAttribute('href', 'https://ollama.com/download')
+  })
+
+  it('lets the user skip without connecting anything and goes Home', async () => {
+    const setWelcomeChoiceSpy = vi.spyOn(sampleCredentialsBackend, 'setWelcomeChoice')
+    const setDefaultModelSpy = vi.spyOn(sampleCredentialsBackend, 'setDefaultModel')
+    renderWelcomePage()
+    fireEvent.click(screen.getByRole('radio', { name: 'Skip for now — explore first' }))
+    fireEvent.click(getContinueButton())
+    expect(await screen.findByText('Home screen')).toBeInTheDocument()
+    expect(setWelcomeChoiceSpy).toHaveBeenCalledWith('skip')
+    expect(setDefaultModelSpy).not.toHaveBeenCalled()
+  })
+
+  it('works when nothing is set up yet', async () => {
+    await sampleCredentialsBackend.deleteApiKey('openai')
+    renderWelcomePage()
+    expect(await screen.findByText('Found · 2.1.330 (Claude Code)')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('radio', { name: 'Skip for now — explore first' }))
+    expect(getContinueButton()).toBeEnabled()
   })
 
   it('stays on the screen and explains a failed save', async () => {
     vi.spyOn(sampleCredentialsBackend, 'setApiKey').mockRejectedValue(new BackendError('credentials', 'Keychain is locked'))
+    const setWelcomeChoiceSpy = vi.spyOn(sampleCredentialsBackend, 'setWelcomeChoice')
     renderWelcomePage()
+    fireEvent.click(screen.getByRole('radio', { name: 'Add an API key' }))
     typeApiKey('sk-test')
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('Could not save your AI setup: Keychain is locked')
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled()
+    fireEvent.click(getContinueButton())
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not save your choice: Keychain is locked')
+    expect(getContinueButton()).toBeEnabled()
     expect(screen.queryByText('New agent screen')).not.toBeInTheDocument()
+    expect(setWelcomeChoiceSpy).not.toHaveBeenCalled()
   })
 })

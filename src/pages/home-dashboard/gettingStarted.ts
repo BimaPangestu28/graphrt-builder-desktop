@@ -1,5 +1,6 @@
 import type { PluginRequirement } from '@/api/pluginRequirementTypes'
-import type { Agent, ProviderStatus, Run, Trigger } from '@/api/types'
+import type { Agent, ModelChoice, ProviderStatus, Run, Trigger } from '@/api/types'
+import { isModelConnected } from '@/lib/firstLaunch'
 import { agentPath, connectionsTabPath, routePaths } from '@/routes'
 
 /** The Home "Getting started" checklist (09), each step derived from real data. */
@@ -14,6 +15,11 @@ export interface GettingStartedStep {
 
 export interface GettingStartedSources {
   providerStatuses: ProviderStatus[]
+  /**
+   * The model new agents use. Ollama is always "configured", so it only counts as a
+   * connected model when it is the default; a key or a turned-on local CLI always counts.
+   */
+  defaultModel?: ModelChoice | null
   agents: Agent[]
   runs: Run[]
   triggers: Trigger[]
@@ -51,7 +57,7 @@ export function deriveGettingStartedSteps(sources: GettingStartedSources): Getti
   const untestedAgent = agents.find((agent) => !hasPassedTest(agent, runs)) ?? firstAgent
   const testedAgent = agents.find((agent) => hasPassedTest(agent, runs)) ?? firstAgent
   return [
-    { id: 'model', label: 'Connect a model', isDone: providerStatuses.some((status) => status.configured), path: connectionsTabPath('models') },
+    { id: 'model', label: 'Connect a model', isDone: isModelConnected(providerStatuses, sources.defaultModel ?? null), path: connectionsTabPath('models') },
     { id: 'agent', label: 'Build your first agent', isDone: agents.length > 0, path: routePaths.newAgent },
     {
       id: 'plugins',

@@ -16,6 +16,7 @@ use graphrt_llm::{ChatModel, LlmError, ModelRegistry};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
+use crate::local_cli::{self, LocalCli, LocalCliStatus};
 use crate::storage::Database;
 
 /// Keychain service name under which every key is stored.
@@ -25,17 +26,21 @@ pub const KEYCHAIN_SERVICE: &str = "dev.graphrt.desktop";
 pub const SETTING_DEFAULT_PROVIDER: &str = "default_model_provider";
 pub const SETTING_DEFAULT_MODEL: &str = "default_model_name";
 pub const SETTING_OLLAMA_BASE_URL: &str = "ollama_base_url";
+/// What the user picked on the Welcome screen (`WelcomeChoice`).
+pub const SETTING_WELCOME_CHOICE: &str = "welcome_choice";
 
 /// Ollama's standard local address, used when no base URL is configured.
 const DEFAULT_OLLAMA_BASE_URL: &str = "http://localhost:11434";
 
 /// Every provider, in the order the UI lists them.
-const ALL_PROVIDERS: [ModelProvider; 5] = [
+const ALL_PROVIDERS: [ModelProvider; 7] = [
     ModelProvider::Openai,
     ModelProvider::Anthropic,
     ModelProvider::Gemini,
     ModelProvider::Deepseek,
     ModelProvider::Ollama,
+    ModelProvider::ClaudeCodeCli,
+    ModelProvider::CodexCli,
 ];
 
 /// Key-based providers in fallback order, with the small model recommended for each.
@@ -62,6 +67,12 @@ pub enum ModelProvider {
     Deepseek,
     /// Local Ollama server; needs no key.
     Ollama,
+    /// The user's own Claude Code CLI and its sign-in (Experimental, opt-in).
+    #[serde(rename = "claude-code-cli")]
+    ClaudeCodeCli,
+    /// The user's own OpenAI Codex CLI and its sign-in (Experimental, opt-in).
+    #[serde(rename = "codex-cli")]
+    CodexCli,
 }
 
 impl ModelProvider {
@@ -73,6 +84,8 @@ impl ModelProvider {
             Self::Gemini => "gemini",
             Self::Deepseek => "deepseek",
             Self::Ollama => "ollama",
+            Self::ClaudeCodeCli => "claude-code-cli",
+            Self::CodexCli => "codex-cli",
         }
     }
 
@@ -80,16 +93,40 @@ impl ModelProvider {
     fn from_registry_name(name: &str) -> Option<Self> {
         ALL_PROVIDERS.into_iter().find(|provider| provider.registry_name() == name)
     }
+
+    /// The local CLI behind this provider, if it is one.
+    pub fn local_cli(self) -> Option<LocalCli> {
+        match self {
+            Self::ClaudeCodeCli => Some(LocalCli::ClaudeCode),
+            Self::CodexCli => Some(LocalCli::Codex),
+            _ => None,
+        }
+    }
+
+    /// The provider of a local CLI.
+    pub fn for_local_cli(cli: LocalCli) -> Self {
+        match cli {
+            LocalCli::ClaudeCode => Self::ClaudeCodeCli,
+            LocalCli::Codex => Self::CodexCli,
+        }
+    }
+
+    /// Whether the provider takes an API key (not Ollama, not the local CLIs).
+    pub fn uses_api_key(self) -> bool {
+        self != Self::Ollama && self.local_cli().is_none()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderStatus {
     pub provider: ModelProvider,
-    /// A key is stored (always true for Ollama).
+    /// A key is stored (always true for Ollama; for a local CLI: turned on and installed).
     pub configured: bool,
     /// Only for Ollama.
     pub base_url: Option<String>,
+    /// Only for the local CLIs: detection and whether the user turned it on.
+    pub local_cli: Option<LocalCliStatus>,
 }
 
 /// The model new agents use, e.g. `{ provider: openai, name: gpt-4o-mini }`.
@@ -177,6 +214,12 @@ impl CredentialStore {
         if provider == ModelProvider::Ollama {
             return Err(AppError::InvalidInput("Ollama does not use an API key".into()));
         }
+        if let Some(cli) = provider.local_cli() {
+            return Err(AppError::InvalidInput(format!(
+                "{} uses its own sign-in on this computer, not an API key",
+                cli.display_name()
+            )));
+        }
         let api_key = api_key.trim();
         if api_key.is_empty() {
             return Err(AppError::InvalidInput("API key is empty".into()));
@@ -208,7 +251,7 @@ impl CredentialStore {
 
     /// Backend-only access to a key. Never expose through a command.
     pub(crate) fn read_api_key(&self, provider: ModelProvider) -> AppResult<Option<String>> {
-        if provider == ModelProvider::Ollama {
+        if !provider.uses_api_key() {
             return Ok(None);
         }
         match &self.backend {
@@ -221,10 +264,14 @@ impl CredentialStore {
         }
     }
 
-    /// Whether a key is stored for `provider` (always true for Ollama).
-    fn is_configured(&self, provider: ModelProvider) -> AppResult<bool> {
+    /// Whether a key is stored for `provider` (always true for Ollama; a local CLI
+    /// counts when the user turned it on and it is installed).
+    fn is_configured(&self, provider: ModelProvider, db: &Database) -> AppResult<bool> {
         if provider == ModelProvider::Ollama {
             return Ok(true);
+        }
+        if let Some(cli) = provider.local_cli() {
+            return Ok(local_cli::is_enabled(cli, db) && local_cli::detect::cached(cli, false).binary.is_some());
         }
         Ok(self.read_api_key(provider)?.is_some())
     }
@@ -288,7 +335,21 @@ impl CredentialStore {
             .into_iter()
             .map(|provider| {
                 let base_url = (provider == ModelProvider::Ollama).then(|| ollama_base_url(db));
-                Ok(ProviderStatus { provider, configured: self.is_configured(provider)?, base_url })
+                let Some(cli) = provider.local_cli() else {
+                    return Ok(ProviderStatus {
+                        provider,
+                        configured: self.is_configured(provider, db)?,
+                        base_url,
+                        local_cli: None,
+                    });
+                };
+                let status = local_cli::status(cli, db);
+                Ok(ProviderStatus {
+                    provider,
+                    configured: status.enabled && status.installed,
+                    base_url,
+                    local_cli: Some(status),
+                })
             })
             .collect()
     }
@@ -456,7 +517,9 @@ fn build_keyed_model(provider: ModelProvider, api_key: String) -> AppResult<Arc<
             let config = OpenAiConfig::new(DEEPSEEK_BASE_URL, Some(api_key));
             Arc::new(OpenAiModel::new(config).map_err(|error| model_error(provider, &error))?)
         }
-        ModelProvider::Ollama => return Err(AppError::Internal("Ollama does not use an API key".into())),
+        ModelProvider::Ollama | ModelProvider::ClaudeCodeCli | ModelProvider::CodexCli => {
+            return Err(AppError::Internal(format!("{} does not use an API key", provider.registry_name())))
+        }
     };
     Ok(model)
 }
@@ -478,7 +541,23 @@ pub fn build_model_registry(store: &CredentialStore, db: &Database) -> AppResult
         }
     }
     registry.add(ModelProvider::Ollama.registry_name(), build_ollama_model(&ollama_base_url(db))?);
+    add_local_cli_models(&mut registry, db, |cli| local_cli::detect::cached(cli, false));
     Ok(registry)
+}
+
+/// Adds every local CLI the user turned on and that is installed. `detect` gives the
+/// detection of one CLI (cached in the app, scripted in tests).
+pub(crate) fn add_local_cli_models(
+    registry: &mut ModelRegistry,
+    db: &Database,
+    detect: impl Fn(LocalCli) -> Arc<local_cli::detect::Detection>,
+) {
+    for cli in LocalCli::ALL.into_iter().filter(|cli| local_cli::is_enabled(*cli, db)) {
+        let detection = detect(cli);
+        if detection.binary.is_some() {
+            registry.add(cli.provider_name(), Arc::new(local_cli::LocalCliModel::new(cli, detection)));
+        }
+    }
 }
 
 /// The model chosen in settings, if both settings are set and name a known provider.
@@ -498,16 +577,67 @@ fn model_from_settings(db: &Database) -> Option<ModelChoice> {
 /// settings, since it may not be running. `MissingCredentials` if none is usable.
 pub fn default_model(store: &CredentialStore, db: &Database) -> AppResult<ModelChoice> {
     if let Some(choice) = model_from_settings(db) {
-        if store.is_configured(choice.provider)? {
+        if store.is_configured(choice.provider, db)? {
             return Ok(choice);
         }
     }
     for (provider, model_name) in RECOMMENDED_MODELS {
-        if store.is_configured(provider)? {
+        if store.is_configured(provider, db)? {
             return Ok(ModelChoice { provider, name: model_name.to_owned() });
         }
     }
-    Err(AppError::MissingCredentials("a model provider".into()))
+    // A local CLI the user turned on, with its own default model, before giving up.
+    for cli in LocalCli::ALL {
+        let provider = ModelProvider::for_local_cli(cli);
+        if store.is_configured(provider, db)? {
+            return Ok(ModelChoice { provider, name: local_cli::CLI_DEFAULT_MODEL.to_owned() });
+        }
+    }
+    Err(AppError::MissingCredentials(NO_MODEL_CONNECTED.into()))
+}
+
+/// What `MissingCredentials` names when no model can be used at all.
+pub const NO_MODEL_CONNECTED: &str =
+    "an AI model (connect Claude Code, Codex, Ollama or an API key in Connections > AI models)";
+
+/// Whether `provider` can be used right now (key stored, Ollama, or a CLI turned on and installed).
+pub fn is_provider_ready(store: &CredentialStore, db: &Database, provider: ModelProvider) -> AppResult<bool> {
+    store.is_configured(provider, db)
+}
+
+/// Turns a local CLI on or off. Turning on needs it installed; turning off the
+/// default model's provider clears that default, so the next usable model takes over.
+///
+/// # Errors
+/// `InvalidInput` for a provider that is not a local CLI, or turning on one that is
+/// not installed; settings failures.
+pub fn set_local_cli_enabled(
+    store: &CredentialStore,
+    db: &Database,
+    provider: ModelProvider,
+    enabled: bool,
+) -> AppResult<ProviderStatus> {
+    let cli = provider
+        .local_cli()
+        .ok_or_else(|| AppError::InvalidInput(format!("{} is not a local CLI", provider.registry_name())))?;
+    if enabled && local_cli::detect::cached(cli, true).binary.is_none() {
+        return Err(AppError::InvalidInput(format!(
+            "{} is not installed on this computer: install it from {} first",
+            cli.display_name(),
+            cli.install_url()
+        )));
+    }
+    db.set_setting(cli.enabled_setting_key(), if enabled { "true" } else { "false" })?;
+    let is_default = model_from_settings(db).is_some_and(|choice| choice.provider == provider);
+    if !enabled && is_default {
+        db.set_setting(SETTING_DEFAULT_PROVIDER, "")?;
+        db.set_setting(SETTING_DEFAULT_MODEL, "")?;
+    }
+    store
+        .provider_statuses(db)?
+        .into_iter()
+        .find(|status| status.provider == provider)
+        .ok_or_else(|| AppError::Internal("provider status missing".into()))
 }
 
 #[cfg(test)]
@@ -568,9 +698,46 @@ mod tests {
         let providers: Vec<ModelProvider> = statuses.iter().map(|status| status.provider).collect();
         assert_eq!(providers, ALL_PROVIDERS.to_vec());
         let configured: Vec<bool> = statuses.iter().map(|status| status.configured).collect();
-        assert_eq!(configured, vec![false, true, false, false, true]);
+        assert_eq!(configured, vec![false, true, false, false, true, false, false]);
         assert_eq!(statuses[4].base_url.as_deref(), Some(DEFAULT_OLLAMA_BASE_URL));
         assert!(statuses[..4].iter().all(|status| status.base_url.is_none()));
+        assert!(statuses[..5].iter().all(|status| status.local_cli.is_none()));
+        let claude_code = statuses[5].local_cli.as_ref().expect("local CLI providers report their detection");
+        assert!(!claude_code.enabled);
+        assert_eq!(claude_code.install_url, "https://docs.claude.com/en/docs/claude-code/setup");
+    }
+
+    #[test]
+    fn local_cli_providers_take_no_key_and_need_an_install_to_turn_on() {
+        let store = CredentialStore::in_memory();
+        let db = test_database();
+        let result = store.set_api_key(ModelProvider::ClaudeCodeCli, SECRET_KEY);
+        assert!(
+            matches!(result, Err(AppError::InvalidInput(ref message)) if message.contains("own sign-in")),
+            "{result:?}"
+        );
+        assert_eq!(store.read_api_key(ModelProvider::CodexCli).unwrap(), None);
+        // Tests never find real CLIs, so turning one on is refused with the install link.
+        let result = set_local_cli_enabled(&store, &db, ModelProvider::CodexCli, true);
+        assert!(
+            matches!(result, Err(AppError::InvalidInput(ref message)) if message.contains("developers.openai.com")),
+            "{result:?}"
+        );
+        assert!(set_local_cli_enabled(&store, &db, ModelProvider::Openai, true).is_err());
+    }
+
+    #[test]
+    fn turning_off_the_default_cli_clears_the_default() {
+        let store = CredentialStore::in_memory();
+        let db = test_database();
+        store.set_api_key(ModelProvider::Gemini, SECRET_KEY).unwrap();
+        db.set_setting(SETTING_DEFAULT_PROVIDER, "claude-code-cli").unwrap();
+        db.set_setting(SETTING_DEFAULT_MODEL, "default").unwrap();
+        let status = set_local_cli_enabled(&store, &db, ModelProvider::ClaudeCodeCli, false).unwrap();
+        assert!(!status.configured);
+        assert_eq!(model_from_settings(&db), None);
+        assert_eq!(default_model(&store, &db).unwrap().provider, ModelProvider::Gemini);
+        assert_eq!(serde_json::to_value(ModelProvider::ClaudeCodeCli).unwrap(), "claude-code-cli");
     }
 
     #[test]

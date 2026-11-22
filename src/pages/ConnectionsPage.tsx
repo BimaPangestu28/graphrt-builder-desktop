@@ -87,7 +87,7 @@ function ConnectionsScreen({ activeTab }: { activeTab: ConnectionsTab }) {
         ))}
         <div className="flex min-w-0 flex-col gap-4">
           <ConnectionsTabBar tabs={tabs} activeTab={activeTab} />
-          {activeTab === 'models' && <ModelProvidersSection connections={modelConnections} loadError={providerSetupState.error} onKeysChanged={providerSetupState.reload} />}
+          {activeTab === 'models' && <ModelProvidersSection connections={modelConnections} defaultModel={providerSetup?.defaultModel ?? null} loadError={providerSetupState.error} onKeysChanged={providerSetupState.reload} />}
           {activeTab === 'secrets' && <SecretsSection secretsState={{ secrets: secretsState.data, loadError: secretsState.error, reload: secretsState.reload }} />}
           {activeTab === 'mcp' && <McpServersSection servers={mcpServersState} onServersChanged={secretsState.reload} />}
           {activeTab === 'apps' && appConnections && <AppConnectionsSection connections={appConnections} onSetUp={markConnected} />}

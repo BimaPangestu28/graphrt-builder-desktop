@@ -8,12 +8,13 @@ import { listProblems } from '@/api/problems'
 import type { Problem } from '@/api/problemTypes'
 import { listAgentRunStats } from '@/api/runSummary'
 import type { AgentRunStats } from '@/api/runSummaryTypes'
-import type { Agent, ProviderStatus, Run, Trigger } from '@/api/types'
+import type { Agent, ModelChoice, ProviderStatus, Run, Trigger } from '@/api/types'
 import { getUsageSummary } from '@/api/usageSummary'
 import type { UsageSummary } from '@/api/usageSummaryTypes'
 import { useAgents } from '@/hooks/useAgents'
 import { useAsyncData } from '@/hooks/useAsyncData'
 import { useConversationList } from '@/hooks/useConversations'
+import { useDefaultModel } from '@/hooks/useDefaultModel'
 import { useLoadedData, useRunEventSubscription } from '@/hooks/useRunData'
 import { useRuns } from '@/hooks/useRuns'
 import { useTriggers } from '@/hooks/useTriggers'
@@ -40,6 +41,8 @@ export interface HomeData {
   /** Agent id → its plugin requirements; agents whose requirements could not be read are absent. */
   pluginRequirements: Map<string, PluginRequirement[]>
   providerStatuses: ProviderStatus[] | null
+  /** The model new agents use; null while loading or when none is connected. */
+  defaultModel: ModelChoice | null
   triggers: Trigger[]
   areTriggersLoading: boolean
   triggersError: Error | null
@@ -95,7 +98,8 @@ export function useHomeData(): HomeData {
   const { data: problems } = useRunAwareData(listProblems)
   const agentIdsKey = (agents ?? []).map((agent) => agent.id).join(',')
   const { data: pluginRequirements } = useRunAwareData(() => loadPluginRequirements(agentIdsKey ? agentIdsKey.split(',') : []), [agentIdsKey])
-  const { data: providerStatuses } = useAsyncData(listProviderStatuses, [])
+  const { data: providerStatuses } = useAsyncData(() => listProviderStatuses(), [])
+  const { data: defaultModel } = useDefaultModel()
   const { triggers, isLoading: areTriggersLoading, error: triggersError } = useTriggers()
   const { data: monthlyUsage, error: monthlyUsageError } = useRunAwareData(() => getUsageSummary(startOfLocalMonth(new Date()).toISOString()))
   return {
@@ -109,6 +113,7 @@ export function useHomeData(): HomeData {
     problems,
     pluginRequirements: pluginRequirements ?? emptyRequirements,
     providerStatuses,
+    defaultModel,
     triggers,
     areTriggersLoading,
     triggersError,

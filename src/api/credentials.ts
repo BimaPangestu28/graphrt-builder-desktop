@@ -2,7 +2,16 @@ import { callBackend, isDesktopApp } from './client'
 import type { NewWorkflowSecret, WorkflowSecretOverview } from './connectionTypes'
 import type { ProviderModels } from './modelCatalogTypes'
 import { sampleCredentialsBackend } from './sampleBackend/credentials'
-import type { ModelChoice, ModelProvider, ProviderStatus, WorkflowSecretStatus } from './types'
+import type {
+  InstallableModelProvider,
+  LocalCliCheckResult,
+  LocalCliProvider,
+  ModelChoice,
+  ModelProvider,
+  ProviderStatus,
+  WelcomeChoice,
+  WorkflowSecretStatus,
+} from './types'
 
 /** Model provider keys (kept in the OS keychain; never readable from here) and the default model. */
 
@@ -16,9 +25,64 @@ export function deleteApiKey(provider: ModelProvider): Promise<void> {
   return callBackend('delete_api_key', { provider })
 }
 
-export function listProviderStatuses(): Promise<ProviderStatus[]> {
-  if (!isDesktopApp()) return sampleCredentialsBackend.listProviderStatuses()
-  return callBackend('list_provider_statuses')
+/**
+ * Every model provider's status, local CLIs included (openai … ollama, claude-code-cli, codex-cli).
+ *
+ * @param refresh - True looks for the local CLIs again; otherwise the backend's cached detection is used (boolean)
+ * @returns One status per provider (Promise<ProviderStatus[]>)
+ */
+export function listProviderStatuses(refresh = false): Promise<ProviderStatus[]> {
+  if (!isDesktopApp()) return sampleCredentialsBackend.listProviderStatuses(refresh)
+  return callBackend('list_provider_statuses', { refresh })
+}
+
+/**
+ * Turns a local CLI provider (Claude Code, Codex) on or off in graphrt. Turning off the
+ * default model's provider makes the backend pick another default.
+ *
+ * @param provider - The CLI provider (LocalCliProvider)
+ * @param enabled - On or off (boolean)
+ * @returns The provider's updated status (Promise<ProviderStatus>)
+ * @throws BackendError - `invalid_input` for a provider that is not a CLI, or turning on one that is not installed
+ */
+export function setLocalCliEnabled(provider: LocalCliProvider, enabled: boolean): Promise<ProviderStatus> {
+  if (!isDesktopApp()) return sampleCredentialsBackend.setLocalCliEnabled(provider, enabled)
+  return callBackend('set_local_cli_enabled', { provider, enabled })
+}
+
+/**
+ * Runs one tiny prompt through a local CLI to see that it answers. Spends a little of the
+ * user's plan, so call it only when the user asks ("Check connection").
+ *
+ * @param provider - The CLI provider (LocalCliProvider)
+ * @returns Whether it answered and a plain-language message (Promise<LocalCliCheckResult>)
+ */
+export function checkLocalCli(provider: LocalCliProvider): Promise<LocalCliCheckResult> {
+  if (!isDesktopApp()) return sampleCredentialsBackend.checkLocalCli(provider)
+  return callBackend('check_local_cli', { provider })
+}
+
+/** What the user picked on the Welcome screen, or null before they picked anything. */
+export function getWelcomeChoice(): Promise<WelcomeChoice | null> {
+  if (!isDesktopApp()) return sampleCredentialsBackend.getWelcomeChoice()
+  return callBackend('get_welcome_choice')
+}
+
+/** Remembers the Welcome choice, so `/` stops showing Welcome (Skip included). */
+export function setWelcomeChoice(choice: WelcomeChoice): Promise<void> {
+  if (!isDesktopApp()) return sampleCredentialsBackend.setWelcomeChoice(choice)
+  return callBackend('set_welcome_choice', { choice })
+}
+
+/**
+ * Opens the install / download page of a local model provider (Claude Code, Codex docs or
+ * Ollama's download page) in the default browser: a plain link would stay inside the app window.
+ *
+ * @param provider - claude-code-cli, codex-cli or ollama (InstallableModelProvider)
+ */
+export function openModelInstallPage(provider: InstallableModelProvider): Promise<void> {
+  if (!isDesktopApp()) return sampleCredentialsBackend.openModelInstallPage(provider)
+  return callBackend('open_model_install_page', { provider })
 }
 
 export function getDefaultModel(): Promise<ModelChoice> {

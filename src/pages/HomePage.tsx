@@ -29,9 +29,17 @@ function collectAgentsNeedingSetup(problems: Problem[]): Set<string> {
 
 /** The checklist steps once the data they need is in; null before. */
 function buildGettingStartedSteps(homeData: HomeData): GettingStartedStep[] | null {
-  const { providerStatuses, agents, runs, triggers, areTriggersLoading, pluginRequirements, problems } = homeData
+  const { providerStatuses, defaultModel, agents, runs, triggers, areTriggersLoading, pluginRequirements, problems } = homeData
   if (!providerStatuses || !agents || !runs || areTriggersLoading) return null
-  return deriveGettingStartedSteps({ providerStatuses, agents, runs, triggers, pluginRequirements, agentIdsNeedingSetup: collectAgentsNeedingSetup(problems ?? []) })
+  return deriveGettingStartedSteps({
+    providerStatuses,
+    defaultModel,
+    agents,
+    runs,
+    triggers,
+    pluginRequirements,
+    agentIdsNeedingSetup: collectAgentsNeedingSetup(problems ?? []),
+  })
 }
 
 function buildThisMonth({ runs, monthlyUsage }: HomeData): MonthlyNumbers | null {

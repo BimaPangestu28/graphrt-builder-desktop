@@ -116,13 +116,50 @@ export interface NewTrigger {
   inputs: Record<string, unknown>
 }
 
-export type ModelProvider = 'openai' | 'anthropic' | 'gemini' | 'deepseek' | 'ollama'
+export type ModelProvider = 'openai' | 'anthropic' | 'gemini' | 'deepseek' | 'ollama' | LocalCliProvider
+
+/** The user's own signed-in command-line tools graphrt can think with (Experimental, opt-in). */
+export type LocalCliProvider = 'claude-code-cli' | 'codex-cli'
+
+/** Whether a local CLI's own status command reports a signed-in account (no usage spent). */
+export type LocalCliSignIn = 'signed_in' | 'signed_out' | 'unknown'
+
+/** What graphrt detected about a local CLI provider (mirrors the backend's `LocalCliStatus`). */
+export interface LocalCliStatus {
+  /** The user turned it on in graphrt (opt-in). */
+  enabled: boolean
+  /** The binary was found on this computer. */
+  installed: boolean
+  /** E.g. "2.1.330 (Claude Code)" or "codex-cli 0.142.2". */
+  version: string | null
+  /** Resolved binary path. */
+  path: string | null
+  signIn: LocalCliSignIn
+  /** Docs page explaining how to install it. */
+  installUrl: string
+}
 
 export interface ProviderStatus {
   provider: ModelProvider
+  /** Keyed providers: a stored key. Ollama: always. Local CLIs: turned on and installed. */
   configured: boolean
   baseUrl: string | null
+  /** Detection details for the local CLI providers; null for the others. */
+  localCli: LocalCliStatus | null
 }
+
+/** Result of `check_local_cli`: one tiny prompt run through the CLI. */
+export interface LocalCliCheckResult {
+  ok: boolean
+  /** Plain language, e.g. "Claude Code answered in 2.1 s". */
+  message: string
+}
+
+/** What the user picked on the first-launch Welcome screen. */
+export type WelcomeChoice = 'claude-code-cli' | 'codex-cli' | 'ollama' | 'api-key' | 'skip'
+
+/** Providers with an install / download page graphrt can open in the browser. */
+export type InstallableModelProvider = LocalCliProvider | 'ollama'
 
 export interface ModelChoice {
   provider: ModelProvider

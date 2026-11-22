@@ -1,0 +1,174 @@
+//! Local CLI model providers: the user's own, already signed-in Claude Code (`claude`)
+//! and OpenAI Codex (`codex`) command-line tools, run as subprocesses (Experimental).
+//!
+//! graphrt never reads, copies or logs the CLIs' credential files or tokens and never
+//! passes a secret on the command line: it only invokes the binary, the way the user
+//! would in a terminal, and the CLI signs in with whatever it already has.
+//!
+//! Each call runs in a throwaway working directory with no tools (Claude Code:
+//! `--tools ""`; Codex: `--sandbox read-only`), so the model cannot touch the user's
+//! files. Calls have a timeout and the process is killed when the call is dropped
+//! (Stop run, Stop the builder).
+//!
+//! Layout:
+//! - `detect`: finds the binaries (PATH, common install folders, a login shell on
+//!   macOS/Linux where GUI apps do not inherit the shell PATH), their version, the flags
+//!   their `--help` lists and whether they are signed in (their own status commands).
+//! - `prompt`: turns a graphrt `ChatRequest` into instructions + one prompt text.
+//! - `command`: the exact command lines.
+//! - `parse`: Claude Code `stream-json` and Codex `exec --json` output into graphrt deltas.
+//! - `model`: the `graphrt_llm::ChatModel` running a call.
+//! - `check`: "Check connection" (one tiny prompt, only when the user asks).
+//! - `models`: the model choices each CLI offers.
+
+pub mod capability;
+mod check;
+mod command;
+pub mod detect;
+mod model;
+mod models;
+mod parse;
+mod process;
+mod prompt;
+#[cfg(test)]
+mod tests;
+
+use serde::{Deserialize, Serialize};
+
+pub use check::{check_connection, LocalCliCheck};
+pub use model::LocalCliModel;
+pub use models::list_models;
+
+/// Upper bound on one model call through a CLI (a builder draft can take minutes).
+pub const CALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+
+/// A supported local CLI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LocalCli {
+    ClaudeCode,
+    Codex,
+}
+
+impl LocalCli {
+    /// Every CLI, in the order the UI lists them.
+    pub const ALL: [LocalCli; 2] = [LocalCli::ClaudeCode, LocalCli::Codex];
+
+    /// Name shown to the user.
+    pub fn display_name(self) -> &'static str {
+        match self {
+            Self::ClaudeCode => "Claude Code",
+            Self::Codex => "Codex",
+        }
+    }
+
+    /// The command the user types in a terminal.
+    pub fn binary_name(self) -> &'static str {
+        match self {
+            Self::ClaudeCode => "claude",
+            Self::Codex => "codex",
+        }
+    }
+
+    /// Where the user learns to install it.
+    pub fn install_url(self) -> &'static str {
+        match self {
+            Self::ClaudeCode => "https://docs.claude.com/en/docs/claude-code/setup",
+            Self::Codex => "https://developers.openai.com/codex/cli",
+        }
+    }
+
+    /// The graphrt `model.provider` name (also the serde name of the `ModelProvider`).
+    pub fn provider_name(self) -> &'static str {
+        match self {
+            Self::ClaudeCode => "claude-code-cli",
+            Self::Codex => "codex-cli",
+        }
+    }
+
+    /// Parses a graphrt provider name.
+    pub fn from_provider_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|cli| cli.provider_name() == name)
+    }
+
+    /// Setting key remembering that the user turned this CLI on in graphrt.
+    pub fn enabled_setting_key(self) -> &'static str {
+        match self {
+            Self::ClaudeCode => "local_cli_enabled.claude-code-cli",
+            Self::Codex => "local_cli_enabled.codex-cli",
+        }
+    }
+
+    /// What to tell the user when the CLI is not signed in.
+    pub fn sign_in_hint(self) -> &'static str {
+        match self {
+            Self::ClaudeCode => "open Terminal, run `claude` and sign in",
+            Self::Codex => "open Terminal, run `codex login` and sign in",
+        }
+    }
+
+    /// The plan the CLI's usage counts against.
+    pub fn plan_name(self) -> &'static str {
+        match self {
+            Self::ClaudeCode => "Claude",
+            Self::Codex => "ChatGPT",
+        }
+    }
+}
+
+/// Model id meaning "whatever the CLI uses by default" (no `--model` / `-m` flag).
+pub const CLI_DEFAULT_MODEL: &str = "default";
+
+/// Whether the CLI says it is signed in (its own status command; no usage spent).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SignInState {
+    SignedIn,
+    SignedOut,
+    /// No status command, or its answer could not be read.
+    #[default]
+    Unknown,
+}
+
+/// What the Connections card and Welcome screen show about one CLI.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalCliStatus {
+    /// The user turned it on in graphrt (opt-in).
+    pub enabled: bool,
+    /// The binary was found.
+    pub installed: bool,
+    /// First line of `--version`, e.g. `2.1.330 (Claude Code)`.
+    pub version: Option<String>,
+    /// Resolved binary path.
+    pub path: Option<String>,
+    pub sign_in: SignInState,
+    pub install_url: String,
+}
+
+/// Reads whether the user turned `cli` on; read failures count as off (logged).
+pub fn is_enabled(cli: LocalCli, db: &crate::storage::Database) -> bool {
+    match db.get_setting(cli.enabled_setting_key()) {
+        Ok(value) => value.as_deref().map(str::trim) == Some("true"),
+        Err(error) => {
+            log::warn!("could not read whether {} is turned on: {error}", cli.display_name());
+            false
+        }
+    }
+}
+
+/// The status of `cli` from the cached detection (detects now when nothing is cached).
+pub fn status(cli: LocalCli, db: &crate::storage::Database) -> LocalCliStatus {
+    status_from(cli, is_enabled(cli, db), &detect::cached(cli, false))
+}
+
+/// The status of `cli` from one detection result.
+pub fn status_from(cli: LocalCli, enabled: bool, detection: &detect::Detection) -> LocalCliStatus {
+    LocalCliStatus {
+        enabled,
+        installed: detection.binary.is_some(),
+        version: detection.version.clone(),
+        path: detection.binary.as_ref().map(|path| path.display().to_string()),
+        sign_in: detection.sign_in,
+        install_url: cli.install_url().to_owned(),
+    }
+}
