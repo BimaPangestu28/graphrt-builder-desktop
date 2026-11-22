@@ -50,19 +50,43 @@ impl Database {
     }
 
     /// Appends one event (graphrt `Event` as JSON) with the next `seq` for this run.
+    ///
+    /// # Errors
+    /// `NotFound` when the run does not exist.
     pub fn append_run_event(&self, run_id: &str, event: &serde_json::Value) -> AppResult<i64> {
         let connection = self.lock()?;
-        fetch_run_status(&connection, run_id)?;
-        // Computing seq inside the INSERT keeps it atomic in a single statement;
-        // the connection mutex plus the (run_id, seq) primary key rule out duplicates.
-        let seq: i64 = connection.query_row(
-            "INSERT INTO run_events (run_id, seq, event_json, created_at)
-             SELECT ?1, COALESCE(MAX(seq), 0) + 1, ?2, ?3 FROM run_events WHERE run_id = ?1
-             RETURNING seq",
-            params![run_id, json_to_text(event), now_rfc3339()],
-            |row| row.get(0),
-        )?;
-        Ok(seq)
+        insert_run_event(&connection, run_id, event, &now_rfc3339())
+    }
+
+    /// Appends `events` in order in one transaction (one disk sync instead of one per
+    /// event); returns each one's `seq`. Either every event is stored or none is.
+    ///
+    /// # Errors
+    /// `NotFound` when the run does not exist.
+    pub fn append_run_events(&self, run_id: &str, events: &[serde_json::Value]) -> AppResult<Vec<i64>> {
+        if events.is_empty() {
+            return Ok(Vec::new());
+        }
+        let connection = self.lock()?;
+        let transaction = connection.unchecked_transaction()?;
+        let created_at = now_rfc3339();
+        let seqs = events
+            .iter()
+            .map(|event| insert_run_event(&transaction, run_id, event, &created_at))
+            .collect::<AppResult<Vec<i64>>>()?;
+        transaction.commit()?;
+        Ok(seqs)
+    }
+
+    /// Every paused run (oldest first) with its pause reasons, for approval expiry.
+    /// Reads through the `runs_by_status` index instead of scanning every run.
+    pub fn list_paused_runs(&self) -> AppResult<Vec<Run>> {
+        let connection = self.lock()?;
+        let mut statement = connection.prepare_cached(&format!(
+            "SELECT {RUN_COLUMNS} FROM runs WHERE status = ?1 ORDER BY started_at ASC, rowid ASC"
+        ))?;
+        let runs = statement.query_map([RunStatus::Paused], map_run_row)?.collect::<Result<Vec<_>, _>>()?;
+        Ok(runs)
     }
 
     /// Marks the run paused, storing the graphrt snapshot JSON and the pause reasons.
@@ -278,6 +302,38 @@ fn run_not_found(run_id: &str) -> AppError {
     AppError::NotFound(format!("run {run_id}"))
 }
 
+/// Inserts one event with the next `seq` of the run. The `run_events.run_id` foreign key
+/// checks that the run exists, so no separate status read is needed per event.
+fn insert_run_event(
+    connection: &Connection,
+    run_id: &str,
+    event: &serde_json::Value,
+    created_at: &str,
+) -> AppResult<i64> {
+    // Computing seq inside the INSERT keeps it atomic in a single statement;
+    // the connection mutex plus the (run_id, seq) primary key rule out duplicates.
+    let inserted = connection
+        .prepare_cached(
+            "INSERT INTO run_events (run_id, seq, event_json, created_at)
+             SELECT ?1, COALESCE(MAX(seq), 0) + 1, ?2, ?3 FROM run_events WHERE run_id = ?1
+             RETURNING seq",
+        )?
+        .query_row(params![run_id, json_to_text(event), created_at], |row| row.get(0));
+    match inserted {
+        Ok(seq) => Ok(seq),
+        Err(error) if is_foreign_key_violation(&error) => Err(run_not_found(run_id)),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn is_foreign_key_violation(error: &rusqlite::Error) -> bool {
+    matches!(
+        error,
+        rusqlite::Error::SqliteFailure(failure, _)
+            if failure.extended_code == rusqlite::ffi::SQLITE_CONSTRAINT_FOREIGNKEY
+    )
+}
+
 fn fetch_run_status(connection: &Connection, run_id: &str) -> AppResult<RunStatus> {
     connection
         .query_row("SELECT status FROM runs WHERE id = ?1", [run_id], |row| row.get(0))
@@ -390,6 +446,53 @@ mod tests {
         }
         let seqs: Vec<i64> = database.list_run_events(&run.id).unwrap().iter().map(|event| event.seq).collect();
         assert_eq!(seqs, (1..=100).collect::<Vec<i64>>());
+    }
+
+    #[test]
+    fn batched_events_continue_the_sequence() {
+        let database = test_database();
+        let run = start_run(&database);
+        assert_eq!(database.append_run_event(&run.id, &json!({"index": 0})).unwrap(), 1);
+        let seqs = database.append_run_events(&run.id, &[json!({"index": 1}), json!({"index": 2})]).unwrap();
+        assert_eq!(seqs, [2, 3]);
+        assert!(database.append_run_events(&run.id, &[]).unwrap().is_empty());
+        let stored: Vec<serde_json::Value> =
+            database.list_run_events(&run.id).unwrap().into_iter().map(|record| record.event).collect();
+        assert_eq!(stored, [json!({"index": 0}), json!({"index": 1}), json!({"index": 2})]);
+    }
+
+    #[test]
+    fn a_batch_for_a_missing_run_stores_nothing() {
+        let database = test_database();
+        let result = database.append_run_events("ghost", &[json!({}), json!({})]);
+        assert!(matches!(result, Err(AppError::NotFound(_))));
+    }
+
+    #[test]
+    fn paused_runs_are_listed_oldest_first() {
+        let database = test_database();
+        let first = start_run(&database);
+        let running = start_run(&database);
+        let second = start_run(&database);
+        database.mark_run_paused(&first.id, "{}", &json!([])).unwrap();
+        database.mark_run_paused(&second.id, "{}", &json!([{"kind": "human_input"}])).unwrap();
+        let paused: Vec<String> = database.list_paused_runs().unwrap().into_iter().map(|run| run.id).collect();
+        assert_eq!(paused, [first.id, second.id]);
+        assert!(!paused.contains(&running.id));
+    }
+
+    #[test]
+    fn paused_runs_are_read_through_the_status_index() {
+        let database = test_database();
+        let connection = database.lock().unwrap();
+        let plan: Vec<String> = connection
+            .prepare(&format!("EXPLAIN QUERY PLAN SELECT {RUN_COLUMNS} FROM runs WHERE status = 'paused'"))
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(3))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert!(plan.iter().any(|step| step.contains("runs_by_status")), "{plan:?}");
     }
 
     #[test]

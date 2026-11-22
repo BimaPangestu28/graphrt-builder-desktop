@@ -172,6 +172,33 @@ async fn an_expired_approval_answers_with_the_chosen_button() {
 }
 
 #[tokio::test]
+async fn a_pause_wakes_the_expiry_task_which_then_sleeps_until_the_deadline() {
+    let harness = harness_with_answers(&["Hello"]);
+    let agent = create_agent(&harness.db, &timed_approval_flow("      on_timeout: { action: approve }\n"));
+    let now = chrono::Utc::now();
+    assert_eq!(harness.runs.next_approval_check_delay(now), std::time::Duration::from_secs(60), "nothing waits");
+
+    let run = harness.runs.start_run(&agent.id, RunTrigger::Manual, json!({"topic": "x"})).await.unwrap();
+    wait_for_status(&harness.sink, &run.id, RunStatus::Paused).await;
+    // The pause left a wake-up permit: the task does not sleep through the new deadline.
+    tokio::time::timeout(std::time::Duration::from_secs(1), harness.runs.approval_wakeup.notified())
+        .await
+        .expect("a pause wakes approval expiry");
+
+    let question = get_run_review(&harness.db, &run.id).unwrap().pending.remove(0);
+    let expires_at = chrono::DateTime::parse_from_rfc3339(question.expires_at.as_deref().unwrap())
+        .unwrap()
+        .with_timezone(&chrono::Utc);
+    let shortly_before = expires_at - chrono::Duration::seconds(20);
+    assert_eq!(harness.runs.next_approval_check_delay(shortly_before), std::time::Duration::from_secs(20));
+    assert_eq!(
+        harness.runs.next_approval_check_delay(chrono::Utc::now()),
+        std::time::Duration::from_secs(60),
+        "capped"
+    );
+}
+
+#[tokio::test]
 async fn an_expired_approval_stops_the_run_by_default() {
     for on_timeout in ["", "      on_timeout: stop\n"] {
         let harness = harness_with_answers(&["Hello"]);

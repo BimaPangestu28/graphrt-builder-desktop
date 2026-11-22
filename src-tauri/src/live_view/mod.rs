@@ -9,10 +9,14 @@
 //! - frame names are `node.<hex node id>.<random>` for a workflow node and
 //!   `page.<random>` when the node is unknown (tool calls).
 //!
-//! A watcher thread polls the folder every [`POLL_INTERVAL`] and emits each
-//! changed frame (a file is read only when its modification time or size
-//! changed since the last scan) as the Tauri event [`LIVE_VIEW_EVENT`] (a JPEG data URL), and
-//! `image: null` once a frame file is gone or stale. Frames are live only: they
+//! A watcher thread polls the folder and emits each changed frame (a file is
+//! read only when its modification time or size changed since the last scan)
+//! as the Tauri event [`LIVE_VIEW_EVENT`] (a JPEG data URL), and `image: null`
+//! once a frame file is gone or stale. It polls every [`ACTIVE_POLL_INTERVAL`]
+//! while pages are live and for [`ACTIVE_GRACE`] after the last sign of
+//! activity (a frame, or a run starting a step: [`LiveViewWaker`]), and only
+//! every [`IDLE_POLL_INTERVAL`] otherwise, so an idle app does not wake ten
+//! times a second. Frames are live only: they
 //! are never stored with the run, never logged, and the folder is emptied when
 //! the app starts. The plugin process is shared by runs and does not know the
 //! run id, so the frontend matches frames to the running step by node id.
@@ -24,8 +28,9 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender, TrySendError};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
@@ -37,10 +42,16 @@ pub const LIVE_VIEW_DIR_NAME: &str = "live-view";
 /// Name of the Tauri event carrying [`LiveViewFrame`].
 pub const LIVE_VIEW_EVENT: &str = "run-live-view";
 
-/// How often the folder is checked. Plugins write ~6 frames per second; polling
-/// faster than that keeps the shown rate close to it. A scan with no change only
-/// lists the folder (no file is read), so this is cheap.
-const POLL_INTERVAL: Duration = Duration::from_millis(100);
+/// How often the folder is checked while pages are live. Plugins write ~6 frames per
+/// second; polling faster than that keeps the shown rate close to it. A scan with no
+/// change only lists the folder (no file is read), so this is cheap.
+const ACTIVE_POLL_INTERVAL: Duration = Duration::from_millis(100);
+/// How often the folder is checked when nothing happened for [`ACTIVE_GRACE`]: the
+/// first frame of a page no run announced (e.g. a chatbot's tool call) shows within this.
+const IDLE_POLL_INTERVAL: Duration = Duration::from_secs(1);
+/// How long fast polling continues after the last frame or wake-up (a browser step
+/// may take a while to open its first page).
+const ACTIVE_GRACE: Duration = Duration::from_secs(15);
 /// A frame not rewritten for this long belongs to a plugin that stopped without cleaning up.
 const STALE_AFTER: Duration = Duration::from_secs(20);
 /// Larger files are not frames the plugins write (960x720 JPEGs are ~30-120 KB).
@@ -218,6 +229,11 @@ impl FrameWatcher {
         })
     }
 
+    /// Whether a page is live (a frame was sent and its file is still there).
+    pub fn has_live_pages(&self) -> bool {
+        !self.sent.is_empty()
+    }
+
     /// Ends the pages whose file is no longer there.
     fn forget_missing(&mut self, present: &[String]) -> Vec<LiveViewFrame> {
         let missing: Vec<String> = self.sent.keys().filter(|key| !present.contains(key)).cloned().collect();
@@ -260,17 +276,116 @@ pub(crate) fn reset_directory(directory: &Path) {
     }
 }
 
-/// Empties `directory` and starts the watcher thread that sends frames to `sink`.
-pub fn spawn(directory: PathBuf, sink: Arc<dyn LiveViewSink>) {
-    reset_directory(&directory);
-    let mut watcher = FrameWatcher::new(directory);
-    let started = std::thread::Builder::new().name("live-view".into()).spawn(move || loop {
+/// When the watcher polls next: fast while there is activity, slowly otherwise.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PollPacing {
+    last_activity: Option<Instant>,
+}
+
+impl PollPacing {
+    pub fn idle() -> Self {
+        Self { last_activity: None }
+    }
+
+    /// Something happened at `now` (a live page, a run starting a step).
+    pub fn note_activity(&mut self, now: Instant) {
+        self.last_activity = Some(now);
+    }
+
+    /// The wait before the next scan.
+    pub fn next_delay(&self, now: Instant) -> Duration {
+        let active = self.last_activity.is_some_and(|activity| now.saturating_duration_since(activity) < ACTIVE_GRACE);
+        if active {
+            ACTIVE_POLL_INTERVAL
+        } else {
+            IDLE_POLL_INTERVAL
+        }
+    }
+}
+
+/// Tells the watcher a browser page may open soon, so it polls fast right away
+/// instead of noticing the first frame up to [`IDLE_POLL_INTERVAL`] late. Cheap to
+/// clone and to call often: a wake-up already pending absorbs the next ones.
+#[derive(Debug, Clone)]
+pub struct LiveViewWaker {
+    sender: SyncSender<()>,
+}
+
+impl LiveViewWaker {
+    fn channel() -> (Self, Receiver<()>) {
+        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+        (Self { sender }, receiver)
+    }
+
+    pub fn wake(&self) {
+        match self.sender.try_send(()) {
+            Ok(()) | Err(TrySendError::Full(())) | Err(TrySendError::Disconnected(())) => {}
+        }
+    }
+}
+
+/// Passes run events on to `inner` and wakes the live view watcher when a run
+/// starts, resumes or starts a step (only those can open a browser page).
+#[derive(Debug)]
+pub struct WakeOnRunActivity {
+    inner: Arc<dyn crate::engine::RunEventSink>,
+    waker: LiveViewWaker,
+}
+
+impl WakeOnRunActivity {
+    pub fn new(inner: Arc<dyn crate::engine::RunEventSink>, waker: LiveViewWaker) -> Self {
+        Self { inner, waker }
+    }
+}
+
+/// Whether a run event means a browser page may open soon.
+pub(crate) fn may_open_a_page(payload: &crate::engine::RunEventPayload) -> bool {
+    let event_type = payload.event.get("type").and_then(serde_json::Value::as_str);
+    payload.status == crate::storage::models::RunStatus::Running
+        && matches!(event_type, Some("node_started" | "status_changed"))
+}
+
+impl crate::engine::RunEventSink for WakeOnRunActivity {
+    fn send(&self, payload: crate::engine::RunEventPayload) {
+        if may_open_a_page(&payload) {
+            self.waker.wake();
+        }
+        self.inner.send(payload);
+    }
+}
+
+/// Scans, sends, then waits for the next scan (or a wake-up), forever.
+fn watch_forever(mut watcher: FrameWatcher, sink: &dyn LiveViewSink, wakeups: &Receiver<()>) {
+    let mut pacing = PollPacing::idle();
+    loop {
         for frame in watcher.scan(SystemTime::now()) {
             sink.send(frame);
         }
-        std::thread::sleep(POLL_INTERVAL);
+        if watcher.has_live_pages() {
+            pacing.note_activity(Instant::now());
+        }
+        match wakeups.recv_timeout(pacing.next_delay(Instant::now())) {
+            Ok(()) => pacing.note_activity(Instant::now()),
+            Err(RecvTimeoutError::Timeout) => {}
+            // The watcher keeps a sender, so this does not happen; never spin if it does.
+            Err(RecvTimeoutError::Disconnected) => std::thread::sleep(IDLE_POLL_INTERVAL),
+        }
+    }
+}
+
+/// Empties `directory` and starts the watcher thread that sends frames to `sink`.
+/// Returns the waker the run engine pokes when a step starts.
+pub fn spawn(directory: PathBuf, sink: Arc<dyn LiveViewSink>) -> LiveViewWaker {
+    reset_directory(&directory);
+    let watcher = FrameWatcher::new(directory);
+    let (waker, wakeups) = LiveViewWaker::channel();
+    let kept_waker = waker.clone();
+    let started = std::thread::Builder::new().name("live-view".into()).spawn(move || {
+        let _keep_channel_open = kept_waker;
+        watch_forever(watcher, sink.as_ref(), &wakeups);
     });
     if let Err(error) = started {
         log::warn!("live view is off: could not start its watcher: {error}");
     }
+    waker
 }

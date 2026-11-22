@@ -156,6 +156,8 @@ pub struct PluginService {
     snapshot: RwLock<SharedSnapshot>,
     /// The catalog fetched this session and when (shared with the detail sync).
     catalog: catalog_fetch::CatalogSlot,
+    /// The known catalog computed last (see `catalog_fetch::KnownCatalogMemo`).
+    known_catalog_memo: catalog_fetch::KnownCatalogMemo,
     /// The background detail sync of the last catalog fetch, if one runs.
     detail_sync: Mutex<Option<tokio::task::JoinHandle<()>>>,
     /// `name -> icon_url` of the saved catalog, read once when no catalog was fetched yet.
@@ -216,21 +218,31 @@ impl PluginService {
             events: config.events,
             snapshot: RwLock::new(Arc::new(PluginSnapshot::empty())),
             catalog: Arc::new(Mutex::new(None)),
+            known_catalog_memo: catalog_fetch::KnownCatalogMemo::default(),
             detail_sync: Mutex::new(None),
             saved_catalog_icon_urls: OnceLock::new(),
             failed_icon_urls: Mutex::new(HashSet::new()),
             changes: tokio::sync::Mutex::new(()),
             publishes_globally: Arc::new(AtomicBool::new(false)),
         };
+        service.catalog_files.remove_obsolete_v1();
         service.reload();
         service
     }
 
-    /// Makes this service's plugins the ones every run and compile uses.
+    /// Makes this service's plugins the ones every run and compile uses, and publishes
+    /// the known catalog for drafts.
     pub fn activate(&self) {
+        self.activate_installed();
+        self.publish_known_catalog();
+    }
+
+    /// The cheap half of [`PluginService::activate`]: the installed plugins (what runs
+    /// need) become the process-wide ones. The app publishes the catalog (a disk read and
+    /// signature check) later with [`PluginService::publish_known_catalog`].
+    pub fn activate_installed(&self) {
         self.publishes_globally.store(true, Ordering::SeqCst);
         active::publish(Some(self.snapshot()));
-        active::publish_catalog(self.known_catalog().map(Arc::new));
     }
 
     /// The Node runtime plugin processes run on.
@@ -265,7 +277,7 @@ impl PluginService {
     /// The builder prompt section for this service's plugins (installed ones,
     /// then catalog plugins not installed yet).
     pub fn prompt_guide(&self) -> String {
-        prompt_guide::plugin_guide(&self.snapshot().plugins, self.known_catalog().as_ref())
+        prompt_guide::plugin_guide(&self.snapshot().plugins, self.known_catalog().as_deref())
     }
 
     /// What `flow_yaml` needs from plugins (see [`requirements`]).
@@ -281,7 +293,7 @@ impl PluginService {
         let sources = requirements::RequirementSources {
             installed: &snapshot.plugins,
             install_records: &records,
-            catalog: catalog.as_ref(),
+            catalog: catalog.as_deref(),
             credentials: &self.credentials,
             browser_ready: &browser_ready,
             session_linked: &session_linked,
@@ -495,8 +507,7 @@ impl PluginService {
                 return None;
             }
             self.known_catalog()
-                .and_then(|index| index.plugins.into_iter().find(|plugin| plugin.name == name))
-                .and_then(|plugin| from_catalog(&plugin))
+                .and_then(|index| index.plugins.iter().find(|plugin| plugin.name == name).and_then(&from_catalog))
         };
         let url = installed_url
             .or_else(catalog_url)
@@ -557,9 +568,11 @@ impl PluginService {
         });
         let from_saved_catalog = || {
             let icon_urls = self.saved_catalog_icon_urls.get_or_init(|| {
-                let index = self.catalog_files.read_newest();
+                let index = self.saved_catalog();
                 index
-                    .map(|index| index.plugins.into_iter().map(|plugin| (plugin.name, plugin.icon_url)).collect())
+                    .map(|index| {
+                        index.plugins.iter().map(|plugin| (plugin.name.clone(), plugin.icon_url.clone())).collect()
+                    })
                     .unwrap_or_default()
             });
             icon_urls.get(name).cloned()

@@ -44,10 +44,14 @@ pub mod triggers;
 
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
+use std::time::Duration;
 
 use rusqlite::Connection;
 
 use crate::error::{AppError, AppResult};
+
+/// How long a statement waits for another connection's lock before failing.
+const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug)]
 pub struct Database {
@@ -56,8 +60,19 @@ pub struct Database {
 
 impl Database {
     /// Opens (creating if needed) the database file and applies pending migrations.
+    ///
+    /// The file uses write-ahead logging with `synchronous = NORMAL`: a write is one
+    /// append to the `-wal` file instead of a rewrite of the journal plus two syncs,
+    /// which makes the run-event inserts of a running agent much cheaper. A commit
+    /// survives an app crash; only a power loss can drop the last commits, never
+    /// corrupt the file.
     pub fn open(path: &Path) -> AppResult<Self> {
         let connection = Connection::open(path)?;
+        let journal_mode: String = connection.pragma_update_and_check(None, "journal_mode", "WAL", |row| row.get(0))?;
+        if !journal_mode.eq_ignore_ascii_case("wal") {
+            log::warn!("the database stays in {journal_mode} journal mode (write-ahead logging is not available)");
+        }
+        connection.pragma_update(None, "synchronous", "NORMAL")?;
         Self::from_connection(connection)
     }
 
@@ -68,6 +83,9 @@ impl Database {
 
     fn from_connection(connection: Connection) -> AppResult<Self> {
         connection.pragma_update(None, "foreign_keys", "ON")?;
+        // Another connection to the file (e.g. a second app instance starting up)
+        // waits for a lock instead of failing at once with SQLITE_BUSY.
+        connection.busy_timeout(BUSY_TIMEOUT)?;
         migrations::apply(&connection)?;
         Ok(Self { connection: Mutex::new(connection) })
     }
@@ -81,4 +99,47 @@ impl Database {
 /// Current time as an RFC 3339 string (UTC), the format of every timestamp column.
 pub fn now_rfc3339() -> String {
     chrono::Utc::now().to_rfc3339()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pragma_text(database: &Database, pragma: &str) -> String {
+        let connection = database.lock().unwrap();
+        let value: rusqlite::types::Value =
+            connection.query_row(&format!("PRAGMA {pragma}"), [], |row| row.get(0)).unwrap();
+        match value {
+            rusqlite::types::Value::Integer(number) => number.to_string(),
+            rusqlite::types::Value::Text(text) => text,
+            other => format!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_file_database_uses_write_ahead_logging() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Database::open(&directory.path().join("graphrt.db")).unwrap();
+        assert_eq!(pragma_text(&database, "journal_mode"), "wal");
+        // 1 = NORMAL
+        assert_eq!(pragma_text(&database, "synchronous"), "1");
+        assert_eq!(pragma_text(&database, "foreign_keys"), "1");
+        assert_eq!(pragma_text(&database, "busy_timeout"), "5000");
+    }
+
+    #[test]
+    fn write_ahead_logging_survives_a_reopen() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("graphrt.db");
+        drop(Database::open(&path).unwrap());
+        let reopened = Database::open(&path).unwrap();
+        assert_eq!(pragma_text(&reopened, "journal_mode"), "wal");
+    }
+
+    #[test]
+    fn an_in_memory_database_enforces_foreign_keys_and_waits_for_locks() {
+        let database = Database::open_in_memory().unwrap();
+        assert_eq!(pragma_text(&database, "foreign_keys"), "1");
+        assert_eq!(pragma_text(&database, "busy_timeout"), "5000");
+    }
 }
