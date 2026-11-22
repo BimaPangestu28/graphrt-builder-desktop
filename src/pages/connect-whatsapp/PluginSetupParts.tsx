@@ -1,9 +1,11 @@
 import type { InstalledPlugin } from '@/api/pluginTypes'
 import { Button } from '@/components/ui'
 import { findInventoryDisplayName, type PluginsState } from '@/hooks/usePlugins'
+import { isPluginRuntimeMissing, usePluginRuntime } from '@/hooks/usePluginRuntime'
 import { describeError } from '@/lib/agentDisplay'
 import { describeInstallProgress } from '../plugins/pluginDisplay'
 import { PluginPermissionList } from '../plugins/PluginPermissionList'
+import { pluginRuntimeInstallNote } from '../plugins/PluginRuntimeCard'
 import { PluginTrustToggle } from '../plugins/PluginTrustToggle'
 
 function PluginErrorMessage({ plugins, pluginName }: { plugins: PluginsState; pluginName: string }) {
@@ -18,6 +20,7 @@ function PluginErrorMessage({ plugins, pluginName }: { plugins: PluginsState; pl
 
 /** Install step body: what the plugin asks for, then Install with progress. Says so once installed. */
 export function PluginInstallStepBody({ plugins, pluginName }: { plugins: PluginsState; pluginName: string }) {
+  const needsPluginRuntime = isPluginRuntimeMissing(usePluginRuntime())
   const inventory = plugins.data
   if (plugins.error) return <p role="alert" className="m-0 text-[13px] text-danger">Could not load plugins: {describeError(plugins.error)}</p>
   if (!inventory) return <p className="m-0 text-[13px] text-muted">Checking plugins…</p>
@@ -36,8 +39,14 @@ export function PluginInstallStepBody({ plugins, pluginName }: { plugins: Plugin
     <>
       <span className="text-[13px] text-body">{catalogEntry.description}. It asks for:</span>
       <PluginPermissionList pluginLabel={pluginLabel} permissions={catalogEntry.permissions} needsBrowser={catalogEntry.needsBrowser} />
+      {needsPluginRuntime && <span className="text-[13px] text-body">{pluginRuntimeInstallNote}</span>}
       <div className="flex flex-wrap items-center gap-3">
-        <Button size="sm" aria-label={`Install ${pluginLabel}`} disabled={isInstalling} onClick={() => void plugins.install(pluginName, catalogEntry.permissions)}>
+        <Button
+          size="sm"
+          aria-label={`Install ${pluginLabel}`}
+          disabled={isInstalling}
+          onClick={() => void plugins.install(pluginName, catalogEntry.permissions, { withPluginRuntime: needsPluginRuntime })}
+        >
           {isInstalling ? 'Installing…' : 'Install'}
         </Button>
         {progress && (

@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { getBrowserRuntimeStatus, installBrowserRuntime, listenToBrowserRuntimeEvents } from '@/api/plugins'
-import type { BrowserRuntimeEvent, BrowserRuntimeStatus } from '@/api/pluginTypes'
+import { isPluginRuntimeEvent, type BrowserRuntimeEvent, type BrowserRuntimeStatus } from '@/api/pluginTypes'
 import { describeError } from '@/lib/agentDisplay'
 import { useAsyncData } from './useAsyncData'
 import { useBackendSubscription } from './useBackendSubscription'
@@ -17,15 +17,18 @@ export interface BrowserRuntimeState {
 }
 
 /**
- * Builds a progress line from a `node-runtime-event` payload, whose shape belongs to the
- * Node runtime: only `message` and `percent` are read, when present.
+ * Builds a progress line from a browser `node-runtime-event` payload: its `message` (or the
+ * installer output `line`) and `percent`, when present. Plugin runtime (Node.js) events are
+ * not about the browser and give null.
  *
  * @returns "message · 40%", one of the two, or null when the event has neither (string | null)
  */
 export function describeBrowserRuntimeEvent(runtimeEvent: unknown): string | null {
   if (!runtimeEvent || typeof runtimeEvent !== 'object') return null
-  const { message: rawMessage, percent: rawPercent } = runtimeEvent as BrowserRuntimeEvent
-  const message = typeof rawMessage === 'string' && rawMessage.trim() ? rawMessage.trim() : null
+  if (isPluginRuntimeEvent(runtimeEvent as BrowserRuntimeEvent)) return null
+  const { message: rawMessage, line: rawLine, percent: rawPercent } = runtimeEvent as BrowserRuntimeEvent
+  const text = typeof rawMessage === 'string' ? rawMessage : rawLine
+  const message = typeof text === 'string' && text.trim() ? text.trim() : null
   const percent = typeof rawPercent === 'number' && Number.isFinite(rawPercent) ? `${Math.round(rawPercent)}%` : null
   if (message && percent) return `${message} · ${percent}`
   return message ?? percent

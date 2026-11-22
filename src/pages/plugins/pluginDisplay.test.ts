@@ -53,6 +53,7 @@ function installed(name: string): InstalledPlugin {
     permissions: noPermissions,
     trusted: false,
     needsBrowser: false,
+    needsNodeRuntime: true,
     nodes: [],
     tools: [],
     config: [],

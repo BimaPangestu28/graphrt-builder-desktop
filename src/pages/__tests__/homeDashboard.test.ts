@@ -80,6 +80,8 @@ function buildRequirement(changes: Partial<PluginRequirement>): PluginRequiremen
     trustNotNeeded: false,
     missingConfig: [],
     browserReady: true,
+    needsNodeRuntime: true,
+    nodeRuntimeReady: true,
     needsSession: false,
     sessionLinked: true,
     ready: true,

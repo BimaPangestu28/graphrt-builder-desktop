@@ -97,10 +97,10 @@ function AddNodePalettePanel({
     else addAction(action)
   }
 
-  async function confirmInstall() {
+  async function confirmInstall(withPluginRuntime: boolean) {
     const pendingEntry = catalogEntries?.find((entry) => entry.name === install.pending?.action.plugin?.name)
     // Without the catalog entry the prompt says the plugin gets no settings or secrets: approve exactly that.
-    const installed = await install.confirm(pendingEntry?.permissions ?? noPermissions)
+    const installed = await install.confirm(pendingEntry?.permissions ?? noPermissions, withPluginRuntime)
     if (installed) addAction(installed.action, validAnchor(graph, installed.anchor))
   }
 
@@ -188,7 +188,7 @@ function AddNodePalettePanel({
             isInstalling={install.isInstalling}
             progress={pendingPluginName ? (plugins.progressByName[pendingPluginName] ?? null) : null}
             errorMessage={install.errorMessage}
-            onConfirm={() => void confirmInstall()}
+            onConfirm={(withPluginRuntime) => void confirmInstall(withPluginRuntime)}
             onCancel={() => {
               install.cancel()
               searchInputRef.current?.focus()

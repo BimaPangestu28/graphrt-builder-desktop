@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import {
   deletePluginConfig,
   installPlugin,
+  installPluginRuntime,
   listInstalledPlugins,
   listPluginCatalog,
   listenToPluginEvents,
@@ -36,13 +37,36 @@ export type PluginOperation = 'installing' | 'updating' | 'removing' | 'trusting
 
 const operationVerbs: Record<PluginOperation, string> = { installing: 'install', updating: 'update', removing: 'remove', trusting: 'change trust for' }
 
+/** Extra work the same install click approved. */
+export interface PluginInstallOptions {
+  /**
+   * Also download the plugin runtime (Node.js) once the plugin is installed. Pass true only
+   * when the approval on screen said so (see `pluginRuntimeInstallNote`).
+   */
+  withPluginRuntime?: boolean
+}
+
+/**
+ * Installs a plugin, then the plugin runtime when the approval included it. A failed runtime
+ * download keeps the plugin installed and says so.
+ */
+async function installPluginWithRuntime(name: string, approvedPermissions: PluginPermissions, options: PluginInstallOptions | undefined): Promise<void> {
+  await installPlugin(name, approvedPermissions)
+  if (!options?.withPluginRuntime) return
+  try {
+    await installPluginRuntime()
+  } catch (runtimeError) {
+    throw new Error(`it is installed, but the plugin runtime (Node.js) could not be downloaded: ${describeError(runtimeError)}. Try again from the Plugins page`)
+  }
+}
+
 export interface PluginsState extends AsyncDataState<PluginInventory> {
   progressByName: Record<string, PluginInstallProgress>
   operationByName: Record<string, PluginOperation>
   /** Last failed install / update / remove / trust per plugin, as text to show. */
   errorByName: Record<string, string>
   /** Installs with what the screen showed as the limit: a plugin asking for more is refused. */
-  install: (name: string, approvedPermissions: PluginPermissions) => Promise<void>
+  install: (name: string, approvedPermissions: PluginPermissions, options?: PluginInstallOptions) => Promise<void>
   update: (name: string) => Promise<void>
   remove: (name: string) => Promise<void>
   /** Trusting needs the permissions shown next to the toggle; the backend refuses a plugin asking for more. */
@@ -151,7 +175,7 @@ export function usePlugins(): PluginsState {
     progressByName,
     operationByName,
     errorByName,
-    install: (name, approvedPermissions) => runOperation(name, 'installing', () => installPlugin(name, approvedPermissions)),
+    install: (name, approvedPermissions, options) => runOperation(name, 'installing', () => installPluginWithRuntime(name, approvedPermissions, options)),
     update: (name) => runOperation(name, 'updating', () => updatePlugin(name)),
     remove: (name) => runOperation(name, 'removing', () => removePlugin(name)),
     setTrusted: (name, trusted, approvedPermissions) => runOperation(name, 'trusting', () => setPluginTrusted(name, trusted, approvedPermissions)),

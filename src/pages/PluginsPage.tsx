@@ -1,6 +1,7 @@
 import { useSearchParams } from 'react-router-dom'
 import { AppShell, PageFrame, PageTitleBlock } from '@/components/layout'
 import { useBrowserRuntime } from '@/hooks/useBrowserRuntime'
+import { usePluginRuntime } from '@/hooks/usePluginRuntime'
 import { usePluginCatalogRefresh, type PluginCatalogRefreshState } from '@/hooks/usePluginCatalogRefresh'
 import { usePlugins, type PluginsState } from '@/hooks/usePlugins'
 import { Button, Spinner } from '@/components/ui'
@@ -11,6 +12,7 @@ import { LocalPluginInstall } from './plugins/LocalPluginInstall'
 import { PluginAutoUpdateToggle } from './plugins/PluginAutoUpdateToggle'
 import { PluginCatalogCard } from './plugins/PluginCatalogCard'
 import { PluginCategoryChips, PluginSearchBox, PluginTabs } from './plugins/PluginFilterBar'
+import { PluginRuntimeBanner } from './plugins/PluginRuntimeCard'
 import { buildPluginListItems, countPluginsByTab, type PluginFilter, type PluginListItem } from './plugins/pluginDisplay'
 import { applyTabAndSearch, countPluginCategories, readPluginListFilters, writePluginListFilters, type PluginListFilters } from './plugins/pluginListFilters'
 
@@ -136,7 +138,9 @@ function PluginCatalog({ items, plugins }: PluginCatalogProps) {
  * The graphrt-plugins catalog merged with what is installed, as an equal-height card grid
  * with All / Installed / Updates / Needs attention tabs, search and category chips. Each
  * card links to the plugin's page (`/plugins/:pluginName`) for trust, settings and Remove.
- * The browser runtime banner shows while an installed plugin needs Chromium. "Check for
+ * The plugin runtime banner shows while installed plugins need Node.js and it is missing (after
+ * updating from a version that bundled it), the browser runtime banner while an installed
+ * plugin needs Chromium. "Check for
  * updates" fetches the catalog again; a catalog fetched over 10 minutes ago is refetched
  * in the background when the page opens (the saved list shows meanwhile). With Settings ›
  * About › Developer mode on, "Install from folder or archive…" sideloads a plugin.
@@ -145,9 +149,11 @@ export function PluginsPage() {
   const plugins = usePlugins()
   const catalogRefresh = usePluginCatalogRefresh(plugins)
   const browserRuntime = useBrowserRuntime()
+  const pluginRuntime = usePluginRuntime()
   const inventory = plugins.data
   const items = inventory ? buildPluginListItems(inventory.catalog, inventory.installed) : []
   const browserPluginLabels = inventory?.installed.filter((installedPlugin) => installedPlugin.needsBrowser).map((installedPlugin) => installedPlugin.displayName) ?? []
+  const runtimePluginLabels = inventory?.installed.filter((installedPlugin) => installedPlugin.needsNodeRuntime).map((installedPlugin) => installedPlugin.displayName) ?? []
 
   return (
     <AppShell activeNav="plugins">
@@ -161,6 +167,7 @@ export function PluginsPage() {
         {!plugins.error && !inventory && <p className="m-0 text-muted">Loading plugins…</p>}
         <CatalogStatus plugins={plugins} catalogRefresh={catalogRefresh} />
         {inventory && <LocalPluginInstall onInstalled={plugins.reload} />}
+        {runtimePluginLabels.length > 0 && <PluginRuntimeBanner runtime={pluginRuntime} pluginLabels={runtimePluginLabels} />}
         {browserPluginLabels.length > 0 && <BrowserRuntimeBanner runtime={browserRuntime} pluginLabels={browserPluginLabels} />}
         {inventory && <PluginCatalog items={items} plugins={plugins} />}
       </PageFrame>

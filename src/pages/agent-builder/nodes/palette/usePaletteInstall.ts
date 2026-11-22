@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { installPlugin } from '@/api/plugins'
+import { installPlugin, installPluginRuntime } from '@/api/plugins'
 import type { PluginPermissions } from '@/api/pluginTypes'
 import { describeError } from '@/lib/agentDisplay'
 import type { AddNodeAnchor } from '../contracts'
@@ -21,10 +21,11 @@ export interface PaletteInstallState {
   requestInstall: (action: PaletteAction, anchor: AddNodeAnchor | null) => void
   cancel: () => void
   /**
-   * The explicit OK: installs within `approvedPermissions` (what the prompt showed), then
-   * resolves with what to add (null when the install failed, e.g. the plugin asks for more).
+   * The explicit OK: installs within `approvedPermissions` (what the prompt showed), and the
+   * plugin runtime too when `withPluginRuntime` (the prompt said so), then resolves with what
+   * to add (null when the install failed, e.g. the plugin asks for more).
    */
-  confirm: (approvedPermissions: PluginPermissions) => Promise<PendingInstall | null>
+  confirm: (approvedPermissions: PluginPermissions, withPluginRuntime?: boolean) => Promise<PendingInstall | null>
 }
 
 /**
@@ -51,7 +52,7 @@ export function usePaletteInstall(onPluginInstalled?: (pluginName: string) => vo
     setPending(null)
   }, [])
 
-  const confirm = useCallback(async (approvedPermissions: PluginPermissions) => {
+  const confirm = useCallback(async (approvedPermissions: PluginPermissions, withPluginRuntime = false) => {
     const plugin = pending?.action.plugin
     if (!pending || !plugin) return null
     setIsInstalling(true)
@@ -59,6 +60,14 @@ export function usePaletteInstall(onPluginInstalled?: (pluginName: string) => vo
     try {
       await installPlugin(plugin.name, approvedPermissions)
       setInstalledPluginNames((previous) => new Set([...previous, plugin.name]))
+      if (withPluginRuntime) {
+        try {
+          await installPluginRuntime()
+        } catch (runtimeError) {
+          // The step is still added; the plugin page and Plugins banner offer the runtime again.
+          console.warn('installed, but could not download the plugin runtime', runtimeError)
+        }
+      }
       try {
         await onPluginInstalled?.(plugin.name)
       } catch (reloadError) {

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { installBrowserRuntime } from '@/api/plugins'
+import { installBrowserRuntime, installPluginRuntime } from '@/api/plugins'
 import { retryRun } from '@/api/problems'
 import type { ProblemAction } from '@/api/problemTypes'
 import { joinClassNames } from '@/components/ui'
@@ -25,6 +25,10 @@ async function runCommand(action: ProblemAction): Promise<CommandOutcome> {
     if (action.kind === 'retry_run' && action.runId) {
       await retryRun(action.runId)
       return { kind: 'done', message: 'A new run started from the beginning', runsPath: routePaths.runs }
+    }
+    if (action.kind === 'install_plugin_runtime') {
+      await installPluginRuntime()
+      return { kind: 'done', message: 'The plugin runtime is installed' }
     }
     await installBrowserRuntime()
     return { kind: 'done', message: 'The browser is installed' }

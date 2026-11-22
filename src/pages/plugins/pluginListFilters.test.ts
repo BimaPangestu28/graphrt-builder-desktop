@@ -44,6 +44,7 @@ function installedPlugin(name: string, overrides: Partial<InstalledPlugin> = {})
     permissions: noPermissions,
     trusted: true,
     needsBrowser: false,
+    needsNodeRuntime: true,
     nodes: [],
     tools: [],
     config: [],

@@ -6,6 +6,7 @@ import { Badge, Icon, type BadgeTone } from '@/components/ui'
 import { useAsyncData } from '@/hooks/useAsyncData'
 import { useBrowserRuntime } from '@/hooks/useBrowserRuntime'
 import { usePlugins, type PluginsState } from '@/hooks/usePlugins'
+import { isPluginRuntimeMissing, usePluginRuntime, type PluginRuntimeState } from '@/hooks/usePluginRuntime'
 import { describeError } from '@/lib/agentDisplay'
 import { humanizePluginName } from '@/lib/pluginDisplayName'
 import { routePaths } from '@/routes'
@@ -22,6 +23,7 @@ import {
 } from './plugins/PluginDetailSections'
 import { buildPluginListItems, describeCommunityInstallNote, pluginInstallTrustNote, describeMaturity, describePluginSource, describePluginStatus, type PluginListItem } from './plugins/pluginDisplay'
 import { PluginIcon } from './plugins/PluginIcon'
+import { pluginRuntimeInstallNote } from './plugins/PluginRuntimeCard'
 import { usePluginUsers } from './plugins/usePluginUsers'
 
 /** The back link returns to the Plugins page with the filters it was opened from. */
@@ -37,15 +39,17 @@ function BackLink() {
   )
 }
 
-function HeaderActions({ item, plugins }: { item: PluginListItem; plugins: PluginsState }) {
+function HeaderActions({ item, plugins, pluginRuntime }: { item: PluginListItem; plugins: PluginsState; pluginRuntime: PluginRuntimeState }) {
   if (!item.installed) {
     const communityNote = describeCommunityInstallNote(item)
+    const needsPluginRuntime = isPluginRuntimeMissing(pluginRuntime)
     return (
       <div className="ml-auto flex max-w-[260px] flex-col items-end gap-1.5">
-        <PluginInstallButton item={item} plugins={plugins} size="md" />
+        <PluginInstallButton item={item} plugins={plugins} size="md" withPluginRuntime={needsPluginRuntime} />
         <span className="text-right text-[12px] leading-normal text-muted">
           {communityNote && `${communityNote} `}Runs its code on this computer. It starts untrusted, without settings or secrets.
         </span>
+        {needsPluginRuntime && <span className="text-right text-[12px] leading-normal text-muted">{pluginRuntimeInstallNote}</span>}
         <span className="text-right text-[12px] font-medium leading-normal text-ink-2">{pluginInstallTrustNote}</span>
       </div>
     )
@@ -68,7 +72,7 @@ function HeaderActions({ item, plugins }: { item: PluginListItem; plugins: Plugi
 const maturityBadgeTones: Record<PluginMaturity, BadgeTone> = { stable: 'neutral', beta: 'neutral', experimental: 'amber' }
 
 /** Icon, name, status and maturity badges, category and version, the description, then the actions on the right. */
-function PluginHeader({ item, plugins }: { item: PluginListItem; plugins: PluginsState }) {
+function PluginHeader({ item, plugins, pluginRuntime }: { item: PluginListItem; plugins: PluginsState; pluginRuntime: PluginRuntimeState }) {
   const status = describePluginStatus(item)
   const sourceBadge = describePluginSource(item.source)
   const maturityLabel = describeMaturity(item.maturity)
@@ -92,7 +96,7 @@ function PluginHeader({ item, plugins }: { item: PluginListItem; plugins: Plugin
         </div>
         <p className="m-0 max-w-[640px] leading-normal text-body">{item.description}</p>
       </div>
-      <HeaderActions item={item} plugins={plugins} />
+      <HeaderActions item={item} plugins={plugins} pluginRuntime={pluginRuntime} />
     </header>
   )
 }
@@ -110,19 +114,20 @@ function usePluginSteps(item: PluginListItem): PluginNodeInfo[] {
 
 function PluginDetailBody({ item, plugins }: { item: PluginListItem; plugins: PluginsState }) {
   const browserRuntime = useBrowserRuntime()
+  const pluginRuntime = usePluginRuntime()
   const steps = usePluginSteps(item)
   const { installed } = item
   const refreshKey = installed ? `${installed.version}:${installed.trusted}:${installed.config.filter((setting) => setting.configured).length}` : 'not-installed'
   const users = usePluginUsers(item.name, refreshKey)
   return (
     <>
-      <PluginHeader item={item} plugins={plugins} />
+      <PluginHeader item={item} plugins={plugins} pluginRuntime={pluginRuntime} />
       <PluginOperationFeedback pluginName={item.name} plugins={plugins} />
       <PluginWarningBox item={item} />
       {installed && <PluginLoadNotes installed={installed} />}
       <div className="@container grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="flex min-w-0 flex-col gap-5">
-          {installed && <PluginSetupSection installed={installed} plugins={plugins} browserRuntime={browserRuntime} />}
+          {installed && <PluginSetupSection installed={installed} plugins={plugins} browserRuntime={browserRuntime} pluginRuntime={pluginRuntime} />}
           <PluginStepsSection pluginLabel={item.displayName} nodes={steps} />
         </div>
         <aside aria-label={`About ${item.displayName}`} className="grid min-w-0 grid-cols-1 items-start gap-5 max-lg:@2xl:grid-cols-2">
@@ -157,7 +162,7 @@ function PluginDetailContent({ pluginName }: { pluginName: string }) {
 /**
  * Plugin page (`/plugins/:pluginName`), opened from the Plugins grid, the builder's
  * "Needs" box and Home. Header with status and Install / Update / Remove, the README
- * warning, then set up (trust, browser runtime, the WhatsApp QR link, settings) and the
+ * warning, then set up (trust, plugin and browser runtimes, the WhatsApp QR link, settings) and the
  * steps it adds; the side column says what it asks for, which agents use it and links
  * the README.
  */

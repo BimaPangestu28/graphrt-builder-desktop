@@ -2,8 +2,10 @@ import { useEffect, useRef } from 'react'
 import type { PluginCatalogEntry } from '@/api/pluginTypes'
 import { Button, buttonClassNames } from '@/components/ui'
 import type { PluginInstallProgress } from '@/hooks/usePlugins'
+import { isPluginRuntimeMissing, usePluginRuntime } from '@/hooks/usePluginRuntime'
 import { describeCommunityInstallNote, describeInstallProgress, describePermissionChips, pluginInstallTrustNote } from '@/pages/plugins/pluginDisplay'
 import { PluginIcon } from '@/pages/plugins/PluginIcon'
+import { pluginRuntimeInstallNote } from '@/pages/plugins/PluginRuntimeCard'
 import type { PendingInstall } from './usePaletteInstall'
 
 interface PluginInstallPromptProps {
@@ -15,7 +17,8 @@ interface PluginInstallPromptProps {
   isInstalling: boolean
   progress: PluginInstallProgress | null
   errorMessage: string | null
-  onConfirm: () => void
+  /** `withPluginRuntime`: the prompt said the plugin runtime downloads too. */
+  onConfirm: (withPluginRuntime: boolean) => void
   onCancel: () => void
 }
 
@@ -36,6 +39,7 @@ export function describeInstallAsks(catalogEntry: PluginCatalogEntry | null): st
  */
 export function PluginInstallPrompt({ pending, placementText, catalogEntry, isInstalling, progress, errorMessage, onConfirm, onCancel }: PluginInstallPromptProps) {
   const confirmButtonRef = useRef<HTMLButtonElement>(null)
+  const needsPluginRuntime = isPluginRuntimeMissing(usePluginRuntime())
   const plugin = pending.action.plugin
   useEffect(() => confirmButtonRef.current?.focus(), [pending])
   if (!plugin) return null
@@ -66,6 +70,7 @@ export function PluginInstallPrompt({ pending, placementText, catalogEntry, isIn
         {communityNote && `${communityNote} `}
         {describeInstallAsks(catalogEntry)}
       </p>
+      {needsPluginRuntime && <p className="m-0 text-[12px] leading-normal text-body">{pluginRuntimeInstallNote}</p>}
       <p className="m-0 text-[12px] font-medium leading-normal text-ink-2">{pluginInstallTrustNote}</p>
       {isInstalling && progress && (
         <span role="status" className="text-[12px] text-ink-2">
@@ -88,7 +93,7 @@ export function PluginInstallPrompt({ pending, placementText, catalogEntry, isIn
           type="button"
           className={buttonClassNames('primary', 'sm')}
           disabled={isInstalling}
-          onClick={onConfirm}
+          onClick={() => onConfirm(needsPluginRuntime)}
           aria-label={`Install ${plugin.displayName} and add ${pending.action.displayName}`}
         >
           {isInstalling ? 'Installing…' : 'Install and add'}

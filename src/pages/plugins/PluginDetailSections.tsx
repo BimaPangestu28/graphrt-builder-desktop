@@ -4,6 +4,7 @@ import { openPluginReadme, openPluginRepository } from '@/api/plugins'
 import type { InstalledPlugin, PluginNodeInfo, PluginSource, PluginTosRisk } from '@/api/pluginTypes'
 import { Button, Icon, StatusDot, StrokeIcon } from '@/components/ui'
 import type { BrowserRuntimeState } from '@/hooks/useBrowserRuntime'
+import type { PluginRuntimeState } from '@/hooks/usePluginRuntime'
 import type { PluginsState } from '@/hooks/usePlugins'
 import { describeError } from '@/lib/agentDisplay'
 import { agentPath } from '@/routes'
@@ -181,14 +182,15 @@ interface PluginSetupSectionProps {
   installed: InstalledPlugin
   plugins: PluginsState
   browserRuntime: BrowserRuntimeState
+  pluginRuntime: PluginRuntimeState
 }
 
 /**
  * "Set up" as a numbered checklist: install (done), trust, the browser runtime when the
  * plugin needs it, the plugin's own link step (whatsapp-web: QR code), then settings.
  */
-export function PluginSetupSection({ installed, plugins, browserRuntime }: PluginSetupSectionProps) {
-  const steps = buildPluginSetupSteps({ installed, plugins, browserRuntime })
+export function PluginSetupSection({ installed, plugins, browserRuntime, pluginRuntime }: PluginSetupSectionProps) {
+  const steps = buildPluginSetupSteps({ installed, plugins, browserRuntime, pluginRuntime })
   const doneCount = steps.filter((step) => step.isDone).length
   return (
     <DetailSection title="Set up" hint={`${doneCount} of ${steps.length} steps done`}>
