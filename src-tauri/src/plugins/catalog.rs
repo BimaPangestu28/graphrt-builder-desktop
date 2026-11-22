@@ -219,7 +219,7 @@ fn clean_display_name(plugin: &mut CatalogPlugin) {
     plugin.display_name = validate_display_name(&raw);
     if plugin.display_name.is_none() {
         log::warn!(
-            "ignoring the display name of catalog entry `{}`: it must be 1 to {MAX_DISPLAY_NAME_CHARS} characters without control characters",
+            "ignoring the display name of catalog entry `{}`: it must be 1 to {MAX_DISPLAY_NAME_CHARS} characters without control or invisible format characters",
             plugin.name
         );
     }

@@ -41,6 +41,11 @@ releases may contain breaking changes; they are called out under **Changed**.
 - **One catalog entry per plugin name**: when a catalog lists a name twice, the official entry
   is kept (else the first one) and the others are dropped and logged, so a community entry can
   never stand in for an official plugin.
+- **Plugin names and publishers cannot be spoofed with invisible characters**: catalog
+  `display_name` and `publisher` values with Unicode format characters (`Cf`: bidi overrides
+  and isolates, zero-width characters, soft hyphens, tags) are dropped like those with control
+  characters, and a community entry's `display_name` or `publisher` containing "official" or
+  "graphrt" (any case) is dropped. The entry stays listed under its humanized name.
 
 ## [0.1.3] - 2026-11-22
 

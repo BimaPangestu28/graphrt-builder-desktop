@@ -43,8 +43,12 @@ pub(crate) fn parse_catalog_source(raw: Option<&str>) -> Result<PluginSource, St
     }
 }
 
+/// Words a community plugin's display name or publisher may not contain (any case), so
+/// third-party code never presents itself as the app's own.
+const RESERVED_COMMUNITY_WORDS: &[&str] = &["official", "graphrt"];
+
 /// The publisher name, trimmed, or `None` when it is blank, longer than
-/// [`MAX_PUBLISHER_CHARS`] or contains control characters.
+/// [`MAX_PUBLISHER_CHARS`] or contains control or invisible format characters.
 pub(crate) fn validate_publisher(raw: &str) -> Option<String> {
     validate_display_name(raw)
 }
@@ -62,16 +66,33 @@ pub(super) fn clean_source_fields(plugin: &mut CatalogPlugin) {
         plugin.publisher = validate_publisher(&raw);
         if plugin.publisher.is_none() {
             log::warn!(
-                "ignoring the publisher of catalog entry `{}`: it must be 1 to {MAX_PUBLISHER_CHARS} characters without control characters",
+                "ignoring the publisher of catalog entry `{}`: it must be 1 to {MAX_PUBLISHER_CHARS} characters without control or invisible format characters",
                 plugin.name
             );
         }
+    }
+    if source == PluginSource::Community {
+        drop_reserved_community_labels(plugin);
     }
     if let Some(url) = &plugin.repository_url {
         if let Err(error) = require_https(url) {
             log::warn!("ignoring the repository link of catalog entry `{}`: {error}", plugin.name);
             plugin.repository_url = None;
         }
+    }
+}
+
+/// Clears a community entry's `display_name` / `publisher` that claims to be official or
+/// graphrt (logged); the entry stays listed under its humanized name.
+fn drop_reserved_community_labels(plugin: &mut CatalogPlugin) {
+    let claims_reserved = |label: &str| RESERVED_COMMUNITY_WORDS.iter().any(|word| label.to_lowercase().contains(word));
+    if plugin.display_name.as_deref().is_some_and(claims_reserved) {
+        log::warn!("ignoring the display name of community catalog entry `{}`: it claims to be official", plugin.name);
+        plugin.display_name = None;
+    }
+    if plugin.publisher.as_deref().is_some_and(claims_reserved) {
+        log::warn!("ignoring the publisher of community catalog entry `{}`: it claims to be official", plugin.name);
+        plugin.publisher = None;
     }
 }
 
@@ -141,6 +162,30 @@ mod tests {
             Some(MAX_PUBLISHER_CHARS)
         );
         assert_eq!(entry(serde_json::json!({ "publisher": ["Acme"] })).publisher, None);
+    }
+
+    #[test]
+    fn community_labels_cannot_claim_to_be_official() {
+        for claimed in ["Official WhatsApp", "graphrt", "GraphRT Labs", "by the OFFICIAL team"] {
+            let community = entry(serde_json::json!({
+                "source": "community", "display_name": claimed, "publisher": claimed
+            }));
+            assert_eq!((community.display_name, community.publisher), (None, None), "{claimed}");
+        }
+        let fine =
+            entry(serde_json::json!({ "source": "community", "display_name": "Acme Mail", "publisher": "Acme" }));
+        assert_eq!((fine.display_name.as_deref(), fine.publisher.as_deref()), (Some("Acme Mail"), Some("Acme")));
+        let official = entry(serde_json::json!({ "display_name": "Official Mail", "publisher": "graphrt" }));
+        assert_eq!(
+            (official.display_name.as_deref(), official.publisher.as_deref()),
+            (Some("Official Mail"), Some("graphrt"))
+        );
+    }
+
+    #[test]
+    fn publishers_with_invisible_format_characters_are_dropped() {
+        assert_eq!(entry(serde_json::json!({ "publisher": "Acme\u{200B}" })).publisher, None);
+        assert_eq!(entry(serde_json::json!({ "publisher": "\u{202E}emcA" })).publisher, None);
     }
 
     #[test]
