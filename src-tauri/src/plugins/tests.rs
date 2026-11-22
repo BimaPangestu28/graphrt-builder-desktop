@@ -383,6 +383,71 @@ async fn files_outside_the_plugin_folder_are_rejected() {
     assert_archive_rejected(&[RawEntry::File { path: "other-plugin/plugin.mjs", contents: b"x" }]).await;
 }
 
+/// The fixture tarball preceded by one extension header (`entry_type`) of `size` bytes of `fill`.
+fn tarball_with_extension_header(entry_type: tar::EntryType, size: usize, fill: &[u8]) -> Vec<u8> {
+    let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+    let mut builder = tar::Builder::new(encoder);
+    let mut extension = tar::Header::new_gnu();
+    extension.set_entry_type(entry_type);
+    extension.set_mode(0o644);
+    extension.set_size(size as u64);
+    let name = &mut extension.as_gnu_mut().unwrap().name;
+    name[..13].copy_from_slice(b"././@LongLink");
+    extension.set_cksum();
+    let contents: Vec<u8> = fill.iter().copied().cycle().take(size).collect();
+    builder.append(&extension, contents.as_slice()).unwrap();
+    for (path, contents) in fixture_files() {
+        let mut header = tar::Header::new_gnu();
+        header.set_mode(0o644);
+        header.set_size(contents.len() as u64);
+        builder.append_data(&mut header, path, contents.as_slice()).unwrap();
+    }
+    builder.into_inner().unwrap().finish().unwrap()
+}
+
+async fn assert_tarball_rejected(tarball_bytes: Vec<u8>, expected_message: &str) {
+    let fixture = Fixture::new();
+    fixture.publish("1.0.0", tarball_bytes.clone());
+    let error = fixture.service.install(PLUGIN, &echo_catalog_permissions()).await.unwrap_err();
+    assert!(matches!(&error, AppError::InvalidInput(message) if message.contains(expected_message)), "{error}");
+    assert_nothing_installed(&fixture);
+    let sideload_error = super::archive::tarball_top_dir(&tarball_bytes).unwrap_err();
+    assert!(sideload_error.to_string().contains(expected_message), "{sideload_error}");
+}
+
+#[tokio::test]
+async fn oversized_gnu_long_names_and_links_are_rejected_before_they_are_read() {
+    let one_mib = 1024 * 1024;
+    assert_tarball_rejected(tarball_with_extension_header(tar::EntryType::GNULongName, one_mib, b"a"), "header").await;
+    assert_tarball_rejected(tarball_with_extension_header(tar::EntryType::GNULongLink, one_mib, b"b"), "header").await;
+}
+
+#[tokio::test]
+async fn oversized_pax_headers_are_rejected_before_they_are_read() {
+    let one_mib = 1024 * 1024;
+    let record = b"30 comment=aaaaaaaaaaaaaaaaaaa\n";
+    assert_tarball_rejected(tarball_with_extension_header(tar::EntryType::XHeader, one_mib, record), "header").await;
+    assert_tarball_rejected(tarball_with_extension_header(tar::EntryType::XGlobalHeader, one_mib, record), "header")
+        .await;
+}
+
+#[tokio::test]
+async fn pax_headers_that_change_an_entry_size_are_rejected() {
+    let record = b"16 size=1000000\n";
+    assert_tarball_rejected(tarball_with_extension_header(tar::EntryType::XHeader, record.len(), record), "size").await;
+}
+
+#[test]
+fn small_extension_headers_are_still_accepted() {
+    let long_name = b"fixture-echo/README.md\0";
+    let bytes = tarball_with_extension_header(tar::EntryType::GNULongName, long_name.len(), long_name);
+    let destination = tempfile::tempdir().unwrap();
+    let plugin_dir = super::archive::extract_plugin_tarball(&bytes, PLUGIN, destination.path()).unwrap();
+    // The long name renames the entry after it (the manifest).
+    assert!(plugin_dir.join("README.md").is_file());
+    assert!(plugin_dir.join("plugin.mjs").is_file());
+}
+
 #[tokio::test]
 async fn a_plugin_failing_its_manifest_checksums_leaves_nothing_behind() {
     let mut files = fixture_files();

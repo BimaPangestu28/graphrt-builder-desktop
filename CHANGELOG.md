@@ -29,6 +29,10 @@ releases may contain breaking changes; they are called out under **Changed**.
 - **Catalog entry and tarball must describe the same release**: installs and updates refuse a
   downloaded manifest whose `version` differs from the catalog entry's or whose `name` is not
   the entry's name, before anything is replaced.
+- **Plugin archives cannot exhaust memory with headers**: the decompressed tar stream is capped
+  (the 1 GiB file cap plus room for headers), and a raw pass over the headers refuses any GNU
+  long-name / long-link entry or pax header over 64 KiB before it would be read into memory, and
+  any pax header that overrides an entry size. Catalog tarballs and sideloaded archives alike.
 
 ## [0.1.3] - 2026-11-22
 
