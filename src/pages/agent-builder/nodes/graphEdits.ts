@@ -3,8 +3,8 @@ import { deriveNodePorts, isEdgeUnused, nodeKindTitle, pluginOfKind, SOURCE_HAND
 
 /**
  * Pure edit operations on an {@link AgentGraph} working copy. `useAgentGraph` runs
- * them for its actions; phase-2 components may call them directly inside
- * `applyEdit` for compound edits. Every function returns a new graph and keeps
+ * them for its actions; the canvas, inspector panels and palette call them directly
+ * inside `applyEdit` for compound edits. Every function returns a new graph and keeps
  * ports, names and "unused" arrows consistent with the backend rules.
  */
 
@@ -274,18 +274,29 @@ export function containerBodyIds(graph: AgentGraph, containerId: string): Set<st
   return body
 }
 
+/** `{{#node.field#}}` template references: the node ids they name. */
+function templateReferenceIds(text: string): string[] {
+  return [...text.matchAll(/\{\{#([^.#}]+)\./g)].map((match) => match[1])
+}
+
+/** A selector is `[node, field, …]` of plain strings: the node id it names, else null. */
+function selectorReferenceId(items: JsonValue[]): string | null {
+  const isSelector = items.length >= 2 && items.every((segment) => typeof segment === 'string')
+  return isSelector ? (items[0] as string) : null
+}
+
+/** The values nested one level inside `value` (array items or object fields). */
+function nestedValues(value: JsonValue): JsonValue[] {
+  if (Array.isArray(value)) return value
+  if (value && typeof value === 'object') return Object.values(value)
+  return []
+}
+
+/** Adds to `found` every known node id referenced anywhere in `value`. */
 function collectReferencedIds(value: JsonValue, nodeIds: Set<string>, found: Set<string>): void {
-  if (typeof value === 'string') {
-    for (const match of value.matchAll(/\{\{#([^.#}]+)\./g)) if (nodeIds.has(match[1])) found.add(match[1])
-    return
-  }
-  if (Array.isArray(value)) {
-    // A selector: `[node, field, …]` of plain strings.
-    if (value.length >= 2 && value.every((segment) => typeof segment === 'string') && nodeIds.has(value[0] as string)) found.add(value[0] as string)
-    for (const item of value) collectReferencedIds(item, nodeIds, found)
-    return
-  }
-  if (value && typeof value === 'object') for (const item of Object.values(value)) collectReferencedIds(item, nodeIds, found)
+  const candidateIds = typeof value === 'string' ? templateReferenceIds(value) : Array.isArray(value) ? [selectorReferenceId(value)] : []
+  for (const candidateId of candidateIds) if (candidateId && nodeIds.has(candidateId)) found.add(candidateId)
+  for (const item of nestedValues(value)) collectReferencedIds(item, nodeIds, found)
 }
 
 /**
