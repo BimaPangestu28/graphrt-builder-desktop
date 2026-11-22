@@ -8,12 +8,9 @@ import { agentPath, routePaths } from '@/routes'
 import { ChainFlow } from './ChainFlow'
 import { LinkSettingsPanel } from './LinkSettingsPanel'
 import { buildAppendedStep, removeChainStep } from './chainEditing'
+import { toErrorMessage as describeError } from '@/lib/errors'
 
 const headerButtonClassNames = 'flex h-9 cursor-pointer items-center rounded-lg px-3.5 text-[13px] font-medium'
-
-function describeError(rawError: unknown): string {
-  return rawError instanceof Error ? rawError.message : 'Something went wrong'
-}
 
 interface ChainHeaderProps {
   chain: Chain

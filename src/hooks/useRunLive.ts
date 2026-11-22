@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getRun, listRunEvents, subscribeToRunEvents } from '@/api/runs'
 import type { Run, RunEventPayload, RunEventRecord } from '@/api/types'
-import { toError } from './useRunData'
+import { toError } from '@/lib/errors'
 
 /** A run kept up to date with its live events. */
 export interface LiveRun {

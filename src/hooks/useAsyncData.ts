@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type DependencyList } from 'react'
+import { toError } from '@/lib/errors'
 
 /** What every data hook returns. `data` stays on screen while a reload is running. */
 export interface AsyncDataState<Data> {
@@ -7,11 +8,6 @@ export interface AsyncDataState<Data> {
   isLoading: boolean
   /** Loads again; resolves once the new data (or error) is in state. */
   reload: () => Promise<void>
-}
-
-function toError(rawError: unknown): Error {
-  if (rawError instanceof Error) return rawError
-  return new Error(typeof rawError === 'string' ? rawError : 'Something went wrong')
 }
 
 /**

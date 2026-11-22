@@ -9,7 +9,7 @@ import type { Agent, FlowSummary, Run } from '@/api/types'
 import { AppShell, splitPaneMainClassName } from '@/components/layout'
 import { joinClassNames } from '@/components/ui'
 import { useNow } from '@/hooks/useNow'
-import { toError, useLoadedData } from '@/hooks/useRunData'
+import { useLoadedData } from '@/hooks/useRunData'
 import { useRunLive } from '@/hooks/useRunLive'
 import { agentPath, runReviewPath, sampleAgentId } from '@/routes'
 import { AgentPluginSetupMessage } from '@/pages/agent-builder/PluginRequirementsMessage'
@@ -26,6 +26,7 @@ import { buildRunNarration } from '@/pages/agent-run/runNarration'
 import { buildRunStepViews } from '@/pages/agent-run/runSteps'
 import { buildRunHeaderMeta, buildSidebarRunStatus, isRunActive } from '@/pages/agent-run/testRunHeader'
 import { toRunStepTemplate, useAgentFlowSummary } from '@/pages/agent-run/useRunStepTemplate'
+import { toError } from '@/lib/errors'
 
 function RunStatusPill({ run }: { run: Run | null }) {
   if (run?.status === 'paused') return <StatusPill tone="amber" size="title">Waiting for you</StatusPill>

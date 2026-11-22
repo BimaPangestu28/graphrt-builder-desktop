@@ -4,8 +4,8 @@ import { answerApprovals, getLastRunInputs } from '@/api/runReview'
 import type { ApprovalAnswer, PendingApproval } from '@/api/runReviewTypes'
 import { abortRun, listRuns, startRun, subscribeToRunEvents } from '@/api/runs'
 import type { Run } from '@/api/types'
-import { toError } from '@/hooks/useRunData'
 import { useRunLive, type LiveRun } from '@/hooks/useRunLive'
+import { toError } from '@/lib/errors'
 
 /**
  * The run shown on the Nodes canvas: a test started from the Nodes view, a test of this agent

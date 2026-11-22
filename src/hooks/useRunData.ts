@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type DependencyList } from 'react'
 import { subscribeToRunEvents } from '@/api/runs'
 import type { RunEventPayload } from '@/api/types'
+import { toError } from '@/lib/errors'
 
 /** State of a backend read: the latest data, the last error, and whether a load is in flight. */
 export interface LoadedData<Data> {
@@ -11,11 +12,6 @@ export interface LoadedData<Data> {
   reload: () => void
   /** Replaces the data locally, e.g. after an optimistic update. */
   setData: (update: (current: Data | null) => Data | null) => void
-}
-
-/** Normalises anything thrown into an Error so screens can show `error.message`. */
-export function toError(rawError: unknown): Error {
-  return rawError instanceof Error ? rawError : new Error(String(rawError))
 }
 
 /**

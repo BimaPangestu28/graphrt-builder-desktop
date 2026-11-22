@@ -14,7 +14,6 @@ import {
 import type { KnowledgeBase, KnowledgeBaseDetail, KnowledgeSettings, KnowledgeSource, KnowledgeSourceKind, KnowledgeUsage } from '@/api/knowledgeTypes'
 import { sidebarAgents } from '@/data/agents'
 import { useKnowledgeBaseDetail } from '@/hooks/useKnowledge'
-import { toError } from '@/hooks/useRunData'
 import { agentPath, routePaths, sampleKnowledgeBaseId } from '@/routes'
 import { AddLinkForm } from './knowledge/AddLinkForm'
 import { SectionHeading, compactButtonClassNames } from './knowledge/FormControls'
@@ -23,6 +22,7 @@ import { KnowledgeSourcesTable } from './knowledge/KnowledgeSourcesTable'
 import { TestQuestionSection, parseMatchThreshold } from './knowledge/TestQuestionSection'
 import { formatClockTime, formatMegabytes, pluralize } from './knowledge/knowledgeDisplay'
 import { useSourcePicker } from './knowledge/useSourcePicker'
+import { toError } from '@/lib/errors'
 
 function agentLink(usage: KnowledgeUsage): string {
   return sidebarAgents.find((agent) => agent.id === usage.agentId)?.path ?? agentPath('builder', usage.agentId)

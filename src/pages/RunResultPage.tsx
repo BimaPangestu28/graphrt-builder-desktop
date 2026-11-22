@@ -7,7 +7,7 @@ import { getRunSummary } from '@/api/runSummary'
 import type { RunSummary } from '@/api/runSummaryTypes'
 import type { Run } from '@/api/types'
 import { AppShell } from '@/components/layout'
-import { toError, useLoadedData } from '@/hooks/useRunData'
+import { useLoadedData } from '@/hooks/useRunData'
 import { agentPath, routePaths, runReviewPath, sampleAgentId } from '@/routes'
 import { buildTableCsvHref } from '@/pages/agent-run/placesCsv'
 import { RunErrorNotice } from '@/pages/agent-run/RunErrorNotice'
@@ -17,6 +17,7 @@ import { BuildChatPanel, BuilderReply, RunPanel, RunTitleRow, RunWorkspace, User
 import { StatusPill } from '@/pages/agent-run/StatusPill'
 import { buildRunSidebarAgents, useRunAgent } from '@/pages/agent-run/runAgentSidebar'
 import { summarizeRunInputs } from '@/pages/agent-run/runInputValues'
+import { toError } from '@/lib/errors'
 
 /** How many of the agent's newest runs are searched for its latest finished test. */
 const latestTestSearchLimit = 50

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { previewSchedule, setTriggerEnabled, listTriggers } from '@/api/triggers'
 import type { Trigger } from '@/api/types'
-import { toError, useLoadedData } from './useRunData'
+import { useLoadedData } from './useRunData'
+import { toError } from '@/lib/errors'
 
 /** Triggers plus an On/Off switch that updates optimistically. */
 export interface TriggerList {

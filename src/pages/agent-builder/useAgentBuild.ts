@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { buildAgent } from '@/api/builder'
 import type { Agent, BuildProgress, BuildRequest, BuildStage, DraftPreview } from '@/api/types'
+import { toError } from '@/lib/errors'
 
 /**
  * Checklist order on screen 03. Each backend stage marks its line as running; lines
@@ -55,10 +56,6 @@ export function applyBuildProgress(buildState: AgentBuildState, progress: BuildP
     draftStage: progress.stage,
     explanations: { ...buildState.explanations, [progress.stage]: progress.draft.explanation },
   }
-}
-
-function toError(rawError: unknown): Error {
-  return rawError instanceof Error ? rawError : new Error('Something went wrong')
 }
 
 /**

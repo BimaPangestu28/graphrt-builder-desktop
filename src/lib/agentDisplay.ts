@@ -60,8 +60,5 @@ export function getProviderName(provider: ModelProvider | string): string {
   return provider in providerNames ? providerNames[provider as ModelProvider] : provider
 }
 
-/** Message to show for a failed load or action; falls back to a generic sentence. */
-export function describeError(error: unknown): string {
-  if (error instanceof Error && error.message) return error.message
-  return 'Something went wrong'
-}
+/** Message to show for a failed load or action. Same as {@link toErrorMessage}; kept as the name most screens use. */
+export { toErrorMessage as describeError } from './errors'

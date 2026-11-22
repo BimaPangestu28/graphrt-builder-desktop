@@ -13,7 +13,7 @@ import type {
   SaveGraphResult,
   ToolInputSchema,
 } from './agentGraphTypes'
-import { BackendError, callBackend, isDesktopApp, listenToBackend } from './client'
+import { callBackend, isBackendErrorWithCode, isDesktopApp, listenToBackend } from './client'
 import { sampleAgentGraphBackend } from './sampleBackend/agentGraph'
 import { listSampleToolInputSchemas } from './sampleBackend/sampleToolSchemas'
 
@@ -121,14 +121,12 @@ export function listenToAgentEditState(onChange: (change: AgentEditStateChange) 
 
 /** The latest version of a `version_conflict` error, else null. */
 export function conflictLatestVersion(error: unknown): number | null {
-  if (!(error instanceof BackendError) || error.code !== 'version_conflict') return null
-  const details = error.details as { latestVersion?: unknown } | null
-  return typeof details?.latestVersion === 'number' ? details.latestVersion : null
+  if (!isBackendErrorWithCode(error, 'version_conflict')) return null
+  return error.details?.latestVersion ?? null
 }
 
 /** The blocking problems of an `invalid_graph` error, else an empty list. */
 export function invalidGraphProblems(error: unknown): GraphProblem[] {
-  if (!(error instanceof BackendError) || error.code !== 'invalid_graph') return []
-  const details = error.details as { problems?: unknown } | null
-  return Array.isArray(details?.problems) ? (details.problems as GraphProblem[]) : []
+  if (!isBackendErrorWithCode(error, 'invalid_graph')) return []
+  return error.details?.problems ?? []
 }

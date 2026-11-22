@@ -282,7 +282,6 @@ export type BackendErrorCode =
   | 'internal'
   /** The action would replace something without the user's OK (e.g. a sideloaded plugin over a catalog one). */
   | 'conflict'
-  | 'missing_plugins'
   /** save_agent_graph: the agent moved on since the edit started (`details.latestVersion`). */
   | 'version_conflict'
   /** save_agent_graph: the builder is changing the agent right now. */

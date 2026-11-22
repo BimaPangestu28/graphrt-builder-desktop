@@ -4,12 +4,12 @@ import { Icon } from '@/components/ui'
 import { addKnowledgeSource, createKnowledgeBase, guessSourceKind, isWebLink, subscribeToDroppedPaths } from '@/api/knowledge'
 import type { KnowledgeSourceKind } from '@/api/knowledgeTypes'
 import { useKnowledgeBases, useKnowledgeSearch } from '@/hooks/useKnowledge'
-import { toError } from '@/hooks/useRunData'
 import { AddLinkForm } from './knowledge/AddLinkForm'
 import { compactButtonClassNames } from './knowledge/FormControls'
 import { KnowledgeBaseCard } from './knowledge/KnowledgeBaseCard'
 import { PassageMatch, SearchFieldIcon } from './knowledge/PassageMatch'
 import { useSourcePicker } from './knowledge/useSourcePicker'
+import { toError } from '@/lib/errors'
 
 /** Something to index: a file, a folder or a link. */
 interface NewSource {

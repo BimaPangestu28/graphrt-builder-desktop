@@ -3,10 +3,7 @@ import { attachChatbotKnowledge, detachChatbotKnowledge, getChatbotSetup, saveCh
 import type { ChatbotSettings, ChatbotSetup } from '@/api/chatbotSetupTypes'
 import { getKnowledgeBase, listKnowledgeBases } from '@/api/knowledge'
 import type { KnowledgeBase, KnowledgeBaseDetail } from '@/api/knowledgeTypes'
-
-function toErrorMessage(rawError: unknown): string {
-  return rawError instanceof Error ? rawError.message : 'Something went wrong'
-}
+import { toErrorMessage } from '@/lib/errors'
 
 /** Same persona, rules and channels (knowledge is saved on its own, at once). */
 function hasSameFormFields(first: ChatbotSettings, second: ChatbotSettings): boolean {

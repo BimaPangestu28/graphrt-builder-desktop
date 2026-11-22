@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { sendCustomerMessage, startTestConversation } from '@/api/conversations'
 import type { ConversationMessage } from '@/api/conversationTypes'
 import { useConversationDetail } from '@/hooks/useConversations'
+import { toErrorMessage } from '@/lib/errors'
 
 function readCitations(message: ConversationMessage): string[] {
   const citations = message.metadata.citations
@@ -41,10 +42,6 @@ function TryItBubble({ message }: { message: ConversationMessage }) {
       )}
     </div>
   )
-}
-
-function toErrorMessage(rawError: unknown): string {
-  return rawError instanceof Error ? rawError.message : 'Something went wrong'
 }
 
 /** Opens a test conversation for `agentId` on mount and again on `startNew` (Reset). */

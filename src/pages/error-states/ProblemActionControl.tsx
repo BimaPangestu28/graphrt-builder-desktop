@@ -4,9 +4,9 @@ import { installBrowserRuntime } from '@/api/plugins'
 import { retryRun } from '@/api/problems'
 import type { ProblemAction } from '@/api/problemTypes'
 import { joinClassNames } from '@/components/ui'
-import { toError } from '@/hooks/useRunData'
 import { routePaths } from '@/routes'
 import { getProblemActionPath } from './problemActions'
+import { toError } from '@/lib/errors'
 
 export type ProblemActionStyle = 'primary' | 'secondary' | 'text'
 
