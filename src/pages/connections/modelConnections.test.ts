@@ -2,11 +2,11 @@ import type { ProviderStatus } from '@/api/types'
 import { buildModelConnections } from './modelConnections'
 
 const statuses: ProviderStatus[] = [
-  { provider: 'openai', configured: true, baseUrl: null },
-  { provider: 'anthropic', configured: false, baseUrl: null },
-  { provider: 'gemini', configured: false, baseUrl: null },
-  { provider: 'deepseek', configured: true, baseUrl: null },
-  { provider: 'ollama', configured: true, baseUrl: 'http://localhost:11434' },
+  { provider: 'openai', configured: true, baseUrl: null, localCli: null },
+  { provider: 'anthropic', configured: false, baseUrl: null, localCli: null },
+  { provider: 'gemini', configured: false, baseUrl: null, localCli: null },
+  { provider: 'deepseek', configured: true, baseUrl: null, localCli: null },
+  { provider: 'ollama', configured: true, baseUrl: 'http://localhost:11434', localCli: null },
 ]
 
 describe('buildModelConnections', () => {
@@ -31,9 +31,9 @@ describe('buildModelConnections', () => {
 
 describe('buildModelConnections in the desktop app', () => {
   const desktopStatuses: ProviderStatus[] = [
-    { provider: 'openai', configured: true, baseUrl: null },
-    { provider: 'deepseek', configured: true, baseUrl: null },
-    { provider: 'ollama', configured: true, baseUrl: 'http://localhost:11434' },
+    { provider: 'openai', configured: true, baseUrl: null, localCli: null },
+    { provider: 'deepseek', configured: true, baseUrl: null, localCli: null },
+    { provider: 'ollama', configured: true, baseUrl: 'http://localhost:11434', localCli: null },
   ]
 
   it('describes connected providers from real data, without design sample text', () => {

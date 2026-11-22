@@ -68,6 +68,8 @@ pub mod problem_codes {
     pub const PLACEHOLDER_ADDRESS: &str = "placeholder_address";
     /// A model step uses a provider that is not connected.
     pub const MODEL_PROVIDER_NOT_SET_UP: &str = "model_provider_not_set_up";
+    /// A model step asks for something its provider cannot do (a local CLI calling tools).
+    pub const MODEL_CAPABILITY: &str = "model_capability";
     /// An arrow leaves from an exit the node does not have.
     pub const UNUSED_EDGE: &str = "unused_edge";
     /// A plugin step whose plugin is not installed yet (compiles, cannot run).

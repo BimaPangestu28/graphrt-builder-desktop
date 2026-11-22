@@ -76,7 +76,12 @@ fn ensure_providers_configured(providers: &[String], credentials: &CredentialSto
         })
     };
     match providers.iter().find(|provider_name| !is_configured(provider_name)) {
-        Some(missing_provider) => Err(AppError::MissingCredentials(missing_provider.clone())),
+        Some(missing_provider) => {
+            Err(AppError::MissingCredentials(match crate::local_cli::LocalCli::from_provider_name(missing_provider) {
+                Some(cli) => format!("{} (turn it on in Connections > AI models)", cli.display_name()),
+                None => missing_provider.clone(),
+            }))
+        }
         None => Ok(()),
     }
 }

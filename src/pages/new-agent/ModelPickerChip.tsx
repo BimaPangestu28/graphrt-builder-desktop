@@ -5,7 +5,7 @@ import { useAsyncData } from '@/hooks/useAsyncData'
 import { useAvailableModels } from '@/hooks/useAvailableModels'
 import { useDefaultModel } from '@/hooks/useDefaultModel'
 import { describeError } from '@/lib/agentDisplay'
-import { buildModelOptionGroups, modelChoiceKey } from '@/lib/modelChoices'
+import { buildModelOptionGroups, describeCompactModelChoice, modelChoiceKey } from '@/lib/modelChoices'
 import { connectionsTabPath } from '@/routes'
 
 const chipClassNames = 'flex h-[30px] items-center gap-1.5 rounded-lg bg-canvas px-2.5 text-[13px] text-ink-2'
@@ -18,7 +18,7 @@ const chipClassNames = 'flex h-[30px] items-center gap-1.5 rounded-lg bg-canvas 
  */
 export function ModelPickerChip({ label = 'Model for new agents' }: { label?: string }) {
   const defaultModelState = useDefaultModel()
-  const statusesState = useAsyncData(listProviderStatuses, [])
+  const statusesState = useAsyncData(() => listProviderStatuses(), [])
   const availableModelsState = useAvailableModels()
   const [isSaving, setIsSaving] = useState(false)
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null)
@@ -67,7 +67,7 @@ export function ModelPickerChip({ label = 'Model for new agents' }: { label?: st
             <optgroup key={group.provider} label={group.note ? `${group.label} (${group.note})` : group.label}>
               {group.choices.map((choice) => (
                 <option key={modelChoiceKey(choice)} value={modelChoiceKey(choice)}>
-                  {choice.name}
+                  {describeCompactModelChoice(choice)}
                 </option>
               ))}
             </optgroup>

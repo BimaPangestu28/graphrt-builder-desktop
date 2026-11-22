@@ -1,7 +1,18 @@
 import { BackendError } from '../client'
 import type { NewWorkflowSecret, WorkflowSecretOverview } from '../connectionTypes'
 import type { ProviderModels } from '../modelCatalogTypes'
-import type { ModelChoice, ModelProvider, ProviderStatus, WorkflowSecretStatus } from '../types'
+import type { AvailableModel } from '../modelCatalogTypes'
+import type {
+  InstallableModelProvider,
+  LocalCliCheckResult,
+  LocalCliProvider,
+  LocalCliStatus,
+  ModelChoice,
+  ModelProvider,
+  ProviderStatus,
+  WelcomeChoice,
+  WorkflowSecretStatus,
+} from '../types'
 import { readSampleMcpServers } from './mcpServers'
 import { requireText, respondWith } from './sampleResponse'
 
@@ -22,6 +33,9 @@ interface SampleCredentialsState {
   configuredSecretNames: Set<string>
   /** Secrets saved in the app (Add secret, Replace), like the backend's saved-secrets index. */
   savedSecrets: Map<string, SampleSavedSecret>
+  /** Local CLIs the user turned on in graphrt. */
+  enabledLocalClis: Set<LocalCliProvider>
+  welcomeChoice: WelcomeChoice | null
 }
 
 interface SampleSavedSecret {
@@ -37,7 +51,43 @@ function createInitialState(): SampleCredentialsState {
     defaultModel: { provider: 'openai', name: 'gpt-4o-mini' },
     configuredSecretNames: new Set<string>(['GOOGLE_PLACES_API_KEY']),
     savedSecrets: new Map<string, SampleSavedSecret>(),
+    enabledLocalClis: new Set<LocalCliProvider>(),
+    welcomeChoice: null,
   }
+}
+
+/** What the preview "detects": Claude Code installed and signed in, Codex not installed. */
+const sampleLocalCliDetections: Record<LocalCliProvider, Omit<LocalCliStatus, 'enabled'>> = {
+  'claude-code-cli': {
+    installed: true,
+    version: '2.1.330 (Claude Code)',
+    path: '/Users/you/.local/bin/claude',
+    signIn: 'signed_in',
+    installUrl: 'https://docs.claude.com/en/docs/claude-code/setup',
+  },
+  'codex-cli': {
+    installed: false,
+    version: null,
+    path: null,
+    signIn: 'unknown',
+    installUrl: 'https://developers.openai.com/codex/cli',
+  },
+}
+
+const localCliProviderOrder: LocalCliProvider[] = ['claude-code-cli', 'codex-cli']
+const localCliShortNames: Record<LocalCliProvider, string> = { 'claude-code-cli': 'Claude Code', 'codex-cli': 'Codex' }
+const ollamaDownloadUrl = 'https://ollama.com/download'
+
+function isLocalCli(provider: ModelProvider): provider is LocalCliProvider {
+  return provider === 'claude-code-cli' || provider === 'codex-cli'
+}
+
+function readLocalCliStatus(provider: LocalCliProvider): LocalCliStatus {
+  return { ...sampleLocalCliDetections[provider], enabled: credentialsState.enabledLocalClis.has(provider) }
+}
+
+function isLocalCliUsable(provider: LocalCliProvider): boolean {
+  return credentialsState.enabledLocalClis.has(provider) && sampleLocalCliDetections[provider].installed
 }
 
 /** Secrets the sample agents declare, as the Connections design shows them (screen 21). */
@@ -53,8 +103,9 @@ const sampleAgentSecrets: Array<Omit<WorkflowSecretOverview, 'configured' | 'mcp
 
 let credentialsState = createInitialState()
 
-/** True when the provider can be used: a stored key, or Ollama (needs none). */
+/** True when the provider can be used: a stored key, Ollama (needs none), or a turned-on installed CLI. */
 export function isSampleProviderConfigured(provider: ModelProvider): boolean {
+  if (isLocalCli(provider)) return isLocalCliUsable(provider)
   return provider === 'ollama' || credentialsState.configuredProviders.has(provider)
 }
 
@@ -79,8 +130,57 @@ function listStatuses(): ProviderStatus[] {
     provider,
     configured: credentialsState.configuredProviders.has(provider),
     baseUrl: null,
+    localCli: null,
   }))
-  return [...keyedStatuses, { provider: 'ollama', configured: true, baseUrl: credentialsState.ollamaBaseUrl }]
+  const localCliStatuses = localCliProviderOrder.map(readLocalCliProviderStatus)
+  return [...keyedStatuses, { provider: 'ollama', configured: true, baseUrl: credentialsState.ollamaBaseUrl, localCli: null }, ...localCliStatuses]
+}
+
+function readLocalCliProviderStatus(provider: LocalCliProvider): ProviderStatus {
+  return { provider, configured: isLocalCliUsable(provider), baseUrl: null, localCli: readLocalCliStatus(provider) }
+}
+
+/** The backend's recommended model per key-based provider (`RECOMMENDED_MODELS`). */
+const recommendedKeyedModels: Partial<Record<ModelProvider, string>> = {
+  openai: 'gpt-4o-mini',
+  anthropic: 'claude-haiku-5-5',
+  gemini: 'gemini-2.5-flash',
+  deepseek: 'deepseek-chat',
+}
+
+/** Another usable default once the default's CLI is turned off: a keyed provider, else Ollama. */
+function pickFallbackDefaultModel(): ModelChoice {
+  const keyedProvider = keyedProviders.find((provider) => credentialsState.configuredProviders.has(provider))
+  if (keyedProvider) return { provider: keyedProvider, name: recommendedKeyedModels[keyedProvider] ?? sampleModelIdsByProvider[keyedProvider][0].id }
+  return { provider: 'ollama', name: 'llama3.2' }
+}
+
+/** @throws BackendError - `invalid_input` for a provider that is not a CLI, or turning on one that is not installed */
+function storeLocalCliEnabled(provider: ModelProvider, enabled: boolean): ProviderStatus {
+  if (!isLocalCli(provider)) throw new BackendError('invalid_input', `${provider} is not a command-line tool on this computer`)
+  if (enabled && !sampleLocalCliDetections[provider].installed) {
+    throw new BackendError('invalid_input', `${localCliShortNames[provider]} is not installed on this computer`)
+  }
+  if (enabled) credentialsState.enabledLocalClis.add(provider)
+  else credentialsState.enabledLocalClis.delete(provider)
+  if (!enabled && credentialsState.defaultModel.provider === provider) credentialsState.defaultModel = pickFallbackDefaultModel()
+  return readLocalCliProviderStatus(provider)
+}
+
+/** Pretends to run one tiny prompt: answers when the CLI is turned on and installed. */
+function checkSampleLocalCli(provider: LocalCliProvider): LocalCliCheckResult {
+  const shortName = localCliShortNames[provider]
+  if (!sampleLocalCliDetections[provider].installed) return { ok: false, message: `${shortName} is not installed on this computer` }
+  if (!credentialsState.enabledLocalClis.has(provider)) return { ok: false, message: `${shortName} is turned off in graphrt: turn it on first` }
+  return { ok: true, message: `${shortName} answered in 2.1 s` }
+}
+
+function readInstallUrl(provider: InstallableModelProvider): string {
+  return provider === 'ollama' ? ollamaDownloadUrl : sampleLocalCliDetections[provider].installUrl
+}
+
+function openSampleInstallPage(provider: InstallableModelProvider): void {
+  window.open(readInstallUrl(provider), '_blank', 'noopener,noreferrer')
 }
 
 /** @throws BackendError - `invalid_input` for a blank or non-http address */
@@ -93,6 +193,9 @@ function storeOllamaBaseUrl(baseUrl: string): void {
 /** @throws BackendError - `invalid_input` for a blank model name */
 function storeDefaultModel(choice: ModelChoice): void {
   requireText(choice.name, 'pick a model')
+  if (isLocalCli(choice.provider) && !isLocalCliUsable(choice.provider)) {
+    throw new BackendError('invalid_input', `turn on ${localCliShortNames[choice.provider]} in Connections first`)
+  }
   credentialsState.defaultModel = { ...choice }
 }
 
@@ -198,12 +301,23 @@ export function isSampleWorkflowSecretConfigured(name: string): boolean {
 }
 
 /** What each provider's model list looks like, for the browser preview. */
-const sampleModelIdsByProvider: Record<ModelProvider, string[]> = {
-  openai: ['gpt-4.1', 'gpt-4.1-mini', 'gpt-4o', 'gpt-4o-mini', 'o3-mini'],
-  anthropic: ['claude-haiku-5-5', 'claude-opus-5-5', 'claude-sonnet-5-5'],
-  gemini: ['gemini-2.5-flash', 'gemini-2.5-pro'],
-  deepseek: ['deepseek-chat', 'deepseek-reasoner'],
-  ollama: ['llama3.2', 'qwen2.5:14b'],
+const sampleModelIdsByProvider: Record<ModelProvider, AvailableModel[]> = {
+  openai: listedModels(['gpt-4.1', 'gpt-4.1-mini', 'gpt-4o', 'gpt-4o-mini', 'o3-mini']),
+  anthropic: listedModels(['claude-haiku-5-5', 'claude-opus-5-5', 'claude-sonnet-5-5']),
+  gemini: listedModels(['gemini-2.5-flash', 'gemini-2.5-pro']),
+  deepseek: listedModels(['deepseek-chat', 'deepseek-reasoner']),
+  ollama: listedModels(['llama3.2', 'qwen2.5:14b']),
+  'claude-code-cli': [
+    { id: 'default', displayName: 'CLI default' },
+    { id: 'sonnet', displayName: 'Sonnet (latest)' },
+    { id: 'opus', displayName: 'Opus (latest)' },
+    { id: 'haiku', displayName: 'Haiku (latest)' },
+  ],
+  'codex-cli': [{ id: 'default', displayName: 'CLI default' }, ...listedModels(['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex'])],
+}
+
+function listedModels(modelIds: string[]): AvailableModel[] {
+  return modelIds.map((id) => ({ id, displayName: null }))
 }
 
 /** Sample lists for every provider that is set up (Ollama included, as if it were running). */
@@ -212,7 +326,7 @@ function listSampleAvailableModels(): ProviderModels[] {
     .filter((status) => status.configured)
     .map((status) => ({
       provider: status.provider,
-      models: sampleModelIdsByProvider[status.provider].map((id) => ({ id, displayName: null })),
+      models: sampleModelIdsByProvider[status.provider].map((model) => ({ ...model })),
       error: null,
     }))
 }
@@ -220,7 +334,16 @@ function listSampleAvailableModels(): ProviderModels[] {
 export const sampleCredentialsBackend = {
   setApiKey: (provider: ModelProvider, apiKey: string): Promise<void> => respondWith(() => storeApiKey(provider, apiKey)),
   deleteApiKey: (provider: ModelProvider): Promise<void> => respondWith(() => removeApiKey(provider)),
-  listProviderStatuses: (): Promise<ProviderStatus[]> => respondWith(listStatuses),
+  listProviderStatuses: (_refresh = false): Promise<ProviderStatus[]> => respondWith(listStatuses),
+  setLocalCliEnabled: (provider: LocalCliProvider, enabled: boolean): Promise<ProviderStatus> =>
+    respondWith(() => storeLocalCliEnabled(provider, enabled)),
+  checkLocalCli: (provider: LocalCliProvider): Promise<LocalCliCheckResult> => respondWith(() => checkSampleLocalCli(provider)),
+  getWelcomeChoice: (): Promise<WelcomeChoice | null> => respondWith(() => credentialsState.welcomeChoice),
+  setWelcomeChoice: (choice: WelcomeChoice): Promise<void> =>
+    respondWith(() => {
+      credentialsState.welcomeChoice = choice
+    }),
+  openModelInstallPage: (provider: InstallableModelProvider): Promise<void> => respondWith(() => openSampleInstallPage(provider)),
   getDefaultModel: (): Promise<ModelChoice> => respondWith(readSampleDefaultModel),
   setDefaultModel: (choice: ModelChoice): Promise<void> => respondWith(() => storeDefaultModel(choice)),
   setOllamaBaseUrl: (baseUrl: string): Promise<void> => respondWith(() => storeOllamaBaseUrl(baseUrl)),
@@ -232,7 +355,7 @@ export const sampleCredentialsBackend = {
   deleteWorkflowSecret: (name: string): Promise<void> => respondWith(() => removeSampleWorkflowSecret(name)),
 }
 
-/** Restores the sample keys and default model (use in test `beforeEach`). */
+/** Restores the sample keys, default model, local CLI switches and Welcome choice (use in test `beforeEach`). */
 export function resetSampleCredentials(): void {
   credentialsState = createInitialState()
 }

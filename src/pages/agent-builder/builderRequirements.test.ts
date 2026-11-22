@@ -3,7 +3,7 @@ import type { ProviderStatus, WorkflowSecretStatus } from '@/api/types'
 import { connectionsTabPath, pluginDetailPath } from '@/routes'
 import { listBuilderRequirements, listPluginSetupRequirements } from './builderRequirements'
 
-const openAiConfigured: ProviderStatus[] = [{ provider: 'openai', configured: true, baseUrl: null }]
+const openAiConfigured: ProviderStatus[] = [{ provider: 'openai', configured: true, baseUrl: null, localCli: null }]
 
 function secret(overrides: Partial<WorkflowSecretStatus>): WorkflowSecretStatus {
   return { name: 'MAPS_API_KEY', description: null, isSecret: true, required: true, configured: false, ...overrides }

@@ -31,6 +31,8 @@ const providerNames: Record<ModelProvider, string> = {
   gemini: 'Google Gemini',
   deepseek: 'DeepSeek',
   ollama: 'Ollama',
+  'claude-code-cli': 'Claude Code (on this computer)',
+  'codex-cli': 'Codex (on this computer)',
 }
 
 /** Sidebar dot colour for an agent status (active → ok, paused → paused, draft/tested → brand). */

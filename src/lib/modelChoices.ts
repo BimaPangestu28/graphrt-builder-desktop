@@ -1,10 +1,33 @@
 import type { ProviderModels } from '@/api/modelCatalogTypes'
 import type { ModelChoice, ModelProvider, ProviderStatus } from '@/api/types'
-import { modelProviderNames, recommendedModels } from '@/data/settings'
+import { isLocalCliProvider, localCliDefaultModelName, localCliShortNames, modelProviderNames, recommendedModels } from '@/data/settings'
 
-/** "OpenAI gpt-4o-mini". */
+/** Label of the local CLIs' `default` model id: the CLI picks its own model. */
+export const localCliDefaultModelLabel = 'CLI default'
+
+/**
+ * The model's name as pickers show it: the id, except a local CLI's `default` which reads "CLI default".
+ *
+ * @param choice - The model (ModelChoice)
+ * @returns E.g. "gpt-4o-mini", "sonnet" or "CLI default" (string)
+ */
+export function describeModelName(choice: ModelChoice): string {
+  if (isLocalCliProvider(choice.provider) && choice.name === localCliDefaultModelName) return localCliDefaultModelLabel
+  return choice.name
+}
+
+/**
+ * A model in a compact picker (chip) where the provider group is not visible once closed:
+ * the bare name for API providers, "Claude Code · CLI default" for the local CLIs.
+ */
+export function describeCompactModelChoice(choice: ModelChoice): string {
+  if (!isLocalCliProvider(choice.provider)) return choice.name
+  return `${localCliShortNames[choice.provider]} · ${describeModelName(choice)}`
+}
+
+/** "OpenAI gpt-4o-mini", "Claude Code (on this computer) CLI default". */
 export function describeModelChoice(choice: ModelChoice): string {
-  return `${modelProviderNames[choice.provider]} ${choice.name}`
+  return `${modelProviderNames[choice.provider]} ${describeModelName(choice)}`
 }
 
 /** Stable key for a choice, e.g. "openai:gpt-4o-mini" (used as a select option value). */
@@ -32,13 +55,14 @@ export function listDefaultModelChoices(statuses: ProviderStatus[], defaultModel
 const ollamaDefaultModel: ModelChoice = { provider: 'ollama', name: 'llama3.2' }
 
 /**
- * The recommended model of one provider, e.g. `deepseek` → deepseek-chat.
+ * The recommended model of one provider, e.g. `deepseek` → deepseek-chat, a local CLI → `default`.
  *
  * @param provider - Provider to make the default (ModelProvider)
  * @returns Its recommended model (ModelChoice)
  */
 export function recommendedModelFor(provider: ModelProvider): ModelChoice {
   if (provider === 'ollama') return ollamaDefaultModel
+  if (isLocalCliProvider(provider)) return { provider, name: localCliDefaultModelName }
   return recommendedModels.find((choice) => choice.provider === provider) ?? { provider, name: provider }
 }
 
@@ -51,8 +75,14 @@ export interface ModelOptionGroup {
   note: string | null
 }
 
+/** A local CLI's listed models with "CLI default" first; other providers' lists are kept as reported. */
+function putCliDefaultFirst(choices: ModelChoice[]): ModelChoice[] {
+  const cliDefault = choices.find((choice) => isLocalCliProvider(choice.provider) && choice.name === localCliDefaultModelName)
+  return cliDefault ? [cliDefault, ...choices.filter((choice) => choice !== cliDefault)] : choices
+}
+
 /**
- * Picker groups: one per connected provider (the default model's provider first), listing
+ * Picker groups: one per connected provider (local CLIs only once turned on and installed) (the default model's provider first), listing
  * every chat model the provider reports for the stored key. Until the list arrives, or when
  * the provider can't be reached, a group falls back to its recommended model. The current
  * default is always selectable.
@@ -74,7 +104,7 @@ export function buildModelOptionGroups(
   const providers = [defaultModel.provider, ...connectedProviders.filter((provider) => provider !== defaultModel.provider)]
   return providers.map((provider) => {
     const list = catalog?.find((candidate) => candidate.provider === provider)
-    const listedChoices = (list?.models ?? []).map((model) => ({ provider, name: model.id }))
+    const listedChoices = putCliDefaultFirst((list?.models ?? []).map((model) => ({ provider, name: model.id })))
     const fallbackNote = !catalog ? null : list?.error ? `showing the recommended model: ${list.error}` : null
     const choices = listedChoices.length > 0 ? listedChoices : [recommendedModelFor(provider)]
     const withDefault =

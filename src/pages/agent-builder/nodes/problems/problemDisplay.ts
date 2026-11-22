@@ -19,6 +19,7 @@ const problemLabels: Record<string, string> = {
   send_without_approval: 'Sends without asking',
   placeholder_address: 'Placeholder address',
   model_provider_not_set_up: 'Model not connected',
+  model_capability: 'Model can’t do this',
   unused_edge: 'Arrow never taken',
   plugin_not_installed: 'Plugin not installed',
 }
@@ -42,7 +43,7 @@ function fieldNamedIn(message: string): string | null {
  */
 export function inspectorTargetForProblem(problem: GraphProblem): string | null {
   if (problem.code === 'unused_edge') return 'on-error'
-  if (problem.code === 'model_provider_not_set_up') return 'model'
+  if (problem.code === 'model_provider_not_set_up' || problem.code === 'model_capability') return 'model'
   if (problem.code === 'node_config' || problem.code === 'placeholder_address') return fieldNamedIn(problem.message)
   return null
 }

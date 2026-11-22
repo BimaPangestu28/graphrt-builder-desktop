@@ -73,6 +73,23 @@ describe('NewAgentPage', () => {
     await waitFor(() => expect(screen.getByRole('combobox', { name: 'Model for new agents' })).toHaveDisplayValue('gpt-4.1'))
   })
 
+  it('lists a turned-on Claude Code under its own group with CLI default first', async () => {
+    await sampleCredentialsBackend.setLocalCliEnabled('claude-code-cli', true)
+    await sampleCredentialsBackend.setDefaultModel({ provider: 'claude-code-cli', name: 'default' })
+    renderNewAgentPage()
+
+    const picker = await screen.findByRole('combobox', { name: 'Model for new agents' })
+    await waitFor(() => expect(within(picker).getAllByRole('group').map((group) => group.getAttribute('label'))).toEqual(['Claude Code (on this computer)', 'OpenAI', 'Ollama']))
+    const claudeCodeGroup = within(picker).getAllByRole('group')[0]
+    expect(within(claudeCodeGroup).getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'Claude Code · CLI default',
+      'Claude Code · sonnet',
+      'Claude Code · opus',
+      'Claude Code · haiku',
+    ])
+    expect(picker).toHaveDisplayValue('Claude Code · CLI default')
+  })
+
   it('links the chip to Connections when no model is connected', async () => {
     vi.spyOn(sampleCredentialsBackend, 'getDefaultModel').mockRejectedValue(new BackendError('missing_credentials', 'a model provider'))
     renderNewAgentPage()

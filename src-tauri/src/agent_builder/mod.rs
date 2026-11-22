@@ -177,6 +177,8 @@ fn provider_name(provider: ModelProvider) -> &'static str {
         ModelProvider::Gemini => "gemini",
         ModelProvider::Deepseek => "deepseek",
         ModelProvider::Ollama => "ollama",
+        ModelProvider::ClaudeCodeCli => "claude-code-cli",
+        ModelProvider::CodexCli => "codex-cli",
     }
 }
 
@@ -336,6 +338,15 @@ fn validate_draft(flow_yaml: &str, builder: &BuilderModel) -> Result<FlowSummary
             unavailable.join(", "),
             provider_name(builder.choice.provider),
             builder.choice.name
+        ));
+    }
+    // Local CLI providers answer text only: no tool-calling agent steps, no images.
+    let capability_gaps = flow::find_local_cli_capability_gaps(flow_yaml).map_err(|error| error.to_string())?;
+    if !capability_gaps.is_empty() {
+        return Err(format!(
+            "{}. Local CLI providers cannot call tools or read images: use an `llm` step instead of an `agent` \
+             step with tools, or give that step a provider with an API key",
+            capability_gaps.join("; ")
         ));
     }
     // Placeholder hosts (copied from examples) can only fail at run time.

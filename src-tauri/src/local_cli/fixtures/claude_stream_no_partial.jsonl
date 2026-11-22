@@ -1,0 +1,3 @@
+{"type":"system","subtype":"init","cwd":"/tmp/graphrt-cli-x","tools":[],"model":"claude-sonnet-5-5"}
+{"type":"assistant","message":{"id":"msg_fixture","type":"message","role":"assistant","content":[{"type":"text","text":"{\"city\": \"Bandung\", \"count\": 3}"}]}}
+{"type":"result","subtype":"success","is_error":false,"duration_ms":1800,"num_turns":1,"result":"{\"city\": \"Bandung\", \"count\": 3}","stop_reason":"end_turn","usage":{"input_tokens":120,"cache_creation_input_tokens":0,"cache_read_input_tokens":30,"output_tokens":12}}

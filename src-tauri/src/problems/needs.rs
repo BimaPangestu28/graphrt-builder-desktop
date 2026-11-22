@@ -63,6 +63,9 @@ pub(super) fn provider_display_name(provider: &str) -> String {
         "gemini" => "Gemini".into(),
         "deepseek" => "DeepSeek".into(),
         "ollama" => "Ollama".into(),
-        other => other.to_owned(),
+        other => match crate::local_cli::LocalCli::from_provider_name(other) {
+            Some(cli) => cli.display_name().into(),
+            None => other.to_owned(),
+        },
     }
 }

@@ -9,14 +9,14 @@ interface ConnectionCardProps {
   footer?: ReactNode
 }
 
-const cardStateClassNames: Record<ConnectionState, string> = {
+export const cardStateClassNames: Record<ConnectionState, string> = {
   connected: 'border-line bg-surface',
   default: 'border-brand-line-2 bg-brand-tint shadow-[inset_0_0_0_1px_var(--color-brand-line-2)]',
   signedOut: 'border-danger-line bg-surface',
   available: 'border-line bg-surface',
 }
 
-const statusBadgeTones: Record<ConnectionState, BadgeTone> = {
+export const statusBadgeTones: Record<ConnectionState, BadgeTone> = {
   connected: 'ok',
   default: 'brand',
   signedOut: 'danger',

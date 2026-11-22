@@ -1,34 +1,51 @@
 import { isDesktopApp } from '@/api/client'
 import { getCredentialStoreShortName } from '@/lib/platform'
-import type { ModelChoice, ModelProvider, ProviderStatus } from '@/api/types'
+import type { LocalCliStatus, ModelChoice, ModelProvider, ProviderStatus } from '@/api/types'
 import { initialConnections, type Connection } from '@/data/connections'
+import { isLocalCliProvider, modelProviderNames } from '@/data/settings'
+import { describeModelName } from '@/lib/modelChoices'
 
 /** A model provider card: the shared Connection shape plus what the key actions need. */
 export interface ModelConnection extends Connection {
   provider: ModelProvider
-  /** False for Ollama, which runs locally without a key. */
+  /** False for Ollama and the local CLIs, which need no key. */
   usesApiKey: boolean
+  /** What graphrt detected for a local CLI (Claude Code, Codex); null for the others. */
+  localCli: LocalCliStatus | null
 }
 
 /** Display text for each provider card (names, descriptions) from the mock connections. */
 const modelCardTemplates = initialConnections.filter((connection) => connection.category === 'models')
 
 function isModelProvider(connectionId: string): connectionId is ModelProvider {
-  return ['openai', 'anthropic', 'gemini', 'deepseek', 'ollama'].includes(connectionId)
+  return connectionId in modelProviderNames
 }
 
 /**
  * What the app really knows about a connected provider: the default model's name, or
- * where the key or local server is. No usage or cost (there is no pricing data).
+ * where the key, local server or CLI is. No usage or cost (there is no pricing data).
  */
 function describeConnectedProvider(status: ProviderStatus, defaultModel: ModelChoice, isDefault: boolean): string {
-  const location = status.provider === 'ollama' ? (status.baseUrl ?? 'Local server') : `Key in ${getCredentialStoreShortName()}`
-  return isDefault ? `${location} · default model ${defaultModel.name}` : location
+  const location = describeProviderLocation(status)
+  return isDefault ? `${location} · default model ${describeModelName(defaultModel)}` : location
+}
+
+function describeProviderLocation(status: ProviderStatus): string {
+  if (status.provider === 'ollama') return status.baseUrl ?? 'Local server'
+  if (isLocalCliProvider(status.provider)) return status.localCli?.version ?? 'On this computer'
+  return `Key in ${getCredentialStoreShortName()}`
+}
+
+function describeConnectedLabel(provider: ModelProvider, isDefault: boolean): string {
+  if (isDefault) return 'Default'
+  if (provider === 'ollama') return 'Found on this computer'
+  return isLocalCliProvider(provider) ? 'Turned on' : 'Connected'
 }
 
 /**
  * Builds the AI model cards from backend provider statuses: the default model's provider
- * is "default", other configured ones "connected", the rest "available" (Add key).
+ * is "default", other configured ones "connected", the rest "available" (Add key, or a
+ * local CLI that is off or not installed).
  *
  * @param statuses - From `listProviderStatuses` (ProviderStatus[])
  * @param defaultModel - From `getDefaultModel` (ModelChoice)
@@ -44,14 +61,16 @@ export function buildModelConnections(
     if (!status || !isModelProvider(template.id)) return []
     const state: Connection['state'] = !status.configured ? 'available' : status.provider === defaultModel.provider ? 'default' : 'connected'
     const isDefault = state === 'default'
+    const usesDesignText = useDesignText && !isLocalCliProvider(status.provider)
     return [
       {
         ...template,
         provider: status.provider,
-        usesApiKey: status.provider !== 'ollama',
+        usesApiKey: status.provider !== 'ollama' && !isLocalCliProvider(status.provider),
+        localCli: status.localCli ?? null,
         state,
-        connectedLabel: isDefault ? 'Default' : template.id === 'ollama' ? 'Found on this computer' : 'Connected',
-        connectedDescription: useDesignText ? template.connectedDescription : describeConnectedProvider(status, defaultModel, isDefault),
+        connectedLabel: describeConnectedLabel(status.provider, isDefault),
+        connectedDescription: usesDesignText ? template.connectedDescription : describeConnectedProvider(status, defaultModel, isDefault),
       },
     ]
   })

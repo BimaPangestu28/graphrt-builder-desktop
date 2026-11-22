@@ -15,7 +15,7 @@ pub enum AppError {
     Database(#[from] rusqlite::Error),
     #[error("credential store error: {0}")]
     Credentials(String),
-    #[error("no API key is set for {0}")]
+    #[error("not set up yet: {0}")]
     MissingCredentials(String),
     #[error("workflow error: {0}")]
     Workflow(String),

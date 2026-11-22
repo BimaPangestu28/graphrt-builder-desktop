@@ -106,6 +106,8 @@ export type GraphProblemCode =
   | 'send_without_approval'
   | 'placeholder_address'
   | 'model_provider_not_set_up'
+  /** A step needs something its model can't do, e.g. tools through a local CLI. */
+  | 'model_capability'
   | 'unused_edge'
   | 'plugin_not_installed'
 
