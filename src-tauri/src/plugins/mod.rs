@@ -26,6 +26,7 @@ mod archive;
 pub mod auto_update;
 mod catalog;
 mod catalog_fetch;
+mod catalog_signature;
 mod details;
 pub(crate) mod display_name;
 pub mod download;
@@ -179,8 +180,15 @@ impl std::fmt::Debug for PluginService {
 
 impl PluginService {
     /// Creates the service and loads the installed plugins (load errors are
-    /// reported per plugin, never fatal).
+    /// reported per plugin, never fatal). Catalogs must be signed with a built-in key
+    /// (see [`catalog_signature`]).
     pub fn new(config: PluginServiceConfig) -> Self {
+        Self::with_catalog_keys(config, catalog_signature::CatalogKeys::built_in())
+    }
+
+    /// [`PluginService::new`] trusting catalogs signed with `catalog_keys` (tests sign
+    /// their fixture catalogs with a throwaway key; the app always uses the built-in keys).
+    fn with_catalog_keys(config: PluginServiceConfig, catalog_keys: catalog_signature::CatalogKeys) -> Self {
         let plugins_dir = config.app_data_dir.join(PLUGINS_DIR_NAME);
         install::clean_leftovers(&plugins_dir);
         let service = Self {
@@ -189,6 +197,7 @@ impl PluginService {
                 v2: config.app_data_dir.join(CATALOG_V2_CACHE_FILE_NAME),
                 v2_marker: config.app_data_dir.join(CATALOG_V2_MARKER_FILE_NAME),
                 asset_prefix: catalog::release_asset_prefix(&config.catalog_url),
+                keys: catalog_keys,
             },
             details: Arc::new(details::DetailStore::new(
                 config.app_data_dir.join(details::DETAILS_DIR_NAME),

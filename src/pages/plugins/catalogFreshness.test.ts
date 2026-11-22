@@ -5,7 +5,7 @@ import { describeCatalogFreshness } from './catalogFreshness'
 const nowMs = Date.parse('2026-11-21T12:00:00Z')
 
 function catalogFetched(fetchedAt: string | null, overrides: Partial<PluginCatalog> = {}): PluginCatalog {
-  return { plugins: [], generatedAt: null, fromCache: fetchedAt === null, fetchedAt, ...overrides }
+  return { plugins: [], generatedAt: null, fromCache: fetchedAt === null, fetchedAt, fetchError: null, ...overrides }
 }
 
 describe('describeCatalogFreshness', () => {

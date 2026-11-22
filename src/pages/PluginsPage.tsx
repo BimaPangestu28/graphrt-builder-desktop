@@ -21,13 +21,19 @@ const emptyTabMessages: Record<PluginFilter, string> = {
   attention: 'Nothing needs attention: every installed plugin is ready',
 }
 
+/** Why a saved copy of the catalog is shown: offline, or the online one was refused (e.g. its signature). */
+export function describeSavedCatalogReason(fetchError: string | null): string {
+  if (fetchError && fetchError.includes('signature')) return `The online catalog was refused (${fetchError}): showing the last saved catalog`
+  return 'Offline: showing the last saved catalog'
+}
+
 function CatalogNotes({ plugins }: { plugins: PluginsState }) {
   const inventory = plugins.data
   if (!inventory) return null
   if (inventory.catalogError) {
     return <p className="m-0 text-[13px] text-muted">Could not load the plugin catalog: {describeError(inventory.catalogError)}. Installed plugins still work</p>
   }
-  if (inventory.catalog?.fromCache) return <p className="m-0 text-[13px] text-muted">Offline: showing the last saved catalog</p>
+  if (inventory.catalog?.fromCache) return <p className="m-0 text-[13px] text-muted">{describeSavedCatalogReason(inventory.catalog.fetchError)}</p>
   if (inventory.catalog) return <p className="m-0 text-[13px] text-muted">{describeCatalogFreshness(inventory.catalog, Date.now())}</p>
   return null
 }

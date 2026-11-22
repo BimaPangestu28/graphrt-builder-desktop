@@ -59,6 +59,16 @@ releases may contain breaking changes; they are called out under **Changed**.
 - **Detail prune on case-insensitive file systems**: on macOS and Windows, pruning compares
   saved detail file names ignoring case, so a listed version saved with another case is not
   removed (a saved file is still checked against the index checksum before use).
+- **The plugin catalog must be signed**: after `index-v2.json` or `index.json` is downloaded,
+  `<index url>.minisig` (at most 4 KB) is downloaded and the index bytes must verify against a
+  built-in minisign public key (a list, so a key rotation can ship two keys; currently key id
+  `CB1AEE339F05C2BD`) before they are parsed. There is no grace mode
+  (`REQUIRE_CATALOG_SIGNATURE`) and no user setting to change the keys. A missing or invalid
+  signature makes the index unusable: the saved copy is used, the error is logged and returned
+  as the catalog's new `fetchError` (shown on the Plugins page). The saved copy keeps its
+  `.minisig` and is verified again whenever it is read. A v2 index with a bad or missing
+  signature never falls back to v1, and v1 must be signed too. Details, icons and tarballs stay
+  covered by the sha256 values in the signed index.
 
 ## [0.1.3] - 2026-11-22
 

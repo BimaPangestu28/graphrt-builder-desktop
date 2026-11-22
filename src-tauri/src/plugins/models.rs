@@ -317,6 +317,9 @@ pub struct PluginCatalog {
     pub from_cache: bool,
     /// When this session last fetched the catalog (RFC 3339), or `None` for a saved copy.
     pub fetched_at: Option<String>,
+    /// For a saved copy: why the online catalog could not be used (offline, or an index
+    /// whose signature is missing or invalid).
+    pub fetch_error: Option<String>,
 }
 
 /// Whether one requested variable has a value in the keychain.

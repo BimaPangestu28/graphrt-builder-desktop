@@ -20,6 +20,7 @@ use crate::storage::Database;
 mod approval;
 mod auto_update;
 mod catalog_plugins;
+mod catalog_signature;
 mod catalog_v2;
 mod plugin_display_names;
 mod plugin_icons;
@@ -41,13 +42,44 @@ pub(crate) struct FakeDownloader {
     requests: Mutex<Vec<String>>,
 }
 
+/// A throwaway minisign key pair made for this test run only: fixture catalogs are signed
+/// with it and test services trust only it. Never a real catalog key.
+static TEST_CATALOG_KEY_PAIR: std::sync::LazyLock<minisign::KeyPair> =
+    std::sync::LazyLock::new(|| minisign::KeyPair::generate_unencrypted_keypair().unwrap());
+
+/// A `.minisig` of `bytes` made with `key_pair`.
+pub(crate) fn minisign_signature(key_pair: &minisign::KeyPair, bytes: &[u8]) -> Vec<u8> {
+    minisign::sign(Some(&key_pair.pk), &key_pair.sk, bytes, None, None).unwrap().into_string().into_bytes()
+}
+
+/// The keys test services trust: only [`TEST_CATALOG_KEY_PAIR`].
+pub(super) fn test_catalog_keys() -> super::catalog_signature::CatalogKeys {
+    super::catalog_signature::CatalogKeys::from_base64(&[&TEST_CATALOG_KEY_PAIR.pk.to_base64()])
+}
+
+/// Whether `url` is a catalog index (served with a signature by [`FakeDownloader::serve`]).
+fn is_index_url(url: &str) -> bool {
+    url.ends_with("/index.json") || url.ends_with("/index-v2.json")
+}
+
 impl FakeDownloader {
+    /// Serves `bytes` at `url`; a catalog index also gets its `.minisig` signed with the test key.
     fn serve(&self, url: &str, bytes: Vec<u8>) {
+        if is_index_url(url) {
+            let signature = minisign_signature(&TEST_CATALOG_KEY_PAIR, &bytes);
+            self.files.lock().unwrap().insert(format!("{url}.minisig"), signature);
+        }
+        self.files.lock().unwrap().insert(url.to_owned(), bytes);
+    }
+
+    /// Serves `bytes` at `url` exactly, without adding or changing any signature.
+    fn serve_raw(&self, url: &str, bytes: Vec<u8>) {
         self.files.lock().unwrap().insert(url.to_owned(), bytes);
     }
 
     fn forget(&self, url: &str) {
         self.files.lock().unwrap().remove(url);
+        self.files.lock().unwrap().remove(&format!("{url}.minisig"));
     }
 
     /// How many times `url` was asked for.
@@ -275,7 +307,7 @@ fn build_service(
     downloader: &Arc<FakeDownloader>,
     events: &Arc<RecordedEvents>,
 ) -> PluginService {
-    PluginService::new(PluginServiceConfig {
+    let config = PluginServiceConfig {
         app_data_dir: app_data.to_path_buf(),
         catalog_url: CATALOG_URL.to_owned(),
         db: db.clone(),
@@ -283,7 +315,8 @@ fn build_service(
         node_runtime: Arc::new(NodeRuntime::new(app_data.to_path_buf())),
         downloader: downloader.clone(),
         events: events.clone(),
-    })
+    };
+    PluginService::with_catalog_keys(config, test_catalog_keys())
 }
 
 /// A fixture with the echo plugin installed.

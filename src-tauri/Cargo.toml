@@ -66,6 +66,7 @@ base64 = "0.22"
 regex = "1"
 # Local CLI providers (Claude Code, Codex) run in a throwaway working directory.
 tempfile = "3"
+minisign-verify = "0.3"
 
 # Launch at login and one running instance are desktop-only
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
@@ -85,3 +86,6 @@ libc = "0.2"
 # "Keep the computer awake while an agent runs" on Windows (SetThreadExecutionState)
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.60", features = ["Win32_System_Power"] }
+
+[dev-dependencies]
+minisign = "0.10.0"

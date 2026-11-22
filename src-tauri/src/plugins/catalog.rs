@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::time::SystemTime;
 
+use super::catalog_signature::{signature_location, CatalogKeys, REQUIRE_CATALOG_SIGNATURE};
 use super::display_name::{resolve_display_name, validate_display_name, MAX_DISPLAY_NAME_CHARS};
 use super::download::require_https;
 use super::host::PluginState;
@@ -289,6 +290,8 @@ pub(super) struct SavedCatalogFiles {
     pub v2_marker: std::path::PathBuf,
     /// See [`release_asset_prefix`]; `None` drops every entry (the catalog URL is not a URL).
     pub asset_prefix: Option<String>,
+    /// Keys the saved copies are verified with again when read (see `catalog_signature`).
+    pub keys: CatalogKeys,
 }
 
 impl SavedCatalogFiles {
@@ -332,10 +335,25 @@ impl SavedCatalogFiles {
         }
     }
 
+    /// Saves a fetched index and its signature (each written then renamed; the signature
+    /// first, so an index is never saved next to an older signature that would fail it).
+    pub fn save(&self, schema: u32, bytes: &[u8], signature: Option<&str>) {
+        let cache_file = self.for_schema(schema);
+        if let Some(signature) = signature {
+            write_cache(&signature_path(cache_file), signature.as_bytes());
+        }
+        write_cache(cache_file, bytes);
+    }
+
     /// Reads a saved catalog of `schema` and when it was saved, if it exists and is still
-    /// valid, with the asset links checked like a fetched one.
+    /// valid: its saved signature verified again, then parsed, with the asset links checked
+    /// like a fetched one.
     fn read_saved_as(&self, cache_file: &Path, schema: u32) -> Option<(CatalogIndex, SystemTime)> {
         let bytes = std::fs::read(cache_file).ok()?;
+        if let Err(error) = self.verify_saved(cache_file, &bytes) {
+            log::warn!("ignoring the saved plugin catalog {}: {error}", cache_file.display());
+            return None;
+        }
         let saved_at =
             std::fs::metadata(cache_file).and_then(|metadata| metadata.modified()).unwrap_or(SystemTime::UNIX_EPOCH);
         match parse_catalog_as(&bytes, schema) {
@@ -378,9 +396,27 @@ fn parse_version(version: &str) -> Option<(Vec<u64>, bool)> {
     Some((padded, !pre_release))
 }
 
-/// Saves the raw catalog next to the plugins (written then renamed).
-pub(super) fn write_cache(cache_file: &Path, bytes: &[u8]) {
-    let temporary = cache_file.with_extension("json.tmp");
+impl SavedCatalogFiles {
+    /// Verifies a saved index against the signature saved next to it.
+    fn verify_saved(&self, cache_file: &Path, bytes: &[u8]) -> AppResult<()> {
+        match std::fs::read_to_string(signature_path(cache_file)) {
+            Ok(signature) => self.keys.verify(bytes, &signature),
+            Err(_) if !REQUIRE_CATALOG_SIGNATURE => Ok(()),
+            Err(error) => Err(AppError::InvalidInput(format!(
+                "the plugin catalog signature is not valid: it has no saved signature ({error})"
+            ))),
+        }
+    }
+}
+
+/// `<cache file>.minisig`.
+fn signature_path(cache_file: &Path) -> std::path::PathBuf {
+    std::path::PathBuf::from(signature_location(&cache_file.to_string_lossy()))
+}
+
+/// Saves a file next to the plugins (written then renamed).
+fn write_cache(cache_file: &Path, bytes: &[u8]) {
+    let temporary = std::path::PathBuf::from(format!("{}.tmp", cache_file.display()));
     let result = std::fs::write(&temporary, bytes).and_then(|()| std::fs::rename(&temporary, cache_file));
     if let Err(error) = result {
         log::warn!("could not save the plugin catalog: {error}");
@@ -400,6 +436,8 @@ pub(super) struct CatalogOrigin {
     pub from_cache: bool,
     /// When this session fetched it (RFC 3339); `None` for a saved copy.
     pub fetched_at: Option<String>,
+    /// Why the fetch failed, for a saved copy (e.g. an invalid signature).
+    pub fetch_error: Option<String>,
 }
 
 /// The catalog with each plugin's install state. `index` must already be resolved
@@ -443,6 +481,7 @@ pub(super) fn catalog_view(index: &CatalogIndex, installed: &[PluginState], orig
         generated_at: index.generated_at.clone(),
         from_cache: origin.from_cache,
         fetched_at: origin.fetched_at,
+        fetch_error: origin.fetch_error,
     }
 }
 

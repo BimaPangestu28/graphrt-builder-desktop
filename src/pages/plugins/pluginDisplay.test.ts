@@ -40,7 +40,7 @@ function catalogWith(...names: string[]): PluginCatalog {
       updateNeedsApproval: false,
     })),
     generatedAt: null,
-    fromCache: false, fetchedAt: null,
+    fromCache: false, fetchedAt: null, fetchError: null,
   }
 }
 

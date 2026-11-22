@@ -203,7 +203,7 @@ function toCatalogEntry(seed: SamplePluginSeed): PluginCatalogEntry {
 function readCatalog(refresh: boolean): PluginCatalog {
   if (refresh || pluginsState.catalogFetchedAtMs === null) pluginsState.catalogFetchedAtMs = Date.now()
   const fetchedAt = new Date(pluginsState.catalogFetchedAtMs).toISOString()
-  return { plugins: samplePluginSeeds.map(toCatalogEntry), generatedAt: '2026-11-01T00:00:00Z', fromCache: false, fetchedAt }
+  return { plugins: samplePluginSeeds.map(toCatalogEntry), generatedAt: '2026-11-01T00:00:00Z', fromCache: false, fetchedAt, fetchError: null }
 }
 
 function listSampleCatalogSteps(name: string): PluginNodeInfo[] {

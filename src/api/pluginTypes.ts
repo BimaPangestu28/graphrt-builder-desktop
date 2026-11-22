@@ -104,6 +104,8 @@ export interface PluginCatalog {
   fromCache: boolean
   /** When the app last fetched the catalog this session (RFC 3339), or null for a saved copy. */
   fetchedAt: string | null
+  /** For a saved copy: why the online catalog was not used (offline, or a missing or invalid signature). */
+  fetchError: string | null
 }
 
 /** Whether a setting the plugin requests has a value in the keychain. Values are never returned. */
