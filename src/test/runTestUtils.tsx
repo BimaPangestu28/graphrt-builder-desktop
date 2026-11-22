@@ -1,16 +1,17 @@
 import { act } from '@testing-library/react'
 import { useLocation } from 'react-router-dom'
 import { sampleRunStepDelayMs, sampleStepsUntilApproval } from '@/api/sampleBackend/runs'
+import { liveEventFrameMs } from '@/hooks/useRunLive'
 
 /** Steps the scripted sample test run plays before it pauses for approval. */
 export const stepsUntilApproval = sampleStepsUntilApproval
 /** Steps the scripted run plays after "Approve and send" until it succeeds. */
 export const stepsAfterApproval = 5
 
-/** Lets pending promises (backend calls) settle inside act. */
+/** Lets pending promises (backend calls) settle inside act, plus one frame (live run events are applied per frame). */
 export async function flushBackendCalls(): Promise<void> {
   await act(async () => {
-    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(liveEventFrameMs)
   })
 }
 
