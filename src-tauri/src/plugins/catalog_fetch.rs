@@ -5,8 +5,11 @@
 //!   missing (404), not valid JSON, too large or uses an unknown schema, v1 `index.json`
 //!   is fetched as before (at most [`catalog::MAX_CATALOG_BYTES`]). A network error or
 //!   timeout does not fall back: v1 sits on the same host, so the saved copy is used.
+//! - Once a v2 index was fetched on this computer (remembered on disk), v1 is never used
+//!   again, neither fetched nor read from its saved copy: a broken or removed v2 means the
+//!   saved v2 copy is used (logged), so nobody can downgrade the app to the older format.
 //! - Each catalog is saved under its own name (`plugin-catalog-v2.json`,
-//!   `plugin-catalog.json`); offline, the more recently saved one is used.
+//!   `plugin-catalog.json`); offline, the more recently saved one is used (only v2 once v2 was fetched).
 //! - After a v2 fetch, details of versions the index no longer lists are pruned and the
 //!   missing ones are fetched in the background ([`PluginService::spawn_detail_sync`]),
 //!   never blocking the caller. When new details arrive the process-wide catalog is
@@ -178,7 +181,12 @@ impl PluginService {
             {
                 Ok(index) => {
                     log::info!("plugin catalog: using index-v2.json ({} plugins)", index.plugins.len());
+                    self.catalog_files.remember_v2();
                     return Ok(index);
+                }
+                Err(error) if falls_back_to_v1(&error) && self.catalog_files.has_seen_v2() => {
+                    log::warn!("plugin catalog: index-v2.json is not usable ({error}); not falling back to v1 after v2 was used, the saved v2 copy is used");
+                    return Err(error);
                 }
                 Err(error) if falls_back_to_v1(&error) => {
                     log::info!("plugin catalog: index-v2.json is not usable ({error}); falling back to v1 index.json");

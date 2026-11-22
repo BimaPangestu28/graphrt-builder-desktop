@@ -77,6 +77,8 @@ pub const PLUGIN_DATA_DIR_NAME: &str = "plugin-data";
 const CATALOG_CACHE_FILE_NAME: &str = "plugin-catalog.json";
 /// The saved v2 catalog (`index-v2.json`), next to the v1 copy.
 const CATALOG_V2_CACHE_FILE_NAME: &str = "plugin-catalog-v2.json";
+/// Written once a v2 index was fetched: v1 is never used again (see `catalog_fetch.rs`).
+const CATALOG_V2_MARKER_FILE_NAME: &str = "plugin-catalog-v2.seen";
 /// Largest plugin tarball accepted.
 const MAX_TARBALL_BYTES: u64 = 256 * 1024 * 1024;
 const CATALOG_TIMEOUT: Duration = Duration::from_secs(20);
@@ -185,6 +187,7 @@ impl PluginService {
             catalog_files: catalog::SavedCatalogFiles {
                 v1: config.app_data_dir.join(CATALOG_CACHE_FILE_NAME),
                 v2: config.app_data_dir.join(CATALOG_V2_CACHE_FILE_NAME),
+                v2_marker: config.app_data_dir.join(CATALOG_V2_MARKER_FILE_NAME),
                 asset_prefix: catalog::release_asset_prefix(&config.catalog_url),
             },
             details: Arc::new(details::DetailStore::new(

@@ -285,6 +285,8 @@ fn clean_display_name(plugin: &mut CatalogPlugin) {
 pub(super) struct SavedCatalogFiles {
     pub v1: std::path::PathBuf,
     pub v2: std::path::PathBuf,
+    /// Exists once a v2 index was fetched: from then on v1 is never used (no downgrade).
+    pub v2_marker: std::path::PathBuf,
     /// See [`release_asset_prefix`]; `None` drops every entry (the catalog URL is not a URL).
     pub asset_prefix: Option<String>,
 }
@@ -299,9 +301,27 @@ impl SavedCatalogFiles {
         }
     }
 
-    /// The most recently saved valid copy (v2 or v1), if any.
+    /// Whether a v2 index was fetched on this computer before (then v1 is never used).
+    pub fn has_seen_v2(&self) -> bool {
+        self.v2_marker.exists()
+    }
+
+    /// Remembers that a v2 index was fetched (logged when it cannot be written).
+    pub fn remember_v2(&self) {
+        if self.has_seen_v2() {
+            return;
+        }
+        if let Err(error) = std::fs::write(&self.v2_marker, b"catalog v2 fetched; v1 is not used any more\n") {
+            log::warn!("could not remember that the plugin catalog moved to v2: {error}");
+        }
+    }
+
+    /// The most recently saved valid copy (v2 or v1), if any; only v2 once v2 was fetched.
     pub fn read_newest(&self) -> Option<CatalogIndex> {
         let v2 = self.read_saved_as(&self.v2, CATALOG_SCHEMA_V2);
+        if self.has_seen_v2() {
+            return v2.map(|(index, _)| index);
+        }
         let v1 = self.read_saved_as(&self.v1, CATALOG_SCHEMA_V1);
         match (v2, v1) {
             (Some((v2_index, v2_saved_at)), Some((v1_index, v1_saved_at))) => {

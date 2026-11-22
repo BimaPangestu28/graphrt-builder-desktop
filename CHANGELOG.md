@@ -52,6 +52,10 @@ releases may contain breaking changes; they are called out under **Changed**.
   from the configured catalog URL, or its folder for a catalog not on GitHub releases),
   checked on the normalized URL. Entries with a tarball elsewhere are dropped; an icon or
   detail link elsewhere only loses that field. Redirects to GitHub's asset hosts still work.
+- **No downgrade from catalog v2 to v1**: once `index-v2.json` was fetched on a computer (kept
+  as `plugin-catalog-v2.seen` next to the saved catalogs), a missing or unusable v2 no longer
+  falls back to v1 `index.json`; the saved v2 copy is used and the problem is logged. A saved
+  v1 copy is ignored from then on.
 
 ## [0.1.3] - 2026-11-22
 

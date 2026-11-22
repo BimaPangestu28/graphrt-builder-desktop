@@ -421,3 +421,48 @@ async fn details_saved_under_the_old_ambiguous_names_are_pruned() {
         vec!["fixture-browser@1.0.0.json", "fixture-echo@1.0.0.json", "fixture-mail@2.0.0.json"]
     );
 }
+
+#[tokio::test]
+async fn once_v2_was_fetched_a_broken_v2_never_falls_back_to_v1() {
+    let fixture = Fixture::new();
+    fixture.publish_v2_with_extras("1.0.0", good_tarball());
+    let mut index: serde_json::Value =
+        serde_json::from_slice(&fixture.downloader.files.lock().unwrap()[V2_URL]).unwrap();
+    index["plugins"][0]["description"] = "from v2".into();
+    fixture.downloader.serve(V2_URL, serde_json::to_vec(&index).unwrap());
+    fixture.service.catalog(true).await.unwrap();
+
+    // v2 disappears (or is replaced by something unusable); v1 is still there.
+    for v2_body in [None, Some(b"<html>not json</html>".to_vec())] {
+        match v2_body {
+            Some(body) => fixture.downloader.serve(V2_URL, body),
+            None => fixture.downloader.forget(V2_URL),
+        }
+        let restarted = fixture.restarted();
+        let catalog = restarted.catalog(true).await.unwrap();
+
+        assert!(catalog.from_cache, "the saved v2 copy is used");
+        assert_eq!(catalog.plugins[0].description, "from v2");
+        assert_eq!(fixture.downloader.request_count(CATALOG_URL), 0, "v1 is never fetched");
+        assert_eq!(restarted.known_catalog().unwrap().schema, 2);
+    }
+}
+
+#[tokio::test]
+async fn once_v2_was_fetched_a_saved_v1_copy_is_ignored() {
+    let fixture = Fixture::new();
+    fixture.publish_v2_with_extras("1.0.0", good_tarball());
+    fixture.service.catalog(true).await.unwrap();
+    // A v1 copy saved later (e.g. by an older build) must not replace the v2 one offline.
+    let v1_copy = fixture.app_data.path().join(super::super::CATALOG_CACHE_FILE_NAME);
+    std::fs::write(&v1_copy, &fixture.downloader.files.lock().unwrap()[CATALOG_URL]).unwrap();
+    let urls: Vec<String> = fixture.downloader.files.lock().unwrap().keys().cloned().collect();
+    for url in urls {
+        fixture.downloader.forget(&url);
+    }
+
+    let catalog = fixture.restarted().catalog(false).await.unwrap();
+
+    assert!(catalog.from_cache);
+    assert_eq!(fixture.restarted().known_catalog().unwrap().schema, 2);
+}
