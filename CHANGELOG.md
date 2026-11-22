@@ -7,6 +7,8 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-11-22
+
 ### Performance
 
 - **Smaller app: `graphrt.app` 28.2 → 16.1 MiB, updater `.app.tar.gz` 12.9 → 9.1 MiB; the binary 29.4 → 16.7 MB** (Apple Silicon release build, `tauri build`). The release profile now optimizes for size (`opt-level = "z"`) with fat LTO, and keeps the crates on a run's hot path (the graphrt-core engine, serde_json, tokio) at `opt-level = 3`: graphrt-core's engine benchmark (1000-node chain, 100-item parallel iteration) runs at the same speed as before (1.63 vs 1.60 ms, 0.55 vs 0.56 ms), and the engine, knowledge, flow and scheduler tests take as long as before. `z` everywhere was ~45% slower on that benchmark; `s` with fat LTO gave 20.9 MB. Release builds take a little longer (fat LTO).
@@ -650,7 +652,8 @@ connected to the graphrt runtime**, so no agent actually runs.
 - The mobile companion screens from the design are not built.
 - macOS builds are unsigned.
 
-[Unreleased]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.1...v0.1.2
