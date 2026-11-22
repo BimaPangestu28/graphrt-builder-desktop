@@ -9,6 +9,9 @@ import { CrashReportNotice } from './pages/crash-reports/CrashReportNotice'
 import { OnboardingTourProvider } from './pages/onboarding/OnboardingTourProvider'
 import { PluginRuntimeNotice } from './pages/plugins/PluginRuntimeNotice'
 import { AppUpdateProvider } from './pages/updates/AppUpdateProvider'
+// Geist ships with the app (variable weight, woff2): no render-blocking request to Google
+// Fonts before the first paint, and the same typeface offline.
+import '@fontsource-variable/geist'
 import './index.css'
 
 const rootElement = document.getElementById('root')
