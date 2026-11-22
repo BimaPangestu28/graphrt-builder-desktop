@@ -1,10 +1,13 @@
 //! Expires approvals that waited past their deadline (see `approval_pauses`).
 //!
-//! A background task checks the paused runs every [`CHECK_INTERVAL`] (and once
-//! right at start-up, so approvals that expired while the app was closed are
-//! handled first). For every expired question it stores an
-//! `approval_timed_out` event in the run log, then applies the step's timeout
-//! action:
+//! A background task checks the paused runs once right at start-up (so
+//! approvals that expired while the app was closed are handled first), then
+//! sleeps until the earliest deadline of any waiting question, at most
+//! [`MAX_CHECK_DELAY`]. A run that pauses wakes it early
+//! ([`RunManager::approval_wakeup`]), so a new, shorter deadline is never
+//! missed. With nothing waiting, it only wakes every [`MAX_CHECK_DELAY`]. For
+//! every expired question it stores an `approval_timed_out` event in the run
+//! log, then applies the step's timeout action:
 //! - `stop`: the run ends as `aborted` with [`TIMED_OUT_STOP_MESSAGE`]. When
 //!   several questions expire at once and any of them says stop, the run stops.
 //! - `answer`: the run resumes with that button and the fields' defaults (one
@@ -19,44 +22,50 @@ use std::time::Duration;
 use chrono::{DateTime, Utc};
 use serde_json::{Map, Value as Json};
 
-use super::approval_pauses::{find_expired_approvals, ExpiredApproval, TimeoutAction};
+use super::approval_pauses::{earliest_deadline, find_expired_approvals, ExpiredApproval, TimeoutAction};
 use super::{RunEventPayload, RunManager};
-use crate::storage::models::{Run, RunFilter, RunStatus};
+use crate::storage::models::{Run, RunStatus};
 
-/// How often paused runs are checked for expired approvals.
-const CHECK_INTERVAL: Duration = Duration::from_secs(15);
-/// Paused runs looked at per check.
-const PAUSED_RUNS_LIMIT: i64 = 1_000;
+/// Longest sleep between two checks (also the check interval while nothing waits).
+const MAX_CHECK_DELAY: Duration = Duration::from_secs(60);
+/// Shortest sleep between two checks, so a deadline that cannot be applied (e.g. the
+/// database refuses the change) is retried calmly instead of in a busy loop.
+const MIN_CHECK_DELAY: Duration = Duration::from_secs(1);
 /// Error message of a run stopped because nobody answered in time.
 pub(crate) const TIMED_OUT_STOP_MESSAGE: &str = "No answer before the time limit, so the run was stopped";
 
 /// Starts the background task that expires approvals.
 pub(crate) fn spawn_approval_expiry(runs: Arc<RunManager>) {
     tauri::async_runtime::spawn(async move {
-        let mut ticker = tokio::time::interval(CHECK_INTERVAL);
-        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        let wakeup = runs.approval_wakeup.clone();
         loop {
-            ticker.tick().await;
             let expired_count = runs.expire_due_approvals(Utc::now()).await;
             if expired_count > 0 {
                 log::info!("{expired_count} approvals timed out");
             }
+            let delay = runs.next_approval_check_delay(Utc::now());
+            tokio::select! {
+                () = tokio::time::sleep(delay) => {}
+                () = wakeup.notified() => {}
+            }
         }
     });
+}
+
+/// How long to sleep from `now` until `deadline` (the earliest waiting deadline),
+/// within [`MIN_CHECK_DELAY`] and [`MAX_CHECK_DELAY`].
+fn check_delay(deadline: Option<DateTime<Utc>>, now: DateTime<Utc>) -> Duration {
+    let Some(deadline) = deadline else { return MAX_CHECK_DELAY };
+    // A deadline in the past (`to_std` fails on negative) is checked again soon.
+    let until_deadline = (deadline - now).to_std().unwrap_or(Duration::ZERO);
+    until_deadline.clamp(MIN_CHECK_DELAY, MAX_CHECK_DELAY)
 }
 
 impl RunManager {
     /// Applies the timeout action of every approval whose deadline is at or before `now`.
     /// Failures are logged per run; returns how many questions expired.
     pub async fn expire_due_approvals(&self, now: DateTime<Utc>) -> usize {
-        let filter = RunFilter { agent_id: None, status: Some(RunStatus::Paused), limit: Some(PAUSED_RUNS_LIMIT) };
-        let paused_runs = match self.db.list_runs(&filter) {
-            Ok(paused_runs) => paused_runs,
-            Err(error) => {
-                log::warn!("could not list paused runs to expire approvals: {error}");
-                return 0;
-            }
-        };
+        let Some(paused_runs) = self.paused_runs() else { return 0 };
         let mut expired_count = 0;
         for run in paused_runs {
             let expired = find_expired_approvals(run.pause_reasons.as_ref(), now);
@@ -67,6 +76,29 @@ impl RunManager {
             self.apply_timeouts(&run, &expired).await;
         }
         expired_count
+    }
+
+    /// How long the expiry task may sleep from `now`: until the earliest deadline of any
+    /// paused run's question, within [`MIN_CHECK_DELAY`] and [`MAX_CHECK_DELAY`].
+    pub(crate) fn next_approval_check_delay(&self, now: DateTime<Utc>) -> Duration {
+        let earliest = self
+            .paused_runs()
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|run| earliest_deadline(run.pause_reasons.as_ref()))
+            .min();
+        check_delay(earliest, now)
+    }
+
+    /// Every paused run, or `None` (logged) when they cannot be read.
+    fn paused_runs(&self) -> Option<Vec<Run>> {
+        match self.db.list_paused_runs() {
+            Ok(paused_runs) => Some(paused_runs),
+            Err(error) => {
+                log::warn!("could not list paused runs to expire approvals: {error}");
+                None
+            }
+        }
     }
 
     async fn apply_timeouts(&self, run: &Run, expired: &[ExpiredApproval]) {
@@ -111,5 +143,31 @@ impl RunManager {
             }),
             Err(error) => log::warn!("could not store the timeout of run {}: {error}", run.id),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn at(seconds_from_epoch: i64) -> DateTime<Utc> {
+        DateTime::from_timestamp(seconds_from_epoch, 0).unwrap()
+    }
+
+    #[test]
+    fn sleeps_until_the_earliest_deadline() {
+        assert_eq!(check_delay(Some(at(1_030)), at(1_000)), Duration::from_secs(30));
+    }
+
+    #[test]
+    fn never_sleeps_longer_than_the_cap() {
+        assert_eq!(check_delay(Some(at(10_000)), at(1_000)), MAX_CHECK_DELAY);
+        assert_eq!(check_delay(None, at(1_000)), MAX_CHECK_DELAY);
+    }
+
+    #[test]
+    fn a_passed_deadline_is_checked_again_after_the_shortest_delay() {
+        assert_eq!(check_delay(Some(at(900)), at(1_000)), MIN_CHECK_DELAY);
+        assert_eq!(check_delay(Some(at(1_000)), at(1_000)), MIN_CHECK_DELAY);
     }
 }

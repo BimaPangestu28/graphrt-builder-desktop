@@ -89,3 +89,10 @@ windows-sys = { version = "0.60", features = ["Win32_System_Power"] }
 
 [dev-dependencies]
 minisign = "0.10.0"
+
+# Smaller, faster release binary. `panic` stays "unwind": `desktop::setup` catches the
+# panic of the Linux tray backend when libayatana-appindicator is missing.
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

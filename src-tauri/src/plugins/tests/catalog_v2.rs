@@ -482,3 +482,70 @@ fn prune_compares_file_names_like_the_file_system_does() {
     assert_eq!(removed, usize::from(!ignores_case));
     assert_eq!(dir.path().join("fixture-mail@2.0.0-beta.json").exists(), ignores_case);
 }
+
+#[tokio::test]
+async fn the_known_catalog_is_computed_once_until_a_fetch_replaces_it() {
+    let fixture = Fixture::new();
+    fixture.publish_v2_with_extras("1.0.0", good_tarball());
+    fixture.service.catalog(true).await.unwrap();
+    fixture.service.wait_for_detail_sync().await;
+
+    let first = fixture.service.known_catalog().unwrap();
+    let second = fixture.service.known_catalog().unwrap();
+    assert!(Arc::ptr_eq(&first, &second), "the resolved catalog is reused");
+    assert!(mail_send_node(&first).config_schema.is_some(), "details are resolved");
+
+    fixture.service.catalog(true).await.unwrap();
+    fixture.service.wait_for_detail_sync().await;
+    assert!(!Arc::ptr_eq(&first, &fixture.service.known_catalog().unwrap()), "a fetch invalidates it");
+}
+
+#[tokio::test]
+async fn a_newly_fetched_detail_invalidates_the_known_catalog() {
+    let fixture = Fixture::new();
+    fixture.publish_v2_with_extras("1.0.0", good_tarball());
+    let mail_detail = detail_url("fixture-mail", "2.0.0");
+    let mail_detail_bytes = fixture.downloader.files.lock().unwrap()[&mail_detail].clone();
+    fixture.downloader.forget(&mail_detail);
+    fixture.service.catalog(true).await.unwrap();
+    fixture.service.wait_for_detail_sync().await;
+    assert!(mail_send_node(&fixture.service.known_catalog().unwrap()).config_schema.is_none());
+
+    fixture.downloader.serve(&mail_detail, mail_detail_bytes);
+    fixture.service.catalog_plugin_nodes("fixture-mail").await.unwrap();
+
+    assert!(mail_send_node(&fixture.service.known_catalog().unwrap()).config_schema.is_some());
+}
+
+#[tokio::test]
+async fn the_saved_catalog_is_read_from_disk_once() {
+    let fixture = Fixture::new();
+    fixture.publish_v2_with_extras("1.0.0", good_tarball());
+    fixture.service.catalog(true).await.unwrap();
+    fixture.service.wait_for_detail_sync().await;
+
+    let restarted = fixture.restarted();
+    let first = restarted.known_catalog().unwrap();
+    std::fs::remove_file(fixture.app_data.path().join(super::super::CATALOG_V2_CACHE_FILE_NAME)).unwrap();
+    let second = restarted.known_catalog().expect("kept in memory");
+    assert!(Arc::ptr_eq(&first, &second));
+}
+
+#[tokio::test]
+async fn the_saved_v1_copy_is_deleted_once_v2_is_fetched() {
+    let fixture = Fixture::new();
+    fixture.publish_with_extras("1.0.0", good_tarball());
+    fixture.service.catalog(true).await.unwrap();
+    let v1_copy = fixture.app_data.path().join(super::super::CATALOG_CACHE_FILE_NAME);
+    assert!(v1_copy.is_file(), "v1 is saved while v2 is not published");
+
+    fixture.publish_v2_with_extras("1.0.0", good_tarball());
+    fixture.service.catalog(true).await.unwrap();
+
+    assert!(!v1_copy.exists(), "the obsolete v1 copy is deleted");
+    assert!(!fixture.app_data.path().join(format!("{}.minisig", super::super::CATALOG_CACHE_FILE_NAME)).exists());
+    // A v1 copy written later (e.g. by an older build) is deleted on the next start.
+    std::fs::write(&v1_copy, b"{}").unwrap();
+    drop(fixture.restarted());
+    assert!(!v1_copy.exists());
+}

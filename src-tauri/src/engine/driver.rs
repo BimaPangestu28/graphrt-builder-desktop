@@ -43,6 +43,8 @@ pub(super) struct RunDriver {
     pub(super) pause_settings: Arc<PauseSettings>,
     /// Deadlines of the questions the run waited on before this resume (see `approval_pauses`).
     pub(super) carried_deadlines: Arc<HashMap<String, String>>,
+    /// Notified after a pause is stored, so approval expiry sees its deadlines.
+    pub(super) approval_wakeup: Arc<tokio::sync::Notify>,
 }
 
 /// State of one drive (one graphrt stream).
@@ -110,10 +112,12 @@ impl RunDriver {
             self.handle_chunk(state, &event);
             return;
         }
-        self.store_buffered_chunks(state);
         let is_terminal = event.is_terminal();
         let event_json = event_to_json(&event);
-        self.store_event(state, &event_json);
+        // The chunk still buffered precedes this event; both are stored in one transaction.
+        let mut to_store = state.chunk_buffer.take_all();
+        to_store.push(event_json.clone());
+        self.store_events(state, &to_store);
         self.note_plugin_session_failure(&event);
         let new_status = self.apply_terminal_event(&state.run_id, event);
         let status = new_status.unwrap_or(RunStatus::Running);
@@ -158,25 +162,22 @@ impl RunDriver {
         self.store_events(state, &buffered_chunks);
     }
 
-    /// Persists the events in order; returns each one's seq (`None` when storage failed).
+    /// Persists the events in order (several in one transaction) and advances `last_seq`;
+    /// returns each one's seq (`None` when storage failed, `last_seq` then unchanged).
     fn store_events(&self, state: &mut DriveState, events_json: &[Json]) -> Vec<Option<i64>> {
-        events_json.iter().map(|event_json| self.store_event(state, event_json)).collect()
-    }
-
-    /// Persists the event and advances `last_seq` (unchanged when storage failed).
-    fn store_event(&self, state: &mut DriveState, event_json: &Json) -> Option<i64> {
-        let seq = self.persist_event(&state.run_id, event_json);
-        state.last_seq = seq.unwrap_or(state.last_seq);
-        seq
-    }
-
-    /// Appends the event; returns its seq, or `None` (logged) when storage failed.
-    fn persist_event(&self, run_id: &str, event_json: &Json) -> Option<i64> {
-        match self.db.append_run_event(run_id, event_json) {
-            Ok(seq) => Some(seq),
+        let stored = match events_json {
+            [] => return Vec::new(),
+            [event_json] => self.db.append_run_event(&state.run_id, event_json).map(|seq| vec![seq]),
+            _ => self.db.append_run_events(&state.run_id, events_json),
+        };
+        match stored {
+            Ok(seqs) => {
+                state.last_seq = seqs.last().copied().unwrap_or(state.last_seq);
+                seqs.into_iter().map(Some).collect()
+            }
             Err(error) => {
-                log::warn!("could not store an event of run {run_id}: {error}");
-                None
+                log::warn!("could not store {} events of run {}: {error}", events_json.len(), state.run_id);
+                vec![None; events_json.len()]
             }
         }
     }
@@ -214,7 +215,10 @@ impl RunDriver {
             self.db.mark_run_paused(run_id, &snapshot_json, &reasons_json)
         });
         match stored {
-            Ok(()) => Some(RunStatus::Paused),
+            Ok(()) => {
+                self.approval_wakeup.notify_one();
+                Some(RunStatus::Paused)
+            }
             Err(error) => {
                 log::warn!("could not store the pause of run {run_id}: {error}");
                 self.finish(run_id, RunStatus::Failed, None, Some(&format!("could not save the paused run: {error}")))

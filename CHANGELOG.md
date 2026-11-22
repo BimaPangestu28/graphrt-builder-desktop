@@ -118,6 +118,33 @@ releases may contain breaking changes; they are called out under **Changed**.
   one adapter citing its official docs; detection, the subprocess, timeouts, cancellation,
   prompts and capability errors are shared. Claude Code and Codex behave as before.
 
+### Performance
+
+- **Smaller app binary**: release builds use thin LTO, one codegen unit and stripped symbols
+  (`panic = "unwind"` stays for the Linux tray fallback). The macOS arm64 binary goes from
+  41.7 MB to 28.7 MB (-31%).
+- **Smaller bundled Node.js**: `scripts/fetch-node.sh` strips debug symbols from the verified
+  Node binary (`strip -x` plus an ad-hoc signature on macOS, `strip --strip-unneeded` on Linux,
+  Windows unchanged) and checks it still runs (`node -e 1`): 113.0 MB to 90.6 MB on macOS
+  arm64. `GRAPHRT_SKIP_NODE_STRIP=1` keeps the download as is; signature checks are unchanged.
+- **Live view stops polling when idle**: the frame watcher polls every 100 ms only while pages
+  are live, a run starts a step, or for 15 s after either; otherwise once a second (was 10
+  times a second forever).
+- **Cheaper database writes**: SQLite runs in WAL mode with `synchronous = NORMAL` and a
+  5 s busy timeout; storing a run event no longer reads the run's status first (the foreign
+  key checks it), and a buffered chunk plus the next event are stored in one transaction.
+- **Approval time limits without a 15 s tick**: the expiry task reads only paused runs
+  (`runs_by_status` index) and sleeps until the earliest deadline (at most 60 s), woken early
+  when a run pauses. The start-up check is kept.
+- **Plugin catalog kept in memory**: the known catalog (with its v2 details) is parsed and
+  verified once and reused until a fetch replaces it or a detail is downloaded or pruned,
+  instead of re-reading the saved index and up to 148 detail files on every builder, prompt
+  guide or plugin-name call. The saved v1 copy is deleted once v2 was fetched.
+- **Faster start-up**: pruning old run events and publishing the saved plugin catalog run on a
+  background thread after the window opens. Installed plugins and MCP servers are now
+  published before the scheduler and approval expiry start, so a run started by the first
+  scheduler tick always sees them.
+
 ## [0.1.3] - 2026-11-22
 
 ### Added

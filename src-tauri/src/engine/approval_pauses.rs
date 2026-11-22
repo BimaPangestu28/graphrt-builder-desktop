@@ -339,6 +339,17 @@ impl ExpiredApproval {
     }
 }
 
+/// The earliest `expires_at` of the `human_input` questions among `reasons`, if any has one.
+pub(crate) fn earliest_deadline(reasons: Option<&Json>) -> Option<DateTime<Utc>> {
+    reasons?
+        .as_array()?
+        .iter()
+        .filter(|reason| text(reason, "kind") == Some(HUMAN_INPUT_PAUSE_KIND))
+        .filter_map(|reason| DateTime::parse_from_rfc3339(text(reason, EXPIRES_AT_KEY)?).ok())
+        .map(|expires_at| expires_at.with_timezone(&Utc))
+        .min()
+}
+
 /// The `human_input` questions among `reasons` whose `expires_at` is at or before `now`.
 pub(crate) fn find_expired_approvals(reasons: Option<&Json>, now: DateTime<Utc>) -> Vec<ExpiredApproval> {
     let Some(reasons) = reasons.and_then(Json::as_array) else { return Vec::new() };

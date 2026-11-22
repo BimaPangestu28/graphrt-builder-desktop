@@ -25,8 +25,16 @@
 # the script warns and relies on HTTPS + SHA-256 only, unless
 # GRAPHRT_REQUIRE_NODE_SIGNATURE=1 (set in CI), which makes gpg mandatory.
 #
+# After verification the executable's debug symbols are stripped (`strip -x` on
+# macOS, then an ad-hoc signature since Apple Silicon kills a binary whose
+# signature strip invalidated; `strip --strip-unneeded` on Linux; Windows builds
+# are left as is): about 20% smaller. The stripped binary is run once
+# (`node -e 1`) when it can execute on this machine. Release signing happens
+# later, when Tauri bundles the app, and replaces the ad-hoc signature.
+# GRAPHRT_SKIP_NODE_STRIP=1 keeps the binary exactly as downloaded.
+#
 # Already-fetched binaries of the pinned version are kept (a stamp file records
-# the version and archive checksum); --force downloads again.
+# the version, archive checksum and whether it was stripped); --force downloads again.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -57,7 +65,7 @@ for argument in "$@"; do
   case "$argument" in
     --force) force_download=true ;;
     -h | --help)
-      sed -n '2,29p' "$0"
+      sed -n '2,37p' "$0"
       exit 0
       ;;
     -*)
@@ -116,6 +124,56 @@ sha256_of() {
   else
     shasum -a 256 "$1" | cut -d ' ' -f 1
   fi
+}
+
+strip_enabled() {
+  [ "${GRAPHRT_SKIP_NODE_STRIP:-0}" != "1" ]
+}
+
+# Whether a binary built for `target` can run on this machine.
+can_run_target() {
+  local target="$1" host
+  host="$(rustc -vV 2> /dev/null | sed -n 's/^host: //p')"
+  [ "$target" = "$host" ] && return 0
+  # Apple Silicon runs x86_64 binaries under Rosetta when it is installed.
+  [ "$host" = "aarch64-apple-darwin" ] && [ "$target" = "x86_64-apple-darwin" ] && arch -x86_64 /usr/bin/true 2> /dev/null
+}
+
+# Strips debug symbols from the verified executable in place, then checks it still runs.
+strip_executable() {
+  local target="$1" executable="$2" size_before size_after
+  strip_enabled || return 0
+  case "$target" in
+    *-apple-darwin | *-linux-gnu) ;;
+    *) return 0 ;;
+  esac
+  command -v strip > /dev/null || fail "strip is needed to shrink Node for $target (set GRAPHRT_SKIP_NODE_STRIP=1 to skip)"
+  size_before="$(wc -c < "$executable" | tr -d '[:space:]')"
+  case "$target" in
+    *-apple-darwin)
+      strip -x "$executable" 2> /dev/null || fail "strip -x failed for $target"
+      # strip invalidates Node's signature and Apple Silicon kills unsigned code: sign ad hoc.
+      command -v codesign > /dev/null || fail "codesign is needed after stripping (set GRAPHRT_SKIP_NODE_STRIP=1 to skip)"
+      codesign --force --sign - "$executable" 2> /dev/null || fail "could not sign the stripped Node binary for $target"
+      ;;
+    *) strip --strip-unneeded "$executable" || fail "strip --strip-unneeded failed for $target" ;;
+  esac
+  size_after="$(wc -c < "$executable" | tr -d '[:space:]')"
+  echo "fetch-node: stripped $target: $size_before -> $size_after bytes"
+  if can_run_target "$target"; then
+    "$executable" -e 1 || fail "the stripped Node binary for $target does not run"
+  else
+    echo "fetch-node: $target binaries cannot run here; skipped the run check"
+  fi
+}
+
+# What the stamp records for the binary this script produces for `target`.
+stamp_text_for() {
+  local target="$1" expected_sha256="$2"
+  case "$target" in
+    *-windows-*) echo "$node_version $expected_sha256" ;;
+    *) if strip_enabled; then echo "$node_version $expected_sha256 stripped"; else echo "$node_version $expected_sha256"; fi ;;
+  esac
 }
 
 download() {
@@ -217,7 +275,7 @@ fetch_target() {
   expected_sha256="$(expected_sha256_for "$archive_name")"
   [ -n "$expected_sha256" ] || fail "$archive_name is not listed in SHASUMS256.txt"
 
-  if ! $force_download && [ -s "$sidecar" ] && [ "$(cat "$stamp" 2> /dev/null)" = "$node_version $expected_sha256" ]; then
+  if ! $force_download && [ -s "$sidecar" ] && [ "$(cat "$stamp" 2> /dev/null)" = "$(stamp_text_for "$target" "$expected_sha256")" ]; then
     echo "fetch-node: $target already has Node v$node_version ($sidecar)"
     return
   fi
@@ -236,6 +294,7 @@ fetch_target() {
   mkdir -p "$binaries_dir" "$(dirname "$license_file")"
   extract_member "$archive" "$executable_member" "$sidecar.partial"
   chmod 755 "$sidecar.partial"
+  strip_executable "$target" "$sidecar.partial"
   # Archives keep the release date as mtime; cargo's rerun-if-changed needs a fresh one.
   touch "$sidecar.partial"
   mv "$sidecar.partial" "$sidecar"
@@ -244,7 +303,7 @@ fetch_target() {
     cp "$work_dir/LICENSE" "$license_file"
     echo "fetch-node: updated $license_file (commit it with the version bump)"
   fi
-  echo "$node_version $expected_sha256" > "$stamp"
+  stamp_text_for "$target" "$expected_sha256" > "$stamp"
   echo "fetch-node: $target -> $sidecar"
 }
 

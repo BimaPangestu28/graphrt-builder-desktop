@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use super::*;
 
@@ -183,4 +183,87 @@ fn serializes_frames_in_camel_case() {
 fn plugin_env_entry_names_the_folder() {
     let entry = plugin_env_entry(Path::new("/data/live-view"));
     assert_eq!(entry, ("GRAPHRT_LIVE_VIEW_DIR".to_owned(), "/data/live-view".to_owned()));
+}
+
+#[test]
+fn polls_slowly_until_something_happens() {
+    let pacing = PollPacing::idle();
+    assert_eq!(pacing.next_delay(Instant::now()), IDLE_POLL_INTERVAL);
+}
+
+#[test]
+fn polls_fast_during_activity_then_backs_off_after_the_grace_period() {
+    let started = Instant::now();
+    let mut pacing = PollPacing::idle();
+    pacing.note_activity(started);
+    assert_eq!(pacing.next_delay(started + Duration::from_millis(50)), ACTIVE_POLL_INTERVAL);
+    assert_eq!(pacing.next_delay(started + ACTIVE_GRACE - Duration::from_millis(1)), ACTIVE_POLL_INTERVAL);
+    assert_eq!(pacing.next_delay(started + ACTIVE_GRACE), IDLE_POLL_INTERVAL);
+}
+
+#[test]
+fn a_page_is_live_while_its_frame_file_exists() {
+    let folder = tempfile::tempdir().unwrap();
+    let mut watcher = FrameWatcher::new(folder.path().to_path_buf());
+    assert!(!watcher.has_live_pages());
+    write_frame(folder.path(), "page.abc", b"frame");
+    watcher.scan(SystemTime::now());
+    assert!(watcher.has_live_pages());
+    std::fs::remove_file(folder.path().join("page.abc.jpg")).unwrap();
+    watcher.scan(SystemTime::now());
+    assert!(!watcher.has_live_pages());
+}
+
+#[test]
+fn many_wake_ups_never_block_and_collapse_into_one() {
+    let (waker, wakeups) = LiveViewWaker::channel();
+    for _ in 0..100 {
+        waker.wake();
+    }
+    assert!(wakeups.try_recv().is_ok());
+    assert!(wakeups.try_recv().is_err());
+}
+
+#[test]
+fn only_a_run_starting_or_starting_a_step_wakes_the_watcher() {
+    use crate::storage::models::RunStatus;
+    let payload = |status: RunStatus, event_type: &str| crate::engine::RunEventPayload {
+        run_id: "run".into(),
+        agent_id: "agent".into(),
+        seq: 1,
+        status,
+        event: serde_json::json!({"type": event_type}),
+    };
+    assert!(may_open_a_page(&payload(RunStatus::Running, "node_started")));
+    assert!(may_open_a_page(&payload(RunStatus::Running, "status_changed")));
+    assert!(!may_open_a_page(&payload(RunStatus::Running, "node_chunk")));
+    assert!(!may_open_a_page(&payload(RunStatus::Succeeded, "status_changed")));
+}
+
+#[derive(Debug, Default)]
+struct CollectingSink {
+    frames: std::sync::Mutex<Vec<LiveViewFrame>>,
+}
+
+impl LiveViewSink for CollectingSink {
+    fn send(&self, frame: LiveViewFrame) {
+        self.frames.lock().unwrap().push(frame);
+    }
+}
+
+#[test]
+fn a_wake_up_shows_the_first_frame_without_waiting_for_the_idle_poll() {
+    let folder = tempfile::tempdir().unwrap();
+    let sink = Arc::new(CollectingSink::default());
+    let waker = spawn(folder.path().to_path_buf(), sink.clone());
+    // Let the watcher's first scan pass, so it waits on the idle interval.
+    std::thread::sleep(Duration::from_millis(50));
+    write_frame(folder.path(), "page.abc", b"frame");
+    let woken_at = Instant::now();
+    waker.wake();
+    while sink.frames.lock().unwrap().is_empty() {
+        assert!(woken_at.elapsed() < IDLE_POLL_INTERVAL / 2, "the frame waited for the idle poll");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(sink.frames.lock().unwrap()[0].frame_key, "page.abc");
 }

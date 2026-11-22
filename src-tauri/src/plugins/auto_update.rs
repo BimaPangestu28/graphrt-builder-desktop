@@ -183,7 +183,7 @@ impl PluginService {
     pub async fn update_all_ready(&self) -> AppResult<PluginBulkUpdateSummary> {
         let index = match self.cached_catalog() {
             Some(index) => index,
-            None => self.fetch_catalog().await?.0,
+            None => Arc::new(self.fetch_catalog().await?.0),
         };
         let plan = plan_updates(&index, &self.catalog_matched_plugins());
         Ok(self.apply_plan(plan, false).await.0)

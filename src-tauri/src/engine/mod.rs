@@ -141,6 +141,8 @@ pub struct RunManager {
     model_source: Arc<dyn ModelRegistrySource>,
     active_runs: Arc<ActiveRuns>,
     chunk_buffer_limits: ChunkBufferLimits,
+    /// Wakes the approval expiry task when a run pauses (it may wait on a new deadline).
+    approval_wakeup: Arc<tokio::sync::Notify>,
 }
 
 fn already_finished(run_id: &str, status: RunStatus) -> AppError {
@@ -156,6 +158,7 @@ impl RunManager {
             model_source: Arc::new(KeychainModelRegistrySource),
             active_runs: Arc::new(ActiveRuns::default()),
             chunk_buffer_limits: ChunkBufferLimits::default(),
+            approval_wakeup: Arc::new(tokio::sync::Notify::new()),
         }
     }
 
@@ -319,6 +322,7 @@ impl RunManager {
             chunk_buffer_limits: self.chunk_buffer_limits,
             pause_settings: pause_context.settings,
             carried_deadlines: pause_context.carried_deadlines,
+            approval_wakeup: self.approval_wakeup.clone(),
         }
     }
 

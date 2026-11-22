@@ -309,13 +309,32 @@ impl SavedCatalogFiles {
         self.v2_marker.exists()
     }
 
-    /// Remembers that a v2 index was fetched (logged when it cannot be written).
+    /// Remembers that a v2 index was fetched (logged when it cannot be written), then
+    /// deletes the saved v1 copy, which is never read again.
     pub fn remember_v2(&self) {
-        if self.has_seen_v2() {
+        if !self.has_seen_v2() {
+            if let Err(error) = std::fs::write(&self.v2_marker, b"catalog v2 fetched; v1 is not used any more\n") {
+                log::warn!("could not remember that the plugin catalog moved to v2: {error}");
+                return;
+            }
+        }
+        self.remove_obsolete_v1();
+    }
+
+    /// Deletes the saved v1 copy and its signature once v2 was fetched (v1 is then never
+    /// read again). Failures are logged; a leftover copy is only wasted disk space.
+    pub fn remove_obsolete_v1(&self) {
+        if !self.has_seen_v2() {
             return;
         }
-        if let Err(error) = std::fs::write(&self.v2_marker, b"catalog v2 fetched; v1 is not used any more\n") {
-            log::warn!("could not remember that the plugin catalog moved to v2: {error}");
+        for obsolete in [self.v1.clone(), signature_path(&self.v1)] {
+            match std::fs::remove_file(&obsolete) {
+                Ok(()) => log::info!("removed the obsolete plugin catalog copy {}", obsolete.display()),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    log::warn!("could not remove the obsolete plugin catalog copy {}: {error}", obsolete.display())
+                }
+            }
         }
     }
 

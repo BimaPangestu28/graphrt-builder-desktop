@@ -74,6 +74,12 @@ use crate::storage::Database;
 const DATABASE_FILE_NAME: &str = "graphrt.db";
 
 /// Opens storage, wires the run engine and scheduler, and registers state.
+///
+/// Only what the first screen and the first runs need happens here: migrations,
+/// interrupted-run recovery, the installed plugins and MCP servers (published before
+/// the scheduler starts, since its first tick may start a run at once). Pruning old
+/// run events and publishing the saved plugin catalog wait for
+/// [`spawn_deferred_startup`], after the window is shown.
 fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error::Error>> {
     let data_dir = app.path().app_data_dir()?;
     std::fs::create_dir_all(&data_dir)?;
@@ -83,24 +89,21 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         Ok(_) => {}
         Err(error) => log::warn!("could not clean up interrupted runs: {error}"),
     }
-    // Keep the event logs of finished runs for the chosen days (Settings > Privacy and
-    // data, 30 by default); running / paused runs keep theirs.
-    if let Err(error) = desktop::app_settings::AppSettings::load_or_default(&db).prune_run_history(&db) {
-        log::warn!("could not prune old run events: {error}");
-    }
     let credentials = Arc::new(CredentialStore::keychain());
+    let live_view_waker = live_view::spawn(
+        data_dir.join(live_view::LIVE_VIEW_DIR_NAME),
+        Arc::new(live_view::TauriLiveViewSink::new(app.handle().clone())),
+    );
     let tauri_sink: Arc<dyn RunEventSink> = Arc::new(TauriRunEventSink::new(app.handle().clone()));
     let notifier = Arc::new(TauriRunNotifier::install(app.handle().clone()));
     let notifying_sink = Arc::new(NotifyingSink::new(tauri_sink, notifier.clone(), db.clone()));
-    desktop::daily_summary::spawn(db.clone(), notifier.clone());
     let status_listener = desktop::desktop_status_listener(app.handle().clone());
     let activity_sink = Arc::new(RunActivitySink::new(notifying_sink, status_listener));
     let chain_runner = Arc::new(ChainRunner::new(db.clone()));
-    let sink = Arc::new(ChainingSink::new(activity_sink, chain_runner.clone()));
+    let chaining_sink = Arc::new(ChainingSink::new(activity_sink, chain_runner.clone()));
+    let sink = Arc::new(live_view::WakeOnRunActivity::new(chaining_sink, live_view_waker));
     let runs = Arc::new(RunManager::new(db.clone(), credentials.clone(), sink));
     chain_runner.attach(&runs);
-    engine::spawn_approval_expiry(runs.clone());
-    let scheduler = scheduler::spawn(db.clone(), runs.clone());
     let conversation_sink = Arc::new(desktop::chat_notify::ChatNotifyingSink::new(
         Arc::new(conversations::tauri_sink::TauriConversationEventSink::new(app.handle().clone())),
         notifier.clone(),
@@ -127,13 +130,12 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         downloader: Arc::new(plugins::download::HttpsDownloader::new()?),
         events: Arc::new(plugins::events::TauriPluginEventSink::new(app.handle().clone())),
     }));
-    plugins.activate();
-    plugins::auto_update::spawn(plugins.clone());
-    live_view::spawn(
-        data_dir.join(live_view::LIVE_VIEW_DIR_NAME),
-        Arc::new(live_view::TauriLiveViewSink::new(app.handle().clone())),
-    );
+    plugins.activate_installed();
     mcp::publish_from_database(&db);
+    engine::spawn_approval_expiry(runs.clone());
+    let scheduler = scheduler::spawn(db.clone(), runs.clone());
+    desktop::daily_summary::spawn(db.clone(), notifier.clone());
+    plugins::auto_update::spawn(plugins.clone());
     Ok(AppState {
         db,
         credentials,
@@ -146,6 +148,26 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         plugins,
         model_catalog: Arc::new(model_catalog::ModelCatalog::with_http()?),
     })
+}
+
+/// Start-up work nothing on the first screen waits for, run on a blocking thread once
+/// the window is up: pruning old run events (a large delete) and publishing the saved
+/// plugin catalog (signature check and parse of a multi-megabyte file) for the builder.
+fn spawn_deferred_startup(state: &AppState) {
+    let db = state.db.clone();
+    let plugins = state.plugins.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let started = std::time::Instant::now();
+        // Keep the event logs of finished runs for the chosen days (Settings > Privacy and
+        // data, 30 by default); running / paused runs keep theirs.
+        match desktop::app_settings::AppSettings::load_or_default(&db).prune_run_history(&db) {
+            Ok(pruned) if pruned > 0 => log::info!("pruned {pruned} old run events"),
+            Ok(_) => {}
+            Err(error) => log::warn!("could not prune old run events: {error}"),
+        }
+        plugins.publish_known_catalog();
+        log::info!("deferred start-up work took {} ms", started.elapsed().as_millis());
+    });
 }
 
 /// Builds and runs the Tauri application.
@@ -163,6 +185,7 @@ pub fn run() {
                 app.handle().plugin(tauri_plugin_log::Builder::default().level(log::LevelFilter::Info).build())?;
             }
             let app_state = initialize_app_state(app)?;
+            spawn_deferred_startup(&app_state);
             app.manage(app_state);
             commands::agent_graph::emit_edit_state_changes(app.handle().clone());
             desktop::setup(app)?;

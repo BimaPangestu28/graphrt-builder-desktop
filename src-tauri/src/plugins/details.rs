@@ -24,6 +24,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -100,6 +101,8 @@ pub(super) struct DetailStore {
     /// Details whose last download failed this session, by [`DetailRef::file_name`]: the
     /// builder skips them so it never waits on a broken link twice.
     failed: Mutex<HashSet<String>>,
+    /// Bumped when a detail is downloaded or pruned: a catalog resolved before then is stale.
+    generation: AtomicU64,
 }
 
 /// Whether [`DetailStore::sync_missing`] tries details that failed earlier this session.
@@ -120,7 +123,19 @@ impl DetailStore {
     /// Opens the store over `dir`, removing details saved under the old ambiguous names.
     pub fn new(dir: PathBuf, downloader: Arc<dyn Downloader>) -> Self {
         remove_legacy_files(&dir);
-        Self { dir, downloader, loaded: Mutex::new(HashMap::new()), failed: Mutex::new(HashSet::new()) }
+        Self {
+            dir,
+            downloader,
+            loaded: Mutex::new(HashMap::new()),
+            failed: Mutex::new(HashSet::new()),
+            generation: AtomicU64::new(0),
+        }
+    }
+
+    /// Changes whenever [`resolve_catalog`] could give another result (a detail was
+    /// downloaded or pruned), so callers can keep a resolved catalog until then.
+    pub fn generation(&self) -> u64 {
+        self.generation.load(Ordering::SeqCst)
     }
 
     /// The detail if it is in memory or saved (and still matches the index), never fetched.
@@ -165,7 +180,9 @@ impl DetailStore {
                 if let Ok(mut failed) = self.failed.lock() {
                     failed.remove(&key);
                 }
-                Ok(self.remember(key, reference, detail))
+                let detail = self.remember(key, reference, detail);
+                self.generation.fetch_add(1, Ordering::SeqCst);
+                Ok(detail)
             }
             Err(error) => {
                 if let Ok(mut failed) = self.failed.lock() {
@@ -227,6 +244,7 @@ impl DetailStore {
         if let Ok(mut loaded) = self.loaded.lock() {
             loaded.retain(|key, _| keep_keys.contains(key));
         }
+        self.generation.fetch_add(1, Ordering::SeqCst);
         let keep: HashSet<String> = keep_keys.iter().map(|name| file_system_name(name)).collect();
         let Ok(entries) = std::fs::read_dir(&self.dir) else { return 0 };
         let mut removed_count = 0;
