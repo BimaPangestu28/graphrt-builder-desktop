@@ -46,6 +46,12 @@ releases may contain breaking changes; they are called out under **Changed**.
   and isolates, zero-width characters, soft hyphens, tags) are dropped like those with control
   characters, and a community entry's `display_name` or `publisher` containing "official" or
   "graphrt" (any case) is dropped. The entry stays listed under its humanized name.
+- **Catalog assets must come from the catalog's own releases**: `tarball_url`, `icon_url` and
+  `detail_url` must be under the catalog repository's `/releases/download/` (by default
+  `https://github.com/BimaPangestu28/graphrt-plugins/releases/download/`; the prefix comes
+  from the configured catalog URL, or its folder for a catalog not on GitHub releases),
+  checked on the normalized URL. Entries with a tarball elsewhere are dropped; an icon or
+  detail link elsewhere only loses that field. Redirects to GitHub's asset hosts still work.
 
 ## [0.1.3] - 2026-11-22
 

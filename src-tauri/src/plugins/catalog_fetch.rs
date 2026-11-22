@@ -202,8 +202,9 @@ impl PluginService {
     ) -> AppResult<CatalogIndex> {
         require_https(url)?;
         let bytes = self.downloader.fetch(url, max_bytes, timeout, None).await?;
-        let index = parse(&bytes)?;
+        let mut index = parse(&bytes)?;
         catalog::write_cache(self.catalog_files.for_schema(index.schema), &bytes);
+        catalog::restrict_asset_urls(&mut index, self.catalog_files.asset_prefix.as_deref());
         Ok(index)
     }
 

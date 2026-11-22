@@ -39,6 +39,61 @@ pub(super) fn v2_catalog_url(v1_catalog_url: &str) -> Option<String> {
     base.ends_with('/').then(|| format!("{base}{V2_INDEX_FILE_NAME}"))
 }
 
+/// Path segment after which GitHub serves a repository's release assets.
+const RELEASES_DOWNLOAD_PATH: &str = "/releases/download/";
+
+/// Where every tarball, icon and detail of the catalog at `catalog_url` must live: its
+/// origin plus the path up to and including `/releases/download/` (any release of the same
+/// repository), or, for a catalog not served from GitHub releases, its own folder. `None`
+/// when `catalog_url` is not a URL. Downloads may still be redirected to GitHub's asset
+/// hosts; only the published link is checked.
+pub(super) fn release_asset_prefix(catalog_url: &str) -> Option<String> {
+    let url = reqwest::Url::parse(catalog_url).ok()?;
+    let path = url.path();
+    let prefix_path = match path.find(RELEASES_DOWNLOAD_PATH) {
+        Some(start) => &path[..start + RELEASES_DOWNLOAD_PATH.len()],
+        None => &path[..=path.rfind('/')?],
+    };
+    Some(format!("{}{prefix_path}", url.origin().ascii_serialization()))
+}
+
+/// Whether `url`, once parsed and normalized (dot segments resolved, no user info), is an
+/// `https://` URL under `prefix`.
+pub(super) fn is_under_prefix(url: &str, prefix: &str) -> bool {
+    let Ok(parsed) = reqwest::Url::parse(url) else { return false };
+    !prefix.is_empty()
+        && parsed.scheme() == "https"
+        && parsed.username().is_empty()
+        && parsed.password().is_none()
+        && parsed.as_str().starts_with(prefix)
+}
+
+/// Drops entries whose `tarball_url` is not under `prefix` (see [`release_asset_prefix`])
+/// and clears an `icon_url` or detail link that is not (logged); applied to fetched and
+/// saved catalogs alike. Without a prefix (the catalog URL is not a URL) nothing is allowed.
+pub(super) fn restrict_asset_urls(index: &mut CatalogIndex, prefix: Option<&str>) {
+    let prefix = prefix.unwrap_or_default();
+    index.plugins.retain(|plugin| {
+        let allowed = is_under_prefix(&plugin.tarball_url, prefix);
+        if !allowed {
+            log::warn!("skipping catalog entry `{}`: its tarball is not under {prefix}", plugin.name);
+        }
+        allowed
+    });
+    for plugin in &mut index.plugins {
+        if plugin.icon_url.as_deref().is_some_and(|url| !is_under_prefix(url, prefix)) {
+            log::warn!("ignoring the icon of catalog entry `{}`: it is not under {prefix}", plugin.name);
+            plugin.icon_url = None;
+        }
+        if plugin.detail_url.as_deref().is_some_and(|url| !is_under_prefix(url, prefix)) {
+            log::warn!("ignoring the detail file of catalog entry `{}`: it is not under {prefix}", plugin.name);
+            plugin.detail_url = None;
+            plugin.detail_sha256 = None;
+            plugin.detail_size_bytes = None;
+        }
+    }
+}
+
 /// Parses a v1 catalog (`index.json`). See [`parse_catalog_as`].
 ///
 /// # Errors
@@ -230,6 +285,8 @@ fn clean_display_name(plugin: &mut CatalogPlugin) {
 pub(super) struct SavedCatalogFiles {
     pub v1: std::path::PathBuf,
     pub v2: std::path::PathBuf,
+    /// See [`release_asset_prefix`]; `None` drops every entry (the catalog URL is not a URL).
+    pub asset_prefix: Option<String>,
 }
 
 impl SavedCatalogFiles {
@@ -244,8 +301,8 @@ impl SavedCatalogFiles {
 
     /// The most recently saved valid copy (v2 or v1), if any.
     pub fn read_newest(&self) -> Option<CatalogIndex> {
-        let v2 = read_saved_as(&self.v2, CATALOG_SCHEMA_V2);
-        let v1 = read_saved_as(&self.v1, CATALOG_SCHEMA_V1);
+        let v2 = self.read_saved_as(&self.v2, CATALOG_SCHEMA_V2);
+        let v1 = self.read_saved_as(&self.v1, CATALOG_SCHEMA_V1);
         match (v2, v1) {
             (Some((v2_index, v2_saved_at)), Some((v1_index, v1_saved_at))) => {
                 Some(if v1_saved_at > v2_saved_at { v1_index } else { v2_index })
@@ -254,18 +311,22 @@ impl SavedCatalogFiles {
             (None, None) => None,
         }
     }
-}
 
-/// Reads a saved catalog of `schema` and when it was saved, if it exists and is still valid.
-fn read_saved_as(cache_file: &Path, schema: u32) -> Option<(CatalogIndex, SystemTime)> {
-    let bytes = std::fs::read(cache_file).ok()?;
-    let saved_at =
-        std::fs::metadata(cache_file).and_then(|metadata| metadata.modified()).unwrap_or(SystemTime::UNIX_EPOCH);
-    match parse_catalog_as(&bytes, schema) {
-        Ok(index) => Some((index, saved_at)),
-        Err(error) => {
-            log::warn!("ignoring the saved plugin catalog {}: {error}", cache_file.display());
-            None
+    /// Reads a saved catalog of `schema` and when it was saved, if it exists and is still
+    /// valid, with the asset links checked like a fetched one.
+    fn read_saved_as(&self, cache_file: &Path, schema: u32) -> Option<(CatalogIndex, SystemTime)> {
+        let bytes = std::fs::read(cache_file).ok()?;
+        let saved_at =
+            std::fs::metadata(cache_file).and_then(|metadata| metadata.modified()).unwrap_or(SystemTime::UNIX_EPOCH);
+        match parse_catalog_as(&bytes, schema) {
+            Ok(mut index) => {
+                restrict_asset_urls(&mut index, self.asset_prefix.as_deref());
+                Some((index, saved_at))
+            }
+            Err(error) => {
+                log::warn!("ignoring the saved plugin catalog {}: {error}", cache_file.display());
+                None
+            }
         }
     }
 }
@@ -426,5 +487,72 @@ mod parse_tests {
             catalog(2, vec![entry("acme", "first", Some("community")), entry("acme", "second", Some("community"))]);
         let index = parse_catalog_v2(&bytes).unwrap();
         assert_eq!(descriptions(&index), vec![("acme", "first")]);
+    }
+}
+
+#[cfg(test)]
+mod asset_host_tests {
+    use super::{parse_catalog_v2, release_asset_prefix, restrict_asset_urls, DEFAULT_CATALOG_URL};
+
+    const RELEASES: &str = "https://github.com/BimaPangestu28/graphrt-plugins/releases/download/";
+
+    #[test]
+    fn the_prefix_is_the_catalog_repository_releases() {
+        assert_eq!(release_asset_prefix(DEFAULT_CATALOG_URL).as_deref(), Some(RELEASES));
+        assert_eq!(
+            release_asset_prefix("https://plugins.example.test/index.json").as_deref(),
+            Some("https://plugins.example.test/"),
+            "a catalog outside GitHub releases serves assets next to itself"
+        );
+        assert_eq!(
+            release_asset_prefix("https://mirror.test/catalogs/v1/index.json").as_deref(),
+            Some("https://mirror.test/catalogs/v1/")
+        );
+        assert_eq!(release_asset_prefix("not a url"), None);
+    }
+
+    fn entry(name: &str, tarball_url: &str, icon_url: &str, detail_url: &str) -> serde_json::Value {
+        serde_json::json!({
+            "name": name, "version": "1.0.0", "tarball_url": tarball_url, "sha256": "a".repeat(64),
+            "icon_url": icon_url, "detail_url": detail_url, "detail_sha256": "b".repeat(64), "detail_size_bytes": 10
+        })
+    }
+
+    #[test]
+    fn assets_outside_the_releases_are_dropped() {
+        let good = |file: &str| format!("{RELEASES}catalog/{file}");
+        let entries = vec![
+            entry("good", &good("good.tar.gz"), &good("good.svg"), &good("plugin-good-1.0.0.json")),
+            entry("elsewhere", "https://evil.test/x.tar.gz", &good("e.svg"), &good("e.json")),
+            entry(
+                "other-repo",
+                "https://github.com/someone/else/releases/download/x.tar.gz",
+                &good("o.svg"),
+                &good("o.json"),
+            ),
+            entry("traversal", &format!("{RELEASES}../../../someone/else/x.tar.gz"), &good("t.svg"), &good("t.json")),
+            entry("encoded", &format!("{RELEASES}%2e%2e/%2e%2e/%2e%2e/x/y.tar.gz"), &good("t.svg"), &good("t.json")),
+            entry(
+                "userinfo",
+                "https://github.com@evil.test/BimaPangestu28/graphrt-plugins/releases/download/x.tar.gz",
+                &good("u.svg"),
+                &good("u.json"),
+            ),
+            entry("bad-optional", &good("b.tar.gz"), "https://evil.test/b.svg", "https://evil.test/b.json"),
+        ];
+        let bytes = serde_json::to_vec(&serde_json::json!({ "schema": 2, "plugins": entries })).unwrap();
+        let mut index = parse_catalog_v2(&bytes).unwrap();
+
+        restrict_asset_urls(&mut index, Some(RELEASES));
+        let mut nothing_allowed = index.clone();
+        restrict_asset_urls(&mut nothing_allowed, None);
+        assert!(nothing_allowed.plugins.is_empty());
+
+        let names: Vec<&str> = index.plugins.iter().map(|plugin| plugin.name.as_str()).collect();
+        assert_eq!(names, ["good", "bad-optional"]);
+        assert!(index.plugins[0].icon_url.is_some() && index.plugins[0].detail_url.is_some());
+        let bad_optional = &index.plugins[1];
+        assert_eq!((bad_optional.icon_url.as_deref(), bad_optional.detail_url.as_deref()), (None, None));
+        assert_eq!((bad_optional.detail_sha256.as_deref(), bad_optional.detail_size_bytes), (None, None));
     }
 }

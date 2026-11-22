@@ -185,6 +185,7 @@ impl PluginService {
             catalog_files: catalog::SavedCatalogFiles {
                 v1: config.app_data_dir.join(CATALOG_CACHE_FILE_NAME),
                 v2: config.app_data_dir.join(CATALOG_V2_CACHE_FILE_NAME),
+                asset_prefix: catalog::release_asset_prefix(&config.catalog_url),
             },
             details: Arc::new(details::DetailStore::new(
                 config.app_data_dir.join(details::DETAILS_DIR_NAME),
@@ -563,7 +564,9 @@ impl PluginService {
             None => from_install_record(),
         }?;
         require_https(&icon_url).ok()?;
-        Some(icon_url)
+        // Install records written before the host check may hold any https link.
+        let prefix = self.catalog_files.asset_prefix.as_deref()?;
+        catalog::is_under_prefix(&icon_url, prefix).then_some(icon_url)
     }
 
     async fn download_icon(&self, icon_url: &str) -> AppResult<Vec<u8>> {
