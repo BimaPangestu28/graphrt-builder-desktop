@@ -1,4 +1,5 @@
 import type { AgentGraph, GraphNode, NodeLayout } from '@/api/agentGraphTypes'
+import { runElkLayout } from './layoutEngine'
 
 /**
  * Auto-layout with ELK (elkjs, layered). The top level runs top to bottom and a
@@ -6,7 +7,7 @@ import type { AgentGraph, GraphNode, NodeLayout } from '@/api/agentGraphTypes'
  * fits the builder's narrow Nodes column. Arrows never cross a container boundary,
  * so each scope is laid out on its own; child positions are relative to their
  * container, the same convention React Flow and the saved positions use.
- * ELK is loaded on first use so it stays out of the main bundle.
+ * ELK runs in a Web Worker and is loaded on first use (see `layoutEngine.ts`).
  */
 
 /** Size of a step card on the canvas. */
@@ -126,9 +127,7 @@ export function toElkGraph(graph: AgentGraph): ElkNodeInput {
  * @throws Error - when ELK cannot lay the graph out (malformed nesting)
  */
 export async function computeAutoLayout(graph: AgentGraph): Promise<NodeLayout[]> {
-  const { default: Elk } = await import('elkjs/lib/elk.bundled.js')
-  const elk = new Elk()
-  const laidOut = (await elk.layout(toElkGraph(graph) as Parameters<typeof elk.layout>[0])) as ElkNodeOutput
+  const laidOut = (await runElkLayout(toElkGraph(graph))) as ElkNodeOutput
   const layouts: NodeLayout[] = []
   collectLayouts(laidOut, layouts)
   return layouts

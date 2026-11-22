@@ -7,6 +7,9 @@ import { readStoredAgent } from '@/api/sampleBackend/sampleAgentStore'
 import { installReactFlowTestEnvironment } from '@/test/reactFlowTestEnvironment'
 import { NodesView } from '../NodesView'
 
+// Real ELK is slow in jsdom; these tests only need non-overlapping positions.
+vi.mock('../flow/layoutEngine', () => import('./fakeElkLayout'))
+
 const agentId = 'maps-leads'
 
 describe('Stop the builder', () => {

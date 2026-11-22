@@ -8,6 +8,9 @@ import type { GraphrtEvent } from '@/api/types'
 import { installReactFlowTestEnvironment } from '@/test/reactFlowTestEnvironment'
 import { NodesView } from '../NodesView'
 
+// Real ELK is slow in jsdom; these tests only need non-overlapping positions.
+vi.mock('../flow/layoutEngine', () => import('./fakeElkLayout'))
+
 /**
  * The run clock ticks every second while a run is active. Only the elapsed-time badge of a
  * running step (and the run bar) may follow it: node cards must not re-render per tick.

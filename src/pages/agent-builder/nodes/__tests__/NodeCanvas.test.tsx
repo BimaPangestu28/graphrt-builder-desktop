@@ -9,6 +9,9 @@ import { writeCanvasClipboard } from '../flow/canvasCommands'
 import { NodeCanvas } from '../NodeCanvas'
 import { NodesView } from '../NodesView'
 
+// Real ELK is slow in jsdom; these tests only need non-overlapping positions.
+vi.mock('../flow/layoutEngine', () => import('./fakeElkLayout'))
+
 async function loadSampleGraph(): Promise<AgentGraph> {
   return sampleAgentGraphBackend.getAgentGraph('maps-leads')
 }
