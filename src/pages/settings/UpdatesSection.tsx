@@ -98,7 +98,7 @@ function PluginAutoUpdateRow({ appSettings, updateAppSetting }: Pick<UpdatesSect
   return (
     <ToggleRow
       title="Automatically update plugins"
-      description="New plugin versions install by themselves when no agent is running. Versions asking for new permissions wait for your approval"
+      description="New plugin versions install by themselves when no agent is running. Versions asking for new permissions, and community plugins, wait for your approval"
       isChecked={appSettings.autoUpdatePlugins}
       onToggle={(isChecked) => void updateAppSetting('autoUpdatePlugins', isChecked)}
       hasDivider={false}

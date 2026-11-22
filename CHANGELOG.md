@@ -22,6 +22,10 @@ releases may contain breaking changes; they are called out under **Changed**.
   `a-b` + `1.0.0` no longer share one file. Details saved under the old dash names are removed
   and fetched again. A detail kept in memory is only reused while the index lists the same
   `detail_sha256`; otherwise it is checked again or refetched.
+- **Community plugin updates wait for you**: automatic updates no longer install new versions
+  of `source: community` plugins (by the catalog entry or the install record) in the
+  background, even when they ask for nothing new; they are left in `needs_approval`. "Update
+  all" still offers them, with the usual permission limit.
 
 ## [0.1.3] - 2026-11-22
 

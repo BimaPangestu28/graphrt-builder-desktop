@@ -36,6 +36,16 @@ impl Fixture {
         self.downloader.serve(TARBALL_URL, tarball);
     }
 
+    /// Like [`Fixture::publish_with_env`] for a `source: community` catalog entry.
+    fn publish_community(&self, version: &str, tarball: Vec<u8>) {
+        let sha = super::super::archive::sha256_hex(&tarball);
+        let mut catalog: serde_json::Value =
+            serde_json::from_slice(&catalog_json(version, TARBALL_URL, &sha, tarball.len())).unwrap();
+        catalog["plugins"][0]["source"] = "community".into();
+        self.downloader.serve(CATALOG_URL, serde_json::to_vec(&catalog).unwrap());
+        self.downloader.serve(TARBALL_URL, tarball);
+    }
+
     fn set_auto_update(&self, enabled: bool) {
         AppSettings { auto_update_plugins: enabled, ..AppSettings::default() }.save(&self.db).unwrap();
     }
@@ -220,4 +230,62 @@ fn history_keeps_the_newest_updates_first() {
     assert_eq!(history[0].name, format!("plugin-{}", HISTORY_LIMIT + 2));
     let json = serde_json::to_value(&history[0]).unwrap();
     assert!(json.get("fromVersion").is_some() && json.get("updatedAt").is_some());
+}
+
+#[tokio::test]
+async fn community_updates_wait_for_the_user_and_update_all_still_offers_them() {
+    let fixture = Fixture::new();
+    fixture.publish_community("1.0.0", good_tarball());
+    fixture.service.install(PLUGIN, &echo_catalog_permissions()).await.unwrap();
+    trust(&fixture.service, PLUGIN).await.unwrap();
+    // Same permissions as the installed version: an official plugin would update by itself.
+    fixture.publish_community("1.1.0", tarball_at("1.1.0", false));
+
+    let outcome = fixture.service.run_auto_update_cycle().await;
+
+    let AutoUpdateOutcome::Checked { summary, .. } = outcome else { panic!("{outcome:?}") };
+    assert!(summary.updated.is_empty() && summary.failed.is_empty(), "{summary:?}");
+    assert_eq!(summary.needs_approval, vec![PLUGIN.to_owned()]);
+    assert_eq!(fixture.service.installed(PLUGIN).unwrap().version, "1.0.0");
+    assert!(fixture.service.recent_auto_updates().unwrap().is_empty());
+    let entry = fixture.service.catalog(false).await.unwrap().plugins.remove(0);
+    assert!(entry.update_available, "listed as an available update");
+
+    let summary = fixture.service.update_all_ready().await.unwrap();
+
+    assert_eq!(summary.updated.len(), 1, "{summary:?}");
+    let installed = fixture.service.installed(PLUGIN).unwrap();
+    assert_eq!(installed.version, "1.1.0");
+    assert!(installed.trusted, "asked for nothing more, so trust stays");
+}
+
+#[tokio::test]
+async fn a_plugin_installed_as_community_waits_even_if_the_catalog_stops_saying_so() {
+    let fixture = Fixture::new();
+    fixture.publish_community("1.0.0", good_tarball());
+    fixture.service.install(PLUGIN, &echo_catalog_permissions()).await.unwrap();
+    fixture.publish_with_env("1.1.0", tarball_at("1.1.0", false), &["FIXTURE_ECHO_TOKEN"]);
+
+    let outcome = fixture.service.run_auto_update_cycle().await;
+
+    let AutoUpdateOutcome::Checked { summary, .. } = outcome else { panic!("{outcome:?}") };
+    assert_eq!(summary.needs_approval, vec![PLUGIN.to_owned()]);
+    assert_eq!(fixture.service.installed(PLUGIN).unwrap().version, "1.0.0");
+}
+
+#[tokio::test]
+async fn update_all_keeps_the_permission_check_for_community_plugins() {
+    let fixture = Fixture::new();
+    fixture.publish_community("1.0.0", good_tarball());
+    fixture.service.install(PLUGIN, &echo_catalog_permissions()).await.unwrap();
+    // The entry understates its tarball: Update all must refuse it like any other update.
+    let tarball = tarball_at("1.1.0", true);
+    fixture.publish_community("1.1.0", tarball);
+    fixture.service.catalog(true).await.unwrap();
+
+    let summary = fixture.service.update_all_ready().await.unwrap();
+
+    assert!(summary.updated.is_empty());
+    assert_eq!(summary.failed.len(), 1, "{summary:?}");
+    assert_eq!(fixture.service.installed(PLUGIN).unwrap().version, "1.0.0");
 }

@@ -91,7 +91,7 @@ export interface PluginAutoUpdate extends PluginVersionChange {
 /** What "Update all" did. */
 export interface PluginBulkUpdateSummary {
   updated: PluginVersionChange[]
-  /** Updates left alone because they ask for more permissions. */
+  /** Updates left alone because they ask for more permissions (automatic updates also leave community plugins here). */
   needsApproval: string[]
   failed: Array<{ name: string; message: string }>
 }

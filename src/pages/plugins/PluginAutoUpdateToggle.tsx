@@ -11,7 +11,7 @@ export function PluginAutoUpdateToggle() {
     <div className="flex flex-col items-end gap-0.5">
       <label
         className="inline-flex h-[34px] cursor-pointer items-center gap-2 text-[13px] font-medium text-ink"
-        title="Installs new versions by itself when they ask for nothing new. Updates asking for more permissions wait for you"
+        title="Installs new versions by itself when they ask for nothing new. Updates asking for more permissions, and community plugins, wait for you"
       >
         <input
           type="checkbox"
