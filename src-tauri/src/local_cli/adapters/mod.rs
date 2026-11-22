@@ -17,7 +17,7 @@ use super::LocalCli;
 #[cfg(test)]
 pub use claude_code::{claude_model_aliases, claude_models, parse_claude_auth_status};
 #[cfg(test)]
-pub use codex::{parse_codex_catalog, parse_codex_login_status};
+pub use codex::{parse_codex_catalog, parse_codex_login_status, DISABLED_FEATURES as CODEX_DISABLED_FEATURES};
 #[cfg(test)]
 pub use cursor::{parse_cursor_status, FIXED_REQUEST as CURSOR_FIXED_REQUEST};
 #[cfg(test)]

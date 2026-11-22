@@ -131,6 +131,13 @@ pub trait CliAdapter: Send + Sync {
     fn list_models(&self, _detection: &Detection) -> Vec<AvailableModel> {
         Vec::new()
     }
+
+    /// Whether this CLI's answers count as untrusted for the approval-before-send rule:
+    /// `true` when its tools cannot be switched off for certain, so an answer may carry
+    /// what a command read (see [`super::capability::provider_output_needs_send_approval`]).
+    fn output_needs_send_approval(&self) -> bool {
+        false
+    }
 }
 
 /// The plain-text-task reminder put on top of an in-prompt delivery.

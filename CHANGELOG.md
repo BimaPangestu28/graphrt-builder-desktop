@@ -9,6 +9,16 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ### Security
 
+- **Codex on this computer runs no commands**: `--sandbox read-only` still let Codex run shell
+  commands that read the whole disk, and `codex exec` never asks. Every call now also switches
+  its tools off (`-c features.shell_tool=false`, `features.unified_exec=false`, images, browser,
+  computer use, apps, plugins, hooks, sub-agents, `web_search="disabled"`,
+  `approval_policy="never"`, an empty command environment) and, where `codex exec --help` lists
+  it, `--ignore-user-config` so the user's own MCP servers and hooks are not loaded. If Codex
+  still starts a command or any other tool (a `command_execution`, MCP, web search or unknown
+  `item.*` event, or the older `exec_command_begin` events), the call stops with "Codex tried
+  to run a command; graphrt blocks that". Codex answers are also flagged for the
+  approval-before-send rule (`local_cli::capability::output_needs_send_approval`).
 - **Approving a plugin never trusts more than you saw**: installing now carries the permissions
   shown next to the Install button (the builder's requirement card, the Plugins page, Connect
   WhatsApp, the Add node palette) as the limit for the downloaded manifest, so a catalog entry

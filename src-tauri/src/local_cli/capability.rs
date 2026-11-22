@@ -40,6 +40,27 @@ pub fn capability_gap(kind: &str, config: &Map<String, Value>) -> Option<Capabil
     None
 }
 
+/// Whether data flowing out of a step whose `model.provider` is `provider` must be
+/// approved before a sending step (email, message, HTTP request, ...) uses it.
+///
+/// `true` for a local CLI that may have run a command despite graphrt's switches (Codex:
+/// see `adapters/codex.rs`); `false` for the other CLIs, API providers and unknown names.
+/// Meant for the approval-before-send validators.
+///
+/// @example `provider_output_needs_send_approval("codex-cli") == true`
+pub fn provider_output_needs_send_approval(provider: &str) -> bool {
+    LocalCli::from_provider_name(provider.trim()).is_some_and(|cli| cli.adapter().output_needs_send_approval())
+}
+
+/// [`provider_output_needs_send_approval`] for one node's config (its `model.provider`).
+pub fn output_needs_send_approval(config: &Map<String, Value>) -> bool {
+    config
+        .get("model")
+        .and_then(|model| model.get("provider"))
+        .and_then(Value::as_str)
+        .is_some_and(provider_output_needs_send_approval)
+}
+
 fn has_tools(config: &Map<String, Value>) -> bool {
     match config.get("tools") {
         Some(Value::Array(tools)) => !tools.is_empty(),
