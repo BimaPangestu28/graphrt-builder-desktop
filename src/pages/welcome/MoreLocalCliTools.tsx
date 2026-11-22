@@ -2,7 +2,7 @@ import { useId, useState } from 'react'
 import type { LocalCliProvider, ProviderStatus, WelcomeChoice } from '@/api/types'
 import { InstallPageLink } from '@/components/InstallPageLink'
 import { Icon, joinClassNames } from '@/components/ui'
-import { describeLocalCliUsageNote, localCliShortNames, moreLocalCliProviders } from '@/data/settings'
+import { describeLocalCliUsageNote, localCliShortNames, moreLocalCliProviders } from '@/lib/settings'
 import { describeLocalCliSignIn } from '@/lib/localCliDisplay'
 
 interface MoreLocalCliToolsProps {

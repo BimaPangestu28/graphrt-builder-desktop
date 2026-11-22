@@ -11,9 +11,31 @@ export function respondWith<Result>(operation: () => Result): Promise<Result> {
   return Promise.resolve().then(operation)
 }
 
-/** Resolves after `delayMs` (sample builds and revisions pretend to take time). */
+/**
+ * Multiplier for every {@link waitFor} pause. 1 in the browser preview so builds
+ * look real; the test setup sets 0 so tests do not wait on pretend work (tests that
+ * step through stages with fake timers set it back with {@link setSampleDelayScale}).
+ */
+let sampleDelayScale = 1
+
+/**
+ * Speeds up or removes the pauses the sample builder pretends to take.
+ *
+ * @param scale - 1 for real pacing, 0 for none (number, at least 0)
+ * @throws RangeError - When `scale` is negative or not a number
+ *
+ * @example
+ * beforeEach(() => setSampleDelayScale(1)) // a test that advances fake timers stage by stage
+ */
+export function setSampleDelayScale(scale: number): void {
+  if (!(scale >= 0)) throw new RangeError(`sample delay scale must be 0 or more, got ${scale}`)
+  sampleDelayScale = scale
+}
+
+/** Resolves after `delayMs` times the delay scale (sample builds and revisions pretend to take time). */
 export function waitFor(delayMs: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, delayMs))
+  const scaledDelayMs = delayMs * sampleDelayScale
+  return new Promise((resolve) => setTimeout(resolve, scaledDelayMs))
 }
 
 /**

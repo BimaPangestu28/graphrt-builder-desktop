@@ -9,13 +9,13 @@ import {
   scheduleTimeZoneOptions,
   type AgentScheduleSettings,
   type ApprovalMode,
-} from '@/data/scheduleAgent'
-import { toError } from '@/hooks/useRunData'
+} from '@/pages/schedule-agent/scheduleOptions'
 import { useSchedulePreview } from '@/hooks/useTriggers'
 import { buildCronExpression, formatFireTime, toMissedRunPolicy } from '@/lib/schedule'
 import { agentPath, routePaths, sampleAgentId } from '@/routes'
 import { ScheduleBackdrop } from '@/pages/schedule-agent/ScheduleBackdrop'
 import { FrequencyRadioTiles, ScheduleFieldset, StackedField, WeekdayToggleGroup, scheduleControlClassNames } from '@/pages/schedule-agent/ScheduleFormFields'
+import { toError } from '@/lib/errors'
 
 /** The dialog promises "A missed run starts when it wakes up", which is this missed-run choice. */
 const dialogMissedRunOption = 'Run once when it wakes up'

@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import type { SystemNotification } from '@/data/menuBar'
+import type { SystemNotification } from '@/pages/menu-bar/menuBarIllustration'
 import { routePaths } from '@/routes'
 
 /** App icon as macOS shows it in notifications: the tile mark without the loop's arrowhead. */

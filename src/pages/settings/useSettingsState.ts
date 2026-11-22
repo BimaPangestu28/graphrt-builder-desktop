@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { appearanceOptions, languageOptions, modelFallbackOptions } from '@/data/settings'
+import { appearanceOptions, languageOptions, modelFallbackOptions } from '@/lib/settings'
 
 /**
  * Settings that have no backend yet and live in memory only. The desktop app hides their

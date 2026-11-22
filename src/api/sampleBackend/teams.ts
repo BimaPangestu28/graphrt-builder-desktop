@@ -1,12 +1,12 @@
 import type { CoordinatorExchange, TeamActivityEntry, TeamGuardrails } from '../teamTypes'
 import type { Run } from '../types'
 import { BackendError } from '../client'
-import { coordinatorAcknowledgement, sampleMaxAgentCallsPerRun, teamActivity, teamBudgetNote, teamGoalMessage, teamPlan } from '@/data/team'
+import { coordinatorAcknowledgement, sampleMaxAgentCallsPerRun, teamActivity, teamBudgetNote, teamGoalMessage, teamPlan } from '@/api/sampleBackend/fixtures/team'
 import { requireText, respondWith } from './sampleResponse'
 
 /**
  * Sample team activity, guardrails and coordinator chat for the browser preview and tests,
- * seeded from the mock data of screen 13 (`src/data/team.ts`) and kept in memory. Every team
+ * seeded from the mock data of screen 13 (`fixtures/team.ts`) and kept in memory. Every team
  * agent id gets the same sample. Call {@link resetSampleTeams} in tests to start from the seed.
  */
 

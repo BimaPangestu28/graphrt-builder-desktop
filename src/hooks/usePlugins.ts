@@ -15,6 +15,7 @@ import { describeError } from '@/lib/agentDisplay'
 import { findPluginDisplayName } from '@/lib/pluginDisplayName'
 import { useAsyncData, type AsyncDataState } from './useAsyncData'
 import { useBackendSubscription } from './useBackendSubscription'
+import { toError } from '@/lib/errors'
 
 /** Installed plugins plus the catalog. The catalog may fail on its own (offline) without hiding installed plugins. */
 export interface PluginInventory {
@@ -50,10 +51,6 @@ export interface PluginsState extends AsyncDataState<PluginInventory> {
   saveConfig: (name: string, variable: string, value: string) => Promise<void>
   /** Clears a setting; rejects with the backend error so the form can show it. */
   clearConfig: (name: string, variable: string) => Promise<void>
-}
-
-function toError(rawError: unknown): Error {
-  return rawError instanceof Error ? rawError : new Error(describeError(rawError))
 }
 
 async function loadPluginInventory(): Promise<PluginInventory> {

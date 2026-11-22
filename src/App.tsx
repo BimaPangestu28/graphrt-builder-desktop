@@ -1,35 +1,54 @@
-import { useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useState, type ComponentType, type LazyExoticComponent } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { hasFinishedWelcome } from './lib/firstLaunch'
 import { agentRoutePatterns, connectionsTabPattern, knowledgeDetailPattern, pluginDetailPattern, routePaths } from './routes'
-import { ScreenIndexPage } from './pages/ScreenIndexPage'
-import { WelcomePage } from './pages/WelcomePage'
-import { NewAgentPage } from './pages/NewAgentPage'
-import { GeneratingPage } from './pages/GeneratingPage'
-import { BuilderPage } from './pages/BuilderPage'
-import { ConnectWhatsAppPage } from './pages/ConnectWhatsAppPage'
-import { TestRunPage } from './pages/TestRunPage'
-import { RunResultPage } from './pages/RunResultPage'
-import { ScheduleAgentPage } from './pages/ScheduleAgentPage'
-import { HomePage } from './pages/HomePage'
-import { SchedulerPage } from './pages/SchedulerPage'
-import { ChainPage } from './pages/ChainPage'
-import { AgentAsStepPage } from './pages/AgentAsStepPage'
-import { TeamPage } from './pages/TeamPage'
-import { ChatbotSetupPage } from './pages/ChatbotSetupPage'
-import { InboxPage } from './pages/InboxPage'
-import { ChatDetailPage } from './pages/ChatDetailPage'
-import { KnowledgePage } from './pages/KnowledgePage'
-import { KnowledgeDetailPage } from './pages/KnowledgeDetailPage'
-import { BatchApprovalPage } from './pages/BatchApprovalPage'
-import { RunsPage } from './pages/RunsPage'
-import { ConnectionsPage, ConnectionsTabPage } from './pages/ConnectionsPage'
-import { SettingsPage } from './pages/SettingsPage'
-import { ErrorStatesPage } from './pages/ErrorStatesPage'
-import { VersionHistoryPage } from './pages/VersionHistoryPage'
-import { MenuBarPage } from './pages/MenuBarPage'
-import { PluginsPage } from './pages/PluginsPage'
-import { PluginDetailPage } from './pages/PluginDetailPage'
+import { ScreenLoading } from './components/layout/ScreenLoading'
+
+/**
+ * A screen loaded on first visit. Each page (and what only it uses: the Nodes canvas,
+ * the scheduler calendar…) becomes its own chunk, so the window opens on the code of
+ * one screen instead of all of them.
+ *
+ * @param loadModule - Dynamic import of the page module (() => Promise<Module>)
+ * @param exportName - The page's named export (string)
+ * @returns A lazy component to render inside `<Suspense>` (LazyExoticComponent)
+ */
+function lazyScreen<Module extends Record<string, unknown>, ExportName extends keyof Module & string>(
+  loadModule: () => Promise<Module>,
+  exportName: ExportName,
+): LazyExoticComponent<ComponentType> {
+  return lazy(async () => ({ default: (await loadModule())[exportName] as ComponentType }))
+}
+
+const ScreenIndexPage = lazyScreen(() => import('./pages/ScreenIndexPage'), 'ScreenIndexPage')
+const WelcomePage = lazyScreen(() => import('./pages/WelcomePage'), 'WelcomePage')
+const NewAgentPage = lazyScreen(() => import('./pages/NewAgentPage'), 'NewAgentPage')
+const GeneratingPage = lazyScreen(() => import('./pages/GeneratingPage'), 'GeneratingPage')
+const BuilderPage = lazyScreen(() => import('./pages/BuilderPage'), 'BuilderPage')
+const ConnectWhatsAppPage = lazyScreen(() => import('./pages/ConnectWhatsAppPage'), 'ConnectWhatsAppPage')
+const TestRunPage = lazyScreen(() => import('./pages/TestRunPage'), 'TestRunPage')
+const RunResultPage = lazyScreen(() => import('./pages/RunResultPage'), 'RunResultPage')
+const ScheduleAgentPage = lazyScreen(() => import('./pages/ScheduleAgentPage'), 'ScheduleAgentPage')
+const HomePage = lazyScreen(() => import('./pages/HomePage'), 'HomePage')
+const SchedulerPage = lazyScreen(() => import('./pages/SchedulerPage'), 'SchedulerPage')
+const ChainPage = lazyScreen(() => import('./pages/ChainPage'), 'ChainPage')
+const AgentAsStepPage = lazyScreen(() => import('./pages/AgentAsStepPage'), 'AgentAsStepPage')
+const TeamPage = lazyScreen(() => import('./pages/TeamPage'), 'TeamPage')
+const ChatbotSetupPage = lazyScreen(() => import('./pages/ChatbotSetupPage'), 'ChatbotSetupPage')
+const InboxPage = lazyScreen(() => import('./pages/InboxPage'), 'InboxPage')
+const ChatDetailPage = lazyScreen(() => import('./pages/ChatDetailPage'), 'ChatDetailPage')
+const KnowledgePage = lazyScreen(() => import('./pages/KnowledgePage'), 'KnowledgePage')
+const KnowledgeDetailPage = lazyScreen(() => import('./pages/KnowledgeDetailPage'), 'KnowledgeDetailPage')
+const BatchApprovalPage = lazyScreen(() => import('./pages/BatchApprovalPage'), 'BatchApprovalPage')
+const RunsPage = lazyScreen(() => import('./pages/RunsPage'), 'RunsPage')
+const ConnectionsPage = lazyScreen(() => import('./pages/ConnectionsPage'), 'ConnectionsPage')
+const ConnectionsTabPage = lazyScreen(() => import('./pages/ConnectionsPage'), 'ConnectionsTabPage')
+const SettingsPage = lazyScreen(() => import('./pages/SettingsPage'), 'SettingsPage')
+const ErrorStatesPage = lazyScreen(() => import('./pages/ErrorStatesPage'), 'ErrorStatesPage')
+const VersionHistoryPage = lazyScreen(() => import('./pages/VersionHistoryPage'), 'VersionHistoryPage')
+const MenuBarPage = lazyScreen(() => import('./pages/MenuBarPage'), 'MenuBarPage')
+const PluginsPage = lazyScreen(() => import('./pages/PluginsPage'), 'PluginsPage')
+const PluginDetailPage = lazyScreen(() => import('./pages/PluginDetailPage'), 'PluginDetailPage')
 
 /** Screen components keyed by route, in canvas order. */
 const screenRoutes = [
@@ -81,13 +100,15 @@ function StartRedirect() {
 
 export function App() {
   return (
-    <Routes>
-      <Route path="/" element={<StartRedirect />} />
-      {screenRoutes.map((screenRoute) => (
-        <Route key={screenRoute.path} path={screenRoute.path} element={screenRoute.element} />
-      ))}
-      <Route path={routePaths.screenIndex} element={<ScreenIndexPage />} />
-      <Route path="*" element={<Navigate to={routePaths.screenIndex} replace />} />
-    </Routes>
+    <Suspense fallback={<ScreenLoading />}>
+      <Routes>
+        <Route path="/" element={<StartRedirect />} />
+        {screenRoutes.map((screenRoute) => (
+          <Route key={screenRoute.path} path={screenRoute.path} element={screenRoute.element} />
+        ))}
+        <Route path={routePaths.screenIndex} element={<ScreenIndexPage />} />
+        <Route path="*" element={<Navigate to={routePaths.screenIndex} replace />} />
+      </Routes>
+    </Suspense>
   )
 }

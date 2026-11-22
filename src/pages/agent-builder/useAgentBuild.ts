@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { buildAgent } from '@/api/builder'
 import type { Agent, BuildProgress, BuildRequest, BuildStage, DraftPreview } from '@/api/types'
+import { toError } from '@/lib/errors'
 
 /**
  * Checklist order on screen 03. Each backend stage marks its line as running; lines
@@ -8,6 +9,9 @@ import type { Agent, BuildProgress, BuildRequest, BuildStage, DraftPreview } fro
  * the checklist backwards.
  */
 export const buildChecklistStages: BuildStage[] = ['understanding', 'drafting', 'repairing', 'checking', 'done']
+
+/** Pause between a finished build (03) and opening the builder (04), so the last checklist line can be read. */
+export const openBuilderDelayMs = 1200
 
 export interface AgentBuildState {
   /** Index into {@link buildChecklistStages}; equal to its length once the agent is saved. */
@@ -55,10 +59,6 @@ export function applyBuildProgress(buildState: AgentBuildState, progress: BuildP
     draftStage: progress.stage,
     explanations: { ...buildState.explanations, [progress.stage]: progress.draft.explanation },
   }
-}
-
-function toError(rawError: unknown): Error {
-  return rawError instanceof Error ? rawError : new Error('Something went wrong')
 }
 
 /**

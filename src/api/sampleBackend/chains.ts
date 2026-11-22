@@ -1,4 +1,4 @@
-import { teamMembers } from '@/data/team'
+import { teamMembers } from '@/api/sampleBackend/fixtures/team'
 import { BackendError } from '../client'
 import type { AgentStepInfo, Chain, ChainDraft, ChainStatus, TeamMember, TeamOverview } from '../chainTypes'
 import type { BuildProgress, FlowStep, RevisionResult, Run } from '../types'

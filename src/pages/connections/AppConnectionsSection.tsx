@@ -1,4 +1,5 @@
-import { connectionCategoryTitles, type Connection } from '@/data/connections'
+import { connectionCategoryTitles } from '@/pages/connections/modelCardTemplates'
+import type { Connection } from '@/api/appConnectionTypes'
 import { ConnectionCard } from './ConnectionCard'
 import { ConnectionsSection } from './ConnectionsSection'
 import { connectionCardGridClassNames } from './ModelProvidersSection'

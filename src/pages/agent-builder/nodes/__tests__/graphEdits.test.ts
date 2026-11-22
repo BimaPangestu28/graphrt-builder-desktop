@@ -99,4 +99,13 @@ describe('canvas elements', () => {
     const sendEdge = toFlowEdges(graph).find((edge) => edge.source === 'approve_message')
     expect(sendEdge).toMatchObject({ sourceHandle: 'send', label: 'Send' })
   })
+
+  it('labels plugin steps with the same plugin name as the rest of the app', async () => {
+    const graph = await loadSampleGraph()
+    const pluginStep = graph.nodes.find((node) => node.plugin)
+    if (!pluginStep?.plugin) throw new Error('the sample graph has a plugin step')
+    const renamedGraph = { ...graph, nodes: graph.nodes.map((node) => (node.id === pluginStep.id ? { ...node, plugin: 'whatsapp-api', kind: 'whatsapp-api.send' } : node)) }
+    const flowNode = toFlowNodes(renamedGraph, { positions: {} }).find((node) => node.id === pluginStep.id)
+    expect(flowNode?.data).toMatchObject({ pluginLine: 'WhatsApp API · send' })
+  })
 })

@@ -9,6 +9,9 @@ import { writeCanvasClipboard } from '../flow/canvasCommands'
 import { NodeCanvas } from '../NodeCanvas'
 import { NodesView } from '../NodesView'
 
+// Real ELK is slow in jsdom; these tests only need non-overlapping positions.
+vi.mock('../flow/layoutEngine', () => import('./fakeElkLayout'))
+
 async function loadSampleGraph(): Promise<AgentGraph> {
   return sampleAgentGraphBackend.getAgentGraph('maps-leads')
 }
@@ -59,7 +62,7 @@ describe('NodeCanvas', () => {
     renderCanvas(graph, { pluginStatuses: { 'whatsapp-web': { label: 'Not linked', tone: 'amber' } } })
     await findFlowNode('send_whatsapp')
     const sendCard = screen.getByTestId('node-send_whatsapp')
-    expect(sendCard).toHaveTextContent('Whatsapp Web · send_message')
+    expect(sendCard).toHaveTextContent('WhatsApp Web · send_message')
     expect(sendCard).toHaveTextContent('Not linked')
     expect(within(sendCard).getByText('write message')).toBeInTheDocument()
     expect(screen.getByTestId('node-approve_message').className).toContain('bg-amber-tint')

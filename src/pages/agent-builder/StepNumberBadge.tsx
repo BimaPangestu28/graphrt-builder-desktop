@@ -1,5 +1,7 @@
 import { joinClassNames } from '@/components/ui'
-import type { BuilderStepTone } from '@/data/mapsLeadsAgent'
+
+/** Visual role of a step's number badge: plain, approval (amber), or edited by the last chat change (brand). */
+export type BuilderStepTone = 'plain' | 'approval' | 'changed'
 
 const toneClassNames: Record<BuilderStepTone, string> = {
   plain: 'bg-canvas text-ink-2',

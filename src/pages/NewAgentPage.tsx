@@ -11,7 +11,7 @@ import {
   templatePromptText,
   type AgentKind,
   type AgentTemplate,
-} from '@/data/newAgentTemplates'
+} from '@/pages/new-agent/agentTemplates'
 import type { BuildRequestLocationState } from './agent-builder/buildRequestState'
 import { ModelPickerChip } from './new-agent/ModelPickerChip'
 

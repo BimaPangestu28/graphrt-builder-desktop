@@ -1,5 +1,5 @@
 import type { LocalCliProvider, LocalCliStatus } from '@/api/types'
-import { localCliCommands } from '@/data/settings'
+import { localCliCommands } from '@/lib/settings'
 
 /** Plain-language text about a local CLI (Claude Code, Codex) for Welcome and Connections. */
 

@@ -13,6 +13,9 @@ import { NodesView } from '../../NodesView'
 import { nodeKindDragType } from '../paletteDrag'
 import { isAddNodeShortcut } from '../useAddNodePalette'
 
+// Real ELK is slow in jsdom; these tests only need non-overlapping positions.
+vi.mock('../../flow/layoutEngine', () => import('../../__tests__/fakeElkLayout'))
+
 async function renderPalette(overrides: Partial<AddNodePaletteProps> = {}) {
   const graph: AgentGraph = await sampleAgentGraphBackend.getAgentGraph('maps-leads')
   const props: AddNodePaletteProps = {

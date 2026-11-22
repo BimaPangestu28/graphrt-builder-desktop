@@ -1,5 +1,5 @@
 import type { Run, RunStatus, Trigger } from '@/api/types'
-import { initialScheduleTriggers, type PastRun, type RunOutcome, type ScheduleTrigger } from '@/data/scheduler'
+import type { PastRun, RunOutcome, ScheduleTrigger } from '@/lib/scheduleCalendar'
 import { describeCronSchedule, formatZonedIsoDate, parseCronExpression } from '@/lib/schedule'
 
 /**
@@ -8,27 +8,19 @@ import { describeCronSchedule, formatZonedIsoDate, parseCronExpression } from '@
  * draws its planned runs.
  */
 
-const mockTriggerOrder = new Map(initialScheduleTriggers.map((trigger, index) => [trigger.id, index]))
-const shortNamesById = new Map(initialScheduleTriggers.map((trigger) => [trigger.id, trigger.shortName]))
-
-/**
- * Event and webhook triggers from the mockup. The backend only has clock-based triggers so far,
- * so the browser preview keeps showing these from mock data.
- */
-export const mockEventTriggers: ScheduleTrigger[] = initialScheduleTriggers.filter((trigger) => trigger.iconKind !== 'schedule')
-
 /**
  * One trigger row and its calendar recurrence.
  *
  * @param trigger - Backend trigger (Trigger)
  * @param agentName - Display name of its agent (string)
+ * @param shortName - Name inside calendar blocks; defaults to the agent name (string, optional)
  */
-export function toScheduleTrigger(trigger: Trigger, agentName: string): ScheduleTrigger {
+export function toScheduleTrigger(trigger: Trigger, agentName: string, shortName: string = agentName): ScheduleTrigger {
   const recurrence = parseCronExpression(trigger.cronExpression)
   return {
     id: trigger.id,
     agentName,
-    shortName: shortNamesById.get(trigger.agentId) ?? agentName,
+    shortName,
     description: describeCronSchedule(trigger.cronExpression),
     iconKind: 'schedule',
     isEnabled: trigger.enabled,
@@ -88,11 +80,21 @@ export function getRunHistoryWindow(dates: string[]): { since: string; until: st
   return { since: new Date(firstDay - dayInMilliseconds).toISOString(), until: new Date(dayAfterLast + dayInMilliseconds).toISOString() }
 }
 
-/** Puts triggers in the mockup's order; triggers it does not know keep their order at the end. */
-export function sortLikeMockup(triggers: ScheduleTrigger[]): ScheduleTrigger[] {
-  const fallbackIndex = mockTriggerOrder.size
+/**
+ * Puts triggers in a given order (the design's, in the browser preview); triggers it does not
+ * know keep their own order after the known ones.
+ *
+ * @param triggers - Triggers to sort (ScheduleTrigger[])
+ * @param orderById - Position per trigger id (ReadonlyMap<string, number>)
+ * @returns A new, sorted list (ScheduleTrigger[])
+ *
+ * @example
+ * sortTriggersByOrder([b, a], new Map([['a', 0]])) // [a, b]
+ */
+export function sortTriggersByOrder(triggers: ScheduleTrigger[], orderById: ReadonlyMap<string, number>): ScheduleTrigger[] {
+  const fallbackIndex = orderById.size
   return triggers
-    .map((trigger, index) => ({ trigger, order: mockTriggerOrder.get(trigger.id) ?? fallbackIndex + index }))
+    .map((trigger, index) => ({ trigger, order: orderById.get(trigger.id) ?? fallbackIndex + index }))
     .sort((first, second) => first.order - second.order)
     .map(({ trigger }) => trigger)
 }

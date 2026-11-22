@@ -92,7 +92,9 @@ cargo test --manifest-path src-tauri/Cargo.toml
 src/components/ui/      shared primitives (Logo, Icon, Button, Badge, StatusDot, Card)
 src/components/layout/  AppShell and Sidebar used by every in-app screen
 src/pages/              one page per screen, with a sub-folder for its parts
-src/data/               sample data, until the runtime is connected
+src/api/                typed Tauri command wrappers; only they may import api/sampleBackend/
+src/api/sampleBackend/  browser-preview and test backend with its fixtures (not in the desktop build)
+src/lib/                shared logic and app config
 src/routes.ts           the route of every screen
 src/index.css           design tokens (Tailwind theme)
 src-tauri/              Rust shell (Tauri 2)

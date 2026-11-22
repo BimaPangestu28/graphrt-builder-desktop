@@ -10,7 +10,7 @@ export type OnboardingTourStatus = 'not_seen' | 'completed' | 'skipped'
 
 /** Reads the stored tour status; a fresh install answers `not_seen`. */
 export function getOnboardingTourStatus(): Promise<OnboardingTourStatus> {
-  if (!isDesktopApp()) return sampleOnboardingTourBackend.getOnboardingTourStatus()
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleOnboardingTourBackend.getOnboardingTourStatus()
   return callBackend('get_onboarding_tour_status')
 }
 
@@ -20,6 +20,6 @@ export function getOnboardingTourStatus(): Promise<OnboardingTourStatus> {
  * @throws BackendError - when the status cannot be saved
  */
 export function saveOnboardingTourStatus(status: OnboardingTourStatus): Promise<OnboardingTourStatus> {
-  if (!isDesktopApp()) return sampleOnboardingTourBackend.saveOnboardingTourStatus(status)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleOnboardingTourBackend.saveOnboardingTourStatus(status)
   return callBackend('set_onboarding_tour_status', { status })
 }

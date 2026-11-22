@@ -42,7 +42,7 @@ export function isUpdaterAvailable(): boolean {
 
 /** The version running now (the sample version in the browser preview). */
 export async function getCurrentVersion(): Promise<string> {
-  if (!isDesktopApp()) return (await sampleAppInfoBackend.getAppInfo()).version
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return (await sampleAppInfoBackend.getAppInfo()).version
   const { getVersion } = await import('@tauri-apps/api/app')
   return getVersion()
 }

@@ -122,7 +122,9 @@ src/
   components/ui/      Shared primitives: Logo, Icon, Button, Badge, StatusDot, Card
   components/layout/  AppShell and Sidebar used by every in-app screen
   pages/              One page per design screen (+ sub-folders for its parts)
-  data/               Mock data until the runner backend exists
+  api/                Typed wrappers of the Tauri commands; api/sampleBackend/ answers them in the
+                      browser preview and tests (left out of the desktop build)
+  lib/                Shared logic and app config (settings choices, run limits, calendar)
   routes.ts           Route path for every screen
   index.css           Design tokens (Tailwind @theme) taken from the mockup
 src-tauri/            Rust shell (Tauri 2): window, bundling, future local runner

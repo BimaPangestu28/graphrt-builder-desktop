@@ -117,8 +117,43 @@ releases may contain breaking changes; they are called out under **Changed**.
   `local_cli/adapters/*`): each CLI's flags, output parser, sign-in status and models live in
   one adapter citing its official docs; detection, the subprocess, timeouts, cancellation,
   prompts and capability errors are shared. Claude Code and Codex behave as before.
+- **Frontend sample data has one home**: `src/data/` is gone. Design fixtures live under
+  `src/api/sampleBackend/fixtures/`, app config in `src/lib/` (settings choices, run limits,
+  the schedule calendar) or next to the screen that uses it, and shared shapes in
+  `src/api/*Types.ts`. Screens no longer read mocks: the browser preview's agent names, app
+  requirements, default Runs selection and pinned Scheduler week come from
+  `getPreviewContent()`, which is null in the desktop app. A test fails when code outside
+  `src/api` and tests imports the sample backend. Knowledge "Used by" links open the agent's
+  builder, like the sidebar.
+- **Nodes editor internals split up without behaviour changes**: `useAgentGraph` keeps its
+  working copy and undo / redo in one reducer (`sync/graphHistory.ts`), so two edits in the
+  same tick both apply; positions and the builder lock are their own hooks. The canvas body's
+  keyboard shortcuts, context menu, clipboard and connect mode are separate hooks, and the
+  inspector's Start inputs, template field and tool panel are smaller pieces.
+- **One error helper**: `src/lib/errors.ts` (`toError`, `toErrorMessage`) replaces six local
+  copies; `BackendError.details` is typed per code (`version_conflict`, `invalid_graph`,
+  `builder_busy`) and checked when it arrives. The duplicate `missing_plugins` code is gone.
+- **Canvas plugin labels match the rest of the app** ("WhatsApp Web", not "Whatsapp Web"):
+  they use the shared plugin display name.
+- **Steadier tests**: Testing Library waits up to 5 s, the sample builder's pretend pauses are
+  zero in tests unless a test steps through them, and the builder chat ignores a change that
+  finishes after the screen closed.
 
 ### Performance
+
+- **Smaller start-up bundle**: every screen is loaded on first visit and the Nodes canvas
+  (React Flow) only when its tab opens; the desktop build no longer ships the sample backend
+  or its fixtures. The entry chunk goes from 1,317 kB (402 kB gzip) to 241 kB (78 kB gzip).
+- **Auto-layout off the main thread**: ELK runs in a Web Worker (`elk-api` +
+  `elk-worker`), so laying out a large graph no longer freezes the canvas.
+- **Fewer canvas re-renders during a run**: the run clock has its own context read only by the
+  elapsed time of a running step, a question's deadline and the run bar; the node decoration
+  and note providers are memoized, so a tick no longer re-renders the canvas or the cards
+  (guarded by a render-count test).
+- **Live run events are cheaper**: in-order events are appended instead of rebuilding and
+  sorting the whole list, bursts (streamed text) are applied once per frame, and the run
+  object only changes when its status does. The Runs detail panel no longer rebuilds its steps
+  on every clock tick.
 
 - **Smaller app binary**: release builds use thin LTO, one codegen unit and stripped symbols
   (`panic = "unwind"` stays for the Linux tray fallback). The macOS arm64 binary goes from

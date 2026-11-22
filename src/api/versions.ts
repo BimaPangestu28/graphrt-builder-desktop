@@ -19,7 +19,7 @@ import type { VersionComparison } from './versionTypes'
  * const comparison = await compareAgentVersions('maps-leads', 7, 5)
  */
 export function compareAgentVersions(agentId: string, fromVersion: number, toVersion: number): Promise<VersionComparison> {
-  if (!isDesktopApp()) return sampleVersionsBackend.compareAgentVersions(agentId, fromVersion, toVersion)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleVersionsBackend.compareAgentVersions(agentId, fromVersion, toVersion)
   return callBackend('compare_agent_versions', { agentId, fromVersion, toVersion })
 }
 
@@ -29,6 +29,6 @@ export function compareAgentVersions(agentId: string, fromVersion: number, toVer
  * @throws BackendError - `not_found` for an unknown agent or version; `workflow` when it no longer compiles
  */
 export function getVersionFlowSummary(agentId: string, version: number): Promise<FlowSummary> {
-  if (!isDesktopApp()) return sampleVersionsBackend.getVersionFlowSummary(agentId, version)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleVersionsBackend.getVersionFlowSummary(agentId, version)
   return callBackend('get_version_flow_summary', { agentId, version })
 }

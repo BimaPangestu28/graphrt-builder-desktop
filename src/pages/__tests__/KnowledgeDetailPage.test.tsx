@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { resetSampleKnowledge, sampleKnowledgeBackend } from '@/api/sampleBackend/knowledge'
-import { knowledgeDetailPattern, routePaths } from '@/routes'
+import { agentPath, knowledgeDetailPattern, routePaths } from '@/routes'
 import { KnowledgeDetailPage } from '../KnowledgeDetailPage'
 
 function renderKnowledgeDetail(path: string = routePaths.knowledgeDetail) {
@@ -39,7 +39,7 @@ describe('KnowledgeDetailPage', () => {
     expect(within(table).getAllByText('Ready')).toHaveLength(3)
     expect(screen.getByText('412 passages · 9.4 MB on disk · last synced 13:02')).toBeInTheDocument()
     const usedBy = screen.getByRole('region', { name: 'Used by' })
-    expect(within(usedBy).getByRole('link', { name: /Catering assistant/ })).toHaveAttribute('href', routePaths.chatbotSetup)
+    expect(within(usedBy).getByRole('link', { name: /Catering assistant/ })).toHaveAttribute('href', agentPath('builder', 'catering-assistant'))
   })
 
   it('adds a picked file and shows it reading, then ready', async () => {

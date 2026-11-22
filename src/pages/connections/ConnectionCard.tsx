@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Badge, Button, joinClassNames, type BadgeTone } from '@/components/ui'
-import type { Connection, ConnectionState } from '@/data/connections'
+import type { Connection, ConnectionState } from '@/api/appConnectionTypes'
 
 interface ConnectionCardProps {
   connection: Connection

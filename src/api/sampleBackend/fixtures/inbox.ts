@@ -5,17 +5,6 @@
 
 export type ConversationStatus = 'order-to-confirm' | 'asked-for-you' | 'bot-not-sure' | 'bot-answering' | 'closed'
 
-export const conversationStatusLabels: Record<ConversationStatus, string> = {
-  'order-to-confirm': 'Order to confirm',
-  'asked-for-you': 'Asked for you',
-  'bot-not-sure': 'Bot not sure',
-  'bot-answering': 'Bot answering',
-  closed: 'Closed',
-}
-
-/** Statuses where the bot stopped and a person has to reply. */
-const waitingStatuses: ConversationStatus[] = ['order-to-confirm', 'asked-for-you', 'bot-not-sure']
-
 export type ChatMessageAuthor = 'customer' | 'bot' | 'outreach-agent' | 'you' | 'notice'
 
 export interface ChatMessage {
@@ -53,10 +42,6 @@ export interface InboxConversation {
   summary?: CustomerSummary
   /** Reply the bot proposes for you, shown above the composer. */
   suggestedReply?: string
-}
-
-export function isWaitingForYou(conversation: InboxConversation): boolean {
-  return waitingStatuses.includes(conversation.status)
 }
 
 export const inboxConversations: InboxConversation[] = [
@@ -190,17 +175,3 @@ export const inboxConversations: InboxConversation[] = [
     ],
   },
 ]
-
-/** Today's totals across every chat, not only the rows shown. */
-export const inboxStats = {
-  chatsToday: 34,
-  answeredByBot: 29,
-  waitingForYou: 3,
-  ordersCollected: 4,
-  botAnswering: 8,
-  fromOutreach: 11,
-} as const
-
-export function findConversation(conversationId: string | null): InboxConversation | undefined {
-  return inboxConversations.find((conversation) => conversation.id === conversationId)
-}

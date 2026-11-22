@@ -8,13 +8,13 @@ import type { AppSettings, DeletionSummary, ExportSummary, OpenRunRequest } from
 export const OPEN_RUN_EVENT = 'open-run'
 
 export function getAppSettings(): Promise<AppSettings> {
-  if (!isDesktopApp()) return sampleAppSettingsBackend.getAppSettings()
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleAppSettingsBackend.getAppSettings()
   return callBackend('get_app_settings')
 }
 
 /** Stores every field and applies launch at login, the menu bar icon and keep awake. */
 export function updateAppSettings(settings: AppSettings): Promise<AppSettings> {
-  if (!isDesktopApp()) return sampleAppSettingsBackend.updateAppSettings(settings)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleAppSettingsBackend.updateAppSettings(settings)
   return callBackend('update_app_settings', { settings })
 }
 
@@ -23,13 +23,13 @@ export function updateAppSettings(settings: AppSettings): Promise<AppSettings> {
  * an absolute path ending in `.json`.
  */
 export function exportAgents(path: string): Promise<ExportSummary> {
-  if (!isDesktopApp()) return sampleAppSettingsBackend.exportAgents(path)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleAppSettingsBackend.exportAgents(path)
   return callBackend('export_agents', { path })
 }
 
 /** Deletes agents, runs, schedules and settings; optionally the saved keys too. */
 export function deleteAllData(removeKeychainItems: boolean): Promise<DeletionSummary> {
-  if (!isDesktopApp()) return sampleAppSettingsBackend.deleteAllData(removeKeychainItems)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleAppSettingsBackend.deleteAllData(removeKeychainItems)
   return callBackend('delete_all_data', { removeKeychainItems })
 }
 
@@ -41,7 +41,7 @@ export function deleteAllData(removeKeychainItems: boolean): Promise<DeletionSum
  */
 export async function defaultExportPath(today: Date = new Date()): Promise<string> {
   const fileName = `graphrt-agents-${today.toISOString().slice(0, 10)}.json`
-  if (!isDesktopApp()) return `~/Downloads/${fileName}`
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return `~/Downloads/${fileName}`
   const { downloadDir, join } = await import('@tauri-apps/api/path')
   return join(await downloadDir(), fileName)
 }

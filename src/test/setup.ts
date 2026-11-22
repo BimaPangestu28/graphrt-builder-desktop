@@ -1,4 +1,15 @@
 import '@testing-library/jest-dom/vitest'
+import { configure } from '@testing-library/react'
+import { setSampleDelayScale } from '@/api/sampleBackend/sampleResponse'
+
+// findBy*/waitFor give up after 1 s by default. Full-page tests (the Nodes canvas,
+// the builder) render a lot in jsdom, and on a busy machine (all test files run in
+// parallel) the first paint alone can take longer, which made them flaky.
+configure({ asyncUtilTimeout: 5000 })
+
+// The sample builder pauses between stages to look real; tests should not wait on
+// it. Tests that step through those pauses with fake timers set the scale to 1.
+beforeEach(() => setSampleDelayScale(0))
 
 // jsdom's user agent names the host system (darwin, linux, win32). Pin macOS so
 // copy that names the system (Keychain, menu bar, Finder) is the same on every

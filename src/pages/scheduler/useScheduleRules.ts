@@ -3,7 +3,7 @@ import { getAppSettings, updateAppSettings } from '@/api/appSettings'
 import type { AppSettings } from '@/api/appSettingsTypes'
 import { getScheduleRules, updateScheduleRules } from '@/api/scheduleRules'
 import type { ScheduleRules } from '@/api/scheduleRuleTypes'
-import { toError } from '@/hooks/useRunData'
+import { toError } from '@/lib/errors'
 
 /** The rules the Scheduler's "Rules for every schedule" panel edits, and where each is stored. */
 export interface ScheduleRuleValues {

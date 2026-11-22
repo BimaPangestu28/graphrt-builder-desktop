@@ -1,5 +1,5 @@
 import { joinClassNames } from '@/components/ui'
-import type { RunRecord } from '@/data/runs'
+import type { RunRecord } from '@/pages/runs/runRecordTypes'
 import { toPreviewText } from '@/lib/previewText'
 import { RunStatusPill } from './RunStatusPill'
 

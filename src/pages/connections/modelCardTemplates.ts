@@ -1,35 +1,13 @@
 import { getCredentialStoreShortName } from '@/lib/platform'
 
 /**
- * Connection shapes for screen 21 and the AI model card templates (names and descriptions;
- * their state comes from the backend). Sample app accounts live in
- * `api/sampleBackend/appConnections.ts`. Secrets themselves live in the OS credential store (macOS Keychain, Windows Credential Manager, Secret Service on Linux), never here.
+ * The AI model cards of screen 21: names and descriptions per provider (their state comes from
+ * the backend), and the section titles. Sample app accounts live in
+ * `api/sampleBackend/appConnections.ts`. Secrets themselves live in the OS credential store
+ * (macOS Keychain, Windows Credential Manager, Secret Service on Linux), never here.
  */
-export type ConnectionCategory = 'apps' | 'models'
-
-/**
- * - connected: working, shows a green status
- * - default: the default AI model (connected, drawn with a dark 2px border)
- * - signedOut: needs the user to sign in again (red)
- * - available: not set up yet, shows a Connect / Add key button
- */
-export type ConnectionState = 'connected' | 'default' | 'signedOut' | 'available'
-
-export interface Connection {
-  id: string
-  name: string
-  category: ConnectionCategory
-  state: ConnectionState
-  /** Label shown top-right when connected, e.g. "Connected" or "Found on this computer". */
-  connectedLabel: string
-  /** Second line while connected or signed out. */
-  connectedDescription: string
-  /** Second line and button label while not set up yet. */
-  availableDescription: string
-  setupActionLabel: 'Connect' | 'Add key'
-}
-
-export const initialConnections: Connection[] = [
+import type { Connection, ConnectionCategory } from '@/api/appConnectionTypes'
+export const modelCardTemplates: Connection[] = [
   {
     id: 'openai',
     name: 'OpenAI',

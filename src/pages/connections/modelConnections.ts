@@ -1,8 +1,9 @@
 import { isDesktopApp } from '@/api/client'
 import { getCredentialStoreShortName } from '@/lib/platform'
 import type { LocalCliStatus, ModelChoice, ModelProvider, ProviderStatus } from '@/api/types'
-import { initialConnections, type Connection } from '@/data/connections'
-import { isLocalCliProvider, modelProviderNames } from '@/data/settings'
+import { modelCardTemplates } from '@/pages/connections/modelCardTemplates'
+import type { Connection } from '@/api/appConnectionTypes'
+import { isLocalCliProvider, modelProviderNames } from '@/lib/settings'
 import { describeModelName } from '@/lib/modelChoices'
 
 /** A model provider card: the shared Connection shape plus what the key actions need. */
@@ -13,9 +14,6 @@ export interface ModelConnection extends Connection {
   /** What graphrt detected for a local CLI (Claude Code, Codex); null for the others. */
   localCli: LocalCliStatus | null
 }
-
-/** Display text for each provider card (names, descriptions) from the mock connections. */
-const modelCardTemplates = initialConnections.filter((connection) => connection.category === 'models')
 
 function isModelProvider(connectionId: string): connectionId is ModelProvider {
   return connectionId in modelProviderNames

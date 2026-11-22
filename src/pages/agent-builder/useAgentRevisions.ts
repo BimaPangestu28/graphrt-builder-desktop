@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { restoreAgentVersion } from '@/api/agents'
 import { reviseAgent, stopAgentRevision } from '@/api/builder'
-import { BackendError } from '@/api/client'
+import { isBackendErrorWithCode } from '@/api/client'
 import { stoppedReplyText, type BuildProgress, type BuildStage, type DraftPreview } from '@/api/types'
+import { useIsMountedRef } from '@/hooks/useIsMountedRef'
 import { describeError } from '@/lib/agentDisplay'
 import { describeFailedChange } from './ChatBubbles'
 
@@ -68,8 +69,12 @@ export function useAgentRevisions({ agentId, currentVersion, onAgentChanged }: U
   const [isBusy, setIsBusy] = useState(false)
   const [undoErrorMessage, setUndoErrorMessage] = useState<string | null>(null)
   const [isStopping, setIsStopping] = useState(false)
+  // A change keeps running in the backend after the builder screen closes; its
+  // progress and result must not set state on the unmounted screen.
+  const isMountedRef = useIsMountedRef()
 
   function updateExchange(exchangeId: number, changes: Partial<ChatExchange>) {
+    if (!isMountedRef.current) return
     setExchanges((previousExchanges) => previousExchanges.map((exchange) => (exchange.id === exchangeId ? { ...exchange, ...changes } : exchange)))
   }
 
@@ -91,6 +96,7 @@ export function useAgentRevisions({ agentId, currentVersion, onAgentChanged }: U
     try {
       const revision = await reviseAgent(agentId, request, (progress) => applyRevisionProgress(exchangeId, progress))
       await onAgentChanged(exchangeId)
+      if (!isMountedRef.current) return
       updateExchange(exchangeId, {
         status: 'done',
         reply: revision.summary,
@@ -101,14 +107,16 @@ export function useAgentRevisions({ agentId, currentVersion, onAgentChanged }: U
       })
       setLatestRevision({ exchangeId, versionBefore: currentVersion, versionAfter: revision.agent.currentVersion, isUndone: false })
     } catch (revisionError) {
-      if (revisionError instanceof BackendError && revisionError.code === 'stopped') {
+      if (isBackendErrorWithCode(revisionError, 'stopped')) {
         updateExchange(exchangeId, { status: 'stopped', reply: stoppedReplyText, draft: null, writingStage: null })
         return
       }
       updateExchange(exchangeId, { status: 'failed', reply: describeFailedChange(describeError(revisionError)), draft: null, writingStage: null })
     } finally {
-      setIsBusy(false)
-      setIsStopping(false)
+      if (isMountedRef.current) {
+        setIsBusy(false)
+        setIsStopping(false)
+      }
     }
   }
 
@@ -118,10 +126,10 @@ export function useAgentRevisions({ agentId, currentVersion, onAgentChanged }: U
     setIsStopping(true)
     try {
       const wasRunning = await stopAgentRevision(agentId)
-      if (!wasRunning) setIsStopping(false)
+      if (!wasRunning && isMountedRef.current) setIsStopping(false)
     } catch (stopError) {
       console.warn('could not stop the builder', stopError)
-      setIsStopping(false)
+      if (isMountedRef.current) setIsStopping(false)
     }
   }
 
@@ -133,11 +141,11 @@ export function useAgentRevisions({ agentId, currentVersion, onAgentChanged }: U
     try {
       await restoreAgentVersion(agentId, restoredVersion)
       await onAgentChanged(null)
-      setLatestRevision({ ...latestRevision, isUndone: !latestRevision.isUndone })
+      if (isMountedRef.current) setLatestRevision({ ...latestRevision, isUndone: !latestRevision.isUndone })
     } catch (undoError) {
-      setUndoErrorMessage(`Could not restore v${restoredVersion}: ${describeError(undoError)}`)
+      if (isMountedRef.current) setUndoErrorMessage(`Could not restore v${restoredVersion}: ${describeError(undoError)}`)
     } finally {
-      setIsBusy(false)
+      if (isMountedRef.current) setIsBusy(false)
     }
   }
 

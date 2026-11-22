@@ -14,6 +14,9 @@ import { NodesView } from '../NodesView'
 import { SyncBanner } from '../SyncBanner'
 import { useAgentGraph } from '../useAgentGraph'
 
+// Real ELK is slow in jsdom; these tests only need non-overlapping positions.
+vi.mock('../flow/layoutEngine', () => import('./fakeElkLayout'))
+
 const agentId = 'maps-leads'
 
 const runningEvents: GraphrtEvent[] = [

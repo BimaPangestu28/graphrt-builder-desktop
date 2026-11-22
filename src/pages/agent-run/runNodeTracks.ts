@@ -1,5 +1,5 @@
 import type { GraphrtEvent, RunEventRecord } from '@/api/types'
-import type { TestRunStepState } from '@/data/testRun'
+import type { TestRunStepState } from '@/pages/agent-run/testRunTypes'
 import { isRecord, readFrame, readNumber, readString } from './runEventValues'
 
 /**

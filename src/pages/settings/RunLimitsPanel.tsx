@@ -1,7 +1,7 @@
 import { useState, type KeyboardEvent } from 'react'
 import type { RunLimits } from '@/api/appSettingsTypes'
 import { joinClassNames } from '@/components/ui'
-import { defaultRunLimits, runLimitFields, type RunLimitField } from '@/data/runLimits'
+import { defaultRunLimits, runLimitFields, type RunLimitField } from '@/lib/runLimits'
 import { SettingsGroup, settingsButtonClassNames } from './SettingRows'
 
 interface RunLimitsPanelProps {

@@ -7,6 +7,9 @@ import { installReactFlowTestEnvironment } from '@/test/reactFlowTestEnvironment
 import { BuilderAgentPanel } from '../../BuilderAgentPanel'
 import { NodesView } from '../NodesView'
 
+// Real ELK is slow in jsdom; these tests only need non-overlapping positions.
+vi.mock('../flow/layoutEngine', () => import('./fakeElkLayout'))
+
 const agentId = 'maps-leads'
 
 function renderPanel() {

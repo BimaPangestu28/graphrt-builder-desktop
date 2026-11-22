@@ -1,6 +1,9 @@
 import { routePaths } from '@/routes'
-import { mapsLeadsJobDescription } from './mapsLeadsAgent'
 import mapsWhatsAppTemplate from './mapsWhatsAppTemplate.json'
+
+/** The design's example job (the "Maps leads to WhatsApp" agent), also the description box's placeholder. */
+export const mapsLeadsJobDescription =
+  'Find cafes in Bandar Lampung on Google Maps, get their name and phone number, then send each one a WhatsApp message offering our catering menu'
 
 /** Kinds of agent offered as pills above the prompt on the New agent screen (02). */
 export const agentKindOptions = [

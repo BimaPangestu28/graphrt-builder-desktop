@@ -2,7 +2,7 @@ import { act, renderHook } from '@testing-library/react'
 import { startRun } from '@/api/runs'
 import { resetSampleRuns, sampleRunStepDelayMs, sampleRunsBackend, sampleStepsUntilApproval } from '@/api/sampleBackend/runs'
 import type { RunEventRecord } from '@/api/types'
-import { mergeRunEvents, useRunLive } from '../useRunLive'
+import { appendRunEvent, createFrameBatcher, mergeRunEvents, useRunLive } from '../useRunLive'
 
 async function advanceSteps(stepCount: number) {
   await act(async () => {
@@ -38,6 +38,63 @@ describe('mergeRunEvents', () => {
     const withStored = mergeRunEvents(live, [chunk('Hello!', 3)])
     expect(withStored[0].event.chunk).toBe('Hello!')
     expect(mergeRunEvents(withStored, [chunk(' late')])[0].event.chunk).toBe('Hello!')
+  })
+})
+
+describe('appendRunEvent', () => {
+  it('appends an event newer than the last one', () => {
+    const currentEvents = [buildEventRecord(1), buildEventRecord(2)]
+    const appended = appendRunEvent(currentEvents, buildEventRecord(3))
+    expect(appended.map((record) => record.seq)).toEqual([1, 2, 3])
+    expect(appended[0]).toBe(currentEvents[0])
+  })
+
+  it('joins a live chunk into the last row with the same seq', () => {
+    const chunk = (text: string): RunEventRecord => ({ ...buildEventRecord(5), event: { type: 'node_chunk', node_id: 'write', chunk: text } })
+    const joined = appendRunEvent([buildEventRecord(4), chunk('Hel')], chunk('lo'))
+    expect(joined).toHaveLength(2)
+    expect(joined[1].event.chunk).toBe('Hello')
+  })
+
+  it('falls back to a full merge for an out-of-order event', () => {
+    const merged = appendRunEvent([buildEventRecord(1), buildEventRecord(3)], buildEventRecord(2))
+    expect(merged.map((record) => record.seq)).toEqual([1, 2, 3])
+  })
+
+  it('returns the same list for a status signal', () => {
+    const currentEvents = [buildEventRecord(1)]
+    expect(appendRunEvent(currentEvents, { ...buildEventRecord(1), event: { type: 'status_changed' } })).toBe(currentEvents)
+  })
+})
+
+describe('createFrameBatcher', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('hands the first event over at once and the rest of the burst after the frame', () => {
+    const onBatch = vi.fn()
+    const batcher = createFrameBatcher<number>(onBatch)
+    batcher.add(1)
+    batcher.add(2)
+    batcher.add(3)
+    expect(onBatch.mock.calls).toEqual([[[1]]])
+    vi.advanceTimersByTime(16)
+    expect(onBatch.mock.calls).toEqual([[[1]], [[2, 3]]])
+  })
+
+  it('drops queued events on cancel', () => {
+    const onBatch = vi.fn()
+    const batcher = createFrameBatcher<number>(onBatch)
+    batcher.add(1)
+    batcher.add(2)
+    batcher.cancel()
+    vi.advanceTimersByTime(50)
+    expect(onBatch).toHaveBeenCalledTimes(1)
   })
 })
 

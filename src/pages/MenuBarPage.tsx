@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { getTrayAreaName } from '@/lib/platform'
-import { systemNotifications } from '@/data/menuBar'
+import { systemNotifications } from '@/pages/menu-bar/menuBarIllustration'
 import { MenuBarPopover } from '@/pages/menu-bar/MenuBarPopover'
 import { SystemNotificationCard } from '@/pages/menu-bar/SystemNotificationCard'
 

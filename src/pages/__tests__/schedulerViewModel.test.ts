@@ -1,5 +1,6 @@
 import type { Run, Trigger } from '@/api/types'
-import { getRunHistoryWindow, toPastRuns } from '@/pages/scheduler/schedulerViewModel'
+import type { ScheduleTrigger } from '@/lib/scheduleCalendar'
+import { getRunHistoryWindow, sortTriggersByOrder, toPastRuns } from '@/pages/scheduler/schedulerViewModel'
 
 function buildTrigger(id: string, agentId: string): Trigger {
   return {
@@ -52,5 +53,14 @@ describe('toPastRuns', () => {
 describe('getRunHistoryWindow', () => {
   it('covers the dates with a day of margin on each side', () => {
     expect(getRunHistoryWindow(['2026-11-16', '2026-11-22'])).toEqual({ since: '2026-11-15T00:00:00.000Z', until: '2026-11-24T00:00:00.000Z' })
+  })
+})
+
+describe('sortTriggersByOrder', () => {
+  const trigger = (id: string): ScheduleTrigger => ({ id, agentName: id, shortName: id, description: '', iconKind: 'schedule', isEnabled: true })
+
+  it('puts known triggers first in the given order and keeps the others in theirs', () => {
+    const sorted = sortTriggersByOrder([trigger('c'), trigger('b'), trigger('a'), trigger('d')], new Map([['a', 0], ['b', 1]]))
+    expect(sorted.map((scheduleTrigger) => scheduleTrigger.id)).toEqual(['a', 'b', 'c', 'd'])
   })
 })

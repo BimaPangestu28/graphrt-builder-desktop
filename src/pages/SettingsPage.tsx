@@ -4,7 +4,7 @@ import { isDesktopApp } from '@/api/client'
 import type { AppInfo } from '@/api/connectionTypes'
 import { AppShell, PageFrame, PageTitleBlock } from '@/components/layout'
 import { joinClassNames } from '@/components/ui'
-import { previewOnlySettingsSections, settingsSections, type SettingsSectionKey } from '@/data/settings'
+import { previewOnlySettingsSections, settingsSections, type SettingsSectionKey } from '@/lib/settings'
 import { useAsyncData } from '@/hooks/useAsyncData'
 import {
   AboutSection,

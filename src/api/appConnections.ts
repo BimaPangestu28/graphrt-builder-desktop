@@ -1,4 +1,4 @@
-import type { Connection } from '@/data/connections'
+import type { Connection } from '@/api/appConnectionTypes'
 import { isDesktopApp } from './client'
 import { sampleAppConnectionsBackend } from './sampleBackend/appConnections'
 
@@ -8,6 +8,6 @@ import { sampleAppConnectionsBackend } from './sampleBackend/appConnections'
  * preview shows the design's sample apps.
  */
 export function listAppConnections(): Promise<Connection[]> {
-  if (!isDesktopApp()) return sampleAppConnectionsBackend.listAppConnections()
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleAppConnectionsBackend.listAppConnections()
   return Promise.resolve([])
 }

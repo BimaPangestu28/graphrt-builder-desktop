@@ -7,6 +7,7 @@ import { agentPath } from '@/routes'
 import { StatusPill } from '@/pages/agent-run/StatusPill'
 import { formatDurationMs, formatElapsedClock, formatElapsedSince } from '@/pages/agent-run/runProgress'
 import { describeCurrentItem, type RunCanvasState } from './nodeRunStates'
+import { useCanvasNow } from './CanvasClock'
 import type { NodesLiveRun } from './useNodesLiveRun'
 
 /**
@@ -72,7 +73,8 @@ interface RunBarProps {
 }
 
 export function RunBar({ agentId, graph, live }: RunBarProps) {
-  const { testRun, runState, now, isActive } = live
+  const { testRun, runState, isActive } = live
+  const now = useCanvasNow()
   const { run } = testRun.liveRun
   if (!testRun.runId) return null
   const stepsViewPath = isActive || !run ? agentPath('testRun', agentId, { runId: testRun.runId }) : agentPath('runResult', agentId, { runId: testRun.runId })

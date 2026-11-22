@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { getKnowledgeBase, listKnowledgeBases, searchKnowledge, subscribeToKnowledgeEvents } from '@/api/knowledge'
 import type { KnowledgeBase, KnowledgeBaseDetail, KnowledgeEvent, KnowledgePassage } from '@/api/knowledgeTypes'
-import { toError, useLoadedData, type LoadedData } from './useRunData'
+import { useLoadedData, type LoadedData } from './useRunData'
+import { toError } from '@/lib/errors'
 
 /** Delay before searching while the user types. */
 export const KNOWLEDGE_SEARCH_DELAY_MS = 200

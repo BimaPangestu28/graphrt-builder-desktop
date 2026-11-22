@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { Run } from '@/api/types'
 import { AppShell, PageFrame, PageTitleBlock } from '@/components/layout'
 import { joinClassNames } from '@/components/ui'
-import { defaultSelectedRunId } from '@/data/runs'
+import { getPreviewContent } from '@/api/previewContent'
 import { useAgentNames, type AgentNameLookup } from '@/hooks/useAgentNames'
 import { getVersionFlowSummary } from '@/api/versions'
 import { useNow } from '@/hooks/useNow'
@@ -81,9 +81,10 @@ function RunsFilterBar({ agentFilter, statusFilter, allRuns, getAgentName, onAge
 function SelectedRunPanel({ run, getAgentName, onClose }: { run: Run; getAgentName: AgentNameLookup; onClose: () => void }) {
   const { data: events } = useRunEvents(run.id)
   const { data: flowSummary } = useLoadedData(() => getVersionFlowSummary(run.agentId, run.agentVersion), [run.agentId, run.agentVersion])
+  // The clock ticks every second while the run is running; only the panel's times should follow it.
   const now = useNow(run.status === 'running')
-  const record = withRunEvents(toRunRecord(run, getAgentName(run.agentId)), events ?? [])
-  const stepViews = buildRunStepViews(toRunStepTemplate(flowSummary), events ?? [])
+  const record = useMemo(() => withRunEvents(toRunRecord(run, getAgentName(run.agentId)), events ?? []), [run, getAgentName, events])
+  const stepViews = useMemo(() => buildRunStepViews(toRunStepTemplate(flowSummary), events ?? []), [flowSummary, events])
   return <RunDetailPanel key={run.id} run={record} stepViews={stepViews} now={now} onClose={onClose} />
 }
 
@@ -98,7 +99,7 @@ export function RunsPage() {
   const [statusFilter, setStatusFilter] = useState<RunsStatusFilter>('all')
   // `?runId=` (from Home's recent runs and other links) selects that run; otherwise the default.
   const [searchParams] = useSearchParams()
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(searchParams.get('runId') ?? defaultSelectedRunId)
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(searchParams.get('runId') ?? getPreviewContent()?.selectedRunId ?? null)
   const getAgentName = useAgentNames()
   const allRunsData = useRuns()
   const visibleRunsData = useRuns(toRunFilter(agentFilter, statusFilter))

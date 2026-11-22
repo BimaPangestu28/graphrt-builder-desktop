@@ -3,9 +3,10 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { resetSampleAgents } from '@/api/sampleBackend/agents'
 import { resetSampleBuilder, sampleBuildDrafts, sampleBuilderBackend, sampleBuildTiming } from '@/api/sampleBackend/builder'
+import { setSampleDelayScale } from '@/api/sampleBackend/sampleResponse'
 import { resetSampleCredentials, sampleCredentialsBackend } from '@/api/sampleBackend/credentials'
 import { resetSamplePlugins, samplePluginsBackend, setSampleAgentPluginNeeds } from '@/api/sampleBackend/plugins'
-import { openBuilderDelayMs } from '@/data/mapsLeadsAgent'
+import { openBuilderDelayMs } from '@/pages/agent-builder/useAgentBuild'
 import { agentPath, connectionsTabPath, routePaths } from '@/routes'
 import { GeneratingPage } from '../GeneratingPage'
 
@@ -32,6 +33,8 @@ async function advanceBy(milliseconds: number) {
 describe('GeneratingPage', () => {
   beforeEach(() => {
     vi.useFakeTimers()
+    // These tests step through the build stages, so keep the real pauses
+    setSampleDelayScale(1)
     resetSampleAgents()
     resetSampleBuilder()
     resetSampleCredentials()

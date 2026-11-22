@@ -1,5 +1,5 @@
 import type { RunEventRecord } from '@/api/types'
-import type { TestRunStepState } from '@/data/testRun'
+import type { TestRunStepState } from '@/pages/agent-run/testRunTypes'
 import { buildItemFrame, describeItemShort, findIterationItems, parseFrame, readIteratorPath, readNumber } from './runEventValues'
 import { collectActiveFrames, collectNodeTracks, type NodeExecution, type NodeTrack, type StepTokenUsage } from './runNodeTracks'
 import { containerNodeKinds, hiddenNodeKinds, humanizeNodeId, modelNodeKinds, type RunStepTemplate } from './runProgress'

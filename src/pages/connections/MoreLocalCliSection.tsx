@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Icon } from '@/components/ui'
-import { isLocalCliProvider, localCliShortNames } from '@/data/settings'
+import { isLocalCliProvider, localCliShortNames } from '@/lib/settings'
 import type { ModelConnection } from './modelConnections'
 
 interface MoreLocalCliSectionProps {

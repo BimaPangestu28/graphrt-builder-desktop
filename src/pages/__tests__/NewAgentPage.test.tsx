@@ -2,8 +2,8 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { resetSampleCredentials, sampleCredentialsBackend } from '@/api/sampleBackend/credentials'
-import mapsWhatsAppTemplate from '@/data/mapsWhatsAppTemplate.json'
-import { agentTemplates, jobDescriptionPlaceholder, newAgentTemplatePath } from '@/data/newAgentTemplates'
+import mapsWhatsAppTemplate from '@/pages/new-agent/mapsWhatsAppTemplate.json'
+import { agentTemplates, jobDescriptionPlaceholder, newAgentTemplatePath } from '@/pages/new-agent/agentTemplates'
 import { connectionsTabPath, routePaths } from '@/routes'
 import { NewAgentPage } from '../NewAgentPage'
 

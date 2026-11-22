@@ -2,7 +2,7 @@ import { useState, type FormEvent, type KeyboardEvent } from 'react'
 import { formatShortcut } from '@/lib/platform'
 import { Link, useNavigate } from 'react-router-dom'
 import { Button, Icon } from '@/components/ui'
-import { agentTemplates, buildPathByAgentKind, mapsWhatsAppTemplateId, newAgentTemplatePath } from '@/data/newAgentTemplates'
+import { agentTemplates, buildPathByAgentKind, mapsWhatsAppTemplateId, newAgentTemplatePath } from '@/pages/new-agent/agentTemplates'
 import { routePaths } from '@/routes'
 import type { BuildRequestLocationState } from '@/pages/agent-builder/buildRequestState'
 

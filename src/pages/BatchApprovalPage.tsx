@@ -3,12 +3,13 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { answerApprovals, getRunReview } from '@/api/runReview'
 import type { ApprovalAnswer, PendingApproval, RunReview } from '@/api/runReviewTypes'
 import { AppShell } from '@/components/layout'
-import { toError, useLoadedData, useRunEventSubscription } from '@/hooks/useRunData'
+import { useLoadedData, useRunEventSubscription } from '@/hooks/useRunData'
 import { agentPath, routePaths } from '@/routes'
 import { buildApprovalAnswer, collectAnswersByResumeKey, findMissingRequiredFields, initialApprovalValues, type ApprovalValues } from '@/pages/agent-run/approvalForm'
 import { RunErrorNotice } from '@/pages/agent-run/RunErrorNotice'
 import { RunReviewList } from './batch-approval/RunReviewList'
 import { buildRowTitle, describeReviewedRun } from './batch-approval/runReviewModel'
+import { toError } from '@/lib/errors'
 
 /** Run events after which the review is read again. */
 const reviewRefreshEventTypes = new Set(['status_changed', 'run_paused', 'run_succeeded', 'run_failed', 'run_aborted'])

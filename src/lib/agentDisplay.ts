@@ -10,13 +10,6 @@ const statusDotTones: Record<AgentStatus, StatusDotTone> = {
   tested: 'brand',
 }
 
-const statusLabels: Record<AgentStatus, string> = {
-  active: 'Active',
-  paused: 'Paused',
-  draft: 'Draft',
-  tested: 'Tested',
-}
-
 /** Kind tag shown next to an agent name; plain task agents have none. */
 const kindLabels: Record<AgentKind, string | undefined> = {
   task: undefined,
@@ -45,11 +38,6 @@ export function getStatusDotTone(status: AgentStatus): StatusDotTone {
   return statusDotTones[status]
 }
 
-/** "Active", "Paused", "Draft" or "Tested". */
-export function getStatusLabel(status: AgentStatus): string {
-  return statusLabels[status]
-}
-
 /** "Chatbot", "Chain", "Team", or undefined for task agents. */
 export function getKindLabel(kind: AgentKind): string | undefined {
   return kindLabels[kind]
@@ -60,8 +48,5 @@ export function getProviderName(provider: ModelProvider | string): string {
   return provider in providerNames ? providerNames[provider as ModelProvider] : provider
 }
 
-/** Message to show for a failed load or action; falls back to a generic sentence. */
-export function describeError(error: unknown): string {
-  if (error instanceof Error && error.message) return error.message
-  return 'Something went wrong'
-}
+/** Message to show for a failed load or action. Same as {@link toErrorMessage}; kept as the name most screens use. */
+export { toErrorMessage as describeError } from './errors'

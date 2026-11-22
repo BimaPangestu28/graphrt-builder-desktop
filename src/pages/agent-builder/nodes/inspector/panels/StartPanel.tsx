@@ -224,13 +224,18 @@ interface RowActions {
   dragEnd: () => void
 }
 
-function StartInputRow({ variable, index, count, otherNames, usages, isExpanded, isDropTarget, isConfirmingDelete, editing, rowActions }: StartInputRowProps) {
-  const detailsId = useId()
-  const type = variableTypeOf(variable)
-  const name = variableNameOf(variable)
-  const label = variableLabelOf(variable) || `Input ${index + 1}`
-  const isKnownType = startInputTypes.some((inputType) => inputType.value === type)
-  const typeOptions = [...startInputTypes.map((inputType) => ({ value: inputType.value, label: inputType.label })), ...(isKnownType ? [] : [{ value: type, label: describeStartInputType(type) }])]
+/** What every part of one input row needs: the input, where it sits and the edit callback. */
+interface RowContext {
+  variable: StartVariable
+  index: number
+  /** Shown name: the label, else "Input 3". */
+  label: string
+  editing: RowEditing
+}
+
+/** Drag handle; ArrowUp / ArrowDown on it move the row too. */
+function ReorderHandle({ row, count, rowActions }: { row: RowContext; count: number; rowActions: RowActions }) {
+  const { index, label, editing } = row
   const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
     if (event.key === 'ArrowUp' && index > 0) {
       event.preventDefault()
@@ -242,111 +247,160 @@ function StartInputRow({ variable, index, count, otherNames, usages, isExpanded,
     }
   }
   return (
+    <button
+      type="button"
+      draggable={!editing.readOnly}
+      disabled={editing.readOnly}
+      data-reorder-handle={index}
+      aria-label={`Reorder ${label}`}
+      aria-keyshortcuts="ArrowUp ArrowDown"
+      title="Drag to reorder (or use the arrow keys)"
+      onKeyDown={handleKeyDown}
+      onDragStart={(event) => rowActions.dragStart(index, event)}
+      onDragEnd={rowActions.dragEnd}
+      className={joinClassNames(iconButtonClassNames, 'w-5 cursor-grab active:cursor-grabbing')}
+    >
+      <StrokeIcon size={14}>
+        <path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01" strokeWidth={3} />
+      </StrokeIcon>
+    </button>
+  )
+}
+
+/** The type picker; an unknown type (from JSON) stays selectable under its own name. */
+function InputTypeSelect({ row }: { row: RowContext }) {
+  const { variable, index, label, editing } = row
+  const type = variableTypeOf(variable)
+  const isKnownType = startInputTypes.some((inputType) => inputType.value === type)
+  const typeOptions = [...startInputTypes.map((inputType) => ({ value: inputType.value, label: inputType.label })), ...(isKnownType ? [] : [{ value: type, label: describeStartInputType(type) }])]
+  return (
+    <SelectInput
+      ariaLabel={`Type of ${label}`}
+      value={type}
+      disabled={editing.readOnly}
+      options={typeOptions}
+      className="!w-[100px] shrink-0"
+      onChange={(nextType) => editing.edit((graph) => updateStartVariable(graph, editing.startId, index, (current) => changeVariableType(current, nextType)), `made ${label} a ${describeStartInputType(nextType).toLowerCase()} input`)}
+    />
+  )
+}
+
+/** First line of a row: handle, label, type and the expand toggle. */
+function StartInputHeader({ row, count, isExpanded, detailsId, rowActions }: { row: RowContext; count: number; isExpanded: boolean; detailsId: string; rowActions: RowActions }) {
+  const { variable, index, label, editing } = row
+  const name = variableNameOf(variable)
+  return (
+    <div className="flex items-center gap-1">
+      <ReorderHandle row={row} count={count} rowActions={rowActions} />
+      <TextInput
+        ariaLabel={`Label of input ${index + 1}`}
+        value={typeof variable.label === 'string' ? variable.label : ''}
+        placeholder="Label, e.g. Area to search"
+        disabled={editing.readOnly}
+        onCommit={(text) => editing.edit((graph) => relabelStartVariable(graph, editing.startId, index, text.trim()), `relabelled input ${name || index + 1}`)}
+      />
+      <InputTypeSelect row={row} />
+      <button
+        type="button"
+        aria-label={`${isExpanded ? 'Hide' : 'Show'} options of ${label}`}
+        aria-expanded={isExpanded}
+        aria-controls={detailsId}
+        onClick={() => rowActions.toggleExpanded(index)}
+        className={joinClassNames(iconButtonClassNames, 'transition-transform', isExpanded ? 'rotate-90' : '')}
+      >
+        <Icon name="chevronRight" size={14} />
+      </button>
+    </div>
+  )
+}
+
+/** Second line of a row: Required, where it is used, duplicate and delete. */
+function StartInputSummary({ row, usages, rowActions }: { row: RowContext; usages: InputUsage[]; rowActions: RowActions }) {
+  const { variable, index, label, editing } = row
+  return (
+    <div className="flex items-center gap-2 pl-6">
+      <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-ink-2">
+        <input
+          type="checkbox"
+          checked={variable.required === true}
+          disabled={editing.readOnly}
+          aria-label={`${label} is required`}
+          onChange={(event) =>
+            editing.edit((graph) => updateStartVariable(graph, editing.startId, index, (current) => ({ ...current, required: event.target.checked })), `${event.target.checked ? 'required' : 'made optional'} ${label}`)
+          }
+          className="h-[14px] w-[14px] cursor-pointer accent-ink"
+        />
+        Required
+      </label>
+      <span className={joinClassNames('min-w-0 flex-1 truncate text-[12px]', usages.length > 0 ? 'text-ink-2' : 'text-muted')} title={usages.length > 0 ? joinTitles(usages) : undefined}>
+        {describeUsageCount(usages.length)}
+      </span>
+      <button type="button" aria-label={`Duplicate ${label}`} title="Duplicate" disabled={editing.readOnly} onClick={() => rowActions.duplicate(index)} className={joinClassNames(iconButtonClassNames, 'size-6')}>
+        <StrokeIcon size={14}>
+          <path d="M8 8h11v11H8zM5 16V5h11" />
+        </StrokeIcon>
+      </button>
+      <button type="button" aria-label={`Delete ${label}`} title="Delete" disabled={editing.readOnly} onClick={() => rowActions.requestDelete(index)} className={joinClassNames(iconButtonClassNames, 'size-6')}>
+        <Icon name="trash" size={14} />
+      </button>
+    </div>
+  )
+}
+
+/** `variable` with `max_length` set to `maxLength`, or without it when null. */
+function withMaxLength(variable: StartVariable, maxLength: number | null): StartVariable {
+  const updated = { ...variable }
+  if (maxLength === null) delete updated.max_length
+  else updated.max_length = Math.round(maxLength)
+  return updated
+}
+
+function MaxLengthField({ row }: { row: RowContext }) {
+  const { variable, index, label, editing } = row
+  return (
+    <Field label="Max length" hint="Longest text it accepts, in characters">
+      <NumberInput
+        ariaLabel="Max length"
+        wide
+        min={1}
+        step={1}
+        value={typeof variable.max_length === 'number' ? variable.max_length : null}
+        disabled={editing.readOnly}
+        onCommit={(next) => editing.edit((graph) => updateStartVariable(graph, editing.startId, index, (current) => withMaxLength(current, next)), `set the max length of ${label}`)}
+      />
+    </Field>
+  )
+}
+
+/** The expanded part of a row: variable name, choices, default value and the type's options. */
+function StartInputDetails({ row, otherNames, usages, detailsId }: { row: RowContext; otherNames: string[]; usages: InputUsage[]; detailsId: string }) {
+  const { variable, index, editing } = row
+  const type = variableTypeOf(variable)
+  return (
+    <div id={detailsId} className="flex flex-col gap-3 border-t border-chip px-1 pt-2.5 pb-1">
+      <VariableNameField variable={variable} index={index} otherNames={otherNames} editing={editing} startId={editing.startId} />
+      {type === 'select' && <ChoicesEditor variable={variable} index={index} editing={editing} />}
+      <DefaultValueField variable={variable} index={index} editing={editing} />
+      {takesMaxLength(type) && <MaxLengthField row={row} />}
+      {usages.length > 0 && <p className={hintClassName}>Used by {joinTitles(usages)}</p>}
+    </div>
+  )
+}
+
+function StartInputRow({ variable, index, count, otherNames, usages, isExpanded, isDropTarget, isConfirmingDelete, editing, rowActions }: StartInputRowProps) {
+  const detailsId = useId()
+  const row: RowContext = { variable, index, label: variableLabelOf(variable) || `Input ${index + 1}`, editing }
+  return (
     <li
-      data-start-input={name}
+      data-start-input={variableNameOf(variable)}
       onDragOver={(event) => rowActions.dragOver(index, event)}
       onDrop={(event) => rowActions.drop(index, event)}
       className={joinClassNames('flex flex-col gap-2 rounded-[10px] border bg-surface p-2', isDropTarget ? 'border-brand ring-2 ring-brand-line' : 'border-line')}
     >
-      <div className="flex items-center gap-1">
-        <button
-          type="button"
-          draggable={!editing.readOnly}
-          disabled={editing.readOnly}
-          data-reorder-handle={index}
-          aria-label={`Reorder ${label}`}
-          aria-keyshortcuts="ArrowUp ArrowDown"
-          title="Drag to reorder (or use the arrow keys)"
-          onKeyDown={handleKeyDown}
-          onDragStart={(event) => rowActions.dragStart(index, event)}
-          onDragEnd={rowActions.dragEnd}
-          className={joinClassNames(iconButtonClassNames, 'w-5 cursor-grab active:cursor-grabbing')}
-        >
-          <StrokeIcon size={14}>
-            <path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01" strokeWidth={3} />
-          </StrokeIcon>
-        </button>
-        <TextInput
-          ariaLabel={`Label of input ${index + 1}`}
-          value={typeof variable.label === 'string' ? variable.label : ''}
-          placeholder="Label, e.g. Area to search"
-          disabled={editing.readOnly}
-          onCommit={(text) => editing.edit((graph) => relabelStartVariable(graph, editing.startId, index, text.trim()), `relabelled input ${name || index + 1}`)}
-        />
-        <SelectInput
-          ariaLabel={`Type of ${label}`}
-          value={type}
-          disabled={editing.readOnly}
-          options={typeOptions}
-          className="!w-[100px] shrink-0"
-          onChange={(nextType) => editing.edit((graph) => updateStartVariable(graph, editing.startId, index, (current) => changeVariableType(current, nextType)), `made ${label} a ${describeStartInputType(nextType).toLowerCase()} input`)}
-        />
-        <button
-          type="button"
-          aria-label={`${isExpanded ? 'Hide' : 'Show'} options of ${label}`}
-          aria-expanded={isExpanded}
-          aria-controls={detailsId}
-          onClick={() => rowActions.toggleExpanded(index)}
-          className={joinClassNames(iconButtonClassNames, 'transition-transform', isExpanded ? 'rotate-90' : '')}
-        >
-          <Icon name="chevronRight" size={14} />
-        </button>
-      </div>
-      <div className="flex items-center gap-2 pl-6">
-        <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-ink-2">
-          <input
-            type="checkbox"
-            checked={variable.required === true}
-            disabled={editing.readOnly}
-            aria-label={`${label} is required`}
-            onChange={(event) =>
-              editing.edit((graph) => updateStartVariable(graph, editing.startId, index, (current) => ({ ...current, required: event.target.checked })), `${event.target.checked ? 'required' : 'made optional'} ${label}`)
-            }
-            className="h-[14px] w-[14px] cursor-pointer accent-ink"
-          />
-          Required
-        </label>
-        <span className={joinClassNames('min-w-0 flex-1 truncate text-[12px]', usages.length > 0 ? 'text-ink-2' : 'text-muted')} title={usages.length > 0 ? joinTitles(usages) : undefined}>
-          {describeUsageCount(usages.length)}
-        </span>
-        <button type="button" aria-label={`Duplicate ${label}`} title="Duplicate" disabled={editing.readOnly} onClick={() => rowActions.duplicate(index)} className={joinClassNames(iconButtonClassNames, 'size-6')}>
-          <StrokeIcon size={14}>
-            <path d="M8 8h11v11H8zM5 16V5h11" />
-          </StrokeIcon>
-        </button>
-        <button type="button" aria-label={`Delete ${label}`} title="Delete" disabled={editing.readOnly} onClick={() => rowActions.requestDelete(index)} className={joinClassNames(iconButtonClassNames, 'size-6')}>
-          <Icon name="trash" size={14} />
-        </button>
-      </div>
-      {isConfirmingDelete && <DeleteWarning label={label} usages={usages} onDelete={() => rowActions.confirmDelete(index)} onKeep={rowActions.cancelDelete} />}
-      {isExpanded && (
-        <div id={detailsId} className="flex flex-col gap-3 border-t border-chip px-1 pt-2.5 pb-1">
-          <VariableNameField variable={variable} index={index} otherNames={otherNames} editing={editing} startId={editing.startId} />
-          {type === 'select' && <ChoicesEditor variable={variable} index={index} editing={editing} />}
-          <DefaultValueField variable={variable} index={index} editing={editing} />
-          {takesMaxLength(type) && (
-            <Field label="Max length" hint="Longest text it accepts, in characters">
-              <NumberInput
-                ariaLabel="Max length"
-                wide
-                min={1}
-                step={1}
-                value={typeof variable.max_length === 'number' ? variable.max_length : null}
-                disabled={editing.readOnly}
-                onCommit={(next) =>
-                  editing.edit((graph) => updateStartVariable(graph, editing.startId, index, (current) => {
-                    const updated = { ...current }
-                    if (next === null) delete updated.max_length
-                    else updated.max_length = Math.round(next)
-                    return updated
-                  }), `set the max length of ${label}`)
-                }
-              />
-            </Field>
-          )}
-          {usages.length > 0 && <p className={hintClassName}>Used by {joinTitles(usages)}</p>}
-        </div>
-      )}
+      <StartInputHeader row={row} count={count} isExpanded={isExpanded} detailsId={detailsId} rowActions={rowActions} />
+      <StartInputSummary row={row} usages={usages} rowActions={rowActions} />
+      {isConfirmingDelete && <DeleteWarning label={row.label} usages={usages} onDelete={() => rowActions.confirmDelete(index)} onKeep={rowActions.cancelDelete} />}
+      {isExpanded && <StartInputDetails row={row} otherNames={otherNames} usages={usages} detailsId={detailsId} />}
     </li>
   )
 }

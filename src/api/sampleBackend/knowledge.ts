@@ -8,12 +8,12 @@ import type {
   KnowledgeSource,
   KnowledgeSourceKind,
 } from '../knowledgeTypes'
-import { knowledgePassages, searchKnowledgePassages, type KnowledgePassage as SamplePassage } from '@/data/knowledge'
+import { knowledgePassages, searchKnowledgePassages, type KnowledgePassage as SamplePassage } from '@/api/sampleBackend/fixtures/knowledgePassages'
 import { requireText, respondWith } from './sampleResponse'
 
 /**
  * Sample knowledge bases for the browser preview and tests, kept in memory and
- * seeded from the mock data of screens 17 and 18 (`src/data/knowledge.ts`).
+ * seeded from the mock data of screens 17 and 18 (`fixtures/knowledgePassages.ts`).
  *
  * Added sources pretend to index: they turn `reading` at once and `indexed`
  * after {@link SAMPLE_INDEXING_DELAY_MS}, with `knowledge-event`s like the real

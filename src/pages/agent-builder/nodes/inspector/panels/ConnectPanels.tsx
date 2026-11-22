@@ -412,20 +412,121 @@ function readToolProvider(config: NodeConfig): { key: string; value: string } {
   return { key: 'provider_id', value: '' }
 }
 
+/** What the Inputs section knows about one input: the agent's Start input and/or the tool schema's. */
+interface ToolInputInfo {
+  name: string
+  input: ToolChoice['inputs'][number] | undefined
+  schemaInput: SchemaInput | undefined
+}
+
+/** The hint under an input: its type and origin, or that the tool does not declare it. */
+function describeToolInput({ input, schemaInput }: ToolInputInfo, choice: ToolChoice | undefined): string | undefined {
+  if (input) return `${input.valueType} · from the agent's Start`
+  if (schemaInput) return describeSchemaType(schemaInput.property)
+  return choice?.inputSchema ? 'Not in the tool’s inputs' : undefined
+}
+
+function ToolInputRow({ info, choice, parameters }: { info: ToolInputInfo; choice: ToolChoice | undefined; parameters: JsonObject }) {
+  const { readOnly, setConfigValue } = useInspector()
+  const { name, input, schemaInput } = info
+  const required = input?.required ?? schemaInput?.required ?? false
+  return (
+    <div className="flex items-start gap-1">
+      <div className="min-w-0 flex-1">
+        <TemplateField
+          label={input?.label || (schemaInput ? propertyLabel(name, schemaInput.property) : name)}
+          ariaLabel={`Input ${name}`}
+          fieldPath={`tool_parameters.${name}`}
+          required={required}
+          hint={describeToolInput(info, choice)}
+          value={readToolParameter(parameters[name])}
+          onCommit={(text) => setConfigValue(['tool_parameters', name], text === '' && !required ? undefined : toSchemaToolParameter(text, schemaInput?.property), `set input ${name}`)}
+        />
+      </div>
+      {!input && !schemaInput && <RemoveButton label={`Remove input ${name}`} disabled={readOnly} onClick={() => setConfigValue(['tool_parameters', name], undefined, `removed input ${name}`)} />}
+    </div>
+  )
+}
+
+/**
+ * The inputs to show: the tool's declared ones (Start inputs of an agent, schema
+ * properties of a plugin or MCP tool) first, then any extra ones already in the config.
+ */
+function listToolInputs(choice: ToolChoice | undefined, parameters: JsonObject): ToolInputInfo[] {
+  const schemaInputs = toolSchemaInputs(choice?.inputSchema ?? null)
+  const declaredNames = [...(choice?.inputs.map((input) => input.name) ?? []), ...schemaInputs.map((input) => input.name)]
+  const inputNames = [...declaredNames, ...Object.keys(parameters).filter((name) => !declaredNames.includes(name))]
+  return inputNames.map((name) => ({
+    name,
+    input: choice?.inputs.find((candidate) => candidate.name === name),
+    schemaInput: schemaInputs.find((candidate) => candidate.name === name),
+  }))
+}
+
+function ToolInputsSection({ choice }: { choice: ToolChoice | undefined }) {
+  const { node, readOnly, setConfigValue } = useInspector()
+  const parameters = readConfigObject(node.config, ['tool_parameters'])
+  const inputs = listToolInputs(choice, parameters)
+  const acceptsOtherInputs = choice?.source !== 'agents' && choice?.inputSchema?.additionalProperties !== false
+  return (
+    <InspectorSection title="Inputs" sectionKey="inputs">
+      {inputs.length === 0 && <p className={hintClassName}>{describeNoInputs(choice)}</p>}
+      {inputs.map((info) => (
+        <ToolInputRow key={info.name} info={info} choice={choice} parameters={parameters} />
+      ))}
+      {acceptsOtherInputs && (
+        <TextInput
+          ariaLabel="Add an input"
+          placeholder={choice?.inputSchema ? 'Add another input by name' : 'Add an input by name'}
+          value=""
+          disabled={readOnly}
+          onCommit={(name) => name.trim() && setConfigValue(['tool_parameters', name.trim()], { type: 'constant', value: '' }, `added input ${name.trim()}`)}
+        />
+      )}
+      <p className={hintClassName}>Each input can be a value from a step, fixed text, or text with values in it. A value that doesn’t resolve is sent empty</p>
+    </InspectorSection>
+  )
+}
+
+function ToolTimeLimitSection({ providerValue }: { providerValue: string }) {
+  const { node, readOnly, updateNode } = useInspector()
+  const minutes = node.timeoutMs === null ? null : Number((node.timeoutMs / 60_000).toFixed(2))
+  return (
+    <InspectorSection title="Time limit" sectionKey="time-limit" defaultOpen={node.timeoutMs !== null}>
+      <Field label="Wait for it at most" hint={providerValue === 'agents' ? 'Agents run as tools get 10 minutes' : 'Empty uses the app default, 2 minutes'}>
+        <NumberInput ariaLabel="Minutes" value={minutes} min={0.1} max={1440} step={1} suffix="minutes" disabled={readOnly} onCommit={(nextMinutes) => updateNode({ timeoutMs: nextMinutes === null ? null : Math.round(nextMinutes * 60_000) }, nextMinutes === null ? 'cleared the tool time limit' : `set the tool time limit to ${nextMinutes} min`)} />
+      </Field>
+    </InspectorSection>
+  )
+}
+
+function ToolErrorSection() {
+  const { node, readOnly, setConfigValue } = useInspector()
+  return (
+    <InspectorSection title="If the tool reports an error">
+      <RadioCards
+        legend="If the tool reports an error"
+        name="ignore-tool-errors"
+        value={readConfigFlag(node.config, ['ignore_tool_errors']) ? 'keep-going' : 'fail'}
+        disabled={readOnly}
+        onChange={(choiceValue) => setConfigValue(['ignore_tool_errors'], choiceValue === 'keep-going' ? true : undefined, choiceValue === 'keep-going' ? 'kept going on tool errors' : 'failed on tool errors')}
+        options={[
+          { value: 'fail', title: 'The step fails', description: 'Then “When this step fails” applies' },
+          { value: 'keep-going', title: 'Keep going', description: 'It succeeds with is_error and error so a later step can check them' },
+        ]}
+      />
+    </InspectorSection>
+  )
+}
+
 /** Settings of Use a tool: which tool, its inputs, time limit and tool errors. */
 export function ToolPanel() {
-  const { node, graph, readOnly, setConfigValue, updateConfig, updateNode } = useInspector()
+  const { node, graph, updateConfig } = useInspector()
   const sources = useToolSources(graph.agentId)
   const provider = readToolProvider(node.config)
   const toolName = readConfigText(node.config, ['tool_name'])
   const current = provider.value && toolName ? `${provider.value}/${toolName}` : ''
   const choice = [...sources.agents, ...sources.plugins, ...sources.mcp].find((candidate) => candidate.reference === current)
-  const parameters = readConfigObject(node.config, ['tool_parameters'])
-  const schemaInputs = toolSchemaInputs(choice?.inputSchema ?? null)
-  const declaredNames = [...(choice?.inputs.map((input) => input.name) ?? []), ...schemaInputs.map((input) => input.name)]
-  const inputNames = [...declaredNames, ...Object.keys(parameters).filter((name) => !declaredNames.includes(name))]
-  const acceptsOtherInputs = choice?.source !== 'agents' && choice?.inputSchema?.additionalProperties !== false
-  const minutes = node.timeoutMs === null ? null : Number((node.timeoutMs / 60_000).toFixed(2))
   const pickTool = (picked: ToolChoice) =>
     updateConfig((config) => {
       const { provider: _provider, provider_name: _providerName, ...rest } = config
@@ -438,59 +539,9 @@ export function ToolPanel() {
         {!current && <p className="m-0 text-[12px] text-danger">Pick a tool</p>}
         {current && !choice && !sources.isLoading && <p className="m-0 text-[12px] text-amber-strong">{current} is not on this computer; it fails until it is set up.</p>}
       </InspectorSection>
-      <InspectorSection title="Inputs" sectionKey="inputs">
-        {inputNames.length === 0 && <p className={hintClassName}>{describeNoInputs(choice)}</p>}
-        {inputNames.map((name) => {
-          const input = choice?.inputs.find((candidate) => candidate.name === name)
-          const schemaInput = schemaInputs.find((candidate) => candidate.name === name)
-          const required = input?.required ?? schemaInput?.required ?? false
-          const hint = input ? `${input.valueType} · from the agent's Start` : schemaInput ? describeSchemaType(schemaInput.property) : choice?.inputSchema ? 'Not in the tool’s inputs' : undefined
-          return (
-            <div key={name} className="flex items-start gap-1">
-              <div className="min-w-0 flex-1">
-                <TemplateField
-                  label={input?.label || (schemaInput ? propertyLabel(name, schemaInput.property) : name)}
-                  ariaLabel={`Input ${name}`}
-                  fieldPath={`tool_parameters.${name}`}
-                  required={required}
-                  hint={hint}
-                  value={readToolParameter(parameters[name])}
-                  onCommit={(text) => setConfigValue(['tool_parameters', name], text === '' && !required ? undefined : toSchemaToolParameter(text, schemaInput?.property), `set input ${name}`)}
-                />
-              </div>
-              {!input && !schemaInput && <RemoveButton label={`Remove input ${name}`} disabled={readOnly} onClick={() => setConfigValue(['tool_parameters', name], undefined, `removed input ${name}`)} />}
-            </div>
-          )
-        })}
-        {acceptsOtherInputs && (
-          <TextInput
-            ariaLabel="Add an input"
-            placeholder={choice?.inputSchema ? 'Add another input by name' : 'Add an input by name'}
-            value=""
-            disabled={readOnly}
-            onCommit={(name) => name.trim() && setConfigValue(['tool_parameters', name.trim()], { type: 'constant', value: '' }, `added input ${name.trim()}`)}
-          />
-        )}
-        <p className={hintClassName}>Each input can be a value from a step, fixed text, or text with values in it. A value that doesn’t resolve is sent empty</p>
-      </InspectorSection>
-      <InspectorSection title="Time limit" sectionKey="time-limit" defaultOpen={node.timeoutMs !== null}>
-        <Field label="Wait for it at most" hint={provider.value === 'agents' ? 'Agents run as tools get 10 minutes' : 'Empty uses the app default, 2 minutes'}>
-          <NumberInput ariaLabel="Minutes" value={minutes} min={0.1} max={1440} step={1} suffix="minutes" disabled={readOnly} onCommit={(nextMinutes) => updateNode({ timeoutMs: nextMinutes === null ? null : Math.round(nextMinutes * 60_000) }, nextMinutes === null ? 'cleared the tool time limit' : `set the tool time limit to ${nextMinutes} min`)} />
-        </Field>
-      </InspectorSection>
-      <InspectorSection title="If the tool reports an error">
-        <RadioCards
-          legend="If the tool reports an error"
-          name="ignore-tool-errors"
-          value={readConfigFlag(node.config, ['ignore_tool_errors']) ? 'keep-going' : 'fail'}
-          disabled={readOnly}
-          onChange={(choiceValue) => setConfigValue(['ignore_tool_errors'], choiceValue === 'keep-going' ? true : undefined, choiceValue === 'keep-going' ? 'kept going on tool errors' : 'failed on tool errors')}
-          options={[
-            { value: 'fail', title: 'The step fails', description: 'Then “When this step fails” applies' },
-            { value: 'keep-going', title: 'Keep going', description: 'It succeeds with is_error and error so a later step can check them' },
-          ]}
-        />
-      </InspectorSection>
+      <ToolInputsSection choice={choice} />
+      <ToolTimeLimitSection providerValue={provider.value} />
+      <ToolErrorSection />
       <SupportNote>an agent used as a tool can’t ask for approval (“agents used as steps cannot ask for approval yet”). Use an Ask me before continuing step before it.</SupportNote>
     </>
   )

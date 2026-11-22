@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { joinClassNames } from '@/components/ui'
-import { scheduleFrequencyOptions, type ScheduleFrequency } from '@/data/scheduleAgent'
+import { scheduleFrequencyOptions, type ScheduleFrequency } from '@/pages/schedule-agent/scheduleOptions'
 import { weekdayChoices } from '@/lib/schedule'
 
 /** Shared look for the dialog's text inputs and selects (40px, 10px radius). */

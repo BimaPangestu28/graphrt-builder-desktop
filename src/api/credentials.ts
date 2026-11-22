@@ -16,12 +16,12 @@ import type {
 /** Model provider keys (kept in the OS keychain; never readable from here) and the default model. */
 
 export function setApiKey(provider: ModelProvider, apiKey: string): Promise<void> {
-  if (!isDesktopApp()) return sampleCredentialsBackend.setApiKey(provider, apiKey)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleCredentialsBackend.setApiKey(provider, apiKey)
   return callBackend('set_api_key', { provider, apiKey })
 }
 
 export function deleteApiKey(provider: ModelProvider): Promise<void> {
-  if (!isDesktopApp()) return sampleCredentialsBackend.deleteApiKey(provider)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleCredentialsBackend.deleteApiKey(provider)
   return callBackend('delete_api_key', { provider })
 }
 
@@ -32,7 +32,7 @@ export function deleteApiKey(provider: ModelProvider): Promise<void> {
  * @returns One status per provider (Promise<ProviderStatus[]>)
  */
 export function listProviderStatuses(refresh = false): Promise<ProviderStatus[]> {
-  if (!isDesktopApp()) return sampleCredentialsBackend.listProviderStatuses(refresh)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleCredentialsBackend.listProviderStatuses(refresh)
   return callBackend('list_provider_statuses', { refresh })
 }
 
@@ -46,7 +46,7 @@ export function listProviderStatuses(refresh = false): Promise<ProviderStatus[]>
  * @throws BackendError - `invalid_input` for a provider that is not a CLI, or turning on one that is not installed
  */
 export function setLocalCliEnabled(provider: LocalCliProvider, enabled: boolean): Promise<ProviderStatus> {
-  if (!isDesktopApp()) return sampleCredentialsBackend.setLocalCliEnabled(provider, enabled)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleCredentialsBackend.setLocalCliEnabled(provider, enabled)
   return callBackend('set_local_cli_enabled', { provider, enabled })
 }
 
@@ -58,19 +58,19 @@ export function setLocalCliEnabled(provider: LocalCliProvider, enabled: boolean)
  * @returns Whether it answered and a plain-language message (Promise<LocalCliCheckResult>)
  */
 export function checkLocalCli(provider: LocalCliProvider): Promise<LocalCliCheckResult> {
-  if (!isDesktopApp()) return sampleCredentialsBackend.checkLocalCli(provider)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleCredentialsBackend.checkLocalCli(provider)
   return callBackend('check_local_cli', { provider })
 }
 
 /** What the user picked on the Welcome screen, or null before they picked anything. */
 export function getWelcomeChoice(): Promise<WelcomeChoice | null> {
-  if (!isDesktopApp()) return sampleCredentialsBackend.getWelcomeChoice()
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleCredentialsBackend.getWelcomeChoice()
   return callBackend('get_welcome_choice')
 }
 
 /** Remembers the Welcome choice, so `/` stops showing Welcome (Skip included). */
 export function setWelcomeChoice(choice: WelcomeChoice): Promise<void> {
-  if (!isDesktopApp()) return sampleCredentialsBackend.setWelcomeChoice(choice)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleCredentialsBackend.setWelcomeChoice(choice)
   return callBackend('set_welcome_choice', { choice })
 }
 
@@ -81,22 +81,22 @@ export function setWelcomeChoice(choice: WelcomeChoice): Promise<void> {
  * @param provider - claude-code-cli, codex-cli or ollama (InstallableModelProvider)
  */
 export function openModelInstallPage(provider: InstallableModelProvider): Promise<void> {
-  if (!isDesktopApp()) return sampleCredentialsBackend.openModelInstallPage(provider)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleCredentialsBackend.openModelInstallPage(provider)
   return callBackend('open_model_install_page', { provider })
 }
 
 export function getDefaultModel(): Promise<ModelChoice> {
-  if (!isDesktopApp()) return sampleCredentialsBackend.getDefaultModel()
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleCredentialsBackend.getDefaultModel()
   return callBackend('get_default_model')
 }
 
 export function setDefaultModel(choice: ModelChoice): Promise<void> {
-  if (!isDesktopApp()) return sampleCredentialsBackend.setDefaultModel(choice)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleCredentialsBackend.setDefaultModel(choice)
   return callBackend('set_default_model', { choice })
 }
 
 export function setOllamaBaseUrl(baseUrl: string): Promise<void> {
-  if (!isDesktopApp()) return sampleCredentialsBackend.setOllamaBaseUrl(baseUrl)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleCredentialsBackend.setOllamaBaseUrl(baseUrl)
   return callBackend('set_ollama_base_url', { baseUrl })
 }
 
@@ -105,7 +105,7 @@ export function setOllamaBaseUrl(baseUrl: string): Promise<void> {
  * stored. Values live in the OS keychain and are shared by every agent using the same name.
  */
 export function listWorkflowSecrets(agentId: string): Promise<WorkflowSecretStatus[]> {
-  if (!isDesktopApp()) return sampleCredentialsBackend.listWorkflowSecrets(agentId)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleCredentialsBackend.listWorkflowSecrets(agentId)
   return callBackend('list_workflow_secrets', { agentId })
 }
 
@@ -114,13 +114,13 @@ export function listWorkflowSecrets(agentId: string): Promise<WorkflowSecretStat
  * and who uses it (Connections, Secrets tab). Values are never returned.
  */
 export function listAllWorkflowSecrets(): Promise<WorkflowSecretOverview[]> {
-  if (!isDesktopApp()) return sampleCredentialsBackend.listAllWorkflowSecrets()
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleCredentialsBackend.listAllWorkflowSecrets()
   return callBackend('list_all_workflow_secrets')
 }
 
 /** Saves or replaces a workflow secret, e.g. `setWorkflowSecret('MAPS_API_KEY', value)`. */
 export function setWorkflowSecret(name: string, value: string): Promise<void> {
-  if (!isDesktopApp()) return sampleCredentialsBackend.setWorkflowSecret(name, value)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleCredentialsBackend.setWorkflowSecret(name, value)
   return callBackend('set_workflow_secret', { name, value })
 }
 
@@ -132,12 +132,12 @@ export function setWorkflowSecret(name: string, value: string): Promise<void> {
  *   or a name that already has a value
  */
 export function addWorkflowSecret(secret: NewWorkflowSecret): Promise<void> {
-  if (!isDesktopApp()) return sampleCredentialsBackend.addWorkflowSecret(secret)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleCredentialsBackend.addWorkflowSecret(secret)
   return callBackend('add_workflow_secret', { secret })
 }
 
 export function deleteWorkflowSecret(name: string): Promise<void> {
-  if (!isDesktopApp()) return sampleCredentialsBackend.deleteWorkflowSecret(name)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleCredentialsBackend.deleteWorkflowSecret(name)
   return callBackend('delete_workflow_secret', { name })
 }
 
@@ -147,6 +147,6 @@ export function deleteWorkflowSecret(name: string): Promise<void> {
  * not be reached comes back with `error` and no models.
  */
 export function listAvailableModels(refresh = false): Promise<ProviderModels[]> {
-  if (!isDesktopApp()) return sampleCredentialsBackend.listAvailableModels(refresh)
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleCredentialsBackend.listAvailableModels(refresh)
   return callBackend('list_available_models', { refresh })
 }

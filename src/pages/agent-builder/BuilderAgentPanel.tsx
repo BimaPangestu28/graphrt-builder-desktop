@@ -1,5 +1,5 @@
-import { splitPaneColumnClassName, splitPaneScrollClassName } from '@/components/layout'
-import { useCallback, useState } from 'react'
+import { Suspense, lazy, useCallback, useState } from 'react'
+import { ScreenLoading, splitPaneColumnClassName, splitPaneScrollClassName } from '@/components/layout'
 import { Link, useSearchParams } from 'react-router-dom'
 import type { SaveGraphResult } from '@/api/agentGraphTypes'
 import type { Agent, FlowSummary } from '@/api/types'
@@ -8,7 +8,12 @@ import { agentPath, builderAskParam } from '@/routes'
 import { AgentIdentityHeader } from './AgentIdentityHeader'
 import { AgentRequirementsList, type BuilderRequirement } from './AgentRequirementsList'
 import { BuilderStepCard } from './BuilderStepCard'
-import { NodesView } from './nodes'
+
+/**
+ * The Nodes tab, loaded when it first opens: it brings React Flow and the whole
+ * canvas, which the Steps tab (what most visits show) never needs.
+ */
+const NodesView = lazy(async () => ({ default: (await import('./nodes/NodesView')).NodesView }))
 
 const builderTabs = [
   { key: 'steps', label: 'Steps' },
@@ -230,7 +235,9 @@ export function BuilderAgentPanel({
 
       {activeTab === 'nodes' ? (
         <div role="tabpanel" id="builder-panel-nodes" aria-labelledby="builder-tab-nodes" className="flex min-h-0 flex-1 flex-col">
-          <NodesView agent={agent} onGraphSaved={onGraphSaved} pluginRequirements={requirements} onAskBuilder={onAskBuilder ?? askBuilder} arePluginsReady={arePluginsReady !== false} onShowPluginSetup={onShowPluginSetup} onFoldChat={onFoldChat} />
+          <Suspense fallback={<ScreenLoading label="Loading the nodes" className="min-h-0" />}>
+            <NodesView agent={agent} onGraphSaved={onGraphSaved} pluginRequirements={requirements} onAskBuilder={onAskBuilder ?? askBuilder} arePluginsReady={arePluginsReady !== false} onShowPluginSetup={onShowPluginSetup} onFoldChat={onFoldChat} />
+          </Suspense>
         </div>
       ) : (
         <div role="tabpanel" id={`builder-panel-${activeTab}`} aria-labelledby={`builder-tab-${activeTab}`} className={`flex flex-col gap-6 p-6 ${splitPaneScrollClassName}`}>

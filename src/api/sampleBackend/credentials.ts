@@ -15,7 +15,7 @@ import type {
 } from '../types'
 import { readSampleMcpServers } from './mcpServers'
 import { requireText, respondWith } from './sampleResponse'
-import { isLocalCliProvider, localCliProviders, localCliShortNames } from '@/data/settings'
+import { isLocalCliProvider, localCliProviders, localCliShortNames } from '@/lib/settings'
 
 /**
  * Sample provider keys for the browser preview and tests. Only whether a key is set

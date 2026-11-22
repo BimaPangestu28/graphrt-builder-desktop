@@ -4,7 +4,6 @@ import { BackendError } from '@/api/client'
 import type { BuildRequest, BuildStage, DraftPreview } from '@/api/types'
 import { AppShell, splitPaneColumnClassName, splitPaneMainClassName, splitPaneScrollClassName } from '@/components/layout'
 import { Button, joinClassNames } from '@/components/ui'
-import { openBuilderDelayMs } from '@/data/mapsLeadsAgent'
 import { useFlowSummary } from '@/hooks/useFlowSummary'
 import { useFollowNewContent } from '@/hooks/useFollowNewContent'
 import { describeError } from '@/lib/agentDisplay'
@@ -17,7 +16,7 @@ import { describeDraftActivity } from './agent-builder/draftActivity'
 import { DraftStepCards, PoliteAnnouncement } from './agent-builder/DraftPreviewParts'
 import { PluginRequirementsMessage } from './agent-builder/PluginRequirementsMessage'
 import { usePluginSetup, type PluginSetupState } from './agent-builder/usePluginSetup'
-import { buildChecklistStages, useAgentBuild, type AgentBuildState } from './agent-builder/useAgentBuild'
+import { buildChecklistStages, openBuilderDelayMs, useAgentBuild, type AgentBuildState } from './agent-builder/useAgentBuild'
 
 const placeholderStepCount = 4
 

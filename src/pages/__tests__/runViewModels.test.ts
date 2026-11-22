@@ -124,6 +124,11 @@ describe('runs screen mapping', () => {
 })
 
 describe('scheduler mapping', () => {
+  it('defaults the block name to the agent name', () => {
+    const trigger = { id: 't2', agentId: 'x', cronExpression: '0 0 7 * * *', timezone: 'UTC', enabled: false, missedRunPolicy: 'run_once', inputs: {}, lastFiredAt: null, nextFireAt: null, createdAt: '2026-11-18T00:00:00Z' } as const
+    expect(toScheduleTrigger(trigger, 'Digest').shortName).toBe('Digest')
+  })
+
   it('turns a cron trigger into a calendar recurrence', () => {
     const scheduleTrigger = toScheduleTrigger(
       {
@@ -139,6 +144,7 @@ describe('scheduler mapping', () => {
         createdAt: '2026-11-18T00:00:00Z',
       },
       'Maps leads to WhatsApp',
+      'Maps leads',
     )
     expect(scheduleTrigger).toMatchObject({ shortName: 'Maps leads', description: 'Weekdays at 09:00', recurrence: { hour: 9, weekdays: [1, 2, 3, 4, 5] } })
   })

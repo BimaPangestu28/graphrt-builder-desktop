@@ -1,5 +1,5 @@
 import type { Run, RunEventRecord, RunFilter, RunStatus as BackendRunStatus, RunTrigger } from '@/api/types'
-import type { RunRecord, RunStatus as RunsScreenStatus, RunStep } from '@/data/runs'
+import type { RunRecord, RunStatus as RunsScreenStatus, RunStep } from '@/pages/runs/runRecordTypes'
 import { agentPath, routePaths, runReviewPath } from '@/routes'
 import { humanizeRunError } from '@/pages/agent-run/runErrorText'
 import { readPauseDeadline, readPauseQuestion } from '@/pages/agent-run/runPauseQuestion'

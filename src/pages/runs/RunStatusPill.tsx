@@ -1,4 +1,4 @@
-import { runStatusLabels, type RunStatus } from '@/data/runs'
+import { runStatusLabels, type RunStatus } from '@/pages/runs/runRecordTypes'
 
 const statusClassNames: Record<RunStatus, string> = {
   running: 'bg-brand-soft text-brand-strong',

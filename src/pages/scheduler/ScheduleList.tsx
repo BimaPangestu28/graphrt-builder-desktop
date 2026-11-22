@@ -1,4 +1,4 @@
-import { getDayOfMonth, getWeekdayName, type CalendarEntry } from '@/data/scheduler'
+import { getDayOfMonth, getWeekdayName, type CalendarEntry } from '@/lib/scheduleCalendar'
 import { CalendarEntryBlock } from './CalendarEntryBlock'
 
 interface ScheduleListProps {
