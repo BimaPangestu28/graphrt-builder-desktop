@@ -3,13 +3,15 @@ import elkWorkerUrl from 'elkjs/lib/elk-worker.min.js?url'
 
 /**
  * Where ELK runs. Laying out a large graph takes long enough to freeze the canvas, so the
- * app runs ELK in a Web Worker (elkjs' `elk-api` talking to `elk-worker.min.js`, served as
- * its own asset). Where there is no `Worker` (jsdom in tests), or the worker fails to load,
- * the bundled in-thread build is loaded instead. Both are loaded on first use only, so
- * neither is part of a chunk the app needs at startup.
+ * app runs ELK in a Web Worker only: elkjs' small `elk-api` talks to `elk-worker.min.js`,
+ * served as its own asset and loaded on first use. Every Tauri webview (WKWebView,
+ * WebView2, WebKitGTK) has Web Workers, so there is no in-thread copy of ELK: it would
+ * ship the same 1.4 MB a second time. When the worker cannot start, `runElkLayout`
+ * rejects with a `LayoutWorkerError` and the canvas places the steps in a row instead.
  *
  * One engine is created lazily and reused: starting the worker and registering ELK's
- * algorithms costs more than a layout of a typical agent.
+ * algorithms costs more than a layout of a typical agent. A failed engine is dropped, so
+ * the next layout tries a fresh worker.
  */
 
 /** The one call the canvas needs from ELK. */
@@ -17,7 +19,7 @@ export interface LayoutEngine {
   layout: (graph: ElkNode) => Promise<ElkNode>
 }
 
-/** The layout worker could not load or crashed (not a problem with the graph). */
+/** The layout worker could not start or crashed (not a problem with the graph). */
 export class LayoutWorkerError extends Error {
   constructor(detail: string) {
     super(`the layout worker failed: ${detail}`)
@@ -27,12 +29,9 @@ export class LayoutWorkerError extends Error {
 
 let sharedEngine: Promise<LayoutEngine> | null = null
 
-function canUseWorker(): boolean {
-  return typeof Worker !== 'undefined'
-}
-
 /** ELK in a worker; `layout` rejects when the worker fails to load or crashes. */
 async function createWorkerEngine(): Promise<LayoutEngine> {
+  if (typeof Worker === 'undefined') throw new LayoutWorkerError('this window cannot start Web Workers')
   const { default: ElkApi } = await import('elkjs/lib/elk-api.js')
   let rejectWithWorkerError: (error: LayoutWorkerError) => void = () => {}
   const workerFailure = new Promise<never>((_resolve, reject) => {
@@ -51,36 +50,28 @@ async function createWorkerEngine(): Promise<LayoutEngine> {
   return { layout: (graph) => Promise.race([elk.layout(graph), workerFailure]) }
 }
 
-/** ELK on the main thread (tests, or when the worker cannot start). */
-async function createInThreadEngine(): Promise<LayoutEngine> {
-  const { default: Elk } = await import('elkjs/lib/elk.bundled.js')
-  const elk = new Elk()
-  return { layout: (graph) => elk.layout(graph) }
-}
-
 function readSharedEngine(): Promise<LayoutEngine> {
-  sharedEngine ??= canUseWorker() ? createWorkerEngine() : createInThreadEngine()
+  sharedEngine ??= createWorkerEngine()
   return sharedEngine
 }
 
 /**
- * Lays `graph` out with ELK, off the main thread when possible.
+ * Lays `graph` out with ELK in a Web Worker.
  *
  * @param graph - ELK graph with sizes and layout options (ElkNode)
  * @returns The same graph with positions and container sizes (Promise<ElkNode>)
+ * @throws LayoutWorkerError - when the worker cannot start or crashes (the next call retries)
  * @throws Error - when ELK cannot lay the graph out (malformed nesting)
  *
  * @example
  * const laidOut = await runElkLayout({ id: 'root', children: [{ id: 'a', width: 10, height: 10 }] })
  */
 export async function runElkLayout(graph: ElkNode): Promise<ElkNode> {
-  const engine = await readSharedEngine()
   try {
+    const engine = await readSharedEngine()
     return await engine.layout(graph)
   } catch (layoutError) {
-    if (!(layoutError instanceof LayoutWorkerError)) throw layoutError
-    console.warn('laying the steps out on the main thread instead', layoutError)
-    sharedEngine = createInThreadEngine()
-    return (await sharedEngine).layout(graph)
+    if (layoutError instanceof LayoutWorkerError) sharedEngine = null
+    throw layoutError
   }
 }

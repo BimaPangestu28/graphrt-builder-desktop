@@ -9,8 +9,12 @@ import { isSampleWorkflowSecretConfigured, resetSampleCredentials, sampleCredent
 import { resetSamplePlugins, samplePluginsBackend, setSampleAgentPluginNeeds, setSampleBrowserRuntimeStatus } from '@/api/sampleBackend/plugins'
 import type { BuildProgress, WorkflowSecretStatus } from '@/api/types'
 import { agentPath, agentRoutePatterns, builderAskParam, routePaths } from '@/routes'
+import { installReactFlowTestEnvironment } from '@/test/reactFlowTestEnvironment'
 import { LocationProbe } from '@/test/runTestUtils'
 import { BuilderPage } from '../BuilderPage'
+
+// The Nodes tab renders the canvas: stand-in layout (jsdom has no Worker for ELK)
+vi.mock('../agent-builder/nodes/flow/layoutEngine', () => import('../agent-builder/nodes/__tests__/fakeElkLayout'))
 
 function renderBuilderPage(agentId = 'maps-leads', query?: Record<string, string>) {
   return render(
@@ -33,6 +37,7 @@ async function sendChange(request: string) {
 }
 
 describe('BuilderPage', () => {
+  beforeAll(() => installReactFlowTestEnvironment())
   beforeEach(() => {
     resetSampleAgents()
     resetSampleBuilder()

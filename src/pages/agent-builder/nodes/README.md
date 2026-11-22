@@ -29,7 +29,7 @@ the canvas.
 
 - `flowLibrary.ts`: the only import of `@xyflow/react` 12.12.1.
 - `toFlowElements.ts`: graph → React Flow nodes and edges (plugin labels through `lib/pluginDisplayName`, like the rest of the app). `StepNode.tsx`, `StepEdge.tsx`, `NodeKindIcon.tsx` render them.
-- `autoLayout.ts` + `layoutEngine.ts`: ELK (`elkjs` 0.12.0) places nodes without a saved position. `layoutEngine` runs ELK in a Web Worker (`elk-api` + `elk-worker.min.js`, emitted as its own asset) so a large layout never blocks the canvas; without `Worker` (jsdom) or when the worker fails it loads the bundled in-thread build. One engine is created on first use and reused. Canvas tests replace it with `__tests__/fakeElkLayout.ts`.
+- `autoLayout.ts` + `layoutEngine.ts`: ELK (`elkjs` 0.12.0) places nodes without a saved position. `layoutEngine` runs ELK in a Web Worker only (`elk-api` + `elk-worker.min.js`, emitted as its own asset) so a large layout never blocks the canvas; there is no in-thread copy of ELK (every Tauri webview has workers). When the worker cannot start, the layout rejects with `LayoutWorkerError` and the canvas places the steps in a row; the next layout tries a fresh worker. One engine is created on first use and reused. Canvas tests replace it with `__tests__/fakeElkLayout.ts`; tests that need real ELK stub `Worker` with `__tests__/elkTestWorker.ts` (elkjs' FakeWorker).
 - `useCanvasLayout.ts`: merges saved and auto-laid-out positions (`mergedPositions`), reports placed ones through `onPlaced`.
 - Behaviour hooks used by `NodeCanvas`, each with one job:
   - `useConnectMode`: drawing arrows by drag or keyboard (Enter on a port, Enter on the target), per-target `checkConnection` while drawing, reconnecting an arrow's end.

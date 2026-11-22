@@ -1,3 +1,5 @@
+import { ElkTestWorker } from './elkTestWorker'
+
 const tinyGraph = {
   id: 'root',
   layoutOptions: { 'elk.algorithm': 'layered', 'elk.direction': 'DOWN' },
@@ -26,14 +28,35 @@ async function importFreshLayoutEngine() {
 describe('runElkLayout', () => {
   afterEach(() => vi.unstubAllGlobals())
 
-  it('lays out on the main thread where there is no Worker (jsdom)', async () => {
+  it('lays the graph out in the ELK worker', async () => {
+    const createdWorkers: ElkTestWorker[] = []
+    vi.stubGlobal(
+      'Worker',
+      class extends ElkTestWorker {
+        constructor(url: string) {
+          super(url)
+          createdWorkers.push(this)
+        }
+      },
+    )
     const { runElkLayout } = await importFreshLayoutEngine()
+
     const laidOut = await runElkLayout(tinyGraph)
+
     const [first, second] = laidOut.children ?? []
     expect(second.y).toBeGreaterThan(first.y ?? 0)
+    expect(createdWorkers).toHaveLength(1)
+    expect(createdWorkers[0].url).toMatch(/elk-worker\.min\.js/)
   })
 
-  it('falls back to the main thread when the worker cannot load', async () => {
+  it('rejects with a LayoutWorkerError where there is no Worker', async () => {
+    vi.stubGlobal('Worker', undefined)
+    const { runElkLayout, LayoutWorkerError } = await importFreshLayoutEngine()
+
+    await expect(runElkLayout(tinyGraph)).rejects.toBeInstanceOf(LayoutWorkerError)
+  })
+
+  it('rejects when the worker cannot load, and starts a fresh worker on the next layout', async () => {
     const createdWorkers: FailingWorker[] = []
     vi.stubGlobal(
       'Worker',
@@ -44,14 +67,10 @@ describe('runElkLayout', () => {
         }
       },
     )
-    vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const { runElkLayout } = await importFreshLayoutEngine()
+    const { runElkLayout, LayoutWorkerError } = await importFreshLayoutEngine()
 
-    const laidOut = await runElkLayout(tinyGraph)
-
-    expect(createdWorkers).toHaveLength(1)
-    expect(createdWorkers[0].url).toMatch(/elk-worker\.min\.js/)
-    expect(laidOut.children?.map((child) => child.id)).toEqual(['first', 'second'])
-    expect(console.warn).toHaveBeenCalledWith('laying the steps out on the main thread instead', expect.any(Error))
+    await expect(runElkLayout(tinyGraph)).rejects.toBeInstanceOf(LayoutWorkerError)
+    await expect(runElkLayout(tinyGraph)).rejects.toThrow('the layout worker failed: blocked')
+    expect(createdWorkers).toHaveLength(2)
   })
 })

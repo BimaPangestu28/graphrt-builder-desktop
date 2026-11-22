@@ -6,7 +6,7 @@
  * Use these as Tailwind utilities, e.g. bg-ink, text-muted, border-line, bg-amber-soft.
  */
 @theme {
-  --font-sans: Geist, system-ui, sans-serif;
+  --font-sans: 'Geist Variable', Geist, system-ui, sans-serif;
 
   --color-ink: #18181B;          /* primary text, primary buttons */
   --color-ink-2: #3F3F46;        /* nav links, secondary text */

@@ -190,7 +190,12 @@ export function NodesView({
 
   async function placeAllNodes() {
     if (!graph) return
-    moveNodes(await computeAutoLayout(graph))
+    try {
+      moveNodes(await computeAutoLayout(graph))
+    } catch (layoutError) {
+      // The steps keep their places; the next click tries a fresh layout worker
+      console.warn('auto-layout failed, keeping the current positions', layoutError)
+    }
   }
 
   async function startTest() {

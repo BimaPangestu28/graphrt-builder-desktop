@@ -4,6 +4,7 @@ import type { AgentGraph } from '@/api/agentGraphTypes'
 import { computeAutoLayout, mergeLayouts } from '../flow/autoLayout'
 import { toFlowEdges, toFlowNodes } from '../flow/toFlowElements'
 import { addGraphEdge, changedNodeIds, createGraphNode, isSameGraph, removeGraphNodes, toGraphEdit, uniqueNodeId, updateGraphNode } from '../graphEdits'
+import { ElkTestWorker } from './elkTestWorker'
 
 async function loadSampleGraph(): Promise<AgentGraph> {
   return sampleAgentGraphBackend.getAgentGraph('maps-leads')
@@ -66,7 +67,10 @@ describe('canvas elements', () => {
   beforeEach(() => {
     resetSampleAgents()
     resetSampleAgentGraphs()
+    // jsdom has no Worker; real ELK runs behind elkjs' FakeWorker
+    vi.stubGlobal('Worker', ElkTestWorker)
   })
+  afterEach(() => vi.unstubAllGlobals())
 
   it('lays every node out, with loop bodies inside their container', async () => {
     const graph = await loadSampleGraph()
