@@ -17,6 +17,7 @@ const problemLabels: Record<string, string> = {
   unreachable: 'Not connected',
   compile_warning: 'Check this',
   send_without_approval: 'Sends without asking',
+  approval_timeout_sends: 'Sends when time runs out',
   placeholder_address: 'Placeholder address',
   model_provider_not_set_up: 'Model not connected',
   model_capability: 'Model can’t do this',

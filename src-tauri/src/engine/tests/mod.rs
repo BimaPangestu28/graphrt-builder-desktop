@@ -140,7 +140,11 @@ async fn wait_for_status_count(sink: &CollectingSink, run_id: &str, status: RunS
         if seen >= count {
             return;
         }
-        assert!(tokio::time::Instant::now() < deadline, "run {run_id} never reached {status:?}");
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "run {run_id} never reached {status:?}: {:?}",
+            sink.payloads_for(run_id).iter().map(|p| (p.status, p.event.clone())).collect::<Vec<_>>()
+        );
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
 }
@@ -410,9 +414,62 @@ async fn stored_workflow_secrets_reach_the_flow_and_defaults_fill_the_rest() {
     wait_for_status(&harness.sink, &run.id, RunStatus::Succeeded).await;
 
     let prompt = model.requests()[0].messages[0].text();
-    assert_eq!(prompt, "Write a friendly note signed Bima Catering");
+    // SIGNATURE comes from the keychain, so it is masked like any secret; TONE is a plain document default.
+    assert!(prompt.starts_with("Write a friendly note signed "), "{prompt}");
+    assert!(!prompt.contains("Bima Catering"), "{prompt}");
     let stored_events = serde_json::to_string(&harness.db.list_run_events(&run.id).unwrap()).unwrap();
     assert!(!stored_events.contains("token-123"), "secret leaked into stored events");
+}
+
+/// Reads a stored key through an env variable declared WITHOUT `type: secret`.
+const UNDECLARED_SECRET_FLOW: &str = r#"
+version: "1"
+name: undeclared-secret
+env:
+  - { name: SHOP_KEY, type: string }
+graph:
+  nodes:
+    - { id: start, type: start, variables: [] }
+    - id: write
+      type: llm
+      model: { provider: openai, name: gpt-4o-mini }
+      prompt_template:
+        - { role: user, text: "Use key {{#env.SHOP_KEY#}} to write a note" }
+    - id: end
+      type: end
+      outputs:
+        - { variable: note, value_selector: [write, text] }
+  edges:
+    - { source: start, target: write }
+    - { source: write, target: end }
+"#;
+
+#[tokio::test]
+async fn a_stored_value_is_masked_even_when_the_document_does_not_declare_it_secret() {
+    let model = Arc::new(MockModel::new(vec![MockModel::text("Done")]));
+    let harness = harness_with_model(model.clone());
+    harness.credentials.set_workflow_secret("SHOP_KEY", "shop-key-9f8e7d").unwrap();
+    let agent = create_agent(&harness.db, UNDECLARED_SECRET_FLOW);
+
+    let run = harness.runs.start_run(&agent.id, RunTrigger::Test, json!({})).await.unwrap();
+    wait_for_status(&harness.sink, &run.id, RunStatus::Succeeded).await;
+
+    let stored_events = serde_json::to_string(&harness.db.list_run_events(&run.id).unwrap()).unwrap();
+    assert!(!stored_events.contains("shop-key-9f8e7d"), "stored key leaked into stored events");
+    let sent_events = format!("{:?}", harness.sink.payloads.lock().unwrap());
+    assert!(!sent_events.contains("shop-key-9f8e7d"), "stored key leaked into live events");
+    let stored_run = serde_json::to_string(&harness.db.get_run(&run.id).unwrap()).unwrap();
+    assert!(!stored_run.contains("shop-key-9f8e7d"), "stored key leaked into the run row");
+    let prompt = model.requests()[0].messages[0].text();
+    assert!(!prompt.contains("shop-key-9f8e7d"), "stored key leaked into the prompt: {prompt}");
+}
+
+#[test]
+fn workflow_env_wraps_every_stored_value_as_a_secret() {
+    let credentials = crate::credentials::CredentialStore::in_memory();
+    credentials.set_workflow_secret("SHOP_KEY", "shop-key-9f8e7d").unwrap();
+    let env = super::preparation::workflow_env(UNDECLARED_SECRET_FLOW, &credentials).unwrap();
+    assert!(matches!(env.get("SHOP_KEY"), Some(graphrt_core::Value::Secret(_))), "{env:?}");
 }
 
 #[tokio::test]

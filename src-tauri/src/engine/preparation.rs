@@ -35,13 +35,26 @@ pub(super) fn build_engine(
     ensure_plugins_installed(flow_yaml)?;
     let summary = flow::summarize_flow(flow_yaml)?;
     ensure_providers_configured(&summary.model_providers, credentials, db)?;
-    let graph = flow::compile_flow(flow_yaml)?;
+    let graph = flow::compile_flow_with_secret_env(flow_yaml, &keychain_env_names(&summary, credentials)?)?;
     let http_client = graphrt_http::HttpClient::new(graphrt_http::EgressPolicy::default())
         .map_err(|error| AppError::Internal(format!("could not set up the HTTP client: {error}")))?;
     let services = Services::new().with(model_source.build_registry(credentials, db)?).with(http_client).with(tools);
     // Knowledge bases for the `knowledge-retrieval` node (stores open on first search).
     let services = services.with(crate::knowledge::knowledge_service_for_runs(db, credentials)?);
     Ok(Engine::new(Arc::new(graph)).with_services(services).with_limits(run_limits(db)))
+}
+
+/// Declared env variables not typed `secret` whose value is stored in the
+/// keychain: [`workflow_env`] passes those as secrets, so the run's graph
+/// declares them `secret` too (graphrt checks supplied values against the type).
+fn keychain_env_names(summary: &flow::FlowSummary, credentials: &CredentialStore) -> AppResult<Vec<String>> {
+    let mut names = Vec::new();
+    for variable in summary.env.iter().filter(|variable| !variable.is_secret) {
+        if credentials.has_workflow_secret(&variable.name)? {
+            names.push(variable.name.clone());
+        }
+    }
+    Ok(names)
 }
 
 /// The run limits from Settings › Runner (graphrt counts active run time, not time paused).
@@ -121,9 +134,11 @@ pub(super) fn json_object_to_value_map(json: serde_json::Value, what: &str) -> A
 /// Workflow `env.*` values for a run of `flow_yaml`, read from the keychain and
 /// supplied on start and resume (graphrt never stores them in snapshots).
 ///
-/// Variables declared as `type: secret` are passed as graphrt secrets, so they
-/// are masked in events and logs. A variable with no stored value falls back to
-/// its declared default; one with neither is reported as missing.
+/// Every value read from the keychain is passed as a graphrt secret, so it is
+/// masked in events, logs and stored rows even when the document does not
+/// declare the variable `type: secret`. A variable with no stored value falls
+/// back to its declared default (plain, from the document); one with neither is
+/// reported as missing.
 ///
 /// # Errors
 /// `MissingCredentials` listing every variable that has no value and no default,
@@ -134,13 +149,10 @@ pub(super) fn workflow_env(flow_yaml: &str, credentials: &CredentialStore) -> Ap
     let mut missing_names = Vec::new();
     for variable in summary.env {
         match credentials.read_workflow_secret(&variable.name)? {
+            // Everything kept in the keychain is masked, whatever type the document
+            // declares: a draft must not unmask a stored secret by leaving out `type: secret`.
             Some(stored_value) => {
-                let value = if variable.is_secret {
-                    Value::Secret(Arc::from(stored_value.as_str()))
-                } else {
-                    Value::String(Arc::from(stored_value.as_str()))
-                };
-                env.insert(variable.name, value);
+                env.insert(variable.name, Value::Secret(Arc::from(stored_value.as_str())));
             }
             None if variable.has_default => {}
             None => missing_names.push(variable.name),

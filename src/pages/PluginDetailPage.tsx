@@ -20,7 +20,7 @@ import {
   PluginUsersSection,
   PluginWarningBox,
 } from './plugins/PluginDetailSections'
-import { buildPluginListItems, describeCommunityInstallNote, describeMaturity, describePluginSource, describePluginStatus, type PluginListItem } from './plugins/pluginDisplay'
+import { buildPluginListItems, describeCommunityInstallNote, pluginInstallTrustNote, describeMaturity, describePluginSource, describePluginStatus, type PluginListItem } from './plugins/pluginDisplay'
 import { PluginIcon } from './plugins/PluginIcon'
 import { usePluginUsers } from './plugins/usePluginUsers'
 
@@ -46,6 +46,7 @@ function HeaderActions({ item, plugins }: { item: PluginListItem; plugins: Plugi
         <span className="text-right text-[12px] leading-normal text-muted">
           {communityNote && `${communityNote} `}Runs its code on this computer. It starts untrusted, without settings or secrets.
         </span>
+        <span className="text-right text-[12px] font-medium leading-normal text-ink-2">{pluginInstallTrustNote}</span>
       </div>
     )
   }

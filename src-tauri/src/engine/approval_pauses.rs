@@ -34,15 +34,14 @@ use graphrt_core::Graph;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value as Json};
 
+use crate::flow::TimeoutChoice;
+
 pub(crate) const HUMAN_INPUT_PAUSE_KIND: &str = "human_input";
 pub(crate) const TOOL_APPROVAL_PAUSE_KIND: &str = "tool_approval";
 const HUMAN_INPUT_NODE_KIND: &str = "human-input";
 const AGENT_NODE_KIND: &str = "agent";
 pub(crate) const EXPIRES_AT_KEY: &str = "expires_at";
 pub(crate) const ON_TIMEOUT_KEY: &str = "on_timeout";
-const ON_TIMEOUT_CONFIG_KEY: &str = "on_timeout";
-/// The button graphrt's `human-input` node offers when the step sets none.
-const DEFAULT_HUMAN_INPUT_ACTION: &str = "submit";
 /// Shown instead of a tool argument that looks like a secret.
 pub(crate) const REDACTED: &str = "[hidden]";
 /// Longest tool name graphrt offers a model (see `unique_name` in graphrt-llm's agent node).
@@ -100,12 +99,23 @@ impl PauseSettings {
 
     fn from_graph(graph: &Graph) -> Self {
         let mut settings = Self::default();
+        let answers_into_a_send: Vec<String> =
+            crate::flow::timeouts_that_send(graph).into_iter().map(|timeout| timeout.approval_node_id).collect();
         for node in graph.nodes() {
             let config = &node.doc.config;
             match node.kind.as_str() {
                 HUMAN_INPUT_NODE_KIND => {
                     let timeout_ms = node.policy.timeout_ms.or_else(|| config.get("timeout_ms").and_then(Json::as_u64));
-                    let on_timeout = read_on_timeout(&node.id, config);
+                    let on_timeout = if answers_into_a_send.iter().any(|node_id| **node_id == *node.id) {
+                        // Saved before validation refused this: never send without a person answering.
+                        log::warn!(
+                            "approval step {}: on_timeout would answer into a send, the run stops instead",
+                            node.id
+                        );
+                        TimeoutAction::Stop
+                    } else {
+                        read_on_timeout(&node.id, config)
+                    };
                     settings.approval_steps.insert(node.id.to_string(), ApprovalStepTimeout { timeout_ms, on_timeout });
                 }
                 AGENT_NODE_KIND => {
@@ -175,36 +185,13 @@ fn deadline_after(now: DateTime<Utc>, timeout_ms: u64) -> DateTime<Utc> {
 /// `on_timeout: stop`, `on_timeout: { action: <id> }` or `on_timeout: <id>`; anything
 /// else (or a button the step does not have) stops the run.
 fn read_on_timeout(node_id: &str, config: &Map<String, Json>) -> TimeoutAction {
-    let action_id = match config.get(ON_TIMEOUT_CONFIG_KEY) {
-        None | Some(Json::Null) => return TimeoutAction::Stop,
-        Some(Json::String(text)) if text == "stop" => return TimeoutAction::Stop,
-        Some(Json::String(text)) => Some(text.as_str()),
-        Some(Json::Object(choice)) => choice.get("action").and_then(Json::as_str),
-        Some(_) => None,
-    };
-    let action_ids = read_action_ids(config);
-    match action_id {
-        Some(action_id) if action_ids.iter().any(|known_id| known_id == action_id) => {
-            TimeoutAction::Answer { action: action_id.to_owned() }
-        }
-        _ => {
+    match crate::flow::read_timeout_choice(config) {
+        TimeoutChoice::Stop => TimeoutAction::Stop,
+        TimeoutChoice::Answer(action) => TimeoutAction::Answer { action },
+        TimeoutChoice::UnknownAction => {
             log::warn!("approval step {node_id}: on_timeout names no button of the step, the run stops instead");
             TimeoutAction::Stop
         }
-    }
-}
-
-/// Button ids of a `human-input` step; graphrt adds `submit` when none are set.
-fn read_action_ids(config: &Map<String, Json>) -> Vec<String> {
-    let action_ids: Vec<String> = config
-        .get("actions")
-        .and_then(Json::as_array)
-        .map(|actions| actions.iter().filter_map(|action| text(action, "id").map(str::to_owned)).collect())
-        .unwrap_or_default();
-    if action_ids.is_empty() {
-        vec![DEFAULT_HUMAN_INPUT_ACTION.to_owned()]
-    } else {
-        action_ids
     }
 }
 

@@ -127,6 +127,9 @@ pub fn validate_input(input: McpServerInput) -> AppResult<McpServerDefinition> {
         McpServerTransport::Http { .. } if !secret_env.is_empty() => {
             return Err(invalid("environment secrets only apply to servers started by a command"));
         }
+        McpServerTransport::Http { url } if bearer_token_secret.is_some() && !may_carry_a_token(url) => {
+            return Err(invalid(BEARER_OVER_HTTP_MESSAGE));
+        }
         _ => {}
     }
     for secret_name in secret_env.iter().chain(bearer_token_secret.iter()) {
@@ -140,6 +143,23 @@ pub fn validate_input(input: McpServerInput) -> AppResult<McpServerDefinition> {
         known_tools: Vec::new(),
         last_check: None,
     })
+}
+
+const BEARER_OVER_HTTP_MESSAGE: &str = "a bearer token is only sent over https:// (or http:// to this computer: \
+     localhost, 127.0.0.1 or ::1); change the address to https://";
+
+/// Whether a bearer token may go to `url`: `https://`, or `http://` to a loopback host.
+fn may_carry_a_token(url: &str) -> bool {
+    let Ok(parsed) = reqwest::Url::parse(url) else { return false };
+    match parsed.scheme() {
+        "https" => true,
+        "http" => parsed.host_str().is_some_and(|host| {
+            let host = host.trim_start_matches('[').trim_end_matches(']');
+            host.eq_ignore_ascii_case("localhost")
+                || host.parse::<std::net::IpAddr>().is_ok_and(|address| address.is_loopback())
+        }),
+        _ => false,
+    }
 }
 
 fn invalid(message: &str) -> AppError {
@@ -323,6 +343,8 @@ pub fn runtime_config(definition: &McpServerDefinition, credentials: &Credential
         }
         McpServerTransport::Http { url } => {
             let bearer_token = match &definition.bearer_token_secret {
+                // A definition saved before this rule: never send the token in clear text.
+                Some(_) if !may_carry_a_token(url) => return Err(invalid(BEARER_OVER_HTTP_MESSAGE)),
                 Some(secret_name) => read_secret(secret_name)?,
                 None => None,
             };

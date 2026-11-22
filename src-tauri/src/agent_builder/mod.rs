@@ -358,9 +358,17 @@ fn validate_draft(flow_yaml: &str, builder: &BuilderModel) -> Result<FlowSummary
     if !unapproved.is_empty() {
         return Err(format!(
             "these steps send data without asking the user first: {}. Put a `human-input` approval step before \
-             each of them on every path (only its approve action may lead to the sending step)",
+             each of them on every path (only its approve action may lead to the sending step). Steps that send \
+             include POST/PUT/PATCH/DELETE requests, any `http-request` whose URL, params, headers, authorization \
+             or body reads a `{{{{#…#}}}}` value, plugin and `tool` steps that send or change something, and \
+             `agent` steps with such tools unless `require_approval` lists every one of them",
             unapproved.join(", ")
         ));
+    }
+    // An approval that answers by itself when its time runs out does not ask anyone.
+    let timeouts = flow::find_timeouts_that_send(flow_yaml).map_err(|error| error.to_string())?;
+    if !timeouts.is_empty() {
+        return Err(format!("{}. An approval must never send by itself", timeouts.join("; ")));
     }
     Ok(summary)
 }

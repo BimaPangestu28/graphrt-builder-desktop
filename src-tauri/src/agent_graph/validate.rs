@@ -3,8 +3,8 @@
 //! The same checks the builder runs on a drafted document (`agent_builder::validate_draft`):
 //! graphrt compilation with the draft registry (catalog plugins that are not
 //! installed compile through placeholders), model providers that are set up,
-//! no placeholder HTTP hosts, and an approval before every step that sends
-//! data. Plus editor-only findings: graphrt warnings (unreachable steps,
+//! no placeholder HTTP hosts, an approval before every step that sends
+//! data, and no approval whose time limit answers into a send. Plus editor-only findings: graphrt warnings (unreachable steps,
 //! references into another loop body), arrows from an exit the node does not
 //! have, and plugin steps that are not installed yet.
 
@@ -88,6 +88,11 @@ fn rule_problems(graph: &Graph, nodes: &[GraphNodeView]) -> Vec<GraphProblem> {
             problem(ProblemSeverity::Error, problem_codes::SEND_WITHOUT_APPROVAL, message, Some(node_id), None)
         })
         .collect();
+    problems.extend(flow::timeouts_that_send(graph).iter().map(|timeout| {
+        let message = flow::timeout_send_message(timeout);
+        let node_id = Some(timeout.approval_node_id.clone());
+        problem(ProblemSeverity::Error, problem_codes::APPROVAL_TIMEOUT_SENDS, message, node_id, None)
+    }));
     problems.extend(flow::placeholder_http_node_hosts(graph).into_iter().map(|(node_id, host)| {
         let message = format!("{} calls {host}, a placeholder address that does not exist", title_of(&node_id));
         problem(ProblemSeverity::Error, problem_codes::PLACEHOLDER_ADDRESS, message, Some(node_id), None)

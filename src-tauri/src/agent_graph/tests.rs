@@ -46,6 +46,49 @@ fn problem_codes_of(graph: &AgentGraph) -> Vec<&str> {
     graph.problems.iter().map(|problem| problem.code.as_str()).collect()
 }
 
+#[test]
+fn every_approval_bypass_trick_is_a_blocking_problem_on_its_step() {
+    let registry = flow::builtin_node_registry();
+    for (trick, draft, flagged_step) in flow::test_fixtures::approval_bypass_drafts() {
+        let graph = graph_of(&draft, &registry);
+        let blocking = graph.problems.iter().find(|problem| {
+            (problem.code == problem_codes::SEND_WITHOUT_APPROVAL
+                || problem.code == problem_codes::APPROVAL_TIMEOUT_SENDS)
+                && problem.node_id.as_deref() == Some(flagged_step)
+        });
+        let blocking = blocking.unwrap_or_else(|| panic!("{trick}: {:?}", graph.problems));
+        assert_eq!(blocking.severity, ProblemSeverity::Error, "{trick}");
+        assert!(validate::has_errors(&graph.problems), "{trick}");
+    }
+}
+
+#[test]
+fn a_search_reading_codex_output_without_an_approval_is_a_blocking_problem() {
+    let registry = flow::builtin_node_registry();
+    let flagged = graph_of(&flow::test_fixtures::model_output_into_a_search("codex-cli", true, false), &registry);
+    let problem = flagged.problems.iter().find(|problem| problem.code == problem_codes::SEND_WITHOUT_APPROVAL);
+    assert_eq!(problem.and_then(|problem| problem.node_id.as_deref()), Some("lookup"), "{:?}", flagged.problems);
+
+    let approved = graph_of(&flow::test_fixtures::model_output_into_a_search("codex-cli", true, true), &registry);
+    assert!(!problem_codes_of(&approved).contains(&problem_codes::SEND_WITHOUT_APPROVAL), "{:?}", approved.problems);
+    let api_model = graph_of(&flow::test_fixtures::model_output_into_a_search("openai", true, false), &registry);
+    assert!(!problem_codes_of(&api_model).contains(&problem_codes::SEND_WITHOUT_APPROVAL), "{:?}", api_model.problems);
+}
+
+#[test]
+fn an_approval_answering_into_a_send_on_timeout_explains_how_to_fix_it() {
+    let registry = flow::builtin_node_registry();
+    let (_, draft, _) = flow::test_fixtures::approval_bypass_drafts().pop().unwrap();
+    let graph = graph_of(&draft, &registry);
+    let problem = graph.problems.iter().find(|problem| problem.code == problem_codes::APPROVAL_TIMEOUT_SENDS).unwrap();
+    assert!(problem.message.contains("on_timeout") && problem.message.contains("`stop`"), "{}", problem.message);
+    assert!(node(&graph, "leak").sends_data);
+
+    let repaired = graph_of(&flow::test_fixtures::timeout_draft_repaired(), &registry);
+    assert!(!problem_codes_of(&repaired).contains(&problem_codes::APPROVAL_TIMEOUT_SENDS), "{:?}", repaired.problems);
+    assert!(!problem_codes_of(&repaired).contains(&problem_codes::SEND_WITHOUT_APPROVAL));
+}
+
 fn create_agent(db: &Database, flow_yaml: &str) -> String {
     let new_agent = NewAgent {
         name: "Nodes".into(),
@@ -241,16 +284,20 @@ fn compile_errors_and_rule_problems_are_pinned_to_their_nodes() {
     assert_eq!(unknown.severity, ProblemSeverity::Error);
     assert_eq!(graph.nodes.len(), 3, "a document that does not compile still shows its nodes");
 
-    let without_approval = APPROVAL_LOOP
+    let without_approval = flow::test_fixtures::without_search_confirmation(APPROVAL_LOOP)
         .replace(
             "    - { source: draft_message, target: approve_message }\n",
             "    - { source: draft_message, target: send_message }\n",
         )
         .replace("    - { source: approve_message, target: send_message, handle: send }\n", "");
     let graph = graph_of(&without_approval, &registry);
-    let unapproved =
-        graph.problems.iter().find(|problem| problem.code == problem_codes::SEND_WITHOUT_APPROVAL).unwrap();
-    assert_eq!(unapproved.node_id.as_deref(), Some("send_message"));
+    let unapproved: Vec<Option<&str>> = graph
+        .problems
+        .iter()
+        .filter(|problem| problem.code == problem_codes::SEND_WITHOUT_APPROVAL)
+        .map(|problem| problem.node_id.as_deref())
+        .collect();
+    assert_eq!(unapproved, [Some("find_cafes"), Some("send_message")]);
 
     let placeholder = SIMPLE_ANSWER.replace(
         "    - id: reply\n",
@@ -432,7 +479,7 @@ fn saving_waits_while_the_builder_changes_the_agent() {
 #[test]
 fn an_edit_with_blocking_problems_is_refused_with_them() {
     let db = Database::open_in_memory().unwrap();
-    let agent_id = create_agent(&db, APPROVAL_LOOP);
+    let agent_id = create_agent(&db, &flow::test_fixtures::without_search_confirmation(APPROVAL_LOOP));
     let registry = flow::builtin_node_registry();
     let context = GraphContext::new(&registry);
     let mut edit = edit_of(&load_agent_graph(&db, &agent_id, None, &context).unwrap());
@@ -460,7 +507,7 @@ fn an_edit_with_blocking_problems_is_refused_with_them() {
 #[test]
 fn validating_an_edit_reports_its_problems_and_saves_nothing() {
     let db = Database::open_in_memory().unwrap();
-    let agent_id = create_agent(&db, APPROVAL_LOOP);
+    let agent_id = create_agent(&db, &flow::test_fixtures::without_search_confirmation(APPROVAL_LOOP));
     let registry = flow::builtin_node_registry();
     let context = GraphContext::new(&registry);
     let graph = load_agent_graph(&db, &agent_id, None, &context).unwrap();

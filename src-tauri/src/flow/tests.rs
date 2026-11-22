@@ -87,10 +87,18 @@ fn approval_loop_steps_follow_execution_order_with_depth() {
     let summary = summarize_flow(APPROVAL_LOOP).unwrap();
     assert_eq!(
         step_ids(&summary),
-        ["find_cafes", "each_cafe", "draft_message", "approve_message", "send_message", "write_report"]
+        [
+            "confirm_search",
+            "find_cafes",
+            "each_cafe",
+            "draft_message",
+            "approve_message",
+            "send_message",
+            "write_report"
+        ]
     );
     let depths: Vec<u32> = summary.steps.iter().map(|step| step.depth).collect();
-    assert_eq!(depths, [0, 0, 1, 1, 1, 0]);
+    assert_eq!(depths, [0, 0, 0, 1, 1, 1, 0]);
 }
 
 #[test]
@@ -113,8 +121,11 @@ fn approval_loop_titles_details_and_approval() {
     let send = find_step(&summary, "send_message");
     assert_eq!(send.detail, "POST graph.facebook.com");
     assert!(!send.needs_approval);
+    let confirm = find_step(&summary, "confirm_search");
+    assert_eq!(confirm.title, "Ask before searching");
+    assert!(confirm.needs_approval);
     let approvals = summary.steps.iter().filter(|step| step.needs_approval).count();
-    assert_eq!(approvals, 1);
+    assert_eq!(approvals, 2);
 }
 
 #[test]
@@ -226,17 +237,21 @@ fn post_without_approval_is_reported() {
 
 #[test]
 fn a_bypass_around_the_approval_is_reported() {
-    let bypassed = APPROVAL_LOOP.replace(
+    let bypassed = test_fixtures::without_search_confirmation(APPROVAL_LOOP).replace(
         "    - { source: draft_message, target: approve_message }",
         "    - { source: draft_message, target: approve_message }\n    - { source: draft_message, target: send_message }",
     );
     assert_ne!(bypassed, APPROVAL_LOOP, "fixture edge text changed; update this test");
-    assert_eq!(find_unapproved_sending_steps(&bypassed).unwrap(), vec!["Send the WhatsApp message".to_owned()]);
+    // Without "Ask before searching" the search (it carries the area and the Maps key) is unapproved too.
+    assert_eq!(
+        find_unapproved_sending_steps(&bypassed).unwrap(),
+        vec!["Find cafes on Google Maps".to_owned(), "Send the WhatsApp message".to_owned()]
+    );
 }
 
 #[test]
 fn approval_before_a_loop_covers_sending_steps_inside_it() {
-    let approval_moved = APPROVAL_LOOP
+    let approval_moved = test_fixtures::without_search_confirmation(APPROVAL_LOOP)
         .replace("      type: human-input\n      parent: each_cafe\n", "      type: human-input\n")
         .replace(
             "    - { source: find_cafes, target: each_cafe }",
@@ -245,7 +260,8 @@ fn approval_before_a_loop_covers_sending_steps_inside_it() {
         .replace("    - { source: draft_message, target: approve_message }\n", "    - { source: draft_message, target: send_message }\n")
         .replace("    - { source: approve_message, target: send_message, handle: send }\n", "")
         .replace("{{#each_cafe.item.name#}}?\\n\\n{{#draft_message.text#}}", "all cafes?");
-    assert_eq!(find_unapproved_sending_steps(&approval_moved).unwrap(), Vec::<String>::new());
+    // The send inside the loop is covered; only the search before the approval is not.
+    assert_eq!(find_unapproved_sending_steps(&approval_moved).unwrap(), vec!["Find cafes on Google Maps".to_owned()]);
 }
 
 #[test]
@@ -293,4 +309,75 @@ fn http_steps_calling_placeholder_addresses_are_found() {
         find_placeholder_http_steps(&with_placeholder).unwrap(),
         vec!["Send the WhatsApp message (api.example.com)".to_owned()]
     );
+}
+
+#[test]
+fn every_approval_bypass_trick_is_caught() {
+    for (trick, draft, flagged_step) in test_fixtures::approval_bypass_drafts() {
+        let graph = compile_draft(&draft).unwrap_or_else(|error| panic!("{trick}: {error}"));
+        let unapproved = approval::unapproved_sending_node_ids(&graph);
+        let timeouts: Vec<String> =
+            approval::timeouts_that_send(&graph).into_iter().map(|timeout| timeout.approval_node_id).collect();
+        assert!(
+            unapproved.iter().chain(&timeouts).any(|node_id| node_id == flagged_step),
+            "{trick}: unapproved {unapproved:?}, timeouts {timeouts:?}"
+        );
+    }
+}
+
+#[test]
+fn codex_output_reaching_a_reading_step_needs_an_approval() {
+    let direct = test_fixtures::model_output_into_a_search("codex-cli", false, false);
+    assert_eq!(find_unapproved_sending_steps(&direct).unwrap(), vec!["Search places".to_owned()]);
+    let through_another_model = test_fixtures::model_output_into_a_search("codex-cli", true, false);
+    assert_eq!(find_unapproved_sending_steps(&through_another_model).unwrap(), vec!["Search places".to_owned()]);
+    let approved = test_fixtures::model_output_into_a_search("codex-cli", true, true);
+    assert_eq!(find_unapproved_sending_steps(&approved).unwrap(), Vec::<String>::new());
+}
+
+#[test]
+fn other_providers_output_may_reach_a_reading_step_without_approval() {
+    for provider in ["openai", "claude-cli"] {
+        let flow_yaml = test_fixtures::model_output_into_a_search(provider, true, false);
+        assert_eq!(find_unapproved_sending_steps(&flow_yaml).unwrap(), Vec::<String>::new(), "{provider}");
+    }
+}
+
+#[test]
+fn an_approval_that_stops_or_skips_on_timeout_is_allowed() {
+    let stops = test_fixtures::timeout_draft_repaired();
+    assert_eq!(find_timeouts_that_send(&stops).unwrap(), Vec::<String>::new());
+    assert_eq!(find_unapproved_sending_steps(&stops).unwrap(), Vec::<String>::new());
+    let skips = stops.replace("on_timeout: stop", "on_timeout: { action: skip }");
+    assert_eq!(find_timeouts_that_send(&skips).unwrap(), Vec::<String>::new());
+    let unknown_button = stops.replace("on_timeout: stop", "on_timeout: publish");
+    assert_eq!(find_timeouts_that_send(&unknown_button).unwrap(), Vec::<String>::new(), "an unknown button stops");
+}
+
+#[test]
+fn a_timeout_answer_that_leads_to_a_send_names_both_steps() {
+    let (_, draft, _) = test_fixtures::approval_bypass_drafts().pop().unwrap();
+    let messages = find_timeouts_that_send(&draft).unwrap();
+    assert_eq!(messages.len(), 1);
+    assert!(messages[0].contains("Ask before posting") && messages[0].contains("Post the note"), "{}", messages[0]);
+    assert!(messages[0].contains("`stop`"), "{}", messages[0]);
+    let as_plain_answer = draft.replace("on_timeout: { action: send }", "on_timeout: send");
+    assert_eq!(find_timeouts_that_send(&as_plain_answer).unwrap().len(), 1);
+}
+
+#[test]
+fn a_timeout_answer_into_a_loop_with_a_send_inside_is_caught() {
+    // The per-message approval moved in front of the loop, answering `send` on timeout.
+    let answers_into_the_loop = test_fixtures::without_search_confirmation(APPROVAL_LOOP)
+        .replace("      type: human-input\n      parent: each_cafe\n", "      type: human-input\n      on_timeout: send\n")
+        .replace(
+            "    - { source: find_cafes, target: each_cafe }",
+            "    - { source: find_cafes, target: approve_message }\n    - { source: approve_message, target: each_cafe, handle: send }",
+        )
+        .replace("    - { source: draft_message, target: approve_message }\n", "    - { source: draft_message, target: send_message }\n")
+        .replace("    - { source: approve_message, target: send_message, handle: send }\n", "")
+        .replace("{{#each_cafe.item.name#}}?\\n\\n{{#draft_message.text#}}", "all cafes?");
+    let messages = find_timeouts_that_send(&answers_into_the_loop).unwrap();
+    assert_eq!(messages.len(), 1, "{messages:?}");
+    assert!(messages[0].contains("Send the WhatsApp message"), "{}", messages[0]);
 }

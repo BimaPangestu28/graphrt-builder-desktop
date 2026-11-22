@@ -148,6 +148,7 @@ describe('PluginsPage', () => {
     fireEvent.click(within(getCard('WhatsApp Cloud API')).getByRole('button', { name: 'Install WhatsApp Cloud API' }))
     const approval = within(getCard('WhatsApp Cloud API')).getByRole('group', { name: 'Install WhatsApp Cloud API?' })
     expect(approval).toHaveTextContent('Runs its code on this computer and asks for: Internet, Secrets, 4 settings. It starts untrusted')
+    expect(approval).toHaveTextContent('Installing a plugin runs its code on this computer. Trust only plugins you know.')
     expect(samplePluginsBackend.installPlugin).not.toHaveBeenCalled()
 
     fireEvent.click(within(approval).getByRole('button', { name: 'Confirm install WhatsApp Cloud API' }))

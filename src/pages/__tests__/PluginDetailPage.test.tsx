@@ -64,6 +64,7 @@ describe('PluginDetailPage', () => {
     await renderLoadedPluginPage('whatsapp-api')
     expect(screen.getByText('Not installed')).toBeInTheDocument()
     expect(screen.getByText(/It starts untrusted, without settings or secrets/)).toBeInTheDocument()
+    expect(screen.getByText('Installing a plugin runs its code on this computer. Trust only plugins you know.')).toBeInTheDocument()
     const asksFor = within(getSection('What it asks for')).getByRole('list', { name: 'What WhatsApp Cloud API asks for' })
     expect(asksFor).toHaveTextContent('Connects to the internet')
     expect(asksFor).toHaveTextContent('Receives secret values in plain text')

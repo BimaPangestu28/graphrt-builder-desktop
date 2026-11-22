@@ -5,7 +5,7 @@ import type { PluginsState } from '@/hooks/usePlugins'
 import { pluginDetailPath } from '@/routes'
 import { PluginInstallButton, PluginOperationFeedback, PluginUpdateButton } from './PluginActions'
 import { pluginCategoryLabels } from './pluginCategories'
-import { describeCommunityInstallNote, describeMaturity, describePermissionChips, describePluginSource, describePluginStatus, describeStepCount, itemNeedsAttention, type PluginListItem } from './pluginDisplay'
+import { describeCommunityInstallNote, describeMaturity, pluginInstallTrustNote, describePermissionChips, describePluginSource, describePluginStatus, describeStepCount, itemNeedsAttention, type PluginListItem } from './pluginDisplay'
 import { PluginIcon } from './PluginIcon'
 import { PluginPermissionChips } from './PluginPermissionList'
 
@@ -34,6 +34,7 @@ function InstallApproval({ item, plugins, onCancel }: { item: PluginListItem; pl
       <p className="m-0 text-[12px] leading-normal text-body">
         {communityNote && `${communityNote} `}Runs its code on this computer{asksFor.length > 0 ? ` and asks for: ${asksFor.join(', ')}` : ''}. It starts untrusted, without settings or secrets.
       </p>
+      <p className="m-0 text-[12px] font-medium leading-normal text-ink-2">{pluginInstallTrustNote}</p>
       <div className="flex justify-end gap-2">
         {!isInstalling && (
           <Button variant="ghost" size="sm" onClick={onCancel}>

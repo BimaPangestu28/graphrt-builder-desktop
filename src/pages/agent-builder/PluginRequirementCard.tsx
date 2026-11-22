@@ -4,6 +4,7 @@ import { whatsAppWebPluginName } from '../connect-whatsapp/useWhatsAppActions'
 import { WhatsAppWebLinkPanel } from '../connect-whatsapp/WhatsAppWebLinkPanel'
 import { PluginConfigForm } from '../plugins/PluginConfigForm'
 import { PluginIcon } from '../plugins/PluginIcon'
+import { pluginInstallTrustNote } from '../plugins/pluginDisplay'
 import {
   browserDownloadSizeNote,
   describeApprovalAction,
@@ -137,6 +138,7 @@ export function PluginRequirementCard({ requirement, setup }: PluginRequirementC
           <li key={line}>{line}</li>
         ))}
       </ul>
+      {!requirement.installed && <p className="m-0 text-[12px] font-medium text-ink-2">{pluginInstallTrustNote}</p>}
       <RequirementActions requirement={requirement} setup={setup} />
       {canLinkWhatsAppWeb(requirement) && <WhatsAppWebLinkPanel onSessionChange={setup.reload} />}
       {errorMessage && (
