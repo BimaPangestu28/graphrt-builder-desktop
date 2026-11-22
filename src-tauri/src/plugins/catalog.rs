@@ -111,7 +111,7 @@ fn is_sha256_hex(text: &str) -> bool {
     text.len() == 64 && text.chars().all(|character| character.is_ascii_hexdigit())
 }
 
-/// Whether `version` is safe in a file name (`<name>-<version>.json`): 1 to
+/// Whether `version` is safe in a file name (`<name>@<version>.json`, so never `@`): 1 to
 /// [`MAX_VERSION_CHARS`] of `A-Z a-z 0-9 . + - _`, starting with a letter or digit.
 pub(super) fn is_safe_version(version: &str) -> bool {
     let starts_well = version.chars().next().is_some_and(|character| character.is_ascii_alphanumeric());

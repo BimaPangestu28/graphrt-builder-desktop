@@ -2,7 +2,7 @@
 //! detail files (verification, disk cache, background sync, prune, consumers).
 
 use super::super::catalog::{parse_catalog_v2, MAX_DETAIL_BYTES};
-use super::super::details::{DetailRef, DETAILS_DIR_NAME};
+use super::super::details::{DetailRef, DetailStore, DETAILS_DIR_NAME};
 use super::*;
 
 const V2_URL: &str = "https://plugins.example.test/index-v2.json";
@@ -196,7 +196,7 @@ async fn a_detail_with_another_checksum_is_refused() {
 
     assert!(matches!(error, AppError::InvalidInput(_)), "{error}");
     assert!(error.to_string().contains("checksum"), "{error}");
-    assert!(!fixture.saved_detail_names().contains(&"fixture-mail-2.0.0.json".to_owned()));
+    assert!(!fixture.saved_detail_names().contains(&"fixture-mail@2.0.0.json".to_owned()));
     // The plugin page falls back to the kinds and titles of the index.
     let nodes = fixture.service.catalog_plugin_nodes("fixture-mail").await.unwrap();
     assert_eq!(nodes[0].title, "Send mail");
@@ -220,7 +220,7 @@ async fn the_detail_size_is_capped() {
     let entry = fixture.service.catalog_entry("fixture-mail").await.unwrap();
     let reference = DetailRef::of(&entry).unwrap();
     assert!(fixture.service.details.fetch(&reference).await.is_err(), "larger than the index says");
-    assert!(!fixture.saved_detail_names().contains(&"fixture-mail-2.0.0.json".to_owned()));
+    assert!(!fixture.saved_detail_names().contains(&"fixture-mail@2.0.0.json".to_owned()));
 
     // A size above the 1 MiB cap drops the detail fields; the entry stays listed.
     mail_entry_with_size(&mut index, MAX_DETAIL_BYTES + 1);
@@ -263,7 +263,7 @@ async fn details_are_saved_and_used_offline_after_a_restart() {
     fixture.service.wait_for_detail_sync().await;
     assert_eq!(
         fixture.saved_detail_names(),
-        vec!["fixture-browser-1.0.0.json", "fixture-echo-1.0.0.json", "fixture-mail-2.0.0.json"]
+        vec!["fixture-browser@1.0.0.json", "fixture-echo@1.0.0.json", "fixture-mail@2.0.0.json"]
     );
     let urls: Vec<String> = fixture.downloader.files.lock().unwrap().keys().cloned().collect();
     for url in urls {
@@ -302,7 +302,7 @@ async fn the_background_sync_fetches_only_missing_details_and_prunes_old_version
     assert_eq!(fixture.downloader.request_count(&detail_url("fixture-browser", "1.0.0")), 1);
     assert_eq!(
         fixture.saved_detail_names(),
-        vec!["fixture-browser-1.0.0.json", "fixture-echo-1.0.1.json", "fixture-mail-2.0.0.json"],
+        vec!["fixture-browser@1.0.0.json", "fixture-echo@1.0.1.json", "fixture-mail@2.0.0.json"],
         "1.0.0 is no longer listed, so its detail is pruned"
     );
 }
@@ -321,7 +321,7 @@ async fn the_plugin_page_fetches_a_missing_detail_on_demand() {
 
     assert_eq!(nodes.len(), 2);
     assert_eq!(nodes[0].description, "Sends one email.");
-    assert!(fixture.saved_detail_names().contains(&"fixture-mail-2.0.0.json".to_owned()));
+    assert!(fixture.saved_detail_names().contains(&"fixture-mail@2.0.0.json".to_owned()));
     assert!(matches!(fixture.service.catalog_plugin_nodes("no-such-plugin").await, Err(AppError::NotFound(_))));
 }
 
@@ -333,5 +333,91 @@ async fn installing_from_v2_works_and_caches_the_detail() {
     let installed = fixture.service.install(PLUGIN, &echo_catalog_permissions()).await.unwrap();
 
     assert_eq!(installed.version, "1.0.0");
-    assert!(fixture.saved_detail_names().contains(&"fixture-echo-1.0.0.json".to_owned()));
+    assert!(fixture.saved_detail_names().contains(&"fixture-echo@1.0.0.json".to_owned()));
+}
+
+/// A detail file for `name` `version` with one node titled `title`, and its reference at `url`.
+fn detail_file(name: &str, version: &str, title: &str, url: &str) -> (DetailRef, Vec<u8>) {
+    let detail = serde_json::json!({
+        "schema": 2, "name": name, "version": version,
+        "nodes": [{ "kind": format!("{name}.run"), "title": title }], "tools": []
+    });
+    let bytes = serde_json::to_vec(&detail).unwrap();
+    let reference = DetailRef {
+        name: name.to_owned(),
+        version: version.to_owned(),
+        url: url.to_owned(),
+        sha256: super::super::archive::sha256_hex(&bytes),
+        size_bytes: bytes.len() as u64,
+    };
+    (reference, bytes)
+}
+
+fn detail_store(dir: &std::path::Path, downloader: &Arc<FakeDownloader>) -> DetailStore {
+    DetailStore::new(dir.to_path_buf(), downloader.clone())
+}
+
+#[test]
+fn at_signs_cannot_appear_in_plugin_names_or_detail_versions() {
+    assert!(!graphrt_plugin::is_valid_name("a@b"));
+    assert!(!super::super::catalog::is_safe_version("1.0.0@x"));
+    assert!(super::super::catalog::is_safe_version("b-1.0.0"));
+}
+
+#[tokio::test]
+async fn detail_keys_never_collide_across_name_and_version() {
+    let dir = tempfile::tempdir().unwrap();
+    let downloader = Arc::new(FakeDownloader::default());
+    let (short_name, short_bytes) = detail_file("a", "b-1.0.0", "Short name", "https://plugins.example.test/d1.json");
+    let (long_name, long_bytes) = detail_file("a-b", "1.0.0", "Long name", "https://plugins.example.test/d2.json");
+    downloader.serve(&short_name.url, short_bytes);
+    downloader.serve(&long_name.url, long_bytes);
+    let store = detail_store(dir.path(), &downloader);
+
+    assert_ne!(short_name.file_name(), long_name.file_name());
+    let first = store.fetch(&short_name).await.unwrap();
+    let second = store.fetch(&long_name).await.unwrap();
+
+    assert_eq!((first.name.as_str(), first.nodes[0].title.as_str()), ("a", "Short name"));
+    assert_eq!((second.name.as_str(), second.nodes[0].title.as_str()), ("a-b", "Long name"));
+    let restarted = detail_store(dir.path(), &downloader);
+    assert_eq!(restarted.cached(&short_name).unwrap().name, "a");
+    assert_eq!(restarted.cached(&long_name).unwrap().name, "a-b");
+}
+
+#[tokio::test]
+async fn a_detail_in_memory_is_refetched_when_the_index_checksum_changes() {
+    let dir = tempfile::tempdir().unwrap();
+    let downloader = Arc::new(FakeDownloader::default());
+    let url = "https://plugins.example.test/plugin-fixture-mail-2.0.0.json";
+    let (published, published_bytes) = detail_file("fixture-mail", "2.0.0", "First", url);
+    downloader.serve(url, published_bytes);
+    let store = detail_store(dir.path(), &downloader);
+    assert_eq!(store.fetch(&published).await.unwrap().nodes[0].title, "First");
+
+    let (republished, republished_bytes) = detail_file("fixture-mail", "2.0.0", "Second", url);
+    downloader.serve(url, republished_bytes);
+
+    assert!(store.cached(&republished).is_none(), "the memory copy no longer matches the index");
+    assert_eq!(store.fetch(&republished).await.unwrap().nodes[0].title, "Second");
+    assert_eq!(downloader.request_count(url), 2);
+    assert!(store.cached(&published).is_none(), "the old checksum no longer matches what is saved");
+}
+
+#[tokio::test]
+async fn details_saved_under_the_old_ambiguous_names_are_pruned() {
+    let fixture = Fixture::new();
+    let details_dir = fixture.app_data.path().join(DETAILS_DIR_NAME);
+    std::fs::create_dir_all(&details_dir).unwrap();
+    std::fs::write(details_dir.join("fixture-mail-2.0.0.json"), b"{}").unwrap();
+
+    let restarted = fixture.restarted();
+    fixture.publish_v2_with_extras("1.0.0", good_tarball());
+    restarted.catalog(true).await.unwrap();
+    restarted.wait_for_detail_sync().await;
+
+    assert_eq!(
+        fixture.saved_detail_names(),
+        vec!["fixture-browser@1.0.0.json", "fixture-echo@1.0.0.json", "fixture-mail@2.0.0.json"]
+    );
 }

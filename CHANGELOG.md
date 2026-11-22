@@ -17,6 +17,11 @@ releases may contain breaking changes; they are called out under **Changed**.
   the extra settings or secrets named, when the installed manifest asks for more; untrusting
   needs no approval. The `install_plugin` command takes `permissions`, `set_plugin_trusted`
   takes `permissions` when trusting.
+- **Plugin detail cache keys no longer collide**: saved catalog v2 details are named
+  `plugin-details/<name>@<version>.json` (`@` is valid in neither part), so `a` + `b-1.0.0` and
+  `a-b` + `1.0.0` no longer share one file. Details saved under the old dash names are removed
+  and fetched again. A detail kept in memory is only reused while the index lists the same
+  `detail_sha256`; otherwise it is checked again or refetched.
 
 ## [0.1.3] - 2026-11-22
 
