@@ -2,30 +2,69 @@
 
 The builder's Nodes tab shows an agent version as a graph and saves edits as new
 versions. Spec: the "Builder · Nodes (proposal)" section of the design canvas
-(artboards 32–56). This folder is the **phase-2 contract**: four agents build the
-canvas, inspector, add-node palette and live-run / sync parts on top of it.
+(artboards 32–56). `index.ts` exports `NodesView`; the builder page loads it (and with
+it `@xyflow/react`) on demand when the Nodes tab opens, so the Steps view never pays for
+the canvas.
 
 ## Folder
 
-| File | What | Phase 2 owner |
-| --- | --- | --- |
-| `NodesView.tsx` | Shell: toolbar, sync banner, palette · canvas · inspector, problems. Owns the controller. | shared (keep the layout) |
-| `NodesToolbar.tsx` | Add node, Auto-layout, Undo / Redo, save state, Save | shared |
-| `useAgentGraph.ts` | Load, local edit state, dirty tracking, undo / redo, save with conflict / busy handling, positions | shared (extend, don't break) |
-| `useNodeKinds.ts` | The node library (`get_node_kinds`) | palette, inspector |
-| `graphEdits.ts` | Pure edit functions (`updateGraphNode`, `addGraphEdge`, `createGraphNode`, `uniqueNodeId`, `toGraphEdit`…) | everyone |
-| `contracts.ts` | Props of the phase-2 components | everyone |
-| `NodeCanvas.tsx`, `flow/*` | Canvas: React Flow + ELK auto-layout, read-only render, drag to move | **canvas** |
-| `NodeInspector.tsx`, `inspector/*` | Step settings: header, per-kind panels (Start: the run inputs editor, `inspector/startInputs.ts`), schema form (lists of simple objects as rows), Change action, When this step fails, variable picker (`{{#node.field#}}` chips) | **inspector** |
-| `AddNodePalette.tsx` | STUB: lists offered kinds | **palette** |
-| `RunOverlay.tsx`, `ProblemsPanel.tsx`, `SyncBanner.tsx` | Live run layer (arrow styles, Review card), problems list, builder-busy queue + per-step conflicts | **live/sync** |
-| `run/*` | Run events → node / arrow states (`nodeRunStates.ts`), the shown run (`useNodesTestRun`, `useNodesLiveRun`), `RunBar`, `NodeDecorations` (badges drawn inside cards), Test / Validate / Add note actions | **live/sync** |
-| `problems/*` | Problem labels, Fix with builder text, why Test is off, live validation (`useGraphValidation`) | **live/sync** |
-| `sync/*` | 3-way per-node merge (`graphMerge.ts`), autosave, the chat's "Edited in Nodes" line with Undo | **live/sync** |
-| `notes/*` | Sticky notes: `useCanvasNotes`, `NoteNode` renderer (type `note`) | **live/sync** |
+| Path | What |
+| --- | --- |
+| `NodesView.tsx` | Shell: toolbar, sync banner, palette · canvas · inspector, problems, run bar. Owns the `useAgentGraph` controller and memoizes the provider values it hands down. |
+| `NodesToolbar.tsx` | Add node, Auto-layout, Undo / Redo, save state, Save |
+| `contracts.ts` | Props of `NodeCanvas`, `NodeInspector`, `AddNodePalette`, `RunOverlay`, `ProblemsPanel`, `SyncBanner` |
+| `useAgentGraph.ts` | Load, working copy, undo / redo, save with conflict / busy handling, positions (see below) |
+| `useNodeKinds.ts` | The node library (`get_node_kinds`) |
+| `graphEdits.ts` | Pure edit functions (`updateGraphNode`, `addGraphEdge`, `insertGraphNodeOnEdge`, `reparentGraphNodes`, `referencedNodeIds`, `toGraphEdit`…). Every action of `useAgentGraph` and every compound edit inside `applyEdit` goes through them. |
+| `NodeCanvas.tsx` | The canvas: wires React Flow to the hooks in `flow/` and draws the overlays |
+| `NodeInspector.tsx`, `inspector/*` | Step settings (below) |
+| `AddNodePalette.tsx`, `palette/*` | Add node palette (below) |
+| `RunOverlay.tsx`, `ProblemsPanel.tsx`, `SyncBanner.tsx` | Live run layer (arrow styles, Review card), problems list, builder-busy queue + per-step conflicts |
+| `run/*` | Test and live runs on the canvas (below) |
+| `problems/*` | Problem labels, Fix with builder text, why Test is off, live validation (`useGraphValidation`) |
+| `sync/*` | History, positions, builder lock, merge and autosave (below) |
+| `notes/*` | Sticky notes: `useCanvasNotes` (load / save per version), `NoteNode` renderer (type `note`, flow ids `note:<id>`) |
 
-Libraries: `@xyflow/react` 12.12.1 (import only from `flow/flowLibrary.ts`) and
-`elkjs` 0.12.0 (only through `flow/autoLayout.ts`, loaded lazily).
+### `flow/`: the canvas
+
+- `flowLibrary.ts`: the only import of `@xyflow/react` 12.12.1.
+- `toFlowElements.ts`: graph → React Flow nodes and edges (plugin labels through `lib/pluginDisplayName`, like the rest of the app). `StepNode.tsx`, `StepEdge.tsx`, `NodeKindIcon.tsx` render them.
+- `autoLayout.ts` + `layoutEngine.ts`: ELK (`elkjs` 0.12.0) places nodes without a saved position. `layoutEngine` runs ELK in a Web Worker (`elk-api` + `elk-worker.min.js`, emitted as its own asset) so a large layout never blocks the canvas; without `Worker` (jsdom) or when the worker fails it loads the bundled in-thread build. One engine is created on first use and reused. Canvas tests replace it with `__tests__/fakeElkLayout.ts`.
+- `useCanvasLayout.ts`: merges saved and auto-laid-out positions (`mergedPositions`), reports placed ones through `onPlaced`.
+- Behaviour hooks used by `NodeCanvas`, each with one job:
+  - `useConnectMode`: drawing arrows by drag or keyboard (Enter on a port, Enter on the target), per-target `checkConnection` while drawing, reconnecting an arrow's end.
+  - `useCanvasClipboard`: copy (app + system clipboard), paste (at a point, or stepping down-right on repeats), duplicate.
+  - `useCanvasEditCommands`: delete, disconnect, nudge; shared by keys, menu and selection bar.
+  - `useCanvasContextMenu`: the step menu and the empty-canvas menu (`NodeContextMenu.tsx` draws them).
+  - `useCanvasShortcuts`: the key table in `shortcuts.ts` and the "?" panel.
+  - `useFlowElementState`: React Flow's node list (keeps measured sizes across rebuilds) and the arrow selection.
+  - `useContainerDrag`: dragging steps into and out of loops (`containerDrop.ts` finds the loop under a point).
+  - `useCanvasViewportFit`, `minimapPreference.ts`, `usePrefersReducedMotion`: fitting, minimap, motion.
+- Pure helpers: `canvasCommands.ts` (clipboard I/O, node list wording, nudging), `clipboard.ts` (copy / paste graph parts), `placement.ts`, `nodeGeometry.ts`, `nodePreview.ts`.
+- `CanvasOverlays.tsx`: zoom controls, shortcuts panel, selection bar, empty canvas; `canvasActions.ts`: contexts the cards use (open menu, keyboard connect, resize a loop, add on an arrow, drop hint).
+
+### `inspector/`: step settings
+
+`NodeInspector` picks a panel from `panelRegistry.tsx` (`panels/*`: Start inputs editor, Ask a model, AI steps, HTTP request / Run an agent / Use a tool, data and flow steps, plugin actions) and wraps it in `InspectorContext` (node, graph, value groups, edit helpers). Shared parts: `fields.tsx` (inputs, sections), `SchemaForm.tsx` (JSON Schema config, lists of simple objects as rows), `TemplateField.tsx` with `templateEditorDom.ts` (`{{#node.field#}}` chips in a contentEditable box), `ValuePicker`, `SelectorField`, `SecretPicker`, `ModelField`, `ConditionsEditor`, `ErrorHandlingSection` (When this step fails). Pure logic: `availableValues.ts` (what a step can read), `references.ts`, `configPaths.ts`, `startInputs.ts`, `branchEdits.ts`, `toolSources.ts`.
+
+### `palette/`: Add node
+
+`AddNodePalette` (300px, floating) browses built-in steps by group, installed plugins (most used first, `usePaletteUsage`) and catalog plugins; `paletteSearch` searches them, `usePaletteNavigation` handles ↑ ↓ Enter Esc. `nodePlacement` builds the node and where it goes (after a step, on an arrow, at a point); `paletteDrag` / `PaletteDropZone` handle dragging onto the canvas. A catalog action asks for install approval first (`usePaletteInstall`, `PluginInstallPrompt`).
+
+### `run/`: runs on the canvas
+
+- `nodeRunStates.ts`: run events → node and arrow states. `useNodesTestRun` (Test) and `useNodesLiveRun` (a run started elsewhere) pick the shown run.
+- `NodeDecorations.tsx`: `NodeDecorationsProvider` + `<NodeDecoration nodeId variant?="container" />` inside each card (status chip, outline, details, loop counters, live browser view). Its value is memoized and holds no clock, so it only changes when the run does.
+- `CanvasClock.tsx`: the ticking clock in its own context. Only the elapsed time of a running step, a question's deadline and `RunBar` call `useCanvasNow()`, so a tick re-renders just those leaves, never the canvas or the cards (`__tests__/canvasClockRenders.test.tsx` guards it).
+- `RunCanvasStyles.tsx`: arrow states as a scoped stylesheet keyed by edge `data-id`; `NodesRunActions.tsx`: Test / Validate / Add note.
+
+### `sync/`: history, positions and the builder
+
+- `graphHistory.ts`: the working copy and its undo / redo as one pure reducer (`{ savedGraph, graph, past, future, pendingDescriptions }`). Each transition starts from the current state, so edits dispatched in the same tick all apply, in order.
+- `useNodePositions.ts`: positions and viewport (saved on their own, not undoable), `isLayoutDirty`.
+- `useBuilderLock.ts`: whether the builder chat is changing the agent (`get_agent_edit_state` + event).
+- `graphMerge.ts`: 3-way per-step merge when a newer version arrives; `useGraphAutosave.ts`; `NodesEditNotice.tsx` (the chat's "Edited in Nodes" line with Undo).
+
 Tests that render the canvas call `installReactFlowTestEnvironment()` from
 `src/test/reactFlowTestEnvironment.ts`.
 
@@ -51,10 +90,10 @@ browser preview and tests; `setSampleBuilderBusy` and `resetSampleAgentGraphs` h
 `toGraphEdit` sends the working graph's secret `env` names, so adding one to `graph.env` (the HTTP
 sign-in picker does, `inspector/SecretPicker.tsx`) declares it on save.
 
-Save errors (`BackendError.code`):
+Save errors (`BackendError.code`; `details` is typed per code, read it after `isBackendErrorWithCode`):
 - `builder_busy`: a chat change is running. The hook sets `status: 'builder-busy'`.
-- `version_conflict`: `details.latestVersion`. The hook sets `conflict`; `resolveConflict('keep-mine' | 'keep-theirs')`.
-- `invalid_graph`: `details.problems` (blocking `GraphProblem`s). The hook sets `saveProblems`.
+- `version_conflict`: `details.latestVersion` (`conflictLatestVersion`). The hook sets `conflict`; `resolveConflict('keep-mine' | 'keep-theirs')`.
+- `invalid_graph`: `details.problems` (blocking `GraphProblem`s, `invalidGraphProblems`). The hook sets `saveProblems`.
 
 ## Data rules
 
@@ -94,17 +133,20 @@ version summary, e.g. "set Retry 2× on Send"):
   History); `'keep-theirs'` drops local edits and loads the latest
 - `moveNodes(layouts)`, `setViewport(viewport)`, `saveLayout()` (NodesView autosaves 800 ms after a move)
 
+`applyEdit`, `undo` and `redo` are stable dispatches into `sync/graphHistory.ts`: two edits in
+the same tick both apply, in order. Positions come from `sync/useNodePositions.ts`, the busy flag
+from `sync/useBuilderLock.ts`.
+
 When `currentVersion` (from the builder page) moves past the loaded version, the hook
 reloads when clean and sets `conflict` when dirty. While `builderBusy`, the canvas is read-only
 and `save` does not call the backend.
 
 ## Live run, problems and sync (live/sync part)
 
-- **Node decorations**: `NodesView` wraps the canvas in `NodeDecorationsProvider`; step and container
-  cards render `<NodeDecoration nodeId={…} variant?="container" />` inside their `relative` root
-  (status chip on the top edge, outline, details under the card, loop counters, live browser view).
-  Arrow states are a scoped stylesheet keyed by React Flow's edge `data-id` (`run/RunCanvasStyles.tsx`),
-  so `toFlowEdges` stays as it is.
+- **Node decorations**: `NodesView` wraps the canvas in `CanvasClockProvider` and `NodeDecorationsProvider`
+  (memoized value, no clock in it); step and container cards render `<NodeDecoration nodeId={…} variant?="container" />`
+  inside their `relative` root. Live times read `useCanvasNow()`. Arrow states are a scoped stylesheet keyed by
+  React Flow's edge `data-id` (`run/RunCanvasStyles.tsx`), so `toFlowEdges` stays as it is.
 - **Notes**: `NodeCanvas` takes `notes` / `onMoveNote` and registers `noteNodeTypes`; note flow ids start
   with `note:` (`isNoteFlowNodeId`) and never reach `onSelectionChange` or `onMoveNodes`.
 - **Queue and merge**: while the builder is busy the canvas is read-only but inspector edits stay local;
@@ -125,7 +167,7 @@ with another `nodeId` is ignored. `NodesView.requestInspectorSection(nodeId, sec
 sends one. Fields are found by `data-field-path` (`Field` / `TemplateField` `fieldPath`, schema form
 properties by name), else by a label matching the last path segment.
 
-## Layout and canvas (phase 3)
+## Layout and canvas
 
 - **Chat column**: in Nodes the builder page narrows the chat to 360px (spec A) and it folds to a
   52px rail (`useChatRailPreference`, localStorage, guarded). Windows under 1320px start folded
