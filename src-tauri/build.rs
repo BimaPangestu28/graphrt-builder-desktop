@@ -1,49 +1,109 @@
-//! Build script: Tauri codegen plus a guard for the Node.js sidecar.
+//! Build script: Tauri codegen plus the pinned Node.js release.
 //!
-//! `bundle.externalBin` lists `binaries/graphrt-node`, which `scripts/fetch-node.sh`
-//! downloads (it is not committed). tauri-build refuses to build when a sidecar
-//! is missing, which would make `cargo test` / `cargo clippy` need the network.
-//! So for debug builds without the sidecar this script drops `externalBin` from
-//! the configuration (through `TAURI_CONFIG`, which tauri-build merges) and
-//! warns; the app then falls back to a `node` on PATH. Release builds fail with
-//! a message pointing at the script. `tauri dev` / `tauri build` are checked
-//! earlier by `scripts/check-node-sidecar.mjs`.
+//! The app does not bundle Node: it downloads the official archive of the version in
+//! `scripts/node-version` the first time a plugin needs it (see `src/node_runtime/release.rs`).
+//! This script compiles that version and the archive checksums pinned in
+//! `scripts/node-checksums.txt` (written by `scripts/fetch-node.sh --update-checksums` from
+//! the GPG-verified `SHASUMS256.txt`) into `$OUT_DIR/node_release.rs`, and fails the build
+//! when the two files disagree, so a version bump without new checksums cannot ship.
+//!
+//! It also exposes the target triple as `GRAPHRT_TARGET_TRIPLE`: debug builds use the
+//! development copy `binaries/graphrt-node-<triple>` from `scripts/fetch-node.sh` when it exists.
 
+use std::fmt::Write as _;
 use std::path::Path;
 
+/// Node platforms the app downloads for (`node_platform` in `src/node_runtime/release.rs`).
+const NODE_PLATFORMS: &[&str] = &["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "win-arm64", "win-x64"];
+
 fn main() {
-    if let Err(message) = prepare_node_sidecar() {
+    if let Err(message) = generate_node_release() {
         eprintln!("error: {message}");
         std::process::exit(1);
     }
+    match std::env::var("TARGET") {
+        Ok(target_triple) => println!("cargo:rustc-env=GRAPHRT_TARGET_TRIPLE={target_triple}"),
+        Err(error) => {
+            eprintln!("error: TARGET is not set: {error}");
+            std::process::exit(1);
+        }
+    }
+    // A development Node fetched later is picked up at run time; nothing to rebuild.
     tauri_build::build()
 }
 
-fn prepare_node_sidecar() -> Result<(), String> {
-    let target_triple = std::env::var("TARGET").map_err(|error| format!("TARGET is not set: {error}"))?;
-    let extension = if target_triple.contains("windows") { ".exe" } else { "" };
-    let sidecar = Path::new("binaries").join(format!("graphrt-node-{target_triple}{extension}"));
-    // Re-run once the sidecar is fetched (the directory changes when it appears).
-    println!("cargo:rerun-if-changed=binaries");
-    println!("cargo:rerun-if-changed={}", sidecar.display());
-    let present = std::fs::metadata(&sidecar).map(|metadata| metadata.is_file() && metadata.len() > 0).unwrap_or(false);
-    if present {
-        return Ok(());
+/// One pinned archive: `(platform, file name, sha256)`.
+type PinnedArchive = (String, String, String);
+
+fn generate_node_release() -> Result<(), String> {
+    let version_path = Path::new("../scripts/node-version");
+    let checksums_path = Path::new("../scripts/node-checksums.txt");
+    println!("cargo:rerun-if-changed={}", version_path.display());
+    println!("cargo:rerun-if-changed={}", checksums_path.display());
+    let version = read_text(version_path)?.trim().to_owned();
+    if version.is_empty()
+        || !version.split('.').all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
+    {
+        return Err(format!("{} must hold a version such as 22.23.5, not `{version}`", version_path.display()));
     }
-    if std::env::var("PROFILE").as_deref() == Ok("release") {
-        return Err(format!(
-            "the Node.js sidecar {} is missing; run `scripts/fetch-node.sh {target_triple}` first",
-            sidecar.display()
-        ));
+    let archives = parse_pinned_checksums(&read_text(checksums_path)?, &version)?;
+    let out_dir = std::env::var("OUT_DIR").map_err(|error| format!("OUT_DIR is not set: {error}"))?;
+    let generated = render_node_release(&version, &archives);
+    std::fs::write(Path::new(&out_dir).join("node_release.rs"), generated)
+        .map_err(|error| format!("cannot write node_release.rs: {error}"))
+}
+
+fn read_text(path: &Path) -> Result<String, String> {
+    std::fs::read_to_string(path).map_err(|error| format!("cannot read {}: {error}", path.display()))
+}
+
+/// Every platform in [`NODE_PLATFORMS`] exactly once, for `version`, with a 64-digit hex checksum.
+fn parse_pinned_checksums(text: &str, version: &str) -> Result<Vec<PinnedArchive>, String> {
+    let fix = "run `scripts/fetch-node.sh --update-checksums` after changing scripts/node-version";
+    let mut archives: Vec<PinnedArchive> = Vec::new();
+    for line in text.lines().map(str::trim).filter(|line| !line.is_empty() && !line.starts_with('#')) {
+        let mut fields = line.split_whitespace();
+        let (Some(sha256), Some(file_name), None) = (fields.next(), fields.next(), fields.next()) else {
+            return Err(format!("scripts/node-checksums.txt: bad line `{line}`"));
+        };
+        if sha256.len() != 64 || !sha256.bytes().all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()) {
+            return Err(format!("scripts/node-checksums.txt: `{sha256}` is not a SHA-256"));
+        }
+        let platform =
+            NODE_PLATFORMS.iter().find(|platform| file_name == archive_file_name(version, platform)).ok_or_else(
+                || format!("scripts/node-checksums.txt lists {file_name}, not an archive of Node v{version}; {fix}"),
+            )?;
+        if archives.iter().any(|(listed, _, _)| listed == platform) {
+            return Err(format!("scripts/node-checksums.txt lists {platform} twice"));
+        }
+        archives.push(((*platform).to_owned(), file_name.to_owned(), sha256.to_owned()));
     }
-    println!(
-        "cargo:warning=Node.js sidecar {} not found: building without it (debug only); \
-         run `scripts/fetch-node.sh {target_triple}` to bundle Node",
-        sidecar.display()
-    );
-    // The Tauri CLI sets TAURI_CONFIG itself; leave its merged config alone.
-    if std::env::var_os("TAURI_CONFIG").is_none() {
-        std::env::set_var("TAURI_CONFIG", r#"{"bundle":{"externalBin":null}}"#);
+    if let Some(missing) =
+        NODE_PLATFORMS.iter().find(|platform| !archives.iter().any(|(listed, _, _)| listed == *platform))
+    {
+        return Err(format!("scripts/node-checksums.txt has no {missing} archive of Node v{version}; {fix}"));
     }
-    Ok(())
+    Ok(archives)
+}
+
+fn archive_file_name(version: &str, platform: &str) -> String {
+    let extension = if platform.starts_with("win-") { "zip" } else { "tar.xz" };
+    format!("node-v{version}-{platform}.{extension}")
+}
+
+fn render_node_release(version: &str, archives: &[PinnedArchive]) -> String {
+    let mut generated = String::new();
+    let _ = writeln!(generated, "// Generated by build.rs from scripts/node-version and scripts/node-checksums.txt.");
+    let _ = writeln!(generated, "/// The Node.js version the app downloads (`scripts/node-version`).");
+    let _ = writeln!(generated, "pub const NODE_VERSION: &str = {version:?};");
+    let _ = writeln!(generated, "/// The official archive per platform with its pinned SHA-256.");
+    let _ = writeln!(generated, "pub const NODE_ARCHIVES: &[NodeArchive] = &[");
+    for (platform, file_name, sha256) in archives {
+        let _ = writeln!(
+            generated,
+            "    NodeArchive {{ platform: {platform:?}, file_name: {file_name:?}, sha256: {sha256:?} }},"
+        );
+    }
+    let _ = writeln!(generated, "];");
+    generated
 }

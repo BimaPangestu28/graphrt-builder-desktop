@@ -12,7 +12,7 @@
 //!   plaintext secrets (graphrt `PluginHost::trust`) and the settings they
 //!   request (`permissions.env`), which are kept in the keychain
 //!   (`CredentialStore::set_plugin_config`) and passed to the plugin process
-//!   with the bundled Node's environment (see `host.rs`).
+//!   with the plugin runtime's (Node) environment (see `host.rs`).
 //! - Installing downloads over HTTPS (size-capped), checks the catalog's
 //!   sha256, extracts safely into a staging folder, loads the plugin with
 //!   graphrt (manifest + entrypoint checksums), then moves it into place.
@@ -22,7 +22,7 @@
 
 mod action;
 pub mod active;
-mod archive;
+pub(crate) mod archive;
 pub mod auto_update;
 mod catalog;
 mod catalog_fetch;
@@ -69,7 +69,7 @@ pub use sending::{is_sending_operation, is_sending_plugin_kind};
 
 use crate::credentials::CredentialStore;
 use crate::error::{AppError, AppResult};
-use crate::node_runtime::{BrowserRuntimeStatus, NodeRuntime};
+use crate::node_runtime::{BrowserRuntimeStatus, NodeRuntime, PluginRuntimeStatus};
 use crate::storage::Database;
 
 /// Folder under the app data folder holding one folder per plugin.
@@ -291,6 +291,7 @@ impl PluginService {
         let records = settings::install_records(&self.db)?;
         let catalog = self.known_catalog();
         let browser_ready = |plugin: &str| self.browser_ready_for(plugin);
+        let node_runtime_ready = self.node_runtime.node_runtime_status() == BrowserRuntimeStatus::Installed;
         let session_linked = |plugin: &str| session::needs_session(plugin).then(|| self.session_linked(plugin));
         let sources = requirements::RequirementSources {
             installed: &snapshot.plugins,
@@ -298,6 +299,7 @@ impl PluginService {
             catalog: catalog.as_deref(),
             credentials: &self.credentials,
             browser_ready: &browser_ready,
+            node_runtime_ready,
             session_linked: &session_linked,
         };
         requirements::plugin_requirements(flow_yaml, &sources)
@@ -334,13 +336,9 @@ impl PluginService {
         let base_registry = crate::flow::builtin_node_registry();
         let mut process_env = self.node_runtime.plugin_process_env();
         process_env.push(crate::live_view::plugin_env_entry(&self.live_view_dir));
-        let node_executable = match self.node_runtime.node_executable() {
-            Ok(path) => Some(path),
-            Err(error) => {
-                log::warn!("plugins will look for `node` on PATH: {error}");
-                None
-            }
-        };
+        // The runtime's install location until it is downloaded: plugins then fail to start
+        // with that path, and work as soon as it is installed.
+        let node_executable = Some(self.node_runtime.node_command_path());
         let inputs = HostInputs {
             trusted: &trusted,
             credentials: &self.credentials,
@@ -406,6 +404,7 @@ impl PluginService {
                     permissions: plugin.permissions.clone(),
                     trusted: plugin.trusted,
                     needs_browser: record.needs_browser,
+                    needs_node_runtime: plugin.needs_node,
                     nodes: plugin.nodes(),
                     tools: plugin.tools.clone(),
                     config,
@@ -855,6 +854,18 @@ impl PluginService {
 
     pub fn browser_runtime_status(&self) -> BrowserRuntimeStatus {
         self.node_runtime.browser_runtime_status()
+    }
+
+    /// Whether the plugin runtime (Node) is installed.
+    pub fn plugin_runtime_status(&self) -> PluginRuntimeStatus {
+        self.node_runtime.node_runtime_status()
+    }
+
+    /// After the plugin runtime was installed or removed: rebuilds the host (it resolves
+    /// Node again) and tells the screens to refresh.
+    pub fn plugin_runtime_changed(&self) {
+        self.reload();
+        self.events.send(PluginEvent::PluginsChanged);
     }
 
     /// Whether `name` was sideloaded (its install record says `local`). An unreadable

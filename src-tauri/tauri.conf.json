@@ -7,7 +7,7 @@
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
     "beforeDevCommand": "node scripts/check-node-sidecar.mjs && pnpm dev",
-    "beforeBuildCommand": "node scripts/check-node-sidecar.mjs && pnpm build"
+    "beforeBuildCommand": "pnpm build"
   },
   "app": {
     "windows": [
@@ -38,12 +38,6 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "externalBin": [
-      "binaries/graphrt-node"
-    ],
-    "resources": {
-      "licenses/node-LICENSE.txt": "licenses/node-LICENSE.txt"
-    },
     "category": "DeveloperTool",
     "shortDescription": "Build and run automation agents on your computer",
     "longDescription": "graphrt desktop: build, test and run automation agents on your own computer. Agents, runs and documents stay on the machine; keys and secrets go to the system credential store.",

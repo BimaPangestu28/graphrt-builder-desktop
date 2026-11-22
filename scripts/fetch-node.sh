@@ -1,10 +1,25 @@
 #!/usr/bin/env bash
-# Download the Node.js runtime the desktop app ships as a Tauri sidecar.
+# Pin the Node.js runtime graphrt downloads on demand, and fetch a local copy for development.
 #
 # Usage: scripts/fetch-node.sh [--force] [<target-triple>...]
+#        scripts/fetch-node.sh --update-checksums
+#        scripts/fetch-node.sh --verify-checksums
 #
-# Targets: aarch64-apple-darwin, x86_64-apple-darwin, universal-apple-darwin
-# (both macOS arches plus a lipo'd universal binary), x86_64-pc-windows-msvc,
+# Release builds do not bundle Node: the app downloads the official archive of the
+# version in scripts/node-version from nodejs.org the first time a plugin needs it and
+# checks it against the SHA-256 pinned in scripts/node-checksums.txt (compiled into the
+# app by src-tauri/build.rs). This script maintains that pin:
+#
+#   --update-checksums  writes scripts/node-checksums.txt from the GPG-verified
+#                       SHASUMS256.txt (run it after changing scripts/node-version, commit both).
+#   --verify-checksums  fails unless scripts/node-checksums.txt matches the GPG-verified
+#                       SHASUMS256.txt (CI runs it with GRAPHRT_REQUIRE_NODE_SIGNATURE=1).
+#
+# Without those flags it fetches a development copy (optional): debug builds use
+# src-tauri/binaries/graphrt-node-<triple> when it exists, so `pnpm dev:desktop` does not
+# need the in-app download. Every fetch also checks the pinned checksum.
+#
+# Targets: aarch64-apple-darwin, x86_64-apple-darwin, x86_64-pc-windows-msvc,
 # aarch64-pc-windows-msvc, x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu.
 # Default: the host's target (from `rustc -vV`).
 #
@@ -13,10 +28,9 @@
 #
 # For each target it downloads the official archive of the version pinned in
 # scripts/node-version from nodejs.org, checks it against SHASUMS256.txt and
-# places only the `node` executable at src-tauri/binaries/graphrt-node-<triple>[.exe]
-# (gitignored). Node's LICENSE (which also carries the notices of the
-# libraries Node bundles: V8, OpenSSL, ICU, libuv, ...) is copied to
-# src-tauri/licenses/node-LICENSE.txt, which the app bundle ships.
+# places only the `node` executable, exactly as Node.js signed and released it (the
+# same binary the app downloads), at src-tauri/binaries/graphrt-node-<triple>[.exe]
+# (gitignored).
 #
 # Trust: SHASUMS256.txt comes from nodejs.org over HTTPS. When gpg is
 # installed its clearsigned SHASUMS256.txt.asc is verified against the Node.js
@@ -25,22 +39,14 @@
 # the script warns and relies on HTTPS + SHA-256 only, unless
 # GRAPHRT_REQUIRE_NODE_SIGNATURE=1 (set in CI), which makes gpg mandatory.
 #
-# After verification the executable's debug symbols are stripped (`strip -x` on
-# macOS, then an ad-hoc signature since Apple Silicon kills a binary whose
-# signature strip invalidated; `strip --strip-unneeded` on Linux; Windows builds
-# are left as is): about 20% smaller. The stripped binary is run once
-# (`node -e 1`) when it can execute on this machine. Release signing happens
-# later, when Tauri bundles the app, and replaces the ad-hoc signature.
-# GRAPHRT_SKIP_NODE_STRIP=1 keeps the binary exactly as downloaded.
-#
 # Already-fetched binaries of the pinned version are kept (a stamp file records
-# the version, archive checksum and whether it was stripped); --force downloads again.
+# the version and archive checksum); --force downloads again.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 node_version="$(tr -d '[:space:]' < "$repo_root/scripts/node-version")"
 binaries_dir="$repo_root/src-tauri/binaries"
-license_file="$repo_root/src-tauri/licenses/node-LICENSE.txt"
+pinned_checksums_file="$repo_root/scripts/node-checksums.txt"
 dist_url="https://nodejs.org/dist/v$node_version"
 release_keys_url="https://raw.githubusercontent.com/nodejs/release-keys/HEAD/keys"
 
@@ -60,12 +66,15 @@ release_key_fingerprints=(
 )
 
 force_download=false
+checksums_mode=""
 targets=()
 for argument in "$@"; do
   case "$argument" in
     --force) force_download=true ;;
+    --update-checksums) checksums_mode=update ;;
+    --verify-checksums) checksums_mode=verify ;;
     -h | --help)
-      sed -n '2,37p' "$0"
+      sed -n '2,43p' "$0"
       exit 0
       ;;
     -*)
@@ -86,9 +95,13 @@ host_target_triple() {
   rustc -vV | sed -n 's/^host: //p'
 }
 
-if [ "${#targets[@]}" -eq 0 ]; then
+if [ "${#targets[@]}" -eq 0 ] && [ -z "$checksums_mode" ]; then
   targets=("$(host_target_triple)")
 fi
+
+# Every platform the app can download Node for; keep in sync with
+# `node_platform` in src-tauri/src/node_runtime/release.rs.
+pinned_platforms=(darwin-arm64 darwin-x64 linux-arm64 linux-x64 win-arm64 win-x64)
 
 # Node's platform name and archive for a target triple.
 node_platform_for() {
@@ -99,7 +112,7 @@ node_platform_for() {
     aarch64-pc-windows-msvc) echo "win-arm64" ;;
     x86_64-unknown-linux-gnu) echo "linux-x64" ;;
     aarch64-unknown-linux-gnu) echo "linux-arm64" ;;
-    *) fail "unsupported target triple: $1" ;;
+    *) fail "unsupported target triple: $1 (the app downloads Node for macOS, Windows and Linux on arm64 and x64)" ;;
   esac
 }
 
@@ -126,54 +139,9 @@ sha256_of() {
   fi
 }
 
-strip_enabled() {
-  [ "${GRAPHRT_SKIP_NODE_STRIP:-0}" != "1" ]
-}
-
-# Whether a binary built for `target` can run on this machine.
-can_run_target() {
-  local target="$1" host
-  host="$(rustc -vV 2> /dev/null | sed -n 's/^host: //p')"
-  [ "$target" = "$host" ] && return 0
-  # Apple Silicon runs x86_64 binaries under Rosetta when it is installed.
-  [ "$host" = "aarch64-apple-darwin" ] && [ "$target" = "x86_64-apple-darwin" ] && arch -x86_64 /usr/bin/true 2> /dev/null
-}
-
-# Strips debug symbols from the verified executable in place, then checks it still runs.
-strip_executable() {
-  local target="$1" executable="$2" size_before size_after
-  strip_enabled || return 0
-  case "$target" in
-    *-apple-darwin | *-linux-gnu) ;;
-    *) return 0 ;;
-  esac
-  command -v strip > /dev/null || fail "strip is needed to shrink Node for $target (set GRAPHRT_SKIP_NODE_STRIP=1 to skip)"
-  size_before="$(wc -c < "$executable" | tr -d '[:space:]')"
-  case "$target" in
-    *-apple-darwin)
-      strip -x "$executable" 2> /dev/null || fail "strip -x failed for $target"
-      # strip invalidates Node's signature and Apple Silicon kills unsigned code: sign ad hoc.
-      command -v codesign > /dev/null || fail "codesign is needed after stripping (set GRAPHRT_SKIP_NODE_STRIP=1 to skip)"
-      codesign --force --sign - "$executable" 2> /dev/null || fail "could not sign the stripped Node binary for $target"
-      ;;
-    *) strip --strip-unneeded "$executable" || fail "strip --strip-unneeded failed for $target" ;;
-  esac
-  size_after="$(wc -c < "$executable" | tr -d '[:space:]')"
-  echo "fetch-node: stripped $target: $size_before -> $size_after bytes"
-  if can_run_target "$target"; then
-    "$executable" -e 1 || fail "the stripped Node binary for $target does not run"
-  else
-    echo "fetch-node: $target binaries cannot run here; skipped the run check"
-  fi
-}
-
-# What the stamp records for the binary this script produces for `target`.
+# What the stamp records for the binary this script produces.
 stamp_text_for() {
-  local target="$1" expected_sha256="$2"
-  case "$target" in
-    *-windows-*) echo "$node_version $expected_sha256" ;;
-    *) if strip_enabled; then echo "$node_version $expected_sha256 stripped"; else echo "$node_version $expected_sha256"; fi ;;
-  esac
+  echo "$node_version $2"
 }
 
 download() {
@@ -235,6 +203,41 @@ expected_sha256_for() {
   awk -v name="$archive_name" '$2 == name { print $1 }' "$shasums_file"
 }
 
+# scripts/node-checksums.txt as it should read for the verified SHASUMS256.txt.
+render_pinned_checksums() {
+  local platform archive_name sha256
+  echo "# Node.js v$node_version archives graphrt downloads on demand (src-tauri/build.rs compiles"
+  echo "# them into the app). Generated by scripts/fetch-node.sh --update-checksums from the"
+  echo "# GPG-verified SHASUMS256.txt; do not edit by hand."
+  for platform in "${pinned_platforms[@]}"; do
+    archive_name="$(archive_name_for "$platform")"
+    sha256="$(expected_sha256_for "$archive_name")"
+    [ -n "$sha256" ] || fail "$archive_name is not listed in SHASUMS256.txt"
+    echo "$sha256  $archive_name"
+  done
+}
+
+# The checksum scripts/node-checksums.txt pins for `archive_name` (empty when missing).
+pinned_sha256_for() {
+  [ -f "$pinned_checksums_file" ] || return 0
+  awk -v name="$1" '$2 == name { print $1 }' "$pinned_checksums_file"
+}
+
+update_pinned_checksums() {
+  fetch_verified_shasums
+  render_pinned_checksums > "$pinned_checksums_file.partial"
+  mv "$pinned_checksums_file.partial" "$pinned_checksums_file"
+  echo "fetch-node: wrote $pinned_checksums_file (commit it with scripts/node-version)"
+}
+
+verify_pinned_checksums() {
+  fetch_verified_shasums
+  if ! render_pinned_checksums | cmp -s - "$pinned_checksums_file"; then
+    fail "scripts/node-checksums.txt does not match the signed SHASUMS256.txt of Node v$node_version; run scripts/fetch-node.sh --update-checksums"
+  fi
+  echo "fetch-node: scripts/node-checksums.txt matches the signed SHASUMS256.txt of Node v$node_version"
+}
+
 # Extracts one file from the archive (paths inside start with the archive's base name).
 extract_member() {
   local archive="$1" member="$2" destination="$3"
@@ -274,6 +277,8 @@ fetch_target() {
   fetch_verified_shasums
   expected_sha256="$(expected_sha256_for "$archive_name")"
   [ -n "$expected_sha256" ] || fail "$archive_name is not listed in SHASUMS256.txt"
+  [ "$(pinned_sha256_for "$archive_name")" = "$expected_sha256" ] ||
+    fail "scripts/node-checksums.txt does not pin $archive_name as SHASUMS256.txt does; run scripts/fetch-node.sh --update-checksums"
 
   if ! $force_download && [ -s "$sidecar" ] && [ "$(cat "$stamp" 2> /dev/null)" = "$(stamp_text_for "$target" "$expected_sha256")" ]; then
     echo "fetch-node: $target already has Node v$node_version ($sidecar)"
@@ -291,39 +296,19 @@ fetch_target() {
     win-*) executable_member="$base_name/node.exe" ;;
     *) executable_member="$base_name/bin/node" ;;
   esac
-  mkdir -p "$binaries_dir" "$(dirname "$license_file")"
+  mkdir -p "$binaries_dir"
   extract_member "$archive" "$executable_member" "$sidecar.partial"
   chmod 755 "$sidecar.partial"
-  strip_executable "$target" "$sidecar.partial"
-  # Archives keep the release date as mtime; cargo's rerun-if-changed needs a fresh one.
-  touch "$sidecar.partial"
   mv "$sidecar.partial" "$sidecar"
-  extract_member "$archive" "$base_name/LICENSE" "$work_dir/LICENSE"
-  if ! cmp -s "$work_dir/LICENSE" "$license_file"; then
-    cp "$work_dir/LICENSE" "$license_file"
-    echo "fetch-node: updated $license_file (commit it with the version bump)"
-  fi
   stamp_text_for "$target" "$expected_sha256" > "$stamp"
   echo "fetch-node: $target -> $sidecar"
 }
 
-# Tauri looks for `<name>-universal-apple-darwin` when bundling a universal app,
-# while each per-arch cargo build copies its own `<name>-<arch>-apple-darwin`.
-fetch_universal_macos() {
-  fetch_target aarch64-apple-darwin
-  fetch_target x86_64-apple-darwin
-  command -v lipo > /dev/null || fail "lipo (Xcode command line tools) is needed for universal-apple-darwin"
-  local universal="$binaries_dir/graphrt-node-universal-apple-darwin"
-  lipo -create -output "$universal.partial" \
-    "$binaries_dir/graphrt-node-aarch64-apple-darwin" "$binaries_dir/graphrt-node-x86_64-apple-darwin"
-  chmod 755 "$universal.partial"
-  mv "$universal.partial" "$universal"
-  echo "fetch-node: universal-apple-darwin -> $universal"
-}
+case "$checksums_mode" in
+  update) update_pinned_checksums ;;
+  verify) verify_pinned_checksums ;;
+esac
 
-for target in "${targets[@]}"; do
-  case "$target" in
-    universal-apple-darwin) fetch_universal_macos ;;
-    *) fetch_target "$target" ;;
-  esac
+for target in "${targets[@]+"${targets[@]}"}"; do
+  fetch_target "$target"
 done

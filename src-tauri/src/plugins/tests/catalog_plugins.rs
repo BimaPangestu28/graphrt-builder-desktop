@@ -218,6 +218,7 @@ async fn an_installed_trusted_configured_plugin_is_ready_once_the_browser_is() {
             catalog: Some(&catalog),
             credentials: &fixture.credentials,
             browser_ready: &is_ready,
+            node_runtime_ready: true,
             session_linked: &session_linked,
         };
         plugin_requirements(MAIL_FLOW, &sources).unwrap()

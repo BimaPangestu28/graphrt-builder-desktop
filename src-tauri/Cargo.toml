@@ -60,6 +60,10 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 sha2 = "0.10"
 tar = { version = "0.4", default-features = false }
 flate2 = "1"
+# The Node.js runtime is downloaded on demand: `.tar.xz` on macOS/Linux, `.zip` on Windows
+# (same zip crate and version graphrt-doc already uses).
+lzma-rust2 = { version = "0.25", default-features = false, features = ["std", "xz"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 # Live view frames are sent to the UI as JPEG data URLs.
 base64 = "0.22"
 # Crash reports: redacting tokens, keys and emails before a report is written.
@@ -89,6 +93,8 @@ windows-sys = { version = "0.60", features = ["Win32_System_Power"] }
 
 [dev-dependencies]
 minisign = "0.10.0"
+# Tests build .tar.xz fixtures of the Node runtime archive.
+lzma-rust2 = { version = "0.25", default-features = false, features = ["std", "xz", "encoder"] }
 
 # Smaller, faster release binary. `panic` stays "unwind": `desktop::setup` catches the
 # panic of the Linux tray backend when libayatana-appindicator is missing.

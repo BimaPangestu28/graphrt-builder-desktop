@@ -69,6 +69,7 @@ struct Fixture {
     credentials: CredentialStore,
     plugins: Vec<InstalledPlugin>,
     browser_status: BrowserRuntimeStatus,
+    plugin_runtime_status: BrowserRuntimeStatus,
 }
 
 impl Fixture {
@@ -80,6 +81,7 @@ impl Fixture {
             credentials,
             plugins: Vec::new(),
             browser_status: BrowserRuntimeStatus::Installed,
+            plugin_runtime_status: BrowserRuntimeStatus::Installed,
         }
     }
 
@@ -113,6 +115,7 @@ impl Fixture {
             credentials: &self.credentials,
             plugins: &self.plugins,
             browser_status: self.browser_status,
+            plugin_runtime_status: self.plugin_runtime_status,
         };
         collect_problems(&sources).unwrap()
     }
@@ -131,6 +134,7 @@ fn installed_plugin(name: &str) -> InstalledPlugin {
         permissions: PluginPermissions::default(),
         trusted: true,
         needs_browser: false,
+        needs_node_runtime: true,
         nodes: Vec::new(),
         tools: Vec::new(),
         config: Vec::new(),
@@ -296,6 +300,26 @@ fn unset_plugin_settings_are_missing_credentials() {
     // Optional tuning settings have defaults, so leaving them unset is not a problem.
     assert!(!problems[0].detail.contains("WHATSAPP_GRAPH_VERSION"));
     assert_eq!(action_kinds(&problems[0]), [ProblemActionKind::OpenPlugins]);
+}
+
+#[test]
+fn plugins_need_the_plugin_runtime_once_it_is_missing() {
+    let mut fixture = Fixture::new();
+    fixture.agent("Maps leads", PLUGIN_FLOW);
+    fixture.plugins = vec![installed_plugin("maps-browser")];
+    assert!(fixture.problems_of(ProblemKind::PluginRuntimeMissing).is_empty(), "installed");
+
+    fixture.plugin_runtime_status = BrowserRuntimeStatus::NotInstalled;
+    let problems = fixture.problems_of(ProblemKind::PluginRuntimeMissing);
+    assert_eq!(problems.len(), 1);
+    assert!(problems[0].detail.contains("Maps leads"), "{}", problems[0].detail);
+    assert_eq!(action_kinds(&problems[0]), [ProblemActionKind::InstallPluginRuntime, ProblemActionKind::OpenPlugins]);
+
+    fixture.plugin_runtime_status = BrowserRuntimeStatus::Installing;
+    assert!(fixture.problems_of(ProblemKind::PluginRuntimeMissing).is_empty(), "being installed");
+    fixture.plugin_runtime_status = BrowserRuntimeStatus::NotInstalled;
+    fixture.plugins[0].needs_node_runtime = false;
+    assert!(fixture.problems_of(ProblemKind::PluginRuntimeMissing).is_empty(), "not a Node plugin");
 }
 
 #[test]

@@ -18,7 +18,7 @@
 //! - [`agent_steps`]: agents used as steps and team members (the `agents` tool provider)
 //! - [`chains`]: starting the next agent of a chain when a run finishes
 //! - [`knowledge`]: knowledge bases (graphrt-rag) agents can search
-//! - [`node_runtime`]: the bundled Node.js plugins run on and Playwright's browser
+//! - [`node_runtime`]: the Node.js plugins run on (downloaded on demand) and Playwright's browser
 //! - [`plugins`]: graphrt plugins from the catalog (node kinds and tools for every run)
 //! - [`live_view`]: live frames of the headless browser a plugin step drives
 //! - [`problems`]: what went wrong (failed runs, missing keys, plugins, schedules) and retries
@@ -117,8 +117,10 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         data_dir.join(knowledge::KNOWLEDGE_DIR_NAME),
         Arc::new(knowledge::events::TauriKnowledgeEventSink::new(app.handle().clone())),
     ));
+    let downloader: Arc<dyn plugins::download::Downloader> = Arc::new(plugins::download::HttpsDownloader::new()?);
     let node_runtime = Arc::new(
         node_runtime::NodeRuntime::new(data_dir.clone())
+            .with_downloader(downloader.clone())
             .with_event_sink(Arc::new(node_runtime::TauriNodeRuntimeEventSink::new(app.handle().clone()))),
     );
     let plugins = Arc::new(plugins::PluginService::new(plugins::PluginServiceConfig {
@@ -127,7 +129,7 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         db: db.clone(),
         credentials: credentials.clone(),
         node_runtime: node_runtime.clone(),
-        downloader: Arc::new(plugins::download::HttpsDownloader::new()?),
+        downloader,
         events: Arc::new(plugins::events::TauriPluginEventSink::new(app.handle().clone())),
     }));
     plugins.activate_installed();
@@ -307,6 +309,8 @@ pub fn run() {
             commands::app_settings::set_onboarding_tour_status,
             commands::node_runtime::node_runtime_info,
             commands::node_runtime::install_browser_runtime,
+            commands::node_runtime::install_node_runtime,
+            commands::node_runtime::remove_node_runtime,
             commands::plugins::list_plugin_catalog,
             commands::plugins::list_plugin_catalog_steps,
             commands::plugins::list_installed_plugins,
