@@ -96,9 +96,25 @@ minisign = "0.10.0"
 # Tests build .tar.xz fixtures of the Node runtime archive.
 lzma-rust2 = { version = "0.25", default-features = false, features = ["std", "xz", "encoder"] }
 
-# Smaller, faster release binary. `panic` stays "unwind": `desktop::setup` catches the
-# panic of the Linux tray backend when libayatana-appindicator is missing.
+# Release profile, measured on Apple Silicon (see the Performance notes in CHANGELOG.md):
+# size-optimized code (`z`) with fat LTO shrinks the binary from 29.1 to 16.7 MB.
+# The crates on the hot path of a run (the graphrt-core engine, serde_json, tokio) stay
+# at `opt-level = 3`, which keeps graphrt-core's engine benchmark at the speed of an
+# all-`3` build (`z` everywhere was ~45% slower there). Everything else is I/O bound
+# (HTTP, SQLite, model calls) or runs once (UI setup).
+# `panic` stays "unwind": `desktop::setup` catches the panic of the Linux tray backend
+# when libayatana-appindicator is missing.
 [profile.release]
-lto = "thin"
+opt-level = "z"
+lto = "fat"
 codegen-units = 1
 strip = true
+
+[profile.release.package.graphrt-core]
+opt-level = 3
+
+[profile.release.package.serde_json]
+opt-level = 3
+
+[profile.release.package.tokio]
+opt-level = 3
