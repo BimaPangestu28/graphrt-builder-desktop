@@ -51,6 +51,59 @@ describe('useAgentGraph', () => {
     expect(result.current.canUndo).toBe(true)
   })
 
+  it('applies two edits made in the same tick, each as its own undo step', async () => {
+    const { result } = await renderLoadedHook()
+    const { updateNode } = result.current
+
+    act(() => {
+      updateNode('write_message', { title: 'Write a promotion' }, 'renamed Write a short message')
+      updateNode('search_maps', { title: 'Find cafes' }, 'renamed Search Maps')
+    })
+    const titleOf = (nodeId: string) => result.current.graph?.nodes.find((node) => node.id === nodeId)?.title
+    expect(titleOf('write_message')).toBe('Write a promotion')
+    expect(titleOf('search_maps')).toBe('Find cafes')
+    expect(result.current.pendingDescriptions).toEqual(['renamed Write a short message', 'renamed Search Maps'])
+
+    act(() => result.current.undo())
+    expect(titleOf('search_maps')).not.toBe('Find cafes')
+    expect(titleOf('write_message')).toBe('Write a promotion')
+    expect(result.current.pendingDescriptions).toEqual(['renamed Write a short message'])
+  })
+
+  it('undoes and redoes several edits in order, and a new edit clears redo', async () => {
+    const { result } = await renderLoadedHook()
+    const titleOf = () => result.current.graph?.nodes.find((node) => node.id === 'write_message')?.title
+    const originalTitle = titleOf()
+    for (const title of ['First', 'Second', 'Third']) act(() => result.current.updateNode('write_message', { title }, `renamed to ${title}`))
+
+    act(() => {
+      result.current.undo()
+      result.current.undo()
+    })
+    expect(titleOf()).toBe('First')
+    act(() => result.current.redo())
+    expect(titleOf()).toBe('Second')
+    expect(result.current.pendingDescriptions).toEqual(['renamed to First', 'renamed to Second'])
+
+    act(() => result.current.updateNode('write_message', { title: 'Other' }, 'renamed to Other'))
+    expect(result.current.canRedo).toBe(false)
+    act(() => {
+      for (let step = 0; step < 5; step += 1) result.current.undo()
+    })
+    expect(titleOf()).toBe(originalTitle)
+    expect(result.current.canUndo).toBe(false)
+    expect(result.current.isDirty).toBe(false)
+  })
+
+  it('keeps applyEdit, undo and redo stable across edits', async () => {
+    const { result } = await renderLoadedHook()
+    const { applyEdit, undo, redo } = result.current
+    act(() => result.current.updateNode('write_message', { title: 'Changed' }))
+    expect(result.current.applyEdit).toBe(applyEdit)
+    expect(result.current.undo).toBe(undo)
+    expect(result.current.redo).toBe(redo)
+  })
+
   it('derives ports locally: the error exit appears with Go to the error path', async () => {
     const { result } = await renderLoadedHook()
     act(() => result.current.updateNode('send_whatsapp', { onError: { strategy: 'fail-branch', values: {} } }))
