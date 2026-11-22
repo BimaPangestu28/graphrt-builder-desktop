@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react'
 import { installPlugin } from '@/api/plugins'
+import type { PluginPermissions } from '@/api/pluginTypes'
 import { describeError } from '@/lib/agentDisplay'
 import type { AddNodeAnchor } from '../contracts'
 import type { PaletteAction } from './paletteCatalog'
@@ -19,8 +20,11 @@ export interface PaletteInstallState {
   /** Shows the approval step for a not-installed action. Installs nothing by itself. */
   requestInstall: (action: PaletteAction, anchor: AddNodeAnchor | null) => void
   cancel: () => void
-  /** The explicit OK: installs, then resolves with what to add (null when the install failed). */
-  confirm: () => Promise<PendingInstall | null>
+  /**
+   * The explicit OK: installs within `approvedPermissions` (what the prompt showed), then
+   * resolves with what to add (null when the install failed, e.g. the plugin asks for more).
+   */
+  confirm: (approvedPermissions: PluginPermissions) => Promise<PendingInstall | null>
 }
 
 /**
@@ -47,13 +51,13 @@ export function usePaletteInstall(onPluginInstalled?: (pluginName: string) => vo
     setPending(null)
   }, [])
 
-  const confirm = useCallback(async () => {
+  const confirm = useCallback(async (approvedPermissions: PluginPermissions) => {
     const plugin = pending?.action.plugin
     if (!pending || !plugin) return null
     setIsInstalling(true)
     setErrorMessage(null)
     try {
-      await installPlugin(plugin.name)
+      await installPlugin(plugin.name, approvedPermissions)
       setInstalledPluginNames((previous) => new Set([...previous, plugin.name]))
       try {
         await onPluginInstalled?.(plugin.name)

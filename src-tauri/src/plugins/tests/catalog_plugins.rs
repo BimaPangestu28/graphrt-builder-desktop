@@ -51,7 +51,7 @@ graph:
 async fn fixture_with_catalog() -> Fixture {
     let fixture = Fixture::new();
     fixture.publish_with_extras("1.0.0", good_tarball());
-    fixture.service.install(PLUGIN).await.unwrap();
+    fixture.service.install(PLUGIN, &echo_catalog_permissions()).await.unwrap();
     fixture
 }
 
@@ -192,7 +192,7 @@ async fn requirements_report_install_trust_settings_and_browser_state() {
 #[tokio::test]
 async fn an_installed_trusted_configured_plugin_is_ready_once_the_browser_is() {
     let fixture = fixture_with_catalog().await;
-    fixture.service.set_trusted(PLUGIN, true).await.unwrap();
+    trust(&fixture.service, PLUGIN).await.unwrap();
     fixture.service.set_config(PLUGIN, "FIXTURE_ECHO_TOKEN", "token").await.unwrap();
     let snapshot = fixture.service.snapshot();
     let records = BTreeMap::from([(

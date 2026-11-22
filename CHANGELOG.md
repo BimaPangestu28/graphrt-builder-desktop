@@ -7,6 +7,17 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ## [Unreleased]
 
+### Security
+
+- **Approving a plugin never trusts more than you saw**: installing now carries the permissions
+  shown next to the Install button (the builder's requirement card, the Plugins page, Connect
+  WhatsApp, the Add node palette) as the limit for the downloaded manifest, so a catalog entry
+  that lists fewer settings or no secrets than its tarball is refused and nothing is installed.
+  Trusting (`set_plugin_trusted`) now needs the approved permissions too and is refused, with
+  the extra settings or secrets named, when the installed manifest asks for more; untrusting
+  needs no approval. The `install_plugin` command takes `permissions`, `set_plugin_trusted`
+  takes `permissions` when trusting.
+
 ## [0.1.3] - 2026-11-22
 
 ### Added

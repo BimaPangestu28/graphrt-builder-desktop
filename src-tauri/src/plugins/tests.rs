@@ -17,6 +17,7 @@ use crate::error::{AppError, AppResult};
 use crate::node_runtime::NodeRuntime;
 use crate::storage::Database;
 
+mod approval;
 mod auto_update;
 mod catalog_plugins;
 mod catalog_v2;
@@ -202,6 +203,17 @@ fn catalog_of_entries(entries_json: &str) -> super::models::CatalogIndex {
     super::catalog::parse_catalog(&serde_json::to_vec(&catalog).unwrap()).unwrap()
 }
 
+/// What the fixture catalog entry says the echo plugin asks for (what the install card shows).
+pub(crate) fn echo_catalog_permissions() -> super::models::PluginPermissions {
+    super::models::PluginPermissions { network: false, secrets: true, env: vec!["FIXTURE_ECHO_TOKEN".into()] }
+}
+
+/// Trusts an installed plugin the way its trust toggle does: approving what it asks for.
+pub(crate) async fn trust(service: &PluginService, name: &str) -> AppResult<super::models::InstalledPlugin> {
+    let approved = service.installed(name)?.permissions;
+    service.set_trusted(name, true, Some(&approved)).await
+}
+
 pub(crate) struct Fixture {
     pub app_data: tempfile::TempDir,
     pub service: PluginService,
@@ -278,7 +290,7 @@ fn build_service(
 pub(crate) async fn installed_fixture() -> Fixture {
     let fixture = Fixture::new();
     fixture.publish("1.0.0", good_tarball());
-    fixture.service.install(PLUGIN).await.unwrap();
+    fixture.service.install(PLUGIN, &echo_catalog_permissions()).await.unwrap();
     fixture
 }
 
@@ -293,7 +305,7 @@ async fn install_from_catalog_loads_the_plugin_and_its_node_kinds() {
     let fixture = Fixture::new();
     fixture.publish("1.0.0", good_tarball());
 
-    let installed = fixture.service.install(PLUGIN).await.unwrap();
+    let installed = fixture.service.install(PLUGIN, &echo_catalog_permissions()).await.unwrap();
 
     assert_eq!(installed.version, "1.0.0");
     assert!(installed.needs_browser);
@@ -314,7 +326,7 @@ async fn install_from_catalog_loads_the_plugin_and_its_node_kinds() {
 #[tokio::test]
 async fn removing_a_plugin_drops_its_kinds_trust_and_settings() {
     let fixture = installed_fixture().await;
-    fixture.service.set_trusted(PLUGIN, true).await.unwrap();
+    trust(&fixture.service, PLUGIN).await.unwrap();
     fixture.service.set_config(PLUGIN, "FIXTURE_ECHO_TOKEN", "token-value").await.unwrap();
 
     fixture.service.remove(PLUGIN).await.unwrap();
@@ -332,7 +344,7 @@ async fn checksum_mismatch_with_the_catalog_is_rejected() {
     fixture.downloader.serve(CATALOG_URL, catalog_json("1.0.0", TARBALL_URL, &"0".repeat(64), tarball.len()));
     fixture.downloader.serve(TARBALL_URL, tarball);
 
-    let error = fixture.service.install(PLUGIN).await.unwrap_err();
+    let error = fixture.service.install(PLUGIN, &echo_catalog_permissions()).await.unwrap_err();
 
     assert!(matches!(&error, AppError::InvalidInput(message) if message.contains("checksum")), "{error}");
     assert_nothing_installed(&fixture);
@@ -342,7 +354,7 @@ async fn checksum_mismatch_with_the_catalog_is_rejected() {
 async fn assert_archive_rejected(raw_entries: &[RawEntry]) -> Fixture {
     let fixture = Fixture::new();
     fixture.publish("1.0.0", tarball(&fixture_files(), raw_entries));
-    let error = fixture.service.install(PLUGIN).await.unwrap_err();
+    let error = fixture.service.install(PLUGIN, &echo_catalog_permissions()).await.unwrap_err();
     assert!(matches!(error, AppError::InvalidInput(_)), "{error}");
     assert_nothing_installed(&fixture);
     fixture
@@ -378,7 +390,7 @@ async fn a_plugin_failing_its_manifest_checksums_leaves_nothing_behind() {
     let fixture = Fixture::new();
     fixture.publish("1.0.0", tarball(&files, &[]));
 
-    let error = fixture.service.install(PLUGIN).await.unwrap_err();
+    let error = fixture.service.install(PLUGIN, &echo_catalog_permissions()).await.unwrap_err();
 
     assert!(matches!(&error, AppError::InvalidInput(message) if message.contains("checksum")), "{error}");
     assert_nothing_installed(&fixture);
@@ -402,7 +414,7 @@ async fn a_failed_update_keeps_the_installed_version() {
 #[tokio::test]
 async fn an_update_asking_for_more_permissions_drops_trust() {
     let fixture = installed_fixture().await;
-    fixture.service.set_trusted(PLUGIN, true).await.unwrap();
+    trust(&fixture.service, PLUGIN).await.unwrap();
     let mut files = fixture_files();
     let manifest = String::from_utf8(files[0].1.clone()).unwrap();
     files[0].1 = manifest
@@ -451,7 +463,7 @@ async fn non_https_downloads_are_refused() {
 
     // The entry is dropped from the catalog, so it cannot be installed.
     assert!(fixture.service.catalog(true).await.unwrap().plugins.is_empty());
-    assert!(matches!(fixture.service.install(PLUGIN).await, Err(AppError::NotFound(_))));
+    assert!(matches!(fixture.service.install(PLUGIN, &echo_catalog_permissions()).await, Err(AppError::NotFound(_))));
     assert!(super::download::require_https("http://example.com/index.json").is_err());
     assert!(super::download::require_https("file:///etc/passwd").is_err());
 }
@@ -535,7 +547,7 @@ async fn catalog_with_an_unknown_schema_is_rejected() {
 #[tokio::test]
 async fn trust_and_settings_persist_across_restarts() {
     let fixture = installed_fixture().await;
-    fixture.service.set_trusted(PLUGIN, true).await.unwrap();
+    trust(&fixture.service, PLUGIN).await.unwrap();
     let configured = fixture.service.set_config(PLUGIN, "FIXTURE_ECHO_TOKEN", "token-value").await.unwrap();
     assert!(configured.config.iter().all(|status| status.configured));
 
@@ -548,7 +560,7 @@ async fn trust_and_settings_persist_across_restarts() {
 
     let cleared = restarted.delete_config(PLUGIN, "FIXTURE_ECHO_TOKEN").await.unwrap();
     assert!(!cleared.config[0].configured);
-    let untrusted = restarted.set_trusted(PLUGIN, false).await.unwrap();
+    let untrusted = restarted.set_trusted(PLUGIN, false, None).await.unwrap();
     assert!(!untrusted.trusted);
 }
 
@@ -557,13 +569,13 @@ async fn settings_the_plugin_does_not_request_are_refused() {
     let fixture = installed_fixture().await;
     let error = fixture.service.set_config(PLUGIN, "HOME", "/tmp").await.unwrap_err();
     assert!(matches!(error, AppError::InvalidInput(_)));
-    assert!(matches!(fixture.service.set_trusted("missing", true).await, Err(AppError::NotFound(_))));
+    assert!(matches!(trust(&fixture.service, "missing").await, Err(AppError::NotFound(_))));
 }
 
 #[tokio::test]
 async fn setting_values_never_appear_in_listings_or_debug_output() {
     let fixture = installed_fixture().await;
-    fixture.service.set_trusted(PLUGIN, true).await.unwrap();
+    trust(&fixture.service, PLUGIN).await.unwrap();
     fixture.service.set_config(PLUGIN, "FIXTURE_ECHO_TOKEN", "very-secret-token").await.unwrap();
     let listing = serde_json::to_string(&fixture.service.list_installed().unwrap()).unwrap();
     assert!(!listing.contains("very-secret-token"));
@@ -575,7 +587,7 @@ async fn prompt_guide_lists_installed_plugin_steps() {
     let fixture = Fixture::new();
     assert_eq!(fixture.service.prompt_guide(), "");
     fixture.publish("1.0.0", good_tarball());
-    fixture.service.install(PLUGIN).await.unwrap();
+    fixture.service.install(PLUGIN, &echo_catalog_permissions()).await.unwrap();
 
     let guide = fixture.service.prompt_guide();
 
@@ -593,7 +605,7 @@ async fn actions_are_refused_for_untrusted_plugins_and_undeclared_kinds() {
     let untrusted = fixture.service.run_action(PLUGIN, "fixture-echo.echo", serde_json::json!({ "text": "hi" })).await;
     assert!(matches!(untrusted, Err(AppError::InvalidInput(message)) if message.contains("trust")));
 
-    fixture.service.set_trusted(PLUGIN, true).await.unwrap();
+    trust(&fixture.service, PLUGIN).await.unwrap();
     let undeclared = fixture.service.run_action(PLUGIN, "fixture-echo.format_disk", serde_json::Value::Null).await;
     assert!(matches!(undeclared, Err(AppError::InvalidInput(_))));
     let other_namespace = fixture.service.run_action(PLUGIN, "http-request", serde_json::Value::Null).await;
@@ -670,7 +682,7 @@ async fn actions_run_the_plugin_with_keychain_settings_only() {
         return;
     }
     let fixture = installed_fixture().await;
-    fixture.service.set_trusted(PLUGIN, true).await.unwrap();
+    trust(&fixture.service, PLUGIN).await.unwrap();
 
     let without_setting =
         fixture.service.run_action(PLUGIN, "fixture-echo.echo", serde_json::json!({ "text": "hello" })).await.unwrap();
@@ -702,12 +714,15 @@ async fn live_catalog_installs_every_plugin() {
     let catalog = service.catalog(true).await.unwrap();
     assert!(!catalog.plugins.is_empty());
     for entry in &catalog.plugins {
-        let installed = service.install(&entry.name).await.unwrap_or_else(|error| panic!("{}: {error}", entry.name));
+        let installed = service
+            .install(&entry.name, &entry.permissions)
+            .await
+            .unwrap_or_else(|error| panic!("{}: {error}", entry.name));
         assert_eq!(installed.load_error, None, "{}", entry.name);
         assert!(service.node_registry().contains(&entry.nodes[0].kind), "{}", entry.name);
     }
     if node_is_available() {
-        service.set_trusted("whatsapp-api", true).await.unwrap();
+        trust(&service, "whatsapp-api").await.unwrap();
         let tools = service.snapshot();
         assert!(tools.tools.get("whatsapp-api").is_some());
     }

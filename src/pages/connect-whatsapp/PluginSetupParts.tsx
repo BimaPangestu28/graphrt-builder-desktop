@@ -37,7 +37,7 @@ export function PluginInstallStepBody({ plugins, pluginName }: { plugins: Plugin
       <span className="text-[13px] text-body">{catalogEntry.description}. It asks for:</span>
       <PluginPermissionList pluginLabel={pluginLabel} permissions={catalogEntry.permissions} needsBrowser={catalogEntry.needsBrowser} />
       <div className="flex flex-wrap items-center gap-3">
-        <Button size="sm" aria-label={`Install ${pluginLabel}`} disabled={isInstalling} onClick={() => void plugins.install(pluginName)}>
+        <Button size="sm" aria-label={`Install ${pluginLabel}`} disabled={isInstalling} onClick={() => void plugins.install(pluginName, catalogEntry.permissions)}>
           {isInstalling ? 'Installing…' : 'Install'}
         </Button>
         {progress && (
@@ -59,7 +59,7 @@ export function PluginTrustStepBody({ plugins, installedPlugin }: { plugins: Plu
         pluginLabel={installedPlugin.displayName}
         isTrusted={installedPlugin.trusted}
         isSaving={plugins.operationByName[installedPlugin.name] === 'trusting'}
-        onChange={(trusted) => void plugins.setTrusted(installedPlugin.name, trusted)}
+        onChange={(trusted) => void plugins.setTrusted(installedPlugin.name, trusted, installedPlugin.permissions)}
       />
       <PluginErrorMessage plugins={plugins} pluginName={installedPlugin.name} />
     </>

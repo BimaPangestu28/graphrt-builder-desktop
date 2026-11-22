@@ -221,10 +221,18 @@ function emitInstallProgress(seed: SamplePluginSeed): void {
   }
 }
 
-/** @throws BackendError - `invalid_input` when already installed, `not_found` for an unknown plugin */
-function installSamplePlugin(name: string): InstalledPlugin {
+/**
+ * Like `install_plugin`: refuses a plugin asking for more than `approvedPermissions` (what the
+ * screen showed). Tests that only set up state may leave it out; the app always passes it.
+ *
+ * @throws BackendError - `invalid_input` when already installed or asking for more than approved, `not_found` for an unknown plugin
+ */
+function installSamplePlugin(name: string, approvedPermissions?: PluginPermissions): InstalledPlugin {
   const seed = findSeed(name)
   if (pluginsState.installedByName.has(name)) throw new BackendError('invalid_input', `${name} is already installed`)
+  if (approvedPermissions && asksForMoreThan(seed.permissions, approvedPermissions)) {
+    throw new BackendError('invalid_input', `plugin ${name} ${seed.version} asks for more than you approved; nothing was installed`)
+  }
   emitInstallProgress(seed)
   const installedRecord: SampleInstalledRecord = {
     name,
@@ -274,8 +282,17 @@ function removeSamplePlugin(name: string): void {
   emitPluginEvent({ type: 'plugins_changed' })
 }
 
-function setSamplePluginTrusted(name: string, trusted: boolean): InstalledPlugin {
+/**
+ * Like `set_plugin_trusted`: trusting with `approvedPermissions` refuses a plugin asking for more.
+ * Tests that only set up state may leave them out; the app always passes them to trust.
+ *
+ * @throws BackendError - `invalid_input` when the installed plugin asks for more than approved
+ */
+function setSamplePluginTrusted(name: string, trusted: boolean, approvedPermissions?: PluginPermissions): InstalledPlugin {
   const installedRecord = findInstalledRecord(name)
+  if (trusted && approvedPermissions && asksForMoreThan(installedRecord.permissions, approvedPermissions)) {
+    throw new BackendError('invalid_input', `plugin ${name} asks for more than you approved; it was not trusted`)
+  }
   installedRecord.trusted = trusted
   return toInstalledPlugin(installedRecord)
 }
@@ -470,12 +487,13 @@ export const samplePluginsBackend = {
   listPluginCatalog: (refresh: boolean): Promise<PluginCatalog> => respondWith(() => readCatalog(refresh)),
   listPluginCatalogSteps: (name: string): Promise<PluginNodeInfo[]> => respondWith(() => listSampleCatalogSteps(name)),
   listInstalledPlugins: (): Promise<InstalledPlugin[]> => respondWith(() => [...pluginsState.installedByName.values()].map(toInstalledPlugin)),
-  installPlugin: (name: string): Promise<InstalledPlugin> => respondWith(() => installSamplePlugin(name)),
+  installPlugin: (name: string, approvedPermissions?: PluginPermissions): Promise<InstalledPlugin> => respondWith(() => installSamplePlugin(name, approvedPermissions)),
   updatePlugin: (name: string): Promise<InstalledPlugin> => respondWith(() => updateSamplePlugin(name)),
   updateAllPlugins: (): Promise<PluginBulkUpdateSummary> => respondWith(updateAllSamplePlugins),
   listPluginAutoUpdates: (): Promise<PluginAutoUpdate[]> => respondWith(() => pluginsState.autoUpdates.map((autoUpdate) => ({ ...autoUpdate }))),
   removePlugin: (name: string): Promise<void> => respondWith(() => removeSamplePlugin(name)),
-  setPluginTrusted: (name: string, trusted: boolean): Promise<InstalledPlugin> => respondWith(() => setSamplePluginTrusted(name, trusted)),
+  setPluginTrusted: (name: string, trusted: boolean, approvedPermissions?: PluginPermissions): Promise<InstalledPlugin> =>
+    respondWith(() => setSamplePluginTrusted(name, trusted, approvedPermissions)),
   setPluginConfig: (name: string, variable: string, value: string): Promise<InstalledPlugin> => respondWith(() => setSamplePluginConfig(name, variable, value)),
   deletePluginConfig: (name: string, variable: string): Promise<InstalledPlugin> => respondWith(() => deleteSamplePluginConfig(name, variable)),
   getBrowserRuntimeStatus: (): Promise<BrowserRuntimeStatus> => respondWith(() => pluginsState.browserRuntimeStatus),

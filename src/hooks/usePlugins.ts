@@ -10,7 +10,7 @@ import {
   setPluginTrusted,
   updatePlugin,
 } from '@/api/plugins'
-import type { InstalledPlugin, PluginCatalog, PluginEvent, PluginInstallStage } from '@/api/pluginTypes'
+import type { InstalledPlugin, PluginCatalog, PluginEvent, PluginInstallStage, PluginPermissions } from '@/api/pluginTypes'
 import { describeError } from '@/lib/agentDisplay'
 import { findPluginDisplayName } from '@/lib/pluginDisplayName'
 import { useAsyncData, type AsyncDataState } from './useAsyncData'
@@ -40,10 +40,12 @@ export interface PluginsState extends AsyncDataState<PluginInventory> {
   operationByName: Record<string, PluginOperation>
   /** Last failed install / update / remove / trust per plugin, as text to show. */
   errorByName: Record<string, string>
-  install: (name: string) => Promise<void>
+  /** Installs with what the screen showed as the limit: a plugin asking for more is refused. */
+  install: (name: string, approvedPermissions: PluginPermissions) => Promise<void>
   update: (name: string) => Promise<void>
   remove: (name: string) => Promise<void>
-  setTrusted: (name: string, trusted: boolean) => Promise<void>
+  /** Trusting needs the permissions shown next to the toggle; the backend refuses a plugin asking for more. */
+  setTrusted: (name: string, trusted: boolean, approvedPermissions: PluginPermissions | null) => Promise<void>
   /** Saves a setting; rejects with the backend error so the form can show it. */
   saveConfig: (name: string, variable: string, value: string) => Promise<void>
   /** Clears a setting; rejects with the backend error so the form can show it. */
@@ -152,10 +154,10 @@ export function usePlugins(): PluginsState {
     progressByName,
     operationByName,
     errorByName,
-    install: (name) => runOperation(name, 'installing', () => installPlugin(name)),
+    install: (name, approvedPermissions) => runOperation(name, 'installing', () => installPlugin(name, approvedPermissions)),
     update: (name) => runOperation(name, 'updating', () => updatePlugin(name)),
     remove: (name) => runOperation(name, 'removing', () => removePlugin(name)),
-    setTrusted: (name, trusted) => runOperation(name, 'trusting', () => setPluginTrusted(name, trusted)),
+    setTrusted: (name, trusted, approvedPermissions) => runOperation(name, 'trusting', () => setPluginTrusted(name, trusted, approvedPermissions)),
     saveConfig,
     clearConfig,
   }

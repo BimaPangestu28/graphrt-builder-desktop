@@ -54,8 +54,25 @@ pub(super) struct InstallChecks<'registry> {
     /// Node kinds the plugin is registered next to (the built-in ones).
     pub base_registry: &'registry graphrt_core::Registry,
     /// When set, a plugin asking for more than this is refused before it is moved
-    /// into place (automatic updates never bring in new permissions).
-    pub permission_limit: Option<PluginPermissions>,
+    /// into place (automatic updates never bring in new permissions; an install the
+    /// user approved never brings in more than the card showed).
+    pub permission_limit: Option<PermissionLimit>,
+}
+
+/// The most a plugin being installed may ask for, and where that limit comes from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct PermissionLimit {
+    pub permissions: PluginPermissions,
+    pub origin: PermissionLimitOrigin,
+}
+
+/// Who set a [`PermissionLimit`] (only changes the refusal message).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum PermissionLimitOrigin {
+    /// The installed version's permissions (automatic updates, "Update all").
+    InstalledVersion,
+    /// What the user approved on screen (install card, builder requirement card).
+    UserApproval,
 }
 
 /// Extracts `tarball` (already checksum-verified) for plugin `name`, checks it
@@ -115,16 +132,23 @@ fn check_loads(dir: &Path, name: &str, base_registry: &graphrt_core::Registry) -
 
 /// Refuses a plugin whose manifest asks for more than `limit`. The catalog said it
 /// would not, so this guards against a catalog that is out of step with its tarball.
-fn check_permission_limit(dir: &Path, name: &str, limit: &PluginPermissions) -> AppResult<()> {
+fn check_permission_limit(dir: &Path, name: &str, limit: &PermissionLimit) -> AppResult<()> {
     let manifest = read_plugin(dir).map_err(AppError::InvalidInput)?;
     let requested = PluginPermissions::from(&manifest.manifest.permissions);
-    if requested.asks_for_more_than(limit) {
-        return Err(AppError::InvalidInput(format!(
-            "plugin {name} {} asks for more permissions than the installed version; update it yourself to approve them",
-            manifest.manifest.version
-        )));
+    let beyond = requested.requests_beyond(&limit.permissions);
+    if beyond.is_empty() {
+        return Ok(());
     }
-    Ok(())
+    let version = &manifest.manifest.version;
+    let extra = beyond.join(", ");
+    Err(AppError::InvalidInput(match limit.origin {
+        PermissionLimitOrigin::InstalledVersion => format!(
+            "plugin {name} {version} asks for more permissions than the installed version ({extra}); update it yourself to approve them"
+        ),
+        PermissionLimitOrigin::UserApproval => format!(
+            "plugin {name} {version} asks for more than you approved ({extra}); nothing was installed. Look at what it asks for again and approve it"
+        ),
+    }))
 }
 
 /// Moves `extracted` to `target`, keeping the previous install until the new

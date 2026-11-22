@@ -118,7 +118,7 @@ describe('PluginDetailPage', () => {
     expect(within(setUp).getByText(/Plugins run code on this computer: only trust plugins you know/)).toBeInTheDocument()
     fireEvent.click(within(setUp).getByRole('checkbox', { name: 'Trust Telegram Bot' }))
     expect(await within(getSection('Set up')).findByRole('checkbox', { name: 'Trust Telegram Bot' })).toBeChecked()
-    expect(setTrustedSpy).toHaveBeenCalledWith('telegram-bot', true)
+    expect(setTrustedSpy).toHaveBeenCalledWith('telegram-bot', true, { network: true, secrets: true, env: ['TELEGRAM_BOT_TOKEN'] })
   })
 
   it('puts required settings first and folds optional ones away', async () => {

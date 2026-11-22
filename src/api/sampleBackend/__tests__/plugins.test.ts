@@ -69,6 +69,17 @@ describe('sample plugins backend', () => {
     await expectBackendError(samplePluginsBackend.removePlugin('whatsapp-api'), 'not_found')
   })
 
+  it('refuses to install or trust a plugin asking for more than was approved, like the desktop backend', async () => {
+    const understated = { network: true, secrets: false, env: ['WHATSAPP_ACCESS_TOKEN'] }
+    await expectBackendError(samplePluginsBackend.installPlugin('whatsapp-api', understated), 'invalid_input')
+    expect(await readInstalled('whatsapp-api')).toBeUndefined()
+
+    const installedPlugin = await samplePluginsBackend.installPlugin('whatsapp-api', (await samplePluginsBackend.listPluginCatalog(false)).plugins[0].permissions)
+    await expectBackendError(samplePluginsBackend.setPluginTrusted('whatsapp-api', true, understated), 'invalid_input')
+    expect((await readInstalled('whatsapp-api'))?.trusted).toBe(false)
+    expect((await samplePluginsBackend.setPluginTrusted('whatsapp-api', true, installedPlugin.permissions)).trusted).toBe(true)
+  })
+
   it('marks tuning settings optional with the same rule as the desktop backend', async () => {
     const whatsAppApi = await samplePluginsBackend.installPlugin('whatsapp-api')
     expect(whatsAppApi.config.filter((setting) => setting.optional).map((setting) => setting.name)).toEqual(['WHATSAPP_GRAPH_VERSION'])

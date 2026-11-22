@@ -330,7 +330,7 @@ async fn installing_from_v2_works_and_caches_the_detail() {
     let fixture = Fixture::new();
     fixture.publish_v2_with_extras("1.0.0", good_tarball());
 
-    let installed = fixture.service.install(PLUGIN).await.unwrap();
+    let installed = fixture.service.install(PLUGIN, &echo_catalog_permissions()).await.unwrap();
 
     assert_eq!(installed.version, "1.0.0");
     assert!(fixture.saved_detail_names().contains(&"fixture-echo-1.0.0.json".to_owned()));

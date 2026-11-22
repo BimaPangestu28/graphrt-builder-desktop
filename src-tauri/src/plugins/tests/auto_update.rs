@@ -71,7 +71,7 @@ impl Fixture {
 /// The echo plugin installed at 1.0.0 and trusted.
 async fn trusted_fixture() -> Fixture {
     let fixture = installed_fixture().await;
-    fixture.service.set_trusted(PLUGIN, true).await.unwrap();
+    trust(&fixture.service, PLUGIN).await.unwrap();
     fixture
 }
 

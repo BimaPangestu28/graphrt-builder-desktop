@@ -165,7 +165,7 @@ async fn installed_plugins_keep_their_icon_without_any_catalog() {
     fixture.downloader.serve(TARBALL_URL, tarball);
     fixture.downloader.serve(ICON_URL, ICON_SVG.to_vec());
 
-    let installed = fixture.service.install(PLUGIN).await.unwrap();
+    let installed = fixture.service.install(PLUGIN, &echo_catalog_permissions()).await.unwrap();
     assert_eq!(installed.icon_url.as_deref(), Some(ICON_URL));
     let first = fixture.service.icon_data_url(PLUGIN).await.unwrap();
     std::fs::remove_file(fixture.app_data.path().join("plugin-catalog.json")).unwrap();

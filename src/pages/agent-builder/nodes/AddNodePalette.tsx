@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import type { PluginPermissions } from '@/api/pluginTypes'
 import { Icon } from '@/components/ui'
 import { usePlugins } from '@/hooks/usePlugins'
 import type { AddNodePaletteProps } from './contracts'
@@ -29,6 +30,9 @@ export function AddNodePalette(props: AddNodePaletteProps) {
   if (!props.isOpen) return null
   return <AddNodePalettePanel {...props} install={install} />
 }
+
+/** What a plugin gets when the prompt could not show its catalog entry: nothing. */
+const noPermissions: PluginPermissions = { network: false, secrets: false, env: [] }
 
 function useBrowseExpansion(firstInstalledPlugin: string | null) {
   const [expandedPlugins, setExpandedPlugins] = useState<ReadonlySet<string>>(() => new Set(firstInstalledPlugin ? [firstInstalledPlugin] : []))
@@ -94,7 +98,9 @@ function AddNodePalettePanel({
   }
 
   async function confirmInstall() {
-    const installed = await install.confirm()
+    const pendingEntry = catalogEntries?.find((entry) => entry.name === install.pending?.action.plugin?.name)
+    // Without the catalog entry the prompt says the plugin gets no settings or secrets: approve exactly that.
+    const installed = await install.confirm(pendingEntry?.permissions ?? noPermissions)
     if (installed) addAction(installed.action, validAnchor(graph, installed.anchor))
   }
 

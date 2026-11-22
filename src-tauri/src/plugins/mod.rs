@@ -89,22 +89,30 @@ const PROGRESS_STEP_BYTES: u64 = 256 * 1024;
 /// How an install reports progress and which permissions it may bring in.
 #[derive(Debug, Clone)]
 struct InstallMode {
-    /// `None`: any (the user is on screen; trust drops when an update asks for more).
+    /// `None`: any (an update the user started; trust drops when it asks for more).
     /// `Some`: a plugin asking for more than this is refused and nothing changes.
-    permission_limit: Option<PluginPermissions>,
+    permission_limit: Option<install::PermissionLimit>,
     /// Sends `install_progress` events (off for background updates).
     reports_progress: bool,
 }
 
 impl InstallMode {
-    /// The user asked for it on screen.
-    fn interactive() -> Self {
+    /// The user started an update on screen (Update on the plugin card).
+    fn user_update() -> Self {
         Self { permission_limit: None, reports_progress: true }
+    }
+
+    /// The user approved `permissions` on screen (install card, builder requirement card):
+    /// a manifest asking for more is refused.
+    fn approved(permissions: PluginPermissions) -> Self {
+        let origin = install::PermissionLimitOrigin::UserApproval;
+        Self { permission_limit: Some(install::PermissionLimit { permissions, origin }), reports_progress: true }
     }
 
     /// An update the user did not approve one by one: no new permissions, no progress.
     fn within(permissions: PluginPermissions) -> Self {
-        Self { permission_limit: Some(permissions), reports_progress: false }
+        let origin = install::PermissionLimitOrigin::InstalledVersion;
+        Self { permission_limit: Some(install::PermissionLimit { permissions, origin }), reports_progress: false }
     }
 }
 
@@ -568,13 +576,17 @@ impl PluginService {
     }
 
     /// Installs (or reinstalls) `name` from the catalog. Progress goes to `plugin-event`.
+    /// `approved` is what the user saw and approved (the catalog entry's permissions on
+    /// the install card): a downloaded manifest asking for more is refused, so a catalog
+    /// that understates its tarball can never get more than was shown.
     ///
     /// # Errors
     /// `NotFound` when the catalog has no such plugin; `InvalidInput` for a
-    /// checksum mismatch, an unsafe archive or a plugin graphrt rejects;
-    /// `Internal` for download / I/O errors. Nothing is installed on error.
-    pub async fn install(&self, name: &str) -> AppResult<InstalledPlugin> {
-        self.install_with(name, &InstallMode::interactive()).await
+    /// checksum mismatch, an unsafe archive, a plugin graphrt rejects or one asking
+    /// for more than `approved`; `Internal` for download / I/O errors. Nothing is
+    /// installed on error.
+    pub async fn install(&self, name: &str, approved: &PluginPermissions) -> AppResult<InstalledPlugin> {
+        self.install_with(name, &InstallMode::approved(approved.clone())).await
     }
 
     /// [`PluginService::install`] with `mode`'s permission limit and progress reporting.
@@ -602,7 +614,7 @@ impl PluginService {
         if self.snapshot().plugin(name).is_none() {
             return Err(AppError::NotFound(format!("plugin {name}")));
         }
-        self.install(name).await
+        self.install_with(name, &InstallMode::user_update()).await
     }
 
     async fn install_from_catalog(&self, name: &str, mode: &InstallMode) -> AppResult<InstalledPlugin> {
@@ -722,13 +734,24 @@ impl PluginService {
     }
 
     /// Trusts or stops trusting a plugin: trusted plugins receive their
-    /// settings and plaintext secrets.
+    /// settings and plaintext secrets. Trusting needs `approved`, the permissions the
+    /// user saw when approving (the trust toggle or requirement card), and is refused
+    /// when the installed manifest asks for more. Untrusting needs no approval.
     ///
     /// # Errors
-    /// `NotFound` when it is not installed.
-    pub async fn set_trusted(&self, name: &str, trusted: bool) -> AppResult<InstalledPlugin> {
+    /// `NotFound` when it is not installed; `InvalidInput` when trusting without
+    /// `approved` or the installed manifest asks for more than `approved`.
+    pub async fn set_trusted(
+        &self,
+        name: &str,
+        trusted: bool,
+        approved: Option<&PluginPermissions>,
+    ) -> AppResult<InstalledPlugin> {
         let _change = self.changes.lock().await;
         self.require_installed(name)?;
+        if trusted {
+            self.require_approved(name, approved)?;
+        }
         settings::set_trusted(&self.db, name, trusted)?;
         self.reload();
         self.events.send(PluginEvent::PluginsChanged);
@@ -834,6 +857,25 @@ impl PluginService {
             Some(_) => Ok(()),
             None => Err(AppError::NotFound(format!("plugin {name}"))),
         }
+    }
+
+    /// `InvalidInput` unless the installed manifest of `name` asks for nothing beyond `approved`.
+    fn require_approved(&self, name: &str, approved: Option<&PluginPermissions>) -> AppResult<()> {
+        let Some(approved) = approved else {
+            return Err(AppError::InvalidInput(format!(
+                "approve what plugin {name} asks for before trusting it; it was not trusted"
+            )));
+        };
+        let requested = self.snapshot().plugin(name).map(|plugin| plugin.permissions.clone()).unwrap_or_default();
+        let beyond = requested.requests_beyond(approved);
+        if beyond.is_empty() {
+            return Ok(());
+        }
+        log::warn!("refused to trust plugin {name}: it asks for more than was approved ({})", beyond.join(", "));
+        Err(AppError::InvalidInput(format!(
+            "plugin {name} asks for more than you approved ({}); it was not trusted. Look at what it asks for again and approve it",
+            beyond.join(", ")
+        )))
     }
 
     fn require_requested(&self, name: &str, variable: &str) -> AppResult<()> {

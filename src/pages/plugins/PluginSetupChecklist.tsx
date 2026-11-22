@@ -99,7 +99,7 @@ export function buildPluginSetupSteps({ installed, plugins, browserRuntime }: Bu
           pluginLabel={installed.displayName}
           isTrusted={installed.trusted}
           isSaving={plugins.operationByName[installed.name] === 'trusting'}
-          onChange={(trusted) => void plugins.setTrusted(installed.name, trusted)}
+          onChange={(trusted) => void plugins.setTrusted(installed.name, trusted, installed.permissions)}
         />
       ),
     },
