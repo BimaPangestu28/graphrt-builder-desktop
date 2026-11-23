@@ -7,6 +7,17 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ## [Unreleased]
 
+### Added
+
+- **Trusted hosts for lookups**: each agent has a list of sites it may look things up on without asking ("Read-only requests to these sites run without asking. Anything that changes data still asks you first."), shown in Builder › Steps, in the HTTP request inspector and on the chatbot setup page (a chat cannot stop for an approval, so this is how chatbots do parameterized lookups again). An `http-request` counts as reading, and needs no approval, only when **all** hold: the method (trimmed, any case) is GET or HEAD; it has no body; its scheme and host are written out literally (only the path and query may read `{{#…#}}` values; the host part may contain only letters, digits, `.`, `-` and `:`); the host matches a trusted entry exactly (any case; `*.example.com` covers subdomains, not `example.com` itself; an entry without a port matches only the default port, `host:port` only that port); `env` secrets appear only in the query, `params`, `headers` or `authorization`, never in the URL path; and no output of a model that may have run commands (Codex) flows into it. POST / PUT / PATCH / DELETE and OPTIONS with values always ask, also on trusted hosts. Everything else keeps the rules of 0.1.5.
+- The list is stored per agent in the app database (`agent_settings`, key `trusted_lookup_hosts`, removed with the agent), never in the workflow document: a builder draft or a prompt injection in one cannot add a host. Only the user adds one, with the new `list_trusted_lookup_hosts` / `add_trusted_lookup_host` / `remove_trusted_lookup_host` commands; hosts are checked (a host name or `*.domain`, optional `:port`; schemes, paths, user info, `*` and `*.com` are refused; at most 50 per agent).
+- The builder is told the agent's trusted hosts (names only) and that lookups on them need no approval. When it writes a lookup to a host that is not trusted yet, its reply ends with "Trust api.example.com for lookups", which the chat shows as a button; nothing is trusted until the user clicks it. The Nodes view's problem for such a lookup reads "… Ask before sending, or trust api.example.com for read-only lookups" with a one-click **Trust api.example.com** action, and the HTTP request inspector says whether the request runs without asking and why.
+
+### Changed
+
+- A run refuses to start while it has a lookup that would read only once its host is trusted and the host is not trusted (it was saved from a builder proposal, or the host was removed since): "… looks up data on api.example.com, which this agent does not trust: trust api.example.com for lookups, or ask before sending".
+- Runs that contain a trusted-host lookup follow no HTTP redirects (graphrt-http's `max_redirects` is 0 for that run; it has no per-step setting): a 3xx response fails the step instead of carrying the lookup's query to a host nobody trusted. Other runs follow redirects as before.
+
 ## [0.1.5] - 2026-11-22
 
 ### Performance

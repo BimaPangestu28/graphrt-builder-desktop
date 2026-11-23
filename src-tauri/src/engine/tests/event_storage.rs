@@ -368,6 +368,7 @@ async fn abort_before_the_task_registers_aborts_the_graphrt_run() {
 
     let engine = preparation::build_engine(
         &agent.flow_yaml,
+        &crate::flow::TrustedHosts::none(),
         &harness.credentials,
         &harness.db,
         &*harness.runs.model_source,

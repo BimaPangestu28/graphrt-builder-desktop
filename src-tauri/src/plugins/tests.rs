@@ -744,7 +744,7 @@ async fn the_published_snapshot_feeds_compiles_tools_and_the_approval_check() {
                 - { id: say, type: fixture-echo.send_text, title: Send it, text: hi }\n  edges:\n    \
                 - { source: start, target: say }\n";
     let compiled = crate::flow::compile_flow(flow);
-    let unapproved = crate::flow::find_unapproved_sending_steps(flow);
+    let unapproved = crate::flow::find_unapproved_sending_steps(flow, &crate::flow::TrustedHosts::none());
     let mut tools = graphrt_core::tool::ToolRegistry::new();
     super::add_plugin_tools(&mut tools);
     let guide = super::installed_plugins_guide();

@@ -8,11 +8,15 @@ mod sending;
 mod summary;
 #[cfg(test)]
 pub(crate) mod test_fixtures;
+pub mod trusted_hosts;
 
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
+pub use approval::UnapprovedStep;
 pub(crate) use approval::{read_timeout_choice, TimeoutChoice, TimeoutSend};
+pub use sending::{check_http_request, HttpRequestCheck};
+pub use trusted_hosts::TrustedHosts;
 
 /// One step as listed in the builder.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -213,13 +217,42 @@ pub fn summarize_flow(flow_yaml: &str) -> AppResult<FlowSummary> {
 
 /// Titles of steps that send data out (see [`is_sending_node`]) on a path
 /// that does not first stop at a `human-input` approval. Empty means the flow
-/// keeps the promise "it asks you before anything is sent".
+/// keeps the promise "it asks you before anything is sent". `trusted` are the
+/// agent's trusted lookup hosts ([`TrustedHosts::none`] for a new draft).
 ///
 /// # Errors
 /// Same as [`compile_flow`]: the document is compiled first.
-pub fn find_unapproved_sending_steps(flow_yaml: &str) -> AppResult<Vec<String>> {
+pub fn find_unapproved_sending_steps(flow_yaml: &str, trusted: &TrustedHosts) -> AppResult<Vec<String>> {
     let graph = compile_draft(flow_yaml)?;
-    Ok(approval::unapproved_sending_steps(&graph))
+    Ok(approval::unapproved_sending_steps(&graph, trusted))
+}
+
+/// [`find_unapproved_sending_steps`] with node ids and, for lookups that only
+/// need their host trusted, that host.
+///
+/// # Errors
+/// Same as [`compile_flow`]: the document is compiled first.
+pub fn find_unapproved_steps(flow_yaml: &str, trusted: &TrustedHosts) -> AppResult<Vec<UnapprovedStep>> {
+    let graph = compile_draft(flow_yaml)?;
+    Ok(approval::unapproved_steps(&graph, trusted))
+}
+
+/// [`find_unapproved_steps`] of a compiled graph.
+pub fn unapproved_steps(graph: &graphrt_core::Graph, trusted: &TrustedHosts) -> Vec<UnapprovedStep> {
+    approval::unapproved_steps(graph, trusted)
+}
+
+/// Whether a compiled graph has an `http-request` step that reads only because
+/// its host is trusted (a [`HttpRequestCheck::TrustedLookup`]). Runs of such a
+/// graph do not follow redirects, so a trusted host cannot bounce the request,
+/// with its values, to a host nobody trusted.
+pub fn has_trusted_lookups(graph: &graphrt_core::Graph, trusted: &TrustedHosts) -> bool {
+    !trusted.is_empty()
+        && graph
+            .nodes()
+            .iter()
+            .filter(|node| node.kind == "http-request")
+            .any(|node| matches!(check_http_request(&node.doc.config, trusted), HttpRequestCheck::TrustedLookup { .. }))
 }
 
 /// Approval steps whose time limit answers with a button that leads to a step
@@ -228,15 +261,15 @@ pub fn find_unapproved_sending_steps(flow_yaml: &str) -> AppResult<Vec<String>> 
 ///
 /// # Errors
 /// Same as [`compile_flow`]: the document is compiled first.
-pub fn find_timeouts_that_send(flow_yaml: &str) -> AppResult<Vec<String>> {
+pub fn find_timeouts_that_send(flow_yaml: &str, trusted: &TrustedHosts) -> AppResult<Vec<String>> {
     let graph = compile_draft(flow_yaml)?;
-    Ok(approval::timeouts_that_send(&graph).iter().map(timeout_send_message).collect())
+    Ok(approval::timeouts_that_send(&graph, trusted).iter().map(timeout_send_message).collect())
 }
 
 /// Approval steps of a compiled graph whose time limit answers into a send
 /// (see [`find_timeouts_that_send`]).
-pub(crate) fn timeouts_that_send(graph: &graphrt_core::Graph) -> Vec<TimeoutSend> {
-    approval::timeouts_that_send(graph)
+pub(crate) fn timeouts_that_send(graph: &graphrt_core::Graph, trusted: &TrustedHosts) -> Vec<TimeoutSend> {
+    approval::timeouts_that_send(graph, trusted)
 }
 
 /// "Ask before sending answers `send` by itself when its time runs out, and that leads to Send it".
@@ -325,15 +358,25 @@ pub fn start_inputs(workflow: &graphrt_core::Workflow) -> Vec<FlowInput> {
 /// Whether a node of this kind and config sends data out (writing HTTP methods,
 /// HTTP requests carrying values, plugin and tool steps that send or change
 /// something, agents with sending tools that do not ask first), so it must sit
-/// behind an approval.
-pub fn is_sending_node(kind: &str, config: &serde_json::Map<String, serde_json::Value>) -> bool {
-    approval::is_sending_kind(kind, config)
+/// behind an approval. `trusted` are the agent's trusted lookup hosts.
+pub fn is_sending_node(
+    kind: &str,
+    config: &serde_json::Map<String, serde_json::Value>,
+    trusted: &TrustedHosts,
+) -> bool {
+    approval::is_sending_kind(kind, config, trusted)
 }
 
 /// Node ids of compiled sending steps that a path reaches without an approval
 /// (see [`find_unapproved_sending_steps`]).
-pub fn unapproved_sending_node_ids(graph: &graphrt_core::Graph) -> Vec<String> {
-    approval::unapproved_sending_node_ids(graph)
+pub fn unapproved_sending_node_ids(graph: &graphrt_core::Graph, trusted: &TrustedHosts) -> Vec<String> {
+    approval::unapproved_sending_node_ids(graph, trusted)
+}
+
+/// Ids of the steps whose output may carry what a local CLI that might have run a
+/// command produced (Codex), directly or through other steps.
+pub fn unvetted_output_node_ids(graph: &graphrt_core::Graph) -> std::collections::HashSet<String> {
+    sending::unvetted_output_node_ids(graph)
 }
 
 /// `(node id, host)` of compiled HTTP steps calling a placeholder address

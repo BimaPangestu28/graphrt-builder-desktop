@@ -6,7 +6,7 @@
 
 use super::provider_name;
 use crate::credentials::ModelChoice;
-use crate::flow;
+use crate::flow::{self, TrustedHosts};
 use crate::storage::models::AgentKind;
 
 const EXAMPLE_SIMPLE_ANSWER: &str = include_str!("../../fixtures/flows/simple_answer.yaml");
@@ -22,6 +22,7 @@ const DOMAIN_GUIDES: &[&str] = &[
     include_str!("guides/chatbot.md"),     // chatbot conversations
     include_str!("guides/agents_as_tools.md"), // other agents as tool steps and team members
     include_str!("guides/knowledge.md"),   // knowledge-retrieval over the user's knowledge bases
+    include_str!("guides/trusted_lookups.md"), // read-only lookups on trusted hosts, "Trust <host>" proposals
 ];
 
 /// Prefix of the line carrying the agent's display name in a build reply.
@@ -41,8 +42,9 @@ email or post, submits a form) or spends money (orders, pays, books) must come r
 that shows exactly what will be sent or bought, with actions such as `send` and `skip`. Connect only the approving \
 action to that step. Inside an `iteration` that contains `human-input`, set `is_parallel: false`.
 - The app also counts as sending: any `http-request` (GET included) whose URL, params, headers, authorization or \
-body reads a `{{#…#}}` value, `tool` steps and plugin steps that change something, and `agent` steps with such \
-tools unless `require_approval` lists each of them. Put a `human-input` before those too. A `human-input` with a \
+body reads a `{{#…#}}` value (except a read-only lookup on a trusted host, see below), `tool` steps and plugin \
+steps that change something, and `agent` steps with such tools unless `require_approval` lists each of them. \
+Put a `human-input` before those too. A `human-input` with a \
 time limit must use `on_timeout: stop` or a button that does not lead to a sending step.
 - Keys and tokens for third-party services go under `env` with `type: secret` and are read as `{{#env.NAME#}}`. \
 Never write a real or made-up key into the document.
@@ -73,22 +75,32 @@ Keep the ids of steps you do not change, and change only what the request needs.
 the request is about the model; new model nodes follow the model rule above.";
 
 /// System prompt for drafting a new agent. `saved_secret_names` are the secrets the
-/// user saved in the app (names only, never values).
+/// user saved in the app (names only, never values). A new agent trusts no hosts yet.
 pub(super) fn build_system_prompt(model: &ModelChoice, saved_secret_names: &[String]) -> String {
-    system_prompt(model, BUILD_REPLY_FORMAT, saved_secret_names)
+    system_prompt(model, BUILD_REPLY_FORMAT, saved_secret_names, &TrustedHosts::none())
 }
 
-/// System prompt for revising an existing agent.
-pub(super) fn revision_system_prompt(model: &ModelChoice, saved_secret_names: &[String]) -> String {
-    system_prompt(model, REVISION_REPLY_FORMAT, saved_secret_names)
+/// System prompt for revising an existing agent; `trusted_hosts` are the agent's trusted lookup hosts.
+pub(super) fn revision_system_prompt(
+    model: &ModelChoice,
+    saved_secret_names: &[String],
+    trusted_hosts: &TrustedHosts,
+) -> String {
+    system_prompt(model, REVISION_REPLY_FORMAT, saved_secret_names, trusted_hosts)
 }
 
-fn system_prompt(model: &ModelChoice, reply_format: &str, saved_secret_names: &[String]) -> String {
+fn system_prompt(
+    model: &ModelChoice,
+    reply_format: &str,
+    saved_secret_names: &[String],
+    trusted_hosts: &TrustedHosts,
+) -> String {
     let rules = SHARED_RULES.replace("{provider}", provider_name(model.provider)).replace("{model}", &model.name);
     let rules = append_domain_guides(rules);
     let rules = append_plugin_guide(rules);
     let rules = append_mcp_guide(rules);
     let rules = append_saved_secrets_guide(rules, saved_secret_names);
+    let rules = append_trusted_hosts_guide(rules, trusted_hosts);
     let rules = append_local_cli_guide(rules, model);
     format!(
         "{ROLE}\n\n# Rules\n{rules}\n\n# Reply format\n{reply_format}\n\n# Workflow format\n{guide}\n\n\
@@ -154,6 +166,18 @@ fn append_saved_secrets_guide(rules: String, saved_secret_names: &[String]) -> S
          it as `{{{{#env.NAME#}}}}`, e.g. `{{{{#env.{example}#}}}}`. Pick the name that best matches what the user \
          describes; only add a new secret name when none of these fits.",
         example = saved_secret_names[0],
+    )
+}
+
+/// Lists the hosts the user trusts for this agent's lookups (names only).
+fn append_trusted_hosts_guide(rules: String, trusted_hosts: &TrustedHosts) -> String {
+    if trusted_hosts.is_empty() {
+        return format!("{rules}\n- This agent trusts no hosts for lookups yet.");
+    }
+    let listed_hosts = trusted_hosts.entries().iter().map(|host| format!("`{host}`")).collect::<Vec<_>>().join(", ");
+    format!(
+        "{rules}\n- Hosts the user trusts for this agent's read-only lookups: {listed_hosts} (`*.domain` covers \
+         its subdomains). Lookups on them need no `human-input`."
     )
 }
 

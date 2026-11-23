@@ -86,7 +86,14 @@ pub struct GraphContext<'a> {
 
 impl<'a> GraphContext<'a> {
     pub fn new(registry: &'a Registry) -> Self {
-        Self { validation: ValidationContext { registry, runnable_kinds: None, available_providers: None } }
+        Self {
+            validation: ValidationContext {
+                registry,
+                runnable_kinds: None,
+                available_providers: None,
+                trusted_hosts: flow::TrustedHosts::none(),
+            },
+        }
     }
 }
 
@@ -140,7 +147,9 @@ pub fn graph_from_yaml(source: GraphSource<'_>, flow_yaml: &str, context: &Graph
 
 fn graph_from_workflow(source: GraphSource<'_>, workflow: &Workflow, context: &GraphContext<'_>) -> AgentGraph {
     let registry = context.validation.registry;
-    let nodes: Vec<GraphNodeView> = workflow.graph.nodes.iter().map(|node| node_view(node, registry)).collect();
+    let checks = RequestChecks::of(workflow, &context.validation);
+    let nodes: Vec<GraphNodeView> =
+        workflow.graph.nodes.iter().map(|node| node_view(node, registry, &checks)).collect();
     let edges = edge_views(workflow, &nodes);
     let problems = validate::validate_workflow(workflow, &nodes, &edges, &context.validation);
     AgentGraph {
@@ -156,7 +165,43 @@ fn graph_from_workflow(source: GraphSource<'_>, workflow: &Workflow, context: &G
     }
 }
 
-fn node_view(node: &graphrt_core::dsl::NodeDoc, registry: &Registry) -> GraphNodeView {
+/// What the node views need to say whether a step sends: the agent's trusted
+/// hosts, and the steps that carry a local CLI's unvetted output (Codex).
+struct RequestChecks<'a> {
+    trusted_hosts: &'a flow::TrustedHosts,
+    unvetted: HashSet<String>,
+}
+
+impl<'a> RequestChecks<'a> {
+    fn of(workflow: &Workflow, validation: &'a ValidationContext<'_>) -> Self {
+        let unvetted = graphrt_core::Graph::build(workflow.clone(), validation.registry)
+            .map(|graph| flow::unvetted_output_node_ids(&graph))
+            .unwrap_or_default();
+        Self { trusted_hosts: &validation.trusted_hosts, unvetted }
+    }
+
+    /// The inspector's "runs without asking" line of an `http-request` step.
+    fn request_check(&self, node: &graphrt_core::dsl::NodeDoc) -> Option<RequestCheckView> {
+        if node.kind != "http-request" {
+            return None;
+        }
+        if self.unvetted.contains(&node.id) {
+            return Some(RequestCheckView {
+                runs_without_asking: false,
+                reason: "Asks you first: it uses what a model that may have run commands wrote".into(),
+                trustable_host: None,
+            });
+        }
+        let check = flow::check_http_request(&node.config, self.trusted_hosts);
+        Some(RequestCheckView {
+            runs_without_asking: check.runs_without_asking(),
+            reason: check.explanation(),
+            trustable_host: check.trustable_host().map(str::to_owned),
+        })
+    }
+}
+
+fn node_view(node: &graphrt_core::dsl::NodeDoc, registry: &Registry, checks: &RequestChecks<'_>) -> GraphNodeView {
     let descriptor = registry.descriptor(&node.kind);
     let on_error = document::on_error_view(&node.policy.on_error);
     let description = flow::describe_node(&node.kind, node.title.as_deref(), &node.config);
@@ -181,7 +226,8 @@ fn node_view(node: &graphrt_core::dsl::NodeDoc, registry: &Registry) -> GraphNod
         container: descriptor.as_ref().is_some_and(|descriptor| descriptor.container),
         hidden: matches!(node.kind.as_str(), "iteration-start" | "loop-start"),
         needs_approval: description.needs_approval,
-        sends_data: flow::is_sending_node(&node.kind, &node.config),
+        sends_data: flow::is_sending_node(&node.kind, &node.config, checks.trusted_hosts),
+        request_check: checks.request_check(node),
         plugin: node
             .kind
             .split_once('.')

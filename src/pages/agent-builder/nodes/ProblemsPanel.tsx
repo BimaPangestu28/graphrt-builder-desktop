@@ -7,10 +7,11 @@ const panelButtonClassNames = 'h-7 cursor-pointer rounded-md border border-line-
 /**
  * Problems of the working graph (spec E, artboard 37): "2 problems to fix before it runs",
  * one row per problem with its label, the step and the message, Show node (selects and
- * centers it) and Fix with builder (prefills the chat; the user sends it), and why Test is off.
+ * centers it), Trust <host> for a lookup that only needs its host trusted, Fix with builder
+ * (prefills the chat; the user sends it), and why Test is off.
  * After Validate with nothing found it says so; otherwise it renders nothing without problems.
  */
-export function ProblemsPanel({ problems, graph, onSelectNode, onShowProblem, onFixWithBuilder, testBlockReason = null, wasValidated = false, onClose }: ProblemsPanelProps) {
+export function ProblemsPanel({ problems, graph, onSelectNode, onShowProblem, onFixWithBuilder, onTrustHost, trustError = null, testBlockReason = null, wasValidated = false, onClose }: ProblemsPanelProps) {
   const sorted = sortProblems(problems)
   const errorCount = sorted.filter((problem) => problem.severity === 'error').length
   if (sorted.length === 0) {
@@ -41,6 +42,7 @@ export function ProblemsPanel({ problems, graph, onSelectNode, onShowProblem, on
         {sorted.map((problem, problemIndex) => {
           const nodeId = problemTargetNodeId(problem, graph)
           const title = problemNodeTitle(problem, graph)
+          const trustHost = problem.trustHost ?? null
           return (
             <li
               key={`${problem.code}-${problem.nodeId}-${problem.edgeId}-${problemIndex}`}
@@ -54,7 +56,12 @@ export function ProblemsPanel({ problems, graph, onSelectNode, onShowProblem, on
                 </span>
                 <span className="text-body">{problem.message}</span>
               </div>
-              <div className="flex gap-1.5">
+              <div className="flex flex-wrap gap-1.5">
+                {trustHost && onTrustHost && (
+                  <button type="button" onClick={() => onTrustHost(trustHost)} className={panelButtonClassNames}>
+                    Trust {trustHost}
+                  </button>
+                )}
                 {nodeId && (
                   <button type="button" onClick={() => (onShowProblem ? onShowProblem(problem, nodeId) : onSelectNode(nodeId))} className={panelButtonClassNames}>
                     Show node
@@ -70,6 +77,11 @@ export function ProblemsPanel({ problems, graph, onSelectNode, onShowProblem, on
           )
         })}
       </ul>
+      {trustError && (
+        <p role="alert" className="m-0 text-danger">
+          {trustError}
+        </p>
+      )}
       {testBlockReason && <p className="m-0 text-muted">{testBlockReason}</p>}
     </section>
   )

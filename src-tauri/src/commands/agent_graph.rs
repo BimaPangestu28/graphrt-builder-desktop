@@ -39,7 +39,9 @@ pub fn emit_edit_state_changes(app_handle: AppHandle) {
 /// The graph of `version` (current when absent), with ports and validation problems.
 #[tauri::command]
 pub fn get_agent_graph(state: State<'_, AppState>, agent_id: String, version: Option<i64>) -> AppResult<AgentGraph> {
-    with_graph_context(&state, |context| agent_graph::load_agent_graph(&state.db, &agent_id, version, context))
+    with_graph_context(&state, &agent_id, |context| {
+        agent_graph::load_agent_graph(&state.db, &agent_id, version, context)
+    })
 }
 
 /// Every node kind the app offers or can read, builtins first, then plugin actions.
@@ -68,7 +70,7 @@ pub fn save_agent_graph(
     base_version: i64,
     edit: GraphEdit,
 ) -> AppResult<SaveGraphResult> {
-    with_graph_context(&state, |context| {
+    with_graph_context(&state, &agent_id, |context| {
         agent_graph::save_agent_graph(&state.db, &agent_id, base_version, &edit, context)
     })
 }
@@ -81,7 +83,7 @@ pub fn validate_agent_graph(
     base_version: i64,
     edit: GraphEdit,
 ) -> AppResult<Vec<GraphProblem>> {
-    with_graph_context(&state, |context| {
+    with_graph_context(&state, &agent_id, |context| {
         agent_graph::validate_agent_graph(&state.db, &agent_id, base_version, &edit, context)
     })
 }
@@ -148,7 +150,11 @@ pub fn get_agent_edit_state(state: State<'_, AppState>, agent_id: String) -> App
 }
 
 /// Runs `action` with the draft registry, the runnable kinds and the model providers set up.
-fn with_graph_context<T>(state: &AppState, action: impl FnOnce(&GraphContext<'_>) -> AppResult<T>) -> AppResult<T> {
+fn with_graph_context<T>(
+    state: &AppState,
+    agent_id: &str,
+    action: impl FnOnce(&GraphContext<'_>) -> AppResult<T>,
+) -> AppResult<T> {
     let registry = flow::draft_node_registry();
     let runnable_kinds = agent_graph::registry_kinds(&flow::node_registry());
     let available_providers = match credentials::build_model_registry(&state.credentials, &state.db) {
@@ -161,5 +167,6 @@ fn with_graph_context<T>(state: &AppState, action: impl FnOnce(&GraphContext<'_>
     let mut context = GraphContext::new(&registry);
     context.validation.runnable_kinds = Some(&runnable_kinds);
     context.validation.available_providers = available_providers.as_deref();
+    context.validation.trusted_hosts = state.db.trusted_lookup_hosts(agent_id)?;
     action(&context)
 }

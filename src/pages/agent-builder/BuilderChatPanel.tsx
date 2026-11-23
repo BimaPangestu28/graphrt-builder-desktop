@@ -4,6 +4,7 @@ import { splitPaneColumnClassName, splitPaneScrollClassName } from '@/components
 import { useFollowNewContent } from '@/hooks/useFollowNewContent'
 import type { Agent, BuilderMessage, FlowStep } from '@/api/types'
 import { joinClassNames, StrokeIcon, VisuallyHidden } from '@/components/ui'
+import { BuilderExplanation } from './BuilderExplanation'
 import { assistantBlockClassNames, PanelHeader, UserChatBubble } from './ChatBubbles'
 import { describeDraftActivity } from './draftActivity'
 import type { BuilderAskDraft } from './useBuilderAskDraft'
@@ -21,6 +22,7 @@ function pluralize(count: number, singular: string, plural: string): string {
 }
 
 interface AgentSummaryReplyProps {
+  agentId: string
   agentName: string
   steps: FlowStep[]
   /** The model's explanation of the agent when it was built, saved with the chat. */
@@ -28,12 +30,12 @@ interface AgentSummaryReplyProps {
 }
 
 /** First assistant reply: the build's explanation (when saved) and a summary of the agent's current steps. */
-function AgentSummaryReply({ agentName, steps, openingExplanation }: AgentSummaryReplyProps) {
+function AgentSummaryReply({ agentId, agentName, steps, openingExplanation }: AgentSummaryReplyProps) {
   const approvalCount = steps.filter((flowStep) => flowStep.needsApproval).length
   const stepCountLabel = pluralize(steps.length, 'step', 'steps')
   return (
     <div className={`${assistantBlockClassNames} gap-3`}>
-      {openingExplanation && <p className="m-0 leading-[1.55]">{openingExplanation}</p>}
+      {openingExplanation && <BuilderExplanation text={openingExplanation} agentId={agentId} />}
       <p className="m-0 leading-[1.55]">
         Your agent has {stepCountLabel}.{approvalCount > 0 ? ' It asks you before anything that needs your approval' : ' It runs without stopping for approval'}
       </p>
@@ -51,6 +53,8 @@ function AgentSummaryReply({ agentName, steps, openingExplanation }: AgentSummar
 }
 
 interface ChangeReplyProps {
+  /** The agent changed, for the "Trust <host> for lookups" buttons. */
+  agentId: string | null
   exchange: ChatExchange
   steps: FlowStep[]
   /** Present only on the latest successful change, which can be undone. */
@@ -110,7 +114,7 @@ function describeUndone(undoableRevision: LatestRevision): string {
 }
 
 /** Reply to a change request: progress, the explanation and summary with changed steps, and Undo/Redo. */
-function ChangeReply({ exchange, steps, undoableRevision, isBusy, onToggleUndo, onStop, isStopping }: ChangeReplyProps) {
+function ChangeReply({ agentId, exchange, steps, undoableRevision, isBusy, onToggleUndo, onStop, isStopping }: ChangeReplyProps) {
   if (exchange.status === 'pending') return <LiveChangeReply exchange={exchange} onStop={onStop} isStopping={isStopping} />
   if (exchange.status === 'stopped') return <p className="m-0 max-w-[92%] leading-[1.55] text-muted">{exchange.reply}</p>
   if (exchange.status === 'failed') return <p className="m-0 max-w-[92%] leading-[1.55] text-danger">{exchange.reply}</p>
@@ -122,7 +126,7 @@ function ChangeReply({ exchange, steps, undoableRevision, isBusy, onToggleUndo, 
         <p className="m-0 leading-[1.55]">{describeUndone(undoableRevision)}</p>
       ) : (
         <>
-          {exchange.explanation && <p className="m-0 leading-[1.55]">{exchange.explanation}</p>}
+          {exchange.explanation && <BuilderExplanation text={exchange.explanation} agentId={agentId} />}
           <p className="m-0 leading-[1.55]">{exchange.reply}</p>
         </>
       )}
@@ -300,9 +304,9 @@ export function BuilderChatPanel(props: BuilderChatPanelProps) {
         {agent && (
           <>
             <UserChatBubble>{agent.description}</UserChatBubble>
-            <AgentSummaryReply agentName={agent.name} steps={steps} openingExplanation={openingExplanation} />
+            <AgentSummaryReply agentId={agent.id} agentName={agent.name} steps={steps} openingExplanation={openingExplanation} />
             {pluginSetupAnchor === 'opening' && pluginSetupMessage}
-            <SavedChatMessages messages={savedMessages} />
+            <SavedChatMessages agentId={agent.id} messages={savedMessages} />
           </>
         )}
         {exchanges.map((exchange) => {
@@ -323,7 +327,7 @@ export function BuilderChatPanel(props: BuilderChatPanelProps) {
           return (
             <div key={exchange.id} className="flex flex-col gap-5">
               <UserChatBubble>{exchange.request}</UserChatBubble>
-              <ChangeReply exchange={exchange} steps={steps} undoableRevision={undoableRevision} isBusy={isBusy} onToggleUndo={onToggleUndo} onStop={onStopRequest} isStopping={isStopping} />
+              <ChangeReply agentId={agent?.id ?? null} exchange={exchange} steps={steps} undoableRevision={undoableRevision} isBusy={isBusy} onToggleUndo={onToggleUndo} onStop={onStopRequest} isStopping={isStopping} />
               {pluginSetupAnchor === exchange.id && exchange.status !== 'pending' && pluginSetupMessage}
             </div>
           )

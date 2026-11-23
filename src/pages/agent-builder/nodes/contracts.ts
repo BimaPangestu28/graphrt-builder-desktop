@@ -209,6 +209,10 @@ export interface ProblemsPanelProps {
   onShowProblem?: (problem: GraphProblem, nodeId: string) => void
   /** "Fix with builder": puts a change request in the chat box for the user to send. */
   onFixWithBuilder?: (request: string) => void
+  /** "Trust <host>" on a lookup that only needs its host trusted (`GraphProblem.trustHost`); the user clicks it. */
+  onTrustHost?: (host: string) => void
+  /** Why the last Trust failed, shown under the list. */
+  trustError?: string | null
   /** Why Test is off, shown under the list; null when it can start. */
   testBlockReason?: string | null
   /** True right after Validate ran (the panel then also says when nothing was found). */

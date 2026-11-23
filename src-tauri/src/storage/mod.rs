@@ -41,6 +41,7 @@ pub mod settings;
 #[cfg(test)]
 mod test_support;
 pub mod triggers;
+pub mod trusted_hosts;
 
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};

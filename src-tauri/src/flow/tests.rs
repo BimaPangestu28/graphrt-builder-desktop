@@ -222,17 +222,26 @@ graph:
 
 #[test]
 fn approval_loop_sends_only_after_approval() {
-    assert_eq!(find_unapproved_sending_steps(APPROVAL_LOOP).unwrap(), Vec::<String>::new());
+    assert_eq!(
+        find_unapproved_sending_steps(APPROVAL_LOOP, &crate::flow::TrustedHosts::none()).unwrap(),
+        Vec::<String>::new()
+    );
 }
 
 #[test]
 fn reading_steps_need_no_approval() {
-    assert_eq!(find_unapproved_sending_steps(SIMPLE_ANSWER).unwrap(), Vec::<String>::new());
+    assert_eq!(
+        find_unapproved_sending_steps(SIMPLE_ANSWER, &crate::flow::TrustedHosts::none()).unwrap(),
+        Vec::<String>::new()
+    );
 }
 
 #[test]
 fn post_without_approval_is_reported() {
-    assert_eq!(find_unapproved_sending_steps(DIRECT_POST).unwrap(), vec!["Notify the team".to_owned()]);
+    assert_eq!(
+        find_unapproved_sending_steps(DIRECT_POST, &crate::flow::TrustedHosts::none()).unwrap(),
+        vec!["Notify the team".to_owned()]
+    );
 }
 
 #[test]
@@ -244,7 +253,7 @@ fn a_bypass_around_the_approval_is_reported() {
     assert_ne!(bypassed, APPROVAL_LOOP, "fixture edge text changed; update this test");
     // Without "Ask before searching" the search (it carries the area and the Maps key) is unapproved too.
     assert_eq!(
-        find_unapproved_sending_steps(&bypassed).unwrap(),
+        find_unapproved_sending_steps(&bypassed, &crate::flow::TrustedHosts::none()).unwrap(),
         vec!["Find cafes on Google Maps".to_owned(), "Send the WhatsApp message".to_owned()]
     );
 }
@@ -261,7 +270,10 @@ fn approval_before_a_loop_covers_sending_steps_inside_it() {
         .replace("    - { source: approve_message, target: send_message, handle: send }\n", "")
         .replace("{{#each_cafe.item.name#}}?\\n\\n{{#draft_message.text#}}", "all cafes?");
     // The send inside the loop is covered; only the search before the approval is not.
-    assert_eq!(find_unapproved_sending_steps(&approval_moved).unwrap(), vec!["Find cafes on Google Maps".to_owned()]);
+    assert_eq!(
+        find_unapproved_sending_steps(&approval_moved, &crate::flow::TrustedHosts::none()).unwrap(),
+        vec!["Find cafes on Google Maps".to_owned()]
+    );
 }
 
 #[test]
@@ -315,9 +327,11 @@ fn http_steps_calling_placeholder_addresses_are_found() {
 fn every_approval_bypass_trick_is_caught() {
     for (trick, draft, flagged_step) in test_fixtures::approval_bypass_drafts() {
         let graph = compile_draft(&draft).unwrap_or_else(|error| panic!("{trick}: {error}"));
-        let unapproved = approval::unapproved_sending_node_ids(&graph);
-        let timeouts: Vec<String> =
-            approval::timeouts_that_send(&graph).into_iter().map(|timeout| timeout.approval_node_id).collect();
+        let unapproved = approval::unapproved_sending_node_ids(&graph, &TrustedHosts::none());
+        let timeouts: Vec<String> = approval::timeouts_that_send(&graph, &TrustedHosts::none())
+            .into_iter()
+            .map(|timeout| timeout.approval_node_id)
+            .collect();
         assert!(
             unapproved.iter().chain(&timeouts).any(|node_id| node_id == flagged_step),
             "{trick}: unapproved {unapproved:?}, timeouts {timeouts:?}"
@@ -328,41 +342,61 @@ fn every_approval_bypass_trick_is_caught() {
 #[test]
 fn codex_output_reaching_a_reading_step_needs_an_approval() {
     let direct = test_fixtures::model_output_into_a_search("codex-cli", false, false);
-    assert_eq!(find_unapproved_sending_steps(&direct).unwrap(), vec!["Search places".to_owned()]);
+    assert_eq!(
+        find_unapproved_sending_steps(&direct, &crate::flow::TrustedHosts::none()).unwrap(),
+        vec!["Search places".to_owned()]
+    );
     let through_another_model = test_fixtures::model_output_into_a_search("codex-cli", true, false);
-    assert_eq!(find_unapproved_sending_steps(&through_another_model).unwrap(), vec!["Search places".to_owned()]);
+    assert_eq!(
+        find_unapproved_sending_steps(&through_another_model, &crate::flow::TrustedHosts::none()).unwrap(),
+        vec!["Search places".to_owned()]
+    );
     let approved = test_fixtures::model_output_into_a_search("codex-cli", true, true);
-    assert_eq!(find_unapproved_sending_steps(&approved).unwrap(), Vec::<String>::new());
+    assert_eq!(
+        find_unapproved_sending_steps(&approved, &crate::flow::TrustedHosts::none()).unwrap(),
+        Vec::<String>::new()
+    );
 }
 
 #[test]
 fn other_providers_output_may_reach_a_reading_step_without_approval() {
     for provider in ["openai", "claude-cli"] {
         let flow_yaml = test_fixtures::model_output_into_a_search(provider, true, false);
-        assert_eq!(find_unapproved_sending_steps(&flow_yaml).unwrap(), Vec::<String>::new(), "{provider}");
+        assert_eq!(
+            find_unapproved_sending_steps(&flow_yaml, &crate::flow::TrustedHosts::none()).unwrap(),
+            Vec::<String>::new(),
+            "{provider}"
+        );
     }
 }
 
 #[test]
 fn an_approval_that_stops_or_skips_on_timeout_is_allowed() {
     let stops = test_fixtures::timeout_draft_repaired();
-    assert_eq!(find_timeouts_that_send(&stops).unwrap(), Vec::<String>::new());
-    assert_eq!(find_unapproved_sending_steps(&stops).unwrap(), Vec::<String>::new());
+    assert_eq!(find_timeouts_that_send(&stops, &crate::flow::TrustedHosts::none()).unwrap(), Vec::<String>::new());
+    assert_eq!(
+        find_unapproved_sending_steps(&stops, &crate::flow::TrustedHosts::none()).unwrap(),
+        Vec::<String>::new()
+    );
     let skips = stops.replace("on_timeout: stop", "on_timeout: { action: skip }");
-    assert_eq!(find_timeouts_that_send(&skips).unwrap(), Vec::<String>::new());
+    assert_eq!(find_timeouts_that_send(&skips, &crate::flow::TrustedHosts::none()).unwrap(), Vec::<String>::new());
     let unknown_button = stops.replace("on_timeout: stop", "on_timeout: publish");
-    assert_eq!(find_timeouts_that_send(&unknown_button).unwrap(), Vec::<String>::new(), "an unknown button stops");
+    assert_eq!(
+        find_timeouts_that_send(&unknown_button, &crate::flow::TrustedHosts::none()).unwrap(),
+        Vec::<String>::new(),
+        "an unknown button stops"
+    );
 }
 
 #[test]
 fn a_timeout_answer_that_leads_to_a_send_names_both_steps() {
     let (_, draft, _) = test_fixtures::approval_bypass_drafts().pop().unwrap();
-    let messages = find_timeouts_that_send(&draft).unwrap();
+    let messages = find_timeouts_that_send(&draft, &crate::flow::TrustedHosts::none()).unwrap();
     assert_eq!(messages.len(), 1);
     assert!(messages[0].contains("Ask before posting") && messages[0].contains("Post the note"), "{}", messages[0]);
     assert!(messages[0].contains("`stop`"), "{}", messages[0]);
     let as_plain_answer = draft.replace("on_timeout: { action: send }", "on_timeout: send");
-    assert_eq!(find_timeouts_that_send(&as_plain_answer).unwrap().len(), 1);
+    assert_eq!(find_timeouts_that_send(&as_plain_answer, &crate::flow::TrustedHosts::none()).unwrap().len(), 1);
 }
 
 #[test]
@@ -377,7 +411,68 @@ fn a_timeout_answer_into_a_loop_with_a_send_inside_is_caught() {
         .replace("    - { source: draft_message, target: approve_message }\n", "    - { source: draft_message, target: send_message }\n")
         .replace("    - { source: approve_message, target: send_message, handle: send }\n", "")
         .replace("{{#each_cafe.item.name#}}?\\n\\n{{#draft_message.text#}}", "all cafes?");
-    let messages = find_timeouts_that_send(&answers_into_the_loop).unwrap();
+    let messages = find_timeouts_that_send(&answers_into_the_loop, &crate::flow::TrustedHosts::none()).unwrap();
     assert_eq!(messages.len(), 1, "{messages:?}");
     assert!(messages[0].contains("Send the WhatsApp message"), "{}", messages[0]);
+}
+
+fn weather_trusted() -> TrustedHosts {
+    TrustedHosts::from_entries([test_fixtures::WEATHER_HOST])
+}
+
+#[test]
+fn a_lookup_on_a_trusted_host_needs_no_approval() {
+    let lookup = test_fixtures::trusted_weather_lookup();
+    assert_eq!(find_unapproved_sending_steps(&lookup, &weather_trusted()).unwrap(), Vec::<String>::new());
+    let untrusted = find_unapproved_steps(&lookup, &TrustedHosts::none()).unwrap();
+    assert_eq!(untrusted.len(), 1);
+    assert_eq!(untrusted[0].label, "Look up the weather");
+    assert_eq!(untrusted[0].trustable_host.as_deref(), Some(test_fixtures::WEATHER_HOST));
+    let wildcard = TrustedHosts::from_entries(["*.open-meteo.com"]);
+    assert!(find_unapproved_steps(&lookup, &wildcard).unwrap().is_empty());
+}
+
+#[test]
+fn trusting_a_host_never_covers_a_write_to_it() {
+    let url = format!("https://{}/v1/forecast?q={{{{#start.note#}}}}", test_fixtures::WEATHER_HOST);
+    let write = test_fixtures::weather_lookup("post", &url);
+    let unapproved = find_unapproved_steps(&write, &weather_trusted()).unwrap();
+    assert_eq!(unapproved.len(), 1);
+    assert_eq!(unapproved[0].trustable_host, None, "trusting cannot fix a write");
+}
+
+#[test]
+fn codex_output_reaching_a_trusted_lookup_still_needs_an_approval() {
+    let flow_yaml = test_fixtures::codex_output_into_a_lookup();
+    let unapproved = find_unapproved_steps(&flow_yaml, &weather_trusted()).unwrap();
+    assert_eq!(unapproved.len(), 1);
+    assert_eq!(unapproved[0].trustable_host, None, "trusting the host would not help");
+}
+
+#[test]
+fn a_chatbot_can_look_up_on_a_trusted_host() {
+    let chatbot = test_fixtures::chatbot_weather_lookup();
+    assert!(find_unapproved_sending_steps(&chatbot, &weather_trusted()).unwrap().is_empty());
+    assert_eq!(find_unapproved_sending_steps(&chatbot, &TrustedHosts::none()).unwrap(), ["Look up the weather"]);
+}
+
+#[test]
+fn runs_with_trusted_lookups_are_recognized() {
+    let graph = compile_draft(&test_fixtures::trusted_weather_lookup()).unwrap();
+    assert!(has_trusted_lookups(&graph, &weather_trusted()));
+    assert!(!has_trusted_lookups(&graph, &TrustedHosts::none()));
+    let plain_read = compile_draft(&test_fixtures::weather_lookup("get", "https://api.open-meteo.com/v1")).unwrap();
+    assert!(!has_trusted_lookups(&plain_read, &weather_trusted()), "a plain read needs no trust");
+}
+
+#[test]
+fn a_timeout_answer_into_a_trusted_lookup_does_not_send() {
+    let ask = "    - { id: ask, type: human-input, prompt: \"Look it up?\", timeout_ms: 1000, \
+               on_timeout: { action: submit } }\n    - id: lookup\n";
+    let with_approval = test_fixtures::trusted_weather_lookup().replace("    - id: lookup\n", ask).replace(
+        "{ source: start, target: lookup }",
+        "{ source: start, target: ask }\n    - { source: ask, target: lookup, handle: submit }",
+    );
+    assert!(find_timeouts_that_send(&with_approval, &weather_trusted()).unwrap().is_empty());
+    assert_eq!(find_timeouts_that_send(&with_approval, &TrustedHosts::none()).unwrap().len(), 1);
 }

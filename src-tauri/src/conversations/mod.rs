@@ -362,8 +362,15 @@ impl ConversationManager {
         let prepared = prepare_reply(&self.db, &self.credentials, &agent, message_text).await?;
         // Chatbots can call other agents as tools, like any run of this agent.
         let tools = agent_tools_for(self.db.clone(), self.credentials.clone(), self.model_source.clone(), &agent.id);
-        let (engine, env) =
-            prepare_engine_and_env(&prepared.flow_text, &self.credentials, &self.db, &*self.model_source, tools)?;
+        let trusted_hosts = self.db.trusted_lookup_hosts(&agent.id)?;
+        let (engine, env) = prepare_engine_and_env(
+            &prepared.flow_text,
+            &trusted_hosts,
+            &self.credentials,
+            &self.db,
+            &*self.model_source,
+            tools,
+        )?;
         let mut turn = run_bot_turn(&engine, env, conversation, message_text, &prepared.sys_values).await?;
         if let (Some(rules), Some(handoff)) = (prepared.handoff_rules, turn.handoff.as_ref()) {
             if !rules.allows(handoff.reason.as_deref()) {

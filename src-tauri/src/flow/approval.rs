@@ -24,7 +24,10 @@ use graphrt_core::graph::{GraphNode, NodeIx};
 use graphrt_core::Graph;
 use serde_json::Value as Json;
 
+use super::trusted_hosts::TrustedHosts;
+
 const APPROVAL_KIND: &str = "human-input";
+const HTTP_REQUEST_KIND: &str = "http-request";
 const ON_TIMEOUT_KEY: &str = "on_timeout";
 const STOP_ON_TIMEOUT: &str = "stop";
 /// The button graphrt's `human-input` node offers when the step sets none.
@@ -51,19 +54,47 @@ pub(crate) struct TimeoutSend {
     pub sending_step_label: String,
 }
 
+/// A sending step that some path reaches without an approval.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnapprovedStep {
+    pub node_id: String,
+    /// Title (or id) of the step.
+    pub label: String,
+    /// Set for a lookup whose only problem is that its host is not trusted:
+    /// trusting this host (`host` or `host:port`) makes it read.
+    pub trustable_host: Option<String>,
+}
+
 /// Titles (or ids) of sending steps that some path reaches without an approval.
-pub(super) fn unapproved_sending_steps(graph: &Graph) -> Vec<String> {
-    unapproved_sending_nodes(graph).into_iter().map(step_label).collect()
+pub(super) fn unapproved_sending_steps(graph: &Graph, trusted: &TrustedHosts) -> Vec<String> {
+    unapproved_sending_nodes(graph, trusted).into_iter().map(step_label).collect()
+}
+
+/// The sending steps that some path reaches without an approval, with the host to trust where that would do.
+pub(super) fn unapproved_steps(graph: &Graph, trusted: &TrustedHosts) -> Vec<UnapprovedStep> {
+    let unvetted = super::sending::unvetted_output_node_ids(graph);
+    unapproved_sending_nodes(graph, trusted)
+        .into_iter()
+        .map(|node| {
+            let carries_unvetted = super::sending::passes_on_unvetted_output(&node.kind, &node.doc.config, &unvetted);
+            let trustable_host = (node.kind == HTTP_REQUEST_KIND && !carries_unvetted)
+                .then(|| {
+                    super::sending::check_http_request(&node.doc.config, trusted).trustable_host().map(str::to_owned)
+                })
+                .flatten();
+            UnapprovedStep { node_id: node.id.to_string(), label: step_label(node), trustable_host }
+        })
+        .collect()
 }
 
 /// Node ids of the sending steps that some path reaches without an approval.
-pub(super) fn unapproved_sending_node_ids(graph: &Graph) -> Vec<String> {
-    unapproved_sending_nodes(graph).into_iter().map(|node| node.id.to_string()).collect()
+pub(super) fn unapproved_sending_node_ids(graph: &Graph, trusted: &TrustedHosts) -> Vec<String> {
+    unapproved_sending_nodes(graph, trusted).into_iter().map(|node| node.id.to_string()).collect()
 }
 
 /// Whether a node kind (with its config) sends data out, so it must sit behind an approval.
-pub(super) fn is_sending_kind(kind: &str, config: &serde_json::Map<String, Json>) -> bool {
-    super::sending::is_sending_kind(kind, config)
+pub(super) fn is_sending_kind(kind: &str, config: &serde_json::Map<String, Json>, trusted: &TrustedHosts) -> bool {
+    super::sending::is_sending_kind(kind, config, trusted)
 }
 
 /// `on_timeout: stop`, `on_timeout: { action: <id> }` or `on_timeout: <id>` of a `human-input` config.
@@ -100,13 +131,13 @@ fn read_action_ids(config: &serde_json::Map<String, Json>) -> Vec<String> {
 }
 
 /// Approval steps whose `on_timeout` answer leads to a sending step.
-pub(crate) fn timeouts_that_send(graph: &Graph) -> Vec<TimeoutSend> {
+pub(crate) fn timeouts_that_send(graph: &Graph, trusted: &TrustedHosts) -> Vec<TimeoutSend> {
     (0..graph.nodes().len())
         .filter_map(|node_index| graph.node(node_index).map(|node| (node_index, node)))
         .filter(|(_, node)| node.kind == APPROVAL_KIND)
         .filter_map(|(node_index, node)| {
             let TimeoutChoice::Answer(action) = read_timeout_choice(&node.doc.config) else { return None };
-            let sending_step = first_send_after_action(graph, node_index, &action)?;
+            let sending_step = first_send_after_action(graph, node_index, &action, trusted)?;
             Some(TimeoutSend {
                 approval_node_id: node.id.to_string(),
                 approval_label: step_label(node),
@@ -120,7 +151,12 @@ pub(crate) fn timeouts_that_send(graph: &Graph) -> Vec<TimeoutSend> {
 /// The first sending step reached forwards from the `action` exit of `approval`,
 /// stopping at other approvals (they are checked on their own). Entering a loop
 /// visits its body; any step inside a loop also continues after the loop.
-fn first_send_after_action<'graph>(graph: &'graph Graph, approval: NodeIx, action: &str) -> Option<&'graph GraphNode> {
+fn first_send_after_action<'graph>(
+    graph: &'graph Graph,
+    approval: NodeIx,
+    action: &str,
+    trusted: &TrustedHosts,
+) -> Option<&'graph GraphNode> {
     let unvetted = super::sending::unvetted_output_node_ids(graph);
     let mut pending: Vec<NodeIx> = targets_of(graph, approval, Some(action));
     let mut visited = HashSet::new();
@@ -132,7 +168,7 @@ fn first_send_after_action<'graph>(graph: &'graph Graph, approval: NodeIx, actio
         if node.kind == APPROVAL_KIND {
             continue;
         }
-        if is_sending_step(node, &unvetted) {
+        if is_sending_step(node, &unvetted, trusted) {
             return Some(node);
         }
         pending.extend(targets_of(graph, node_index, None));
@@ -157,19 +193,19 @@ fn targets_of(graph: &Graph, node_index: NodeIx, handle: Option<&str>) -> Vec<No
         .collect()
 }
 
-fn unapproved_sending_nodes(graph: &Graph) -> Vec<&GraphNode> {
+fn unapproved_sending_nodes<'graph>(graph: &'graph Graph, trusted: &TrustedHosts) -> Vec<&'graph GraphNode> {
     let unvetted = super::sending::unvetted_output_node_ids(graph);
     (0..graph.nodes().len())
         .filter_map(|node_index| graph.node(node_index).map(|node| (node_index, node)))
-        .filter(|(_, node)| is_sending_step(node, &unvetted))
+        .filter(|(_, node)| is_sending_step(node, &unvetted, trusted))
         .filter(|(node_index, _)| reachable_without_approval(graph, *node_index))
         .map(|(_, node)| node)
         .collect()
 }
 
 /// A sending kind, or a step reaching outside that passes on `unvetted` output (see [`super::sending`]).
-fn is_sending_step(node: &GraphNode, unvetted: &HashSet<String>) -> bool {
-    is_sending_kind(&node.kind, &node.doc.config)
+fn is_sending_step(node: &GraphNode, unvetted: &HashSet<String>, trusted: &TrustedHosts) -> bool {
+    is_sending_kind(&node.kind, &node.doc.config, trusted)
         || super::sending::passes_on_unvetted_output(&node.kind, &node.doc.config, unvetted)
 }
 

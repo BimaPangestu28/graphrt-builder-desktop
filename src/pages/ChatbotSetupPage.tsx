@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { setAgentStatus } from '@/api/agents'
 import type { Agent } from '@/api/types'
 import { AppShell } from '@/components/layout'
+import { TrustedHostsSection } from '@/components/TrustedHostsSection'
 import { joinClassNames } from '@/components/ui'
 import { useAgent } from '@/hooks/useAgent'
 import { agentPath } from '@/routes'
@@ -97,7 +98,8 @@ function ChatbotSetupFormView({ form }: { form: ChatbotSetupForm }) {
  * knowledge bases are attached or removed at once. The saved setup is applied to every bot
  * reply (see `src-tauri/src/chatbot_setup`). Right: "Try it", a real test conversation with
  * the chatbot (`?agentId=`, default "catering-assistant"). "Go live" / "Pause" set the agent
- * status; unconnected channels link to Connections → Plugins.
+ * status; unconnected channels link to Connections → Plugins. Below the form, the sites the
+ * chatbot may look things up on (a chat cannot wait for an approval), saved at once.
  */
 export function ChatbotSetupPage() {
   const [searchParams] = useSearchParams()
@@ -128,14 +130,17 @@ export function ChatbotSetupPage() {
     <AppShell agents={{ kind: 'list', activeAgentId: agentId }} mainClassName="flex flex-col">
       <ChatbotSetupHeader agent={agent} onToggleLive={() => void toggleLive()} isSaving={isSavingStatus} />
       <div className="flex flex-auto flex-wrap">
-        <form onSubmit={handleSubmit} className="box-border flex min-w-0 flex-[3_1_520px] flex-col gap-7 px-8 py-7">
-          {form.error && (
-            <p role="alert" className="m-0 rounded-[10px] bg-amber-tint px-3.5 py-2.5 text-[13px] text-amber-strong">
-              {form.error}
-            </p>
-          )}
-          <ChatbotSetupFormView form={form} />
-        </form>
+        <div className="box-border flex min-w-0 flex-[3_1_520px] flex-col gap-7 px-8 py-7">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-7">
+            {form.error && (
+              <p role="alert" className="m-0 rounded-[10px] bg-amber-tint px-3.5 py-2.5 text-[13px] text-amber-strong">
+                {form.error}
+              </p>
+            )}
+            <ChatbotSetupFormView form={form} />
+          </form>
+          <TrustedHostsSection agentId={agentId} note="A chat cannot stop to ask you, so the chatbot can look things up only on these sites." />
+        </div>
         <TryItPanel agentId={agentId} />
       </div>
     </AppShell>

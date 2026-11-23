@@ -73,8 +73,20 @@ export interface GraphNode {
   needsApproval: boolean
   /** Sends data out: must sit behind an approval step. */
   sendsData: boolean
+  /** HTTP request steps: whether the request runs without asking, and why. */
+  requestCheck?: RequestCheck | null
   /** Plugin name of plugin kinds (`whatsapp-web`). */
   plugin: string | null
+}
+
+/** Whether an HTTP request step runs without asking (`agent_graph::RequestCheckView`). */
+export interface RequestCheck {
+  /** A plain read, or a lookup on a trusted host. */
+  runsWithoutAsking: boolean
+  /** One plain sentence saying why. */
+  reason: string
+  /** The host whose trust would let this lookup run without asking, when that is all it needs. */
+  trustableHost?: string | null
 }
 
 export interface GraphEdge {
@@ -119,6 +131,8 @@ export interface GraphProblem {
   message: string
   nodeId: string | null
   edgeId: string | null
+  /** A lookup that only needs its host trusted: the host the "Trust" action adds (the user clicks it). */
+  trustHost?: string | null
 }
 
 /** An agent version as a graph. */

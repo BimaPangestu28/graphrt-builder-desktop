@@ -58,7 +58,10 @@ pub fn get_team_guardrails(db: &Database, agent_id: &str) -> AppResult<TeamGuard
     Ok(TeamGuardrails {
         agent_id: agent.id,
         max_agent_calls_per_run: stored.max_agent_calls_per_run,
-        unapproved_sending_steps: flow::find_unapproved_sending_steps(&agent.flow_yaml)?,
+        unapproved_sending_steps: flow::find_unapproved_sending_steps(
+            &agent.flow_yaml,
+            &db.trusted_lookup_hosts(agent_id)?,
+        )?,
     })
 }
 

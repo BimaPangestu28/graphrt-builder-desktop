@@ -182,9 +182,45 @@ pub(super) fn same_document(left: &str, right: &str) -> bool {
     significant_lines(left) == significant_lines(right)
 }
 
+/// Hosts the reply proposes with "Trust <host> for lookups" (normalized, in order,
+/// without duplicates). Only a proposal: the UI shows each as a button, and only the
+/// user's click trusts a host.
+///
+/// @example `proposed_trusted_hosts("Done. Trust api.open-meteo.com for lookups.") == ["api.open-meteo.com"]`
+pub(crate) fn proposed_trusted_hosts(text: &str) -> Vec<String> {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    let mut hosts: Vec<String> = Vec::new();
+    for window in words.windows(4) {
+        let closes = window[3].trim_end_matches(['.', ',', ';', ':', '!', ')']);
+        let is_proposal = window[0].trim_start_matches(['(', '-', '*']).eq_ignore_ascii_case("trust")
+            && window[2].eq_ignore_ascii_case("for")
+            && closes.eq_ignore_ascii_case("lookups");
+        if !is_proposal {
+            continue;
+        }
+        let candidate = window[1].trim_matches(['`', '"', '\'']);
+        if let Ok(host) = crate::flow::trusted_hosts::normalize_trusted_host(candidate) {
+            if !hosts.contains(&host) {
+                hosts.push(host);
+            }
+        }
+    }
+    hosts
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn trust_proposals_are_read_from_the_reply() {
+        let reply = "I added a weather lookup. Trust `API.open-meteo.com` for lookups. Also trust *.maps.org for \
+                     lookups, and trust api.open-meteo.com for lookups again.";
+        assert_eq!(proposed_trusted_hosts(reply), ["api.open-meteo.com", "*.maps.org"]);
+        assert!(proposed_trusted_hosts("Trust https://evil.org/x for lookups").is_empty());
+        assert!(proposed_trusted_hosts("I trust you for lookups").is_empty());
+        assert!(proposed_trusted_hosts("Nothing to trust here").is_empty());
+    }
 
     const DOCUMENT: &str = "version: \"1\"\nname: cafe-offers\ngraph:\n  nodes: []\n";
 

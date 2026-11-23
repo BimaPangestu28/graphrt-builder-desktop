@@ -62,6 +62,7 @@ pub(crate) fn agent_tools_for(
 }
 use crate::credentials::CredentialStore;
 use crate::error::{AppError, AppResult};
+use crate::flow::TrustedHosts;
 use crate::storage::models::{Run, RunStatus, RunTrigger};
 use crate::storage::Database;
 
@@ -127,8 +128,11 @@ struct PauseContext {
 }
 
 impl PauseContext {
-    fn new(flow_yaml: &str, carried_deadlines: HashMap<String, String>) -> Self {
-        Self { settings: Arc::new(PauseSettings::from_flow(flow_yaml)), carried_deadlines: Arc::new(carried_deadlines) }
+    fn new(flow_yaml: &str, trusted_hosts: &TrustedHosts, carried_deadlines: HashMap<String, String>) -> Self {
+        Self {
+            settings: Arc::new(PauseSettings::from_flow(flow_yaml, trusted_hosts)),
+            carried_deadlines: Arc::new(carried_deadlines),
+        }
     }
 }
 
@@ -190,8 +194,15 @@ impl RunManager {
     pub async fn start_run(&self, agent_id: &str, trigger: RunTrigger, inputs: serde_json::Value) -> AppResult<Run> {
         let agent = self.db.get_agent(agent_id)?;
         let tools = self.agent_tools(&agent.id);
-        let engine =
-            preparation::build_engine(&agent.flow_yaml, &self.credentials, &self.db, &*self.model_source, tools)?;
+        let trusted_hosts = self.db.trusted_lookup_hosts(&agent.id)?;
+        let engine = preparation::build_engine(
+            &agent.flow_yaml,
+            &trusted_hosts,
+            &self.credentials,
+            &self.db,
+            &*self.model_source,
+            tools,
+        )?;
         let mut run_input = RunInput::new();
         let stored_inputs = inputs.clone();
         run_input.inputs = preparation::json_object_to_value_map(inputs, "run inputs")?;
@@ -203,7 +214,7 @@ impl RunManager {
             log::warn!("could not store the inputs of run {}: {error}", run.id);
         }
         self.driver_for(&run).send_status(&run.id, RunStatus::Running);
-        let pause_context = PauseContext::new(&agent.flow_yaml, HashMap::new());
+        let pause_context = PauseContext::new(&agent.flow_yaml, &trusted_hosts, HashMap::new());
         self.spawn_driver(&run, engine.run(run_input), pause_context)?;
         Ok(run)
     }
@@ -226,7 +237,15 @@ impl RunManager {
         let agent = self.db.get_agent(&run.agent_id)?;
         let flow_yaml = preparation::flow_for_version(&self.db, &agent, run.agent_version)?;
         let tools = self.agent_tools(&agent.id);
-        let engine = preparation::build_engine(&flow_yaml, &self.credentials, &self.db, &*self.model_source, tools)?;
+        let trusted_hosts = self.db.trusted_lookup_hosts(&agent.id)?;
+        let engine = preparation::build_engine(
+            &flow_yaml,
+            &trusted_hosts,
+            &self.credentials,
+            &self.db,
+            &*self.model_source,
+            tools,
+        )?;
         let snapshot = Snapshot::from_json(&self.db.get_run_snapshot(run_id)?)?;
         let resume_inputs = preparation::json_object_to_value_map(node_inputs, "node inputs")?;
         let mut run_input = RunInput::new().resume(snapshot, resume_inputs);
@@ -237,7 +256,7 @@ impl RunManager {
         self.db.mark_run_resumed(run_id)?;
         self.driver_for(&run).send_status(run_id, RunStatus::Running);
         let carried = approval_pauses::carried_deadlines(run.pause_reasons.as_ref());
-        self.spawn_driver(&run, engine.run(run_input), PauseContext::new(&flow_yaml, carried))?;
+        self.spawn_driver(&run, engine.run(run_input), PauseContext::new(&flow_yaml, &trusted_hosts, carried))?;
         self.db.get_run(run_id)
     }
 

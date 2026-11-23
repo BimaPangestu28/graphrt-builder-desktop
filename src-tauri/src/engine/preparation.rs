@@ -11,7 +11,7 @@ use super::ModelRegistrySource;
 use crate::credentials::CredentialStore;
 use crate::desktop::app_settings::AppSettings;
 use crate::error::{AppError, AppResult};
-use crate::flow;
+use crate::flow::{self, TrustedHosts};
 use crate::storage::models::Agent;
 use crate::storage::Database;
 
@@ -27,6 +27,7 @@ use crate::storage::Database;
 /// registry / HTTP client reports.
 pub(super) fn build_engine(
     flow_yaml: &str,
+    trusted_hosts: &TrustedHosts,
     credentials: &CredentialStore,
     db: &Database,
     model_source: &dyn ModelRegistrySource,
@@ -36,12 +37,42 @@ pub(super) fn build_engine(
     let summary = flow::summarize_flow(flow_yaml)?;
     ensure_providers_configured(&summary.model_providers, credentials, db)?;
     let graph = flow::compile_flow_with_secret_env(flow_yaml, &keychain_env_names(&summary, credentials)?)?;
-    let http_client = graphrt_http::HttpClient::new(graphrt_http::EgressPolicy::default())
+    ensure_lookups_trusted(&graph, trusted_hosts)?;
+    let http_client = graphrt_http::HttpClient::new(egress_policy(&graph, trusted_hosts))
         .map_err(|error| AppError::Internal(format!("could not set up the HTTP client: {error}")))?;
     let services = Services::new().with(model_source.build_registry(credentials, db)?).with(http_client).with(tools);
     // Knowledge bases for the `knowledge-retrieval` node (stores open on first search).
     let services = services.with(crate::knowledge::knowledge_service_for_runs(db, credentials)?);
     Ok(Engine::new(Arc::new(graph)).with_services(services).with_limits(run_limits(db)))
+}
+
+/// `InvalidInput` naming the first lookup that only runs without asking once its
+/// host is trusted, while it is not (the builder may save such a lookup after
+/// proposing "Trust <host> for lookups"; the host may also have been removed since).
+fn ensure_lookups_trusted(graph: &graphrt_core::Graph, trusted_hosts: &TrustedHosts) -> AppResult<()> {
+    let untrusted_lookup = flow::unapproved_steps(graph, trusted_hosts)
+        .into_iter()
+        .find_map(|step| step.trustable_host.map(|host| (step.label, host)));
+    match untrusted_lookup {
+        None => Ok(()),
+        Some((label, host)) => Err(AppError::InvalidInput(format!(
+            "{label} looks up data on {host}, which this agent does not trust: trust {host} for lookups, or ask \
+             before sending"
+        ))),
+    }
+}
+
+/// The run's HTTP rules: graphrt-http's defaults, except that a run with a
+/// lookup that reads only because its host is trusted follows no redirects (a
+/// 3xx response then fails that step). graphrt-http has no per-step redirect
+/// setting, so the whole run stops following them; otherwise a trusted host
+/// could bounce the lookup, with the values in its query, to a host nobody trusted.
+pub(super) fn egress_policy(graph: &graphrt_core::Graph, trusted_hosts: &TrustedHosts) -> graphrt_http::EgressPolicy {
+    let mut policy = graphrt_http::EgressPolicy::default();
+    if flow::has_trusted_lookups(graph, trusted_hosts) {
+        policy.max_redirects = 0;
+    }
+    policy
 }
 
 /// Declared env variables not typed `secret` whose value is stored in the
@@ -173,12 +204,13 @@ pub(super) fn workflow_env(flow_yaml: &str, credentials: &CredentialStore) -> Ap
 /// Everything [`build_engine`] and [`workflow_env`] report.
 pub(crate) fn prepare_engine_and_env(
     flow_yaml: &str,
+    trusted_hosts: &TrustedHosts,
     credentials: &CredentialStore,
     db: &Database,
     model_source: &dyn ModelRegistrySource,
     tools: ToolRegistry,
 ) -> AppResult<(Engine, IndexMap<String, Value>)> {
-    let engine = build_engine(flow_yaml, credentials, db, model_source, tools)?;
+    let engine = build_engine(flow_yaml, trusted_hosts, credentials, db, model_source, tools)?;
     let env = workflow_env(flow_yaml, credentials)?;
     Ok((engine, env))
 }

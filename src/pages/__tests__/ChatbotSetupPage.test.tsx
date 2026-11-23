@@ -4,6 +4,7 @@ import { resetSampleAgents, sampleAgentsBackend } from '@/api/sampleBackend/agen
 import { resetSampleChatbotSetups, sampleChatbotSetupBackend } from '@/api/sampleBackend/chatbotSetup'
 import { resetSampleConversations, sampleConversationsBackend } from '@/api/sampleBackend/conversations'
 import { resetSampleKnowledge } from '@/api/sampleBackend/knowledge'
+import { resetSampleTrustedHosts } from '@/api/sampleBackend/trustedHosts'
 import { ChatbotSetupPage } from '../ChatbotSetupPage'
 
 function renderChatbotSetup() {
@@ -27,6 +28,7 @@ describe('ChatbotSetupPage', () => {
     resetSampleConversations()
     resetSampleChatbotSetups()
     resetSampleKnowledge()
+    resetSampleTrustedHosts()
   })
 
   it('shows the chatbot name and the setup sections', async () => {
@@ -35,6 +37,17 @@ describe('ChatbotSetupPage', () => {
     expect(screen.getByRole('heading', { name: 'Persona' })).toBeInTheDocument()
     expect(await screen.findByLabelText('Name customers see')).toHaveValue('Admin Catering')
     expect(screen.getByRole('heading', { name: 'Try it' })).toBeInTheDocument()
+  })
+
+  it('shows the sites the chatbot may look things up on, and why it needs them', async () => {
+    renderChatbotSetup()
+    expect(await screen.findByRole('heading', { name: 'Trusted hosts for lookups' })).toBeInTheDocument()
+    expect(screen.getByText(/A chat cannot stop to ask you/)).toBeInTheDocument()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Site to trust' }), { target: { value: 'api.open-meteo.com' } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Trust' }))
+    })
+    expect(await screen.findByText('api.open-meteo.com')).toBeInTheDocument()
   })
 
   it('pauses and goes live through the agent status', async () => {

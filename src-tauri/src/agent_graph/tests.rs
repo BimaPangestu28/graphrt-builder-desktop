@@ -683,3 +683,50 @@ async fn the_library_lists_builtins_by_app_name_and_catalog_plugin_actions() {
     let unique: HashSet<&str> = kinds.iter().map(|info| info.kind.as_str()).collect();
     assert_eq!(unique.len(), kinds.len());
 }
+
+#[test]
+fn an_untrusted_lookup_offers_to_trust_its_host() {
+    let registry = flow::draft_node_registry();
+    let graph = graph_of(&flow::test_fixtures::trusted_weather_lookup(), &registry);
+    let problem = graph.problems.iter().find(|problem| problem.code == problem_codes::SEND_WITHOUT_APPROVAL).unwrap();
+    assert_eq!(problem.trust_host.as_deref(), Some(flow::test_fixtures::WEATHER_HOST));
+    assert!(
+        problem.message.contains("Ask before sending, or trust api.open-meteo.com for read-only lookups"),
+        "{}",
+        problem.message
+    );
+    let lookup = node(&graph, "lookup");
+    assert!(lookup.sends_data);
+    let check = lookup.request_check.as_ref().unwrap();
+    assert!(!check.runs_without_asking);
+    assert_eq!(check.trustable_host.as_deref(), Some(flow::test_fixtures::WEATHER_HOST));
+    assert!(node(&graph, "start").request_check.is_none());
+}
+
+#[test]
+fn a_trusted_lookup_runs_without_asking_and_has_no_problem() {
+    let registry = flow::draft_node_registry();
+    let mut context = GraphContext::new(&registry);
+    context.validation.trusted_hosts = flow::TrustedHosts::from_entries([flow::test_fixtures::WEATHER_HOST]);
+    let graph = graph_from_yaml(source(1), &flow::test_fixtures::trusted_weather_lookup(), &context);
+    assert!(graph.problems.iter().all(|problem| problem.code != problem_codes::SEND_WITHOUT_APPROVAL));
+    let lookup = node(&graph, "lookup");
+    assert!(!lookup.sends_data);
+    let check = lookup.request_check.as_ref().unwrap();
+    assert!(check.runs_without_asking);
+    assert!(check.reason.contains("which you trust for lookups"), "{}", check.reason);
+    assert_eq!(check.trustable_host, None);
+}
+
+#[test]
+fn a_lookup_carrying_codex_output_explains_why_it_asks() {
+    let registry = flow::draft_node_registry();
+    let mut context = GraphContext::new(&registry);
+    context.validation.trusted_hosts = flow::TrustedHosts::from_entries([flow::test_fixtures::WEATHER_HOST]);
+    let graph = graph_from_yaml(source(1), &flow::test_fixtures::codex_output_into_a_lookup(), &context);
+    let check = node(&graph, "lookup").request_check.clone().unwrap();
+    assert!(!check.runs_without_asking);
+    assert_eq!(check.trustable_host, None);
+    let problem = graph.problems.iter().find(|problem| problem.code == problem_codes::SEND_WITHOUT_APPROVAL).unwrap();
+    assert_eq!(problem.trust_host, None);
+}

@@ -23,5 +23,6 @@ pub mod runs;
 pub mod schedule_rules;
 pub mod teams;
 pub mod triggers;
+pub mod trusted_hosts;
 pub mod usage_summary;
 pub mod versions;

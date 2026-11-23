@@ -4,7 +4,7 @@
 //! graphrt compilation with the draft registry (catalog plugins that are not
 //! installed compile through placeholders), model providers that are set up,
 //! no placeholder HTTP hosts, an approval before every step that sends
-//! data, and no approval whose time limit answers into a send. Plus editor-only findings: graphrt warnings (unreachable steps,
+//! data (lookups on the agent's trusted hosts read, see `flow::trusted_hosts`), and no approval whose time limit answers into a send. Plus editor-only findings: graphrt warnings (unreachable steps,
 //! references into another loop body), arrows from an exit the node does not
 //! have, and plugin steps that are not installed yet.
 
@@ -28,6 +28,8 @@ pub struct ValidationContext<'a> {
     pub runnable_kinds: Option<&'a HashSet<String>>,
     /// Model providers set up on this computer; `None` skips the provider check.
     pub available_providers: Option<&'a [String]>,
+    /// The agent's trusted lookup hosts (from the app database, never the document).
+    pub trusted_hosts: flow::TrustedHosts,
 }
 
 /// Every problem of `workflow`; `nodes` / `edges` are its views (ports already derived).
@@ -41,7 +43,7 @@ pub(super) fn validate_workflow(
     match Graph::build(workflow.clone(), context.registry) {
         Ok(graph) => {
             problems.extend(graph.warnings().iter().map(|warning| warning_problem(warning)));
-            problems.extend(rule_problems(&graph, nodes));
+            problems.extend(rule_problems(&graph, nodes, &context.trusted_hosts));
         }
         Err(error) => problems.push(compile_problem(&error)),
     }
@@ -76,19 +78,29 @@ pub(super) fn unreadable_document_problem(message: &str) -> GraphProblem {
     problem(ProblemSeverity::Error, problem_codes::UNREADABLE_DOCUMENT, message.to_owned(), None, None)
 }
 
-fn rule_problems(graph: &Graph, nodes: &[GraphNodeView]) -> Vec<GraphProblem> {
+fn rule_problems(graph: &Graph, nodes: &[GraphNodeView], trusted: &flow::TrustedHosts) -> Vec<GraphProblem> {
     let title_of = |node_id: &str| display_title(nodes, node_id);
-    let mut problems: Vec<GraphProblem> = flow::unapproved_sending_node_ids(graph)
+    let mut problems: Vec<GraphProblem> = flow::unapproved_steps(graph, trusted)
         .into_iter()
-        .map(|node_id| {
-            let message = format!(
-                "{} sends data without asking you first: put Ask me before continuing in front of it",
-                title_of(&node_id)
-            );
-            problem(ProblemSeverity::Error, problem_codes::SEND_WITHOUT_APPROVAL, message, Some(node_id), None)
+        .map(|step| {
+            let title = title_of(&step.node_id);
+            let message = match &step.trustable_host {
+                Some(host) => format!(
+                    "{title} sends values to {host} without asking you first: Ask before sending, or trust {host} \
+                     for read-only lookups"
+                ),
+                None => {
+                    format!("{title} sends data without asking you first: put Ask me before continuing in front of it")
+                }
+            };
+            let code = problem_codes::SEND_WITHOUT_APPROVAL;
+            GraphProblem {
+                trust_host: step.trustable_host,
+                ..problem(ProblemSeverity::Error, code, message, Some(step.node_id), None)
+            }
         })
         .collect();
-    problems.extend(flow::timeouts_that_send(graph).iter().map(|timeout| {
+    problems.extend(flow::timeouts_that_send(graph, trusted).iter().map(|timeout| {
         let message = flow::timeout_send_message(timeout);
         let node_id = Some(timeout.approval_node_id.clone());
         problem(ProblemSeverity::Error, problem_codes::APPROVAL_TIMEOUT_SENDS, message, node_id, None)
@@ -217,7 +229,7 @@ fn problem(
     node_id: Option<String>,
     edge_id: Option<String>,
 ) -> GraphProblem {
-    GraphProblem { severity, code: code.to_owned(), message, node_id, edge_id }
+    GraphProblem { severity, code: code.to_owned(), message, node_id, edge_id, trust_host: None }
 }
 
 /// True when any problem blocks saving and Test.
