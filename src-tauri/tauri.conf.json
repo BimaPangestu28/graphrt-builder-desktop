@@ -46,10 +46,10 @@
     },
     "linux": {
       "deb": {
-        "depends": ["libayatana-appindicator3-1"]
+        "depends": ["libayatana-appindicator3-1", "ca-certificates"]
       },
       "rpm": {
-        "depends": ["libayatana-appindicator-gtk3"]
+        "depends": ["libayatana-appindicator-gtk3", "ca-certificates"]
       }
     }
   },
