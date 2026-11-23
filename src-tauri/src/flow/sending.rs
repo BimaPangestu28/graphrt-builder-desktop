@@ -406,4 +406,123 @@ mod tests {
         assert!(!sends("agent", &agent(json!({}))));
         assert!(!sends("agent", &agent(json!({ "tools": ["agents/lead-qualifier"] }))));
     }
+
+    fn weather_hosts() -> TrustedHosts {
+        TrustedHosts::from_entries(["api.weather.com", "*.maps.org"])
+    }
+
+    fn check(request: Json) -> HttpRequestCheck {
+        check_http_request(&config(request), &weather_hosts())
+    }
+
+    #[test]
+    fn lookups_on_trusted_hosts_read_whatever_values_they_carry() {
+        let lookups = [
+            json!({ "method": "get", "url": "https://api.weather.com/v1?city={{#start.city#}}" }),
+            json!({ "method": " GET ", "url": "https://API.weather.com/v1/{{#start.city#}}" }),
+            json!({ "method": "Head", "url": "https://api.weather.com/v1", "params": [{ "key": "q", "value": "{{#llm.text#}}" }] }),
+            json!({ "url": "https://eu.maps.org/search", "params": "q:{{#start.place#}}" }),
+            json!({ "method": "get", "url": "https://a.b.maps.org/search?q={{#start.place#}}", "body": { "type": "none" } }),
+        ];
+        for request in lookups {
+            assert!(
+                matches!(check(request.clone()), HttpRequestCheck::TrustedLookup { .. }),
+                "{request}: {:?}",
+                check(request.clone())
+            );
+            assert!(!is_sending_kind("http-request", &config(request.clone()), &weather_hosts()), "{request}");
+        }
+    }
+
+    #[test]
+    fn trusted_hosts_never_cover_writes_or_bodies() {
+        for method in ["post", "PUT", " patch ", "delete", "options"] {
+            let request = json!({ "method": method, "url": "https://api.weather.com/v1?q={{#start.city#}}" });
+            assert!(matches!(check(request), HttpRequestCheck::ChangesData { .. }), "{method:?}");
+        }
+        let with_body =
+            json!({ "method": "get", "url": "https://api.weather.com/v1", "body": { "type": "json", "data": "{}" } });
+        assert_eq!(check(with_body), HttpRequestCheck::SendsBody);
+        let raw_body = json!({ "method": "get", "url": "https://api.weather.com/v1", "body": "{{#start.note#}}" });
+        assert_eq!(check(raw_body), HttpRequestCheck::SendsBody);
+    }
+
+    #[test]
+    fn a_templated_scheme_or_host_is_never_trusted() {
+        for url in [
+            "{{#env.WEATHER_URL#}}/v1?q={{#start.city#}}",
+            "https://{{#start.host#}}/v1",
+            "https://api.weather.com{{#start.suffix#}}/v1",
+            "https://api.weather.com.{{#start.domain#}}/v1",
+            "{{#start.scheme#}}://api.weather.com/v1",
+            "https://evil.org\\@api.weather.com/v1?q={{#start.city#}}",
+        ] {
+            let request = json!({ "method": "get", "url": url });
+            assert_eq!(check(request), HttpRequestCheck::AddressFromValues, "{url}");
+        }
+    }
+
+    #[test]
+    fn hosts_outside_the_list_need_trusting() {
+        let untrusted = [
+            ("https://evil.org/?d={{#llm.text#}}", "evil.org"),
+            ("https://weather.com/v1?q={{#start.city#}}", "weather.com"),
+            ("https://api.weather.com.evil.org/v1?q={{#start.city#}}", "api.weather.com.evil.org"),
+            ("https://maps.org/search?q={{#start.place#}}", "maps.org"),
+            ("https://api.weather.com:8443/v1?q={{#start.city#}}", "api.weather.com:8443"),
+        ];
+        for (url, host) in untrusted {
+            let result = check(json!({ "method": "get", "url": url }));
+            assert_eq!(result.trustable_host(), Some(host), "{url}");
+            assert!(!result.runs_without_asking());
+        }
+        let nothing_trusted = check_http_request(
+            &config(json!({ "url": "https://api.weather.com/v1?q={{#start.city#}}" })),
+            &TrustedHosts::none(),
+        );
+        assert_eq!(nothing_trusted.trustable_host(), Some("api.weather.com"));
+    }
+
+    #[test]
+    fn secrets_go_to_trusted_hosts_only_in_headers_query_or_authorization() {
+        let key_places = [
+            json!({ "url": "https://api.weather.com/v1?appid={{#env.WEATHER_KEY#}}&q={{#start.city#}}" }),
+            json!({ "url": "https://api.weather.com/v1", "params": [{ "key": "appid", "value": "{{#env.WEATHER_KEY#}}" }] }),
+            json!({ "url": "https://api.weather.com/v1", "headers": "X-Api-Key: {{#env.WEATHER_KEY#}}" }),
+            json!({ "url": "https://api.weather.com/v1", "authorization": { "type": "api-key", "config": { "api_key": "{{#env.WEATHER_KEY#}}" } } }),
+        ];
+        for request in key_places {
+            assert!(matches!(check(request.clone()), HttpRequestCheck::TrustedLookup { .. }), "{request}");
+        }
+        let in_path = json!({ "url": "https://api.weather.com/{{#env.WEATHER_KEY#}}/v1?q={{#start.city#}}" });
+        assert!(matches!(check(in_path), HttpRequestCheck::SecretInPath { .. }));
+        let to_untrusted = json!({ "url": "https://evil.org/v1", "headers": "X-Api-Key: {{#env.WEATHER_KEY#}}" });
+        assert_eq!(check(to_untrusted).trustable_host(), Some("evil.org"));
+        let host_from_secret = json!({ "url": "https://{{#env.WEATHER_HOST#}}/v1" });
+        assert_eq!(check(host_from_secret), HttpRequestCheck::AddressFromValues);
+    }
+
+    #[test]
+    fn plain_reads_stay_reads_without_any_trusted_host() {
+        let plain = json!({ "method": "options", "url": "https://anything.org/items?page=1" });
+        assert_eq!(check_http_request(&config(plain), &TrustedHosts::none()), HttpRequestCheck::PlainRead);
+    }
+
+    #[test]
+    fn every_check_explains_itself() {
+        let checks = [
+            HttpRequestCheck::PlainRead,
+            HttpRequestCheck::TrustedLookup { host: "api.weather.com".into() },
+            HttpRequestCheck::ChangesData { method: "POST".into() },
+            HttpRequestCheck::SendsBody,
+            HttpRequestCheck::AddressFromValues,
+            HttpRequestCheck::SecretInPath { host: "api.weather.com".into() },
+            HttpRequestCheck::UntrustedHost { host: "evil.org".into() },
+        ];
+        for check in checks {
+            let explanation = check.explanation();
+            let expected_start = if check.runs_without_asking() { "Runs without asking" } else { "Asks you first" };
+            assert!(explanation.starts_with(expected_start), "{explanation}");
+        }
+    }
 }

@@ -415,3 +415,64 @@ fn a_timeout_answer_into_a_loop_with_a_send_inside_is_caught() {
     assert_eq!(messages.len(), 1, "{messages:?}");
     assert!(messages[0].contains("Send the WhatsApp message"), "{}", messages[0]);
 }
+
+fn weather_trusted() -> TrustedHosts {
+    TrustedHosts::from_entries([test_fixtures::WEATHER_HOST])
+}
+
+#[test]
+fn a_lookup_on_a_trusted_host_needs_no_approval() {
+    let lookup = test_fixtures::trusted_weather_lookup();
+    assert_eq!(find_unapproved_sending_steps(&lookup, &weather_trusted()).unwrap(), Vec::<String>::new());
+    let untrusted = find_unapproved_steps(&lookup, &TrustedHosts::none()).unwrap();
+    assert_eq!(untrusted.len(), 1);
+    assert_eq!(untrusted[0].label, "Look up the weather");
+    assert_eq!(untrusted[0].trustable_host.as_deref(), Some(test_fixtures::WEATHER_HOST));
+    let wildcard = TrustedHosts::from_entries(["*.open-meteo.com"]);
+    assert!(find_unapproved_steps(&lookup, &wildcard).unwrap().is_empty());
+}
+
+#[test]
+fn trusting_a_host_never_covers_a_write_to_it() {
+    let url = format!("https://{}/v1/forecast?q={{{{#start.note#}}}}", test_fixtures::WEATHER_HOST);
+    let write = test_fixtures::weather_lookup("post", &url);
+    let unapproved = find_unapproved_steps(&write, &weather_trusted()).unwrap();
+    assert_eq!(unapproved.len(), 1);
+    assert_eq!(unapproved[0].trustable_host, None, "trusting cannot fix a write");
+}
+
+#[test]
+fn codex_output_reaching_a_trusted_lookup_still_needs_an_approval() {
+    let flow_yaml = test_fixtures::codex_output_into_a_lookup();
+    let unapproved = find_unapproved_steps(&flow_yaml, &weather_trusted()).unwrap();
+    assert_eq!(unapproved.len(), 1);
+    assert_eq!(unapproved[0].trustable_host, None, "trusting the host would not help");
+}
+
+#[test]
+fn a_chatbot_can_look_up_on_a_trusted_host() {
+    let chatbot = test_fixtures::chatbot_weather_lookup();
+    assert!(find_unapproved_sending_steps(&chatbot, &weather_trusted()).unwrap().is_empty());
+    assert_eq!(find_unapproved_sending_steps(&chatbot, &TrustedHosts::none()).unwrap(), ["Look up the weather"]);
+}
+
+#[test]
+fn runs_with_trusted_lookups_are_recognized() {
+    let graph = compile_draft(&test_fixtures::trusted_weather_lookup()).unwrap();
+    assert!(has_trusted_lookups(&graph, &weather_trusted()));
+    assert!(!has_trusted_lookups(&graph, &TrustedHosts::none()));
+    let plain_read = compile_draft(&test_fixtures::weather_lookup("get", "https://api.open-meteo.com/v1")).unwrap();
+    assert!(!has_trusted_lookups(&plain_read, &weather_trusted()), "a plain read needs no trust");
+}
+
+#[test]
+fn a_timeout_answer_into_a_trusted_lookup_does_not_send() {
+    let ask = "    - { id: ask, type: human-input, prompt: \"Look it up?\", timeout_ms: 1000, \
+               on_timeout: { action: submit } }\n    - id: lookup\n";
+    let with_approval = test_fixtures::trusted_weather_lookup().replace("    - id: lookup\n", ask).replace(
+        "{ source: start, target: lookup }",
+        "{ source: start, target: ask }\n    - { source: ask, target: lookup, handle: submit }",
+    );
+    assert!(find_timeouts_that_send(&with_approval, &weather_trusted()).unwrap().is_empty());
+    assert_eq!(find_timeouts_that_send(&with_approval, &TrustedHosts::none()).unwrap().len(), 1);
+}

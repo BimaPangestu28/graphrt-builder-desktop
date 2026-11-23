@@ -67,7 +67,7 @@ fn ensure_lookups_trusted(graph: &graphrt_core::Graph, trusted_hosts: &TrustedHo
 /// 3xx response then fails that step). graphrt-http has no per-step redirect
 /// setting, so the whole run stops following them; otherwise a trusted host
 /// could bounce the lookup, with the values in its query, to a host nobody trusted.
-fn egress_policy(graph: &graphrt_core::Graph, trusted_hosts: &TrustedHosts) -> graphrt_http::EgressPolicy {
+pub(super) fn egress_policy(graph: &graphrt_core::Graph, trusted_hosts: &TrustedHosts) -> graphrt_http::EgressPolicy {
     let mut policy = graphrt_http::EgressPolicy::default();
     if flow::has_trusted_lookups(graph, trusted_hosts) {
         policy.max_redirects = 0;

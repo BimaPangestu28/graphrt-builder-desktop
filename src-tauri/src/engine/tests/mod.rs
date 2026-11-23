@@ -1,6 +1,7 @@
 mod approvals;
 mod event_storage;
 mod review_flow;
+mod trusted_lookups;
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;

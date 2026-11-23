@@ -155,3 +155,47 @@ pub(crate) fn timeout_draft_repaired() -> String {
     let (_, draft, _) = approval_bypass_drafts().pop().expect("the timeout draft");
     draft.replace("on_timeout: { action: send }", "on_timeout: stop")
 }
+
+/// Host of the lookup fixtures (a real public API, so the placeholder check passes).
+pub(crate) const WEATHER_HOST: &str = "api.open-meteo.com";
+
+/// `start` → a `method` request to `url` titled "Look up the weather" (id `lookup`) → `end`.
+pub(crate) fn weather_lookup(method: &str, url: &str) -> String {
+    let step = format!(
+        "    - id: lookup\n      type: http-request\n      title: Look up the weather\n      method: {method}\n      \
+         url: \"{url}\"\n"
+    );
+    let edges = "    - { source: start, target: lookup }\n    - { source: lookup, target: end }\n";
+    one_step_flow("weather-lookup", &step, edges)
+}
+
+/// [`weather_lookup`] with a GET to [`WEATHER_HOST`] that carries the run's note.
+pub(crate) fn trusted_weather_lookup() -> String {
+    weather_lookup("get", &format!("https://{WEATHER_HOST}/v1/forecast?q={{{{#start.note#}}}}"))
+}
+
+/// A Codex model step whose text goes into a GET to [`WEATHER_HOST`] (no approval).
+pub(crate) fn codex_output_into_a_lookup() -> String {
+    let steps = format!(
+        "    - id: summarize\n      type: llm\n      model: {{ provider: codex-cli, name: gpt-5 }}\n      \
+         prompt_template:\n        - {{ role: user, text: \"{{{{#start.note#}}}}\" }}\n    \
+         - id: lookup\n      type: http-request\n      title: Look up the weather\n      method: get\n      \
+         url: \"https://{WEATHER_HOST}/v1/forecast?q={{{{#summarize.text#}}}}\"\n"
+    );
+    let edges = "    - { source: start, target: summarize }\n    - { source: summarize, target: lookup }\n    \
+                 - { source: lookup, target: end }\n";
+    one_step_flow("codex-lookup", &steps, edges)
+}
+
+/// A chatbot that looks the customer's message up on [`WEATHER_HOST`] and answers with the result.
+pub(crate) fn chatbot_weather_lookup() -> String {
+    format!(
+        "version: \"1\"\nname: weather-bot\ngraph:\n  nodes:\n    - id: start\n      type: start\n      \
+         variables:\n        - {{ variable: message, type: paragraph, required: true, label: Message }}\n    \
+         - id: lookup\n      type: http-request\n      title: Look up the weather\n      method: get\n      \
+         url: \"https://{WEATHER_HOST}/v1/forecast?q={{{{#sys.query#}}}}\"\n    \
+         - {{ id: reply, type: answer, answer: \"{{{{#lookup.body#}}}}\" }}\n    \
+         - {{ id: end, type: end, outputs: [] }}\n  edges:\n    - {{ source: start, target: lookup }}\n    \
+         - {{ source: lookup, target: reply }}\n    - {{ source: reply, target: end }}\n"
+    )
+}
