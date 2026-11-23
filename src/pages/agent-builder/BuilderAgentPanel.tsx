@@ -3,6 +3,7 @@ import { ScreenLoading, splitPaneColumnClassName, splitPaneScrollClassName } fro
 import { Link, useSearchParams } from 'react-router-dom'
 import type { SaveGraphResult } from '@/api/agentGraphTypes'
 import type { Agent, FlowSummary } from '@/api/types'
+import { TrustedHostsSection } from '@/components/TrustedHostsSection'
 import { joinClassNames } from '@/components/ui'
 import { agentPath, builderAskParam } from '@/routes'
 import { AgentIdentityHeader } from './AgentIdentityHeader'
@@ -256,6 +257,7 @@ export function BuilderAgentPanel({
               onPluginSessionChange={onPluginSessionChange}
             />
           )}
+          {activeTab === 'steps' && <TrustedHostsSection agentId={agent.id} />}
           {activeTab === 'runs' && <RunsTabContent agentId={agent.id} />}
           {activeTab === 'source' && <SourceTabContent flowYaml={agent.flowYaml} />}
         </div>

@@ -4,6 +4,7 @@ import { isJsonObject, readConfigFlag, readConfigList, readConfigNumber, readCon
 import { AddButton, Field, hintClassName, InspectorSection, NumberInput, RadioCards, RemoveButton, SegmentedChoice, SelectInput, SupportNote, TextInput, ToggleRow } from '../fields'
 import { useInspector } from '../InspectorContext'
 import { ModelField } from '../ModelField'
+import { RequestCheckSection } from '../RequestCheckSection'
 import { formatReference, readSelector, singleReference, templateReferences } from '../references'
 import { propertyLabel, schemaProperties, schemaRequired } from '../SchemaForm'
 import { SecretPicker, withSecretDeclared } from '../SecretPicker'
@@ -182,6 +183,7 @@ export function HttpRequestPanel() {
         <KeyValueEditor label="Headers" addLabel="Add a header" rows={readKeyValueRows(config.headers)} onChange={(rows, what) => setConfigValue(['headers'], rows.map((row) => ({ ...row })), what)} />
         <HttpBodyEditor />
       </InspectorSection>
+      <RequestCheckSection />
       <InspectorSection title="Sign-in" sectionKey="sign-in" defaultOpen={readConfigText(config, ['authorization', 'type']) === 'api-key'}>
         <HttpAuthEditor />
       </InspectorSection>
@@ -211,7 +213,7 @@ export function HttpRequestPanel() {
             onChange={(mode) => setConfigValue(['parse_json'], mode, 'set how JSON is read')}
           />
         </Field>
-        <p className={hintClassName}>Private networks are blocked and sign-in headers are removed when a redirect goes to another site</p>
+        <p className={hintClassName}>Private networks are blocked and sign-in headers are removed when a redirect goes to another site. Runs with a lookup on a trusted host follow no redirects</p>
       </InspectorSection>
     </>
   )

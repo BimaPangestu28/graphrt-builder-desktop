@@ -20,6 +20,7 @@ import { useCanvasNotes } from './notes/useCanvasNotes'
 import { useAddNodePalette } from './palette/useAddNodePalette'
 import { describeTestBlock, groupProblemsByNode, inspectorTargetForProblem } from './problems/problemDisplay'
 import { useGraphValidation } from './problems/useGraphValidation'
+import { useTrustHostAction } from './problems/useTrustHostAction'
 import { ProblemsPanel } from './ProblemsPanel'
 import { CanvasClockProvider } from './run/CanvasClock'
 import { NodeDecorationsProvider, type NodeDecorationsValue } from './run/NodeDecorations'
@@ -159,6 +160,7 @@ export function NodesView({
   const { graph, moveNodes, applyEdit } = controller
   const live = useNodesLiveRun({ agentId: agent.id, graph, initialRunId: runId })
   const validation = useGraphValidation(controller, agent.id)
+  const { trustHost, trustError } = useTrustHostAction(agent.id, controller, validation)
   const canvasNotes = useCanvasNotes(agent.id, controller.savedGraph?.version ?? null)
   const isSaving = controller.status === 'saving'
   // The canvas is read-only while the builder works; the inspector's edits wait in the queue.
@@ -324,6 +326,8 @@ export function NodesView({
               else showNode(nodeId)
             }}
             onFixWithBuilder={onAskBuilder}
+            onTrustHost={(host) => void trustHost(host)}
+            trustError={trustError}
             testBlockReason={testBlock?.reason ?? null}
             wasValidated={validation.wasValidated}
             onClose={() => setIsProblemsPanelHidden(true)}
