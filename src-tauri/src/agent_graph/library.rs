@@ -187,7 +187,7 @@ fn kind_info(descriptor: &NodeDescriptor, sources: &LibrarySources<'_>) -> NodeK
         ports: kind_ports(descriptor),
         container: descriptor.container,
         offered: group != NodeKindGroup::Hidden && !UNLISTED_KINDS.contains(&descriptor.kind.as_str()),
-        sends_data: flow::is_sending_node(&descriptor.kind, &serde_json::Map::new()),
+        sends_data: flow::is_sending_node(&descriptor.kind, &serde_json::Map::new(), &flow::TrustedHosts::none()),
         source: descriptor.source.clone(),
         plugin,
     }

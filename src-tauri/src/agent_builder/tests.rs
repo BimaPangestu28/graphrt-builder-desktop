@@ -5,6 +5,13 @@ use graphrt_llm::Role;
 
 use super::*;
 
+static NO_TRUSTED_HOSTS: TrustedHosts = TrustedHosts::none();
+
+/// A draft of an agent that trusts no hosts and whose reply proposes none.
+fn no_trust() -> DraftTrust<'static> {
+    DraftTrust { trusted_hosts: &NO_TRUSTED_HOSTS, proposed_hosts: &[] }
+}
+
 const SIMPLE_ANSWER: &str = include_str!("../../fixtures/flows/simple_answer.yaml");
 const APPROVAL_LOOP: &str = include_str!("../../fixtures/flows/approval_loop.yaml");
 const INVALID_REFERENCE: &str = include_str!("../../fixtures/flows/invalid_reference.yaml");
@@ -120,7 +127,7 @@ async fn system_prompt_offers_saved_secret_names_but_never_values() {
 fn system_prompt_has_no_saved_secrets_section_without_saved_secrets() {
     let choice = ModelChoice { provider: ModelProvider::Openai, name: "gpt-4o-mini".into() };
     assert!(!prompt::build_system_prompt(&choice, &[]).contains("Secrets the user already saved"));
-    let revision_prompt = prompt::revision_system_prompt(&choice, &["DB_PASSWORD".into()]);
+    let revision_prompt = prompt::revision_system_prompt(&choice, &["DB_PASSWORD".into()], &TrustedHosts::none());
     assert!(revision_prompt.contains("`DB_PASSWORD`"));
 }
 
@@ -390,7 +397,9 @@ async fn draft_that_sends_without_approval_is_sent_back_for_repair() {
 #[test]
 fn system_prompt_includes_the_chatbot_guide() {
     let choice = ModelChoice { provider: ModelProvider::Openai, name: "gpt-4o-mini".into() };
-    for system_prompt in [prompt::build_system_prompt(&choice, &[]), prompt::revision_system_prompt(&choice, &[])] {
+    for system_prompt in
+        [prompt::build_system_prompt(&choice, &[]), prompt::revision_system_prompt(&choice, &[], &TrustedHosts::none())]
+    {
         assert!(system_prompt.contains("`handoff_reason`"), "{system_prompt}");
         assert!(system_prompt.contains("{{#conversation.notes#}}"));
     }
@@ -554,8 +563,8 @@ async fn a_catalog_plugin_step_missing_a_required_field_is_sent_back() {
     let without_body = CATALOG_PLUGIN_DRAFT.replace("      body: Our catering menu\n", "");
     let (_, builder) = mock_builder(&[]);
 
-    let problem = validate_draft(&without_body, &builder);
-    let accepted = validate_draft(CATALOG_PLUGIN_DRAFT, &builder);
+    let problem = validate_draft(&without_body, &builder, &no_trust());
+    let accepted = validate_draft(CATALOG_PLUGIN_DRAFT, &builder, &no_trust());
     crate::plugins::active::publish_catalog(None);
 
     assert!(problem.unwrap_err().contains("`body`"));
@@ -734,8 +743,8 @@ async fn the_maps_whatsapp_template_builds_with_the_real_plugin_kinds() {
         progress.record(update)
     })
     .await;
-    let summary = validate_draft(MAPS_WHATSAPP_OUTREACH, &builder);
-    let unapproved = flow::find_unapproved_sending_steps(MAPS_WHATSAPP_OUTREACH);
+    let summary = validate_draft(MAPS_WHATSAPP_OUTREACH, &builder, &no_trust());
+    let unapproved = flow::find_unapproved_sending_steps(MAPS_WHATSAPP_OUTREACH, &crate::flow::TrustedHosts::none());
     crate::plugins::active::publish_catalog(None);
 
     let agent = built.unwrap();
@@ -767,8 +776,8 @@ async fn a_maps_whatsapp_draft_that_sends_without_asking_is_rejected() {
     let unknown_kind = MAPS_WHATSAPP_OUTREACH.replace("whatsapp-web.send_message", "whatsapp-web.send_text");
     let (_, builder) = mock_builder(&[]);
 
-    let unapproved = validate_draft(&without_approval, &builder);
-    let unknown = validate_draft(&unknown_kind, &builder);
+    let unapproved = validate_draft(&without_approval, &builder, &no_trust());
+    let unknown = validate_draft(&unknown_kind, &builder, &no_trust());
     crate::plugins::active::publish_catalog(None);
 
     assert_ne!(without_approval, MAPS_WHATSAPP_OUTREACH, "fixture edges changed; update this test");
@@ -789,10 +798,10 @@ fn expected_problem_part(trick: &str) -> &'static str {
 fn validate_draft_refuses_every_approval_bypass_trick() {
     let (_, builder) = mock_builder(&[]);
     for (trick, draft, _) in flow::test_fixtures::approval_bypass_drafts() {
-        let problem = validate_draft(&draft, &builder).expect_err(trick);
+        let problem = validate_draft(&draft, &builder, &no_trust()).expect_err(trick);
         assert!(problem.contains(expected_problem_part(trick)), "{trick}: {problem}");
     }
-    assert!(validate_draft(&flow::test_fixtures::timeout_draft_repaired(), &builder).is_ok());
+    assert!(validate_draft(&flow::test_fixtures::timeout_draft_repaired(), &builder, &no_trust()).is_ok());
 }
 
 /// A prompt-injected builder reply using each trick goes back to the model with the
@@ -828,10 +837,14 @@ fn validate_draft_refuses_codex_output_reaching_a_search_without_an_approval() {
     let (_, mut builder) = mock_builder(&[]);
     builder.available_providers.push("codex-cli".into());
     let unapproved = flow::test_fixtures::model_output_into_a_search("codex-cli", true, false);
-    let problem = validate_draft(&unapproved, &builder).unwrap_err();
+    let problem = validate_draft(&unapproved, &builder, &no_trust()).unwrap_err();
     assert!(problem.contains("Search places") && problem.contains("without asking"), "{problem}");
     let approved = flow::test_fixtures::model_output_into_a_search("codex-cli", true, true);
-    assert!(validate_draft(&approved, &builder).is_ok(), "{:?}", validate_draft(&approved, &builder));
+    assert!(
+        validate_draft(&approved, &builder, &no_trust()).is_ok(),
+        "{:?}",
+        validate_draft(&approved, &builder, &no_trust())
+    );
 }
 
 #[tokio::test]

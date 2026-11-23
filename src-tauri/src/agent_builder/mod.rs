@@ -38,7 +38,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::credentials::{self, CredentialStore, ModelChoice, ModelProvider};
 use crate::error::{AppError, AppResult};
-use crate::flow::{self, FlowSummary};
+use crate::flow::{self, FlowSummary, TrustedHosts};
 use crate::storage::models::{Agent, AgentKind, NewAgent};
 use crate::storage::Database;
 
@@ -193,7 +193,8 @@ pub(crate) async fn build_agent_with_model(
         Message::user(prompt::build_request(description, kind)),
     ];
     report(on_progress, BuildStage::Drafting, "Drafting the steps");
-    let draft = draft_until_valid(builder, messages, on_progress, "Drafting the steps").await?;
+    let trusted_hosts = TrustedHosts::none();
+    let draft = draft_until_valid(builder, messages, on_progress, "Drafting the steps", &trusted_hosts).await?;
     let name = extract::agent_name(&draft.reply)
         .or_else(|| extract::document_name(&draft.flow_yaml))
         .unwrap_or_else(|| extract::name_from_description(description));
@@ -223,12 +224,14 @@ pub(crate) async fn revise_agent_with_model(
     report(on_progress, BuildStage::Understanding, "Understanding the change");
     let agent = db.get_agent(agent_id)?;
     let before = current_summary(&agent);
+    // Read from the database, never from the draft: the model cannot trust a host.
+    let trusted_hosts = db.trusted_lookup_hosts(agent_id)?;
     let messages = vec![
-        Message::system(prompt::revision_system_prompt(&builder.choice, &saved_secret_names(db))),
+        Message::system(prompt::revision_system_prompt(&builder.choice, &saved_secret_names(db), &trusted_hosts)),
         Message::user(prompt::revision_request(&agent.flow_yaml, instruction)),
     ];
     report(on_progress, BuildStage::Drafting, "Updating the steps");
-    let draft = draft_until_valid(builder, messages, on_progress, "Updating the steps").await?;
+    let draft = draft_until_valid(builder, messages, on_progress, "Updating the steps", &trusted_hosts).await?;
     if extract::same_document(&draft.flow_yaml, &agent.flow_yaml) {
         return Err(AppError::InvalidInput("No changes were needed".into()));
     }
@@ -282,6 +285,7 @@ async fn draft_until_valid(
     mut messages: Vec<Message>,
     on_progress: ProgressSink<'_>,
     drafting_message: &str,
+    trusted_hosts: &TrustedHosts,
 ) -> AppResult<ValidDraft> {
     let mut reply = ask_model(builder, &messages, on_progress, BuildStage::Drafting, drafting_message).await?;
     let mut repair_attempts = 0;
@@ -289,11 +293,11 @@ async fn draft_until_valid(
         let check_message = if repair_attempts == 0 { "Checking the steps" } else { "Checking it again" };
         report(on_progress, BuildStage::Checking, check_message);
         let flow_yaml = extract::workflow_yaml(&reply);
-        let problem = match validate_draft(&flow_yaml, builder) {
-            Ok(summary) => {
-                let explanation = live::opening_text(&reply);
-                return Ok(ValidDraft { reply, flow_yaml, summary, explanation });
-            }
+        let explanation = live::opening_text(&reply);
+        let proposed_hosts = extract::proposed_trusted_hosts(&explanation);
+        let trust = DraftTrust { trusted_hosts, proposed_hosts: &proposed_hosts };
+        let problem = match validate_draft(&flow_yaml, builder, &trust) {
+            Ok(summary) => return Ok(ValidDraft { reply, flow_yaml, summary, explanation }),
             Err(problem) => problem,
         };
         log::info!("drafted workflow is invalid (attempt {}): {problem}", repair_attempts + 1);
@@ -311,9 +315,20 @@ async fn draft_until_valid(
     }
 }
 
+/// Which hosts a draft's lookups may use without an approval.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct DraftTrust<'a> {
+    /// The agent's trusted lookup hosts (stored in the app, none for a new agent).
+    pub trusted_hosts: &'a TrustedHosts,
+    /// Hosts the reply proposes with "Trust <host> for lookups". A lookup on one of
+    /// them is accepted without an approval because the user sees the proposal as a
+    /// button: it stays untrusted, and runs refuse it, until the user clicks.
+    pub proposed_hosts: &'a [String],
+}
+
 /// Compiles the document and checks its model nodes use configured providers.
 /// `Err` holds a message meant for the model to fix.
-fn validate_draft(flow_yaml: &str, builder: &BuilderModel) -> Result<FlowSummary, String> {
+fn validate_draft(flow_yaml: &str, builder: &BuilderModel, trust: &DraftTrust<'_>) -> Result<FlowSummary, String> {
     let summary = flow::summarize_flow(flow_yaml).map_err(|error| match error {
         AppError::InvalidInput(_) => "the reply did not contain a workflow document".to_owned(),
         other => other.to_string(),
@@ -354,23 +369,47 @@ fn validate_draft(flow_yaml: &str, builder: &BuilderModel) -> Result<FlowSummary
     }
     // The app promises to ask before anything is sent, so a draft that can send
     // without stopping at an approval goes back to the model.
-    let unapproved = flow::find_unapproved_sending_steps(flow_yaml).map_err(|error| error.to_string())?;
-    if !unapproved.is_empty() {
-        return Err(format!(
-            "these steps send data without asking the user first: {}. Put a `human-input` approval step before \
-             each of them on every path (only its approve action may lead to the sending step). Steps that send \
-             include POST/PUT/PATCH/DELETE requests, any `http-request` whose URL, params, headers, authorization \
-             or body reads a `{{{{#…#}}}}` value, plugin and `tool` steps that send or change something, and \
-             `agent` steps with such tools unless `require_approval` lists every one of them",
-            unapproved.join(", ")
-        ));
+    let unapproved = flow::find_unapproved_steps(flow_yaml, trust.trusted_hosts).map_err(|error| error.to_string())?;
+    let blocking: Vec<&flow::UnapprovedStep> = unapproved
+        .iter()
+        .filter(|step| step.trustable_host.as_ref().is_none_or(|host| !trust.proposed_hosts.contains(host)))
+        .collect();
+    if !blocking.is_empty() {
+        return Err(unapproved_steps_problem(&blocking));
     }
     // An approval that answers by itself when its time runs out does not ask anyone.
-    let timeouts = flow::find_timeouts_that_send(flow_yaml).map_err(|error| error.to_string())?;
+    let timeouts = flow::find_timeouts_that_send(flow_yaml, trust.trusted_hosts).map_err(|error| error.to_string())?;
     if !timeouts.is_empty() {
         return Err(format!("{}. An approval must never send by itself", timeouts.join("; ")));
     }
     Ok(summary)
+}
+
+/// The repair message for steps that send without an approval; lookups on a host
+/// that is not trusted get the two ways out (approval, or proposing to trust it).
+fn unapproved_steps_problem(steps: &[&flow::UnapprovedStep]) -> String {
+    let labels: Vec<&str> = steps.iter().map(|step| step.label.as_str()).collect();
+    let mut problem = format!(
+        "these steps send data without asking the user first: {}. Put a `human-input` approval step before \
+         each of them on every path (only its approve action may lead to the sending step). Steps that send \
+         include POST/PUT/PATCH/DELETE requests, any `http-request` whose URL, params, headers, authorization \
+         or body reads a `{{{{#…#}}}}` value (unless it is a read-only lookup on a trusted host), plugin and \
+         `tool` steps that send or change something, and `agent` steps with such tools unless \
+         `require_approval` lists every one of them",
+        labels.join(", ")
+    );
+    for step in steps {
+        if let Some(host) = &step.trustable_host {
+            problem.push_str(&format!(
+                ". {label} is a read-only lookup on {host}, which the user has not trusted: either put a \
+                 `human-input` before it, or keep it as it is and end your opening sentences with the line \
+                 `Trust {host} for lookups` so the user can trust it (chatbots cannot ask, so for them always \
+                 propose trusting the host)",
+                label = step.label
+            ));
+        }
+    }
+    problem
 }
 
 /// One model call; returns the reply text. While it streams, `stage` progress

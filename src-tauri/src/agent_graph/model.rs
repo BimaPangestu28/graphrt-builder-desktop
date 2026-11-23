@@ -63,8 +63,24 @@ pub struct GraphNodeView {
     pub needs_approval: bool,
     /// Sends data out (writing HTTP, plugin send/post/...): must sit behind an approval.
     pub sends_data: bool,
+    /// For `http-request` steps: whether the request runs without asking, and why.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_check: Option<RequestCheckView>,
     /// Plugin name for plugin kinds (`whatsapp-web` for `whatsapp-web.send_message`).
     pub plugin: Option<String>,
+}
+
+/// Whether an `http-request` step runs without asking (see `flow::check_http_request`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestCheckView {
+    /// Reads (a plain read, or a lookup on a trusted host): no approval needed.
+    pub runs_without_asking: bool,
+    /// One plain sentence saying why.
+    pub reason: String,
+    /// The host whose trust would let this lookup run without asking, when that is all it needs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trustable_host: Option<String>,
 }
 
 /// Where arrows attach to a node.
@@ -139,6 +155,10 @@ pub struct GraphProblem {
     pub message: String,
     pub node_id: Option<String>,
     pub edge_id: Option<String>,
+    /// For a lookup that only needs its host trusted: the host the "Trust" action
+    /// adds (the user clicks it; nothing is trusted automatically).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trust_host: Option<String>,
 }
 
 /// `on_error` of a node.

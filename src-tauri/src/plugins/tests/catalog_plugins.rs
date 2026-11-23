@@ -137,7 +137,7 @@ async fn the_published_catalog_feeds_summaries_approval_checks_and_missing_plugi
     fixture.service.activate();
 
     let summary = crate::flow::summarize_flow(MAIL_FLOW);
-    let unapproved = crate::flow::find_unapproved_sending_steps(MAIL_FLOW);
+    let unapproved = crate::flow::find_unapproved_sending_steps(MAIL_FLOW, &crate::flow::TrustedHosts::none());
     let compiled_for_run = crate::flow::compile_flow(MAIL_FLOW);
     let missing = crate::flow::find_missing_plugins(MAIL_FLOW);
     let guide = crate::plugins::installed_plugins_guide();

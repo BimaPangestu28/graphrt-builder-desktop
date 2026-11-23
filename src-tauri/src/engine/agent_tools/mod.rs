@@ -193,8 +193,10 @@ impl AgentToolRuntime {
     fn start_nested_run(&self, agent: &Agent, arguments: serde_json::Value) -> AppResult<RunStream> {
         let mut agent_ids_below = self.agent_ids_above.clone();
         agent_ids_below.push(agent.id.clone());
+        let trusted_hosts = self.dependencies.db.trusted_lookup_hosts(&agent.id)?;
         let engine = preparation::build_engine(
             &agent.flow_yaml,
+            &trusted_hosts,
             &self.dependencies.credentials,
             &self.dependencies.db,
             &*self.dependencies.model_source,

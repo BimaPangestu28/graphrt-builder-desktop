@@ -34,7 +34,7 @@ use graphrt_core::Graph;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value as Json};
 
-use crate::flow::TimeoutChoice;
+use crate::flow::{TimeoutChoice, TrustedHosts};
 
 pub(crate) const HUMAN_INPUT_PAUSE_KIND: &str = "human_input";
 pub(crate) const TOOL_APPROVAL_PAUSE_KIND: &str = "tool_approval";
@@ -87,9 +87,9 @@ pub(crate) struct PauseSettings {
 
 impl PauseSettings {
     /// Reads the approval and agent steps of `flow_yaml`; an unreadable flow (logged) gives none.
-    pub(crate) fn from_flow(flow_yaml: &str) -> Self {
+    pub(crate) fn from_flow(flow_yaml: &str, trusted_hosts: &TrustedHosts) -> Self {
         match crate::flow::compile_flow(flow_yaml) {
-            Ok(graph) => Self::from_graph(&graph),
+            Ok(graph) => Self::from_graph(&graph, trusted_hosts),
             Err(error) => {
                 log::warn!("could not read the approval settings of a flow: {error}");
                 Self::default()
@@ -97,10 +97,12 @@ impl PauseSettings {
         }
     }
 
-    fn from_graph(graph: &Graph) -> Self {
+    fn from_graph(graph: &Graph, trusted_hosts: &TrustedHosts) -> Self {
         let mut settings = Self::default();
-        let answers_into_a_send: Vec<String> =
-            crate::flow::timeouts_that_send(graph).into_iter().map(|timeout| timeout.approval_node_id).collect();
+        let answers_into_a_send: Vec<String> = crate::flow::timeouts_that_send(graph, trusted_hosts)
+            .into_iter()
+            .map(|timeout| timeout.approval_node_id)
+            .collect();
         for node in graph.nodes() {
             let config = &node.doc.config;
             match node.kind.as_str() {
@@ -442,7 +444,7 @@ graph:
 
     #[test]
     fn approval_steps_get_a_deadline_and_their_timeout_action() {
-        let settings = PauseSettings::from_flow(FLOW);
+        let settings = PauseSettings::from_flow(FLOW, &TrustedHosts::none());
         let mut reasons = json!([
             {"frame": "", "node_id": "ask", "kind": "human_input", "data": {"timeout_ms": null}},
             {"frame": "", "node_id": "ask_forever", "kind": "human_input", "data": {}},
@@ -457,7 +459,7 @@ graph:
 
     #[test]
     fn a_question_left_unanswered_keeps_its_deadline_across_a_resume() {
-        let settings = PauseSettings::from_flow(FLOW);
+        let settings = PauseSettings::from_flow(FLOW, &TrustedHosts::none());
         let stored =
             json!([{"frame": "", "node_id": "ask", "kind": "human_input", "expires_at": "2026-11-21T10:30:00+00:00"}]);
         let carried = carried_deadlines(Some(&stored));
@@ -468,7 +470,7 @@ graph:
 
     #[test]
     fn tool_calls_get_provider_and_tool_and_hide_secrets() {
-        let settings = PauseSettings::from_flow(FLOW);
+        let settings = PauseSettings::from_flow(FLOW, &TrustedHosts::none());
         let mut reasons = json!([{"frame": "", "node_id": "helper", "kind": "tool_approval", "data": {"calls": [
             {"id": "c1", "name": "send_message", "arguments": {"phone": "+62", "api_key": "abc", "headers": {"Authorization": "x"}, "note": "Bearer zzz"}},
             {"id": "c2", "name": "search_places", "arguments": {"query": "cafe"}},
