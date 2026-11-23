@@ -7,6 +7,8 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-11-23
+
 ### Added
 
 - **Trusted hosts for lookups**: each agent has a list of sites it may look things up on without asking ("Read-only requests to these sites run without asking. Anything that changes data still asks you first."), shown in Builder › Steps, in the HTTP request inspector and on the chatbot setup page (a chat cannot stop for an approval, so this is how chatbots do parameterized lookups again). An `http-request` counts as reading, and needs no approval, only when **all** hold: the method (trimmed, any case) is GET or HEAD; it has no body; its scheme and host are written out literally (only the path and query may read `{{#…#}}` values; the host part may contain only letters, digits, `.`, `-` and `:`); the host matches a trusted entry exactly (any case; `*.example.com` covers subdomains, not `example.com` itself; an entry without a port matches only the default port, `host:port` only that port); `env` secrets appear only in the query, `params`, `headers` or `authorization`, never in the URL path; and no output of a model that may have run commands (Codex) flows into it. POST / PUT / PATCH / DELETE and OPTIONS with values always ask, also on trusted hosts. Everything else keeps the rules of 0.1.5.
@@ -667,7 +669,8 @@ connected to the graphrt runtime**, so no agent actually runs.
 - The mobile companion screens from the design are not built.
 - macOS builds are unsigned.
 
-[Unreleased]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.2...v0.1.3
