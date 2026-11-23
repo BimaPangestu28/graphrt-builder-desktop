@@ -18,6 +18,10 @@ releases may contain breaking changes; they are called out under **Changed**.
 - A run refuses to start while it has a lookup that would read only once its host is trusted and the host is not trusted (it was saved from a builder proposal, or the host was removed since): "… looks up data on api.example.com, which this agent does not trust: trust api.example.com for lookups, or ask before sending".
 - Runs that contain a trusted-host lookup follow no HTTP redirects (graphrt-http's `max_redirects` is 0 for that run; it has no per-step setting): a 3xx response fails the step instead of carrying the lookup's query to a host nobody trusted. Other runs follow redirects as before.
 
+### Fixed
+
+- **Linux packages depend on `ca-certificates`**: the `.deb` and `.rpm` now pull in the system CA bundle. Without it the app exited at startup with "could not set up the download client" (the HTTPS client verifies against the system trust store), as seen on a minimal Ubuntu 22.04 install.
+
 ## [0.1.5] - 2026-11-22
 
 ### Performance
