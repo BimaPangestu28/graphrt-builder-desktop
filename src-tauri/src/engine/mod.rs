@@ -16,6 +16,8 @@
 //!   stored pause reasons; `approval_expiry`: applies a step's timeout action
 //!   once its deadline has passed ([`RunManager::expire_due_approvals`]).
 //! - `active_runs`: handles of running tasks and abort requests.
+//! - `chosen_files`: files the user picked or dropped for `file` / `file-list`
+//!   inputs, and the resolver that reads only those.
 //! - [`ModelRegistrySource`]: where model clients come from (keychain in the
 //!   app, scripted mock models in tests).
 //!
@@ -28,6 +30,7 @@ mod active_runs;
 pub mod agent_tools;
 mod approval_expiry;
 pub(crate) mod approval_pauses;
+mod chosen_files;
 mod chunk_buffer;
 mod driver;
 mod preparation;
@@ -48,6 +51,15 @@ use self::chunk_buffer::ChunkBufferLimits;
 use self::driver::RunDriver;
 pub(crate) use self::preparation::flow_for_version;
 pub(crate) use self::preparation::prepare_engine_and_env;
+
+/// Whether paths given for `file` / `file-list` inputs become graphrt files.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum InputFiles {
+    /// Inputs stay plain values (graphrt rejects text given for a file input).
+    Refuse,
+    /// The user chose the files in the app: check and attach them.
+    AttachChosen,
+}
 
 /// Other agents as tools for a workflow of `agent_id` that is not a `RunManager`
 /// run (e.g. a chatbot turn); refuses calls back into `agent_id`.
@@ -192,6 +204,33 @@ impl RunManager {
     ///   or an `env.*` value it declares has neither a stored value nor a default;
     ///   no run is recorded in that case.
     pub async fn start_run(&self, agent_id: &str, trigger: RunTrigger, inputs: serde_json::Value) -> AppResult<Run> {
+        self.start_run_inner(agent_id, trigger, inputs, InputFiles::Refuse).await
+    }
+
+    /// [`Self::start_run`] for inputs the user gave in the app (the Test form,
+    /// Run now, Run again): paths given for `file` / `file-list` inputs become
+    /// graphrt files the run can read. Other callers (schedules, chains) pass
+    /// inputs that may come from model output, so they never get this.
+    ///
+    /// # Errors
+    /// As [`Self::start_run`], plus `InvalidInput` naming the input when a chosen
+    /// path is not an existing file of at most 50 MB.
+    pub async fn start_run_with_chosen_files(
+        &self,
+        agent_id: &str,
+        trigger: RunTrigger,
+        inputs: serde_json::Value,
+    ) -> AppResult<Run> {
+        self.start_run_inner(agent_id, trigger, inputs, InputFiles::AttachChosen).await
+    }
+
+    async fn start_run_inner(
+        &self,
+        agent_id: &str,
+        trigger: RunTrigger,
+        inputs: serde_json::Value,
+        input_files: InputFiles,
+    ) -> AppResult<Run> {
         let agent = self.db.get_agent(agent_id)?;
         let tools = self.agent_tools(&agent.id);
         let trusted_hosts = self.db.trusted_lookup_hosts(&agent.id)?;
@@ -206,6 +245,9 @@ impl RunManager {
         let mut run_input = RunInput::new();
         let stored_inputs = inputs.clone();
         run_input.inputs = preparation::json_object_to_value_map(inputs, "run inputs")?;
+        if input_files == InputFiles::AttachChosen {
+            chosen_files::attach_chosen_files(&agent.flow_yaml, &mut run_input.inputs)?;
+        }
         run_input.env = preparation::workflow_env(&agent.flow_yaml, &self.credentials)?;
 
         let run = self.db.insert_run(agent_id, agent.current_version, trigger)?;
@@ -247,6 +289,10 @@ impl RunManager {
             tools,
         )?;
         let snapshot = Snapshot::from_json(&self.db.get_run_snapshot(run_id)?)?;
+        // After a restart the allow-list is empty: the files the run started with are readable again.
+        if let Ok(Some(stored_inputs)) = self.db.get_run_inputs(run_id) {
+            chosen_files::remember_stored_file_inputs(&flow_yaml, stored_inputs);
+        }
         let resume_inputs = preparation::json_object_to_value_map(node_inputs, "node inputs")?;
         let mut run_input = RunInput::new().resume(snapshot, resume_inputs);
         run_input.env = preparation::workflow_env(&flow_yaml, &self.credentials)?;

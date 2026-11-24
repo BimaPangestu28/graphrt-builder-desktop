@@ -11,7 +11,7 @@ pub async fn start_run(
     trigger: RunTrigger,
     inputs: serde_json::Value,
 ) -> AppResult<Run> {
-    state.runs.start_run(&agent_id, trigger, inputs).await
+    state.runs.start_run_with_chosen_files(&agent_id, trigger, inputs).await
 }
 
 #[tauri::command]
