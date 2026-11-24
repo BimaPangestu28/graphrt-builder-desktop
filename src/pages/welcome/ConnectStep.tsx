@@ -46,7 +46,7 @@ function ExistingAccountSetup({ wizard }: { wizard: WelcomeWizard }) {
         title={tools.length > 1 ? 'Which AI account should graphrt use?' : 'Use the AI account on this computer'}
         description="graphrt works through the AI app you are already signed in to. Usage counts against that account’s plan and limits."
       />
-      <fieldset className={choiceGridClassNames}>
+      <fieldset className={choiceGridClassNames(tools.length)}>
         <legend className="sr-only">AI account</legend>
         {tools.map((provider) => (
           <WelcomeChoiceCard

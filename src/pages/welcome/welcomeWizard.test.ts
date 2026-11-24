@@ -1,6 +1,7 @@
 import type { LocalCliProvider, LocalCliSignIn, ProviderStatus } from '@/api/types'
 import {
   canLeaveStep,
+  choiceGridColumns,
   checkApiKey,
   installedTools,
   nextStepId,
@@ -130,5 +131,11 @@ describe('welcomeChoiceFor', () => {
     expect(welcomeChoiceFor(answers({ approach: 'private-model' }))).toBe('ollama')
     expect(welcomeChoiceFor(answers({ approach: 'later' }))).toBe('skip')
     expect(welcomeChoiceFor(answers())).toBeNull()
+  })
+})
+
+describe('choiceGridColumns', () => {
+  it('uses three columns only when the cards fill whole rows, else two (one for a single card)', () => {
+    expect([1, 2, 3, 4, 5, 6, 7].map(choiceGridColumns)).toEqual([1, 2, 3, 2, 2, 3, 2])
   })
 })

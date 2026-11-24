@@ -1,5 +1,6 @@
 import { useId, type ReactNode } from 'react'
 import { joinClassNames } from '@/components/ui'
+import { choiceGridColumns, type ChoiceGridColumns } from './welcomeWizard'
 
 interface WelcomeChoiceCardProps<Value extends string> {
   /** Name of the radio group the card belongs to. */
@@ -16,15 +17,23 @@ interface WelcomeChoiceCardProps<Value extends string> {
   isUnavailable?: boolean
   /** A quieter dashed look, for "Decide later". */
   isQuiet?: boolean
-  /** Takes a whole row of the three-column grid on wide windows (for "Decide later"). */
-  isFullRow?: boolean
+}
+
+const choiceGridColumnClassNames: Record<ChoiceGridColumns, string> = {
+  1: '',
+  2: 'md:grid-cols-2',
+  // Straight to three on medium windows too: two would leave the third card alone in a row.
+  3: 'md:grid-cols-3',
 }
 
 /**
- * The responsive grid the choice cards sit in: one column on narrow windows, two on
- * medium ones, three when they fit. Cards in a row share the tallest card's height.
+ * The responsive grid for `itemCount` choice cards: one column on narrow windows, then as
+ * many as {@link choiceGridColumns} allows. Every card is one column wide (none spans a row)
+ * and cards in a row share the tallest card's height.
  */
-export const choiceGridClassNames = 'm-0 grid min-w-0 grid-cols-1 gap-3 border-0 p-0 md:grid-cols-2 lg:grid-cols-3'
+export function choiceGridClassNames(itemCount: number): string {
+  return joinClassNames('m-0 grid min-w-0 grid-cols-1 gap-3 border-0 p-0', choiceGridColumnClassNames[choiceGridColumns(itemCount)])
+}
 
 /**
  * One option of a Welcome wizard radio group: a card with a native radio (named by the
@@ -41,7 +50,6 @@ export function WelcomeChoiceCard<Value extends string>({
   details,
   isUnavailable = false,
   isQuiet = false,
-  isFullRow = false,
 }: WelcomeChoiceCardProps<Value>) {
   const titleId = useId()
   const detailsId = useId()
@@ -51,7 +59,6 @@ export function WelcomeChoiceCard<Value extends string>({
       onClick={() => !isUnavailable && onSelect(value)}
       className={joinClassNames(
         'box-border flex h-full gap-3.5 rounded-[14px] p-4 transition-colors',
-        isFullRow && 'lg:col-span-full',
         isSelected ? 'border-2 border-ink bg-surface p-[15px]' : 'border border-line-strong bg-surface',
         isQuiet && !isSelected && 'border-dashed bg-subtle',
         isUnavailable ? 'cursor-default' : 'cursor-pointer hover:border-line-heavy',

@@ -112,6 +112,23 @@ export function accountTitle(provider: LocalCliProvider): string {
   return account.charAt(0).toUpperCase() + account.slice(1)
 }
 
+export type ChoiceGridColumns = 1 | 2 | 3
+
+/**
+ * How many columns a grid of `itemCount` equal cards gets on a wide window, so no row is
+ * left with a lonely card where it can be avoided: 3 when the cards fill rows of three
+ * (3, 6, …), else 2 (2, 4, 5, …; with an odd count the last card stays one column wide,
+ * left-aligned), and 1 for a single card.
+ *
+ * @example
+ * choiceGridColumns(4) // 2 (a 2×2 grid)
+ */
+export function choiceGridColumns(itemCount: number): ChoiceGridColumns {
+  if (itemCount <= 1) return 1
+  if (itemCount % 3 === 0) return 3
+  return 2
+}
+
 /** Result of checking a pasted API key before it is saved. */
 export type ApiKeyCheck =
   | { status: 'empty' }

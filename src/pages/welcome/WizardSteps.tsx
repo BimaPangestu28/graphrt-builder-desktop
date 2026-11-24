@@ -1,6 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import type { ProviderStatus } from '@/api/types'
-import { Badge, Icon } from '@/components/ui'
+import { Badge, Icon, joinClassNames } from '@/components/ui'
 import { localCliShortNames, localCliProviders } from '@/lib/settings'
 import { getTrayAreaName } from '@/lib/platform'
 import { apiKeyProviderOptions } from './welcomeSetup'
@@ -37,7 +37,7 @@ export function WelcomeStep() {
   return (
     <>
       <StepHeader title="Welcome to graphrt" description="graphrt builds AI agents that take routine work off your plate. Setup takes about a minute." />
-      <ul className="m-0 grid list-none grid-cols-1 gap-3 p-0 md:grid-cols-3">
+      <ul className={joinClassNames(choiceGridClassNames(welcomePoints.length), 'list-none')}>
         {welcomePoints.map((point) => (
           <li key={point.text} className="flex items-center gap-3 rounded-[14px] border border-line p-4 text-[15px] md:flex-col md:items-start">
             <span aria-hidden="true" className="flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-brand-soft text-brand-strong">
@@ -107,7 +107,7 @@ export function ApproachStep({ wizard }: { wizard: WelcomeWizard }) {
   return (
     <>
       <StepHeader title="How should your agents think?" description="Agents need an AI to understand your instructions. Pick what suits you; you can change it any time in Connections." />
-      <fieldset className={choiceGridClassNames}>
+      <fieldset className={choiceGridClassNames(4)}>
         <legend className="sr-only">How your agents think</legend>
         <WelcomeChoiceCard
           {...cardProps}
@@ -145,7 +145,6 @@ export function ApproachStep({ wizard }: { wizard: WelcomeWizard }) {
           {...cardProps}
           value="later"
           isQuiet
-          isFullRow
           title="Decide later"
           badges={badgeFor('later')}
           details={<span>Look around first. graphrt asks again when you build your first agent.</span>}
@@ -209,7 +208,7 @@ export function DoneStep({ wizard }: { wizard: WelcomeWizard }) {
         title="You’re all set"
         description={isDecidingLater ? 'Take a look around. Browse templates and see what agents can do.' : 'Next, describe your first agent in plain words and graphrt builds it.'}
       />
-      <dl className="m-0 grid grid-cols-1 gap-3 rounded-[14px] border border-line bg-subtle p-4 md:grid-cols-2">
+      <dl className={joinClassNames(choiceGridClassNames(summaryRows.length), 'rounded-[14px] border border-line bg-subtle p-4')}>
         {summaryRows.map((row) => (
           <div key={row.label} className="flex flex-col gap-0.5">
             <dt className="text-[12px] font-semibold text-muted">{row.label}</dt>
