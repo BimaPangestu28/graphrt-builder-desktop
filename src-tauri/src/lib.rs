@@ -42,6 +42,8 @@ pub mod engine;
 pub mod error;
 pub mod flow;
 pub mod knowledge;
+#[cfg(target_os = "linux")]
+pub mod linux_display;
 pub mod live_view;
 pub mod local_cli;
 pub mod mcp;
