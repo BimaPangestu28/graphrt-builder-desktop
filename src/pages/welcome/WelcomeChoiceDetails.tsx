@@ -64,31 +64,33 @@ export function ApiKeyFields({ provider, apiKey, check, onProviderChange, onApiK
   const suggestedProvider = check.status === 'warning' ? check.suggestedProvider : null
   return (
     <div className="flex flex-col gap-4">
-      <label className="flex flex-col gap-1.5">
-        <span className="text-[13px] font-medium text-ink-2">Which company is the key from?</span>
-        <select aria-label="Provider" value={provider} onChange={(event) => onProviderChange(event.target.value as ApiKeyProvider)} className={`${fieldClassNames} px-2.5`}>
-          {apiKeyProviderOptions.map((option) => (
-            <option key={option.provider} value={option.provider}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="flex flex-col gap-1.5">
-        <span className="text-[13px] font-medium text-ink-2">API key</span>
-        <input
-          type="password"
-          aria-label="API key"
-          aria-invalid={check.status === 'invalid'}
-          aria-describedby={checkMessageId}
-          value={apiKey}
-          placeholder="Paste your API key"
-          autoComplete="off"
-          spellCheck={false}
-          onChange={(event) => onApiKeyChange(event.target.value)}
-          className={`${fieldClassNames} px-3`}
-        />
-      </label>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[13px] font-medium text-ink-2">Which company is the key from?</span>
+          <select aria-label="Provider" value={provider} onChange={(event) => onProviderChange(event.target.value as ApiKeyProvider)} className={`${fieldClassNames} px-2.5`}>
+            {apiKeyProviderOptions.map((option) => (
+              <option key={option.provider} value={option.provider}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[13px] font-medium text-ink-2">API key</span>
+          <input
+            type="password"
+            aria-label="API key"
+            aria-invalid={check.status === 'invalid'}
+            aria-describedby={checkMessageId}
+            value={apiKey}
+            placeholder="Paste your API key"
+            autoComplete="off"
+            spellCheck={false}
+            onChange={(event) => onApiKeyChange(event.target.value)}
+            className={`${fieldClassNames} px-3`}
+          />
+        </label>
+      </div>
       <span id={checkMessageId} aria-live="polite" className="text-[13px] leading-normal">
         {check.status === 'invalid' && <span className="text-danger">{check.message}</span>}
         {check.status === 'warning' && (

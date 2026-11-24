@@ -57,7 +57,7 @@ export function WelcomePage() {
         <span className="text-[26px] font-bold tracking-[-0.5px]">graphrt</span>
       </div>
 
-      <form onSubmit={submit} aria-label="Set up graphrt" className="box-border flex w-full max-w-[600px] flex-col gap-7 rounded-[20px] border border-line bg-surface p-6 sm:p-10">
+      <form onSubmit={submit} aria-label="Set up graphrt" className="box-border flex w-full max-w-[1040px] flex-col gap-7 rounded-[20px] border border-line bg-surface p-6 sm:p-10">
         <WizardProgress steps={wizard.steps} currentStepId={wizard.stepId} />
 
         <CurrentStep key={wizard.stepId} wizard={wizard} />

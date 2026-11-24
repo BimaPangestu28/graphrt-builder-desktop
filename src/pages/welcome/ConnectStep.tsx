@@ -4,7 +4,7 @@ import { InstallPageLink } from '@/components/InstallPageLink'
 import { Button, StatusDot } from '@/components/ui'
 import { describeLocalCliUsageNote, localCliCommands, localCliProviders, localCliShortNames } from '@/lib/settings'
 import type { WelcomeWizard } from './useWelcomeWizard'
-import { WelcomeChoiceCard } from './WelcomeChoiceCard'
+import { choiceGridClassNames, WelcomeChoiceCard } from './WelcomeChoiceCard'
 import { ApiKeyFields, FoundLine, ollamaDownloadUrl, TechnicalDetails } from './WelcomeChoiceDetails'
 import { StepHeader } from './WizardSteps'
 import { accountTitle, checkApiKey, installedTools } from './welcomeWizard'
@@ -46,7 +46,7 @@ function ExistingAccountSetup({ wizard }: { wizard: WelcomeWizard }) {
         title={tools.length > 1 ? 'Which AI account should graphrt use?' : 'Use the AI account on this computer'}
         description="graphrt works through the AI app you are already signed in to. Usage counts against that account’s plan and limits."
       />
-      <fieldset className="m-0 flex min-w-0 flex-col gap-2.5 border-0 p-0">
+      <fieldset className={choiceGridClassNames}>
         <legend className="sr-only">AI account</legend>
         {tools.map((provider) => (
           <WelcomeChoiceCard

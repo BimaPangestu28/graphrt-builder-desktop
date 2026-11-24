@@ -5,7 +5,7 @@ import { localCliShortNames, localCliProviders } from '@/lib/settings'
 import { getTrayAreaName } from '@/lib/platform'
 import { apiKeyProviderOptions } from './welcomeSetup'
 import type { WelcomeWizard } from './useWelcomeWizard'
-import { WelcomeChoiceCard } from './WelcomeChoiceCard'
+import { choiceGridClassNames, WelcomeChoiceCard } from './WelcomeChoiceCard'
 import { FoundLine, TechnicalDetails } from './WelcomeChoiceDetails'
 import { accountTitle, describeAccount, installedTools, type WizardAnswers, type WizardApproach } from './welcomeWizard'
 
@@ -21,7 +21,7 @@ export function StepHeader({ title, description }: { title: string; description?
       <h1 ref={headingRef} tabIndex={-1} className="m-0 text-[26px] font-semibold tracking-[-0.5px] outline-none sm:text-[28px]">
         {title}
       </h1>
-      {description && <p className="m-0 text-[15px] leading-[1.6] text-body">{description}</p>}
+      {description && <p className="m-0 max-w-[720px] text-[15px] leading-[1.6] text-body">{description}</p>}
     </div>
   )
 }
@@ -37,9 +37,9 @@ export function WelcomeStep() {
   return (
     <>
       <StepHeader title="Welcome to graphrt" description="graphrt builds AI agents that take routine work off your plate. Setup takes about a minute." />
-      <ul className="m-0 flex list-none flex-col gap-3 p-0">
+      <ul className="m-0 grid list-none grid-cols-1 gap-3 p-0 md:grid-cols-3">
         {welcomePoints.map((point) => (
-          <li key={point.text} className="flex items-center gap-3 text-[15px]">
+          <li key={point.text} className="flex items-center gap-3 rounded-[14px] border border-line p-4 text-[15px] md:flex-col md:items-start">
             <span aria-hidden="true" className="flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-brand-soft text-brand-strong">
               <Icon name={point.icon} size={18} />
             </span>
@@ -107,7 +107,7 @@ export function ApproachStep({ wizard }: { wizard: WelcomeWizard }) {
   return (
     <>
       <StepHeader title="How should your agents think?" description="Agents need an AI to understand your instructions. Pick what suits you; you can change it any time in Connections." />
-      <fieldset className="m-0 flex min-w-0 flex-col gap-2.5 border-0 p-0">
+      <fieldset className={choiceGridClassNames}>
         <legend className="sr-only">How your agents think</legend>
         <WelcomeChoiceCard
           {...cardProps}
@@ -145,6 +145,7 @@ export function ApproachStep({ wizard }: { wizard: WelcomeWizard }) {
           {...cardProps}
           value="later"
           isQuiet
+          isFullRow
           title="Decide later"
           badges={badgeFor('later')}
           details={<span>Look around first. graphrt asks again when you build your first agent.</span>}
@@ -164,7 +165,7 @@ export function BackgroundStep({ wizard }: { wizard: WelcomeWizard }) {
         title="Keep agents working after you close the window?"
         description={`Scheduled agents can only run while graphrt is open. With this on, closing the window tucks graphrt into the ${trayAreaName} instead of quitting it.`}
       />
-      <label className="flex cursor-pointer items-start gap-3 rounded-[14px] border border-line-strong p-4">
+      <label className="flex max-w-[720px] cursor-pointer items-start gap-3 rounded-[14px] border border-line-strong p-4">
         <input
           type="checkbox"
           checked={wizard.keepRunningInBackground}
@@ -208,7 +209,7 @@ export function DoneStep({ wizard }: { wizard: WelcomeWizard }) {
         title="You’re all set"
         description={isDecidingLater ? 'Take a look around. Browse templates and see what agents can do.' : 'Next, describe your first agent in plain words and graphrt builds it.'}
       />
-      <dl className="m-0 flex flex-col gap-3 rounded-[14px] border border-line bg-subtle p-4">
+      <dl className="m-0 grid grid-cols-1 gap-3 rounded-[14px] border border-line bg-subtle p-4 md:grid-cols-2">
         {summaryRows.map((row) => (
           <div key={row.label} className="flex flex-col gap-0.5">
             <dt className="text-[12px] font-semibold text-muted">{row.label}</dt>
