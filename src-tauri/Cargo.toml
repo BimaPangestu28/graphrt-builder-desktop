@@ -27,15 +27,15 @@ tauri-plugin-dialog = "2.4"
 tauri-plugin-notification = "2.8.1"
 
 # graphrt runtime, pinned to a commit until the crates are published on crates.io
-graphrt-core = { git = "https://github.com/BimaPangestu28/graphrt", rev = "32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088" }
-graphrt-llm = { git = "https://github.com/BimaPangestu28/graphrt", rev = "32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088", default-features = false, features = ["openai", "anthropic", "gemini", "mock"] }
-graphrt-http = { git = "https://github.com/BimaPangestu28/graphrt", rev = "32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088" }
+graphrt-core = { git = "https://github.com/BimaPangestu28/graphrt", rev = "e1e9aa89eea304bdd8110f2ce3c0a54b15f5b6f8" }
+graphrt-llm = { git = "https://github.com/BimaPangestu28/graphrt", rev = "e1e9aa89eea304bdd8110f2ce3c0a54b15f5b6f8", default-features = false, features = ["openai", "anthropic", "gemini", "mock"] }
+graphrt-http = { git = "https://github.com/BimaPangestu28/graphrt", rev = "e1e9aa89eea304bdd8110f2ce3c0a54b15f5b6f8" }
 # Knowledge bases: SQLite vector store, document extractors and OpenAI-compatible embeddings
-graphrt-rag = { git = "https://github.com/BimaPangestu28/graphrt", rev = "32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088", default-features = false, features = ["sqlite", "doc", "http"] }
+graphrt-rag = { git = "https://github.com/BimaPangestu28/graphrt", rev = "e1e9aa89eea304bdd8110f2ce3c0a54b15f5b6f8", default-features = false, features = ["sqlite", "doc", "http"] }
 # Plugins: node kinds and tools from external processes (graphrt-plugins catalog)
-graphrt-plugin = { git = "https://github.com/BimaPangestu28/graphrt", rev = "32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088", default-features = false, features = ["process", "http", "yaml"] }
+graphrt-plugin = { git = "https://github.com/BimaPangestu28/graphrt", rev = "e1e9aa89eea304bdd8110f2ce3c0a54b15f5b6f8", default-features = false, features = ["process", "http", "yaml"] }
 # MCP servers configured in Connections > Advanced: their tools for `tool` / `agent` nodes (stdio and Streamable HTTP)
-graphrt-mcp = { git = "https://github.com/BimaPangestu28/graphrt", rev = "32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088" }
+graphrt-mcp = { git = "https://github.com/BimaPangestu28/graphrt", rev = "e1e9aa89eea304bdd8110f2ce3c0a54b15f5b6f8" }
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "process", "io-util"] }
 futures = "0.3"

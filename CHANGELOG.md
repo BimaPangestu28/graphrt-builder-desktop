@@ -20,6 +20,7 @@ releases may contain breaking changes; they are called out under **Changed**.
 ### Fixed
 
 - **Linux AppImage: programs graphrt starts no longer load graphrt's bundled libraries.** The AppImage launcher puts the bundle in front of `LD_LIBRARY_PATH`, `PATH`, `PYTHONPATH`, `XDG_DATA_DIRS`, … and points `GTK_PATH`, `GIO_MODULE_DIR`, `PYTHONHOME`, … into it; every program graphrt started inherited them, so on newer systems the computer's own tools failed (Codex on Ubuntu 26.04: ``/usr/bin/env: …/libsystemd.so.0: version `LIBSYSTEMD_254' not found``). Local CLIs (detection and runs), Node.js, MCP servers' and plugins' `PATH`, `xdg-open` and `systemd-inhibit` now get the environment without the bundle's entries (new `child_env` module). Outside an AppImage nothing changes.
+- The same goes for what the graphrt runtime starts itself: plugin processes and stdio MCP servers (their whole minimal environment, not just `PATH`), the `kill` that stops a plugin's process group and `git clone`. graphrt is pinned to `e1e9aa8` (`backport/appimage-child-env-32bcd7a`: the pinned `32bcd7a` plus BimaPangestu28/graphrt#53), and the rules now live in `graphrt_core::child_env`, which the app's `child_env` uses.
 - A local CLI whose `--version` fails is no longer shown as "Found" with the error as its version: Welcome and Connections say "Found, but it does not start. Run `codex --version` in Terminal to see why" (new `problem` field on the local CLI status), and the sign-in hint is hidden for it.
 
 ## [0.1.6] - 2026-11-23

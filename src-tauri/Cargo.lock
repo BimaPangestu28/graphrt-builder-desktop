@@ -1830,7 +1830,7 @@ dependencies = [
 [[package]]
 name = "graphrt-core"
 version = "0.1.0"
-source = "git+https://github.com/BimaPangestu28/graphrt?rev=32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088#32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088"
+source = "git+https://github.com/BimaPangestu28/graphrt?rev=e1e9aa89eea304bdd8110f2ce3c0a54b15f5b6f8#e1e9aa89eea304bdd8110f2ce3c0a54b15f5b6f8"
 dependencies = [
  "futures",
  "indexmap 2.14.2",
@@ -1845,7 +1845,7 @@ dependencies = [
 [[package]]
 name = "graphrt-doc"
 version = "0.1.0"
-source = "git+https://github.com/BimaPangestu28/graphrt?rev=32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088#32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088"
+source = "git+https://github.com/BimaPangestu28/graphrt?rev=e1e9aa89eea304bdd8110f2ce3c0a54b15f5b6f8#e1e9aa89eea304bdd8110f2ce3c0a54b15f5b6f8"
 dependencies = [
  "calamine",
  "encoding_rs",
@@ -1865,7 +1865,7 @@ dependencies = [
 [[package]]
 name = "graphrt-http"
 version = "0.1.0"
-source = "git+https://github.com/BimaPangestu28/graphrt?rev=32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088#32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088"
+source = "git+https://github.com/BimaPangestu28/graphrt?rev=e1e9aa89eea304bdd8110f2ce3c0a54b15f5b6f8#e1e9aa89eea304bdd8110f2ce3c0a54b15f5b6f8"
 dependencies = [
  "base64 0.22.1",
  "futures",
@@ -1883,7 +1883,7 @@ dependencies = [
 [[package]]
 name = "graphrt-llm"
 version = "0.1.0"
-source = "git+https://github.com/BimaPangestu28/graphrt?rev=32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088#32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088"
+source = "git+https://github.com/BimaPangestu28/graphrt?rev=e1e9aa89eea304bdd8110f2ce3c0a54b15f5b6f8#e1e9aa89eea304bdd8110f2ce3c0a54b15f5b6f8"
 dependencies = [
  "futures",
  "graphrt-core",
@@ -1899,7 +1899,7 @@ dependencies = [
 [[package]]
 name = "graphrt-mcp"
 version = "0.1.0"
-source = "git+https://github.com/BimaPangestu28/graphrt?rev=32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088#32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088"
+source = "git+https://github.com/BimaPangestu28/graphrt?rev=e1e9aa89eea304bdd8110f2ce3c0a54b15f5b6f8#e1e9aa89eea304bdd8110f2ce3c0a54b15f5b6f8"
 dependencies = [
  "futures",
  "graphrt-core",
@@ -1916,7 +1916,7 @@ dependencies = [
 [[package]]
 name = "graphrt-plugin"
 version = "0.1.0"
-source = "git+https://github.com/BimaPangestu28/graphrt?rev=32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088#32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088"
+source = "git+https://github.com/BimaPangestu28/graphrt?rev=e1e9aa89eea304bdd8110f2ce3c0a54b15f5b6f8#e1e9aa89eea304bdd8110f2ce3c0a54b15f5b6f8"
 dependencies = [
  "futures",
  "graphrt-core",
@@ -1934,7 +1934,7 @@ dependencies = [
 [[package]]
 name = "graphrt-rag"
 version = "0.1.0"
-source = "git+https://github.com/BimaPangestu28/graphrt?rev=32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088#32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088"
+source = "git+https://github.com/BimaPangestu28/graphrt?rev=e1e9aa89eea304bdd8110f2ce3c0a54b15f5b6f8#e1e9aa89eea304bdd8110f2ce3c0a54b15f5b6f8"
 dependencies = [
  "futures",
  "graphrt-core",
