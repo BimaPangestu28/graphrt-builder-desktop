@@ -132,6 +132,8 @@ export interface LocalCliStatus {
   installed: boolean
   /** E.g. "2.1.330 (Claude Code)" or "codex-cli 0.142.2". */
   version: string | null
+  /** Why the found binary does not work (its `--version` failed), in plain words; null when it does. */
+  problem: string | null
   /** Resolved binary path. */
   path: string | null
   signIn: LocalCliSignIn

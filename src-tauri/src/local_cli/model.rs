@@ -114,6 +114,7 @@ impl LocalCliModel {
 
     fn spawn(&self, binary: &std::path::Path, plan: &CallPlan, workdir: &std::path::Path) -> Result<Child, LlmError> {
         let mut command = Command::new(binary);
+        crate::child_env::apply_tokio(&mut command);
         command
             .args(&plan.args)
             .envs(plan.env.iter().map(|(name, value)| (name.as_str(), value.as_str())))

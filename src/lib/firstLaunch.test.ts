@@ -8,7 +8,7 @@ const claudeCodeOnStatus: ProviderStatus = {
   provider: 'claude-code-cli',
   configured: true,
   baseUrl: null,
-  localCli: { enabled: true, installed: true, version: '2.1.330 (Claude Code)', path: '/Users/you/.local/bin/claude', signIn: 'signed_in', installUrl: 'https://docs.claude.com/en/docs/claude-code/setup' },
+  localCli: { enabled: true, installed: true, version: '2.1.330 (Claude Code)', problem: null, path: '/Users/you/.local/bin/claude', signIn: 'signed_in', installUrl: 'https://docs.claude.com/en/docs/claude-code/setup' },
 }
 
 describe('isModelConnected', () => {

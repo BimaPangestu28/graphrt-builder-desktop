@@ -62,6 +62,7 @@ const sampleLocalCliDetections: Record<LocalCliProvider, Omit<LocalCliStatus, 'e
   'claude-code-cli': {
     installed: true,
     version: '2.1.330 (Claude Code)',
+    problem: null,
     path: '/Users/you/.local/bin/claude',
     signIn: 'signed_in',
     installUrl: 'https://docs.claude.com/en/docs/claude-code/setup',
@@ -69,6 +70,7 @@ const sampleLocalCliDetections: Record<LocalCliProvider, Omit<LocalCliStatus, 'e
   'codex-cli': {
     installed: false,
     version: null,
+    problem: null,
     path: null,
     signIn: 'unknown',
     installUrl: 'https://developers.openai.com/codex/cli',
@@ -76,6 +78,7 @@ const sampleLocalCliDetections: Record<LocalCliProvider, Omit<LocalCliStatus, 'e
   'gemini-cli': {
     installed: true,
     version: '0.71.0',
+    problem: null,
     path: '/opt/homebrew/bin/gemini',
     signIn: 'unknown',
     installUrl: 'https://github.com/google-gemini/gemini-cli',
@@ -83,6 +86,7 @@ const sampleLocalCliDetections: Record<LocalCliProvider, Omit<LocalCliStatus, 'e
   'cursor-cli': {
     installed: false,
     version: null,
+    problem: null,
     path: null,
     signIn: 'unknown',
     installUrl: 'https://cursor.com/docs/cli/installation',
@@ -90,6 +94,7 @@ const sampleLocalCliDetections: Record<LocalCliProvider, Omit<LocalCliStatus, 'e
   'copilot-cli': {
     installed: false,
     version: null,
+    problem: null,
     path: null,
     signIn: 'unknown',
     installUrl: 'https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli',
@@ -97,6 +102,7 @@ const sampleLocalCliDetections: Record<LocalCliProvider, Omit<LocalCliStatus, 'e
   'opencode-cli': {
     installed: false,
     version: null,
+    problem: null,
     path: null,
     signIn: 'unknown',
     installUrl: 'https://opencode.ai/docs/',
@@ -104,6 +110,7 @@ const sampleLocalCliDetections: Record<LocalCliProvider, Omit<LocalCliStatus, 'e
   'qwen-code-cli': {
     installed: false,
     version: null,
+    problem: null,
     path: null,
     signIn: 'unknown',
     installUrl: 'https://github.com/QwenLM/qwen-code',

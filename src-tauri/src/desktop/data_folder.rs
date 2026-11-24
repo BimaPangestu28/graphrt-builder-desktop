@@ -39,7 +39,9 @@ pub fn open_in_file_manager(folder: &Path) -> AppResult<()> {
         return Err(AppError::NotFound(format!("the folder {}", folder.display())));
     }
     let (program, arguments) = file_manager_command(folder);
-    Command::new(program)
+    let mut command = Command::new(program);
+    crate::child_env::apply(&mut command);
+    command
         .args(&arguments)
         .spawn()
         // Reap the launcher when it exits so it does not linger as a zombie.

@@ -20,6 +20,16 @@ function FoundLine({ text }: { text: string }) {
   )
 }
 
+/** An amber line for a CLI that was found but does not start, e.g. "Found, but it does not start. …". */
+function ProblemLine({ text }: { text: string }) {
+  return (
+    <span className="flex items-center gap-1.5 text-ink-2">
+      <StatusDot tone="amber" />
+      {text}
+    </span>
+  )
+}
+
 /** "Not installed · How to install …" with the install docs link. */
 function MissingLine({ text, link }: { text: string; link: ReactNode }) {
   return (
@@ -47,7 +57,8 @@ export function LocalCliChoiceDetails({ provider, status }: LocalCliChoiceDetail
   return (
     <>
       {!localCli && <span className="text-muted">Looking for {shortName}…</span>}
-      {localCli?.installed && <FoundLine text={localCli.version ? `Found · ${localCli.version}` : 'Found on this computer'} />}
+      {localCli?.installed && localCli.problem && <ProblemLine text={localCli.problem} />}
+      {localCli?.installed && !localCli.problem && <FoundLine text={localCli.version ? `Found · ${localCli.version}` : 'Found on this computer'} />}
       {localCli && !localCli.installed && (
         <MissingLine text="Not installed" link={<InstallPageLink provider={provider} url={localCli.installUrl} label={`How to install ${shortName}`} />} />
       )}

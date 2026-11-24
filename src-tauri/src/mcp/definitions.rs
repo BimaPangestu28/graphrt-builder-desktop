@@ -325,7 +325,7 @@ pub fn runtime_config(definition: &McpServerDefinition, credentials: &Credential
     let transport = match &definition.transport {
         McpServerTransport::Stdio { command, args } => {
             let mut env = IndexMap::new();
-            env.insert("PATH".to_owned(), extended_path(std::env::var("PATH").ok()));
+            env.insert("PATH".to_owned(), extended_path(crate::child_env::host_path_string()));
             for secret_name in &definition.secret_env {
                 if let Some(value) = read_secret(secret_name)? {
                     env.insert(secret_name.clone(), value);
