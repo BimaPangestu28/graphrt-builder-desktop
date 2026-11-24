@@ -7,6 +7,8 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-11-24
+
 ### Changed
 
 - **Put it online is available**: the app now pins the graphrt CLI 0.6.0 (with `deploy --direct`) and downloads it, checksum-verified, the first time you put an agent online on Fly.io.
@@ -714,7 +716,8 @@ connected to the graphrt runtime**, so no agent actually runs.
 - The mobile companion screens from the design are not built.
 - macOS builds are unsigned.
 
-[Unreleased]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.7...HEAD
+[Unreleased]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.8...HEAD
+[0.1.8]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.4...v0.1.5
