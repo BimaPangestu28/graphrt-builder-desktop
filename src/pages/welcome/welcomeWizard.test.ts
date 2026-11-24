@@ -1,5 +1,6 @@
 import type { LocalCliProvider, LocalCliSignIn, ProviderStatus } from '@/api/types'
 import {
+  brokenTools,
   canLeaveStep,
   choiceGridColumns,
   checkApiKey,
@@ -13,12 +14,12 @@ import {
   type WizardAnswers,
 } from './welcomeWizard'
 
-function cliStatus(provider: LocalCliProvider, installed: boolean, signIn: LocalCliSignIn = 'unknown'): ProviderStatus {
+function cliStatus(provider: LocalCliProvider, installed: boolean, signIn: LocalCliSignIn = 'unknown', problem: string | null = null): ProviderStatus {
   return {
     provider,
     configured: false,
     baseUrl: null,
-    localCli: { enabled: false, installed, version: installed ? '1.0.0' : null, path: null, signIn, installUrl: 'https://example.com' },
+    localCli: { enabled: false, installed, version: installed ? '1.0.0' : null, problem, path: null, signIn, installUrl: 'https://example.com' },
   }
 }
 
@@ -137,5 +138,18 @@ describe('welcomeChoiceFor', () => {
 describe('choiceGridColumns', () => {
   it('uses three columns only when the cards fill whole rows, else two (one for a single card)', () => {
     expect([1, 2, 3, 4, 5, 6, 7].map(choiceGridColumns)).toEqual([1, 2, 3, 2, 2, 3, 2])
+  })
+})
+
+describe('tools that are found but do not start', () => {
+  const brokenCodex = cliStatus('codex-cli', true, 'signed_in', 'Found, but it does not start.')
+
+  it('are not usable, recommended or enough to leave a step', () => {
+    const statuses = [cliStatus('claude-code-cli', false), brokenCodex]
+    expect(installedTools(statuses)).toEqual([])
+    expect(brokenTools(statuses)).toEqual(['codex-cli'])
+    expect(recommendApproach({ statuses, isOllamaRunning: false })).toBe('company-key')
+    expect(canLeaveStep('approach', answers({ approach: 'existing-account' }), statuses)).toBe(false)
+    expect(canLeaveStep('setup', answers({ approach: 'existing-account', tool: 'codex-cli' }), statuses)).toBe(false)
   })
 })

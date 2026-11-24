@@ -6,8 +6,8 @@ import { getTrayAreaName } from '@/lib/platform'
 import { apiKeyProviderOptions } from './welcomeSetup'
 import type { WelcomeWizard } from './useWelcomeWizard'
 import { choiceGridClassNames, WelcomeChoiceCard } from './WelcomeChoiceCard'
-import { FoundLine, TechnicalDetails } from './WelcomeChoiceDetails'
-import { accountTitle, describeAccount, installedTools, type WizardAnswers, type WizardApproach } from './welcomeWizard'
+import { FoundLine, ProblemLine, TechnicalDetails } from './WelcomeChoiceDetails'
+import { accountTitle, brokenTools, describeAccount, installedTools, type WizardAnswers, type WizardApproach } from './welcomeWizard'
 
 /**
  * Title and one-line explanation of a wizard step. The heading takes focus when the step
@@ -62,7 +62,11 @@ function RecommendedBadge() {
 function describeFoundAccounts(statuses: readonly ProviderStatus[] | null): ReactNode {
   if (!statuses) return <span className="text-muted">Looking on this computer…</span>
   const tools = installedTools(statuses)
-  if (tools.length === 0) return <span className="text-muted">None found on this computer</span>
+  if (tools.length === 0) {
+    const broken = brokenTools(statuses)
+    if (broken.length > 0) return <ProblemLine text={`Found ${broken.map((provider) => localCliShortNames[provider]).join(' and ')}, but it does not start on this computer yet`} />
+    return <span className="text-muted">None found on this computer</span>
+  }
   const accountNames = tools.map(describeAccount)
   const shownNames = accountNames.length > 2 ? `${accountNames.slice(0, 2).join(', ')} and ${accountNames.length - 2} more` : accountNames.join(' and ')
   return <FoundLine text={`Found ${shownNames}`} />
@@ -86,7 +90,13 @@ function DetectionDetails({ wizard }: { wizard: WelcomeWizard }) {
       <ul className="m-0 flex list-none flex-col gap-1 p-0">
         {localCliProviders.map((provider) => {
           const localCli = statuses?.find((status) => status.provider === provider)?.localCli
-          const state = !localCli ? 'checking…' : localCli.installed ? `found${localCli.version ? ` · ${localCli.version}` : ''}` : 'not installed'
+          const state = !localCli
+            ? 'checking…'
+            : !localCli.installed
+              ? 'not installed'
+              : localCli.problem
+                ? `found, does not start · ${localCli.problem}`
+                : `found${localCli.version ? ` · ${localCli.version}` : ''}`
           return (
             <li key={provider} className="break-words">
               <span className="font-medium text-ink-2">{localCliShortNames[provider]}</span> — {state}

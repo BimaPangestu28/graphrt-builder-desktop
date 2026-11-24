@@ -5,9 +5,9 @@ import { Button, StatusDot } from '@/components/ui'
 import { describeLocalCliUsageNote, localCliCommands, localCliProviders, localCliShortNames } from '@/lib/settings'
 import type { WelcomeWizard } from './useWelcomeWizard'
 import { choiceGridClassNames, WelcomeChoiceCard } from './WelcomeChoiceCard'
-import { ApiKeyFields, FoundLine, ollamaDownloadUrl, TechnicalDetails } from './WelcomeChoiceDetails'
+import { ApiKeyFields, FoundLine, ollamaDownloadUrl, ProblemLine, TechnicalDetails } from './WelcomeChoiceDetails'
 import { StepHeader } from './WizardSteps'
-import { accountTitle, checkApiKey, installedTools } from './welcomeWizard'
+import { accountTitle, brokenTools, checkApiKey, installedTools } from './welcomeWizard'
 
 function findLocalCli(statuses: readonly ProviderStatus[] | null, provider: LocalCliProvider) {
   return statuses?.find((status) => status.provider === provider)?.localCli ?? null
@@ -37,6 +37,7 @@ function describeSignIn(provider: LocalCliProvider, statuses: readonly ProviderS
 function ExistingAccountSetup({ wizard }: { wizard: WelcomeWizard }) {
   const { statuses } = wizard.detection
   const tools = installedTools(statuses)
+  const notStartingTools = brokenTools(statuses)
   const selectedTool = wizard.answers.tool
   const selectedLocalCli = selectedTool ? findLocalCli(statuses, selectedTool) : null
   const missingTools = localCliProviders.filter((provider) => findLocalCli(statuses, provider)?.installed === false)
@@ -46,7 +47,7 @@ function ExistingAccountSetup({ wizard }: { wizard: WelcomeWizard }) {
         title={tools.length > 1 ? 'Which AI account should graphrt use?' : 'Use the AI account on this computer'}
         description="graphrt works through the AI app you are already signed in to. Usage counts against that account’s plan and limits."
       />
-      <fieldset className={choiceGridClassNames(tools.length)}>
+      <fieldset className={choiceGridClassNames(tools.length + notStartingTools.length)}>
         <legend className="sr-only">AI account</legend>
         {tools.map((provider) => (
           <WelcomeChoiceCard
@@ -60,6 +61,23 @@ function ExistingAccountSetup({ wizard }: { wizard: WelcomeWizard }) {
               <>
                 <span>Through {localCliShortNames[provider]}</span>
                 {describeSignIn(provider, statuses)}
+              </>
+            }
+          />
+        ))}
+        {notStartingTools.map((provider) => (
+          <WelcomeChoiceCard
+            key={provider}
+            groupName="welcome-tool"
+            value={provider}
+            selectedValue={selectedTool}
+            onSelect={wizard.setTool}
+            isUnavailable
+            title={accountTitle(provider)}
+            details={
+              <>
+                <span>Through {localCliShortNames[provider]}</span>
+                <ProblemLine text="Found, but it does not start on this computer yet. Pick another option for now" />
               </>
             }
           />
@@ -79,6 +97,15 @@ function ExistingAccountSetup({ wizard }: { wizard: WelcomeWizard }) {
             )}
           </>
         )}
+        {notStartingTools.map((provider) => {
+          const localCli = findLocalCli(statuses, provider)
+          return (
+            <p key={provider} className="m-0 break-words">
+              {localCliShortNames[provider]}: {localCli?.problem}
+              {localCli?.path && <span className="break-all"> ({localCli.path})</span>}
+            </p>
+          )
+        })}
         {missingTools.length > 0 && (
           <div className="flex flex-col gap-1">
             <span className="font-medium text-ink-2">Other AI tools graphrt can use</span>

@@ -1,5 +1,5 @@
 import { useId, type ReactNode } from 'react'
-import { Icon } from '@/components/ui'
+import { Icon, StatusDot } from '@/components/ui'
 import { getCredentialStoreName } from '@/lib/platform'
 import { LockIcon } from '../agent-builder/LockIcon'
 import { apiKeyProviderOptions, type ApiKeyProvider } from './welcomeSetup'
@@ -12,6 +12,16 @@ export function FoundLine({ text }: { text: string }) {
   return (
     <span className="flex items-center gap-1.5 font-medium text-ok-strong">
       <Icon name="check" size={14} className="shrink-0" />
+      {text}
+    </span>
+  )
+}
+
+/** An amber line for something found that cannot be used yet, e.g. an AI tool that does not start. */
+export function ProblemLine({ text }: { text: string }) {
+  return (
+    <span className="flex items-center gap-1.5 text-amber-strong">
+      <StatusDot tone="amber" />
       {text}
     </span>
   )

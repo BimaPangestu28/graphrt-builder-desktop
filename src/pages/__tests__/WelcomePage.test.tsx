@@ -192,6 +192,36 @@ describe('WelcomePage wizard', () => {
     expect(await screen.findByRole('radio', { name: 'Use my company’s API key' })).toBeChecked()
   })
 
+  it('shows a found AI tool that does not start in plain words, never as "Found" with the error as its version', async () => {
+    const statuses = await sampleCredentialsBackend.listProviderStatuses()
+    const problem = 'Found, but it does not start. Run `codex --version` in Terminal to see why'
+    const brokenCodex = statuses.map((status) =>
+      status.provider === 'codex-cli' && status.localCli ? { ...status, localCli: { ...status.localCli, installed: true, version: null, problem, path: '/usr/bin/codex' } } : status,
+    )
+    vi.spyOn(sampleCredentialsBackend, 'listProviderStatuses').mockResolvedValue(brokenCodex)
+    await openThinkingStep()
+    clickButton(/Next/)
+    expect(screen.getByRole('radio', { name: 'Your ChatGPT account' })).toBeDisabled()
+    expect(screen.getByText(/Found, but it does not start on this computer yet/)).toBeVisible()
+    expect(screen.queryByText(/^Found ·/)).not.toBeInTheDocument()
+    expect(screen.getByText(/Codex: Found, but it does not start/)).not.toBeVisible()
+  })
+
+  it('does not offer the account choice when the only AI tool found does not start', async () => {
+    const statuses = await sampleCredentialsBackend.listProviderStatuses()
+    const onlyBrokenCodex: ProviderStatus[] = statuses.map((status) => {
+      if (!status.localCli) return status
+      if (status.provider === 'codex-cli') return { ...status, localCli: { ...status.localCli, installed: true, version: null, problem: 'Found, but it does not start.' } }
+      return { ...status, localCli: { ...status.localCli, installed: false, signIn: 'unknown' } }
+    })
+    vi.spyOn(sampleCredentialsBackend, 'listProviderStatuses').mockResolvedValue(onlyBrokenCodex)
+    renderWelcomePage()
+    clickButton(/Get started/)
+    expect(await screen.findByText('Found Codex, but it does not start on this computer yet')).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'Use an AI account I already have' })).toBeDisabled()
+    expect(await screen.findByRole('radio', { name: 'Free, private AI on this computer' })).toBeChecked()
+  })
+
   it('skips Connect for "Decide later" and goes Home without saving a model', async () => {
     const setWelcomeChoiceSpy = vi.spyOn(sampleCredentialsBackend, 'setWelcomeChoice')
     const setDefaultModelSpy = vi.spyOn(sampleCredentialsBackend, 'setDefaultModel')

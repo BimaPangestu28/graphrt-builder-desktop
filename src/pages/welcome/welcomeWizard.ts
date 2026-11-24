@@ -46,9 +46,21 @@ export function previousStepId(steps: readonly WizardStepId[], stepId: WizardSte
   return stepIndex > 0 ? steps[stepIndex - 1] : null
 }
 
-/** True when the local CLI was found on this computer. */
-export function isToolInstalled(statuses: readonly ProviderStatus[] | null, provider: LocalCliProvider): boolean {
-  return statuses?.find((status) => status.provider === provider)?.localCli?.installed ?? false
+/**
+ * True when the local CLI was found on this computer and starts. One that is found but
+ * whose `--version` fails (it has a `problem`) cannot be used, so it does not count.
+ */
+export function isToolUsable(statuses: readonly ProviderStatus[] | null, provider: LocalCliProvider): boolean {
+  const localCli = statuses?.find((status) => status.provider === provider)?.localCli
+  return Boolean(localCli?.installed && !localCli.problem)
+}
+
+/** The AI tools that were found but do not start (their status has a `problem`), in the usual order. */
+export function brokenTools(statuses: readonly ProviderStatus[] | null): LocalCliProvider[] {
+  return localCliProviders.filter((provider) => {
+    const localCli = statuses?.find((status) => status.provider === provider)?.localCli
+    return Boolean(localCli?.installed && localCli.problem)
+  })
 }
 
 function isToolSignedIn(statuses: readonly ProviderStatus[] | null, provider: LocalCliProvider): boolean {
@@ -56,15 +68,16 @@ function isToolSignedIn(statuses: readonly ProviderStatus[] | null, provider: Lo
 }
 
 /**
- * The AI tools found on this computer, best first: signed in before not confirmed, then
- * Claude Code and Codex, then the others in their usual order.
+ * The AI tools found on this computer that start, best first: signed in before not
+ * confirmed, then Claude Code and Codex, then the others in their usual order. Tools that
+ * are found but do not start are left out (see {@link brokenTools}).
  *
  * @param statuses - From `listProviderStatuses`, or null while detection runs (ProviderStatus[] | null)
- * @returns The installed local CLIs (LocalCliProvider[])
+ * @returns The usable local CLIs (LocalCliProvider[])
  */
 export function installedTools(statuses: readonly ProviderStatus[] | null): LocalCliProvider[] {
   const ordered = [...primaryLocalCliProviders, ...localCliProviders.filter((provider) => !primaryLocalCliProviders.includes(provider))]
-  const installed = ordered.filter((provider) => isToolInstalled(statuses, provider))
+  const installed = ordered.filter((provider) => isToolUsable(statuses, provider))
   return [...installed.filter((provider) => isToolSignedIn(statuses, provider)), ...installed.filter((provider) => !isToolSignedIn(statuses, provider))]
 }
 
@@ -209,7 +222,7 @@ export function canLeaveStep(stepId: WizardStepId, answers: WizardAnswers, statu
     return answers.approach !== 'existing-account' || installedTools(statuses).length > 0
   }
   if (stepId === 'setup') {
-    if (answers.approach === 'existing-account') return answers.tool !== null && isToolInstalled(statuses, answers.tool)
+    if (answers.approach === 'existing-account') return answers.tool !== null && isToolUsable(statuses, answers.tool)
     if (answers.approach === 'company-key') return isApiKeyUsable(checkApiKey(answers.apiKeyProvider, answers.apiKey))
     return answers.approach !== null
   }
