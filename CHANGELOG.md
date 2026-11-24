@@ -36,6 +36,10 @@ releases may contain breaking changes; they are called out under **Changed**.
 - Dropping files anywhere on the Knowledge and knowledge base windows no longer adds them; drop them on the drop zone.
 - Connections has a fifth tab, **Online accounts**. Delete all data with "remove keychain items" also removes online-account keys and deployment and server API keys.
 
+### Fixed
+
+- **Linux AppImage starts on Wayland**: the AppImage aborted at startup on a Wayland session (`_gdk_wayland_display_get_scaled_cursor_theme: assertion failed: cursor_theme_name`, exit code 134) in its bundled GTK. When it runs as an AppImage on Wayland and `GDK_BACKEND` is not set, it now defaults to `GDK_BACKEND=x11` (XWayland). A `GDK_BACKEND` you set yourself is kept, and the `.deb` / `.rpm` builds are unchanged.
+
 ## [0.1.6] - 2026-11-23
 
 ### Added
