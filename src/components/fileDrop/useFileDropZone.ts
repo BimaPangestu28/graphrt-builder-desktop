@@ -106,7 +106,11 @@ export function useFileDropZone({ accept, multiple = false, onDrop, disabled = f
     onDragEnter: (event) => {
       if (disabled || isDesktopApp() || !hasDraggedFiles(event)) return
       event.preventDefault()
-      const tooMany = !multiple && (event.dataTransfer.items?.length ?? 0) > 1
+      // The browser hides names until the drop, but the count is known: say why now.
+      const draggedCount = event.dataTransfer.items?.length ?? 0
+      const preview = checkDroppedItems(Array.from({ length: draggedCount }, () => ({ path: 'item' })), accept, multiple)
+      const tooMany = !multiple && draggedCount > 1
+      setRejection(tooMany ? preview.rejection : null)
       setDragState(tooMany ? 'refusing' : 'accepting')
     },
     onDragOver: (event) => {
@@ -119,6 +123,7 @@ export function useFileDropZone({ accept, multiple = false, onDrop, disabled = f
       if (isDesktopApp()) return
       const nextTarget = event.relatedTarget as Node | null
       if (nextTarget && event.currentTarget.contains(nextTarget)) return
+      if (dragState === 'refusing') setRejection(null)
       setDragState('idle')
     },
     onDrop: (event) => {
