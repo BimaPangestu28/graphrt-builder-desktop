@@ -7,6 +7,7 @@ import { resetSamplePlugins, samplePluginsBackend, setSampleCatalogLabels } from
 import { pluginDetailPath, pluginDetailPattern, routePaths } from '@/routes'
 import { PluginDetailPage } from '../PluginDetailPage'
 import { PluginsPage } from '../PluginsPage'
+import { centerOf, createFakeWindowDragDrop, placeElement } from '@/test/fileDropTestUtils'
 import { SettingsPage } from '../SettingsPage'
 
 /**
@@ -113,6 +114,44 @@ describe('plugin sources', () => {
     expect(within(card).getByText('Local · not reviewed')).toBeInTheDocument()
     const installed = await samplePluginsBackend.listInstalledPlugins()
     expect(installed.find((plugin) => plugin.name === 'my-local-plugin')).toMatchObject({ source: 'local', trusted: false, localPath: '/Users/you/code/my-local-plugin' })
+  })
+
+  it('installs a plugin folder dropped on the drop zone', async () => {
+    await turnOnDeveloperMode()
+    const fakeWindow = createFakeWindowDragDrop()
+    const installSpy = vi.spyOn(samplePluginsBackend, 'installLocalPlugin')
+    render(
+      <fakeWindow.Provider>
+        <MemoryRouter initialEntries={[routePaths.plugins]}>
+          <PluginsPage />
+        </MemoryRouter>
+      </fakeWindow.Provider>,
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Install from folder or archive…' }))
+    const dropZone = screen.getByRole('group', { name: 'Drop a plugin folder or .tar.gz archive' })
+    const zoneBox = { left: 20, top: 300, width: 600, height: 140 }
+    placeElement(dropZone, zoneBox)
+
+    fakeWindow.drop(['/Users/you/Downloads/plugin.zip'], centerOf(zoneBox))
+    expect(dropZone).toHaveTextContent('plugin.zip is not a folder or a .tar.gz or .tgz file')
+    fakeWindow.drop(['/Users/you/code/my-local-plugin'], { x: 5, y: 5 })
+    expect(installSpy).not.toHaveBeenCalled()
+
+    fakeWindow.drop(['/Users/you/code/my-local-plugin'], centerOf(zoneBox))
+    expect(await screen.findByText(/Installed My Local Plugin v0\.1\.0 from this computer/)).toBeInTheDocument()
+    expect(installSpy).toHaveBeenCalledWith('/Users/you/code/my-local-plugin', false)
+  })
+
+  it('installs a .tar.gz archive dropped in the browser preview', async () => {
+    await turnOnDeveloperMode()
+    const installSpy = vi.spyOn(samplePluginsBackend, 'installLocalPlugin')
+    await renderLoadedPluginsPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Install from folder or archive…' }))
+    const dropZone = screen.getByRole('group', { name: 'Drop a plugin folder or .tar.gz archive' })
+    const archive = new File(['x'], 'my-local-plugin-0.1.0.tar.gz', { type: 'application/gzip' })
+    const dataTransfer = { files: [archive], items: [{ kind: 'file', getAsFile: () => archive }], types: ['Files'] }
+    fireEvent.drop(dropZone, { dataTransfer })
+    await waitFor(() => expect(installSpy).toHaveBeenCalledWith('my-local-plugin-0.1.0.tar.gz', false))
   })
 
   it('asks before a sideloaded plugin replaces one installed from the catalog', async () => {

@@ -3,6 +3,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { resetSampleKnowledge, sampleKnowledgeBackend } from '@/api/sampleBackend/knowledge'
 import { routePaths } from '@/routes'
+import { dropBrowserFiles } from '@/test/fileDropTestUtils'
 import { KnowledgePage, nameForNewKnowledgeBase } from '../KnowledgePage'
 
 function renderKnowledge() {
@@ -56,6 +57,26 @@ describe('KnowledgePage', () => {
     expect(createSpy).toHaveBeenCalledWith('Menu December.pdf', '')
     expect(addSourceSpy).toHaveBeenCalledWith(expect.stringMatching(/^kb_sample_/), 'file', 'Menu December.pdf')
     expect(await within(newCard).findByText(/Syncing|Up to date/)).toBeInTheDocument()
+  })
+
+  it('creates a knowledge base from files dropped on the drop zone', async () => {
+    const addSourceSpy = vi.spyOn(sampleKnowledgeBackend, 'addKnowledgeSource')
+    renderKnowledge()
+    await screen.findByRole('link', { name: /Catering menu and prices/ })
+    const dropZone = screen.getByRole('group', { name: 'Drop files or a folder' })
+    expect(dropZone).toHaveTextContent('Drag files or a folder here or')
+    dropBrowserFiles(dropZone, [new File(['menu'], 'Price list.xlsx')])
+    expect(await screen.findByRole('link', { name: /Price list\.xlsx/ })).toBeInTheDocument()
+    expect(addSourceSpy).toHaveBeenCalledWith(expect.any(String), 'file', 'Price list.xlsx')
+  })
+
+  it('starts a knowledge base from a link pasted on the drop zone', async () => {
+    const addSourceSpy = vi.spyOn(sampleKnowledgeBackend, 'addKnowledgeSource')
+    renderKnowledge()
+    await screen.findByRole('link', { name: /Catering menu and prices/ })
+    fireEvent.paste(screen.getByRole('button', { name: 'Choose files…' }), { clipboardData: { getData: () => 'https://example.com/faq' } })
+    expect(await screen.findByRole('link', { name: /example\.com/ })).toBeInTheDocument()
+    expect(addSourceSpy).toHaveBeenCalledWith(expect.any(String), 'url', 'https://example.com/faq')
   })
 
   it('starts a knowledge base from a website link', async () => {

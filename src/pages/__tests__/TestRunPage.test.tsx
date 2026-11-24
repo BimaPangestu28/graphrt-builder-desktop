@@ -8,6 +8,7 @@ import { sampleDraftMessage } from '@/api/sampleBackend/sampleTestRun'
 import type { FlowSummary, Run } from '@/api/types'
 import { routePaths } from '@/routes'
 import { TestRunPage } from '@/pages/TestRunPage'
+import { centerOf, createFakeWindowDragDrop, dropBrowserFiles, placeElement } from '@/test/fileDropTestUtils'
 import { LocationProbe, flushBackendCalls, playSampleRunSteps, stepsAfterApproval, stepsUntilApproval } from '@/test/runTestUtils'
 
 function renderTestRunPage(initialEntry: string = routePaths.testRun) {
@@ -122,6 +123,69 @@ describe('TestRunPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Start the test' }))
     await flushBackendCalls()
     expect(startRunSpy).toHaveBeenCalledWith('maps-leads', 'test', { tier: 'pro', count: 10, notify: true, brief: 'Line one\nLine two', extra: { a: 1 } })
+  })
+
+  it('takes dropped files for File and Files inputs and sends their paths', async () => {
+    vi.spyOn(sampleBuilderBackend, 'getFlowSummary').mockResolvedValue(
+      buildFlowSummary({
+        inputs: [
+          { name: 'invoice', label: 'Invoice', required: true, inputType: 'file' },
+          { name: 'photos', label: 'Photos', required: false, inputType: 'file-list' },
+        ],
+      }),
+    )
+    vi.spyOn(sampleRunsBackend, 'getLastRunInputs').mockResolvedValue(null)
+    const startRunSpy = vi.spyOn(sampleRunsBackend, 'startRun')
+    const fakeWindow = createFakeWindowDragDrop()
+    render(
+      <fakeWindow.Provider>
+        <MemoryRouter initialEntries={[routePaths.testRun]}>
+          <Routes>
+            <Route path={routePaths.testRun} element={<TestRunPage />} />
+          </Routes>
+        </MemoryRouter>
+      </fakeWindow.Provider>,
+    )
+    await flushBackendCalls()
+    expect(screen.getByText('Choose a file for Invoice')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Start the test' })).toBeDisabled()
+
+    const invoiceZone = screen.getByRole('group', { name: 'Drop a file for Invoice' })
+    const photosZone = screen.getByRole('group', { name: 'Drop files for Photos' })
+    const invoiceBox = { left: 0, top: 100, width: 500, height: 120 }
+    const photosBox = { left: 0, top: 260, width: 500, height: 120 }
+    placeElement(invoiceZone, invoiceBox)
+    placeElement(photosZone, photosBox)
+
+    fakeWindow.drop(['/Users/me/a.pdf', '/Users/me/b.pdf'], centerOf(invoiceBox))
+    expect(invoiceZone).toHaveTextContent('Drop one item at a time: a file')
+    fakeWindow.drop(['/Users/me/Invoice.pdf'], centerOf(invoiceBox))
+    fakeWindow.drop(['/Users/me/cat.png', '/Users/me/dog.png'], centerOf(photosBox))
+    expect(within(screen.getByRole('list', { name: 'Chosen for Invoice' })).getByText('Invoice.pdf')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Remove dog.png' }))
+    expect(within(screen.getByRole('list', { name: 'Chosen for Photos' })).getAllByRole('listitem')).toHaveLength(1)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start the test' }))
+    await flushBackendCalls()
+    expect(startRunSpy).toHaveBeenCalledWith('maps-leads', 'test', { invoice: '/Users/me/Invoice.pdf', photos: ['/Users/me/cat.png'] })
+  })
+
+  it('takes a file chosen or dropped in the browser preview by name', async () => {
+    vi.spyOn(sampleBuilderBackend, 'getFlowSummary').mockResolvedValue(
+      buildFlowSummary({ inputs: [{ name: 'invoice', label: 'Invoice', required: true, inputType: 'file' }] }),
+    )
+    vi.spyOn(sampleRunsBackend, 'getLastRunInputs').mockResolvedValue({ invoice: '/Users/me/Old.pdf' })
+    const startRunSpy = vi.spyOn(sampleRunsBackend, 'startRun')
+    renderTestRunPage()
+    await flushBackendCalls()
+    expect(screen.getByText('Old.pdf')).toBeInTheDocument()
+
+    dropBrowserFiles(screen.getByRole('group', { name: 'Drop a file for Invoice' }), [new File(['%PDF'], 'New.pdf')])
+    expect(screen.queryByText('Old.pdf')).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Choose a file for Invoice'), { target: { files: [new File(['%PDF'], 'Picked.pdf')] } })
+    fireEvent.click(screen.getByRole('button', { name: 'Start the test' }))
+    await flushBackendCalls()
+    expect(startRunSpy).toHaveBeenCalledWith('maps-leads', 'test', { invoice: 'Picked.pdf' })
   })
 
   it('fills in steps from the flow summary and live run events, without bookkeeping nodes', async () => {
