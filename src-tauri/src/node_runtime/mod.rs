@@ -311,7 +311,7 @@ impl NodeRuntime {
     /// cache, or `app_data_dir/browsers` when the home folder is unknown. Downloads go
     /// through `downloader` (see [`Self::with_downloader`]).
     pub fn new(app_data_dir: PathBuf) -> Self {
-        let system_path = std::env::var_os("PATH");
+        let system_path = crate::child_env::host_var("PATH");
         let ignore_dev_node = std::env::var(IGNORE_DEV_NODE_ENV).is_ok_and(|value| value == "1");
         let dev_node = (cfg!(debug_assertions) && !ignore_dev_node).then(development_node_path);
         let fallback = resolve_fallback_location(dev_node.as_deref(), cfg!(debug_assertions), system_path.as_deref());
@@ -417,7 +417,7 @@ impl NodeRuntime {
     /// plugin spawning `node` finds it) and `PLAYWRIGHT_BROWSERS_PATH` pointing at the browser cache.
     pub fn plugin_process_env(&self) -> Vec<(String, String)> {
         let node_command = self.node_command_path();
-        compose_plugin_env(node_command.parent(), std::env::var_os("PATH"), &self.browsers_dir)
+        compose_plugin_env(node_command.parent(), crate::child_env::host_var("PATH"), &self.browsers_dir)
     }
 
     /// Whether plugins can start: a usable Node is there (or one is being downloaded).
@@ -911,6 +911,7 @@ fn hide_console_window(command: &mut Command) {
 
 fn read_node_version(node_executable: &Path) -> AppResult<String> {
     let mut command = Command::new(node_executable);
+    crate::child_env::apply(&mut command);
     command.arg("--version").stdin(Stdio::null());
     hide_console_window(&mut command);
     let output = command
@@ -1007,7 +1008,7 @@ fn playwright_install_command(
 }
 
 fn run_playwright_install(request: &BrowserInstallRequest, on_progress: &ProgressCallback) -> AppResult<()> {
-    let mut command = playwright_install_command(request, std::env::vars_os());
+    let mut command = playwright_install_command(request, crate::child_env::host_vars());
     let mut child = command
         .spawn()
         .map_err(|error| AppError::Internal(format!("cannot start the Playwright installer: {error}")))?;

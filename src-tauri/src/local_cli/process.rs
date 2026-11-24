@@ -23,6 +23,7 @@ const MAX_QUICK_OUTPUT_BYTES: u64 = 1024 * 1024;
 /// @returns `None` when it cannot start or does not finish in time.
 pub fn run_quick(program: &Path, args: &[&str], path_env: Option<&OsStr>, timeout: Duration) -> Option<QuickOutput> {
     let mut command = Command::new(program);
+    crate::child_env::apply(&mut command);
     command.args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     if let Some(path_env) = path_env {
         command.env("PATH", path_env);

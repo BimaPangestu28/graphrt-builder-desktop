@@ -152,8 +152,10 @@ pub struct LocalCliStatus {
     pub enabled: bool,
     /// The binary was found.
     pub installed: bool,
-    /// First line of `--version`, e.g. `2.1.330 (Claude Code)`.
+    /// First line of `--version`, e.g. `2.1.330 (Claude Code)`; only when it ran fine.
     pub version: Option<String>,
+    /// Why the found binary does not work, in plain words; `None` when it does.
+    pub problem: Option<String>,
     /// Resolved binary path.
     pub path: Option<String>,
     pub sign_in: SignInState,
@@ -182,6 +184,7 @@ pub fn status_from(cli: LocalCli, enabled: bool, detection: &detect::Detection) 
         enabled,
         installed: detection.binary.is_some(),
         version: detection.version.clone(),
+        problem: detection.problem.clone(),
         path: detection.binary.as_ref().map(|path| path.display().to_string()),
         sign_in: detection.sign_in,
         install_url: cli.install_url().to_owned(),

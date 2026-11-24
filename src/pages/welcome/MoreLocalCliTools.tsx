@@ -62,7 +62,8 @@ function ToolRow({ provider, status, isSelected, onSelect }: ToolRowProps) {
             Use {shortName} on this computer
           </span>
           {!localCli && <span className="text-muted">Looking…</span>}
-          {localCli?.installed && (
+          {localCli?.installed && localCli.problem && <span className="text-ink-2">{localCli.problem}</span>}
+          {localCli?.installed && !localCli.problem && (
             <span className="flex items-center gap-1 font-medium text-ok-strong">
               <Icon name="check" size={12} />
               {localCli.version ? `Found · ${localCli.version}` : 'Found'}

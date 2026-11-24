@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use super::process::run_quick;
+use super::process::{run_quick, QuickOutput};
 use super::{LocalCli, SignInState};
 
 /// How long a detection result is reused before looking again.
@@ -27,8 +27,10 @@ const PATH_MARKER: &str = "__GRAPHRT_PATH__";
 pub struct Detection {
     /// The binary, when found.
     pub binary: Option<PathBuf>,
-    /// First line of `--version`.
+    /// First line of `--version`, when it ran fine.
     pub version: Option<String>,
+    /// Why the found binary does not work, in plain words (its `--version` failed).
+    pub problem: Option<String>,
     pub sign_in: SignInState,
     /// `PATH` for the CLI's process (npm-installed CLIs need `node` from it).
     pub child_path: Option<OsString>,
@@ -61,7 +63,7 @@ impl Locator {
     pub fn from_environment() -> Self {
         let home = home_dir();
         Self {
-            path_var: std::env::var_os("PATH"),
+            path_var: crate::child_env::host_var("PATH"),
             login_shell_path: login_shell_path(),
             extra_dirs: home.as_deref().map(common_install_dirs).unwrap_or_default(),
         }
@@ -106,14 +108,15 @@ pub fn detect(cli: LocalCli, locator: &Locator) -> Detection {
         if !adapter.is_own_binary(&file_name, &help) {
             continue;
         }
-        let version = run_quick(&binary, &["--version"], path_env, QUICK_COMMAND_TIMEOUT)
-            .and_then(|output| first_line(&output.stdout).or_else(|| first_line(&output.stderr)));
+        let version_output = run_quick(&binary, &["--version"], path_env, QUICK_COMMAND_TIMEOUT);
+        let (version, problem) = read_version(&file_name, version_output.as_ref());
         let sign_in = read_sign_in(cli, &binary, path_env);
         let model_aliases = adapter.model_aliases_from_help(&help);
         return Detection {
             flags: help_flags(&help),
             binary: Some(binary),
             version,
+            problem,
             sign_in,
             child_path,
             model_aliases,
@@ -251,6 +254,36 @@ fn read_login_shell_path() -> Option<OsString> {
 pub fn parse_login_shell_path(output: &str) -> Option<OsString> {
     let path = output.rsplit_once(PATH_MARKER)?.1.lines().next()?.trim();
     (!path.is_empty()).then(|| OsString::from(path))
+}
+
+/// The version a `--version` run printed, or why the binary does not work.
+///
+/// Only a successful run counts: a binary that cannot start (missing libraries, a broken
+/// `#!` interpreter) prints the error on stderr and exits non-zero, and that error is
+/// never shown as a version. It is logged (first line only) to help support.
+///
+/// @param command_name - The binary's file name, for the message (e.g. `codex`)
+/// @param output - The `--version` run, or `None` when it could not start or timed out
+/// @returns (version, problem); at most one of them is set
+pub fn read_version(command_name: &str, output: Option<&QuickOutput>) -> (Option<String>, Option<String>) {
+    match output {
+        Some(output) if output.success => (first_line(&output.stdout).or_else(|| first_line(&output.stderr)), None),
+        Some(output) => {
+            log::warn!(
+                "`{command_name} --version` failed: {}",
+                first_line(&output.stderr).or_else(|| first_line(&output.stdout)).unwrap_or_default()
+            );
+            (None, Some(version_problem(command_name)))
+        }
+        None => {
+            log::warn!("`{command_name} --version` could not start or did not finish in time");
+            (None, Some(version_problem(command_name)))
+        }
+    }
+}
+
+fn version_problem(command_name: &str) -> String {
+    format!("Found, but it does not start. Run `{command_name} --version` in Terminal to see why")
 }
 
 fn first_line(text: &str) -> Option<String> {

@@ -278,7 +278,7 @@ describe('Getting started', () => {
         provider: 'claude-code-cli',
         configured: true,
         baseUrl: null,
-        localCli: { enabled: true, installed: true, version: '2.1.330 (Claude Code)', path: null, signIn: 'signed_in', installUrl: 'https://docs.claude.com/en/docs/claude-code/setup' },
+        localCli: { enabled: true, installed: true, version: '2.1.330 (Claude Code)', problem: null, path: null, signIn: 'signed_in', installUrl: 'https://docs.claude.com/en/docs/claude-code/setup' },
       },
     ]
     expect(deriveGettingStartedSteps(buildGettingStarted({ providerStatuses: claudeCodeOn }))[0].isDone).toBe(true)
