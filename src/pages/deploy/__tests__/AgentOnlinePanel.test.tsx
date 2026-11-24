@@ -52,6 +52,29 @@ describe('AgentOnlinePanel', () => {
     expect(await screen.findByText(/deployed v2/)).toBeInTheDocument()
   })
 
+  it('makes a new access key from the developer details and shows it once', async () => {
+    await renderPanel()
+    await userEvent.click(screen.getByText('Advanced (for developers)'))
+    expect(screen.getByText(/Access key: kept on this computer/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Make a new key' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByText(/The current one stops working/)).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Make a new key' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Make a new key' }))
+    expect(await screen.findByText('grk_sample_new_key_1')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Make a new key' })).not.toBeInTheDocument()
+  })
+
+  it('offers to remove what a failed first try left on the provider', async () => {
+    seedSampleDeployment(sampleAgentId, { status: 'failed', statusMessage: 'Its online copy was created on Fly.io and its access key is saved, but it didn’t start' })
+    const view = (await getAgentDeployment(sampleAgentId)) as DeploymentView
+    render(<Harness initialView={view} />)
+    expect(screen.getByText("It didn't go online")).toBeInTheDocument()
+    expect(screen.getByText(/online copy was created on Fly.io/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Remove what was created on Fly.io' }))
+    expect(await screen.findByText('Offline now')).toBeInTheDocument()
+  })
+
   it('takes it offline only after the name is typed', async () => {
     await renderPanel()
     await userEvent.click(screen.getByRole('button', { name: 'Take offline' }))

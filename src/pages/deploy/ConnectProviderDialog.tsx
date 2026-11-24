@@ -88,15 +88,25 @@ function FlyForm({ onBuild }: { onBuild: (build: BuildInput) => void }) {
         steps={[
           'Sign in or create an account at fly.io',
           <>Open <b>Tokens</b> in your dashboard</>,
-          'Create a token named “graphrt” and copy it',
+          <>
+            Create an <b>organization</b> token named “graphrt” (not a deploy token for one app) and copy it
+          </>,
           'Paste it below',
         ]}
       />
       <GuideLink link="fly_tokens">Open Fly.io tokens page</GuideLink>
       <TextField label="Paste your access key" type="password" value={accessToken} onChange={setAccessToken} placeholder="FlyV1 …" />
       <p className="m-0 text-[13px] leading-normal text-muted">
-        This key lets graphrt put your agents online, update them and take them offline in your Fly.io account. Kept in {getCredentialStoreName()}, never shown again.
+        This key lets graphrt put your agents online, update them and take them offline in your Fly.io account. It needs to be an organization token: putting an agent online the first time
+        creates its app, and taking it offline deletes it. Kept in {getCredentialStoreName()}, never shown again.
       </p>
+      <DevelopersDetails>
+        <span>
+          With flyctl: <code className="break-all">fly tokens create org &lt;your-org&gt; --expiry 720h</code> (your organization slug, e.g. <code>personal</code>). A deploy token (
+          <code>fly tokens create deploy -a &lt;app&gt;</code>) can update an agent that is already online, but can't put a new one online or take one offline. Prefer an organization
+          made for these agents, and revoke the token with <code>fly tokens revoke</code> when you no longer need it.
+        </span>
+      </DevelopersDetails>
     </>
   )
 }

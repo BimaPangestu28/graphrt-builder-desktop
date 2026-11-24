@@ -17,7 +17,7 @@ describe('plain words', () => {
   it('describes statuses, the tools and times without technical terms', () => {
     expect(describeDeploymentStatus('needs_attention').label).toBe('needs attention')
     expect(describeCliNeed({ status: 'not_installed', version: '0.9.0', downloadSizeBytes: 9_400_000 })).toContain('download ~9 MB')
-    expect(describeCliNeed({ status: 'not_available', version: null, downloadSizeBytes: null })).toContain('not available yet')
+    expect(describeCliNeed({ status: 'not_available', version: null, downloadSizeBytes: null })).toMatch(/not available yet.*graphrt deploy --direct.*server image/)
     const now = new Date('2026-11-24T12:00:00Z')
     expect(describeTimeAgo('2026-11-24T10:00:00Z', now)).toBe('2 hours ago')
     expect(describeTimeAgo(null, now)).toBe('not yet')

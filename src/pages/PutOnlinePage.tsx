@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { cancelDeploy, checkDeployCompatibility, deployAgent, getAgentDeployment, getDeployReview, listDeployAccounts, listOwnServers, subscribeToDeployEvents } from '@/api/deploy'
-import type { CompatibilityReport, DeployAccount, DeployMode, DeployOutcome, DeployProvider, DeployReview, ServerArea } from '@/api/deployTypes'
+import type { CompatibilityReport, DeployAccount, DeployOutcome, DeployProvider, DeployReview } from '@/api/deployTypes'
 import { AppShell, PageFrame, PageTitleBlock } from '@/components/layout'
 import { Button, Icon, joinClassNames } from '@/components/ui'
 import { useAgent } from '@/hooks/useAgent'
@@ -10,7 +10,7 @@ import { CompatibilityChecklist } from './deploy/CompatibilityChecklist'
 import { applyDeployEvent, plainErrorMessage, type StepStates } from './deploy/deployDisplay'
 import { DeployDoneView, DeployProgressView } from './deploy/DeployProgress'
 import { ProviderList } from './deploy/ProviderList'
-import { ReviewStep } from './deploy/ReviewStep'
+import { ReviewStep, type DeployChoice } from './deploy/ReviewStep'
 import { WhereStep, type RunPlace } from './deploy/WhereStep'
 
 /** The wizard's screens; the stepper shows Where (where + check), Provider and Review. */
@@ -75,14 +75,14 @@ function useDeployRun(agentId: string) {
   }, [agentId])
 
   const start = useCallback(
-    async (provider: DeployProvider, mode: DeployMode, area: ServerArea) => {
+    async (provider: DeployProvider, { mode, area, image }: DeployChoice) => {
       setStepStates({})
       setLogLines([])
       setErrorMessage(null)
       setOutcome(null)
       setIsCancelling(false)
       try {
-        const result = await deployAgent(agentId, { provider, mode, area })
+        const result = await deployAgent(agentId, { provider, mode, area, image })
         setOutcome(result)
         return true
       } catch (error) {
@@ -123,7 +123,7 @@ export function PutOnlinePage() {
   const [serverCount, setServerCount] = useState(0)
   const [loadError, setLoadError] = useState<string | null>(null)
   const deployRun = useDeployRun(agentId)
-  const lastChoice = useRef<{ mode: DeployMode; area: ServerArea } | null>(null)
+  const lastChoice = useRef<DeployChoice | null>(null)
 
   const loadAccounts = useCallback(async () => setAccounts(await listDeployAccounts()), [])
   const loadReport = useCallback(async () => setReport(await checkDeployCompatibility(agentId)), [agentId])
@@ -157,10 +157,10 @@ export function PutOnlinePage() {
     else void goTo('check')
   }
 
-  async function confirm(choice: { mode: DeployMode; area: ServerArea }) {
+  async function confirm(choice: DeployChoice) {
     lastChoice.current = choice
     setScreen('deploying')
-    const succeeded = await deployRun.start(provider, choice.mode, choice.area)
+    const succeeded = await deployRun.start(provider, choice)
     if (succeeded) setScreen('done')
   }
 

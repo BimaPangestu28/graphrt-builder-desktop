@@ -16,6 +16,7 @@ import type {
   ManageAction,
   OnlineRuns,
   OwnServerView,
+  RotatedApiKey,
 } from './deployTypes'
 import { sampleDeployBackend, subscribeToSampleDeployEvents } from './sampleBackend/deploy'
 import type { Agent } from './types'
@@ -93,6 +94,15 @@ export function refreshAgentDeployment(agentId: string): Promise<DeploymentView 
 /** Pause, resume, roll back or take offline; null once offline. */
 export function manageAgentDeployment(agentId: string, action: ManageAction): Promise<DeploymentView | null> {
   return useSample() ? sampleDeployBackend.manageAgentDeployment(agentId, action) : callBackend('manage_agent_deployment', { agentId, action })
+}
+
+/**
+ * "Make a new key": the online copy gets a new access key (shown once) and the old one stops working.
+ *
+ * @throws BackendError - with a plain sentence when the provider refused (the old key still works)
+ */
+export function rotateDeploymentApiKey(agentId: string): Promise<RotatedApiKey> {
+  return useSample() ? sampleDeployBackend.rotateDeploymentApiKey(agentId) : callBackend('rotate_deployment_api_key', { agentId })
 }
 
 export function listDeployedVersions(agentId: string): Promise<DeployedVersion[]> {

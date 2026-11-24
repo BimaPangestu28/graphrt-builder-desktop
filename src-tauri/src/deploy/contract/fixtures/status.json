@@ -1,0 +1,17 @@
+{
+  "type": "result",
+  "action": "status",
+  "app": "support-bot",
+  "url": "https://support-bot.fly.dev",
+  "status": "online",
+  "current_version": "v2",
+  "workflow": "support",
+  "mode": "scale-to-zero",
+  "last_deployed_at": "2026-11-24T16:00:00.123Z",
+  "machines": [
+    {"id": "148e…", "name": "graphrt-v2-1a2b3c4d", "state": "stopped", "region": "ams",
+     "version": "v2", "role": "current", "checks": [{"name": "readyz", "status": "passing"}]},
+    {"id": "9080…", "name": "graphrt-v1-5e6f7a8b", "state": "stopped", "region": "ams",
+     "version": "v1", "role": "standby", "checks": []}
+  ]
+}

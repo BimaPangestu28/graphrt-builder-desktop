@@ -4,6 +4,7 @@ import type { DeployedVersion, DeploymentView, ManageAction } from '@/api/deploy
 import { Badge, Button, LinkButton, StatusDot } from '@/components/ui'
 import { agentPath } from '@/routes'
 import { DevelopersDetails } from './DeployDialog'
+import { NewAccessKey } from './NewAccessKey'
 import { deployModeLabels, describeDeploymentStatus, describeTimeAgo, plainErrorMessage, serverAreaLabels } from './deployDisplay'
 
 /** "On this computer" or "Online · working / paused / needs attention" under the agent's name. */
@@ -117,9 +118,20 @@ export function AgentOnlinePanel({ agentId, agentName, view, onViewChange }: Age
       <section aria-label="Online" className="flex flex-col gap-2 rounded-[14px] border border-danger-line bg-danger-tint p-4">
         <span className="font-semibold text-danger-deep">It didn't go online</span>
         <span className="text-[13px] text-body">{deployment.statusMessage ?? 'The last try failed.'}</span>
-        <LinkButton to={agentPath('putOnline', agentId)} size="sm" className="w-fit">
-          Try again
-        </LinkButton>
+        <div className="flex flex-wrap gap-2">
+          <LinkButton to={agentPath('putOnline', agentId)} size="sm" className="w-fit">
+            Try again
+          </LinkButton>
+          {/* A failed first deploy can leave an app behind on the provider (e.g. after its key was stored). */}
+          <Button size="sm" variant="secondary" onClick={() => void run({ action: 'remove' }, 'remove')} disabled={busyAction !== null}>
+            {busyAction === 'remove' ? 'Removing…' : `Remove what was created on ${view.providerName}`}
+          </Button>
+        </div>
+        {errorMessage && (
+          <p role="alert" className="m-0 text-[13px] text-danger">
+            {errorMessage}
+          </p>
+        )}
       </section>
     )
   }
@@ -197,6 +209,8 @@ export function AgentOnlinePanel({ agentId, agentName, view, onViewChange }: Age
             Address <code className="break-all">{deployment.url}</code> · health <code>GET /healthz</code> checked {describeTimeAgo(deployment.statusCheckedAt)}
           </span>
         )}
+        <span>{view.hasApiKey ? 'Access key: kept on this computer (shown only when it was made).' : 'Access key: none saved on this computer.'}</span>
+        <NewAccessKey agentId={agentId} onViewChange={onViewChange} />
       </DevelopersDetails>
     </section>
   )

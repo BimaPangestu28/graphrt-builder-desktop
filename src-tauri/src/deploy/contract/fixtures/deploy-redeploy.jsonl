@@ -1,0 +1,7 @@
+{"type":"step","step":"preparing","status":"running","message":"Preparing Fly app support-bot"}
+{"type":"step","step":"preparing","status":"done","message":"app support-bot is ready"}
+{"type":"step","step":"starting","status":"running","message":"Starting version v2"}
+{"type":"step","step":"starting","status":"done","message":"created Machine 9080… and booted it"}
+{"type":"step","step":"checking","status":"running","message":"Waiting for GET /readyz to pass"}
+{"type":"step","step":"checking","status":"done","message":"version v2 is live; 1 version(s) demoted, 0 pruned"}
+{"type":"result","action":"deploy","url":"https://support-bot.fly.dev","version":"v2","app":"support-bot","workflow":"support","api_key":null}

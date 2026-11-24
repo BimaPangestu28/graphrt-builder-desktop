@@ -5,13 +5,20 @@ import { Badge, Button, Icon, joinClassNames } from '@/components/ui'
 import { DevelopersDetails } from './DeployDialog'
 import { deployModeLabels, describeCliNeed, plainErrorMessage, serverAreaLabels } from './deployDisplay'
 
+/** What Review sends to the deploy: how and where it runs, and the Advanced image (null: graphrt's own). */
+export interface DeployChoice {
+  mode: DeployMode
+  area: ServerArea
+  image: string | null
+}
+
 interface ReviewStepProps {
   agentName: string
   review: DeployReview
   isUpdate: boolean
   onCliChanged: (cli: CliInfo) => void
   onBack: () => void
-  onConfirm: (choice: { mode: DeployMode; area: ServerArea }) => void
+  onConfirm: (choice: DeployChoice) => void
 }
 
 function ReviewSection({ title, children }: { title: string; children: ReactNode }) {
@@ -79,6 +86,7 @@ const modes: DeployMode[] = ['always_on', 'scale_to_zero']
 export function ReviewStep({ agentName, review, isUpdate, onCliChanged, onBack, onConfirm }: ReviewStepProps) {
   const [mode, setMode] = useState<DeployMode>(review.mode)
   const [area, setArea] = useState<ServerArea>(review.area)
+  const [image, setImage] = useState(review.image ?? '')
   const [acceptsBilling, setAcceptsBilling] = useState(isUpdate)
   const providerName = deployProviderNames[review.provider]
   const isFly = review.provider === 'fly'
@@ -178,7 +186,7 @@ export function ReviewStep({ agentName, review, isUpdate, onCliChanged, onBack, 
         <span>I understand {providerName} bills me for this</span>
       </label>
       <div className="flex flex-wrap gap-2">
-        <Button onClick={() => onConfirm({ mode, area })} disabled={!canConfirm}>
+        <Button onClick={() => onConfirm({ mode, area, image: image.trim() || null })} disabled={!canConfirm}>
           {!review.canDeploy ? 'Coming soon' : isUpdate ? 'Update online version' : 'Put it online'}
         </Button>
         <Button variant="ghost" onClick={onBack}>
@@ -189,9 +197,24 @@ export function ReviewStep({ agentName, review, isUpdate, onCliChanged, onBack, 
         <span>
           {isFly ? 'Fly app' : 'Deployment'} <code>{review.deploymentName}</code> · region <code>{{ asia: 'sin', europe: 'fra', us: 'iad' }[area]}</code> ·{' '}
           {mode === 'scale_to_zero' ? 'autostop, min 0 machines' : 'min 1 machine'} · storage volume for runs · secrets{' '}
-          {review.keys.map((key) => key.envName).join(', ') || 'none'}, plus a new <code>GRAPHRT_API_KEY</code>. Runs <code>graphrt deploy --target fly --direct</code>; secrets go to
+          {review.keys.map((key) => key.envName).join(', ') || 'none'}, plus <code>GRAPHRT_API_KEY</code> on the first deploy. Runs <code>graphrt deploy --target fly --direct</code>; secrets go to
           the tool as environment variables only.
         </span>
+        <label className="flex flex-col gap-1.5">
+          <span className="font-medium text-ink-2">Server image (optional)</span>
+          <input
+            aria-label="Server image"
+            value={image}
+            onChange={(event) => setImage(event.target.value)}
+            placeholder="graphrt's own image"
+            autoComplete="off"
+            spellCheck={false}
+            className="box-border h-9 w-full rounded-lg border border-line-strong bg-surface px-3 font-mono text-[12px] text-ink"
+          />
+          <span className="text-[12px] text-muted">
+            Leave empty to use <code>ghcr.io/bimapangestu28/graphrt</code> at the version of the graphrt tools. Another image must run <code>graphrt serve</code> (passed as <code>--image</code>).
+          </span>
+        </label>
       </DevelopersDetails>
     </section>
   )

@@ -4,6 +4,7 @@ import { Badge, Button, Icon, LinkButton, StatusDot, joinClassNames } from '@/co
 import { getCredentialStoreName } from '@/lib/platform'
 import { agentPath, routePaths } from '@/routes'
 import { DevelopersDetails } from './DeployDialog'
+import { NewAccessKey } from './NewAccessKey'
 import { currentDeployStep, deployProgressPercent, deployStepLabels, deployStepOrder, type StepStates } from './deployDisplay'
 
 interface DeployProgressViewProps {
@@ -79,12 +80,16 @@ interface DeployDoneViewProps {
   outcome: DeployOutcome
 }
 
-/** "<agent> is online": what happens now, and the connection details for developers (key shown once). */
+/**
+ * "<agent> is online": what happens now, and the connection details for developers: the key of a
+ * first deploy (shown once; later deploys keep the saved one) and "Make a new key".
+ */
 export function DeployDoneView({ agentId, agentName, outcome }: DeployDoneViewProps) {
   const [isKeyShown, setIsKeyShown] = useState(false)
   const [copied, setCopied] = useState(false)
   const url = outcome.view.deployment.url ?? ''
-  const runsEndpoint = `${url}/v1/workflows/${outcome.view.deployment.deploymentName}/runs`
+  // graphrt names the workflow after the agent file the desktop sends (`agent.yaml`).
+  const runsEndpoint = `${url}/v1/workflows/${outcome.workflow ?? 'agent'}/runs`
   const curlExample = `curl -X POST ${runsEndpoint} \\\n  -H "Authorization: Bearer $GRAPHRT_API_KEY" \\\n  -H "Content-Type: application/json" -d '{"inputs":{}}'`
   return (
     <section aria-label="It is online" className="flex max-w-[720px] flex-col gap-5">
@@ -107,7 +112,7 @@ export function DeployDoneView({ agentId, agentName, outcome }: DeployDoneViewPr
         <span className="font-medium text-ink-2">Access key</span>
         {outcome.apiKey ? (
           <>
-            <code className="break-all rounded-lg bg-subtle px-3 py-2 font-mono text-[12px]">{isKeyShown ? outcome.apiKey : 'grt_••••••••••••••••'}</code>
+            <code className="break-all rounded-lg bg-subtle px-3 py-2 font-mono text-[12px]">{isKeyShown ? outcome.apiKey : 'grk_••••••••••••••••'}</code>
             <span className="flex flex-wrap gap-2">
               {!isKeyShown && (
                 <Button size="sm" variant="secondary" onClick={() => setIsKeyShown(true)}>
@@ -128,8 +133,9 @@ export function DeployDoneView({ agentId, agentName, outcome }: DeployDoneViewPr
             <span className="text-[12px] text-muted">After you leave this page the key is only kept in {getCredentialStoreName()}, for Runs.</span>
           </>
         ) : (
-          <span>Kept in {getCredentialStoreName()}.</span>
+          <span>{outcome.view.hasApiKey ? `The same key as before, kept in ${getCredentialStoreName()}.` : 'No key is saved on this computer. Make a new one to call it.'}</span>
         )}
+        <NewAccessKey agentId={agentId} />
       </DevelopersDetails>
     </section>
   )

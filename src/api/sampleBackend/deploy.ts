@@ -16,8 +16,9 @@ import type {
   ManageAction,
   OnlineRuns,
   OwnServerView,
+  RotatedApiKey,
 } from '../deployTypes'
-import { deployProviderNames } from '../deployTypes'
+import { deployProviderNames, onlineDeployNotAvailableMessage } from '../deployTypes'
 import type { Agent } from '../types'
 import { listStoredAgents, readCurrentSteps, readStoredAgent, saveNewVersion } from './sampleAgentStore'
 import { respondWith, waitFor } from './sampleResponse'
@@ -39,6 +40,8 @@ interface SampleDeployState {
   cli: CliInfo
   compatibility: Map<string, CompatibilityReport>
   fixedAgents: Set<string>
+  images: Map<string, string>
+  keyNumber: number
 }
 
 function freshState(): SampleDeployState {
@@ -50,6 +53,8 @@ function freshState(): SampleDeployState {
     cli: { status: 'not_installed', version: '0.9.0', downloadSizeBytes: 9_400_000 },
     compatibility: new Map(),
     fixedAgents: new Set(),
+    images: new Map(),
+    keyNumber: 0,
   }
 }
 
@@ -206,6 +211,7 @@ function review(agentId: string, provider: DeployProvider): DeployReview {
     cli: state.cli,
     mode: existing?.deployment.mode ?? 'scale_to_zero',
     area: existing?.area ?? 'us',
+    image: state.images.get(agentId) ?? null,
   }
 }
 
@@ -214,8 +220,10 @@ const regionForArea = { asia: 'sin', europe: 'fra', us: 'iad' } as const
 
 async function deploy(agentId: string, options: DeployOptions): Promise<DeployOutcome> {
   if (options.provider !== 'fly') invalid(`Putting agents online with ${deployProviderNames[options.provider]} is coming soon`)
-  if (state.cli.status === 'not_available') invalid('Online deploy is not available yet in this version of graphrt')
+  if (state.cli.status === 'not_available') invalid(onlineDeployNotAvailableMessage)
   if (state.cli.status !== 'installed') invalid('Download the graphrt tools first (Review › Allow download)')
+  const image = options.image?.trim() || null
+  if (image && (image.startsWith('-') || !/^[A-Za-z0-9./:_@-]+$/.test(image))) invalid(`\`${image}\` is not an image name such as ghcr.io/you/graphrt:0.6.0 (leave it empty for graphrt's own image)`)
   if (!state.accounts.has('fly')) throw new BackendError('missing_credentials', 'not set up yet: your Fly.io account (connect it in Online accounts)')
   const agent = readStoredAgent(agentId)
   for (const step of sampleSteps) {
@@ -231,7 +239,18 @@ async function deploy(agentId: string, options: DeployOptions): Promise<DeployOu
   state.deployments.set(agentId, view)
   const history = (state.histories.get(agentId) ?? []).map((entry) => ({ ...entry, isCurrent: false }))
   state.histories.set(agentId, [...history, { label, agentVersion: agent.currentVersion, changeSummary: nextNumber === 1 ? 'First time online' : 'Latest changes', deployedAt: new Date().toISOString(), isCurrent: true }])
-  return { view, apiKey: 'grt_sample_preview_key' }
+  if (image) state.images.set(agentId, image)
+  else state.images.delete(agentId)
+  // Like graphrt: the key only on the first deploy, null afterwards.
+  return { view, apiKey: previous ? null : 'grk_sample_preview_key', workflow: 'agent' }
+}
+
+async function rotateApiKey(agentId: string): Promise<RotatedApiKey> {
+  const view = withDrift(agentId)
+  if (!view || view.deployment.status === 'failed') invalid('Put the agent online first')
+  await waitFor(800)
+  state.keyNumber += 1
+  return { view, apiKey: `grk_sample_new_key_${state.keyNumber}`, problem: null }
 }
 
 function manage(agentId: string, action: ManageAction): DeploymentView | null {
@@ -285,7 +304,7 @@ function applyFix(agentId: string, fix: CompatibilityFix): Agent {
 export const sampleDeployBackend = {
   graphrtCliInfo: () => respondWith(() => state.cli),
   installGraphrtCli: async (): Promise<CliInfo> => {
-    if (state.cli.status === 'not_available') invalid('Online deploy is not available yet in this version of graphrt')
+    if (state.cli.status === 'not_available') invalid(onlineDeployNotAvailableMessage)
     state.cli = { ...state.cli, status: 'installing' }
     await waitFor(1200)
     state.cli = { ...state.cli, status: 'installed' }
@@ -308,6 +327,7 @@ export const sampleDeployBackend = {
   getAgentDeployment: (agentId: string) => respondWith(() => withDrift(agentId)),
   refreshAgentDeployment: (agentId: string) => respondWith(() => withDrift(agentId)),
   manageAgentDeployment: (agentId: string, action: ManageAction) => respondWith(() => manage(agentId, action)),
+  rotateDeploymentApiKey: rotateApiKey,
   listDeployedVersions: (agentId: string) => respondWith(() => [...(state.histories.get(agentId) ?? [])].reverse()),
   listOnlineRuns: () => respondWith(onlineRuns),
   listOwnServers: () => respondWith(() => state.servers),
