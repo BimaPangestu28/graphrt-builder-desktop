@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Navigate, useParams, useSearchParams } from 'react-router-dom'
 import { listAppConnections } from '@/api/appConnections'
 import { listAllWorkflowSecrets } from '@/api/credentials'
+import { listDeployAccounts } from '@/api/deploy'
 import { listMcpServers } from '@/api/mcpServers'
 import { AppShell, PageFrame, PageTitleBlock } from '@/components/layout'
 import { Button, Icon } from '@/components/ui'
@@ -17,6 +18,7 @@ import { McpServersSection } from './connections/McpServersSection'
 import { buildModelConnections } from './connections/modelConnections'
 import { ModelProvidersSection } from './connections/ModelProvidersSection'
 import { SecretsSection } from './connections/SecretsSection'
+import { OnlineAccountsSection } from './deploy/OnlineAccountsSection'
 
 /**
  * `/connections`: redirects to a tab. Old `?section=` links still land in the right place
@@ -72,8 +74,9 @@ function ConnectionsScreen({ activeTab }: { activeTab: ConnectionsTab }) {
   const providerSetup = providerSetupState.data
   const secretsState = useAsyncData(listAllWorkflowSecrets, [])
   const mcpServersState = useAsyncData(listMcpServers, [])
+  const deployAccountsState = useAsyncData(listDeployAccounts, [])
   const modelConnections = providerSetup ? buildModelConnections(providerSetup.statuses, providerSetup.defaultModel) : null
-  const tabs = buildConnectionsTabs({ modelConnections, secrets: secretsState.data, mcpServers: mcpServersState.data, appConnections })
+  const tabs = buildConnectionsTabs({ modelConnections, secrets: secretsState.data, mcpServers: mcpServersState.data, appConnections, deployAccounts: deployAccountsState.data })
   const signedOutConnections = appConnections?.filter((connection) => connection.state === 'signedOut') ?? []
 
   if (appConnections && !isConnectionsTabShown(activeTab, appConnections)) return <Navigate to={connectionsTabPath('models')} replace />
@@ -81,7 +84,7 @@ function ConnectionsScreen({ activeTab }: { activeTab: ConnectionsTab }) {
   return (
     <AppShell activeNav="connections">
       <PageFrame className="gap-6">
-        <PageTitleBlock title="Connections" subtitle={`AI models, secrets and tools your agents use. Keys and secrets stay in ${getCredentialStoreName()}`} />
+        <PageTitleBlock title="Connections" subtitle={`AI models, secrets, tools and the accounts that keep your agents online. Keys and secrets stay in ${getCredentialStoreName()}`} />
         {signedOutConnections.map((connection) => (
           <SignedOutBanner key={connection.id} connection={connection} onReconnect={markConnected} />
         ))}
@@ -90,6 +93,7 @@ function ConnectionsScreen({ activeTab }: { activeTab: ConnectionsTab }) {
           {activeTab === 'models' && <ModelProvidersSection connections={modelConnections} defaultModel={providerSetup?.defaultModel ?? null} loadError={providerSetupState.error} onKeysChanged={providerSetupState.reload} />}
           {activeTab === 'secrets' && <SecretsSection secretsState={{ secrets: secretsState.data, loadError: secretsState.error, reload: secretsState.reload }} />}
           {activeTab === 'mcp' && <McpServersSection servers={mcpServersState} onServersChanged={secretsState.reload} />}
+          {activeTab === 'online' && <OnlineAccountsSection onAccountsChanged={() => void deployAccountsState.reload()} />}
           {activeTab === 'apps' && appConnections && <AppConnectionsSection connections={appConnections} onSetUp={markConnected} />}
         </div>
       </PageFrame>

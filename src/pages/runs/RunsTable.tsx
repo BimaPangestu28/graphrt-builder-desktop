@@ -1,4 +1,4 @@
-import { joinClassNames } from '@/components/ui'
+import { Badge, joinClassNames } from '@/components/ui'
 import type { RunRecord } from '@/pages/runs/runRecordTypes'
 import { toPreviewText } from '@/lib/previewText'
 import { RunStatusPill } from './RunStatusPill'
@@ -45,6 +45,11 @@ function RunRow({ run, isSelected, isLast, onSelectRun }: { run: RunRecord; isSe
         >
           {run.agentName}
         </button>
+        {run.place && (
+          <Badge tone={run.place === 'online' ? 'brand' : 'neutral'} className="mt-1">
+            {run.place === 'online' ? 'Online' : 'On this computer'}
+          </Badge>
+        )}
       </td>
       <td className={joinClassNames(cellClassNames, 'truncate text-body')} title={run.startedBy}>
         {run.startedBy}

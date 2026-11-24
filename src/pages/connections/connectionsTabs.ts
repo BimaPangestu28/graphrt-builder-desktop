@@ -1,5 +1,6 @@
 import type { McpServerDefinition, WorkflowSecretOverview } from '@/api/connectionTypes'
 import type { Connection } from '@/api/appConnectionTypes'
+import type { DeployAccount } from '@/api/deployTypes'
 import { connectionsTabPath, legacyConnectionsPluginsSection, routePaths, type ConnectionsTab } from '@/routes'
 import { isSecretMissing } from './secretDisplay'
 
@@ -22,10 +23,12 @@ export interface ConnectionsTabSources {
   secrets: WorkflowSecretOverview[] | null
   mcpServers: McpServerDefinition[] | null
   appConnections: Connection[] | null
+  /** Online accounts (Put it online); null while loading. */
+  deployAccounts?: DeployAccount[] | null
 }
 
-const tabLabels: Record<ConnectionsTab, string> = { models: 'AI models', secrets: 'Secrets', mcp: 'MCP servers', apps: 'Apps' }
-const tabOrder: ConnectionsTab[] = ['models', 'secrets', 'mcp', 'apps']
+const tabLabels: Record<ConnectionsTab, string> = { models: 'AI models', secrets: 'Secrets', mcp: 'MCP servers', online: 'Online accounts', apps: 'Apps' }
+const tabOrder: ConnectionsTab[] = ['models', 'secrets', 'mcp', 'online', 'apps']
 
 function isConnectedState(connection: Connection): boolean {
   return connection.state === 'connected' || connection.state === 'default'
@@ -54,6 +57,11 @@ function describeAppsBadge(appConnections: Connection[]): ConnectionsTabBadge | 
   return connectedCount > 0 ? { text: `${connectedCount} connected`, isWarning: false } : null
 }
 
+function describeOnlineBadge(accounts: DeployAccount[]): ConnectionsTabBadge | null {
+  const connectedCount = accounts.filter((account) => account.connected).length
+  return connectedCount > 0 ? { text: `${connectedCount} connected`, isWarning: false } : null
+}
+
 function describeTabBadge(tab: ConnectionsTab, sources: ConnectionsTabSources): ConnectionsTabBadge | null {
   switch (tab) {
     case 'models':
@@ -62,6 +70,8 @@ function describeTabBadge(tab: ConnectionsTab, sources: ConnectionsTabSources): 
       return sources.secrets && describeSecretsBadge(sources.secrets)
     case 'mcp':
       return sources.mcpServers && describeMcpBadge(sources.mcpServers)
+    case 'online':
+      return sources.deployAccounts ? describeOnlineBadge(sources.deployAccounts) : null
     case 'apps':
       return sources.appConnections && describeAppsBadge(sources.appConnections)
   }

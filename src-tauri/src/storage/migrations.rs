@@ -254,6 +254,34 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (agent_id, version, note_id)
     );
     "#,
+    // "Put it online" (see `deployments.rs`): where each agent runs online, one row per agent.
+    // The deployment's API key is in the keychain, never here. `status` caches the last check.
+    // Plus the graphrt servers an IT team runs ("My own server"), their keys in the keychain.
+    r#"
+    CREATE TABLE deployments (
+        agent_id               TEXT PRIMARY KEY NOT NULL REFERENCES agents (id) ON DELETE CASCADE,
+        provider               TEXT NOT NULL CHECK (provider IN ('fly', 'google_cloud', 'aws', 'azure', 'kubernetes')),
+        deployment_name        TEXT NOT NULL CHECK (length(deployment_name) > 0),
+        app                    TEXT,
+        url                    TEXT,
+        region                 TEXT,
+        mode                   TEXT NOT NULL CHECK (mode IN ('always_on', 'scale_to_zero')),
+        deployed_version_label TEXT,
+        deployed_agent_version INTEGER,
+        status                 TEXT NOT NULL CHECK (status IN ('deploying', 'working', 'paused', 'needs_attention', 'failed')),
+        status_message         TEXT,
+        status_checked_at      TEXT,
+        created_at             TEXT NOT NULL,
+        updated_at             TEXT NOT NULL
+    );
+
+    CREATE TABLE own_servers (
+        id         TEXT PRIMARY KEY NOT NULL,
+        name       TEXT NOT NULL CHECK (length(trim(name)) > 0),
+        url        TEXT NOT NULL CHECK (length(url) > 0),
+        created_at TEXT NOT NULL
+    );
+    "#,
 ];
 
 /// Applies every migration newer than the database's `user_version`.
@@ -312,10 +340,12 @@ mod tests {
                 "chains",
                 "conversation_messages",
                 "conversations",
+                "deployments",
                 "knowledge_bases",
                 "knowledge_documents",
                 "knowledge_sources",
                 "node_layouts",
+                "own_servers",
                 "run_events",
                 "run_inputs",
                 "runs",

@@ -28,6 +28,10 @@ export interface RunRecord {
   steps: RunStep[]
   output: string
   rawLog: string[]
+  /** RFC 3339 start time, for ordering local and online runs together. */
+  startedAt?: string
+  /** Where it ran: this computer (default) or online (Put it online). */
+  place?: 'local' | 'online'
   /** Optional screen to jump to for a run that needs attention. */
   followUp?: { label: string; path: string }
 }

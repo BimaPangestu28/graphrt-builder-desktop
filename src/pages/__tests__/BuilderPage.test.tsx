@@ -77,6 +77,8 @@ describe('BuilderPage', () => {
     renderBuilderPage('invoice-reminders')
     expect(await screen.findByRole('heading', { name: 'Invoice reminders' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'History' })).toHaveAttribute('href', agentPath('versionHistory', 'invoice-reminders'))
+    expect(screen.getByRole('link', { name: 'Put it online' })).toHaveAttribute('href', agentPath('putOnline', 'invoice-reminders'))
+    expect(await screen.findByText('On this computer')).toBeInTheDocument()
   })
 
   it('sends a change through reviseAgent, highlights changed steps, and undoes it', async () => {

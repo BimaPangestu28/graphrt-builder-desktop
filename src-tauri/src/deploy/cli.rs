@@ -1,0 +1,505 @@
+//! Running `graphrt deploy` and reading its JSON Lines output.
+//!
+//! Contract (built in the graphrt repo):
+//! `graphrt deploy --target fly --direct --deployment <name> --version <label> [--region <code>]
+//! [--mode always-on|scale-to-zero] [--secret NAME ...] [--org <slug>] --json <agent.yaml>`
+//! prints one JSON object per line:
+//! `{"type":"step","step":"preparing|secrets|starting|checking","status":"running|done|failed","message"}`,
+//! then `{"type":"result","url","version","app","api_key"}` or `{"type":"error","code","message"}`.
+//! `graphrt deploy status|list-versions|rollback <v>|pause|resume|remove --target fly --direct
+//! --deployment <name> --json` manage it.
+//!
+//! **Secrets never go on the command line.** The provider credential is `FLY_API_TOKEN` and each
+//! `--secret NAME` value is the environment variable `NAME`. The process starts with an empty
+//! environment plus [`PASSTHROUGH_ENV`], so nothing else of the app's environment leaks in.
+
+use std::path::{Path, PathBuf};
+use std::process::Stdio;
+use std::sync::Arc;
+use std::time::Duration;
+
+use serde::{Deserialize, Serialize};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+
+use super::providers::DeployProvider;
+use crate::error::{AppError, AppResult};
+use crate::storage::deployments::DeployMode;
+
+/// Longest a deploy may take before it is stopped.
+pub const DEPLOY_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+/// Longest a status / pause / resume / remove / rollback call may take.
+pub const MANAGE_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+/// Longest stdout line read (a JSON event); longer lines are cut.
+const MAX_LINE_BYTES: usize = 64 * 1024;
+/// stderr kept for the technical log.
+const MAX_STDERR_BYTES: usize = 32 * 1024;
+
+/// Variables copied from the app's environment so the CLI can find TLS roots, temp and home.
+pub const PASSTHROUGH_ENV: &[&str] =
+    &["PATH", "HOME", "USERPROFILE", "SYSTEMROOT", "TMPDIR", "TEMP", "TMP", "LANG", "SSL_CERT_FILE", "SSL_CERT_DIR"];
+
+/// The variable the Fly.io access key goes in.
+pub const FLY_TOKEN_ENV: &str = "FLY_API_TOKEN";
+
+/// One `graphrt deploy` request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeployRequest {
+    pub target: DeployProvider,
+    pub deployment: String,
+    pub version_label: String,
+    pub region: Option<String>,
+    pub mode: DeployMode,
+    pub org: Option<String>,
+    /// `--secret NAME` (names only; values are environment variables).
+    pub secret_names: Vec<String>,
+    pub agent_file: PathBuf,
+}
+
+/// The `graphrt deploy` sub-commands that manage an existing deployment.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(tag = "action", rename_all = "snake_case")]
+pub enum ManageAction {
+    Status,
+    ListVersions,
+    Rollback { version: String },
+    Pause,
+    Resume,
+    Remove,
+}
+
+/// The `--target` value.
+pub fn target_name(provider: DeployProvider) -> &'static str {
+    match provider {
+        DeployProvider::Fly => "fly",
+        DeployProvider::GoogleCloud => "cloudrun",
+        DeployProvider::Aws => "ecs",
+        DeployProvider::Azure => "aca",
+        DeployProvider::Kubernetes => "k8s",
+    }
+}
+
+/// `deploy --target … --json <file>`: everything but secret values.
+pub fn deploy_arguments(request: &DeployRequest) -> Vec<String> {
+    let mut arguments: Vec<String> = vec![
+        "deploy".into(),
+        "--target".into(),
+        target_name(request.target).into(),
+        "--direct".into(),
+        "--deployment".into(),
+        request.deployment.clone(),
+        "--version".into(),
+        request.version_label.clone(),
+    ];
+    if let Some(region) = &request.region {
+        arguments.extend(["--region".into(), region.clone()]);
+    }
+    arguments.extend(["--mode".into(), request.mode.cli_value().into()]);
+    for name in &request.secret_names {
+        arguments.extend(["--secret".into(), name.clone()]);
+    }
+    if let Some(org) = &request.org {
+        arguments.extend(["--org".into(), org.clone()]);
+    }
+    arguments.push("--json".into());
+    arguments.push(request.agent_file.to_string_lossy().into_owned());
+    arguments
+}
+
+/// `deploy <action> [version] --target … --direct --deployment <name> --json`.
+pub fn manage_arguments(action: &ManageAction, provider: DeployProvider, deployment: &str) -> Vec<String> {
+    let mut arguments: Vec<String> = vec!["deploy".into()];
+    match action {
+        ManageAction::Status => arguments.push("status".into()),
+        ManageAction::ListVersions => arguments.push("list-versions".into()),
+        ManageAction::Rollback { version } => arguments.extend(["rollback".into(), version.clone()]),
+        ManageAction::Pause => arguments.push("pause".into()),
+        ManageAction::Resume => arguments.push("resume".into()),
+        ManageAction::Remove => arguments.push("remove".into()),
+    }
+    arguments.extend([
+        "--target".into(),
+        target_name(provider).into(),
+        "--direct".into(),
+        "--deployment".into(),
+        deployment.to_owned(),
+        "--json".into(),
+    ]);
+    arguments
+}
+
+/// The four human steps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeployStep {
+    Preparing,
+    Secrets,
+    Starting,
+    Checking,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StepStatus {
+    Running,
+    Done,
+    Failed,
+}
+
+/// One stdout line of `graphrt deploy --json`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum CliEvent {
+    Step {
+        step: DeployStep,
+        status: StepStatus,
+        #[serde(default)]
+        message: Option<String>,
+    },
+    Result {
+        url: String,
+        version: String,
+        #[serde(default)]
+        app: Option<String>,
+        #[serde(default)]
+        api_key: Option<String>,
+    },
+    Error {
+        #[serde(default)]
+        code: Option<String>,
+        message: String,
+    },
+}
+
+/// A parsed line: a known event, another JSON object (manage commands), or plain text.
+#[derive(Debug, Clone, PartialEq)]
+pub enum CliLine {
+    Event(CliEvent),
+    Json(serde_json::Value),
+    Text(String),
+}
+
+pub fn parse_line(line: &str) -> CliLine {
+    let trimmed = line.trim();
+    if !trimmed.starts_with('{') {
+        return CliLine::Text(trimmed.to_owned());
+    }
+    if let Ok(event) = serde_json::from_str::<CliEvent>(trimmed) {
+        return CliLine::Event(event);
+    }
+    match serde_json::from_str::<serde_json::Value>(trimmed) {
+        Ok(value) => CliLine::Json(value),
+        Err(_) => CliLine::Text(trimmed.to_owned()),
+    }
+}
+
+/// The process environment: [`PASSTHROUGH_ENV`] from `inherited`, then `extra` (credentials, secrets).
+pub fn compose_environment(
+    inherited: impl Fn(&str) -> Option<String>,
+    extra: &[(String, String)],
+) -> Vec<(String, String)> {
+    let mut environment: Vec<(String, String)> =
+        PASSTHROUGH_ENV.iter().filter_map(|name| inherited(name).map(|value| ((*name).to_owned(), value))).collect();
+    for (name, value) in extra {
+        environment.retain(|(known, _)| known != name);
+        environment.push((name.clone(), value.clone()));
+    }
+    environment
+}
+
+/// What a finished CLI call printed.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct CliOutput {
+    pub events: Vec<CliEvent>,
+    /// Other JSON objects (status, versions).
+    pub json: Vec<serde_json::Value>,
+    /// Plain stdout lines and stderr, for the technical log.
+    pub log: Vec<String>,
+    pub exit_success: bool,
+}
+
+impl CliOutput {
+    pub fn result(&self) -> Option<&CliEvent> {
+        self.events.iter().rev().find(|event| matches!(event, CliEvent::Result { .. }))
+    }
+
+    pub fn error(&self) -> Option<(&Option<String>, &String)> {
+        self.events.iter().rev().find_map(|event| match event {
+            CliEvent::Error { code, message } => Some((code, message)),
+            _ => None,
+        })
+    }
+
+    /// `Ok` when the call exited cleanly without an error event; otherwise its plain message.
+    pub fn ensure_success(&self, what: &str) -> AppResult<()> {
+        if let Some((_, message)) = self.error() {
+            return Err(AppError::Internal(message.clone()));
+        }
+        if !self.exit_success {
+            let detail = self.log.last().cloned().unwrap_or_else(|| "no details".into());
+            return Err(AppError::Internal(format!("{what} did not finish: {detail}")));
+        }
+        Ok(())
+    }
+}
+
+/// Called for each line as it arrives (progress to the UI).
+pub type LineCallback = Arc<dyn Fn(&CliLine) + Send + Sync>;
+
+/// Starts `executable` with `arguments` and exactly `environment`, reads stdout line by line
+/// (each passed to `on_line`) until it exits, `timeout` passes or `cancel` fires (the process
+/// is killed then).
+///
+/// # Errors
+/// `Internal` when it cannot start, times out or is cancelled.
+pub async fn run_cli(
+    executable: &Path,
+    arguments: &[String],
+    environment: &[(String, String)],
+    timeout: Duration,
+    cancel: Arc<tokio::sync::Notify>,
+    on_line: LineCallback,
+) -> AppResult<CliOutput> {
+    let mut command = tokio::process::Command::new(executable);
+    command
+        .args(arguments)
+        .env_clear()
+        .envs(environment.iter().map(|(name, value)| (name.as_str(), value.as_str())))
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    #[cfg(windows)]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    let mut child =
+        command.spawn().map_err(|error| AppError::Internal(format!("could not start the graphrt tools: {error}")))?;
+    let stdout = child.stdout.take().ok_or_else(|| AppError::Internal("no output from the graphrt tools".into()))?;
+    let mut stderr =
+        child.stderr.take().ok_or_else(|| AppError::Internal("no output from the graphrt tools".into()))?;
+    let stderr_task = tokio::spawn(async move {
+        let mut buffer = Vec::new();
+        let _ = (&mut stderr).take(MAX_STDERR_BYTES as u64).read_to_end(&mut buffer).await;
+        String::from_utf8_lossy(&buffer).into_owned()
+    });
+
+    let mut output = CliOutput::default();
+    let reading = async {
+        let mut lines = BufReader::new(stdout).lines();
+        while let Some(line) = lines.next_line().await.map_err(|error| AppError::Internal(error.to_string()))? {
+            let line: String = line.chars().take(MAX_LINE_BYTES).collect();
+            let parsed = parse_line(&line);
+            on_line(&parsed);
+            match parsed {
+                CliLine::Event(event) => output.events.push(event),
+                CliLine::Json(value) => output.json.push(value),
+                CliLine::Text(text) if !text.is_empty() => output.log.push(text),
+                CliLine::Text(_) => {}
+            }
+        }
+        child.wait().await.map_err(|error| AppError::Internal(error.to_string()))
+    };
+    let status = tokio::select! {
+        status = reading => status?,
+        () = tokio::time::sleep(timeout) => {
+            return Err(AppError::Internal("the graphrt tools took too long and were stopped".into()));
+        }
+        () = cancel.notified() => {
+            return Err(AppError::Conflict("stopped".into()));
+        }
+    };
+    let stderr_text = stderr_task.await.unwrap_or_default();
+    output.log.extend(stderr_text.lines().filter(|line| !line.trim().is_empty()).map(str::to_owned));
+    output.exit_success = status.success();
+    Ok(output)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_request() -> DeployRequest {
+        DeployRequest {
+            target: DeployProvider::Fly,
+            deployment: "menu-chatbot-1a2b".into(),
+            version_label: "v2".into(),
+            region: Some("sin".into()),
+            mode: DeployMode::ScaleToZero,
+            org: None,
+            secret_names: vec!["OPENAI_API_KEY".into(), "WHATSAPP_CLOUD_ACCESS_TOKEN".into()],
+            agent_file: PathBuf::from("/tmp/agent.yaml"),
+        }
+    }
+
+    #[test]
+    fn deploy_arguments_follow_the_contract_and_hold_no_values() {
+        assert_eq!(
+            deploy_arguments(&sample_request()),
+            [
+                "deploy",
+                "--target",
+                "fly",
+                "--direct",
+                "--deployment",
+                "menu-chatbot-1a2b",
+                "--version",
+                "v2",
+                "--region",
+                "sin",
+                "--mode",
+                "scale-to-zero",
+                "--secret",
+                "OPENAI_API_KEY",
+                "--secret",
+                "WHATSAPP_CLOUD_ACCESS_TOKEN",
+                "--json",
+                "/tmp/agent.yaml"
+            ]
+        );
+    }
+
+    #[test]
+    fn manage_arguments_follow_the_contract() {
+        assert_eq!(
+            manage_arguments(&ManageAction::Rollback { version: "v1".into() }, DeployProvider::Fly, "d"),
+            ["deploy", "rollback", "v1", "--target", "fly", "--direct", "--deployment", "d", "--json"]
+        );
+        assert_eq!(manage_arguments(&ManageAction::Pause, DeployProvider::Fly, "d")[1], "pause");
+        assert_eq!(manage_arguments(&ManageAction::ListVersions, DeployProvider::Fly, "d")[1], "list-versions");
+    }
+
+    #[test]
+    fn parses_json_lines_events_and_falls_back_to_text() {
+        assert_eq!(
+            parse_line(r#"{"type":"step","step":"secrets","status":"running","message":"Copying"}"#),
+            CliLine::Event(CliEvent::Step {
+                step: DeployStep::Secrets,
+                status: StepStatus::Running,
+                message: Some("Copying".into())
+            })
+        );
+        assert!(matches!(
+            parse_line(r#"{"type":"result","url":"https://a.fly.dev","version":"v1","app":"a","api_key":"grt_x"}"#),
+            CliLine::Event(CliEvent::Result { .. })
+        ));
+        assert!(matches!(parse_line(r#"{"state":"running"}"#), CliLine::Json(_)));
+        assert_eq!(parse_line("building image"), CliLine::Text("building image".into()));
+        assert_eq!(parse_line("{broken"), CliLine::Text("{broken".into()));
+    }
+
+    #[test]
+    fn the_environment_keeps_only_passthrough_and_extra_values() {
+        let inherited = |name: &str| match name {
+            "PATH" => Some("/usr/bin".to_owned()),
+            "AWS_SECRET_ACCESS_KEY" => Some("leak".to_owned()),
+            _ => None,
+        };
+        let environment = compose_environment(inherited, &[(FLY_TOKEN_ENV.into(), "fly-token".into())]);
+        assert_eq!(
+            environment,
+            [("PATH".to_owned(), "/usr/bin".to_owned()), ("FLY_API_TOKEN".into(), "fly-token".into())]
+        );
+    }
+
+    /// A fake `graphrt` that records its arguments and environment and prints the contract's events.
+    #[cfg(unix)]
+    fn fake_cli(folder: &Path, script_body: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let path = folder.join("graphrt");
+        std::fs::write(&path, format!("#!/bin/sh\n{script_body}\n")).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        path
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn runs_the_cli_passing_secrets_only_through_the_environment() {
+        let temp = tempfile::tempdir().unwrap();
+        let record = temp.path().join("record.txt");
+        let script = format!(
+            r#"echo "ARGS: $*" > "{record}"
+echo "OPENAI: $OPENAI_API_KEY" >> "{record}"
+echo "FLY: $FLY_API_TOKEN" >> "{record}"
+echo "HOME_SECRET: $UNRELATED_SECRET" >> "{record}"
+echo '{{"type":"step","step":"preparing","status":"running","message":"Preparing"}}'
+echo 'plain progress'
+echo '{{"type":"step","step":"preparing","status":"done"}}'
+echo '{{"type":"result","url":"https://menu.fly.dev","version":"v2","app":"menu","api_key":"grt_once"}}'
+echo 'warning on stderr' 1>&2"#,
+            record = record.display()
+        );
+        let executable = fake_cli(temp.path(), &script);
+        let environment = compose_environment(
+            |name| std::env::var(name).ok(),
+            &[(FLY_TOKEN_ENV.into(), "fly-secret-token".into()), ("OPENAI_API_KEY".into(), "sk-secret-value".into())],
+        );
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen_by_callback = seen.clone();
+        let output = run_cli(
+            &executable,
+            &deploy_arguments(&sample_request()),
+            &environment,
+            Duration::from_secs(20),
+            Arc::new(tokio::sync::Notify::new()),
+            Arc::new(move |line| seen_by_callback.lock().unwrap().push(line.clone())),
+        )
+        .await
+        .unwrap();
+
+        assert!(output.exit_success);
+        assert_eq!(output.events.len(), 3);
+        assert!(matches!(output.result(), Some(CliEvent::Result { api_key: Some(key), .. }) if key == "grt_once"));
+        assert_eq!(output.log, ["plain progress", "warning on stderr"]);
+        assert_eq!(seen.lock().unwrap().len(), 4, "every stdout line reaches the callback");
+
+        let recorded = std::fs::read_to_string(&record).unwrap();
+        let argument_line = recorded.lines().next().unwrap();
+        assert!(!argument_line.contains("sk-secret-value") && !argument_line.contains("fly-secret-token"));
+        assert!(argument_line.contains("--secret OPENAI_API_KEY"));
+        assert!(recorded.contains("OPENAI: sk-secret-value"));
+        assert!(recorded.contains("FLY: fly-secret-token"));
+        assert!(recorded.contains("HOME_SECRET: \n") || recorded.ends_with("HOME_SECRET: \n"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn reports_error_events_and_failed_exits() {
+        let temp = tempfile::tempdir().unwrap();
+        let executable = fake_cli(
+            temp.path(),
+            r#"echo '{"type":"error","code":"auth","message":"Fly.io did not accept the access key"}'
+exit 3"#,
+        );
+        let output = run_cli(
+            &executable,
+            &["deploy".into()],
+            &[],
+            Duration::from_secs(20),
+            Arc::new(tokio::sync::Notify::new()),
+            Arc::new(|_| {}),
+        )
+        .await
+        .unwrap();
+        assert!(!output.exit_success);
+        assert_eq!(output.ensure_success("deploy").unwrap_err().to_string(), "Fly.io did not accept the access key");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn cancelling_stops_the_process() {
+        let temp = tempfile::tempdir().unwrap();
+        let executable = fake_cli(temp.path(), "sleep 30");
+        let cancel = Arc::new(tokio::sync::Notify::new());
+        let cancel_soon = cancel.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            cancel_soon.notify_one();
+        });
+        let started = std::time::Instant::now();
+        let error =
+            run_cli(&executable, &[], &[], Duration::from_secs(20), cancel, Arc::new(|_| {})).await.unwrap_err();
+        assert_eq!(error.code(), "conflict");
+        assert!(started.elapsed() < Duration::from_secs(10));
+    }
+}

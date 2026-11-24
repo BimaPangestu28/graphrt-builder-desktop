@@ -4,6 +4,8 @@ import type { Run } from '@/api/types'
 import { AppShell, PageFrame, PageTitleBlock } from '@/components/layout'
 import { joinClassNames } from '@/components/ui'
 import { getPreviewContent } from '@/api/previewContent'
+import { listOnlineRuns } from '@/api/deploy'
+import { useAsyncData } from '@/hooks/useAsyncData'
 import { useAgentNames, type AgentNameLookup } from '@/hooks/useAgentNames'
 import { getVersionFlowSummary } from '@/api/versions'
 import { useNow } from '@/hooks/useNow'
@@ -14,6 +16,8 @@ import { toRunStepTemplate } from '@/pages/agent-run/runProgress'
 import { buildRunStepViews } from '@/pages/agent-run/runSteps'
 import { RunDetailPanel } from './runs/RunDetailPanel'
 import { RunsTable } from './runs/RunsTable'
+import { mergeRunsByPlace, placeFilterOptions, toOnlineRunRecord, toPlaceFilter, type RunsPlaceFilter } from './runs/onlineRuns'
+import type { RunRecord } from './runs/runRecordTypes'
 import { allAgentsFilterValue, countRunsForFilter, toRunFilter, toRunRecord, withRunEvents, type RunsStatusFilter } from './runs/runViewModel'
 
 const statusFilterOptions: Array<{ key: RunsStatusFilter; label: string }> = [
@@ -77,6 +81,33 @@ function RunsFilterBar({ agentFilter, statusFilter, allRuns, getAgentName, onAge
   )
 }
 
+/** All · On this computer · Online. */
+function PlaceFilterBar({ placeFilter, onChange }: { placeFilter: RunsPlaceFilter; onChange: (filter: RunsPlaceFilter) => void }) {
+  return (
+    <div role="group" aria-label="Where it ran" className="flex flex-wrap gap-1 rounded-[10px] bg-selected p-1 self-start">
+      {placeFilterOptions.map((option) => (
+        <button
+          key={option.key}
+          type="button"
+          aria-pressed={option.key === placeFilter}
+          onClick={() => onChange(option.key)}
+          className={joinClassNames(
+            'h-8 cursor-pointer rounded-[7px] border-0 px-3.5 text-[13px]',
+            option.key === placeFilter ? 'bg-surface font-semibold text-ink' : 'bg-transparent font-medium text-body hover:text-ink',
+          )}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/** A run of an online agent: what the server told us (no local events). */
+function OnlineRunPanel({ record, onClose }: { record: RunRecord; onClose: () => void }) {
+  return <RunDetailPanel key={record.id} run={record} stepViews={[]} onClose={onClose} />
+}
+
 /** Detail panel for the selected run, with steps and raw log from its events. */
 function SelectedRunPanel({ run, getAgentName, onClose }: { run: Run; getAgentName: AgentNameLookup; onClose: () => void }) {
   const { data: events } = useRunEvents(run.id)
@@ -99,21 +130,31 @@ export function RunsPage() {
   const [statusFilter, setStatusFilter] = useState<RunsStatusFilter>('all')
   // `?runId=` (from Home's recent runs and other links) selects that run; otherwise the default.
   const [searchParams] = useSearchParams()
+  const [placeFilter, setPlaceFilter] = useState<RunsPlaceFilter>(toPlaceFilter(searchParams.get('where')))
+  // Online runs are read from each online agent / server while Runs is open.
+  const onlineRunsState = useAsyncData(() => listOnlineRuns(), [])
   const [selectedRunId, setSelectedRunId] = useState<string | null>(searchParams.get('runId') ?? getPreviewContent()?.selectedRunId ?? null)
   const getAgentName = useAgentNames()
   const allRunsData = useRuns()
   const visibleRunsData = useRuns(toRunFilter(agentFilter, statusFilter))
 
   const allRuns = allRunsData.data ?? []
-  const visibleRecords = (visibleRunsData.data ?? []).map((run) => toRunRecord(run, getAgentName(run.agentId)))
+  const localRecords = (visibleRunsData.data ?? []).map((run) => toRunRecord(run, getAgentName(run.agentId)))
+  const onlineRecords = (onlineRunsState.data?.runs ?? [])
+    .map((onlineRun) => toOnlineRunRecord(onlineRun))
+    .filter((record) => agentFilter === allAgentsFilterValue || record.agentId === agentFilter)
+    .filter((record) => statusFilter === 'all' || (statusFilter === 'needsYou' ? record.status === 'needsYou' : record.status === statusFilter))
+  const visibleRecords = mergeRunsByPlace(localRecords, onlineRecords, placeFilter)
   const selectedRun = allRuns.find((run) => run.id === selectedRunId)
+  const selectedOnlineRecord = onlineRecords.find((record) => record.id === selectedRunId)
   const loadError = allRunsData.error ?? visibleRunsData.error
   const isFirstLoad = visibleRunsData.isLoading && visibleRunsData.data === null
 
   return (
     <AppShell activeNav="runs" mainClassName="flex flex-wrap">
       <PageFrame ariaLabel="All runs" className="flex-[3_1_560px]">
-        <PageTitleBlock title="Runs" subtitle="Everything your agents did, newest first. Kept for 30 days" />
+        <PageTitleBlock title="Runs" subtitle="Everything your agents did, on this computer and online, newest first" />
+        <PlaceFilterBar placeFilter={placeFilter} onChange={setPlaceFilter} />
         <RunsFilterBar
           agentFilter={agentFilter}
           statusFilter={statusFilter}
@@ -123,13 +164,17 @@ export function RunsPage() {
           onStatusFilterChange={setStatusFilter}
         />
         {loadError && <RunErrorNotice title="Could not load runs" error={loadError} />}
+        {placeFilter !== 'local' && (onlineRunsState.data?.problems.length ?? 0) > 0 && (
+          <p role="status" className="m-0 text-[13px] text-amber-strong">Some online runs could not be read: {onlineRunsState.data?.problems.join(' · ')}</p>
+        )}
         <RunsTable
           runs={visibleRecords}
           selectedRunId={selectedRunId}
           onSelectRun={setSelectedRunId}
-          emptyMessage={isFirstLoad ? 'Loading runs…' : 'No runs match these filters'}
+          emptyMessage={isFirstLoad ? 'Loading runs…' : placeFilter === 'online' ? 'No online runs yet. Put an agent online from its page' : 'No runs match these filters'}
         />
       </PageFrame>
+      {selectedOnlineRecord && <OnlineRunPanel record={selectedOnlineRecord} onClose={() => setSelectedRunId(null)} />}
       {selectedRun && <SelectedRunPanel key={selectedRun.id} run={selectedRun} getAgentName={getAgentName} onClose={() => setSelectedRunId(null)} />}
     </AppShell>
   )

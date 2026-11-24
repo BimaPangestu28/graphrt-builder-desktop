@@ -6,6 +6,8 @@ import type { Agent, FlowSummary } from '@/api/types'
 import { TrustedHostsSection } from '@/components/TrustedHostsSection'
 import { joinClassNames } from '@/components/ui'
 import { agentPath, builderAskParam } from '@/routes'
+import { AgentOnlinePanel, RunPlaceBadge } from '@/pages/deploy/AgentOnlinePanel'
+import { useAgentDeployment } from '@/pages/deploy/useAgentDeployment'
 import { AgentIdentityHeader } from './AgentIdentityHeader'
 import { AgentRequirementsList, type BuilderRequirement } from './AgentRequirementsList'
 import { BuilderStepCard } from './BuilderStepCard'
@@ -68,7 +70,7 @@ const testPlayIcon = (
  * The Nodes view has its own Test in its toolbar (it runs on the canvas, with Validate and
  * the reason when it is off), so the header leaves it out there: one Test per view.
  */
-function BuilderHeaderActions({ agentId, onTestBlocked, showTest }: { agentId: string; onTestBlocked?: () => void; showTest: boolean }) {
+function BuilderHeaderActions({ agentId, onTestBlocked, showTest, isOnline }: { agentId: string; onTestBlocked?: () => void; showTest: boolean; isOnline: boolean }) {
   const testClassNames = `${headerLinkBaseClassNames} bg-ink !text-white hover:bg-ink-2`
   return (
     <div className="flex gap-2">
@@ -77,6 +79,9 @@ function BuilderHeaderActions({ agentId, onTestBlocked, showTest }: { agentId: s
       </Link>
       <Link to={agentPath('scheduleAgent', agentId)} className={outlineHeaderLinkClassNames}>
         Schedule
+      </Link>
+      <Link to={agentPath('putOnline', agentId)} className={outlineHeaderLinkClassNames}>
+        {isOnline ? 'Where it runs' : 'Put it online'}
       </Link>
       {!showTest ? null : onTestBlocked ? (
         <>
@@ -226,12 +231,14 @@ export function BuilderAgentPanel({
     [onActiveTabChange],
   )
   const askBuilder = useAskBuilder()
+  const deployment = useAgentDeployment(agent.id, agent.currentVersion)
+  const onlineView = deployment.view
 
   return (
     <section aria-label="Agent" className={`box-border flex min-w-0 flex-[1_1_440px] flex-col bg-subtle ${splitPaneColumnClassName}`}>
       <header className={joinClassNames('box-border flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-line py-3', activeTab === 'nodes' ? 'px-4' : 'px-6')}>
         <BuilderTabList activeTab={activeTab} onSelect={setActiveTab} />
-        <BuilderHeaderActions agentId={agent.id} onTestBlocked={arePluginsReady === false ? onShowPluginSetup : undefined} showTest={activeTab !== 'nodes'} />
+        <BuilderHeaderActions agentId={agent.id} onTestBlocked={arePluginsReady === false ? onShowPluginSetup : undefined} showTest={activeTab !== 'nodes'} isOnline={onlineView !== null && onlineView.deployment.status !== 'failed'} />
       </header>
 
       {activeTab === 'nodes' ? (
@@ -244,8 +251,12 @@ export function BuilderAgentPanel({
         <div role="tabpanel" id={`builder-panel-${activeTab}`} aria-labelledby={`builder-tab-${activeTab}`} className={`flex flex-col gap-6 p-6 ${splitPaneScrollClassName}`}>
           <div className="flex flex-col gap-1">
             <AgentIdentityHeader agent={agent} onRenamed={onAgentRenamed ?? (() => undefined)} />
-            <span className="text-body">Runs on this computer · started by hand</span>
+            <span className="flex flex-wrap items-center gap-2 text-body">
+              <RunPlaceBadge view={onlineView} />
+              {onlineView && onlineView.deployment.status !== 'failed' ? `on ${onlineView.providerName}` : 'started by hand'}
+            </span>
           </div>
+          {activeTab === 'steps' && onlineView && <AgentOnlinePanel agentId={agent.id} agentName={agent.name} view={onlineView} onViewChange={deployment.setView} />}
           {activeTab === 'steps' && (
             <StepsTabContent
               flowSummary={flowSummary}

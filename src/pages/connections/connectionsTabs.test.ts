@@ -27,11 +27,12 @@ describe('connectionsTabPath', () => {
 })
 
 describe('buildConnectionsTabs', () => {
-  it('lists AI models, Secrets and MCP servers without badges while loading, and no Apps tab', () => {
+  it('lists AI models, Secrets, MCP servers and Online accounts without badges while loading, and no Apps tab', () => {
     expect(buildConnectionsTabs(loadingSources)).toEqual([
       { tab: 'models', label: 'AI models', badge: null },
       { tab: 'secrets', label: 'Secrets', badge: null },
       { tab: 'mcp', label: 'MCP servers', badge: null },
+      { tab: 'online', label: 'Online accounts', badge: null },
     ])
   })
 
@@ -42,7 +43,7 @@ describe('buildConnectionsTabs', () => {
       mcpServers: [mcpServer],
       appConnections: [],
     }
-    expect(badgeTexts(sources)).toEqual({ models: '2 connected', secrets: '1 missing (warning)', mcp: '1 added' })
+    expect(badgeTexts(sources)).toEqual({ models: '2 connected', secrets: '1 missing (warning)', mcp: '1 added', online: null })
     expect(badgeTexts({ ...sources, secrets: [secret({ configured: true }), secret({})] })).toMatchObject({ secrets: '1 saved' })
   })
 
@@ -51,7 +52,13 @@ describe('buildConnectionsTabs', () => {
       models: 'None connected (warning)',
       secrets: null,
       mcp: null,
+      online: null,
     })
+  })
+
+  it('counts connected online accounts', () => {
+    const account = (connected: boolean) => ({ provider: 'fly' as const, displayName: 'Fly.io', connected, summary: null, canDeploy: true, usedByAgents: [] })
+    expect(badgeTexts({ ...loadingSources, deployAccounts: [account(true), account(false)] })).toMatchObject({ online: '1 connected' })
   })
 
   it('adds an Apps tab only when there are app accounts, warning about signed-out ones', () => {
