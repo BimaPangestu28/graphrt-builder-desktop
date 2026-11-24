@@ -85,6 +85,9 @@ pub async fn delete_all_data(
     delete_knowledge_stores(&state);
     let removed_plugin_count = state.plugins.remove_all(remove_keychain_items).await;
     log::info!("removed {removed_plugin_count} plugins while deleting all data");
+    if remove_keychain_items {
+        state.deploy.forget_all_secrets();
+    }
     let summary = data::delete_all_data(&state.db, &state.credentials, remove_keychain_items)?;
     desktop_integration::apply_settings(&app_handle, &AppSettings::default());
     // The MCP server list was a setting: new runs must not see the deleted servers.

@@ -26,6 +26,7 @@
 //! - [`workflow_secrets`]: every workflow secret across agents and MCP servers
 //! - [`desktop`]: menu bar / tray icon, notifications, keep running when closed, launch at login
 //! - [`crash_reports`]: local, scrubbed crash reports (panic hook, frontend errors); no telemetry
+//! - [`deploy`]: Put it online: running agents with an online provider or on an IT team's server
 //! - [`commands`]: the Tauri commands the frontend calls
 
 pub mod agent_builder;
@@ -37,6 +38,7 @@ pub mod commands;
 pub mod conversations;
 pub mod crash_reports;
 pub mod credentials;
+pub mod deploy;
 pub mod desktop;
 pub mod engine;
 pub mod error;
@@ -118,6 +120,14 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         Arc::new(knowledge::events::TauriKnowledgeEventSink::new(app.handle().clone())),
     ));
     let downloader: Arc<dyn plugins::download::Downloader> = Arc::new(plugins::download::HttpsDownloader::new()?);
+    let deploy = Arc::new(deploy::DeployService::new(deploy::DeployServiceConfig {
+        app_data_dir: data_dir.clone(),
+        db: db.clone(),
+        credentials: credentials.clone(),
+        downloader: Some(downloader.clone()),
+        http: Arc::new(deploy::http::ReqwestDeployHttp::new()?),
+        events: Arc::new(deploy::TauriDeployEventSink::new(app.handle().clone())),
+    }));
     let node_runtime = Arc::new(
         node_runtime::NodeRuntime::new(data_dir.clone())
             .with_downloader(downloader.clone())
@@ -149,6 +159,7 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         node_runtime,
         plugins,
         model_catalog: Arc::new(model_catalog::ModelCatalog::with_http()?),
+        deploy,
     })
 }
 
@@ -310,6 +321,27 @@ pub fn run() {
             commands::app_settings::reveal_data_folder,
             commands::app_settings::get_onboarding_tour_status,
             commands::app_settings::set_onboarding_tour_status,
+            commands::deploy::graphrt_cli_info,
+            commands::deploy::install_graphrt_cli,
+            commands::deploy::list_deploy_accounts,
+            commands::deploy::connect_deploy_account,
+            commands::deploy::disconnect_deploy_account,
+            commands::deploy::read_kubeconfig_contexts,
+            commands::deploy::check_deploy_compatibility,
+            commands::deploy::apply_deploy_fix,
+            commands::deploy::get_deploy_review,
+            commands::deploy::deploy_agent,
+            commands::deploy::cancel_deploy,
+            commands::deploy::get_agent_deployment,
+            commands::deploy::refresh_agent_deployment,
+            commands::deploy::manage_agent_deployment,
+            commands::deploy::list_deployed_versions,
+            commands::deploy::list_online_runs,
+            commands::deploy::list_own_servers,
+            commands::deploy::connect_own_server,
+            commands::deploy::remove_own_server,
+            commands::deploy::export_agent_file,
+            commands::deploy::open_deploy_link,
             commands::node_runtime::node_runtime_info,
             commands::node_runtime::install_browser_runtime,
             commands::node_runtime::install_node_runtime,

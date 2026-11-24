@@ -36,6 +36,8 @@ graphrt-rag = { git = "https://github.com/BimaPangestu28/graphrt", rev = "32bcd7
 graphrt-plugin = { git = "https://github.com/BimaPangestu28/graphrt", rev = "32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088", default-features = false, features = ["process", "http", "yaml"] }
 # MCP servers configured in Connections > Advanced: their tools for `tool` / `agent` nodes (stdio and Streamable HTTP)
 graphrt-mcp = { git = "https://github.com/BimaPangestu28/graphrt", rev = "32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088" }
+# "My own server": exporting an agent as a portable .grt bundle for `graphrt serve` (no WebAssembly plugins)
+graphrt-bundle = { git = "https://github.com/BimaPangestu28/graphrt", rev = "32bcd7a750fc1afebb9dcbf11b3a0b8627fe9088", default-features = false }
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "process", "io-util"] }
 futures = "0.3"

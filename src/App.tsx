@@ -50,6 +50,8 @@ const VersionHistoryPage = lazyScreen(() => import('./pages/VersionHistoryPage')
 const MenuBarPage = lazyScreen(() => import('./pages/MenuBarPage'), 'MenuBarPage')
 const PluginsPage = lazyScreen(() => import('./pages/PluginsPage'), 'PluginsPage')
 const PluginDetailPage = lazyScreen(() => import('./pages/PluginDetailPage'), 'PluginDetailPage')
+const PutOnlinePage = lazyScreen(() => import('./pages/PutOnlinePage'), 'PutOnlinePage')
+const OwnServerPage = lazyScreen(() => import('./pages/OwnServerPage'), 'OwnServerPage')
 
 /**
  * Screens most visits reach from Home, warmed up once the window is idle (production
@@ -97,6 +99,8 @@ const screenRoutes = [
   { path: routePaths.menuBar, element: <MenuBarPage /> },
   { path: routePaths.plugins, element: <PluginsPage /> },
   { path: pluginDetailPattern, element: <PluginDetailPage /> },
+  { path: agentRoutePatterns.putOnline, element: <PutOnlinePage /> },
+  { path: agentRoutePatterns.ownServer, element: <OwnServerPage /> },
 ]
 
 /** `/`: Welcome on first launch (until a choice is made or a model is connected), Home afterwards. */

@@ -124,6 +124,8 @@ export function toRunRecord(run: Run, agentName: string, now: Date = new Date())
     agentName,
     startedBy: startedByLabels[run.trigger],
     when: formatRunDay(run.startedAt, now),
+    startedAt: run.startedAt,
+    place: 'local',
     result,
     resultTitle,
     status: screenStatusByBackendStatus[run.status],

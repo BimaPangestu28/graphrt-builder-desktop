@@ -1,0 +1,240 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { cancelDeploy, checkDeployCompatibility, deployAgent, getAgentDeployment, getDeployReview, listDeployAccounts, listOwnServers, subscribeToDeployEvents } from '@/api/deploy'
+import type { CompatibilityReport, DeployAccount, DeployMode, DeployOutcome, DeployProvider, DeployReview, ServerArea } from '@/api/deployTypes'
+import { AppShell, PageFrame, PageTitleBlock } from '@/components/layout'
+import { Button, Icon, joinClassNames } from '@/components/ui'
+import { useAgent } from '@/hooks/useAgent'
+import { agentPath, sampleAgentId } from '@/routes'
+import { CompatibilityChecklist } from './deploy/CompatibilityChecklist'
+import { applyDeployEvent, plainErrorMessage, type StepStates } from './deploy/deployDisplay'
+import { DeployDoneView, DeployProgressView } from './deploy/DeployProgress'
+import { ProviderList } from './deploy/ProviderList'
+import { ReviewStep } from './deploy/ReviewStep'
+import { WhereStep, type RunPlace } from './deploy/WhereStep'
+
+/** The wizard's screens; the stepper shows Where (where + check), Provider and Review. */
+export type PutOnlineScreen = 'where' | 'check' | 'provider' | 'review' | 'deploying' | 'done'
+
+const stepperSteps = [
+  { label: 'Where', screens: ['where', 'check'] },
+  { label: 'Provider', screens: ['provider'] },
+  { label: 'Review', screens: ['review'] },
+] as const
+
+/** "1 Where · 2 Provider · 3 Review" in one row. */
+function WizardStepper({ screen }: { screen: PutOnlineScreen }) {
+  const activeIndex = stepperSteps.findIndex((step) => (step.screens as readonly string[]).includes(screen))
+  return (
+    <ol aria-label="Steps" className="m-0 flex list-none flex-nowrap items-center gap-2 overflow-x-auto p-0">
+      {stepperSteps.map((step, index) => {
+        const isDone = index < activeIndex
+        const isActive = index === activeIndex
+        return (
+          <li key={step.label} aria-current={isActive ? 'step' : undefined} className="flex shrink-0 items-center gap-2">
+            {index > 0 && <span aria-hidden="true" className="h-px w-8 bg-line-strong" />}
+            <span
+              className={joinClassNames(
+                'flex size-6 items-center justify-center rounded-full text-[12px] font-semibold',
+                isActive ? 'bg-ink text-white' : isDone ? 'bg-ok text-white' : 'bg-chip text-muted',
+              )}
+            >
+              {isDone ? <Icon name="check" size={12} /> : index + 1}
+            </span>
+            <span className={joinClassNames('text-[13px]', isActive ? 'font-semibold text-ink' : 'text-body')}>{step.label}</span>
+          </li>
+        )
+      })}
+    </ol>
+  )
+}
+
+/** Deploy progress, cancel and the outcome for one agent. */
+function useDeployRun(agentId: string) {
+  const [stepStates, setStepStates] = useState<StepStates>({})
+  const [logLines, setLogLines] = useState<string[]>([])
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [outcome, setOutcome] = useState<DeployOutcome | null>(null)
+  const [isCancelling, setIsCancelling] = useState(false)
+
+  useEffect(() => {
+    let unsubscribe: (() => void) | null = null
+    let isActive = true
+    void subscribeToDeployEvents((event) => {
+      if (event.agentId !== agentId) return
+      if (event.kind === 'log') setLogLines((lines) => [...lines.slice(-400), event.line])
+      else setStepStates((states) => applyDeployEvent(states, event))
+    }).then((stop) => {
+      if (isActive) unsubscribe = stop
+      else stop()
+    })
+    return () => {
+      isActive = false
+      unsubscribe?.()
+    }
+  }, [agentId])
+
+  const start = useCallback(
+    async (provider: DeployProvider, mode: DeployMode, area: ServerArea) => {
+      setStepStates({})
+      setLogLines([])
+      setErrorMessage(null)
+      setOutcome(null)
+      setIsCancelling(false)
+      try {
+        const result = await deployAgent(agentId, { provider, mode, area })
+        setOutcome(result)
+        return true
+      } catch (error) {
+        setErrorMessage(plainErrorMessage(error))
+        return false
+      }
+    },
+    [agentId],
+  )
+
+  const cancel = useCallback(async () => {
+    setIsCancelling(true)
+    await cancelDeploy(agentId)
+  }, [agentId])
+
+  return { stepStates, logLines, errorMessage, outcome, isCancelling, start, cancel }
+}
+
+/**
+ * Screens 57–64 · Put it online for the agent in `:agentId`: Where (This computer / Online / My
+ * own server), the compatibility checklist, Provider (Connect opens a popup), Review, then
+ * progress and the done state. `?screen=review` opens Review directly ("Update with latest
+ * changes"), with the online copy's provider and settings.
+ */
+export function PutOnlinePage() {
+  const agentId = useParams().agentId ?? sampleAgentId
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const agentState = useAgent(agentId)
+  const agent = agentState.data
+  const [screen, setScreen] = useState<PutOnlineScreen>(searchParams.get('screen') === 'review' ? 'review' : 'where')
+  const [place, setPlace] = useState<RunPlace>('online')
+  const [report, setReport] = useState<CompatibilityReport | null>(null)
+  const [accounts, setAccounts] = useState<DeployAccount[] | null>(null)
+  const [provider, setProvider] = useState<DeployProvider>('fly')
+  const [review, setReview] = useState<DeployReview | null>(null)
+  const [isUpdate, setIsUpdate] = useState(false)
+  const [serverCount, setServerCount] = useState(0)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const deployRun = useDeployRun(agentId)
+  const lastChoice = useRef<{ mode: DeployMode; area: ServerArea } | null>(null)
+
+  const loadAccounts = useCallback(async () => setAccounts(await listDeployAccounts()), [])
+  const loadReport = useCallback(async () => setReport(await checkDeployCompatibility(agentId)), [agentId])
+  const loadReview = useCallback(async (chosen: DeployProvider) => setReview(await getDeployReview(agentId, chosen)), [agentId])
+
+  useEffect(() => {
+    void listOwnServers().then((servers) => setServerCount(servers.length)).catch(() => setServerCount(0))
+    void loadAccounts().catch((error) => setLoadError(plainErrorMessage(error)))
+    void getAgentDeployment(agentId).then((view) => {
+      if (!view) return
+      setIsUpdate(view.deployment.status !== 'failed')
+      setProvider(view.deployment.provider)
+      if (searchParams.get('screen') === 'review') void loadReview(view.deployment.provider)
+    })
+  }, [agentId, loadAccounts, loadReview, searchParams])
+
+  async function goTo(nextScreen: PutOnlineScreen) {
+    setLoadError(null)
+    try {
+      if (nextScreen === 'check') await loadReport()
+      if (nextScreen === 'review') await loadReview(provider)
+      setScreen(nextScreen)
+    } catch (error) {
+      setLoadError(plainErrorMessage(error))
+    }
+  }
+
+  function leaveWhere() {
+    if (place === 'local') navigate(agentPath('builder', agentId))
+    else if (place === 'own_server') navigate(agentPath('ownServer', agentId))
+    else void goTo('check')
+  }
+
+  async function confirm(choice: { mode: DeployMode; area: ServerArea }) {
+    lastChoice.current = choice
+    setScreen('deploying')
+    const succeeded = await deployRun.start(provider, choice.mode, choice.area)
+    if (succeeded) setScreen('done')
+  }
+
+  const agentName = agent?.name ?? 'This agent'
+  const selectedAccount = accounts?.find((account) => account.provider === provider)
+
+  return (
+    <AppShell agents={{ kind: 'list', activeAgentId: agentId }}>
+      <PageFrame ariaLabel="Put it online" className="gap-5">
+        <PageTitleBlock title="Put it online" subtitle={agentName} />
+        {screen !== 'deploying' && screen !== 'done' && <WizardStepper screen={screen} />}
+        {loadError && (
+          <p role="alert" className="m-0 rounded-[12px] border border-danger-line bg-danger-tint px-4 py-3 text-danger-deep">
+            {loadError}
+          </p>
+        )}
+        {screen === 'where' && (
+          <WhereStep agentName={agentName} selectedPlace={place} onSelect={setPlace} connectedServerCount={serverCount} onNext={leaveWhere} onCancel={() => navigate(agentPath('builder', agentId))} />
+        )}
+        {screen === 'check' && report && (
+          <CompatibilityChecklist
+            agentId={agentId}
+            agentName={agentName}
+            report={report}
+            onRecheck={async () => {
+              await Promise.all([loadReport(), agentState.reload()])
+            }}
+            onContinue={() => setScreen('provider')}
+            onKeepLocal={() => navigate(agentPath('builder', agentId))}
+          />
+        )}
+        {screen === 'provider' && (
+          <section aria-label="Where online?" className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1">
+              <h2 className="m-0 text-[20px] font-semibold tracking-[-0.2px]">Where online?</h2>
+              <span className="text-body">Your agent runs in your own account with the provider you choose</span>
+            </div>
+            {accounts ? <ProviderList accounts={accounts} selectedProvider={provider} onSelect={setProvider} onAccountsChanged={() => void loadAccounts()} /> : <p className="m-0 text-muted">Loading providers…</p>}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button onClick={() => void goTo('review')} disabled={!selectedAccount?.connected}>
+                Next
+              </Button>
+              <Button variant="ghost" onClick={() => setScreen('check')}>
+                Back
+              </Button>
+              {!selectedAccount?.connected && <span className="text-[13px] text-muted">Connect {selectedAccount?.displayName ?? 'a provider'} to continue</span>}
+            </div>
+          </section>
+        )}
+        {screen === 'review' &&
+          (review ? (
+            <ReviewStep
+              agentName={agentName}
+              review={review}
+              isUpdate={isUpdate}
+              onCliChanged={(cli) => setReview({ ...review, cli })}
+              onBack={() => (isUpdate && searchParams.get('screen') === 'review' ? navigate(agentPath('builder', agentId)) : setScreen('provider'))}
+              onConfirm={(choice) => void confirm(choice)}
+            />
+          ) : (
+            <p className="m-0 text-muted">Loading the review…</p>
+          ))}
+        {screen === 'deploying' && (
+          <DeployProgressView
+            stepStates={deployRun.stepStates}
+            logLines={deployRun.logLines}
+            errorMessage={deployRun.errorMessage}
+            isCancelling={deployRun.isCancelling}
+            onCancel={() => void deployRun.cancel()}
+            onRetry={() => (lastChoice.current ? void confirm(lastChoice.current) : setScreen('review'))}
+          />
+        )}
+        {screen === 'done' && deployRun.outcome && <DeployDoneView agentId={agentId} agentName={agentName} outcome={deployRun.outcome} />}
+      </PageFrame>
+    </AppShell>
+  )
+}

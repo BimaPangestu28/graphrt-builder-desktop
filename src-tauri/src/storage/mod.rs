@@ -31,6 +31,7 @@ pub mod builder_messages;
 pub mod canvas_notes;
 pub mod chains;
 mod codec;
+pub mod deployments;
 mod maintenance;
 mod migrations;
 pub mod models;

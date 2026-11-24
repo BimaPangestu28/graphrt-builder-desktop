@@ -266,20 +266,20 @@ fn io_error(action: &str, path: &Path, error: std::io::Error) -> AppError {
 }
 
 #[cfg(unix)]
-fn make_executable(path: &Path) -> AppResult<()> {
+pub(crate) fn make_executable(path: &Path) -> AppResult<()> {
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
         .map_err(|error| io_error("chmod", path, error))
 }
 
 #[cfg(not(unix))]
-fn make_executable(_path: &Path) -> AppResult<()> {
+pub(crate) fn make_executable(_path: &Path) -> AppResult<()> {
     Ok(())
 }
 
 /// Removes `com.apple.quarantine` if something set it (our downloads never do). Best effort.
 #[cfg(target_os = "macos")]
-fn clear_quarantine(path: &Path) {
+pub(crate) fn clear_quarantine(path: &Path) {
     use std::os::unix::ffi::OsStrExt;
     let Ok(path_text) = std::ffi::CString::new(path.as_os_str().as_bytes()) else { return };
     // SAFETY: both pointers are valid NUL-terminated strings for the duration of the call.
@@ -293,7 +293,7 @@ fn clear_quarantine(path: &Path) {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn clear_quarantine(_path: &Path) {}
+pub(crate) fn clear_quarantine(_path: &Path) {}
 
 /// Removes every runtime folder except the pinned version's, and staging leftovers.
 fn remove_other_runtimes(runtime_root: &Path) {

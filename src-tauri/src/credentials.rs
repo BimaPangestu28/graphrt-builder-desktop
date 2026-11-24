@@ -49,7 +49,7 @@ const ALL_PROVIDERS: [ModelProvider; 12] = [
 ];
 
 /// Key-based providers in fallback order, with the small model recommended for each.
-const RECOMMENDED_MODELS: [(ModelProvider, &str); 4] = [
+pub(crate) const RECOMMENDED_MODELS: [(ModelProvider, &str); 4] = [
     (ModelProvider::Openai, "gpt-4o-mini"),
     (ModelProvider::Anthropic, "claude-haiku-5-5"),
     (ModelProvider::Gemini, "gemini-2.5-flash"),
@@ -438,6 +438,83 @@ impl CredentialStore {
     pub fn has_plugin_config(&self, plugin: &str, variable: &str) -> AppResult<bool> {
         Ok(self.read_plugin_config(plugin, variable)?.is_some())
     }
+}
+
+/// "Put it online" credentials: online provider accounts (`deploy:account:<provider>`), the API
+/// key of each deployment (`deploy:key:<agent id>`) and of each connected server
+/// (`deploy:server:<id>`). Their own prefix keeps them apart from provider keys, workflow
+/// secrets and plugin settings, so no workflow can read them.
+impl CredentialStore {
+    /// Saves or replaces a deploy credential under `deploy:<name>`. Rejects empty values.
+    pub fn set_deploy_secret(&self, name: &str, value: &str) -> AppResult<()> {
+        let account = deploy_secret_account(name)?;
+        if value.trim().is_empty() {
+            return Err(AppError::InvalidInput("the value is empty".into()));
+        }
+        match &self.backend {
+            CredentialBackend::Keychain { service } => keychain_account_entry(service, &account, name)?
+                .set_password(value)
+                .map_err(|error| secret_keychain_error("save", name, &error)),
+            CredentialBackend::InMemory(_) => {
+                lock_secrets(&self.in_memory_workflow_secrets)?.insert(account, value.to_owned());
+                Ok(())
+            }
+        }
+    }
+
+    /// Removes a deploy credential; succeeds if none was stored.
+    pub fn delete_deploy_secret(&self, name: &str) -> AppResult<()> {
+        let account = deploy_secret_account(name)?;
+        match &self.backend {
+            CredentialBackend::Keychain { service } => {
+                match keychain_account_entry(service, &account, name)?.delete_credential() {
+                    Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+                    Err(error) => Err(secret_keychain_error("delete", name, &error)),
+                }
+            }
+            CredentialBackend::InMemory(_) => {
+                lock_secrets(&self.in_memory_workflow_secrets)?.remove(&account);
+                Ok(())
+            }
+        }
+    }
+
+    /// Backend-only access to a deploy credential (handed to the graphrt process as an
+    /// environment variable, or used for a request). Never expose through a command.
+    pub(crate) fn read_deploy_secret(&self, name: &str) -> AppResult<Option<String>> {
+        let account = deploy_secret_account(name)?;
+        match &self.backend {
+            CredentialBackend::Keychain { service } => {
+                match keychain_account_entry(service, &account, name)?.get_password() {
+                    Ok(value) => Ok(Some(value)),
+                    Err(keyring::Error::NoEntry) => Ok(None),
+                    Err(error) => Err(secret_keychain_error("read", name, &error)),
+                }
+            }
+            CredentialBackend::InMemory(_) => {
+                Ok(lock_secrets(&self.in_memory_workflow_secrets)?.get(&account).cloned())
+            }
+        }
+    }
+
+    /// Backend-only: a model provider's API key, for copying it to an online deployment.
+    pub(crate) fn read_provider_key_for_deploy(&self, provider: ModelProvider) -> AppResult<Option<String>> {
+        self.read_api_key(provider)
+    }
+}
+
+/// Keychain account prefix of "Put it online" credentials.
+const DEPLOY_SECRET_ACCOUNT_PREFIX: &str = "deploy:";
+
+/// `deploy:<name>`; `name` is lowercase letters, digits and `:_-` (an id or provider key).
+fn deploy_secret_account(name: &str) -> AppResult<String> {
+    let valid = !name.is_empty()
+        && name.len() <= 128
+        && name.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || b":_-".contains(&byte));
+    if !valid {
+        return Err(AppError::InvalidInput(format!("`{name}` is not a valid credential name")));
+    }
+    Ok(format!("{DEPLOY_SECRET_ACCOUNT_PREFIX}{name}"))
 }
 
 /// Keychain account prefix of plugin settings (`plugin:<plugin>:<VARIABLE>`).

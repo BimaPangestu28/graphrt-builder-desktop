@@ -29,6 +29,8 @@ export const routePaths = {
   versionHistory: '/agents/maps-leads/history', // 24
   menuBar: '/menu-bar', // 25
   plugins: '/plugins', // 26, moved out of Connections (21) into its own sidebar item
+  putOnline: '/agents/maps-leads/online', // 57-64, Put it online (Where, Provider, Review, progress, done)
+  ownServer: '/agents/maps-leads/own-server', // 67, My own server (For IT teams)
   screenIndex: '/screens',
 } as const
 
@@ -44,7 +46,7 @@ export const legacyConnectionsPluginsSection = 'plugins'
  * Tabs of Connections (21), each at its own address so it deep-links and survives a refresh.
  * `apps` only shows in the browser preview, which has sample app accounts.
  */
-export type ConnectionsTab = 'models' | 'secrets' | 'mcp' | 'apps'
+export type ConnectionsTab = 'models' | 'secrets' | 'mcp' | 'online' | 'apps'
 
 /** Route pattern of one Connections tab; `routePaths.connections` alone redirects to AI models. */
 export const connectionsTabPattern = '/connections/:connectionsTab'
@@ -93,6 +95,8 @@ export const agentRoutePatterns = {
   runResult: '/agents/:agentId/test-result', // 07, ?runId= of the finished run
   scheduleAgent: '/agents/:agentId/schedule', // 08
   versionHistory: '/agents/:agentId/history', // 24
+  putOnline: '/agents/:agentId/online', // 57-64
+  ownServer: '/agents/:agentId/own-server', // 67
 } as const
 
 export type AgentRouteKey = keyof typeof agentRoutePatterns

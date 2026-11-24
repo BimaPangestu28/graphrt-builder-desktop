@@ -26,4 +26,6 @@ pub struct AppState {
     pub plugins: Arc<crate::plugins::PluginService>,
     /// The chat models each connected provider offers (cached).
     pub model_catalog: Arc<crate::model_catalog::ModelCatalog>,
+    /// Put it online: online accounts, deployments and the graphrt tools.
+    pub deploy: Arc<crate::deploy::DeployService>,
 }
