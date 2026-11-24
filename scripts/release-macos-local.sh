@@ -13,6 +13,11 @@
 #     or a notarytool keychain profile (NOTARY_PROFILE, default "graphrt-notary")
 #   - the updater signing key: TAURI_SIGNING_PRIVATE_KEY(_PASSWORD), else ~/.tauri/graphrt-updater.key(.password)
 #   - gh signed in with push rights (GH_TOKEN, or the BimaPangestu28 account)
+#
+# If release v<version> already exists (e.g. the Linux build was published first), the macOS
+# assets are added to it: darwin-aarch64 is merged into its latest.json (other platforms kept),
+# SHA256SUMS is rewritten over every asset and the macOS block of the notes is replaced. A
+# published release stays published; <notes.md> is then only used if it has no latest.json.
 set -euo pipefail
 
 version="${1:?version, e.g. 0.1.4}"
@@ -60,6 +65,14 @@ notarize_and_staple() {
   echo "notarized and stapled $(basename "$staple_target")"
 }
 
+# A tag that already exists (the Linux build may have been released first) must be the commit
+# being built, or the Mac app would not match the rest of the release.
+remote_tag="$(git ls-remote --tags origin "refs/tags/v$version" "refs/tags/v$version^{}" | sort -k2 | tail -1 | cut -f1)"
+if [ -n "$remote_tag" ] && [ "$remote_tag" != "$release_commit" ]; then
+  echo "tag v$version is $remote_tag but this build is $release_commit: git checkout v$version first" >&2
+  exit 1
+fi
+
 # Fail before a 10-minute build if notarization can't work.
 # shellcheck disable=SC2046
 xcrun notarytool history $(notary_args) > /dev/null
@@ -98,44 +111,80 @@ codesign --force --sign "$signing_identity" --timestamp "$dmg_path"
 notarize_and_staple "$dmg_path" "$dmg_path"
 spctl -a -t open --context context:primary-signature "$dmg_path"
 
-python3 - "$work_dir" "$version" "$repository" "$notes_file" <<'PY'
-import datetime, json, os, sys
-work_dir, version, repository, notes_file = sys.argv[1:]
-archive = f"graphrt_{version}_aarch64.app.tar.gz"
-manifest = {
-    "version": version,
-    "notes": open(notes_file).read().strip(),
-    "pub_date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    "platforms": {"darwin-aarch64": {
-        "signature": open(os.path.join(work_dir, archive + ".sig")).read().strip(),
-        "url": f"https://github.com/{repository}/releases/download/v{version}/{archive}",
-    }},
-}
-json.dump(manifest, open(os.path.join(work_dir, "latest.json"), "w"), indent=2)
-PY
+# The release may already exist with other platforms on it (Linux is built and uploaded on
+# another machine). Then its latest.json gets darwin-aarch64 added and keeps the others,
+# SHA256SUMS is rewritten over all assets and the macOS block of its notes is replaced.
+export GH_TOKEN="${GH_TOKEN:-$(gh auth token -u BimaPangestu28)}"
+release_exists=false
+existing_manifest_args=()
+mkdir "$work_dir/existing"
+if gh release view "v$version" -R "$repository" > /dev/null 2>&1; then
+  release_exists=true
+  if gh release view "v$version" -R "$repository" --json assets -q '.assets[].name' | grep -qx latest.json; then
+    gh release download "v$version" -R "$repository" -p latest.json -D "$work_dir/existing"
+    existing_manifest_args=(--existing "$work_dir/existing/latest.json")
+  fi
+fi
+python3 "$repo_root/scripts/merge-updater-manifest.py" --version "$version" --platform darwin-aarch64 \
+  --signature-file "$updater_archive.sig" \
+  --url "https://github.com/$repository/releases/download/v$version/$(basename "$updater_archive")" \
+  --notes-file "$notes_file" --output "$work_dir/latest.json" ${existing_manifest_args[@]+"${existing_manifest_args[@]}"}
 
 dmg_sha="$(shasum -a 256 "$dmg_path" | cut -d' ' -f1)"
 archive_sha="$(shasum -a 256 "$updater_archive" | cut -d' ' -f1)"
 {
-  echo "graphrt Desktop $version for **Apple silicon Macs**, signed with Developer ID and notarized by Apple."
-  echo
-  cat "$notes_file"
-  echo
-  echo "Installed apps are offered this update automatically."
+  echo "<!-- macos:start -->"
+  echo "**Apple silicon Macs**: signed with Developer ID and notarized by Apple."
   echo
   echo "SHA-256"
   echo "- $(basename "$dmg_path"): $dmg_sha"
   echo "- $(basename "$updater_archive"): $archive_sha"
-} > "$work_dir/notes.md"
+  echo "<!-- macos:end -->"
+} > "$work_dir/macos-notes.md"
 
-export GH_TOKEN="${GH_TOKEN:-$(gh auth token -u BimaPangestu28)}"
-gh release create "v$version" -R "$repository" --draft --target "$release_commit" --title "graphrt Desktop v$version" \
-  --notes-file "$work_dir/notes.md" "$dmg_path" "$updater_archive" "$updater_archive.sig" "$work_dir/latest.json" > /dev/null
-if $draft; then
-  echo "draft release v$version created"
-  exit 0
+# SHA256SUMS covers every asset of the release except itself, latest.json included.
+sums_dir="$work_dir/sums"
+mkdir "$sums_dir"
+if $release_exists; then
+  gh release download "v$version" -R "$repository" -D "$sums_dir"
 fi
-gh release edit "v$version" -R "$repository" --tag "v$version" --draft=false --latest > /dev/null
+cp "$dmg_path" "$updater_archive" "$updater_archive.sig" "$work_dir/latest.json" "$sums_dir/"
+rm -f "$sums_dir/SHA256SUMS"
+(cd "$sums_dir" && for asset in *; do shasum -a 256 "$asset"; done) > "$work_dir/SHA256SUMS"
+
+if $release_exists; then
+  gh release view "v$version" -R "$repository" --json body -q .body > "$work_dir/existing/body.md"
+  python3 "$repo_root/scripts/merge-release-notes.py" "$work_dir/existing/body.md" \
+    "$work_dir/macos-notes.md" > "$work_dir/notes.md"
+  gh release upload "v$version" -R "$repository" --clobber "$dmg_path" "$updater_archive" \
+    "$updater_archive.sig" "$work_dir/latest.json" "$work_dir/SHA256SUMS" > /dev/null
+  gh release edit "v$version" -R "$repository" --notes-file "$work_dir/notes.md" > /dev/null
+  echo "added the macOS build to the existing release v$version"
+else
+  {
+    echo "graphrt Desktop $version."
+    echo
+    cat "$notes_file"
+    echo
+    echo "Installed apps are offered this update automatically."
+    echo
+    cat "$work_dir/macos-notes.md"
+  } > "$work_dir/notes.md"
+  gh release create "v$version" -R "$repository" --draft --target "$release_commit" --title "graphrt Desktop v$version" \
+    --notes-file "$work_dir/notes.md" "$dmg_path" "$updater_archive" "$updater_archive.sig" \
+    "$work_dir/latest.json" "$work_dir/SHA256SUMS" > /dev/null
+fi
+
+if [ "$(gh release view "v$version" -R "$repository" --json isDraft -q .isDraft)" = false ]; then
+  echo "release v$version is already published"
+elif $draft; then
+  echo "release v$version is a draft"
+  exit 0
+else
+  gh release edit "v$version" -R "$repository" --tag "v$version" --draft=false --latest > /dev/null
+  echo "published v$version"
+fi
 sleep 5
-published="$(curl -sL "https://github.com/$repository/releases/latest/download/latest.json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')"
-echo "published v$version; latest.json says $published"
+published="$(curl -sL "https://github.com/$repository/releases/latest/download/latest.json" \
+  | python3 -c 'import json,sys; m=json.load(sys.stdin); print(m["version"], "with", ", ".join(m["platforms"]))')"
+echo "latest.json says $published"
