@@ -335,6 +335,7 @@ pub fn run() {
             commands::deploy::get_agent_deployment,
             commands::deploy::refresh_agent_deployment,
             commands::deploy::manage_agent_deployment,
+            commands::deploy::rotate_deployment_api_key,
             commands::deploy::list_deployed_versions,
             commands::deploy::list_online_runs,
             commands::deploy::list_own_servers,

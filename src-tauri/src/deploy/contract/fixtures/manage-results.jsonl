@@ -1,0 +1,4 @@
+{"type":"result","action":"rollback","app":"support-bot","url":"https://support-bot.fly.dev","version":"v1","workflow":"support"}
+{"type":"result","action":"pause","app":"support-bot","url":"https://support-bot.fly.dev","status":"paused","changed":true}
+{"type":"result","action":"resume","app":"support-bot","url":"https://support-bot.fly.dev","status":"online","version":"v1","changed":true}
+{"type":"result","action":"remove","app":"support-bot","removed":true}

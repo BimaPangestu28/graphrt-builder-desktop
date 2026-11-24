@@ -6,6 +6,7 @@
 //! - [`compatibility`]: what must change before an agent can run online, with one-click fixes
 //! - [`plan`]: the keys an online copy needs, by friendly name
 //! - [`cli`]: `graphrt deploy` with secrets passed only as environment variables
+//! - [`contract`]: the `status` / `list-versions` results, checked against graphrt's JSON schema
 //! - [`http`]: health checks, online runs and the Fly.io key check
 //!
 //! [`DeployService`] ties them to the database (`storage::deployments`) and the keychain.
@@ -15,6 +16,7 @@
 pub mod cli;
 pub mod cli_release;
 pub mod compatibility;
+pub mod contract;
 pub mod fixes;
 pub mod http;
 pub mod plan;
@@ -47,6 +49,14 @@ use crate::storage::{now_rfc3339, Database};
 pub const DEPLOY_EVENT: &str = "deploy-event";
 /// `agent_settings` key of the deployed versions ([`DeployedVersion`]).
 const DEPLOY_HISTORY_KEY: &str = "deploy_history";
+/// `agent_settings` key of the `--image` an agent was deployed with (Advanced; absent: default).
+const DEPLOY_IMAGE_KEY: &str = "deploy_image";
+/// Longest `--image` reference accepted.
+const MAX_IMAGE_REFERENCE_CHARS: usize = 255;
+/// Why online deploy cannot be used in this app build (no graphrt release is pinned).
+pub const NOT_AVAILABLE_MESSAGE: &str = "Online deploy is not available yet. It needs a graphrt release that can put \
+     agents online (graphrt deploy --direct) and the matching graphrt server image published with it, and neither \
+     exists yet. It comes with an app update.";
 /// Settings key prefix of an account's non-secret summary.
 const ACCOUNT_SUMMARY_SETTING_PREFIX: &str = "deploy_account_summary:";
 const CLI_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(15 * 60);
@@ -156,14 +166,19 @@ pub struct DeployReview {
     pub cli: CliInfo,
     pub mode: DeployMode,
     pub area: ServerArea,
+    /// The `--image` of the last deploy (Advanced); `None`: graphrt's own image.
+    pub image: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeployOptions {
     pub provider: DeployProvider,
     pub mode: DeployMode,
     pub area: ServerArea,
+    /// Advanced: another image running `graphrt serve` (`--image`). `None`: graphrt's own image.
+    #[serde(default)]
+    pub image: Option<String>,
 }
 
 /// The agent's online state for the builder.
@@ -180,12 +195,25 @@ pub struct DeploymentView {
     pub has_api_key: bool,
 }
 
-/// A finished deploy. `api_key` is the only time the key leaves the backend.
+/// A finished deploy. `api_key` is the only time the key leaves the backend: set on the first
+/// deploy, `None` on later ones (the saved key stays valid).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeployOutcome {
     pub view: DeploymentView,
     pub api_key: Option<String>,
+    /// The name to call: `POST {url}/v1/workflows/{workflow}/runs`.
+    pub workflow: Option<String>,
+}
+
+/// "Make a new key": the new key, shown once. The old one stops working.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RotatedApiKey {
+    pub view: DeploymentView,
+    pub api_key: String,
+    /// The key is live and saved, but the online copy did not restart cleanly (plain sentence).
+    pub problem: Option<String>,
 }
 
 /// One deployed version of an agent ("History").
@@ -281,43 +309,19 @@ pub fn next_version_label(current: Option<&str>) -> String {
     format!("v{}", number + 1)
 }
 
-/// The deployment's state from `graphrt deploy status --json` output (lenient: the last object
-/// with a `status` / `state` field).
-pub fn status_from_cli(json: &[serde_json::Value]) -> Option<DeploymentStatus> {
-    let state = json.iter().rev().find_map(|value| {
-        value.get("status").or_else(|| value.get("state")).and_then(serde_json::Value::as_str).map(str::to_lowercase)
-    })?;
-    Some(match state.as_str() {
-        "running" | "started" | "ok" | "healthy" | "working" | "deployed" => DeploymentStatus::Working,
-        "stopped" | "paused" | "suspended" | "scaled_to_zero" => DeploymentStatus::Paused,
-        _ => DeploymentStatus::NeedsAttention,
-    })
-}
-
-/// Version labels from `graphrt deploy list-versions --json` (an array, `versions`, or one object per line).
-pub fn version_labels_from_cli(json: &[serde_json::Value]) -> Vec<String> {
-    let entries: Vec<&serde_json::Value> = json
-        .iter()
-        .flat_map(|value| match value {
-            serde_json::Value::Array(items) => items.iter().collect::<Vec<_>>(),
-            serde_json::Value::Object(_) => match value.get("versions").and_then(serde_json::Value::as_array) {
-                Some(items) => items.iter().collect(),
-                None => vec![value],
-            },
-            _ => Vec::new(),
-        })
-        .collect();
-    entries
-        .iter()
-        .filter_map(|entry| match entry {
-            serde_json::Value::String(label) => Some(label.clone()),
-            _ => entry
-                .get("version")
-                .or_else(|| entry.get("label"))
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_owned),
-        })
-        .collect()
+/// The `--image` reference as given, or `InvalidInput` for one that cannot be an image name
+/// (empty, spaces, a leading `-` that would read as a flag, or very long).
+pub fn checked_image_reference(image: Option<&str>) -> AppResult<Option<String>> {
+    let Some(image) = image.map(str::trim).filter(|image| !image.is_empty()) else { return Ok(None) };
+    let is_usable = !image.starts_with('-')
+        && image.chars().count() <= MAX_IMAGE_REFERENCE_CHARS
+        && image.chars().all(|character| character.is_ascii_alphanumeric() || "./:-_@".contains(character));
+    if !is_usable {
+        return Err(AppError::InvalidInput(format!(
+            "`{image}` is not an image name such as ghcr.io/you/graphrt:0.6.0 (leave it empty for graphrt's own image)"
+        )));
+    }
+    Ok(Some(image.to_owned()))
 }
 
 impl DeployService {
@@ -389,7 +393,7 @@ impl DeployService {
         let (Some(version), Some(archive)) =
             (cli_release::GRAPHRT_CLI_VERSION, cli_release::archive_for_this_computer())
         else {
-            return Err(AppError::InvalidInput("Online deploy is not available yet in this version of graphrt".into()));
+            return Err(AppError::InvalidInput(NOT_AVAILABLE_MESSAGE.into()));
         };
         let url = cli_release::download_url(version, archive);
         if !cli_release::is_allowed_download_url(&url) {
@@ -420,7 +424,7 @@ impl DeployService {
     fn require_cli(&self) -> AppResult<PathBuf> {
         self.installed_cli().ok_or_else(|| {
             if cli_release::archive_for_this_computer().is_none() {
-                AppError::InvalidInput("Online deploy is not available yet in this version of graphrt".into())
+                AppError::InvalidInput(NOT_AVAILABLE_MESSAGE.into())
             } else {
                 AppError::InvalidInput("Download the graphrt tools first (Review › Allow download)".into())
             }
@@ -634,6 +638,64 @@ impl DeployService {
                 .and_then(|record| record.region.as_deref())
                 .and_then(ServerArea::from_fly_region)
                 .unwrap_or(ServerArea::Us),
+            image: self.deploy_image(&agent.id)?,
+        })
+    }
+
+    fn deploy_image(&self, agent_id: &str) -> AppResult<Option<String>> {
+        Ok(self
+            .db
+            .get_agent_setting(agent_id, DEPLOY_IMAGE_KEY)?
+            .and_then(|value| value.as_str().map(str::to_owned))
+            .filter(|image| !image.is_empty()))
+    }
+
+    fn save_api_key(&self, agent_id: &str, api_key: &str) -> AppResult<()> {
+        self.credentials.set_deploy_secret(&format!("key:{agent_id}"), api_key)
+    }
+
+    /// Marks a deploy of the agent as running (one at a time); `Conflict` when one already is.
+    fn start_tracking_deploy(&self, agent_id: &str) -> AppResult<Arc<tokio::sync::Notify>> {
+        let mut running = self.running_deploys.lock().map_err(|_| AppError::Internal("deploy lock poisoned".into()))?;
+        if running.contains_key(agent_id) {
+            return Err(AppError::Conflict("This agent is already being put online".into()));
+        }
+        let cancel = Arc::new(tokio::sync::Notify::new());
+        running.insert(agent_id.to_owned(), cancel.clone());
+        Ok(cancel)
+    }
+
+    fn stop_tracking_deploy(&self, agent_id: &str) {
+        if let Ok(mut running) = self.running_deploys.lock() {
+            running.remove(agent_id);
+        }
+    }
+
+    /// Steps and log lines of a running deploy, as [`DEPLOY_EVENT`]s (never the API key).
+    fn progress_callback(&self, agent_id: &str) -> cli::LineCallback {
+        let events = self.events.clone();
+        let agent_id = agent_id.to_owned();
+        Arc::new(move |line| match line {
+            CliLine::Event(CliEvent::Step { step, status, message }) => events.send(DeployEvent::Step {
+                agent_id: agent_id.clone(),
+                step: *step,
+                status: *status,
+                message: message.clone(),
+            }),
+            CliLine::Event(CliEvent::Error { message, .. }) => {
+                events.send(DeployEvent::Log { agent_id: agent_id.clone(), line: format!("error: {message}") })
+            }
+            CliLine::Event(CliEvent::ApiKey { .. }) => events.send(DeployEvent::Log {
+                agent_id: agent_id.clone(),
+                line: "a new access key was stored on the provider (saved, not shown here)".into(),
+            }),
+            CliLine::Text(text) if !text.is_empty() => {
+                events.send(DeployEvent::Log { agent_id: agent_id.clone(), line: text.clone() })
+            }
+            CliLine::Json(value) => {
+                events.send(DeployEvent::Log { agent_id: agent_id.clone(), line: value.to_string() })
+            }
+            _ => {}
         })
     }
 
@@ -668,6 +730,7 @@ impl DeployService {
         if !report.ready {
             return Err(AppError::InvalidInput("Fix the items in the checklist before putting it online".into()));
         }
+        let options = DeployOptions { image: checked_image_reference(options.image.as_deref())?, ..options };
         let executable = self.require_cli()?;
         let agent = self.db.get_agent(agent_id)?;
         let keys = self.keys_for(&agent, requirements)?;
@@ -682,19 +745,9 @@ impl DeployService {
         }
         let environment = cli::compose_environment(|name| std::env::var(name).ok(), &environment_extra);
 
-        let cancel = Arc::new(tokio::sync::Notify::new());
-        {
-            let mut running =
-                self.running_deploys.lock().map_err(|_| AppError::Internal("deploy lock poisoned".into()))?;
-            if running.contains_key(agent_id) {
-                return Err(AppError::Conflict("This agent is already being put online".into()));
-            }
-            running.insert(agent_id.to_owned(), cancel.clone());
-        }
+        let cancel = self.start_tracking_deploy(agent_id)?;
         let result = self.run_deploy(&agent, options, &keys, &executable, &environment, cancel).await;
-        if let Ok(mut running) = self.running_deploys.lock() {
-            running.remove(agent_id);
-        }
+        self.stop_tracking_deploy(agent_id);
         result
     }
 
@@ -748,28 +801,10 @@ impl DeployService {
             mode: options.mode,
             org: None,
             secret_names: keys.iter().map(|key| key.env_name.clone()).collect(),
+            image: options.image.clone(),
+            rotate_api_key: false,
             agent_file,
         };
-        let events = self.events.clone();
-        let agent_id = agent.id.clone();
-        let on_line: cli::LineCallback = Arc::new(move |line| match line {
-            CliLine::Event(CliEvent::Step { step, status, message }) => events.send(DeployEvent::Step {
-                agent_id: agent_id.clone(),
-                step: *step,
-                status: *status,
-                message: message.clone(),
-            }),
-            CliLine::Event(CliEvent::Error { message, .. }) => {
-                events.send(DeployEvent::Log { agent_id: agent_id.clone(), line: format!("error: {message}") })
-            }
-            CliLine::Text(text) if !text.is_empty() => {
-                events.send(DeployEvent::Log { agent_id: agent_id.clone(), line: text.clone() })
-            }
-            CliLine::Json(value) => {
-                events.send(DeployEvent::Log { agent_id: agent_id.clone(), line: value.to_string() })
-            }
-            _ => {}
-        });
         log::info!("putting agent {} online as {} {version_label}", agent.id, record.deployment_name);
         let output = cli::run_cli(
             executable,
@@ -777,7 +812,7 @@ impl DeployService {
             environment,
             cli::DEPLOY_TIMEOUT,
             cancel,
-            on_line,
+            self.progress_callback(&agent.id),
         )
         .await;
         let output = match output {
@@ -787,16 +822,25 @@ impl DeployService {
                 return Err(error);
             }
         };
-        let Some(CliEvent::Result { url, version, app, api_key }) = output.result().cloned() else {
-            let message = output
-                .error()
-                .map(|(_, message)| message.clone())
+        let Some(CliEvent::Result { url, version, app, workflow, api_key }) = output.result().cloned() else {
+            let mut message = output
+                .plain_error()
                 .unwrap_or_else(|| "The graphrt tools stopped without saying why. See Details".into());
+            if let Some(live_key) = output.api_key_of_failure() {
+                // The key is already live on the provider and cannot be read back: keep it.
+                self.save_api_key(&agent.id, live_key)?;
+                message = failure_with_live_key_message(options.provider, is_first, &message);
+            }
             self.record_failure(&record, is_first, &message)?;
             return Err(AppError::Internal(message));
         };
+        // `api_key` is null on every deploy but the first: the saved key stays valid then.
         if let Some(key) = api_key.as_deref() {
-            self.credentials.set_deploy_secret(&format!("key:{}", agent.id), key)?;
+            self.save_api_key(&agent.id, key)?;
+        }
+        match &options.image {
+            Some(image) => self.db.set_agent_setting(&agent.id, DEPLOY_IMAGE_KEY, &serde_json::json!(image))?,
+            None => self.db.set_agent_setting(&agent.id, DEPLOY_IMAGE_KEY, &serde_json::Value::Null)?,
         }
         record.url = Some(url);
         record.app = app.or(record.app);
@@ -810,7 +854,85 @@ impl DeployService {
         Ok(DeployOutcome {
             view: self.view(&agent.id)?.ok_or_else(|| AppError::Internal("deployment lost".into()))?,
             api_key,
+            workflow,
         })
+    }
+
+    /// "Make a new key": redeploys the online version in place with `--rotate-api-key` (same
+    /// agent version, mode, region and image; the provider keeps the other secrets) and saves
+    /// the new key. The old key stops working.
+    ///
+    /// # Errors
+    /// `NotFound` when the agent is not online; `Conflict` while a deploy runs; the CLI's plain
+    /// message when the provider refused (the old key then still works).
+    pub async fn rotate_api_key(&self, agent_id: &str) -> AppResult<RotatedApiKey> {
+        let record = self.require_deployment(agent_id)?;
+        let Some(version_label) =
+            record.deployed_version_label.clone().filter(|_| record.status != DeploymentStatus::Failed)
+        else {
+            return Err(AppError::InvalidInput("Put the agent online first".into()));
+        };
+        let executable = self.require_cli()?;
+        let environment =
+            cli::compose_environment(|name| std::env::var(name).ok(), &self.provider_environment(record.provider)?);
+        let agent = self.db.get_agent(agent_id)?;
+        let flow_yaml = match record.deployed_agent_version {
+            Some(version) => self.db.get_agent_version(agent_id, version)?.flow_yaml,
+            None => agent.flow_yaml.clone(),
+        };
+        let work_dir =
+            tempfile::tempdir().map_err(|error| AppError::Internal(format!("no temporary folder: {error}")))?;
+        let agent_file = work_dir.path().join("agent.yaml");
+        std::fs::write(&agent_file, flow_yaml)
+            .map_err(|error| AppError::Internal(format!("could not write the agent file: {error}")))?;
+        let request = DeployRequest {
+            target: record.provider,
+            deployment: record.deployment_name.clone(),
+            version_label,
+            region: record.region.clone(),
+            mode: record.mode,
+            org: None,
+            secret_names: Vec::new(),
+            image: self.deploy_image(agent_id)?,
+            rotate_api_key: true,
+            agent_file,
+        };
+        let cancel = self.start_tracking_deploy(agent_id)?;
+        log::info!("making a new access key for agent {agent_id} ({})", record.deployment_name);
+        let output = cli::run_cli(
+            &executable,
+            &cli::deploy_arguments(&request),
+            &environment,
+            cli::DEPLOY_TIMEOUT,
+            cancel,
+            self.progress_callback(agent_id),
+        )
+        .await;
+        self.stop_tracking_deploy(agent_id);
+        let output = output?;
+        let (api_key, problem) = match (output.result(), output.api_key_of_failure()) {
+            (Some(CliEvent::Result { api_key: Some(key), .. }), _) => (key.clone(), None),
+            (_, Some(live_key)) => {
+                let message = output.plain_error().unwrap_or_else(|| "no details".into());
+                (
+                    live_key.to_owned(),
+                    Some(format!("The new key works, but the online copy didn't restart cleanly: {message}")),
+                )
+            }
+            (Some(_), None) => {
+                return Err(AppError::Internal(
+                    "The graphrt tools did not hand over a new key; the old one still works".into(),
+                ))
+            }
+            (None, None) => {
+                return Err(AppError::Internal(
+                    output.plain_error().unwrap_or_else(|| "The graphrt tools stopped without saying why".into()),
+                ))
+            }
+        };
+        self.save_api_key(agent_id, &api_key)?;
+        let view = self.view(agent_id)?.ok_or_else(|| AppError::Internal("deployment lost".into()))?;
+        Ok(RotatedApiKey { view, api_key, problem })
     }
 
     fn record_failure(&self, record: &DeploymentRecord, is_first: bool, message: &str) -> AppResult<()> {
@@ -930,9 +1052,9 @@ impl DeployService {
         if self.installed_cli().is_some() {
             match self.run_manage(&record, &ManageAction::ListVersions).await {
                 Ok(output) if output.exit_success => {
-                    let labels = version_labels_from_cli(&output.json);
-                    if !labels.is_empty() {
-                        history.retain(|entry| labels.contains(&entry.label));
+                    // Only the versions the provider still has can be gone back to.
+                    if let Some(listed) = contract::list_versions_result(&output.json) {
+                        history.retain(|entry| listed.versions.iter().any(|remote| remote.label == entry.label));
                     }
                 }
                 Ok(_) | Err(_) => {
@@ -959,18 +1081,22 @@ impl DeployService {
         let (status, message) = if health.healthy {
             (DeploymentStatus::Working, None)
         } else {
-            let from_cli = match self.installed_cli() {
+            let remote = match self.installed_cli() {
                 Some(_) => self
                     .run_manage(&record, &ManageAction::Status)
                     .await
                     .ok()
-                    .and_then(|output| status_from_cli(&output.json)),
+                    .and_then(|output| contract::status_result(&output.json)),
                 None => None,
             };
-            (
-                from_cli.unwrap_or(DeploymentStatus::NeedsAttention),
-                Some(format!("We couldn't reach it: {}", health.message)),
-            )
+            let unreachable = format!("We couldn't reach it: {}", health.message);
+            match remote {
+                Some(remote) => (
+                    remote.status.deployment_status(),
+                    Some(remote.status.problem().map_or(unreachable, str::to_owned)),
+                ),
+                None => (DeploymentStatus::NeedsAttention, Some(unreachable)),
+            }
         };
         self.db.set_deployment_status(agent_id, status, message.as_deref())?;
         self.view(agent_id)
@@ -1097,6 +1223,21 @@ impl DeployService {
         for server in self.db.list_own_servers().unwrap_or_default() {
             forget(format!("server:{}", server.id));
         }
+    }
+}
+
+/// The plain message of a deploy that failed after the provider already stored its new API key.
+fn failure_with_live_key_message(provider: DeployProvider, is_first: bool, message: &str) -> String {
+    let provider_name = provider.display_name();
+    if is_first {
+        format!(
+            "Its online copy was created on {provider_name} and its access key is saved, but it didn't start: {message}. \
+             Try again, or remove what was created."
+        )
+    } else {
+        format!(
+            "A new access key is saved, but this update didn't finish: {message}. The earlier version keeps answering."
+        )
     }
 }
 

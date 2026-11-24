@@ -113,13 +113,14 @@ fn render_node_release(version: &str, archives: &[PinnedArchive]) -> String {
     generated
 }
 
-/// Target triples the graphrt CLI is downloaded for (`cli_platform` in `src/deploy/cli_release.rs`).
+/// Release targets of the graphrt CLI the app downloads (`cli_platform` in
+/// `src/deploy/cli_release.rs`). A pinned release must list every one of them, so no supported
+/// computer is left without the tools.
 const GRAPHRT_CLI_TRIPLES: &[&str] = &[
     "aarch64-apple-darwin",
     "x86_64-apple-darwin",
-    "aarch64-unknown-linux-gnu",
-    "x86_64-unknown-linux-gnu",
-    "aarch64-pc-windows-msvc",
+    "x86_64-unknown-linux-musl",
+    "aarch64-unknown-linux-musl",
     "x86_64-pc-windows-msvc",
 ];
 
@@ -155,12 +156,13 @@ fn generate_graphrt_cli_release() -> Result<(), String> {
         .map_err(|error| format!("cannot write graphrt_cli_release.rs: {error}"))
 }
 
-fn cli_archive_file_name(version: &str, triple: &str) -> String {
+/// The release asset name: `graphrt-<triple>.tar.gz` (`.zip` on Windows), without the version.
+fn cli_archive_file_name(triple: &str) -> String {
     let extension = if triple.contains("windows") { "zip" } else { "tar.gz" };
-    format!("graphrt-{version}-{triple}.{extension}")
+    format!("graphrt-{triple}.{extension}")
 }
 
-/// At least one archive, each for a known triple at most once, with a SHA-256 and a size.
+/// One archive per release target (each exactly once), with a SHA-256 and a size.
 fn parse_cli_checksums(text: &str, version: &str) -> Result<Vec<PinnedCliArchive>, String> {
     let mut archives: Vec<PinnedCliArchive> = Vec::new();
     for line in text.lines().map(str::trim).filter(|line| !line.is_empty() && !line.starts_with('#')) {
@@ -176,16 +178,24 @@ fn parse_cli_checksums(text: &str, version: &str) -> Result<Vec<PinnedCliArchive
         let size: u64 =
             size.parse().map_err(|_| format!("scripts/graphrt-cli-checksums.txt: `{size}` is not a size"))?;
         let triple =
-            GRAPHRT_CLI_TRIPLES.iter().find(|triple| file_name == cli_archive_file_name(version, triple)).ok_or_else(
-                || format!("scripts/graphrt-cli-checksums.txt lists {file_name}, not a graphrt {version} archive"),
-            )?;
+            GRAPHRT_CLI_TRIPLES.iter().find(|triple| file_name == cli_archive_file_name(triple)).ok_or_else(|| {
+                format!("scripts/graphrt-cli-checksums.txt lists {file_name}, not a graphrt CLI release asset")
+            })?;
         if archives.iter().any(|(listed, ..)| listed == triple) {
             return Err(format!("scripts/graphrt-cli-checksums.txt lists {triple} twice"));
         }
         archives.push(((*triple).to_owned(), file_name.to_owned(), sha256.to_owned(), size));
     }
-    if archives.is_empty() {
-        return Err(format!("scripts/graphrt-cli-checksums.txt lists no archive of graphrt {version}"));
+    let missing: Vec<&str> = GRAPHRT_CLI_TRIPLES
+        .iter()
+        .copied()
+        .filter(|triple| !archives.iter().any(|(listed, ..)| listed == triple))
+        .collect();
+    if !missing.is_empty() {
+        return Err(format!(
+            "scripts/graphrt-cli-checksums.txt has no graphrt {version} archive for {} (run scripts/pin-graphrt-cli.sh {version})",
+            missing.join(", ")
+        ));
     }
     Ok(archives)
 }

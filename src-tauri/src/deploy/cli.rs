@@ -1,11 +1,15 @@
 //! Running `graphrt deploy` and reading its JSON Lines output.
 //!
-//! Contract (built in the graphrt repo):
+//! Contract: graphrt `docs/deploy-direct.md` and `docs/schemas/deploy-direct.schema.json` (a copy
+//! is in `contract/`, checked by [`super::contract`]'s tests).
 //! `graphrt deploy --target fly --direct --deployment <name> --version <label> [--region <code>]
-//! [--mode always-on|scale-to-zero] [--secret NAME ...] [--org <slug>] --json <agent.yaml>`
-//! prints one JSON object per line:
+//! [--mode always-on|scale-to-zero] [--secret NAME ...] [--org <slug>] [--image <ref>]
+//! [--rotate-api-key] --json <agent.yaml>` prints one JSON object per line:
 //! `{"type":"step","step":"preparing|secrets|starting|checking","status":"running|done|failed","message"}`,
-//! then `{"type":"result","url","version","app","api_key"}` or `{"type":"error","code","message"}`.
+//! then `{"type":"result","action":"deploy","url","version","app","workflow","api_key"}` or
+//! `{"type":"error","code","message"}`. A deploy that stored a new API key and then failed prints
+//! `{"type":"api_key","api_key"}` right before its `error` line: that key is live on Fly.io.
+//! `api_key` in the result is `null` on every deploy but the first and `--rotate-api-key`.
 //! `graphrt deploy status|list-versions|rollback <v>|pause|resume|remove --target fly --direct
 //! --deployment <name> --json` manage it.
 //!
@@ -52,6 +56,11 @@ pub struct DeployRequest {
     pub org: Option<String>,
     /// `--secret NAME` (names only; values are environment variables).
     pub secret_names: Vec<String>,
+    /// `--image <ref>`: another image running `graphrt serve` (Advanced). `None`: the CLI's
+    /// default, `ghcr.io/bimapangestu28/graphrt:<CLI version>`.
+    pub image: Option<String>,
+    /// `--rotate-api-key`: replace the deployment's API key (the new one is in the result).
+    pub rotate_api_key: bool,
     pub agent_file: PathBuf,
 }
 
@@ -99,6 +108,12 @@ pub fn deploy_arguments(request: &DeployRequest) -> Vec<String> {
     }
     if let Some(org) = &request.org {
         arguments.extend(["--org".into(), org.clone()]);
+    }
+    if let Some(image) = &request.image {
+        arguments.extend(["--image".into(), image.clone()]);
+    }
+    if request.rotate_api_key {
+        arguments.push("--rotate-api-key".into());
     }
     arguments.push("--json".into());
     arguments.push(request.agent_file.to_string_lossy().into_owned());
@@ -155,14 +170,21 @@ pub enum CliEvent {
         #[serde(default)]
         message: Option<String>,
     },
+    /// The final line of `deploy` (and `rollback`, which has the same fields but no key).
     Result {
         url: String,
         version: String,
         #[serde(default)]
         app: Option<String>,
+        /// The name to call: `POST {url}/v1/workflows/{workflow}/runs`.
+        #[serde(default)]
+        workflow: Option<String>,
+        /// Only on the deploy that created the key or with `--rotate-api-key`; `null` otherwise.
         #[serde(default)]
         api_key: Option<String>,
     },
+    /// A deploy stored a new API key, then failed: printed once, right before the `error` line.
+    ApiKey { api_key: String },
     Error {
         #[serde(default)]
         code: Option<String>,
@@ -229,16 +251,45 @@ impl CliOutput {
         })
     }
 
+    /// The key of an `api_key` line: a failed deploy already made it live on Fly.io.
+    pub fn api_key_of_failure(&self) -> Option<&str> {
+        self.events.iter().rev().find_map(|event| match event {
+            CliEvent::ApiKey { api_key } => Some(api_key.as_str()),
+            _ => None,
+        })
+    }
+
+    /// The error line as one plain sentence ([`plain_error_message`]).
+    pub fn plain_error(&self) -> Option<String> {
+        self.error().map(|(code, message)| plain_error_message(code.as_deref(), message))
+    }
+
     /// `Ok` when the call exited cleanly without an error event; otherwise its plain message.
     pub fn ensure_success(&self, what: &str) -> AppResult<()> {
-        if let Some((_, message)) = self.error() {
-            return Err(AppError::Internal(message.clone()));
+        if let Some(message) = self.plain_error() {
+            return Err(AppError::Internal(message));
         }
         if !self.exit_success {
             let detail = self.log.last().cloned().unwrap_or_else(|| "no details".into());
             return Err(AppError::Internal(format!("{what} did not finish: {detail}")));
         }
         Ok(())
+    }
+}
+
+/// The CLI's message, with what to do for refusals people can fix themselves (schema `error.code`).
+pub fn plain_error_message(code: Option<&str>, message: &str) -> String {
+    match code {
+        Some("unauthorized") => format!(
+            "Fly.io didn't accept the access key for this. Putting an agent online the first time and taking it offline \
+             need an organization token (fly tokens create org <your-org> --expiry 720h): connect Fly.io again with one. \
+             ({message})"
+        ),
+        Some("missing_token") => "Connect your Fly.io account first (Online accounts)".to_owned(),
+        Some("app_name_taken") => {
+            format!("Another Fly.io account already uses this agent's web address. Rename the agent and try again. ({message})")
+        }
+        _ => message.to_owned(),
     }
 }
 
@@ -328,6 +379,8 @@ mod tests {
             mode: DeployMode::ScaleToZero,
             org: None,
             secret_names: vec!["OPENAI_API_KEY".into(), "WHATSAPP_CLOUD_ACCESS_TOKEN".into()],
+            image: None,
+            rotate_api_key: false,
             agent_file: PathBuf::from("/tmp/agent.yaml"),
         }
     }
@@ -360,6 +413,34 @@ mod tests {
     }
 
     #[test]
+    fn image_and_key_rotation_are_passed_only_when_asked_for() {
+        let request = DeployRequest {
+            image: Some("ghcr.io/acme/graphrt:0.6.0-custom".into()),
+            rotate_api_key: true,
+            ..sample_request()
+        };
+        let arguments = deploy_arguments(&request);
+        let image_at = arguments.iter().position(|argument| argument == "--image").unwrap();
+        assert_eq!(arguments[image_at + 1], "ghcr.io/acme/graphrt:0.6.0-custom");
+        assert!(arguments.contains(&"--rotate-api-key".to_owned()));
+        assert_eq!(arguments.last().unwrap(), "/tmp/agent.yaml", "the agent file stays last");
+        let plain = deploy_arguments(&sample_request());
+        assert!(!plain
+            .iter()
+            .any(|argument| argument == "--image" || argument == "--rotate-api-key" || argument == "--app"));
+    }
+
+    #[test]
+    fn refusals_people_can_fix_get_plain_guidance() {
+        let unauthorized = plain_error_message(Some("unauthorized"), "Fly refused the token (403)");
+        assert!(unauthorized.contains("fly tokens create org"), "{unauthorized}");
+        assert!(unauthorized.contains("403"));
+        assert!(plain_error_message(Some("app_name_taken"), "taken").contains("Rename the agent"));
+        assert_eq!(plain_error_message(Some("capacity"), "No room in sin"), "No room in sin");
+        assert_eq!(plain_error_message(None, "boom"), "boom");
+    }
+
+    #[test]
     fn manage_arguments_follow_the_contract() {
         assert_eq!(
             manage_arguments(&ManageAction::Rollback { version: "v1".into() }, DeployProvider::Fly, "d"),
@@ -383,6 +464,10 @@ mod tests {
             parse_line(r#"{"type":"result","url":"https://a.fly.dev","version":"v1","app":"a","api_key":"grt_x"}"#),
             CliLine::Event(CliEvent::Result { .. })
         ));
+        assert_eq!(
+            parse_line(r#"{"type":"api_key","api_key":"grk_live"}"#),
+            CliLine::Event(CliEvent::ApiKey { api_key: "grk_live".into() })
+        );
         assert!(matches!(parse_line(r#"{"state":"running"}"#), CliLine::Json(_)));
         assert_eq!(parse_line("building image"), CliLine::Text("building image".into()));
         assert_eq!(parse_line("{broken"), CliLine::Text("{broken".into()));

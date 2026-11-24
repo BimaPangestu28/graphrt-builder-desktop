@@ -23,8 +23,16 @@ releases may contain breaking changes; they are called out under **Changed**.
 - **Connections › Online accounts**: the providers with Connect / Disconnect ("used by …"), and under For IT teams **My servers** (Connect a running server: address and access key, tested with `/healthz` and an authenticated `/v1/runs`).
 - **My own server** (For IT teams): **Download agent file (.grt)** writes a graphrt bundle (graphrt-bundle, no keys inside; save as `.yaml` for the plain workflow) with Docker instructions for the IT team, and Connect a running server.
 
+- **Make a new key** for an online agent (Connection details / Advanced for developers): runs `graphrt deploy --rotate-api-key` on the online version (same agent version, mode, region and image), saves the new key in the keychain and shows it once; the old key stops working.
+- **Server image** (Review › Advanced, optional): another image running `graphrt serve`, passed as `--image` and reused by later updates; empty means graphrt's own `ghcr.io/bimapangestu28/graphrt:<version>`.
+- `scripts/pin-graphrt-cli.sh <version>` pins a graphrt release: it downloads the release's `SHA256SUMS`, fails unless every target is listed, downloads and checks each archive, and writes `scripts/graphrt-cli-checksums.txt` (with sizes) and `scripts/graphrt-cli-version`.
+
 ### Changed
 
+- **Put it online follows the real graphrt formats** (graphrt `docs/deploy-direct.md`, `docs/schemas/deploy-direct.schema.json`): release assets are `graphrt-<target>.tar.gz` (`graphrt-x86_64-pc-windows-msvc.zip` on Windows) with no version in the name, and only `graphrt-<target>/graphrt[.exe]` is extracted. Linux downloads the static musl builds; Windows on Arm uses the x86_64 build. `build.rs` refuses a pin that misses a target.
+- A deploy that failed after the provider stored its new API key (the `api_key` line before `error`) keeps that key in the keychain and says the online copy exists; the agent page then offers **Remove what was created on Fly.io**. A redeploy's `api_key: null` keeps the saved key. Status (`online` / `paused` / `deploying` / `failed` / `offline`, machines, current version) and the version list are read with the schema's field names, checked by contract tests against a copy of the schema and its examples.
+- The Fly.io Connect popup asks for an organization token (`fly tokens create org <org> --expiry 720h`): the first deploy creates the app and taking it offline deletes it, which an app deploy token cannot do. A refused token now says so.
+- "Online deploy is not available yet" says what is missing: a graphrt release with `deploy --direct` and its matching server image (the pin stays `unreleased` until both exist).
 - Dropping files anywhere on the Knowledge and knowledge base windows no longer adds them; drop them on the drop zone.
 - Connections has a fifth tab, **Online accounts**. Delete all data with "remove keychain items" also removes online-account keys and deployment and server API keys.
 

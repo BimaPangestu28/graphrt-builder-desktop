@@ -13,6 +13,13 @@ export const deployProviderNames: Record<DeployProvider, string> = {
   kubernetes: 'Kubernetes',
 }
 
+/**
+ * Why online deploy can't be used yet (mirrors `NOT_AVAILABLE_MESSAGE` in `src-tauri/src/deploy`):
+ * no graphrt release with `deploy --direct` and its server image is pinned in this app build.
+ */
+export const onlineDeployNotAvailableMessage =
+  'Online deploy is not available yet. It needs a graphrt release that can put agents online (graphrt deploy --direct) and the matching graphrt server image published with it, and neither exists yet. It comes with an app update.'
+
 /** `not_available`: this app build pins no graphrt release yet. */
 export type CliStatus = 'not_available' | 'not_installed' | 'installing' | 'installed'
 
@@ -81,12 +88,16 @@ export interface DeployReview {
   cli: CliInfo
   mode: DeployMode
   area: ServerArea
+  /** The `--image` of the last deploy (Advanced); null: graphrt's own image. */
+  image: string | null
 }
 
 export interface DeployOptions {
   provider: DeployProvider
   mode: DeployMode
   area: ServerArea
+  /** Advanced: another image running `graphrt serve`; null or empty: graphrt's own image. */
+  image?: string | null
 }
 
 export type DeploymentStatus = 'deploying' | 'working' | 'paused' | 'needs_attention' | 'failed'
@@ -119,8 +130,18 @@ export interface DeploymentView {
 
 export interface DeployOutcome {
   view: DeploymentView
-  /** Shown once; afterwards only in the keychain. */
+  /** Shown once on the first deploy; null on later ones (the saved key keeps working). */
   apiKey: string | null
+  /** The name to call: `POST {url}/v1/workflows/{workflow}/runs`. */
+  workflow: string | null
+}
+
+/** "Make a new key": shown once; the old key stops working. */
+export interface RotatedApiKey {
+  view: DeploymentView
+  apiKey: string
+  /** The new key works but the online copy didn't restart cleanly (plain sentence). */
+  problem: string | null
 }
 
 export interface DeployedVersion {

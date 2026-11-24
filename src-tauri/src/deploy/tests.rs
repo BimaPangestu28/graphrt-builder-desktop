@@ -76,7 +76,7 @@ fn ready_report() -> CompatibilityReport {
 }
 
 fn fly_options() -> DeployOptions {
-    DeployOptions { provider: DeployProvider::Fly, mode: DeployMode::ScaleToZero, area: ServerArea::Asia }
+    DeployOptions { provider: DeployProvider::Fly, mode: DeployMode::ScaleToZero, area: ServerArea::Asia, image: None }
 }
 
 #[cfg(unix)]
@@ -97,12 +97,20 @@ fn deployment_names_and_versions() {
     assert_eq!(next_version_label(None), "v1");
     assert_eq!(next_version_label(Some("v9")), "v10");
     assert_eq!(ServerArea::from_fly_region(ServerArea::Europe.fly_region()), Some(ServerArea::Europe));
-    assert_eq!(status_from_cli(&[serde_json::json!({ "state": "stopped" })]), Some(DeploymentStatus::Paused));
-    assert_eq!(status_from_cli(&[serde_json::json!({ "status": "crashed" })]), Some(DeploymentStatus::NeedsAttention));
+}
+
+#[test]
+fn image_references_are_checked() {
+    assert_eq!(checked_image_reference(None).unwrap(), None);
+    assert_eq!(checked_image_reference(Some("  ")).unwrap(), None, "empty means graphrt's own image");
     assert_eq!(
-        version_labels_from_cli(&[serde_json::json!({ "versions": [{ "version": "v1" }, { "version": "v2" }] })]),
-        ["v1", "v2"]
+        checked_image_reference(Some(" ghcr.io/acme/graphrt:0.6.0 ")).unwrap().as_deref(),
+        Some("ghcr.io/acme/graphrt:0.6.0")
     );
+    assert!(checked_image_reference(Some("registry.fly.io/app@sha256:abc123")).is_ok());
+    for refused in ["--rotate-api-key", "acme/graphrt latest", "img;rm -rf", &"a".repeat(300)] {
+        assert!(checked_image_reference(Some(refused)).is_err(), "{refused}");
+    }
 }
 
 #[test]
@@ -113,6 +121,7 @@ fn the_cli_is_not_available_without_a_pinned_release() {
         let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
         let error = runtime.block_on(harness.service.install_cli()).unwrap_err();
         assert!(error.to_string().contains("not available yet"), "{error}");
+        assert!(error.to_string().contains("server image"), "says what is missing: {error}");
     }
 }
 
@@ -180,17 +189,23 @@ async fn deploys_with_secrets_in_the_environment_then_updates_and_takes_offline(
         r#"echo "ARGS $*" >> "{record}"
 echo "ENV OPENAI=$OPENAI_API_KEY FLY=$FLY_API_TOKEN" >> "{record}"
 case "$2" in
-  pause|resume|remove) echo '{{"type":"ok"}}' ;;
-  list-versions) echo '[{{"version":"v1"}},{{"version":"v2"}}]' ;;
+  pause) echo '{{"type":"result","action":"pause","app":"menu","url":"https://menu.fly.dev","status":"paused","changed":true}}' ;;
+  resume) echo '{{"type":"result","action":"resume","app":"menu","url":"https://menu.fly.dev","status":"online","version":"v2","changed":true}}' ;;
+  remove) echo '{{"type":"result","action":"remove","app":"menu","removed":true}}' ;;
+  rollback) echo '{{"type":"result","action":"rollback","app":"menu","url":"https://menu.fly.dev","version":"v1","workflow":"agent"}}' ;;
+  list-versions) echo '{{"type":"result","action":"list-versions","app":"menu","url":"https://menu.fly.dev","current_version":"v2","versions":[{{"label":"v2","deployed_at":"2026-11-24T16:00:00.123Z","current":true,"role":"current","mode":"scale-to-zero","workflow":"agent","state":"stopped"}},{{"label":"v1","deployed_at":"2026-11-23T09:12:00.000Z","current":false,"role":"standby","mode":"scale-to-zero","workflow":"agent","state":"stopped"}}]}}' ;;
   *)
     for step in preparing secrets starting checking; do
-      echo "{{\"type\":\"step\",\"step\":\"$step\",\"status\":\"running\"}}"
-      echo "{{\"type\":\"step\",\"step\":\"$step\",\"status\":\"done\"}}"
+      echo "{{\"type\":\"step\",\"step\":\"$step\",\"status\":\"running\",\"message\":\"$step\"}}"
+      echo "{{\"type\":\"step\",\"step\":\"$step\",\"status\":\"done\",\"message\":\"$step\"}}"
     done
     version=$(echo "$*" | sed 's/.*--version \([^ ]*\).*/\1/')
-    echo "{{\"type\":\"result\",\"url\":\"https://menu.fly.dev\",\"version\":\"$version\",\"app\":\"menu\",\"api_key\":\"grt_shown_once\"}}"
+    # The key only on the first deploy, as graphrt does (null on later ones).
+    if [ -f "{marker}" ]; then key=null; else key='"grk_shown_once"'; touch "{marker}"; fi
+    echo "{{\"type\":\"result\",\"action\":\"deploy\",\"url\":\"https://menu.fly.dev\",\"version\":\"$version\",\"app\":\"menu\",\"workflow\":\"agent\",\"api_key\":$key}}"
     ;;
 esac"#,
+        marker = folder.path().join("key-made").display(),
         record = record.display()
     );
     harness.service = harness.service.with_cli_executable(fake_cli(folder.path(), &script));
@@ -198,7 +213,8 @@ esac"#,
     harness.credentials.set_deploy_secret("account:fly", r#"{"token":"fly-secret"}"#).unwrap();
 
     let outcome = harness.service.deploy(&harness.agent.id, fly_options(), &[], &ready_report()).await.unwrap();
-    assert_eq!(outcome.api_key.as_deref(), Some("grt_shown_once"));
+    assert_eq!(outcome.api_key.as_deref(), Some("grk_shown_once"));
+    assert_eq!(outcome.workflow.as_deref(), Some("agent"));
     assert_eq!(outcome.view.deployment.status, DeploymentStatus::Working);
     assert_eq!(outcome.view.deployment.deployed_version_label.as_deref(), Some("v1"));
     assert_eq!(outcome.view.deployment.region.as_deref(), Some("sin"));
@@ -206,7 +222,7 @@ esac"#,
     assert!(outcome.view.has_api_key);
     assert_eq!(
         harness.credentials.read_deploy_secret(&format!("key:{}", harness.agent.id)).unwrap().as_deref(),
-        Some("grt_shown_once")
+        Some("grk_shown_once")
     );
     let steps =
         harness.events.0.lock().unwrap().iter().filter(|event| matches!(event, DeployEvent::Step { .. })).count();
@@ -227,6 +243,13 @@ esac"#,
     let updated = harness.service.deploy(&harness.agent.id, fly_options(), &[], &ready_report()).await.unwrap();
     assert_eq!(updated.view.deployment.deployed_version_label.as_deref(), Some("v2"));
     assert!(!updated.view.has_changes);
+    assert_eq!(updated.api_key, None, "a redeploy reports no key");
+    assert!(updated.view.has_api_key);
+    assert_eq!(
+        harness.credentials.read_deploy_secret(&format!("key:{}", harness.agent.id)).unwrap().as_deref(),
+        Some("grk_shown_once"),
+        "the saved key is kept when a redeploy reports none"
+    );
 
     let history = harness.service.list_versions(&harness.agent.id).await.unwrap();
     assert_eq!(history.iter().map(|entry| entry.label.as_str()).collect::<Vec<_>>(), ["v2", "v1"]);
@@ -251,6 +274,154 @@ esac"#,
 
 #[cfg(unix)]
 #[tokio::test]
+async fn a_deploy_that_failed_after_storing_its_key_keeps_the_key_and_says_it_exists() {
+    let mut harness = harness(FLOW);
+    let folder = tempfile::tempdir().unwrap();
+    let script = r#"echo '{"type":"step","step":"secrets","status":"done","message":"set GRAPHRT_API_KEY"}'
+echo '{"type":"step","step":"checking","status":"failed","message":"readyz critical"}'
+echo '{"type":"api_key","api_key":"grk_live_after_failure"}'
+echo '{"type":"error","code":"health_check_failed","message":"GET /readyz did not pass within 120 s"}'
+exit 1"#;
+    harness.service = harness.service.with_cli_executable(fake_cli(folder.path(), script));
+    harness.credentials.set_api_key(ModelProvider::Openai, "sk").unwrap();
+    harness.credentials.set_deploy_secret("account:fly", r#"{"token":"t"}"#).unwrap();
+
+    let error = harness.service.deploy(&harness.agent.id, fly_options(), &[], &ready_report()).await.unwrap_err();
+    let message = error.to_string();
+    assert!(message.contains("was created on Fly.io") && message.contains("access key is saved"), "{message}");
+    assert!(message.contains("GET /readyz did not pass"), "{message}");
+    assert!(!message.contains("grk_live_after_failure"), "the key is never in a message");
+    assert_eq!(
+        harness.credentials.read_deploy_secret(&format!("key:{}", harness.agent.id)).unwrap().as_deref(),
+        Some("grk_live_after_failure")
+    );
+    let record = harness.db.get_deployment(&harness.agent.id).unwrap().unwrap();
+    assert_eq!(record.status, DeploymentStatus::Failed);
+    assert_eq!(record.status_message.as_deref(), Some(message.as_str()));
+    let logged = harness.events.0.lock().unwrap().clone();
+    assert!(!format!("{logged:?}").contains("grk_live_after_failure"), "nor in the technical log");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn making_a_new_key_redeploys_the_online_version_with_rotation() {
+    let mut harness = harness(FLOW);
+    let folder = tempfile::tempdir().unwrap();
+    let record_path = folder.path().join("calls.txt");
+    let script = format!(
+        r#"echo "ARGS $*" >> "{record}"
+case "$*" in
+  *--rotate-api-key*) echo '{{"type":"result","action":"deploy","url":"https://menu.fly.dev","version":"v1","app":"menu","workflow":"agent","api_key":"grk_rotated"}}' ;;
+  *) echo '{{"type":"result","action":"deploy","url":"https://menu.fly.dev","version":"v1","app":"menu","workflow":"agent","api_key":"grk_first"}}' ;;
+esac"#,
+        record = record_path.display()
+    );
+    harness.service = harness.service.with_cli_executable(fake_cli(folder.path(), &script));
+    harness.credentials.set_api_key(ModelProvider::Openai, "sk").unwrap();
+    harness.credentials.set_deploy_secret("account:fly", r#"{"token":"t"}"#).unwrap();
+
+    assert!(harness.service.rotate_api_key(&harness.agent.id).await.is_err(), "not online yet");
+    let custom = DeployOptions { image: Some("ghcr.io/acme/graphrt:0.6.0".into()), ..fly_options() };
+    harness.service.deploy(&harness.agent.id, custom, &[], &ready_report()).await.unwrap();
+    // A later change is not shipped by a key rotation: it keeps the online version.
+    harness.db.update_agent_flow(&harness.agent.id, &FLOW.replace("hello", "changed"), "Changed").unwrap();
+
+    let rotated = harness.service.rotate_api_key(&harness.agent.id).await.unwrap();
+    assert_eq!(rotated.api_key, "grk_rotated");
+    assert_eq!(rotated.problem, None);
+    assert!(rotated.view.has_changes, "the online copy still runs the older version");
+    assert_eq!(
+        harness.credentials.read_deploy_secret(&format!("key:{}", harness.agent.id)).unwrap().as_deref(),
+        Some("grk_rotated")
+    );
+    let calls = std::fs::read_to_string(&record_path).unwrap();
+    let rotation = calls.lines().find(|line| line.contains("--rotate-api-key")).unwrap();
+    assert!(rotation.contains("--version v1") && rotation.contains("--mode scale-to-zero"), "{rotation}");
+    assert!(rotation.contains("--image ghcr.io/acme/graphrt:0.6.0"), "the same image: {rotation}");
+    assert!(!rotation.contains("--secret"), "the other secrets stay on Fly.io: {rotation}");
+    assert_eq!(
+        harness.service.review(&harness.agent, &[], DeployProvider::Fly).unwrap().image.as_deref(),
+        Some("ghcr.io/acme/graphrt:0.6.0")
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_rotation_that_failed_after_storing_the_key_still_shows_it() {
+    let mut harness = harness(FLOW);
+    let folder = tempfile::tempdir().unwrap();
+    let script = r#"case "$*" in
+  *--rotate-api-key*)
+    echo '{"type":"api_key","api_key":"grk_rotated_live"}'
+    echo '{"type":"error","code":"start_timeout","message":"the Machine did not boot"}'
+    exit 1 ;;
+  *) echo '{"type":"result","action":"deploy","url":"https://menu.fly.dev","version":"v1","app":"menu","workflow":"agent","api_key":"grk_first"}' ;;
+esac"#;
+    harness.service = harness.service.with_cli_executable(fake_cli(folder.path(), script));
+    harness.credentials.set_api_key(ModelProvider::Openai, "sk").unwrap();
+    harness.credentials.set_deploy_secret("account:fly", r#"{"token":"t"}"#).unwrap();
+    harness.service.deploy(&harness.agent.id, fly_options(), &[], &ready_report()).await.unwrap();
+
+    let rotated = harness.service.rotate_api_key(&harness.agent.id).await.unwrap();
+    assert_eq!(rotated.api_key, "grk_rotated_live");
+    assert!(rotated.problem.as_deref().is_some_and(|problem| problem.contains("did not boot")));
+    assert_eq!(
+        harness.credentials.read_deploy_secret(&format!("key:{}", harness.agent.id)).unwrap().as_deref(),
+        Some("grk_rotated_live")
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn status_from_the_cli_explains_what_is_wrong() {
+    let mut harness = harness(FLOW);
+    let folder = tempfile::tempdir().unwrap();
+    let status = include_str!("contract/fixtures/status-offline.json").trim();
+    let script = format!("echo '{status}'");
+    harness.service = harness.service.with_cli_executable(fake_cli(folder.path(), &script));
+    harness.credentials.set_deploy_secret("account:fly", r#"{"token":"t"}"#).unwrap();
+    harness.db.save_deployment(&online_record(&harness.agent.id)).unwrap();
+    let view = harness.service.refresh_status(&harness.agent.id).await.unwrap().unwrap();
+    assert_eq!(view.deployment.status, DeploymentStatus::NeedsAttention);
+    assert!(view.deployment.status_message.as_deref().is_some_and(|message| message.starts_with("Nothing is online")));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn removing_with_an_app_token_says_an_org_token_is_needed() {
+    let mut harness = harness(FLOW);
+    let folder = tempfile::tempdir().unwrap();
+    let script = r#"echo '{"type":"error","code":"unauthorized","message":"Fly refused the token (403)"}'
+exit 1"#;
+    harness.service = harness.service.with_cli_executable(fake_cli(folder.path(), script));
+    harness.credentials.set_deploy_secret("account:fly", r#"{"token":"t"}"#).unwrap();
+    harness.db.save_deployment(&online_record(&harness.agent.id)).unwrap();
+    let error = harness.service.manage(&harness.agent.id, ManageAction::Remove).await.unwrap_err();
+    assert!(error.to_string().contains("fly tokens create org"), "{error}");
+    assert!(harness.db.get_deployment(&harness.agent.id).unwrap().is_some(), "nothing is forgotten");
+}
+
+fn online_record(agent_id: &str) -> DeploymentRecord {
+    DeploymentRecord {
+        agent_id: agent_id.to_owned(),
+        provider: DeployProvider::Fly,
+        deployment_name: "menu".into(),
+        app: Some("menu".into()),
+        url: Some("https://menu.fly.dev".into()),
+        region: Some("iad".into()),
+        mode: DeployMode::AlwaysOn,
+        deployed_version_label: Some("v1".into()),
+        deployed_agent_version: Some(1),
+        status: DeploymentStatus::Working,
+        status_message: None,
+        status_checked_at: None,
+        created_at: String::new(),
+        updated_at: String::new(),
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
 async fn a_failed_first_deploy_is_recorded_with_its_plain_message() {
     let mut harness = harness(FLOW);
     let folder = tempfile::tempdir().unwrap();
@@ -269,25 +440,7 @@ exit 1"#;
 #[tokio::test]
 async fn health_checks_update_the_status_and_online_runs_are_listed() {
     let harness = harness(FLOW);
-    harness
-        .db
-        .save_deployment(&DeploymentRecord {
-            agent_id: harness.agent.id.clone(),
-            provider: DeployProvider::Fly,
-            deployment_name: "menu".into(),
-            app: Some("menu".into()),
-            url: Some("https://menu.fly.dev".into()),
-            region: Some("iad".into()),
-            mode: DeployMode::AlwaysOn,
-            deployed_version_label: Some("v1".into()),
-            deployed_agent_version: Some(1),
-            status: DeploymentStatus::Working,
-            status_message: None,
-            status_checked_at: None,
-            created_at: String::new(),
-            updated_at: String::new(),
-        })
-        .unwrap();
+    harness.db.save_deployment(&online_record(&harness.agent.id)).unwrap();
     let view = harness.service.refresh_status(&harness.agent.id).await.unwrap().unwrap();
     assert_eq!(view.deployment.status, DeploymentStatus::NeedsAttention);
     harness.http.answer("https://menu.fly.dev/healthz", 200, "ok");

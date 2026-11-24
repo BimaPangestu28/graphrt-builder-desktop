@@ -11,7 +11,7 @@ use crate::deploy::compatibility::{CompatibilityFix, CompatibilityReport, WHATSA
 use crate::deploy::providers::{DeployAccountInput, DeployProvider};
 use crate::deploy::{
     CliInfo, DeployAccount, DeployOptions, DeployOutcome, DeployReview, DeployedVersion, DeploymentView, OnlineRuns,
-    OwnServerView,
+    OwnServerView, RotatedApiKey,
 };
 use crate::error::AppResult;
 use crate::plugins::requirements::PluginRequirement;
@@ -129,6 +129,12 @@ pub async fn manage_agent_deployment(
     action: ManageAction,
 ) -> AppResult<Option<DeploymentView>> {
     state.deploy.manage(agent_id.trim(), action).await
+}
+
+/// "Make a new key" (Connection details for developers): the new key, shown once.
+#[tauri::command]
+pub async fn rotate_deployment_api_key(state: State<'_, AppState>, agent_id: String) -> AppResult<RotatedApiKey> {
+    state.deploy.rotate_api_key(agent_id.trim()).await
 }
 
 #[tauri::command]

@@ -1,5 +1,5 @@
 import type { BadgeTone, StatusDotTone } from '@/components/ui'
-import type { CliInfo, DeployEvent, DeployMode, DeploymentStatus, DeployStep, ServerArea, StepStatus } from '@/api/deployTypes'
+import { onlineDeployNotAvailableMessage, type CliInfo, type DeployEvent, type DeployMode, type DeploymentStatus, type DeployStep, type ServerArea, type StepStatus } from '@/api/deployTypes'
 
 /** Plain words for every "Put it online" state; no technical terms outside Advanced. */
 
@@ -80,7 +80,7 @@ export function formatDownloadSize(bytes: number | null): string | null {
 
 /** The one line about the graphrt tools on Review. */
 export function describeCliNeed(cli: CliInfo): string {
-  if (cli.status === 'not_available') return 'Online deploy is not available yet in this version of graphrt. It comes with an update.'
+  if (cli.status === 'not_available') return onlineDeployNotAvailableMessage
   if (cli.status === 'installed') return 'The graphrt tools are ready on this computer.'
   const size = formatDownloadSize(cli.downloadSizeBytes)
   return `Online deploy needs the graphrt tools${size ? ` (download ~${size})` : ''}. First time only, from GitHub, checked before use.`

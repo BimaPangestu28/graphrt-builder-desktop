@@ -1,0 +1,1 @@
+{"type":"result","action":"status","app":"support-bot","url":"https://support-bot.fly.dev","status":"offline","current_version":null,"workflow":null,"mode":null,"last_deployed_at":null,"machines":[{"id":"148e…","name":"graphrt-v1-1a2b3c4d","state":"failed","region":"ams","version":null,"role":null,"checks":[{"name":"readyz","status":"critical"}]}]}

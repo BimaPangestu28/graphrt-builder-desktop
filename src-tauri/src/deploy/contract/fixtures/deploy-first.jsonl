@@ -1,0 +1,9 @@
+{"type":"step","step":"preparing","status":"running","message":"Preparing Fly app support-bot"}
+{"type":"step","step":"preparing","status":"done","message":"created app support-bot; 2 public IP(s) allocated"}
+{"type":"step","step":"secrets","status":"running","message":"Writing Fly secrets"}
+{"type":"step","step":"secrets","status":"done","message":"set GRAPHRT_API_KEY, OPENAI_API_KEY"}
+{"type":"step","step":"starting","status":"running","message":"Starting version v1"}
+{"type":"step","step":"starting","status":"done","message":"created Machine 148e… and booted it"}
+{"type":"step","step":"checking","status":"running","message":"Waiting for GET /readyz to pass"}
+{"type":"step","step":"checking","status":"done","message":"version v1 is live; 0 version(s) demoted, 0 pruned"}
+{"type":"result","action":"deploy","url":"https://support-bot.fly.dev","version":"v1","app":"support-bot","workflow":"support","api_key":"grk_0123456789abcdef0123456789abcdef0123456789abcdef"}

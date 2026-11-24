@@ -1,12 +1,15 @@
 # graphrt CLI release archives the desktop downloads on demand for "Put it online"
 # (src-tauri/build.rs compiles them into the app; see src-tauri/src/deploy/cli_release.rs).
 #
-# One line per archive: `<sha256>  <file name>  <size in bytes>`, file names
-# `graphrt-<version>-<target triple>.tar.gz` (`.zip` on Windows) from
-# https://github.com/BimaPangestu28/graphrt/releases/tag/v<version>.
+# Written by `scripts/pin-graphrt-cli.sh <version>` from the release's SHA256SUMS; do not edit
+# by hand. One line per release target: `<sha256>  <asset name>  <size in bytes>`, asset names
+# without the version (https://github.com/BimaPangestu28/graphrt/releases/tag/v<version>):
+#   graphrt-aarch64-apple-darwin.tar.gz       graphrt-x86_64-apple-darwin.tar.gz
+#   graphrt-x86_64-unknown-linux-musl.tar.gz  graphrt-aarch64-unknown-linux-musl.tar.gz
+#   graphrt-x86_64-pc-windows-msvc.zip
+# build.rs refuses a pin that misses any of them.
 #
-# PLACEHOLDER: no graphrt release with `graphrt deploy` exists yet, so
-# scripts/graphrt-cli-version says `unreleased` and no archive is listed. The app then
-# shows "Online deploy is not available yet". When the release exists, set the version
-# and add one line per platform, e.g.:
-# 0123…cdef  graphrt-0.9.0-aarch64-apple-darwin.tar.gz  9437184
+# PLACEHOLDER: no graphrt release with `graphrt deploy --direct` (and its matching
+# ghcr.io/bimapangestu28/graphrt:<version> image) exists yet, so scripts/graphrt-cli-version
+# says `unreleased` and no archive is listed. The app then says online deploy is not
+# available yet.

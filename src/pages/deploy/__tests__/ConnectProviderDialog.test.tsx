@@ -19,6 +19,8 @@ describe('ConnectProviderDialog', () => {
     const { onConnected } = renderDialog('fly')
     expect(screen.getByRole('dialog', { name: 'Connect Fly.io' })).toBeInTheDocument()
     expect(screen.getByText('Sign in or create an account at fly.io')).toBeInTheDocument()
+    expect(screen.getByText(/It needs to be an organization token/)).toBeInTheDocument()
+    expect(screen.getByText(/fly tokens create org <your-org> --expiry 720h/)).toBeInTheDocument()
     await userEvent.type(screen.getByLabelText('Paste your access key'), 'short')
     await userEvent.click(screen.getByRole('button', { name: 'Connect' }))
     expect(await screen.findByRole('alert')).toHaveTextContent("doesn't look like a Fly.io access key")
