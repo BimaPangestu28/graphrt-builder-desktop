@@ -58,6 +58,9 @@ export function hasAcceptedExtension(name: string, extensions: readonly string[]
 
 function guessKind(rawItem: RawDroppedItem, accept: FileDropAccept): DroppedItem['kind'] {
   if (rawItem.isFolder !== undefined) return rawItem.isFolder ? 'folder' : 'file'
+  // Only one kind fits: let the backend tell a folder named like a file (or the reverse).
+  if (accept.folders !== true) return 'file'
+  if (accept.files === false) return 'folder'
   const name = lastPathSegment(rawItem.path)
   if (accept.extensions?.length && hasAcceptedExtension(name, accept.extensions)) return 'file'
   return fileExtensionPattern.test(name) && !name.startsWith('.') ? 'file' : 'folder'

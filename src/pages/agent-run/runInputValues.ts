@@ -5,12 +5,16 @@ import type { FlowInput } from '@/api/types'
  * Form state of a flow's start inputs (screen 06): the control each graphrt input type gets,
  * the values a form starts with (the last run's inputs, else the workflow default) and the
  * typed inputs a run starts with. Text and number values are kept as strings, checkboxes as
- * booleans.
+ * booleans, a file as its path and a file list as a list of paths (absolute in the desktop app,
+ * which turns them into graphrt files; plain names in the browser preview).
  */
 
-export type RunInputControl = 'text' | 'textarea' | 'number' | 'checkbox' | 'select' | 'json' | 'unsupported'
+export type RunInputControl = 'text' | 'textarea' | 'number' | 'checkbox' | 'select' | 'json' | 'file' | 'file-list'
 
-export type RunInputValues = Record<string, string | boolean>
+/** One input's form value: text, a checkbox, or the chosen file paths of a file list. */
+export type RunInputValue = string | boolean | string[]
+
+export type RunInputValues = Record<string, RunInputValue>
 
 const controlByInputType: Record<string, RunInputControl> = {
   'text-input': 'text',
@@ -25,8 +29,9 @@ const controlByInputType: Record<string, RunInputControl> = {
   json: 'json',
   object: 'json',
   array: 'json',
-  file: 'unsupported',
-  'file-list': 'unsupported',
+  file: 'file',
+  'file-list': 'file-list',
+  'array[file]': 'file-list',
 }
 
 /** The control an input is filled with, from its graphrt `type` (unknown types are text). */
@@ -34,9 +39,16 @@ export function controlForInput(input: FlowInput): RunInputControl {
   return controlByInputType[(input.inputType ?? 'text-input').toLowerCase()] ?? 'text'
 }
 
-function toFormValue(input: FlowInput, rawValue: unknown): string | boolean {
+function toFileListValue(rawValue: unknown): string[] {
+  if (typeof rawValue === 'string') return rawValue === '' ? [] : [rawValue]
+  return Array.isArray(rawValue) ? rawValue.filter((item): item is string => typeof item === 'string') : []
+}
+
+function toFormValue(input: FlowInput, rawValue: unknown): RunInputValue {
   const control = controlForInput(input)
   if (control === 'checkbox') return rawValue === true
+  if (control === 'file-list') return toFileListValue(rawValue)
+  if (control === 'file') return typeof rawValue === 'string' ? rawValue : ''
   if (rawValue === null || rawValue === undefined) return control === 'select' ? (input.options?.[0] ?? '') : ''
   if (typeof rawValue === 'string') return rawValue
   return control === 'json' ? JSON.stringify(rawValue, null, 2) : String(rawValue)
@@ -63,11 +75,17 @@ export interface ParsedRunInputs {
   problems: string[]
 }
 
-function parseInputValue(input: FlowInput, formValue: string | boolean | undefined): { value?: unknown; problem?: string } {
+function parseFileValue(input: FlowInput, formValue: RunInputValue | undefined): { value?: unknown; problem?: string } {
+  const paths = (Array.isArray(formValue) ? formValue : typeof formValue === 'string' ? [formValue] : []).map((path) => path.trim()).filter(Boolean)
+  if (paths.length === 0) return input.required ? { problem: `Choose ${controlForInput(input) === 'file' ? 'a file' : 'files'} for ${input.label}` } : {}
+  return { value: controlForInput(input) === 'file' ? paths[0] : paths }
+}
+
+function parseInputValue(input: FlowInput, formValue: RunInputValue | undefined): { value?: unknown; problem?: string } {
   const control = controlForInput(input)
   if (control === 'checkbox') return { value: formValue === true }
+  if (control === 'file' || control === 'file-list') return parseFileValue(input, formValue)
   const text = typeof formValue === 'string' ? formValue.trim() : ''
-  if (control === 'unsupported') return input.required ? { problem: `${input.label} needs a file, which a test cannot give yet` } : {}
   if (text === '') return input.required ? { problem: `Fill in ${input.label}` } : {}
   if (control === 'number') {
     const numberValue = Number(text)
