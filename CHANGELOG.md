@@ -7,6 +7,10 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ## [Unreleased]
 
+### Changed
+
+- **Put it online is available**: the app now pins the graphrt CLI 0.6.0 (with `deploy --direct`) and downloads it, checksum-verified, the first time you put an agent online on Fly.io.
+
 ### Added
 
 - **Drag and drop for every upload**: one shared drop zone ("Drag … here or Choose …", accepted types and size, "Drop to add" while a drag is over it, a message for the wrong type or for several items where one goes, announced in a polite live region; the Choose button opens the same picker as before and works from the keyboard). It is on the Knowledge page, under the sources of a knowledge base (files, or a folder with **Add a folder**), in **Install from folder or archive…** on the Plugins page (a plugin folder or a `.tar.gz` / `.tgz`), and on every File / Files input of the Test form.
