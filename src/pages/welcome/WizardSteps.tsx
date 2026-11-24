@@ -27,9 +27,9 @@ export function StepHeader({ title, description }: { title: string; description?
 }
 
 const welcomePoints = [
-  { icon: 'edit', text: 'Describe a routine task in your own words' },
-  { icon: 'play', text: 'graphrt turns it into an agent you can test' },
-  { icon: 'clock', text: 'Put it on a schedule; it runs right here on your computer' },
+  { icon: 'edit', title: 'Describe it', text: 'Explain a routine task in your own words' },
+  { icon: 'play', title: 'Test it', text: 'graphrt turns it into an agent you can try out' },
+  { icon: 'clock', title: 'Schedule it', text: 'It runs on time, right here on your computer' },
 ] as const
 
 /** Step 1: what graphrt does, in one line, and how long setup takes. */
@@ -39,11 +39,14 @@ export function WelcomeStep() {
       <StepHeader title="Welcome to graphrt" description="graphrt builds AI agents that take routine work off your plate. Setup takes about a minute." />
       <ul className={joinClassNames(choiceGridClassNames(welcomePoints.length), 'list-none')}>
         {welcomePoints.map((point) => (
-          <li key={point.text} className="flex items-center gap-3 rounded-[14px] border border-line p-4 text-[15px] md:flex-col md:items-start">
-            <span aria-hidden="true" className="flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-brand-soft text-brand-strong">
-              <Icon name={point.icon} size={18} />
+          <li key={point.title} className="flex h-full flex-col gap-2 rounded-[14px] border border-line p-4">
+            <span className="flex items-center gap-3">
+              <span aria-hidden="true" className="flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-brand-soft text-brand-strong">
+                <Icon name={point.icon} size={18} />
+              </span>
+              <span className="truncate text-[15px] font-semibold">{point.title}</span>
             </span>
-            {point.text}
+            <span className="text-[13px] leading-normal text-body">{point.text}</span>
           </li>
         ))}
       </ul>
