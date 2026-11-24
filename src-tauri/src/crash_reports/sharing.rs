@@ -163,7 +163,9 @@ pub fn open_issue_in_browser(url: &str) -> AppResult<()> {
 /// @throws AppError::Internal - when the browser cannot be started
 pub(crate) fn open_in_browser(url: &str) -> AppResult<()> {
     let (program, arguments) = browser_command(url);
-    Command::new(program)
+    let mut command = Command::new(program);
+    crate::child_env::apply(&mut command);
+    command
         .args(&arguments)
         .spawn()
         .map(|mut child| {

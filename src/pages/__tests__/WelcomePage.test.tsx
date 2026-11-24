@@ -51,6 +51,21 @@ describe('WelcomePage', () => {
     expect(openPageSpy).toHaveBeenCalledWith('codex-cli')
   })
 
+  it('says a found Codex that does not start, never "Found" with the error as its version', async () => {
+    const statuses = await sampleCredentialsBackend.listProviderStatuses()
+    const problem = 'Found, but it does not start. Run `codex --version` in Terminal to see why'
+    const brokenCodex = statuses.map((status) =>
+      status.provider === 'codex-cli' && status.localCli
+        ? { ...status, localCli: { ...status.localCli, installed: true, version: null, problem, path: '/usr/bin/codex' } }
+        : status,
+    )
+    vi.spyOn(sampleCredentialsBackend, 'listProviderStatuses').mockResolvedValue(brokenCodex)
+    renderWelcomePage()
+    expect(await screen.findByText(problem)).toBeInTheDocument()
+    expect(screen.queryByText(/^Found ·.*LIBSYSTEMD/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Sign-in not confirmed yet')).not.toBeInTheDocument()
+  })
+
   it('turns Claude Code on, makes its CLI default model the default and remembers the choice', async () => {
     const setLocalCliEnabledSpy = vi.spyOn(sampleCredentialsBackend, 'setLocalCliEnabled')
     const setDefaultModelSpy = vi.spyOn(sampleCredentialsBackend, 'setDefaultModel')

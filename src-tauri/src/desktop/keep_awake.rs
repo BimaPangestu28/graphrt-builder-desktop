@@ -160,8 +160,9 @@ mod platform {
             return None;
         }
         let arguments = systemd_inhibit_arguments(std::process::id());
-        let spawned =
-            Command::new("systemd-inhibit").args(&arguments).stdin(Stdio::null()).stdout(Stdio::null()).spawn();
+        let mut command = Command::new("systemd-inhibit");
+        crate::child_env::apply(&mut command);
+        let spawned = command.args(&arguments).stdin(Stdio::null()).stdout(Stdio::null()).spawn();
         match spawned {
             Ok(child) => {
                 log::info!("keeping the computer awake while agents run (systemd-inhibit)");

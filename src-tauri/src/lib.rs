@@ -34,6 +34,7 @@ pub mod agent_graph;
 pub mod agent_steps;
 pub mod chains;
 pub mod chatbot_setup;
+pub mod child_env;
 pub mod commands;
 pub mod conversations;
 pub mod crash_reports;

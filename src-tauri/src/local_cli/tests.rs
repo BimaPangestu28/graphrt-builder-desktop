@@ -406,6 +406,33 @@ fn sign_in_statuses_are_read_without_the_account_details() {
     assert_eq!(detect::parse_login_shell_path("Welcome!\n__GRAPHRT_PATH__/a:/b"), Some("/a:/b".into()));
 }
 
+#[test]
+fn version_is_read_only_from_a_successful_run() {
+    let run = |success: bool, stdout: &str, stderr: &str| super::process::QuickOutput {
+        success,
+        stdout: stdout.into(),
+        stderr: stderr.into(),
+    };
+    let problem = Some("Found, but it does not start. Run `codex --version` in Terminal to see why".to_owned());
+
+    assert_eq!(
+        detect::read_version("codex", Some(&run(true, "\ncodex-cli 0.142.2\n", ""))),
+        (Some("codex-cli 0.142.2".into()), None)
+    );
+    // Some CLIs print their version on stderr.
+    assert_eq!(
+        detect::read_version("codex", Some(&run(true, "", "codex-cli 0.142.2"))),
+        (Some("codex-cli 0.142.2".into()), None)
+    );
+    assert_eq!(detect::read_version("codex", Some(&run(true, "", ""))), (None, None));
+    // A loader error is never shown as the version.
+    let loader_error = "/usr/bin/env: /tmp/.mount_x/usr/lib/libsystemd.so.0: version `LIBSYSTEMD_254' not found";
+    assert_eq!(detect::read_version("codex", Some(&run(false, "", loader_error))), (None, problem.clone()));
+    assert_eq!(detect::read_version("codex", Some(&run(false, "codex-cli 0.142.2", ""))), (None, problem.clone()));
+    // Could not start, or timed out.
+    assert_eq!(detect::read_version("codex", None), (None, problem));
+}
+
 /// Looks for the real CLIs of this computer (version, help, sign-in status; no prompt is sent).
 /// Run by hand: `cargo test real_cli_detection -- --ignored --nocapture`.
 #[test]
@@ -470,6 +497,26 @@ esac"#;
         let codex = detect::detect(LocalCli::Codex, &locator);
         assert_eq!(codex.version.as_deref(), Some("codex-cli 0.142.2"));
         assert_eq!(codex.sign_in, SignInState::SignedOut);
+    }
+
+    #[test]
+    fn detection_of_a_binary_that_cannot_start_reports_a_problem_not_a_version() {
+        let bin_dir = tempfile::tempdir().unwrap();
+        // What `/usr/bin/codex` printed under the AppImage's LD_LIBRARY_PATH (Ubuntu 26.04).
+        write_script(
+            bin_dir.path(),
+            "codex",
+            r#"echo "/usr/bin/env: /tmp/.mount_graphremPBnj/usr/lib/libsystemd.so.0: version \`LIBSYSTEMD_254' not found (required by /usr/bin/env)" >&2; exit 1"#,
+        );
+        let locator = Locator { path_var: Some(bin_dir.path().as_os_str().to_owned()), ..Locator::default() };
+
+        let codex = detect::detect(LocalCli::Codex, &locator);
+        assert_eq!(codex.binary.as_deref(), Some(bin_dir.path().join("codex").as_path()));
+        assert_eq!(codex.version, None);
+        let problem = codex.problem.clone().unwrap();
+        assert_eq!(problem, "Found, but it does not start. Run `codex --version` in Terminal to see why");
+        let status = super::super::status_from(LocalCli::Codex, false, &codex);
+        assert!(status.installed && status.version.is_none() && status.problem.as_deref() == Some(problem.as_str()));
     }
 
     #[test]

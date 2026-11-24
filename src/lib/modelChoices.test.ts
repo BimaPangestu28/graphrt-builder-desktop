@@ -45,13 +45,13 @@ describe('local CLI models in pickers', () => {
     provider: 'claude-code-cli',
     configured: true,
     baseUrl: null,
-    localCli: { enabled: true, installed: true, version: '2.1.330 (Claude Code)', path: '/Users/you/.local/bin/claude', signIn: 'signed_in', installUrl: 'https://docs.claude.com/en/docs/claude-code/setup' },
+    localCli: { enabled: true, installed: true, version: '2.1.330 (Claude Code)', problem: null, path: '/Users/you/.local/bin/claude', signIn: 'signed_in', installUrl: 'https://docs.claude.com/en/docs/claude-code/setup' },
   }
   const codexOffStatus: ProviderStatus = {
     provider: 'codex-cli',
     configured: false,
     baseUrl: null,
-    localCli: { enabled: false, installed: true, version: 'codex-cli 0.142.2', path: '/usr/local/bin/codex', signIn: 'signed_in', installUrl: 'https://developers.openai.com/codex/cli' },
+    localCli: { enabled: false, installed: true, version: 'codex-cli 0.142.2', problem: null, path: '/usr/local/bin/codex', signIn: 'signed_in', installUrl: 'https://developers.openai.com/codex/cli' },
   }
 
   it('groups a turned-on CLI under its provider with CLI default first, and leaves out one that is off', () => {
@@ -78,13 +78,13 @@ describe('local CLI models in pickers', () => {
       provider: 'gemini-cli',
       configured: enabled,
       baseUrl: null,
-      localCli: { enabled, installed: true, version: '0.71.0', path: '/opt/homebrew/bin/gemini', signIn: 'unknown', installUrl: 'https://github.com/google-gemini/gemini-cli' },
+      localCli: { enabled, installed: true, version: '0.71.0', problem: null, path: '/opt/homebrew/bin/gemini', signIn: 'unknown', installUrl: 'https://github.com/google-gemini/gemini-cli' },
     })
     const cursorMissing: ProviderStatus = {
       provider: 'cursor-cli',
       configured: false,
       baseUrl: null,
-      localCli: { enabled: false, installed: false, version: null, path: null, signIn: 'unknown', installUrl: 'https://cursor.com/docs/cli/installation' },
+      localCli: { enabled: false, installed: false, version: null, problem: null, path: null, signIn: 'unknown', installUrl: 'https://cursor.com/docs/cli/installation' },
     }
     const catalog: ProviderModels[] = [
       { provider: 'gemini-cli', models: [{ id: 'default', displayName: 'CLI default' }, { id: 'flash', displayName: 'Flash (latest)' }], error: null },
