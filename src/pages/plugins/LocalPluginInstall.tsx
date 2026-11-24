@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { installLocalPlugin, pickLocalPluginPath, type LocalPluginPickKind } from '@/api/plugins'
 import type { InstalledPlugin } from '@/api/pluginTypes'
+import { FileDropZone, type FileDropAccept } from '@/components/fileDrop'
 import { Button, buttonClassNames, Spinner } from '@/components/ui'
 import { describeError } from '@/lib/agentDisplay'
 import { pluginDetailPath } from '@/routes'
@@ -16,6 +17,9 @@ type LocalInstallStep =
   | { kind: 'confirmReplace'; path: string }
   | { kind: 'installed'; installedPlugin: InstalledPlugin }
   | { kind: 'failed'; message: string }
+
+/** A plugin folder or a gzipped tarball, like the picker offers. */
+const localPluginDropAccept: FileDropAccept = { extensions: ['tar.gz', 'tgz'], folders: true }
 
 const panelClassNames = 'flex max-w-[720px] flex-col gap-2.5 rounded-[14px] border border-line bg-surface p-4'
 
@@ -77,7 +81,13 @@ function LocalPluginInstallPanel({ onInstalled }: LocalPluginInstallProps) {
   }
   return (
     <section aria-label="Install a plugin from this computer" className={panelClassNames}>
-      <LocalInstallStepContent step={step} onPick={(pickKind) => void pickAndInstall(pickKind)} onReplace={(path) => void install(path, true)} onClose={close} />
+      <LocalInstallStepContent
+        step={step}
+        onPick={(pickKind) => void pickAndInstall(pickKind)}
+        onDropPath={(path) => void install(path, false)}
+        onReplace={(path) => void install(path, true)}
+        onClose={close}
+      />
     </section>
   )
 }
@@ -85,14 +95,16 @@ function LocalPluginInstallPanel({ onInstalled }: LocalPluginInstallProps) {
 interface StepContentProps {
   step: Exclude<LocalInstallStep, { kind: 'closed' }>
   onPick: (pickKind: LocalPluginPickKind) => void
+  /** A folder or archive dropped on the drop zone. */
+  onDropPath: (path: string) => void
   onReplace: (path: string) => void
   onClose: () => void
 }
 
-function LocalInstallStepContent({ step, onPick, onReplace, onClose }: StepContentProps) {
+function LocalInstallStepContent({ step, onPick, onDropPath, onReplace, onClose }: StepContentProps) {
   switch (step.kind) {
     case 'choosing':
-      return <ChoosingStep onPick={onPick} onClose={onClose} />
+      return <ChoosingStep onPick={onPick} onDropPath={onDropPath} onClose={onClose} />
     case 'installing':
       return (
         <p role="status" className="m-0 inline-flex items-center gap-2 text-[13px] text-body">
@@ -116,20 +128,28 @@ function LocalInstallStepContent({ step, onPick, onReplace, onClose }: StepConte
   }
 }
 
-function ChoosingStep({ onPick, onClose }: Pick<StepContentProps, 'onPick' | 'onClose'>) {
+function ChoosingStep({ onPick, onDropPath, onClose }: Pick<StepContentProps, 'onPick' | 'onDropPath' | 'onClose'>) {
   return (
     <>
       <p className="m-0 text-[13px] leading-normal text-body">
-        For plugin developers: pick a plugin folder or a <code className="font-mono text-[12px]">.tar.gz</code> archive. graphrt checks its files like a catalog plugin, but nobody has reviewed the code. It is labelled Local · not reviewed,
+        For plugin developers: drop or pick a plugin folder or a <code className="font-mono text-[12px]">.tar.gz</code> archive. graphrt checks its files like a catalog plugin, but nobody has reviewed the code. It is labelled Local · not reviewed,
         starts untrusted and never updates by itself.
       </p>
+      <FileDropZone
+        compact
+        itemDescription="a plugin folder or .tar.gz archive"
+        accept={localPluginDropAccept}
+        onDrop={([droppedItem]) => onDropPath(droppedItem.path)}
+        chooseLabel="Choose folder…"
+        onChoose={() => onPick('folder')}
+        secondaryActions={
+          <Button variant="secondary" size="sm" onClick={() => onPick('archive')}>
+            Choose .tar.gz…
+          </Button>
+        }
+        hint="A folder holding graphrt-plugin.json, or a .tar.gz / .tgz archive of one"
+      />
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" onClick={() => onPick('folder')}>
-          Choose folder…
-        </Button>
-        <Button variant="secondary" size="sm" onClick={() => onPick('archive')}>
-          Choose .tar.gz…
-        </Button>
         <Button variant="ghost" size="sm" onClick={onClose}>
           Cancel
         </Button>

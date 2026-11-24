@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { resetSampleKnowledge, sampleKnowledgeBackend } from '@/api/sampleBackend/knowledge'
 import { agentPath, knowledgeDetailPattern, routePaths } from '@/routes'
+import { centerOf, createFakeWindowDragDrop, placeElement } from '@/test/fileDropTestUtils'
 import { KnowledgeDetailPage } from '../KnowledgeDetailPage'
 
 function renderKnowledgeDetail(path: string = routePaths.knowledgeDetail) {
@@ -53,6 +54,31 @@ describe('KnowledgeDetailPage', () => {
     expect(within(newRow).getByText(/Reading…/)).toBeInTheDocument()
     await waitFor(() => expect(within(newRow).getByText('Ready')).toBeInTheDocument(), { timeout: 2000 })
     expect(within(newRow).getByText('24')).toBeInTheDocument()
+  })
+
+  it('adds files and a folder dropped on the sources drop zone, leaving out unreadable types', async () => {
+    const addSourceSpy = vi.spyOn(sampleKnowledgeBackend, 'addKnowledgeSource')
+    const fakeWindow = createFakeWindowDragDrop()
+    render(
+      <fakeWindow.Provider>
+        <MemoryRouter initialEntries={[routePaths.knowledgeDetail]}>
+          <Routes>
+            <Route path={knowledgeDetailPattern} element={<KnowledgeDetailPage />} />
+          </Routes>
+        </MemoryRouter>
+      </fakeWindow.Provider>,
+    )
+    const table = await findSourcesTable()
+    const dropZone = screen.getByRole('group', { name: 'Drop files or a folder' })
+    const zoneBox = { left: 30, top: 400, width: 600, height: 120 }
+    placeElement(dropZone, zoneBox)
+
+    fakeWindow.drop(['/Users/me/Menu December.pdf', '/Users/me/Office', '/Users/me/setup.exe'], centerOf(zoneBox))
+    expect(await within(table).findByText('Menu December.pdf')).toBeInTheDocument()
+    expect(addSourceSpy).toHaveBeenCalledWith('menu-and-prices', 'file', '/Users/me/Menu December.pdf')
+    expect(addSourceSpy).toHaveBeenCalledWith('menu-and-prices', 'folder', '/Users/me/Office')
+    expect(addSourceSpy).toHaveBeenCalledTimes(2)
+    expect(dropZone).toHaveTextContent(/setup\.exe is not a folder or a \.pdf/)
   })
 
   it('adds a website link as a source', async () => {

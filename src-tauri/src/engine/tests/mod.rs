@@ -1,4 +1,5 @@
 mod approvals;
+mod chosen_file_inputs;
 mod event_storage;
 mod review_flow;
 mod trusted_lookups;

@@ -7,6 +7,16 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ## [Unreleased]
 
+### Added
+
+- **Drag and drop for every upload**: one shared drop zone ("Drag … here or Choose …", accepted types and size, "Drop to add" while a drag is over it, a message for the wrong type or for several items where one goes, announced in a polite live region; the Choose button opens the same picker as before and works from the keyboard). It is on the Knowledge page, under the sources of a knowledge base (files, or a folder with **Add a folder**), in **Install from folder or archive…** on the Plugins page (a plugin folder or a `.tar.gz` / `.tgz`), and on every File / Files input of the Test form.
+- In the desktop app only the drop zone under the pointer reacts: Tauri reports drags for the whole window, so each zone's rectangle is hit-tested and the drop goes to the zone under the cursor (the smallest when they overlap). Drops elsewhere on the window are ignored.
+- **File and Files inputs can be tested**: the Test form takes files for `file` / `file-list` start inputs (picked or dropped) instead of saying a test cannot give them. The app sends their paths; `start_run` checks each one (absolute, an existing regular file, at most 50 MB) and hands the run a graphrt `local_file`. Runs read such files through a resolver that only opens files the user chose; schedules and chains, whose inputs may come from model output, never turn text into files.
+
+### Changed
+
+- Dropping files anywhere on the Knowledge and knowledge base windows no longer adds them; drop them on the drop zone.
+
 ## [0.1.6] - 2026-11-23
 
 ### Added

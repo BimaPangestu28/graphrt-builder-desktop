@@ -122,31 +122,6 @@ export async function pickKnowledgeFolder(title: string): Promise<string | null>
   return typeof picked === 'string' ? picked : null
 }
 
-/**
- * Calls `onPathsDropped` when files or folders are dropped on the app window (desktop only;
- * the browser preview uses HTML drag and drop instead). Returns an unsubscribe function.
- */
-export async function subscribeToDroppedPaths(onPathsDropped: (paths: string[]) => void): Promise<() => void> {
-  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return () => {}
-  const { getCurrentWebview } = await import('@tauri-apps/api/webview')
-  return getCurrentWebview().onDragDropEvent((event) => {
-    if (event.payload.type === 'drop' && event.payload.paths.length > 0) onPathsDropped(event.payload.paths)
-  })
-}
-
-/**
- * Guesses whether a dropped or picked path is a file (it has a known extension) or a folder.
- *
- * @example
- * guessSourceKind('/Users/me/Menu.pdf') // 'file'
- * guessSourceKind('/Users/me/Documents/Office') // 'folder'
- */
-export function guessSourceKind(path: string): KnowledgeSourceKind {
-  const lastSegment = path.split(/[\\/]/).pop() ?? ''
-  const extension = lastSegment.includes('.') ? lastSegment.split('.').pop()?.toLowerCase() ?? '' : ''
-  return (SUPPORTED_KNOWLEDGE_EXTENSIONS as readonly string[]).includes(extension) ? 'file' : 'folder'
-}
-
 /** True for text that looks like an http(s) link. */
 export function isWebLink(text: string): boolean {
   return /^https?:\/\/\S+$/i.test(text.trim())

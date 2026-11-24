@@ -1,13 +1,15 @@
-import { useEffect, useRef, useState, type DragEvent } from 'react'
+import { useState } from 'react'
 import { AppShell, PageFrame, PageTitleBlock } from '@/components/layout'
 import { Icon } from '@/components/ui'
-import { addKnowledgeSource, createKnowledgeBase, guessSourceKind, isWebLink, subscribeToDroppedPaths } from '@/api/knowledge'
+import { addKnowledgeSource, createKnowledgeBase, isWebLink } from '@/api/knowledge'
+import { FileDropZone } from '@/components/fileDrop'
 import type { KnowledgeSourceKind } from '@/api/knowledgeTypes'
 import { useKnowledgeBases, useKnowledgeSearch } from '@/hooks/useKnowledge'
 import { AddLinkForm } from './knowledge/AddLinkForm'
 import { compactButtonClassNames } from './knowledge/FormControls'
 import { KnowledgeBaseCard } from './knowledge/KnowledgeBaseCard'
 import { PassageMatch, SearchFieldIcon } from './knowledge/PassageMatch'
+import { knowledgeDropAccept, knowledgeDropHint } from './knowledge/knowledgeDrop'
 import { useSourcePicker } from './knowledge/useSourcePicker'
 import { toError } from '@/lib/errors'
 
@@ -69,14 +71,14 @@ function KnowledgeSearchPanel() {
 /**
  * Screen 17 · Knowledge.
  * Every knowledge base agents and chatbots can look things up in, as cards linking to the
- * detail screen (18). "New knowledge base", the drop zone (click, drop or paste a link) and
+ * detail screen (18). "New knowledge base", the drop zone (drop files or a folder, choose files
+ * or paste a link) and
  * the folder/link controls create a knowledge base that starts indexing in the background.
  * The search box searches every knowledge base the way an agent would.
  */
 export function KnowledgePage() {
   const { data: knowledgeBases, error: loadError, isLoading, reload, setData } = useKnowledgeBases()
   const [actionError, setActionError] = useState<string | null>(null)
-  const [isDragging, setIsDragging] = useState(false)
 
   const createFromSources = async (newSources: NewSource[]) => {
     setActionError(null)
@@ -92,36 +94,11 @@ export function KnowledgePage() {
       reload()
     }
   }
-  const createFromSourcesRef = useRef(createFromSources)
-  createFromSourcesRef.current = createFromSources
-
   const { pickFiles, pickFolder, pickerInputs } = useSourcePicker(
     (picked) => void createFromSources(picked.locations.map((location) => ({ kind: picked.kind, location }))),
     (pickError) => setActionError(toError(pickError).message),
     { files: 'Choose files for a new knowledge base', folder: 'Choose a folder for a new knowledge base' },
   )
-
-  useEffect(() => {
-    let unsubscribe: (() => void) | null = null
-    let isMounted = true
-    void subscribeToDroppedPaths((paths) => {
-      void createFromSourcesRef.current(paths.map((path) => ({ kind: guessSourceKind(path), location: path })))
-    }).then((stop) => {
-      if (isMounted) unsubscribe = stop
-      else stop()
-    })
-    return () => {
-      isMounted = false
-      unsubscribe?.()
-    }
-  }, [])
-
-  const handleBrowserDrop = (event: DragEvent<HTMLButtonElement>) => {
-    event.preventDefault()
-    setIsDragging(false)
-    const fileNames = Array.from(event.dataTransfer.files).map((file) => file.name)
-    if (fileNames.length > 0) void createFromSources(fileNames.map((location) => ({ kind: 'file', location })))
-  }
 
   return (
     <AppShell activeNav="knowledge" agents={{ kind: 'list' }}>
@@ -160,24 +137,19 @@ export function KnowledgePage() {
           {(knowledgeBases ?? []).map((knowledgeBase, index) => (
             <KnowledgeBaseCard key={knowledgeBase.id} knowledgeBase={knowledgeBase} isRecentlyOpened={index === 0} />
           ))}
-          <button
-            type="button"
-            onClick={pickFiles}
-            onDragOver={(event) => {
-              event.preventDefault()
-              setIsDragging(true)
-            }}
-            onDragLeave={() => setIsDragging(false)}
-            onDrop={handleBrowserDrop}
+          <FileDropZone
+            itemDescription="files or a folder"
+            accept={knowledgeDropAccept}
+            multiple
+            onDrop={(droppedItems) => void createFromSources(droppedItems.map((item) => ({ kind: item.kind, location: item.path })))}
+            chooseLabel="Choose files…"
+            onChoose={pickFiles}
+            hint={`${knowledgeDropHint}, or paste a website link`}
             onPaste={(event) => {
               const pastedText = event.clipboardData.getData('text')
               if (isWebLink(pastedText)) void createFromSources([{ kind: 'url', location: pastedText.trim() }])
             }}
-            className={`flex min-h-[150px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-[14px] border border-dashed border-line-heavy p-[18px] text-[14px] font-medium text-ink-2 hover:bg-canvas ${isDragging ? 'bg-canvas' : 'bg-subtle'}`}
-          >
-            <span>Drop files, a folder, or paste a link</span>
-            <span className="text-[12px] font-normal text-muted">PDF, Word, Excel, CSV, Markdown, text and websites</span>
-          </button>
+          />
         </div>
         <div className="flex flex-wrap items-start gap-3">
           <button type="button" onClick={pickFolder} className={compactButtonClassNames('secondary', 'h-10')}>

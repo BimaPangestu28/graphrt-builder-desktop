@@ -1,7 +1,8 @@
 import { useId, useState, type FormEvent } from 'react'
 import type { RunInputs } from '@/api/runReviewTypes'
 import type { FlowInput } from '@/api/types'
-import { controlForInput, initialRunInputValues, parseRunInputValues, type RunInputValues } from './runInputValues'
+import { RunFileInput } from './RunFileInput'
+import { controlForInput, initialRunInputValues, parseRunInputValues, type RunInputValue, type RunInputValues } from './runInputValues'
 
 interface RunInputsFormProps {
   inputs: FlowInput[]
@@ -14,7 +15,7 @@ interface RunInputsFormProps {
 const fieldClassNames =
   'box-border w-full rounded-[10px] border border-line-strong bg-surface px-3 text-[14px] text-ink outline-none focus:border-ink'
 
-function InputControl({ input, value, onChange }: { input: FlowInput; value: string | boolean; onChange: (value: string | boolean) => void }) {
+function InputControl({ input, value, onChange }: { input: FlowInput; value: RunInputValue; onChange: (value: RunInputValue) => void }) {
   const inputId = useId()
   const control = controlForInput(input)
   const labelText = input.required ? input.label : `${input.label} (optional)`
@@ -25,6 +26,20 @@ function InputControl({ input, value, onChange }: { input: FlowInput; value: str
         <input type="checkbox" checked={value === true} onChange={(event) => onChange(event.target.checked)} className="size-[18px] cursor-pointer accent-ink" />
         {labelText}
       </label>
+    )
+  }
+  if (control === 'file' || control === 'file-list') {
+    const paths = Array.isArray(value) ? value : typeof value === 'string' && value !== '' ? [value] : []
+    return (
+      <div role="group" aria-label={labelText} className="flex flex-col gap-1.5">
+        <span className="text-[12px] font-medium text-ink-2">{labelText}</span>
+        <RunFileInput
+          label={input.label}
+          multiple={control === 'file-list'}
+          paths={paths}
+          onChange={(nextPaths) => onChange(control === 'file' ? (nextPaths[0] ?? '') : nextPaths)}
+        />
+      </div>
     )
   }
   const textValue = typeof value === 'string' ? value : ''
@@ -63,7 +78,6 @@ function InputControl({ input, value, onChange }: { input: FlowInput; value: str
           className={`h-10 ${fieldClassNames}`}
         />
       )}
-      {control === 'unsupported' && <span className="text-[13px] text-body">This input takes a file, which a test cannot give yet</span>}
     </div>
   )
 }
