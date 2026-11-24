@@ -73,6 +73,10 @@ export function useWelcomeWizard() {
 
   function goNext() {
     if (!canGoNext) return
+    // Keep the recommended answers the user went on with, so a later detection result
+    // (e.g. Ollama answering after "Check again") cannot change them behind their back.
+    if (pickedApproach === null) setApproach(answers.approach)
+    if (pickedTool === null && stepId === 'setup') setTool(answers.tool)
     const nextId = nextStepId(steps, stepId)
     if (nextId) setStepId(nextId)
   }
