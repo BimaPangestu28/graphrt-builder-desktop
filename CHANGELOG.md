@@ -7,6 +7,8 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-11-24
+
 ### Added
 
 - **Drag and drop for every upload**: one shared drop zone ("Drag … here or Choose …", accepted types and size, "Drop to add" while a drag is over it, a message for the wrong type or for several items where one goes, announced in a polite live region; the Choose button opens the same picker as before and works from the keyboard). It is on the Knowledge page, under the sources of a knowledge base (files, or a folder with **Add a folder**), in **Install from folder or archive…** on the Plugins page (a plugin folder or a `.tar.gz` / `.tgz`), and on every File / Files input of the Test form.
@@ -708,7 +710,8 @@ connected to the graphrt runtime**, so no agent actually runs.
 - The mobile companion screens from the design are not built.
 - macOS builds are unsigned.
 
-[Unreleased]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.7...HEAD
+[0.1.7]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/BimaPangestu28/graphrt-builder-desktop/compare/v0.1.3...v0.1.4
