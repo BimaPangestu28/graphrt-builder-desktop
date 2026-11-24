@@ -1,13 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { FileDropZone } from '@/components/fileDrop'
 import { AppShell } from '@/components/layout'
+import { Button } from '@/components/ui'
 import {
   addKnowledgeSource,
   deleteKnowledgeBase,
-  guessSourceKind,
   removeKnowledgeSource,
   renameKnowledgeBase,
-  subscribeToDroppedPaths,
   syncKnowledgeBase,
   updateKnowledgeSettings,
 } from '@/api/knowledge'
@@ -20,6 +20,7 @@ import { KnowledgeSettingsPanel } from './knowledge/KnowledgeSettingsPanel'
 import { KnowledgeSourcesTable } from './knowledge/KnowledgeSourcesTable'
 import { TestQuestionSection, parseMatchThreshold } from './knowledge/TestQuestionSection'
 import { formatClockTime, formatMegabytes, pluralize } from './knowledge/knowledgeDisplay'
+import { knowledgeDropAccept, knowledgeDropHint } from './knowledge/knowledgeDrop'
 import { useSourcePicker } from './knowledge/useSourcePicker'
 import { toError } from '@/lib/errors'
 
@@ -124,24 +125,6 @@ export function KnowledgeDetailPage() {
     (pickError) => actions.setActionError(toError(pickError).message),
     { files: 'Choose files to add as sources', folder: 'Choose a folder to add as a source' },
   )
-  const addSourcesRef = useRef(actions.addSources)
-  addSourcesRef.current = actions.addSources
-
-  useEffect(() => {
-    let unsubscribe: (() => void) | null = null
-    let isMounted = true
-    void subscribeToDroppedPaths((paths) => {
-      paths.forEach((path) => void addSourcesRef.current(guessSourceKind(path), [path]))
-    }).then((stop) => {
-      if (isMounted) unsubscribe = stop
-      else stop()
-    })
-    return () => {
-      isMounted = false
-      unsubscribe?.()
-    }
-  }, [])
-
   const knowledgeBase = detail?.knowledgeBase
   const currentThresholdText = thresholdText ?? String(knowledgeBase?.settings.minScore ?? 0)
 
@@ -182,14 +165,22 @@ export function KnowledgeDetailPage() {
             <section aria-labelledby="src-h" className="flex flex-col gap-3">
               <SectionHeading id="src-h">Sources</SectionHeading>
               <KnowledgeSourcesTable sources={detail.sources} readingPercents={readingPercents} onRemove={(source) => void actions.removeSource(source)} />
-              <div className="flex flex-wrap items-start gap-2">
-                <button type="button" onClick={pickFolder} className={compactButtonClassNames('secondary', 'h-10')}>
-                  Add a folder
-                </button>
-                <div className="min-w-[260px] flex-1">
-                  <AddLinkForm label="Website link to add" onAddLink={(url) => actions.addSources('url', [url])} />
-                </div>
-              </div>
+              <FileDropZone
+                compact
+                itemDescription="files or a folder"
+                accept={knowledgeDropAccept}
+                multiple
+                onDrop={(droppedItems) => droppedItems.forEach((item) => void actions.addSources(item.kind, [item.path]))}
+                chooseLabel="Choose files…"
+                onChoose={pickFiles}
+                secondaryActions={
+                  <Button variant="secondary" size="sm" onClick={pickFolder}>
+                    Add a folder
+                  </Button>
+                }
+                hint={knowledgeDropHint}
+              />
+              <AddLinkForm label="Website link to add" onAddLink={(url) => actions.addSources('url', [url])} />
             </section>
             <TestQuestionSection knowledgeBaseId={knowledgeBase.id} matchThreshold={parseMatchThreshold(currentThresholdText)} />
           </div>
