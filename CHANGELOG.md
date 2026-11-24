@@ -7,6 +7,10 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ## [Unreleased]
 
+### Changed
+
+- **Put it online is available**: the app now pins the graphrt CLI 0.6.0 (with `deploy --direct`) and downloads it, checksum-verified, the first time you put an agent online on Fly.io.
+
 ## [0.1.7] - 2026-11-24
 
 ### Added
