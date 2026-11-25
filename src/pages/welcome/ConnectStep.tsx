@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import type { LocalCliProvider, ProviderStatus } from '@/api/types'
 import { InstallPageLink } from '@/components/InstallPageLink'
-import { Button, StatusDot } from '@/components/ui'
+import { Button } from '@/components/ui'
 import { describeLocalCliUsageNote, localCliCommands, localCliProviders, localCliShortNames } from '@/lib/settings'
 import type { WelcomeWizard } from './useWelcomeWizard'
 import { choiceGridClassNames, WelcomeChoiceCard } from './WelcomeChoiceCard'
@@ -18,19 +18,9 @@ function describeSignIn(provider: LocalCliProvider, statuses: readonly ProviderS
   const signIn = findLocalCli(statuses, provider)?.signIn
   if (signIn === 'signed_in') return <FoundLine text="Signed in and ready" />
   if (signIn === 'signed_out') {
-    return (
-      <span className="flex items-center gap-1.5 text-amber-strong">
-        <StatusDot tone="amber" />
-        Not signed in yet. Open {localCliShortNames[provider]} once and sign in, then come back
-      </span>
-    )
+    return <ProblemLine text={`Not signed in yet. Open ${localCliShortNames[provider]} once and sign in, then come back`} showDot={false} />
   }
-  return (
-    <span className="flex items-center gap-1.5 text-ink-2">
-      <StatusDot tone="paused" />
-      Found. graphrt confirms the sign-in when your first agent runs
-    </span>
-  )
+  return <span className="text-ink-2">Found. graphrt confirms the sign-in when your first agent runs</span>
 }
 
 /** Step 3 for "an account I already have": pick which signed-in AI tool to use. */
