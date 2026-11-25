@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { readBuildRequest } from '@/pages/agent-builder/buildRequestState'
-import { DescribeAgentCard, describeAgentPlaceholder } from '@/pages/home-dashboard/DescribeAgentCard'
+import { DescribeAgentCard, describeAgentPlaceholder, type DescribeAgentCardVariant } from '@/pages/home-dashboard/DescribeAgentCard'
 import { routePaths } from '@/routes'
 
 /** Stand-in for screen 03 that shows the build request it received. */
@@ -10,11 +10,11 @@ function GeneratingStandIn() {
   return <p>Generating screen {JSON.stringify(readBuildRequest(location.state))}</p>
 }
 
-function renderDescribeAgentCard() {
+function renderDescribeAgentCard(variant?: DescribeAgentCardVariant) {
   return render(
     <MemoryRouter initialEntries={[routePaths.home]}>
       <Routes>
-        <Route path={routePaths.home} element={<DescribeAgentCard />} />
+        <Route path={routePaths.home} element={<DescribeAgentCard variant={variant} />} />
         <Route path={routePaths.generating} element={<GeneratingStandIn />} />
       </Routes>
     </MemoryRouter>,
@@ -63,5 +63,21 @@ describe('DescribeAgentCard', () => {
     fireEvent.change(prompt, { target: { value: jobDescription } })
     fireEvent.keyDown(prompt, { key: 'Enter' })
     expect(screen.queryByText(/^Generating screen/)).not.toBeInTheDocument()
+  })
+
+  it('builds from the hero the same way, with a bigger box and no template links', () => {
+    renderDescribeAgentCard('hero')
+    const prompt = screen.getByLabelText('What should your agent do?')
+    expect(prompt).toHaveAttribute('rows', '4')
+    expect(screen.queryByText('Start from a template:')).not.toBeInTheDocument()
+    fireEvent.change(prompt, { target: { value: jobDescription } })
+    fireEvent.keyDown(prompt, { key: 'Enter', ctrlKey: true })
+    expect(screen.getByText(`Generating screen ${JSON.stringify({ description: jobDescription, kind: 'task' })}`)).toBeInTheDocument()
+  })
+
+  it('keeps the template links under the compact box', () => {
+    renderDescribeAgentCard()
+    expect(screen.getByLabelText('What should your agent do?')).toHaveAttribute('rows', '3')
+    expect(screen.getByText('Start from a template:')).toBeInTheDocument()
   })
 })

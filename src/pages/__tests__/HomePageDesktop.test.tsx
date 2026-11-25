@@ -259,17 +259,52 @@ describe('HomePage in the desktop app', () => {
     expect(usageRequests[0]).toEqual({ fromDate: startOfLocalMonth(new Date()).toISOString() })
   })
 
-  it('shows honest empty states on a fresh install', async () => {
+  it('makes describing the first agent the hero on a fresh install, with templates, the steps and one empty line', async () => {
     answerBackend({ agents: [], runs: [], waitingChats: [], triggers: [], usageSummary: emptyMonth, isModelConnected: false })
     renderHomePage()
-    expect(await screen.findByText('Nothing needs you · no runs scheduled')).toBeInTheDocument()
-    expect(screen.getByText('Nothing needs you right now')).toBeInTheDocument()
-    expect(await screen.findByText('Nothing ran this month yet. Numbers show up after your first run')).toBeInTheDocument()
-    expect(screen.getByText('No runs yet. Test an agent to see it here')).toBeInTheDocument()
+    expect(await screen.findByText("Let's build your first agent. Describe a job or pick a template")).toBeInTheDocument()
+    const hero = screen.getByRole('region', { name: 'Describe a new agent' })
+    expect(within(hero).getByLabelText('What should your agent do?')).toHaveAttribute('rows', '4')
+    expect(within(hero).getByRole('button', { name: 'Build agent' })).toBeDisabled()
+    // The hero leaves templates to the cards below it.
+    expect(within(hero).queryByText('Start from a template:')).not.toBeInTheDocument()
+
+    const templates = screen.getByRole('region', { name: 'Or start from a template' })
+    const templateCards = within(templates).getAllByRole('link', { name: (name) => name !== 'All templates' })
+    expect(templateCards).toHaveLength(6)
+    expect(templateCards[0]).toHaveAccessibleName('Find businesses on Maps and message them on WhatsApp')
+    expect(templateCards[0]).toHaveAttribute('href', `${routePaths.newAgent}?template=maps-whatsapp`)
+    expect(templateCards[0]).toHaveTextContent('Use template')
+    expect(within(templates).getByRole('link', { name: 'All templates' })).toHaveAttribute('href', routePaths.newAgent)
+
     const checklist = await screen.findByRole('region', { name: /Getting started/ })
     expect(within(checklist).getByText('0 of 5 done')).toBeInTheDocument()
     expect(within(checklist).getByRole('link', { name: 'Connect a model' })).toHaveAttribute('href', connectionsTabPath('models'))
-    expect(screen.getByRole('link', { name: 'Build one with New agent' })).toHaveAttribute('href', routePaths.newAgent)
+    expect(within(checklist).getByRole('link', { name: 'Connect a model' }).closest('li')).toHaveTextContent('Next')
+
+    // One friendly line instead of four empty sections.
+    expect(screen.getByRole('region', { name: 'Your dashboard' })).toHaveTextContent('Your dashboard fills in after your first agent')
+    for (const emptySection of ['Agents', 'Recent runs', /Needs you/, 'This month']) {
+      expect(screen.queryByRole('region', { name: emptySection })).not.toBeInTheDocument()
+    }
+  })
+
+  it('still shows what needs the user above the hero on a fresh install', async () => {
+    answerBackend({ agents: [], runs: [], waitingChats: [createWaitingChat('chat-1', minutesAgo(9))], triggers: [], usageSummary: emptyMonth })
+    renderHomePage()
+    expect(await screen.findByText("Let's build your first agent. Describe a job or pick a template")).toBeInTheDocument()
+    const needsYou = screen.getByRole('region', { name: /Needs you/ })
+    expect(await within(needsYou).findByText('1 customer is waiting in Inbox')).toBeInTheDocument()
+    expect(needsYou.compareDocumentPosition(screen.getByRole('region', { name: 'Describe a new agent' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('shows honest empty sections once an agent exists but nothing ran yet', async () => {
+    answerBackend({ agents: [promoAgent], runs: [], waitingChats: [], triggers: [], usageSummary: emptyMonth })
+    renderHomePage()
+    expect(await screen.findByRole('article', { name: 'Cafe promo' })).toBeInTheDocument()
+    expect(await screen.findByText('Nothing ran this month yet. Numbers show up after your first run')).toBeInTheDocument()
+    expect(screen.getByText('No runs yet. Test an agent to see it here')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Your dashboard' })).not.toBeInTheDocument()
   })
 
   it('previews a long approval message in plain words, with when it paused on its own line', async () => {
