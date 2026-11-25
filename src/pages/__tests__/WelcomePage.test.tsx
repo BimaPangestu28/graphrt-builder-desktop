@@ -101,7 +101,9 @@ describe('WelcomePage wizard', () => {
     await openThinkingStep()
     clickButton(/Next/)
     fireEvent.click(screen.getByRole('radio', { name: 'Your Google (Gemini) account' }))
-    expect(screen.getByText(/graphrt confirms the sign-in when your first agent runs/)).toBeInTheDocument()
+    const neutralLine = screen.getByText(/graphrt confirms the sign-in when your first agent runs/)
+    expect(neutralLine).toBeInTheDocument()
+    expect(neutralLine.querySelector('[aria-hidden="true"]')).not.toBeInTheDocument()
     expect(screen.getByText(/Usage counts against your Google \(Gemini\) plan and its limits/)).toBeInTheDocument()
     const codexLink = screen.getByRole('link', { name: 'How to install Codex' })
     expect(codexLink).toHaveAttribute('href', 'https://developers.openai.com/codex/cli')
@@ -202,9 +204,25 @@ describe('WelcomePage wizard', () => {
     await openThinkingStep()
     clickButton(/Next/)
     expect(screen.getByRole('radio', { name: 'Your ChatGPT account' })).toBeDisabled()
-    expect(screen.getByText(/Found, but it does not start on this computer yet/)).toBeVisible()
+    const problemLine = screen.getByText(/Found, but it does not start on this computer yet/)
+    expect(problemLine).toBeVisible()
+    expect(problemLine.querySelector('[aria-hidden="true"]')).not.toBeInTheDocument()
     expect(screen.queryByText(/^Found ·/)).not.toBeInTheDocument()
     expect(screen.getByText(/Codex: Found, but it does not start/)).not.toBeVisible()
+  })
+
+  it('shows a signed out AI tool on Connect as a plain amber line without a dot', async () => {
+    const statuses = await sampleCredentialsBackend.listProviderStatuses()
+    const signedOutClaude = statuses.map((status) =>
+      status.provider === 'claude-code-cli' && status.localCli ? { ...status, localCli: { ...status.localCli, signIn: 'signed_out' as const } } : status,
+    )
+    vi.spyOn(sampleCredentialsBackend, 'listProviderStatuses').mockResolvedValue(signedOutClaude)
+    await openThinkingStep()
+    pickApproach('Use an AI account I already have')
+    clickButton(/Next/)
+    const signedOutLine = await screen.findByText('Not signed in yet. Open Claude Code once and sign in, then come back')
+    expect(signedOutLine).toBeVisible()
+    expect(signedOutLine.querySelector('[aria-hidden="true"]')).not.toBeInTheDocument()
   })
 
   it('does not offer the account choice when the only AI tool found does not start', async () => {

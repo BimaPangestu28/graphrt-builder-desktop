@@ -17,11 +17,14 @@ export function FoundLine({ text }: { text: string }) {
   )
 }
 
-/** An amber line for something found that cannot be used yet, e.g. an AI tool that does not start. */
-export function ProblemLine({ text }: { text: string }) {
+/**
+ * An amber line for something found that cannot be used yet, e.g. an AI tool that does not start.
+ * Pass `showDot={false}` where the line sits under other text and must start at the same left edge.
+ */
+export function ProblemLine({ text, showDot = true }: { text: string; showDot?: boolean }) {
   return (
     <span className="flex items-center gap-1.5 text-amber-strong">
-      <StatusDot tone="amber" />
+      {showDot && <StatusDot tone="amber" />}
       {text}
     </span>
   )
