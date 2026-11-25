@@ -306,4 +306,77 @@ describe('PluginsPage', () => {
       expect(listCatalog).not.toHaveBeenCalledWith(true)
     })
   })
+
+  describe('large catalogs', () => {
+    /** The sample catalog repeated to `count` plugins, none installed, named "<Display name> <index>". */
+    async function useLargeCatalog(count: number) {
+      const sampleCatalog = await samplePluginsBackend.listPluginCatalog(false)
+      vi.spyOn(samplePluginsBackend, 'listPluginCatalog').mockResolvedValue({
+        ...sampleCatalog,
+        plugins: Array.from({ length: count }, (_, index) => {
+          const entry = sampleCatalog.plugins[index % sampleCatalog.plugins.length]
+          return { ...entry, name: `${entry.name}-${index}`, displayName: `${entry.displayName} ${index}`, installedVersion: null, updateAvailable: false, updateNeedsApproval: false }
+        }),
+      })
+      vi.spyOn(samplePluginsBackend, 'listInstalledPlugins').mockResolvedValue([])
+    }
+
+    it('renders the first 24 cards, then more on request, and says when all are shown', async () => {
+      await useLargeCatalog(60)
+      await renderLoadedPluginsPage()
+      expect(screen.getByRole('button', { name: 'All 60' })).toBeInTheDocument()
+      expect(visibleCardNames()).toHaveLength(24)
+      fireEvent.click(screen.getByRole('button', { name: 'Show more plugins' }))
+      expect(visibleCardNames()).toHaveLength(48)
+      expect(screen.queryByText('All 60 plugins shown')).not.toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Show more plugins' }))
+      expect(visibleCardNames()).toHaveLength(60)
+      expect(screen.queryByRole('button', { name: 'Show more plugins' })).not.toBeInTheDocument()
+      expect(screen.getByText('All 60 plugins shown')).toBeInTheDocument()
+    })
+
+    it('searches the whole catalog, not only the cards on screen', async () => {
+      await useLargeCatalog(60)
+      await renderLoadedPluginsPage()
+      expect(screen.queryByRole('article', { name: /\b57$/ })).not.toBeInTheDocument()
+      fireEvent.change(screen.getByRole('searchbox', { name: 'Search plugins' }), { target: { value: ' 57' } })
+      expect(visibleCardNames()).toEqual([expect.stringMatching(/ 57$/)])
+    })
+
+    it('starts again from the first page when the filters change', async () => {
+      await useLargeCatalog(60)
+      await renderLoadedPluginsPage()
+      fireEvent.click(screen.getByRole('button', { name: 'Show more plugins' }))
+      expect(visibleCardNames()).toHaveLength(48)
+      const firstChip = within(screen.getByRole('group', { name: 'Category' })).getAllByRole('button')[1]
+      fireEvent.click(firstChip)
+      fireEvent.click(firstChip)
+      expect(visibleCardNames()).toHaveLength(24)
+    })
+
+    it('loads the next page as the end of the grid scrolls into reach', async () => {
+      let revealCallback: IntersectionObserverCallback | null = null
+      vi.stubGlobal(
+        'IntersectionObserver',
+        class {
+          constructor(callback: IntersectionObserverCallback) {
+            revealCallback = callback
+          }
+          observe() {}
+          disconnect() {}
+        },
+      )
+      try {
+        await useLargeCatalog(30)
+        await renderLoadedPluginsPage()
+        expect(visibleCardNames()).toHaveLength(24)
+        expect(screen.getByText('Loading more plugins…')).toBeInTheDocument()
+        act(() => revealCallback?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver))
+        expect(visibleCardNames()).toHaveLength(30)
+        expect(screen.getByText('All 30 plugins shown')).toBeInTheDocument()
+      } finally {
+        vi.unstubAllGlobals()
+      }
+    })
+  })
 })

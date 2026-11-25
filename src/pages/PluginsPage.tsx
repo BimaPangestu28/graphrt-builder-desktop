@@ -4,6 +4,7 @@ import { useBrowserRuntime } from '@/hooks/useBrowserRuntime'
 import { usePluginRuntime } from '@/hooks/usePluginRuntime'
 import { usePluginCatalogRefresh, type PluginCatalogRefreshState } from '@/hooks/usePluginCatalogRefresh'
 import { usePlugins, type PluginsState } from '@/hooks/usePlugins'
+import { defaultRevealPageSize, useIncrementalReveal } from '@/hooks/useIncrementalReveal'
 import { Button, Spinner } from '@/components/ui'
 import { describeError } from '@/lib/agentDisplay'
 import { BrowserRuntimeBanner } from './plugins/BrowserRuntimeBanner'
@@ -78,6 +79,11 @@ function PluginsHeader() {
   )
 }
 
+/** The quiet line under the last card once every plugin is on screen. */
+export function describeAllShown(count: number): string {
+  return count === 1 ? 'That is the only plugin here' : `All ${count} plugins shown`
+}
+
 function EmptyResults({ filters }: { filters: PluginListFilters }) {
   const trimmedSearch = filters.searchText.trim()
   const message = trimmedSearch ? `No plugins match “${trimmedSearch}”` : filters.category ? 'No plugins in this category here' : emptyTabMessages[filters.tab]
@@ -121,15 +127,54 @@ function PluginCatalog({ items, plugins }: PluginCatalogProps) {
       {visibleItems.length === 0 ? (
         <EmptyResults filters={filters} />
       ) : (
-        <div aria-label="Plugin catalog" role="list" className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {visibleItems.map((item) => (
-            <div key={item.name} role="listitem" className="min-w-0">
-              <PluginCatalogCard item={item} plugins={plugins} listSearch={listSearch} />
-            </div>
-          ))}
-        </div>
+        <PluginCardGrid items={visibleItems} plugins={plugins} listSearch={listSearch} resetKey={writePluginListFilters(filters).toString()} />
       )}
     </>
+  )
+}
+
+interface PluginCardGridProps {
+  items: PluginListItem[]
+  plugins: PluginsState
+  listSearch: string
+  /** Changes with the filters, which start the grid again from its first page. */
+  resetKey: string
+}
+
+/**
+ * The card grid, a page at a time: the first cards, then more as the end of the grid nears the
+ * window, so a large catalog does not render every card (and load every icon) at once. Tabs,
+ * search and chips still filter the whole catalog: only rendering is paged.
+ */
+function PluginCardGrid({ items, plugins, listSearch, resetKey }: PluginCardGridProps) {
+  const { visibleCount, hasMore, revealMore, sentinelRef } = useIncrementalReveal(items.length, resetKey)
+  const revealsOnScroll = typeof IntersectionObserver !== 'undefined'
+  return (
+    <div className="flex flex-col gap-3">
+      <div aria-label="Plugin catalog" role="list" className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+        {items.slice(0, visibleCount).map((item) => (
+          <div key={item.name} role="listitem" className="min-w-0">
+            <PluginCatalogCard item={item} plugins={plugins} listSearch={listSearch} />
+          </div>
+        ))}
+      </div>
+      {hasMore ? (
+        <div ref={sentinelRef} className="flex items-center justify-center gap-2 py-3 text-[13px] text-muted">
+          {revealsOnScroll ? (
+            <span role="status" className="inline-flex items-center gap-2">
+              <Spinner className="size-4" />
+              Loading more plugins…
+            </span>
+          ) : (
+            <Button variant="secondary" size="sm" onClick={revealMore}>
+              Show more plugins
+            </Button>
+          )}
+        </div>
+      ) : (
+        items.length > defaultRevealPageSize && <p className="m-0 py-3 text-center text-[13px] text-muted">{describeAllShown(items.length)}</p>
+      )}
+    </div>
   )
 }
 
