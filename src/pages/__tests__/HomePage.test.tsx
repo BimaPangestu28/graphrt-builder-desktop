@@ -85,6 +85,11 @@ describe('HomePage', () => {
     expect(within(agentsSection).getByText('Loading agents…')).toBeInTheDocument()
     const mapsCard = await within(agentsSection).findByRole('article', { name: 'Maps leads to WhatsApp' })
     expect(within(mapsCard).getByText(/^Active · next run /)).toBeInTheDocument()
+    // The name keeps one line across the card (full name on hover), with the status chip on its own row.
+    const mapsName = within(mapsCard).getByRole('link', { name: 'Maps leads to WhatsApp' })
+    expect(mapsName).toHaveAttribute('title', 'Maps leads to WhatsApp')
+    expect(mapsName).toHaveClass('truncate')
+    expect(mapsName.parentElement).not.toContainElement(within(mapsCard).getByText(/^Active · next run /))
     expect(within(mapsCard).getByRole('button', { name: 'Run now' })).toBeInTheDocument()
     expect(within(mapsCard).getByRole('link', { name: 'Edit steps' })).toHaveAttribute('href', agentPath('builder', 'maps-leads'))
     expect(await within(mapsCard).findByText(/12 messages sent this week/)).toBeInTheDocument()
@@ -108,7 +113,7 @@ describe('HomePage', () => {
     expect(startRunSpy).toHaveBeenCalledWith('maps-leads', 'manual', expect.objectContaining({ keyword: expect.any(String) }))
   })
 
-  it('lays the dashboard out as a main column of agents and runs beside a rail to build and track', async () => {
+  it('lays the dashboard out as the getting started stepper above a main column of agents and runs beside a rail to build and track', async () => {
     renderHomePage()
     const mainColumn = screen.getByRole('region', { name: 'Overview' })
     const rail = screen.getByRole('complementary', { name: 'New agent and this month' })
@@ -116,15 +121,30 @@ describe('HomePage', () => {
     expect(within(mainColumn).getByRole('region', { name: 'Agents' })).toBeInTheDocument()
     expect(within(mainColumn).getByRole('region', { name: 'Recent runs' })).toBeInTheDocument()
     expect(within(rail).getByRole('region', { name: 'Describe a new agent' })).toBeInTheDocument()
-    expect(await within(rail).findByRole('region', { name: /Getting started/ })).toBeInTheDocument()
     expect(within(rail).getByRole('region', { name: 'This month' })).toBeInTheDocument()
+    const checklist = await screen.findByRole('region', { name: /Getting started/ })
+    // Full width across the top, not squeezed into the rail.
+    expect(rail).not.toContainElement(checklist)
+    expect(mainColumn).not.toContainElement(checklist)
+    expect(checklist.compareDocumentPosition(mainColumn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // Once there are agents the template cards stay on the New agent screen.
+    expect(screen.queryByRole('region', { name: 'Or start from a template' })).not.toBeInTheDocument()
   })
 
-  it('shows the getting started checklist until it is hidden', async () => {
+  it('shows the getting started steps in order, the next one highlighted, until it is hidden', async () => {
     renderHomePage()
     const checklist = await screen.findByRole('region', { name: /Getting started/ })
     expect(within(checklist).getByText('4 of 5 done')).toBeInTheDocument()
+    const stepTiles = within(checklist).getAllByRole('listitem')
+    expect(stepTiles.map((tile) => tile.textContent)).toEqual([
+      'Connect a model (done)',
+      'Build your first agent (done)',
+      '3Set up its pluginsNext',
+      'Pass a test run (done)',
+      'Schedule it (done)',
+    ])
     expect(within(checklist).getByRole('link', { name: 'Set up its plugins' })).toHaveAttribute('href', agentPath('builder', 'maps-leads'))
+    expect(within(checklist).getAllByRole('link')).toHaveLength(1)
     fireEvent.click(within(checklist).getByRole('button', { name: 'Hide getting started' }))
     expect(screen.queryByRole('region', { name: /Getting started/ })).not.toBeInTheDocument()
     expect(window.localStorage.getItem(gettingStartedDismissedKey)).toBe('true')

@@ -75,16 +75,17 @@ function AgentSummaryCard(cardData: AgentCardData) {
         // The agent list reloads after a rename (notifyAgentsChanged), so nothing else to refresh here.
         <RenameForm agent={agent} variant="card" onDone={() => setCardMode('view')} onRenamed={() => undefined} />
       ) : (
-        <div className="flex items-start justify-between gap-2">
-          <Link to={agentPath('builder', agent.id)} className="min-w-0 font-semibold !text-ink no-underline hover:underline">
-            {agent.name}
-          </Link>
-          <div className="flex shrink-0 items-center gap-1">
-            <StatusPill tone={cardState.chipTone} size="card">
-              {cardState.chipLabel}
-            </StatusPill>
+        // The name gets the full width on one line (full name on hover); the status chip sits on its own row under it.
+        <div className="flex flex-col items-start gap-1.5">
+          <div className="flex w-full items-center justify-between gap-2">
+            <Link to={agentPath('builder', agent.id)} title={agent.name} className="min-w-0 truncate font-semibold !text-ink no-underline hover:underline">
+              {agent.name}
+            </Link>
             <AgentCardMenu agent={agent} onRename={() => setCardMode('rename')} onDelete={() => setCardMode('delete')} />
           </div>
+          <StatusPill tone={cardState.chipTone} size="card">
+            {cardState.chipLabel}
+          </StatusPill>
         </div>
       )}
       {cardMode === 'delete' && (
