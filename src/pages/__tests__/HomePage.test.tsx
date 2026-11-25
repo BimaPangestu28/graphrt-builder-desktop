@@ -85,6 +85,11 @@ describe('HomePage', () => {
     expect(within(agentsSection).getByText('Loading agents…')).toBeInTheDocument()
     const mapsCard = await within(agentsSection).findByRole('article', { name: 'Maps leads to WhatsApp' })
     expect(within(mapsCard).getByText(/^Active · next run /)).toBeInTheDocument()
+    // The name keeps one line across the card (full name on hover), with the status chip on its own row.
+    const mapsName = within(mapsCard).getByRole('link', { name: 'Maps leads to WhatsApp' })
+    expect(mapsName).toHaveAttribute('title', 'Maps leads to WhatsApp')
+    expect(mapsName).toHaveClass('truncate')
+    expect(mapsName.parentElement).not.toContainElement(within(mapsCard).getByText(/^Active · next run /))
     expect(within(mapsCard).getByRole('button', { name: 'Run now' })).toBeInTheDocument()
     expect(within(mapsCard).getByRole('link', { name: 'Edit steps' })).toHaveAttribute('href', agentPath('builder', 'maps-leads'))
     expect(await within(mapsCard).findByText(/12 messages sent this week/)).toBeInTheDocument()
