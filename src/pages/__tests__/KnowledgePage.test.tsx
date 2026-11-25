@@ -36,7 +36,7 @@ describe('KnowledgePage', () => {
 
   it('searches every knowledge base as you type', async () => {
     renderKnowledge()
-    const searchBox = screen.getByRole('searchbox', { name: 'Search knowledge' })
+    const searchBox = await screen.findByRole('searchbox', { name: 'Search knowledge' })
     fireEvent.change(searchBox, { target: { value: 'minimum order for free delivery' } })
     expect(await screen.findByText('0.91')).toBeInTheDocument()
     expect(screen.getByText('0.74')).toBeInTheDocument()
@@ -84,9 +84,38 @@ describe('KnowledgePage', () => {
     renderKnowledge()
     await screen.findByRole('link', { name: /Catering menu and prices/ })
     fireEvent.change(screen.getByLabelText('Website link for a new knowledge base'), { target: { value: 'https://example.com/menu' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Start from a link' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add website' }))
     expect(await screen.findByRole('link', { name: /example\.com/ })).toBeInTheDocument()
     expect(addSourceSpy).toHaveBeenCalledWith(expect.any(String), 'url', 'https://example.com/menu')
+  })
+
+  it('starts a knowledge base from a picked folder', async () => {
+    const addSourceSpy = vi.spyOn(sampleKnowledgeBackend, 'addKnowledgeSource')
+    renderKnowledge()
+    await screen.findByRole('link', { name: /Catering menu and prices/ })
+    expect(screen.getByRole('button', { name: 'Choose a folder…' })).toBeInTheDocument()
+    const folderFile = new File(['x'], 'prices.csv')
+    Object.defineProperty(folderFile, 'webkitRelativePath', { value: 'Kantor/prices.csv' })
+    fireEvent.change(screen.getByLabelText('Choose a folder for a new knowledge base'), { target: { files: [folderFile] } })
+    expect(await screen.findByRole('link', { name: /Kantor/ })).toBeInTheDocument()
+    expect(addSourceSpy).toHaveBeenCalledWith(expect.any(String), 'folder', 'Kantor')
+  })
+
+  it('explains what to paste when Add website is pressed with no link', async () => {
+    renderKnowledge()
+    await screen.findByRole('link', { name: /Catering menu and prices/ })
+    const addWebsite = screen.getByRole('button', { name: 'Add website' })
+    expect(addWebsite).toBeEnabled()
+    fireEvent.click(addWebsite)
+    expect(await screen.findByText('Paste a link that starts with https://')).toBeInTheDocument()
+  })
+
+  it('shows a friendly empty state and hides search until there is knowledge', async () => {
+    vi.spyOn(sampleKnowledgeBackend, 'listKnowledgeBases').mockResolvedValue([])
+    renderKnowledge()
+    expect(await screen.findByText('No knowledge yet')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Add knowledge' })).toBeInTheDocument()
+    expect(screen.queryByRole('searchbox', { name: 'Search knowledge' })).not.toBeInTheDocument()
   })
 
   it('shows an error when the knowledge bases cannot load', async () => {

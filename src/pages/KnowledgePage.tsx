@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { AppShell, PageFrame, PageTitleBlock } from '@/components/layout'
-import { Icon } from '@/components/ui'
+import { Button, Icon } from '@/components/ui'
 import { addKnowledgeSource, createKnowledgeBase, isWebLink } from '@/api/knowledge'
 import { FileDropZone } from '@/components/fileDrop'
 import type { KnowledgeSourceKind } from '@/api/knowledgeTypes'
 import { useKnowledgeBases, useKnowledgeSearch } from '@/hooks/useKnowledge'
 import { AddLinkForm } from './knowledge/AddLinkForm'
-import { compactButtonClassNames } from './knowledge/FormControls'
+import { compactButtonClassNames, SectionHeading } from './knowledge/FormControls'
 import { KnowledgeBaseCard } from './knowledge/KnowledgeBaseCard'
 import { PassageMatch, SearchFieldIcon } from './knowledge/PassageMatch'
 import { knowledgeDropAccept, knowledgeDropHint } from './knowledge/knowledgeDrop'
@@ -55,7 +55,7 @@ function KnowledgeSearchPanel() {
           className="min-w-0 flex-1 border-0 bg-transparent text-[14px] text-ink outline-none"
         />
       </label>
-      <div className="flex flex-col gap-2" aria-live="polite">
+      <div className="flex flex-col gap-2 empty:hidden" aria-live="polite">
         {error && <p className="m-0 text-[13px] text-danger">Could not search: {error.message}</p>}
         {passages.map((passage) => (
           <PassageMatch key={passage.id} passage={passage} />
@@ -68,13 +68,25 @@ function KnowledgeSearchPanel() {
   )
 }
 
+/** Shown in place of the list until the first knowledge base exists. */
+function KnowledgeEmptyState() {
+  return (
+    <div className="flex flex-col items-center gap-1.5 rounded-[14px] border border-line bg-subtle px-6 py-10 text-center">
+      <span aria-hidden="true" className="mb-1 text-muted">
+        <Icon name="file" size={22} />
+      </span>
+      <p className="m-0 text-[15px] font-semibold text-ink">No knowledge yet</p>
+      <p className="m-0 max-w-[72ch] text-[13px] leading-normal text-body">Add a file, folder or website above so your agents can look up answers in it</p>
+    </div>
+  )
+}
+
 /**
  * Screen 17 · Knowledge.
- * Every knowledge base agents and chatbots can look things up in, as cards linking to the
- * detail screen (18). "New knowledge base", the drop zone (drop files or a folder, choose files
- * or paste a link) and
- * the folder/link controls create a knowledge base that starts indexing in the background.
- * The search box searches every knowledge base the way an agent would.
+ * One "Add knowledge" card (drop files or a folder, choose files, choose a folder or paste a
+ * website link) where everything added starts a new knowledge base that indexes in the
+ * background. Below it, every knowledge base as a card linking to the detail screen (18), or a
+ * short empty state. Once there is knowledge, the search box searches all of it the way an agent would.
  */
 export function KnowledgePage() {
   const { data: knowledgeBases, error: loadError, isLoading, reload, setData } = useKnowledgeBases()
@@ -99,6 +111,7 @@ export function KnowledgePage() {
     (pickError) => setActionError(toError(pickError).message),
     { files: 'Choose files for a new knowledge base', folder: 'Choose a folder for a new knowledge base' },
   )
+  const hasKnowledge = (knowledgeBases?.length ?? 0) > 0
 
   return (
     <AppShell activeNav="knowledge" agents={{ kind: 'list' }}>
@@ -106,16 +119,6 @@ export function KnowledgePage() {
         <PageTitleBlock
           title="Knowledge"
           subtitle="What your agents and chatbots can look things up in. Everything is indexed and stored on this computer"
-          actions={
-              <button
-                type="button"
-                onClick={pickFiles}
-                className="flex h-10 cursor-pointer items-center gap-2 rounded-[9px] border-0 bg-ink px-4 text-[14px] font-semibold text-white hover:bg-ink-2"
-              >
-                <Icon name="plus" size={16} />
-                New knowledge base
-              </button>
-          }
         />
 
         {actionError && (
@@ -123,20 +126,12 @@ export function KnowledgePage() {
             {actionError}
           </p>
         )}
-        {loadError && (
-          <p role="alert" className="m-0 flex items-center gap-3 text-[13px] text-danger">
-            Could not load your knowledge: {loadError.message}
-            <button type="button" onClick={reload} className={compactButtonClassNames('secondary')}>
-              Try again
-            </button>
-          </p>
-        )}
-        {isLoading && !knowledgeBases && <p className="m-0 text-[13px] text-muted">Loading knowledge…</p>}
 
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3">
-          {(knowledgeBases ?? []).map((knowledgeBase, index) => (
-            <KnowledgeBaseCard key={knowledgeBase.id} knowledgeBase={knowledgeBase} isRecentlyOpened={index === 0} />
-          ))}
+        <section aria-labelledby="add-knowledge-h" className="flex flex-col gap-4 rounded-[14px] border border-line bg-surface p-5">
+          <div className="flex flex-col gap-1">
+            <SectionHeading id="add-knowledge-h">Add knowledge</SectionHeading>
+            <span className="text-[13px] text-body">Each file, folder or link you add here becomes a new knowledge base</span>
+          </div>
           <FileDropZone
             itemDescription="files or a folder"
             accept={knowledgeDropAccept}
@@ -144,28 +139,53 @@ export function KnowledgePage() {
             onDrop={(droppedItems) => void createFromSources(droppedItems.map((item) => ({ kind: item.kind, location: item.path })))}
             chooseLabel="Choose files…"
             onChoose={pickFiles}
-            hint={`${knowledgeDropHint}, or paste a website link`}
+            secondaryActions={
+              <Button variant="secondary" size="sm" onClick={pickFolder}>
+                Choose a folder…
+              </Button>
+            }
+            hint={knowledgeDropHint}
             onPaste={(event) => {
               const pastedText = event.clipboardData.getData('text')
               if (isWebLink(pastedText)) void createFromSources([{ kind: 'url', location: pastedText.trim() }])
             }}
           />
-        </div>
-        <div className="flex flex-wrap items-start gap-3">
-          <button type="button" onClick={pickFolder} className={compactButtonClassNames('secondary', 'h-10')}>
-            Start from a folder
-          </button>
-          <div className="min-w-[280px] flex-1">
+          <div className="flex flex-col gap-2">
+            <span className="text-[13px] font-medium text-ink-2">Or add a website</span>
             <AddLinkForm
               label="Website link for a new knowledge base"
-              buttonText="Start from a link"
+              buttonText="Add website"
               onAddLink={(url) => createFromSources([{ kind: 'url', location: url }])}
             />
           </div>
-        </div>
-        {pickerInputs}
+          {pickerInputs}
+        </section>
 
-        <KnowledgeSearchPanel />
+        <section aria-labelledby="knowledge-bases-h" className="flex flex-col gap-3">
+          <div className="flex min-h-7 items-center gap-2">
+            <SectionHeading id="knowledge-bases-h">Your knowledge bases</SectionHeading>
+            {hasKnowledge && <span className="rounded-full bg-canvas px-2 py-[2px] text-[12px] font-medium text-ink-2">{knowledgeBases?.length}</span>}
+          </div>
+          {loadError && (
+            <p role="alert" className="m-0 flex items-center gap-3 text-[13px] text-danger">
+              Could not load your knowledge: {loadError.message}
+              <button type="button" onClick={reload} className={compactButtonClassNames('secondary')}>
+                Try again
+              </button>
+            </p>
+          )}
+          {isLoading && !knowledgeBases && <p className="m-0 text-[13px] text-muted">Loading knowledge…</p>}
+          {knowledgeBases && !hasKnowledge && <KnowledgeEmptyState />}
+          {hasKnowledge && (
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3">
+              {(knowledgeBases ?? []).map((knowledgeBase, index) => (
+                <KnowledgeBaseCard key={knowledgeBase.id} knowledgeBase={knowledgeBase} isRecentlyOpened={index === 0} />
+              ))}
+            </div>
+          )}
+        </section>
+
+        {hasKnowledge && <KnowledgeSearchPanel />}
       </PageFrame>
     </AppShell>
   )

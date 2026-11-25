@@ -43,7 +43,7 @@ export function AddLinkForm({ onAddLink, label, buttonText = 'Add link' }: AddLi
           onChange={(event) => setLinkText(event.target.value)}
           className={`${fieldControlClassNames} min-w-0 flex-1`}
         />
-        <button type="submit" disabled={isAdding || linkText.trim() === ''} className={compactButtonClassNames('secondary', 'h-10')}>
+        <button type="submit" disabled={isAdding} className={compactButtonClassNames('secondary', 'h-10')}>
           {buttonText}
         </button>
       </div>
