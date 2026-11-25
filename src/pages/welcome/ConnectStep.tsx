@@ -77,7 +77,7 @@ function ExistingAccountSetup({ wizard }: { wizard: WelcomeWizard }) {
             details={
               <>
                 <span>Through {localCliShortNames[provider]}</span>
-                <ProblemLine text="Found, but it does not start on this computer yet. Pick another option for now" />
+                <ProblemLine text="Found, but it does not start on this computer yet. Pick another option for now" showDot={false} />
               </>
             }
           />
