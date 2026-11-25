@@ -103,6 +103,24 @@ const icons = {
   ),
   link: <path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1" />,
   refresh: <path d="M20 11a8 8 0 10-2 6M20 5v6h-6" />,
+  home: <path d="M3 10.5L12 3l9 7.5V20a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1z" />,
+  inbox: <path d="M3 13l3-8h12l3 8v6a1 1 0 01-1 1H4a1 1 0 01-1-1zM3 13h5l1.5 2.5h5L16 13h5" />,
+  activity: <path d="M3 12h4l3-8 4 16 3-8h4" />,
+  calendar: (
+    <>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M3 10h18M8 3v4M16 3v4" />
+    </>
+  ),
+  book: <path d="M12 7a4 4 0 00-4-3H3v15h5a4 4 0 014 2M12 7a4 4 0 014-3h5v15h-5a4 4 0 00-4 2M12 7v14" />,
+  puzzle: <path d="M5 6h4a2.5 2.5 0 015 0h5v5a2.5 2.5 0 010 5v4H5z" />,
+  plug: <path d="M9 2v5M15 2v5M6 7h12v4a6 6 0 01-12 0zM12 17v5" />,
+  settings: (
+    <>
+      <path d="M9.9 5.1L10.4 2.5L13.6 2.5L14.1 5.1L15.4 5.6L17.5 4.2L19.8 6.5L18.4 8.6L18.9 9.9L21.5 10.4L21.5 13.6L18.9 14.1L18.4 15.4L19.8 17.5L17.5 19.8L15.4 18.4L14.1 18.9L13.6 21.5L10.4 21.5L9.9 18.9L8.6 18.4L6.5 19.8L4.2 17.5L5.6 15.4L5.1 14.1L2.5 13.6L2.5 10.4L5.1 9.9L5.6 8.6L4.2 6.5L6.5 4.2L8.6 5.6Z" />
+      <circle cx="12" cy="12" r="3" />
+    </>
+  ),
 } satisfies Record<string, ReactNode>
 
 export type IconName = keyof typeof icons

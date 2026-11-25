@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Icon, LogoLockup, StatusDot, joinClassNames } from '@/components/ui'
+import { Icon, LogoLockup, StatusDot, joinClassNames, type IconName } from '@/components/ui'
 import { isDesktopApp } from '@/api/client'
 import type { Agent } from '@/api/types'
 import { useAgents } from '@/hooks/useAgents'
@@ -34,19 +34,32 @@ export interface SidebarProps {
   inboxCount?: number
 }
 
-const primaryNavItems: Array<{ key: MainNavKey; label: string; path: string }> = [
-  { key: 'home', label: 'Home', path: routePaths.home },
-  { key: 'inbox', label: 'Inbox', path: routePaths.inbox },
-  { key: 'runs', label: 'Runs', path: routePaths.runs },
-  { key: 'schedule', label: 'Schedule', path: routePaths.scheduler },
-  { key: 'knowledge', label: 'Knowledge', path: routePaths.knowledge },
-  { key: 'plugins', label: 'Plugins', path: routePaths.plugins },
+const primaryNavItems: Array<{ key: MainNavKey; label: string; path: string; icon: IconName }> = [
+  { key: 'home', label: 'Home', path: routePaths.home, icon: 'home' },
+  { key: 'inbox', label: 'Inbox', path: routePaths.inbox, icon: 'inbox' },
+  { key: 'runs', label: 'Runs', path: routePaths.runs, icon: 'activity' },
+  { key: 'schedule', label: 'Schedule', path: routePaths.scheduler, icon: 'calendar' },
+  { key: 'knowledge', label: 'Knowledge', path: routePaths.knowledge, icon: 'book' },
+  { key: 'plugins', label: 'Plugins', path: routePaths.plugins, icon: 'puzzle' },
 ]
 
-const navLinkBase = 'flex items-center justify-between rounded-lg px-2.5 py-2 no-underline'
+const navLinkBase = 'group flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 no-underline'
 
 function navLinkClassNames(isActive: boolean) {
   return joinClassNames(navLinkBase, isActive ? 'bg-selected font-semibold !text-ink' : 'font-medium !text-ink-2 hover:bg-selected/60')
+}
+
+/**
+ * Icon and label of a sidebar item. The icon is decorative (the label names the link); it is
+ * muted until the item is hovered or current.
+ */
+function NavLabel({ icon, label, isActive }: { icon: IconName; label: string; isActive: boolean }) {
+  return (
+    <span className="flex min-w-0 items-center gap-2.5">
+      <Icon name={icon} size={18} strokeWidth={1.75} className={joinClassNames('shrink-0', isActive ? 'text-ink' : 'text-muted group-hover:text-ink-2')} />
+      <span className="truncate">{label}</span>
+    </span>
+  )
 }
 
 function SidebarAgentLink({ agent, isActive }: { agent: Agent; isActive: boolean }) {
@@ -168,7 +181,7 @@ export function Sidebar({ activeNav, agents = { kind: 'list' }, runnerStatus = '
       <div className="flex flex-col gap-0.5">
         {primaryNavItems.map((item) => (
           <Link key={item.key} to={item.path} aria-current={activeNav === item.key ? 'page' : undefined} className={navLinkClassNames(activeNav === item.key)}>
-            {item.label}
+            <NavLabel icon={item.icon} label={item.label} isActive={activeNav === item.key} />
             {item.key === 'plugins' && <PluginUpdateBadge />}
             {item.key === 'inbox' && waitingCount > 0 && (
               <span className="box-border flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-soft px-1.5 text-[11px] font-semibold text-amber-strong">
@@ -191,10 +204,10 @@ export function Sidebar({ activeNav, agents = { kind: 'list' }, runnerStatus = '
           {isDesktopApp() ? <DesktopRunnerStatusLine /> : <span className="text-[12px] text-muted">{runnerStatus}</span>}
         </div>
         <Link to={connectionsTabPath('models')} aria-current={activeNav === 'connections' ? 'page' : undefined} className={navLinkClassNames(activeNav === 'connections')}>
-          Connections
+          <NavLabel icon="plug" label="Connections" isActive={activeNav === 'connections'} />
         </Link>
         <Link to={routePaths.settings} aria-current={activeNav === 'settings' ? 'page' : undefined} className={navLinkClassNames(activeNav === 'settings')}>
-          Settings
+          <NavLabel icon="settings" label="Settings" isActive={activeNav === 'settings'} />
         </Link>
       </div>
     </nav>
