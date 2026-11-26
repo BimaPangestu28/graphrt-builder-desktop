@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Badge, Button, joinClassNames, type BadgeTone } from '@/components/ui'
 import type { Connection, ConnectionState } from '@/api/appConnectionTypes'
+import { messages } from '@/i18n'
 
 interface ConnectionCardProps {
   connection: Connection
@@ -24,8 +25,8 @@ export const statusBadgeTones: Record<ConnectionState, BadgeTone> = {
 }
 
 function describeStatusLabel(connection: Connection): string {
-  if (connection.state === 'signedOut') return 'Signed out'
-  if (connection.state === 'available') return 'Not set up'
+  if (connection.state === 'signedOut') return messages().connections.signedOut
+  if (connection.state === 'available') return messages().connections.notSetUp
   return connection.connectedLabel
 }
 

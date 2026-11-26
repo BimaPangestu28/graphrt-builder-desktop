@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { LiveBrowserLightbox } from './LiveBrowserLightbox'
 import { useDecodedFrame } from './useDecodedFrame'
+import { messages } from '@/i18n'
 
 /** After this long without a picture, the plugin is probably an older version without live view. */
 export const NO_FRAME_HINT_DELAY_MS = 8_000
@@ -27,7 +28,7 @@ export function LiveBrowserView({ image }: LiveBrowserViewProps) {
     return () => window.clearTimeout(hintTimer)
   }, [image])
   return (
-    <figure aria-label="Live view of the browser" className="m-0 flex w-full max-w-[560px] flex-col gap-1">
+    <figure aria-label={messages().agentRun.liveViewOfTheBrowser} className="m-0 flex w-full max-w-[560px] flex-col gap-1">
       <div
         className="flex items-center justify-center overflow-hidden rounded-lg border border-line bg-subtle"
         style={{ aspectRatio: String(frame.aspectRatio) }}
@@ -36,23 +37,23 @@ export function LiveBrowserView({ image }: LiveBrowserViewProps) {
         {frame.src ? (
           <button
             type="button"
-            aria-label="Enlarge the live view"
+            aria-label={messages().agentRun.enlargeTheLiveView}
             onClick={() => setIsEnlarged(true)}
             className="block size-full cursor-zoom-in border-0 bg-transparent p-0 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand"
           >
-            <img src={frame.src} alt="What the browser shows right now" className="block size-full object-contain" />
+            <img src={frame.src} alt={messages().agentRun.whatTheBrowserShowsRightNow2} className="block size-full object-contain" />
           </button>
         ) : (
           <span role="status" className="px-4 text-center text-[13px] text-muted">
             {isWaitingLong
-              ? 'No picture yet. If this keeps up, update the plugin in Connections: older versions do not send a live view'
-              : 'Waiting for the browser…'}
+              ? messages().agentRun.noPictureYetIfThisKeeps
+              : messages().agentRun.waitingForTheBrowser}
           </span>
         )}
       </div>
       <figcaption className="flex items-center gap-1.5 text-[12px] text-muted">
         <span aria-hidden="true" className="size-1.5 rounded-full bg-danger motion-safe:animate-pulse" />
-        Live · stays on this computer, not saved
+        {messages().agentRun.liveStaysOnThisComputerNot}
       </figcaption>
       {isEnlarged && frame.src && <LiveBrowserLightbox src={frame.src} aspectRatio={frame.aspectRatio} onClose={closeEnlarged} />}
     </figure>

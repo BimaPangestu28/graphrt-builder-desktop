@@ -1,3 +1,4 @@
+import type { Locale } from '@/i18n/types'
 import type { MissedRunPolicy } from './types'
 
 /**
@@ -40,6 +41,11 @@ export interface AppSettings {
    * archive…" for plugins that are not in the catalog. The backend refuses it otherwise.
    */
   developerMode: boolean
+  /**
+   * UI language. null until the app stores the system language on first launch; saving null
+   * keeps the stored language.
+   */
+  language: Locale | null
 }
 
 /**

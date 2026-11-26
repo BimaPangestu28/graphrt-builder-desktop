@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::sync::Arc;
 
 use graphrt_core::tool::ToolRegistry;
@@ -113,7 +114,8 @@ fn runtime_config_reads_the_named_secrets() {
     let config = runtime_config(&stdio, &credentials).unwrap();
     match &config.transport {
         McpTransport::Stdio(stdio_config) => {
-            assert_eq!(stdio_config.command, "npx");
+            // Windows resolves a bare name to its full path (`...\\npx.cmd`); elsewhere it stays `npx`.
+            assert_eq!(Path::new(&stdio_config.command).file_stem().and_then(|stem| stem.to_str()), Some("npx"));
             assert_eq!(stdio_config.env.get("GITHUB_TOKEN").map(String::as_str), Some("ghp-secret"));
             assert!(stdio_config.env.contains_key("PATH"));
             assert!(!stdio_config.inherit_env, "host secrets are not leaked to the server");

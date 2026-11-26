@@ -1,4 +1,5 @@
 import type { WorkflowSecretOverview } from '@/api/connectionTypes'
+import { messages } from '@/i18n'
 
 /** Same rule as the backend (`workflow_secrets/saved.rs`): `MY_SERVER_TOKEN`. */
 const newSecretNamePattern = /^[A-Z][A-Z0-9_]*$/
@@ -11,8 +12,13 @@ const secretNameMaxLength = 64
  * @returns The usage line, or "Not used yet" (string)
  */
 export function describeSecretUsers(secret: WorkflowSecretOverview): string {
-  const users = [...secret.agents.map((agent) => agent.agentName), ...secret.mcpServers.map((serverName) => `MCP server ${serverName}`)]
-  return users.length > 0 ? `Used by ${users.join(', ')}` : 'Not used yet'
+  const users = listSecretUsers(secret)
+  return users ? messages().connections.usedByValue(users) : messages().connections.notUsedYet
+}
+
+/** The agents and MCP servers using a secret, comma separated, or "" when none. */
+export function listSecretUsers(secret: WorkflowSecretOverview): string {
+  return [...secret.agents.map((agent) => agent.agentName), ...secret.mcpServers.map((serverName) => messages().connections.mcpServerServername(serverName))].join(', ')
 }
 
 /**
@@ -26,10 +32,10 @@ export function describeSecretUsers(secret: WorkflowSecretOverview): string {
  */
 export function describeSecretNameProblem(name: string): string | null {
   const trimmedName = name.trim()
-  if (!trimmedName) return 'Give the secret a name, like MY_SERVER_TOKEN'
-  if (trimmedName.length > secretNameMaxLength) return `Keep the name to ${secretNameMaxLength} characters or fewer`
-  if (!/^[A-Za-z]/.test(trimmedName)) return 'Start the name with a letter'
-  if (!newSecretNamePattern.test(trimmedName)) return 'Use capital letters, digits and underscores, like MY_SERVER_TOKEN'
+  if (!trimmedName) return messages().connections.giveTheSecretANameLike
+  if (trimmedName.length > secretNameMaxLength) return messages().connections.keepTheNameToSecretnamemaxlengthCharacters(secretNameMaxLength)
+  if (!/^[A-Za-z]/.test(trimmedName)) return messages().connections.startTheNameWithALetter
+  if (!newSecretNamePattern.test(trimmedName)) return messages().connections.useCapitalLettersDigitsAndUnderscores
   return null
 }
 

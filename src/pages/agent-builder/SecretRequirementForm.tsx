@@ -2,6 +2,7 @@ import { useId, useState, type FormEvent } from 'react'
 import { getCredentialStoreName } from '@/lib/platform'
 import { Button } from '@/components/ui'
 import { describeError } from '@/lib/agentDisplay'
+import { messages } from '@/i18n'
 
 interface SecretRequirementFormProps {
   secretName: string
@@ -34,7 +35,7 @@ export function SecretRequirementForm({ secretName, onSave, onCancel }: SecretRe
   return (
     <form onSubmit={(event) => void handleSubmit(event)} className="flex flex-col gap-2 px-4 pb-3">
       <label htmlFor={inputId} className="text-[12px] text-muted">
-        Value for <code className="font-mono">{secretName}</code> · saved in {getCredentialStoreName()}
+        {messages().builder.valueFor}{' '}<code className="font-mono">{secretName}</code> {messages().builder.savedIn}{' '}{getCredentialStoreName()}
       </label>
       <div className="flex flex-wrap gap-2">
         <input
@@ -46,10 +47,10 @@ export function SecretRequirementForm({ secretName, onSave, onCancel }: SecretRe
           className="h-9 min-w-0 flex-[1_1_200px] rounded-lg border border-line-strong px-3 text-[13px] outline-none focus:border-brand"
         />
         <Button type="submit" size="sm" disabled={isSaving || secretValue.trim() === ''}>
-          {isSaving ? 'Saving…' : 'Save'}
+          {isSaving ? messages().builder.saving : messages().builder.save}
         </Button>
         <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={isSaving}>
-          Cancel
+          {messages().builder.cancel}
         </Button>
       </div>
       {errorMessage && (

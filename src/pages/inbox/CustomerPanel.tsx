@@ -1,6 +1,7 @@
 import type { Conversation } from '@/api/conversationTypes'
 import { joinClassNames } from '@/components/ui'
 import { formatClockTime, getChannelLabel, humanizeVariableName, isOwnerReplying } from './conversationDisplay'
+import { messages, useT } from '@/i18n'
 
 interface CustomerPanelProps {
   conversation: Conversation
@@ -28,15 +29,16 @@ function toMemoryRows(variables: Record<string, unknown>): MemoryRow[] {
     .filter(([, value]) => value === null || ['string', 'number', 'boolean'].includes(typeof value))
     .map(([name, value]) => {
       const text = value === null ? '' : String(value).trim()
-      return { label: humanizeVariableName(name), value: text || 'Missing', isMissing: text === '' }
+      return { label: humanizeVariableName(name), value: text || messages().inbox.missing, isMissing: text === '' }
     })
 }
 
 function describeOrigin(conversation: Conversation): string {
   const startedAt = formatClockTime(conversation.createdAt)
-  if (conversation.channel === 'test') return `Try it test chat, ${startedAt}`
-  if (conversation.origin === 'outreach') return `Outreach agent on ${getChannelLabel(conversation.channel)}, ${startedAt}`
-  return `Messaged first on ${getChannelLabel(conversation.channel)}, ${startedAt}`
+  const t = messages().inbox
+  if (conversation.channel === 'test') return t.originTest(startedAt)
+  if (conversation.origin === 'outreach') return t.originOutreach(getChannelLabel(conversation.channel), startedAt)
+  return t.originCustomer(getChannelLabel(conversation.channel), startedAt)
 }
 
 function MemoryList({ rows }: { rows: MemoryRow[] }) {
@@ -57,30 +59,31 @@ function MemoryList({ rows }: { rows: MemoryRow[] }) {
  * variables), where the chat came from, plus "Save order to sheet", take over / hand back and close.
  */
 export function CustomerPanel({ conversation, isOrderSaved, onSaveOrder, onTakeOver, onHandBack, onClose, isBusy }: CustomerPanelProps) {
+  const t = useT().inbox
   const memoryRows = toMemoryRows(conversation.variables)
   const isClosed = conversation.status === 'closed'
   return (
-    <aside aria-label="Customer" className="box-border flex min-w-0 flex-[1_1_280px] flex-col gap-5 border-l border-line p-5">
+    <aside aria-label={t.customer} className="box-border flex min-w-0 flex-[1_1_280px] flex-col gap-5 border-l border-line p-5">
       <div className="flex flex-col gap-2">
-        <span className="text-[12px] font-medium text-muted">Summary by bot</span>
-        <p className="m-0 leading-[1.55]">{conversation.summary ?? 'No summary yet. The bot writes one once the chat has enough detail'}</p>
+        <span className="text-[12px] font-medium text-muted">{t.summaryByBot}</span>
+        <p className="m-0 leading-[1.55]">{conversation.summary ?? t.noSummary}</p>
       </div>
       {memoryRows.length > 0 && <MemoryList rows={memoryRows} />}
       <div className="flex flex-col gap-1.5">
-        <span className="text-[12px] font-medium text-muted">Came from</span>
+        <span className="text-[12px] font-medium text-muted">{t.cameFrom}</span>
         <span className="leading-normal">{describeOrigin(conversation)}</span>
       </div>
       <div className="mt-auto flex flex-col gap-2">
         <button type="button" onClick={onSaveOrder} disabled={isOrderSaved} className={joinClassNames(panelButtonClassNames, 'border-0 bg-ink text-white hover:bg-ink-2 disabled:bg-ok disabled:opacity-100')}>
-          {isOrderSaved ? 'Saved to sheet' : 'Save order to sheet'}
+          {isOrderSaved ? t.savedToSheet : t.saveOrderToSheet}
         </button>
         {!isClosed && (
           <button type="button" disabled={isBusy} onClick={isOwnerReplying(conversation) ? onHandBack : onTakeOver} className={secondaryButtonClassNames}>
-            {isOwnerReplying(conversation) ? 'Hand back to bot' : 'Take over from bot'}
+            {isOwnerReplying(conversation) ? t.handBack : t.takeOver}
           </button>
         )}
         <button type="button" disabled={isBusy || isClosed} onClick={onClose} className={secondaryButtonClassNames}>
-          {isClosed ? 'Chat closed' : 'Close chat'}
+          {isClosed ? t.chatClosed : t.closeChat}
         </button>
       </div>
     </aside>

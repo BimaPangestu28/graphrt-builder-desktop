@@ -3,6 +3,7 @@ import { joinClassNames } from '@/components/ui'
 import { PluginIcon } from '@/pages/plugins/PluginIcon'
 import type { PaletteAction, PaletteLibrary, PalettePlugin } from './paletteCatalog'
 import { PaletteOptionRow } from './PaletteOptionRow'
+import { messages } from '@/i18n'
 
 /** Actions a collapsed-to-preview plugin shows before "Show all N actions". */
 export const pluginPreviewCount = 3
@@ -41,7 +42,7 @@ function SectionHeading({ children }: { children: ReactNode }) {
 }
 
 function describeActionCount(count: number): string {
-  return count === 1 ? '1 action' : `${count} actions`
+  return count === 1 ? messages().nodes.n1Action : messages().nodes.countActions(count)
 }
 
 interface PluginGroupProps {
@@ -76,11 +77,11 @@ function PluginGroup({ plugin, expansion, handlers, onToggle, onShowAll }: Plugi
           <span className="truncate text-[13px] font-semibold text-ink">{plugin.displayName}</span>
           <span className="text-[11px] text-muted">{describeActionCount(plugin.actions.length)}</span>
         </span>
-        {!plugin.installed && <span className="shrink-0 text-[11px] text-muted">not installed</span>}
+        {!plugin.installed && <span className="shrink-0 text-[11px] text-muted">{messages().nodes.notInstalled2}</span>}
       </button>
       {isExpanded && (
-        <ul id={listId} role="group" aria-label={`${plugin.displayName} actions`} className="m-0 flex list-none flex-col gap-0.5 py-0 pl-7 pr-1">
-          {plugin.installed && plugin.usageCount > 0 && <li role="presentation" className="px-2 pt-1 text-[11px] font-semibold text-muted">Most used</li>}
+        <ul id={listId} role="group" aria-label={messages().nodes.displaynameActions(plugin.displayName)} className="m-0 flex list-none flex-col gap-0.5 py-0 pl-7 pr-1">
+          {plugin.installed && plugin.usageCount > 0 && <li role="presentation" className="px-2 pt-1 text-[11px] font-semibold text-muted">{messages().nodes.mostUsed}</li>}
           {shownActions.map((action) => (
             <PaletteOptionRow
               key={action.kind}
@@ -97,7 +98,7 @@ function PluginGroup({ plugin, expansion, handlers, onToggle, onShowAll }: Plugi
           {shownActions.length < plugin.actions.length && (
             <li role="presentation">
               <button type="button" onClick={() => onShowAll(plugin.name)} className="cursor-pointer border-0 bg-transparent px-2 py-1 text-[12px] font-medium text-ok-strong hover:underline">
-                Show all {describeActionCount(plugin.actions.length)}
+                {messages().nodes.showAll}{' '}{describeActionCount(plugin.actions.length)}
               </button>
             </li>
           )}
@@ -130,8 +131,8 @@ export function PaletteBrowse({ library, expansion, handlers, onTogglePlugin, on
     )
   return (
     <>
-      <section aria-label="Built-in">
-        <SectionHeading>Built-in</SectionHeading>
+      <section aria-label={messages().nodes.builtIn}>
+        <SectionHeading>{messages().nodes.builtIn}</SectionHeading>
         {library.builtinGroups.map((builtinGroup) => (
           <div key={builtinGroup.group} className="flex flex-col">
             <h4 className="m-0 px-2 pb-0.5 pt-1.5 text-[11px] font-medium text-faint">{builtinGroup.label}</h4>
@@ -152,8 +153,8 @@ export function PaletteBrowse({ library, expansion, handlers, onTogglePlugin, on
           </div>
         ))}
       </section>
-      {pluginSection('Installed plugins', library.installedPlugins)}
-      {pluginSection('From the plugin catalog', library.catalogPlugins)}
+      {pluginSection(messages().nodes.installedPlugins, library.installedPlugins)}
+      {pluginSection(messages().nodes.fromThePluginCatalog, library.catalogPlugins)}
     </>
   )
 }

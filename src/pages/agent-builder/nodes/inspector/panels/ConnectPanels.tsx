@@ -11,6 +11,8 @@ import { SecretPicker, withSecretDeclared } from '../SecretPicker'
 import { SelectorField } from '../SelectorField'
 import { TemplateField } from '../TemplateField'
 import { describeSchemaInputs, looksLikeSendingTool, useToolSources, type ToolChoice, type ToolSources } from '../toolSources'
+import { messages } from '@/i18n'
+import { localizedRecord, withLocalizedLabels } from '@/i18n/localized'
 
 /**
  * HTTP request (`http-request`, B9), Run an agent (`agent`, B10) and Use a tool
@@ -53,12 +55,12 @@ function KeyValueEditor({ label, rows, onChange, addLabel }: { label: string; ro
       <span className="text-[12px] font-medium text-ink-2">{label}</span>
       {rows.map((row, index) => (
         <div key={index} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_24px] items-center gap-1.5">
-          <TextInput ariaLabel={`${label} ${index + 1} name`} placeholder="Name" value={row.key} disabled={readOnly} onCommit={(key) => onChange(rows.map((item, itemIndex) => (itemIndex === index ? { ...item, key } : item)), `changed ${label.toLowerCase()}`)} />
-          <TextInput ariaLabel={`${label} ${index + 1} value`} placeholder="Value or {{#step.field#}}" value={row.value} disabled={readOnly} onCommit={(value) => onChange(rows.map((item, itemIndex) => (itemIndex === index ? { ...item, value } : item)), `changed ${label.toLowerCase()}`)} />
-          <RemoveButton label={`Remove ${label.toLowerCase()} ${index + 1}`} disabled={readOnly} onClick={() => onChange(rows.filter((_unused, itemIndex) => itemIndex !== index), `removed from ${label.toLowerCase()}`)} />
+          <TextInput ariaLabel={messages().nodes.labelValueName(label, index + 1)} placeholder={messages().nodes.name} value={row.key} disabled={readOnly} onCommit={(key) => onChange(rows.map((item, itemIndex) => (itemIndex === index ? { ...item, key } : item)), messages().nodes.changedLowercase(label.toLowerCase()))} />
+          <TextInput ariaLabel={messages().nodes.labelValueValue(label, index + 1)} placeholder={messages().nodes.valueOrStepField} value={row.value} disabled={readOnly} onCommit={(value) => onChange(rows.map((item, itemIndex) => (itemIndex === index ? { ...item, value } : item)), messages().nodes.changedLowercase(label.toLowerCase()))} />
+          <RemoveButton label={messages().nodes.removeLowercaseValue(label.toLowerCase(), index + 1)} disabled={readOnly} onClick={() => onChange(rows.filter((_unused, itemIndex) => itemIndex !== index), messages().nodes.removedFromLowercase(label.toLowerCase()))} />
         </div>
       ))}
-      <AddButton disabled={readOnly} onClick={() => onChange([...rows, { key: '', value: '' }], `added to ${label.toLowerCase()}`)}>
+      <AddButton disabled={readOnly} onClick={() => onChange([...rows, { key: '', value: '' }], messages().nodes.addedToLowercase(label.toLowerCase()))}>
         {addLabel}
       </AddButton>
     </div>
@@ -66,14 +68,10 @@ function KeyValueEditor({ label, rows, onChange, addLabel }: { label: string; ro
 }
 
 const httpMethods = ['get', 'post', 'put', 'patch', 'delete', 'head']
-const bodyTypes = [
-  { value: 'none', label: 'None' },
-  { value: 'json', label: 'JSON' },
-  { value: 'raw-text', label: 'Raw text' },
-  { value: 'form-data', label: 'Form data' },
-  { value: 'x-www-form-urlencoded', label: 'Form URL-encoded' },
-  { value: 'binary', label: 'File' },
-]
+const bodyTypes = withLocalizedLabels(
+  ['none', 'json', 'raw-text', 'form-data', 'x-www-form-urlencoded', 'binary'].map((value) => ({ value })),
+  (option) => messages().nodes.bodyTypes[option.value] ?? option.value,
+)
 
 function HttpBodyEditor() {
   const { node, readOnly, setConfigValue } = useInspector()
@@ -88,21 +86,21 @@ function HttpBodyEditor() {
   }
   return (
     <div className="flex flex-col gap-2">
-      <Field label="Body">
-        <SelectInput ariaLabel="Body type" value={bodyType} disabled={readOnly} options={bodyTypes} onChange={changeType} />
+      <Field label={messages().nodes.body}>
+        <SelectInput ariaLabel={messages().nodes.bodyType} value={bodyType} disabled={readOnly} options={bodyTypes} onChange={changeType} />
       </Field>
       {(bodyType === 'json' || bodyType === 'raw-text') && (
-        <TemplateField label={bodyType === 'json' ? 'JSON body' : 'Text body'} multiline value={typeof data === 'string' ? data : data === undefined ? '' : JSON.stringify(data)} onCommit={(text) => setBody({ type: bodyType, data: text }, 'changed the body')} />
+        <TemplateField label={bodyType === 'json' ? messages().nodes.jsonBody : messages().nodes.textBody} multiline value={typeof data === 'string' ? data : data === undefined ? '' : JSON.stringify(data)} onCommit={(text) => setBody({ type: bodyType, data: text }, messages().nodes.changedTheBody)} />
       )}
       {(bodyType === 'form-data' || bodyType === 'x-www-form-urlencoded') && (
-        <KeyValueEditor label="Form fields" rows={formRows} addLabel="Add a field" onChange={(rows, what) => setBody({ type: bodyType, data: rows.map((row) => ({ key: row.key, type: 'text', value: row.value })) }, what)} />
+        <KeyValueEditor label={messages().nodes.formFields} rows={formRows} addLabel={messages().nodes.addAField} onChange={(rows, what) => setBody({ type: bodyType, data: rows.map((row) => ({ key: row.key, type: 'text', value: row.value })) }, what)} />
       )}
       {bodyType === 'binary' && (
         <SelectorField
-          label="File to send"
+          label={messages().nodes.fileToSend}
           required
           path={Array.isArray(data) && isJsonObject(data[0]) ? readSelector(data[0].file) : null}
-          onChange={(path) => setBody({ type: 'binary', data: path ? [{ key: '', type: 'file', file: path }] : [] }, 'set the file to send')}
+          onChange={(path) => setBody({ type: 'binary', data: path ? [{ key: '', type: 'file', file: path }] : [] }, messages().nodes.setTheFileToSend)}
         />
       )}
     </div>
@@ -121,30 +119,30 @@ function HttpAuthEditor() {
   return (
     <div className="flex flex-col gap-2">
       <SegmentedChoice
-        label="Sign-in"
+        label={messages().nodes.signIn}
         value={usesKey ? 'api-key' : 'no-auth'}
         disabled={readOnly}
         options={[
-          { value: 'no-auth', label: 'No sign-in' },
-          { value: 'api-key', label: 'API key' },
+          { value: 'no-auth', label: messages().nodes.noSignIn },
+          { value: 'api-key', label: messages().nodes.apiKey },
         ]}
-        onChange={(type) => writeAuth(type === 'no-auth' ? { type } : { ...auth, type, config: { type: keyType, ...readConfigObject(auth, ['config']) } }, type === 'no-auth' ? 'removed the sign-in' : 'signed in with an API key')}
+        onChange={(type) => writeAuth(type === 'no-auth' ? { type } : { ...auth, type, config: { type: keyType, ...readConfigObject(auth, ['config']) } }, type === 'no-auth' ? messages().nodes.removedTheSignIn : messages().nodes.signedInWithAnApiKey)}
       />
       {usesKey && (
         <>
           <SelectInput
-            ariaLabel="How the key is sent"
+            ariaLabel={messages().nodes.howTheKeyIsSent}
             value={keyType}
             disabled={readOnly}
             options={[
-              { value: 'bearer', label: 'Bearer' },
-              { value: 'basic', label: 'Basic' },
-              { value: 'custom', label: 'Custom header' },
+              { value: 'bearer', label: messages().nodes.bearer },
+              { value: 'basic', label: messages().nodes.basic },
+              { value: 'custom', label: messages().nodes.customHeader },
             ]}
-            onChange={(type) => writeKeyConfig({ type }, 'changed how the key is sent')}
+            onChange={(type) => writeKeyConfig({ type }, messages().nodes.changedHowTheKeyIsSent)}
           />
-          {keyType === 'custom' && <TextInput ariaLabel="Header name" placeholder="Header name, e.g. X-Api-Key" value={readConfigText(auth, ['config', 'header'])} disabled={readOnly} onCommit={(header) => writeKeyConfig({ header }, 'set the key header')} />}
-          <Field label="Secret" fieldPath="authorization.config.api_key" error={apiKey && !secretName ? 'Use a saved secret, not a typed key' : null} hint="Keys come from Secrets; the value is never shown or stored in the agent">
+          {keyType === 'custom' && <TextInput ariaLabel={messages().nodes.headerName} placeholder={messages().nodes.headerNameEGXApi} value={readConfigText(auth, ['config', 'header'])} disabled={readOnly} onCommit={(header) => writeKeyConfig({ header }, messages().nodes.setTheKeyHeader)} />}
+          <Field label={messages().nodes.secret} fieldPath="authorization.config.api_key" error={apiKey && !secretName ? messages().nodes.useASavedSecretNotA : null} hint={messages().nodes.keysComeFromSecretsTheValue}>
             <SecretPicker
               graph={graph}
               value={secretName}
@@ -153,7 +151,7 @@ function HttpAuthEditor() {
                 if (readOnly) return
                 const nextAuth = { ...auth, type: 'api-key', config: { ...readConfigObject(auth, ['config']), type: keyType, api_key: formatReference(['env', name]) } }
                 // One undo step: the reference and the env declaration together.
-                controller.applyEdit((current) => withSecretDeclared(updateGraphNode(current, node.id, { config: writeConfigValue(node.config, ['authorization'], nextAuth) }), name), `used secret ${name} on ${node.displayTitle}`)
+                controller.applyEdit((current) => withSecretDeclared(updateGraphNode(current, node.id, { config: writeConfigValue(node.config, ['authorization'], nextAuth) }), name), messages().nodes.usedSecretNameOnDisplaytitle(name, node.displayTitle))
               }}
             />
           </Field>
@@ -169,51 +167,51 @@ export function HttpRequestPanel() {
   const config = node.config
   const method = (readConfigText(config, ['method']) || 'get').toLowerCase()
   const maxBytes = readConfigNumber(config, ['max_response_bytes'])
-  const setTimeoutPart = (part: string, seconds: number | null) => setConfigValue(['timeout', part], seconds ?? undefined, `set the ${part} time limit`)
+  const setTimeoutPart = (part: string, seconds: number | null) => setConfigValue(['timeout', part], seconds ?? undefined, messages().nodes.setThePartTimeLimit(part))
   return (
     <>
-      <InspectorSection title="Request">
+      <InspectorSection title={messages().nodes.request}>
         <div className="flex items-start gap-2">
-          <SelectInput ariaLabel="Method" className="w-24 shrink-0" value={method} disabled={readOnly} options={httpMethods.map((name) => ({ value: name, label: name.toUpperCase() }))} onChange={(nextMethod) => setConfigValue(['method'], nextMethod, `set the method to ${nextMethod.toUpperCase()}`)} />
+          <SelectInput ariaLabel={messages().nodes.method} className="w-24 shrink-0" value={method} disabled={readOnly} options={httpMethods.map((name) => ({ value: name, label: name.toUpperCase() }))} onChange={(nextMethod) => setConfigValue(['method'], nextMethod, messages().nodes.setTheMethodToUppercase(nextMethod.toUpperCase()))} />
           <div className="min-w-0 flex-1">
-            <TemplateField label="URL" fieldPath="url" required placeholder="https://api.example.com/leads" value={readConfigText(config, ['url'])} onCommit={(url) => setConfigValue(['url'], url, 'set the URL')} />
+            <TemplateField label={messages().nodes.url} fieldPath="url" required placeholder={messages().nodes.httpsApiExampleComLeads} value={readConfigText(config, ['url'])} onCommit={(url) => setConfigValue(['url'], url, messages().nodes.setTheUrl)} />
           </div>
         </div>
-        <KeyValueEditor label="Query parameters" addLabel="Add a parameter" rows={readKeyValueRows(config.params)} onChange={(rows, what) => setConfigValue(['params'], rows.map((row) => ({ ...row })), what)} />
-        <KeyValueEditor label="Headers" addLabel="Add a header" rows={readKeyValueRows(config.headers)} onChange={(rows, what) => setConfigValue(['headers'], rows.map((row) => ({ ...row })), what)} />
+        <KeyValueEditor label={messages().nodes.queryParameters} addLabel={messages().nodes.addAParameter} rows={readKeyValueRows(config.params)} onChange={(rows, what) => setConfigValue(['params'], rows.map((row) => ({ ...row })), what)} />
+        <KeyValueEditor label={messages().nodes.headers} addLabel={messages().nodes.addAHeader} rows={readKeyValueRows(config.headers)} onChange={(rows, what) => setConfigValue(['headers'], rows.map((row) => ({ ...row })), what)} />
         <HttpBodyEditor />
       </InspectorSection>
       <RequestCheckSection />
-      <InspectorSection title="Sign-in" sectionKey="sign-in" defaultOpen={readConfigText(config, ['authorization', 'type']) === 'api-key'}>
+      <InspectorSection title={messages().nodes.signIn} sectionKey="sign-in" defaultOpen={readConfigText(config, ['authorization', 'type']) === 'api-key'}>
         <HttpAuthEditor />
       </InspectorSection>
-      <InspectorSection title="Time limits" defaultOpen={false}>
+      <InspectorSection title={messages().nodes.timeLimits} defaultOpen={false}>
         <div className="flex flex-wrap gap-2">
           {['connect', 'read', 'write'].map((part) => (
             <NumberInput key={part} ariaLabel={part[0].toUpperCase() + part.slice(1)} value={readConfigNumber(config, ['timeout', part])} min={0} max={3600} suffix={`s ${part}`} disabled={readOnly} onCommit={(seconds) => setTimeoutPart(part, seconds)} />
           ))}
         </div>
       </InspectorSection>
-      <InspectorSection title="Advanced" defaultOpen={false}>
-        <ToggleRow label="Treat error responses as a failure" description="A 4xx or 5xx status fails the step (then “When this step fails” applies). Off: the step succeeds and you check status_code" checked={readConfigFlag(config, ['fail_on_error_status'], true)} disabled={readOnly} onChange={(checked) => setConfigValue(['fail_on_error_status'], checked, checked ? 'failed on error responses' : 'kept going on error responses')} />
-        <ToggleRow label="Retry POST and PATCH too" description="Off by default because sending twice can create duplicates" checked={readConfigFlag(config, ['retry_non_idempotent'])} disabled={readOnly} onChange={(checked) => setConfigValue(['retry_non_idempotent'], checked, checked ? 'retried POST and PATCH' : 'stopped retrying POST and PATCH')} />
-        <ToggleRow label="Check SSL certificates" description="Turn off only for a server you control" checked={readConfigFlag(config, ['ssl_verify'], true)} disabled={readOnly} onChange={(checked) => setConfigValue(['ssl_verify'], checked, checked ? 'checked SSL certificates' : 'stopped checking SSL certificates')} />
-        <Field label="Largest response to read" hint="Can only lower the 10 MB limit, never raise it">
-          <NumberInput ariaLabel="Largest response" value={maxBytes === null ? null : Number((maxBytes / 1_000_000).toFixed(2))} min={0.01} max={10} step={0.5} suffix="MB" disabled={readOnly} onCommit={(megabytes) => setConfigValue(['max_response_bytes'], megabytes === null ? undefined : Math.round(megabytes * 1_000_000), 'set the largest response')} />
+      <InspectorSection title={messages().nodes.advanced} defaultOpen={false}>
+        <ToggleRow label={messages().nodes.treatErrorResponsesAsAFailure} description={messages().nodes.a4xxOr5xxStatusFails} checked={readConfigFlag(config, ['fail_on_error_status'], true)} disabled={readOnly} onChange={(checked) => setConfigValue(['fail_on_error_status'], checked, checked ? messages().nodes.failedOnErrorResponses : messages().nodes.keptGoingOnErrorResponses)} />
+        <ToggleRow label={messages().nodes.retryPostAndPatchToo} description={messages().nodes.offByDefaultBecauseSendingTwice} checked={readConfigFlag(config, ['retry_non_idempotent'])} disabled={readOnly} onChange={(checked) => setConfigValue(['retry_non_idempotent'], checked, checked ? messages().nodes.retriedPostAndPatch : messages().nodes.stoppedRetryingPostAndPatch)} />
+        <ToggleRow label={messages().nodes.checkSslCertificates} description={messages().nodes.turnOffOnlyForAServer} checked={readConfigFlag(config, ['ssl_verify'], true)} disabled={readOnly} onChange={(checked) => setConfigValue(['ssl_verify'], checked, checked ? messages().nodes.checkedSslCertificates : messages().nodes.stoppedCheckingSslCertificates)} />
+        <Field label={messages().nodes.largestResponseToRead} hint={messages().nodes.canOnlyLowerThe10Mb}>
+          <NumberInput ariaLabel={messages().nodes.largestResponse} value={maxBytes === null ? null : Number((maxBytes / 1_000_000).toFixed(2))} min={0.01} max={10} step={0.5} suffix="MB" disabled={readOnly} onCommit={(megabytes) => setConfigValue(['max_response_bytes'], megabytes === null ? undefined : Math.round(megabytes * 1_000_000), messages().nodes.setTheLargestResponse)} />
         </Field>
-        <Field label="Read JSON">
+        <Field label={messages().nodes.readJson}>
           <SelectInput
-            ariaLabel="Read JSON"
+            ariaLabel={messages().nodes.readJson}
             value={readConfigText(config, ['parse_json']) || 'lenient'}
             disabled={readOnly}
             options={[
-              { value: 'lenient', label: 'leniently (default)' },
+              { value: 'lenient', label: messages().nodes.lenientlyDefault },
               { value: 'strict', label: 'strictly' },
             ]}
-            onChange={(mode) => setConfigValue(['parse_json'], mode, 'set how JSON is read')}
+            onChange={(mode) => setConfigValue(['parse_json'], mode, messages().nodes.setHowJsonIsRead)}
           />
         </Field>
-        <p className={hintClassName}>Private networks are blocked and sign-in headers are removed when a redirect goes to another site. Runs with a lookup on a trusted host follow no redirects</p>
+        <p className={hintClassName}>{messages().nodes.privateNetworksAreBlockedAndSign}</p>
       </InspectorSection>
     </>
   )
@@ -226,8 +224,8 @@ export function toolReference(entry: JsonValue): string | null {
   return null
 }
 
-const sourceTitles: Record<keyof ToolSources, string> = { agents: 'Your agents', plugins: 'Plugins', mcp: 'MCP servers' }
-const emptySourceNotes: Record<keyof ToolSources, string> = { agents: 'No other agents yet', plugins: 'No installed plugin has tools', mcp: 'None set up · Connections › Advanced › MCP servers' }
+const sourceTitles: Readonly<Record<keyof ToolSources, string>> = localizedRecord(() => messages().nodes.toolSourceTitles)
+const emptySourceNotes: Readonly<Record<keyof ToolSources, string>> = localizedRecord(() => messages().nodes.toolSourceEmpty)
 
 function AgentToolsPicker() {
   const { node, graph, readOnly, updateConfig } = useInspector()
@@ -241,7 +239,7 @@ function AgentToolsPicker() {
       const nextTools = isOn ? [...tools, choice.reference] : tools.filter((entry) => toolReference(entry) !== choice.reference)
       const nextApprovals = isOn ? approvals : approvals.filter((name) => name !== choice.reference)
       return writeConfigValue(writeConfigValue(config, ['tools'], nextTools), ['require_approval'], nextApprovals.length > 0 ? nextApprovals : undefined)
-    }, `${isOn ? 'allowed' : 'removed'} tool ${choice.label}`)
+    }, messages().nodes.toolToggled(isOn, choice.label))
   const toggleApproval = (reference: string, isOn: boolean) => {
     const nextApprovals = isOn ? [...approvals, reference] : approvals.filter((name) => name !== reference && name !== reference.split('/')[1])
     updateConfig((config) => writeConfigValue(config, ['require_approval'], nextApprovals.length > 0 ? nextApprovals : undefined), `${isOn ? 'asked first for' : 'stopped asking for'} ${reference}`)
@@ -252,18 +250,18 @@ function AgentToolsPicker() {
     const isOn = chosen.includes(choice.reference)
     return (
       <li key={choice.reference} className="flex items-center gap-2 rounded-lg border border-line px-2 py-1.5">
-        <input type="checkbox" aria-label={`Use ${choice.reference}`} checked={isOn} disabled={readOnly} onChange={(event) => toggleTool(choice, event.target.checked)} className="accent-ink" />
+        <input type="checkbox" aria-label={messages().nodes.useReference(choice.reference)} checked={isOn} disabled={readOnly} onChange={(event) => toggleTool(choice, event.target.checked)} className="accent-ink" />
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-[13px]">
             <span className="text-muted">{choice.provider} › </span>
             {choice.label}
           </span>
           {choice.note && <span className="truncate text-[11px] text-muted">{choice.note}</span>}
-          {describeSchemaInputs(choice.inputSchema) && <span className="truncate text-[11px] text-muted">Inputs: {describeSchemaInputs(choice.inputSchema)}</span>}
+          {describeSchemaInputs(choice.inputSchema) && <span className="truncate text-[11px] text-muted">{messages().nodes.inputs2}{' '}{describeSchemaInputs(choice.inputSchema)}</span>}
         </span>
         <label className="flex shrink-0 items-center gap-1 text-[12px] text-ink-2">
-          <input type="checkbox" aria-label={`Ask me first before ${choice.reference}`} checked={isOn && asksFirst(choice.reference)} disabled={readOnly || !isOn} onChange={(event) => toggleApproval(choice.reference, event.target.checked)} className="accent-ink" />
-          Ask me first
+          <input type="checkbox" aria-label={messages().nodes.askMeFirstBeforeReference(choice.reference)} checked={isOn && asksFirst(choice.reference)} disabled={readOnly || !isOn} onChange={(event) => toggleApproval(choice.reference, event.target.checked)} className="accent-ink" />
+          {messages().nodes.askMeFirst}
         </label>
       </li>
     )
@@ -273,19 +271,19 @@ function AgentToolsPicker() {
       {(Object.keys(sourceTitles) as Array<keyof ToolSources>).map((sourceKey) => (
         <div key={sourceKey} role="group" aria-label={sourceTitles[sourceKey]} className="flex flex-col gap-1">
           <span className="text-[11px] font-semibold tracking-[0.4px] text-muted uppercase">{sourceTitles[sourceKey]}</span>
-          {sources[sourceKey].length === 0 ? <span className={hintClassName}>{sources.isLoading ? 'Loading…' : emptySourceNotes[sourceKey]}</span> : <ul className="m-0 flex list-none flex-col gap-1 p-0">{sources[sourceKey].map(row)}</ul>}
+          {sources[sourceKey].length === 0 ? <span className={hintClassName}>{sources.isLoading ? messages().nodes.loading : emptySourceNotes[sourceKey]}</span> : <ul className="m-0 flex list-none flex-col gap-1 p-0">{sources[sourceKey].map(row)}</ul>}
         </div>
       ))}
       {otherChosen.length > 0 && (
-        <div role="group" aria-label="Other tools" className="flex flex-col gap-1">
-          <span className="text-[11px] font-semibold tracking-[0.4px] text-muted uppercase">Named in the agent</span>
+        <div role="group" aria-label={messages().nodes.otherTools} className="flex flex-col gap-1">
+          <span className="text-[11px] font-semibold tracking-[0.4px] text-muted uppercase">{messages().nodes.namedInTheAgent}</span>
           <ul className="m-0 flex list-none flex-col gap-1 p-0">
             {otherChosen.map((reference) => row({ reference, provider: reference.split('/')[0], name: reference.split('/')[1] ?? '*', label: reference.split('/')[1] ?? reference, source: 'plugins', inputs: [], inputSchema: null, note: null }))}
           </ul>
         </div>
       )}
-      {chosen.some((reference) => looksLikeSendingTool(reference) && !asksFirst(reference)) && <p className="m-0 text-[12px] text-amber-strong">Tools that send, post, create, update or delete should ask first</p>}
-      {approvals.length > 0 && <p className={hintClassName}>Before a tool marked “Ask me first” runs, the run pauses for your OK.</p>}
+      {chosen.some((reference) => looksLikeSendingTool(reference) && !asksFirst(reference)) && <p className="m-0 text-[12px] text-amber-strong">{messages().nodes.toolsThatSendPostCreateUpdate}</p>}
+      {approvals.length > 0 && <p className={hintClassName}>{messages().nodes.beforeAToolMarkedAskMe}</p>}
     </div>
   )
 }
@@ -296,24 +294,24 @@ export function AgentPanel() {
   const config = node.config
   return (
     <>
-      <InspectorSection title="Model and task">
+      <InspectorSection title={messages().nodes.modelAndTask}>
         <ModelField />
-        <TemplateField label="Instructions" multiline value={readConfigText(config, ['instruction'])} onCommit={(instruction) => setConfigValue(['instruction'], instruction || undefined, 'changed the instructions')} />
-        <TemplateField label="Task" multiline placeholder="Empty uses the chat message (sys.query)" hint="Empty uses the chat message (sys.query)" value={readConfigText(config, ['query'])} onCommit={(query) => setConfigValue(['query'], query || undefined, 'changed the task')} />
+        <TemplateField label={messages().nodes.instructions} multiline value={readConfigText(config, ['instruction'])} onCommit={(instruction) => setConfigValue(['instruction'], instruction || undefined, messages().nodes.changedTheInstructions)} />
+        <TemplateField label={messages().nodes.task} multiline placeholder={messages().nodes.emptyUsesTheChatMessageSys} hint={messages().nodes.emptyUsesTheChatMessageSys} value={readConfigText(config, ['query'])} onCommit={(query) => setConfigValue(['query'], query || undefined, messages().nodes.changedTheTask)} />
       </InspectorSection>
-      <InspectorSection title="Tools it may use" sectionKey="tools">
+      <InspectorSection title={messages().nodes.toolsItMayUse} sectionKey="tools">
         <AgentToolsPicker />
       </InspectorSection>
-      <InspectorSection title="Limits" defaultOpen={false}>
-        <Field label="Tool rounds" hint="Stops with stopped_reason max_iterations">
-          <NumberInput ariaLabel="Max rounds" value={readConfigNumber(config, ['max_iterations']) ?? 10} min={1} max={100} step={1} suffix="at most (1 to 100)" disabled={readOnly} onCommit={(rounds) => setConfigValue(['max_iterations'], rounds === null ? undefined : Math.round(rounds), 'set the tool rounds')} />
+      <InspectorSection title={messages().nodes.limits} defaultOpen={false}>
+        <Field label={messages().nodes.toolRounds} hint={messages().nodes.stopsWithStoppedReasonMaxIterations}>
+          <NumberInput ariaLabel={messages().nodes.maxRounds} value={readConfigNumber(config, ['max_iterations']) ?? 10} min={1} max={100} step={1} suffix={messages().nodes.atMost1To100} disabled={readOnly} onCommit={(rounds) => setConfigValue(['max_iterations'], rounds === null ? undefined : Math.round(rounds), messages().nodes.setTheToolRounds)} />
         </Field>
-        <ToggleRow label="Run several tool calls at once" description="When the model asks for more than one in a round" checked={readConfigFlag(config, ['parallel_tool_calls'], true)} disabled={readOnly} onChange={(checked) => setConfigValue(['parallel_tool_calls'], checked, checked ? 'ran tool calls together' : 'ran tool calls one by one')} />
-        <Field label="Tool calls per round">
-          <NumberInput ariaLabel="Per round" value={readConfigNumber(config, ['max_tool_calls_per_turn'])} min={1} step={1} suffix="empty = no limit" disabled={readOnly} onCommit={(count) => setConfigValue(['max_tool_calls_per_turn'], count === null ? undefined : Math.round(count), 'set the tool calls per round')} />
+        <ToggleRow label={messages().nodes.runSeveralToolCallsAtOnce} description={messages().nodes.whenTheModelAsksForMore} checked={readConfigFlag(config, ['parallel_tool_calls'], true)} disabled={readOnly} onChange={(checked) => setConfigValue(['parallel_tool_calls'], checked, checked ? messages().nodes.ranToolCallsTogether : messages().nodes.ranToolCallsOneByOne)} />
+        <Field label={messages().nodes.toolCallsPerRound}>
+          <NumberInput ariaLabel={messages().nodes.perRound} value={readConfigNumber(config, ['max_tool_calls_per_turn'])} min={1} step={1} suffix={messages().nodes.emptyNoLimit} disabled={readOnly} onCommit={(count) => setConfigValue(['max_tool_calls_per_turn'], count === null ? undefined : Math.round(count), messages().nodes.setTheToolCallsPerRound)} />
         </Field>
-        <Field label="Longest tool result passed back">
-          <NumberInput ariaLabel="Characters" wide value={readConfigNumber(config, ['max_tool_output_chars']) ?? 32000} min={1} step={1000} suffix="characters" disabled={readOnly} onCommit={(chars) => setConfigValue(['max_tool_output_chars'], chars === null ? undefined : Math.round(chars), 'set the longest tool result')} />
+        <Field label={messages().nodes.longestToolResultPassedBack}>
+          <NumberInput ariaLabel={messages().nodes.characters} wide value={readConfigNumber(config, ['max_tool_output_chars']) ?? 32000} min={1} step={1000} suffix="characters" disabled={readOnly} onCommit={(chars) => setConfigValue(['max_tool_output_chars'], chars === null ? undefined : Math.round(chars), messages().nodes.setTheLongestToolResult)} />
         </Field>
       </InspectorSection>
     </>
@@ -367,8 +365,8 @@ function ToolChoiceList({ sources, current, onPick }: { sources: ToolSources & {
     <div className="flex flex-col gap-1.5">
       {(Object.keys(sourceTitles) as Array<keyof ToolSources>).map((sourceKey) => (
         <div key={sourceKey} role="group" aria-label={sourceTitles[sourceKey]} className="flex flex-col gap-1">
-          <span className="text-[11px] font-semibold tracking-[0.4px] text-muted uppercase">{sourceKey === 'plugins' ? 'Plugin tools' : sourceTitles[sourceKey]}</span>
-          {sources[sourceKey].length === 0 && <span className={hintClassName}>{sources.isLoading ? 'Loading…' : sourceKey === 'mcp' ? 'None set up' : emptySourceNotes[sourceKey]}</span>}
+          <span className="text-[11px] font-semibold tracking-[0.4px] text-muted uppercase">{sourceKey === 'plugins' ? messages().nodes.pluginTools : sourceTitles[sourceKey]}</span>
+          {sources[sourceKey].length === 0 && <span className={hintClassName}>{sources.isLoading ? messages().nodes.loading : sourceKey === 'mcp' ? messages().nodes.noneSetUp : emptySourceNotes[sourceKey]}</span>}
           {sources[sourceKey].map((choice) => (
             <label key={choice.reference} className="flex cursor-pointer items-center gap-2 rounded-lg border border-line px-2 py-1.5 text-[13px]">
               <input type="radio" name="tool-choice" checked={current === choice.reference} disabled={readOnly} onChange={() => onPick(choice)} className="accent-ink" />
@@ -381,7 +379,7 @@ function ToolChoiceList({ sources, current, onPick }: { sources: ToolSources & {
           ))}
         </div>
       ))}
-      <p className={hintClassName}>Plugin actions are better added as their own steps; tools are for agents and MCP servers</p>
+      <p className={hintClassName}>{messages().nodes.pluginActionsAreBetterAddedAs}</p>
     </div>
   )
 }
@@ -401,10 +399,10 @@ function toolSchemaInputs(schema: Record<string, unknown> | null): SchemaInput[]
 }
 
 function describeNoInputs(choice: ToolChoice | undefined): string {
-  if (!choice) return 'Pick a tool to see its inputs.'
-  if (choice.source === 'agents') return 'This agent takes no inputs.'
-  if (choice.inputSchema) return 'This tool takes no inputs.'
-  return 'The app does not know this tool’s inputs yet (test the MCP server in Connections to read them). Add them by name.'
+  if (!choice) return messages().nodes.pickAToolToSeeIts
+  if (choice.source === 'agents') return messages().nodes.thisAgentTakesNoInputs
+  if (choice.inputSchema) return messages().nodes.thisToolTakesNoInputs
+  return messages().nodes.theAppDoesNotKnowThis
 }
 
 function readToolProvider(config: NodeConfig): { key: string; value: string } {
@@ -423,9 +421,9 @@ interface ToolInputInfo {
 
 /** The hint under an input: its type and origin, or that the tool does not declare it. */
 function describeToolInput({ input, schemaInput }: ToolInputInfo, choice: ToolChoice | undefined): string | undefined {
-  if (input) return `${input.valueType} · from the agent's Start`
+  if (input) return messages().nodes.valuetypeFromTheAgentsStart(input.valueType)
   if (schemaInput) return describeSchemaType(schemaInput.property)
-  return choice?.inputSchema ? 'Not in the tool’s inputs' : undefined
+  return choice?.inputSchema ? messages().nodes.notInTheToolsInputs : undefined
 }
 
 function ToolInputRow({ info, choice, parameters }: { info: ToolInputInfo; choice: ToolChoice | undefined; parameters: JsonObject }) {
@@ -437,15 +435,15 @@ function ToolInputRow({ info, choice, parameters }: { info: ToolInputInfo; choic
       <div className="min-w-0 flex-1">
         <TemplateField
           label={input?.label || (schemaInput ? propertyLabel(name, schemaInput.property) : name)}
-          ariaLabel={`Input ${name}`}
+          ariaLabel={messages().nodes.inputName(name)}
           fieldPath={`tool_parameters.${name}`}
           required={required}
           hint={describeToolInput(info, choice)}
           value={readToolParameter(parameters[name])}
-          onCommit={(text) => setConfigValue(['tool_parameters', name], text === '' && !required ? undefined : toSchemaToolParameter(text, schemaInput?.property), `set input ${name}`)}
+          onCommit={(text) => setConfigValue(['tool_parameters', name], text === '' && !required ? undefined : toSchemaToolParameter(text, schemaInput?.property), messages().nodes.setInputName(name))}
         />
       </div>
-      {!input && !schemaInput && <RemoveButton label={`Remove input ${name}`} disabled={readOnly} onClick={() => setConfigValue(['tool_parameters', name], undefined, `removed input ${name}`)} />}
+      {!input && !schemaInput && <RemoveButton label={messages().nodes.removeInputName(name)} disabled={readOnly} onClick={() => setConfigValue(['tool_parameters', name], undefined, messages().nodes.removedInputName(name))} />}
     </div>
   )
 }
@@ -471,21 +469,21 @@ function ToolInputsSection({ choice }: { choice: ToolChoice | undefined }) {
   const inputs = listToolInputs(choice, parameters)
   const acceptsOtherInputs = choice?.source !== 'agents' && choice?.inputSchema?.additionalProperties !== false
   return (
-    <InspectorSection title="Inputs" sectionKey="inputs">
+    <InspectorSection title={messages().nodes.inputs} sectionKey="inputs">
       {inputs.length === 0 && <p className={hintClassName}>{describeNoInputs(choice)}</p>}
       {inputs.map((info) => (
         <ToolInputRow key={info.name} info={info} choice={choice} parameters={parameters} />
       ))}
       {acceptsOtherInputs && (
         <TextInput
-          ariaLabel="Add an input"
-          placeholder={choice?.inputSchema ? 'Add another input by name' : 'Add an input by name'}
+          ariaLabel={messages().nodes.addAnInput}
+          placeholder={choice?.inputSchema ? messages().nodes.addAnotherInputByName : messages().nodes.addAnInputByName}
           value=""
           disabled={readOnly}
-          onCommit={(name) => name.trim() && setConfigValue(['tool_parameters', name.trim()], { type: 'constant', value: '' }, `added input ${name.trim()}`)}
+          onCommit={(name) => name.trim() && setConfigValue(['tool_parameters', name.trim()], { type: 'constant', value: '' }, messages().nodes.addedInputValue(name.trim()))}
         />
       )}
-      <p className={hintClassName}>Each input can be a value from a step, fixed text, or text with values in it. A value that doesn’t resolve is sent empty</p>
+      <p className={hintClassName}>{messages().nodes.eachInputCanBeAValue}</p>
     </InspectorSection>
   )
 }
@@ -494,9 +492,9 @@ function ToolTimeLimitSection({ providerValue }: { providerValue: string }) {
   const { node, readOnly, updateNode } = useInspector()
   const minutes = node.timeoutMs === null ? null : Number((node.timeoutMs / 60_000).toFixed(2))
   return (
-    <InspectorSection title="Time limit" sectionKey="time-limit" defaultOpen={node.timeoutMs !== null}>
-      <Field label="Wait for it at most" hint={providerValue === 'agents' ? 'Agents run as tools get 10 minutes' : 'Empty uses the app default, 2 minutes'}>
-        <NumberInput ariaLabel="Minutes" value={minutes} min={0.1} max={1440} step={1} suffix="minutes" disabled={readOnly} onCommit={(nextMinutes) => updateNode({ timeoutMs: nextMinutes === null ? null : Math.round(nextMinutes * 60_000) }, nextMinutes === null ? 'cleared the tool time limit' : `set the tool time limit to ${nextMinutes} min`)} />
+    <InspectorSection title={messages().nodes.timeLimit} sectionKey="time-limit" defaultOpen={node.timeoutMs !== null}>
+      <Field label={messages().nodes.waitForItAtMost} hint={providerValue === 'agents' ? messages().nodes.agentsRunAsToolsGet10 : messages().nodes.emptyUsesTheAppDefault2}>
+        <NumberInput ariaLabel={messages().nodes.minutes} value={minutes} min={0.1} max={1440} step={1} suffix="minutes" disabled={readOnly} onCommit={(nextMinutes) => updateNode({ timeoutMs: nextMinutes === null ? null : Math.round(nextMinutes * 60_000) }, nextMinutes === null ? messages().nodes.clearedTheToolTimeLimit : messages().nodes.setTheToolTimeLimitTo(nextMinutes))} />
       </Field>
     </InspectorSection>
   )
@@ -505,16 +503,16 @@ function ToolTimeLimitSection({ providerValue }: { providerValue: string }) {
 function ToolErrorSection() {
   const { node, readOnly, setConfigValue } = useInspector()
   return (
-    <InspectorSection title="If the tool reports an error">
+    <InspectorSection title={messages().nodes.ifTheToolReportsAnError}>
       <RadioCards
-        legend="If the tool reports an error"
+        legend={messages().nodes.ifTheToolReportsAnError}
         name="ignore-tool-errors"
         value={readConfigFlag(node.config, ['ignore_tool_errors']) ? 'keep-going' : 'fail'}
         disabled={readOnly}
-        onChange={(choiceValue) => setConfigValue(['ignore_tool_errors'], choiceValue === 'keep-going' ? true : undefined, choiceValue === 'keep-going' ? 'kept going on tool errors' : 'failed on tool errors')}
+        onChange={(choiceValue) => setConfigValue(['ignore_tool_errors'], choiceValue === 'keep-going' ? true : undefined, choiceValue === 'keep-going' ? messages().nodes.keptGoingOnToolErrors : messages().nodes.failedOnToolErrors)}
         options={[
-          { value: 'fail', title: 'The step fails', description: 'Then “When this step fails” applies' },
-          { value: 'keep-going', title: 'Keep going', description: 'It succeeds with is_error and error so a later step can check them' },
+          { value: 'fail', title: messages().nodes.theStepFails, description: messages().nodes.thenWhenThisStepFailsApplies },
+          { value: 'keep-going', title: messages().nodes.keepGoing, description: messages().nodes.itSucceedsWithIsErrorAnd },
         ]}
       />
     </InspectorSection>
@@ -533,18 +531,18 @@ export function ToolPanel() {
     updateConfig((config) => {
       const { provider: _provider, provider_name: _providerName, ...rest } = config
       return { ...rest, provider_id: picked.provider, tool_name: picked.name }
-    }, `used tool ${picked.label}`)
+    }, messages().nodes.usedToolLabel(picked.label))
   return (
     <>
-      <InspectorSection title="Tool" sectionKey="tool">
+      <InspectorSection title={messages().nodes.tool} sectionKey="tool">
         <ToolChoiceList sources={sources} current={current} onPick={pickTool} />
-        {!current && <p className="m-0 text-[12px] text-danger">Pick a tool</p>}
-        {current && !choice && !sources.isLoading && <p className="m-0 text-[12px] text-amber-strong">{current} is not on this computer; it fails until it is set up.</p>}
+        {!current && <p className="m-0 text-[12px] text-danger">{messages().nodes.pickATool}</p>}
+        {current && !choice && !sources.isLoading && <p className="m-0 text-[12px] text-amber-strong">{current} {messages().nodes.isNotOnThisComputerIt}</p>}
       </InspectorSection>
       <ToolInputsSection choice={choice} />
       <ToolTimeLimitSection providerValue={provider.value} />
       <ToolErrorSection />
-      <SupportNote>an agent used as a tool can’t ask for approval (“agents used as steps cannot ask for approval yet”). Use an Ask me before continuing step before it.</SupportNote>
+      <SupportNote>{messages().nodes.anAgentUsedAsATool}</SupportNote>
     </>
   )
 }

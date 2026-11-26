@@ -25,6 +25,7 @@ import { isCompactCanvas, isMinimapShown, isTinyCanvas, useCanvasViewportFit, us
 import { useContainerDrag } from './flow/useContainerDrag'
 import { usePrefersReducedMotion } from './flow/usePrefersReducedMotion'
 import { isNoteFlowNodeId, noteIdOf, noteNodeTypes, toNoteFlowNodes } from './notes/NoteNode'
+import { messages } from '@/i18n'
 
 /** Step renderers plus the sticky notes (`notes/NoteNode.tsx`). */
 const canvasNodeTypes = { ...flowNodeTypes, ...noteNodeTypes }
@@ -55,7 +56,7 @@ function CanvasMiniMap() {
     <MiniMap<StepFlowNode>
       pannable
       zoomable
-      ariaLabel="Minimap of the whole agent"
+      ariaLabel={messages().nodes.minimapOfTheWholeAgent}
       className="node-minimap"
       nodeColor={minimapNodeColor}
       nodeStrokeColor={(flowNode) => (flowNode.type === 'container' ? '#A1A1AA' : 'transparent')}
@@ -211,7 +212,7 @@ function CanvasBody(props: NodeCanvasProps) {
   const isEmpty = !graph.nodes.some((node) => !node.hidden && node.kind !== 'start' && node.kind !== 'end')
   const visibleSelection = editableNodeIds(graph, selectedNodeIds)
 
-  if (!mergedPositions) return <p className="m-0 p-6 text-muted">Placing the steps…</p>
+  if (!mergedPositions) return <p className="m-0 p-6 text-muted">{messages().nodes.placingTheSteps}</p>
 
   return (
     <CanvasNodeActionsContext.Provider value={nodeActions}>
@@ -219,8 +220,8 @@ function CanvasBody(props: NodeCanvasProps) {
         <div
           ref={containerRef}
           role="application"
-          aria-roledescription="node editor"
-          aria-label="Nodes canvas: drag to select, Space + drag or scroll to pan, ? for shortcuts"
+          aria-roledescription={messages().nodes.nodeEditor}
+          aria-label={messages().nodes.nodesCanvasDragToSelectSpace}
           onKeyDown={shortcuts.handleKeyDown}
           tabIndex={0}
           className={`node-canvas relative h-full min-h-[360px] w-full outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand ${connectingFrom ? 'is-connecting' : ''}`}
@@ -270,7 +271,7 @@ function CanvasBody(props: NodeCanvasProps) {
             proOptions={{ hideAttribution: true }}
             minZoom={0.2}
             maxZoom={2}
-            ariaLabelConfig={{ 'node.a11yDescription.default': 'Press Enter to open its settings, Shift F10 for its menu, arrow keys to move it.' }}
+            ariaLabelConfig={{ 'node.a11yDescription.default': messages().nodes.pressEnterToOpenItsSettings }}
           >
             <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#D4D4D8" />
             {showMinimap && <CanvasMiniMap />}
@@ -298,7 +299,7 @@ function CanvasBody(props: NodeCanvasProps) {
           )}
           {connectingFrom?.viaKeyboard && (
             <div role="status" className="absolute left-1/2 top-4 z-20 -translate-x-1/2 rounded-lg bg-ink px-3 py-1.5 text-[12px] font-medium text-white shadow-md">
-              Connecting from {describeNodeList(graph, [connectingFrom.nodeId])}: Tab to a step and press Enter · Esc cancels
+              {messages().nodes.connectingFrom}{' '}{describeNodeList(graph, [connectingFrom.nodeId])}{messages().nodes.tabToAStepAndPress}
             </div>
           )}
           {menu?.kind === 'node' && (
@@ -314,7 +315,7 @@ function CanvasBody(props: NodeCanvasProps) {
           {menu?.kind === 'pane' && (
             <NodeContextMenu
               position={menu.position}
-              title="the canvas"
+              title={messages().nodes.theCanvas}
               items={contextMenu.paneMenuItems}
               readOnly={readOnly}
               onAction={(action) => contextMenu.runPaneMenuAction(action, menu.flowPoint)}

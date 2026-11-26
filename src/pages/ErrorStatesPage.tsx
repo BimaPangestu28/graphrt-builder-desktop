@@ -5,6 +5,7 @@ import { AppShell } from '@/components/layout'
 import { useLoadedData } from '@/hooks/useRunData'
 import { FailedRunPanel } from './error-states/FailedRunPanel'
 import { OtherProblemsPanel } from './error-states/OtherProblemsPanel'
+import { messages } from '@/i18n'
 
 /** The run shown on the left: `?runId=`, else the newest failed run in the problem list. */
 function selectRunId(requestedRunId: string | null, problems: Problem[] | null): string | null {
@@ -28,8 +29,8 @@ export function ErrorStatesPage() {
   return (
     <AppShell activeNav="runs" agents={{ kind: 'list' }} mainClassName="flex flex-wrap">
       {isWaitingForSelection ? (
-        <section aria-label="Failed run" className="box-border flex min-w-0 flex-[3_1_520px] flex-col p-8">
-          <p className="m-0 text-body">Checking for problems…</p>
+        <section aria-label={messages().agentRun.failedRun} className="box-border flex min-w-0 flex-[3_1_520px] flex-col p-8">
+          <p className="m-0 text-body">{messages().agentRun.checkingForProblems}</p>
         </section>
       ) : (
         <FailedRunPanel runId={selectedRunId} />

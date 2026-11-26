@@ -2,6 +2,8 @@ import type { ApprovalAction, PendingApproval, RunReview } from '@/api/runReview
 import type { RunTrigger } from '@/api/types'
 import { describeToolName } from '@/pages/agent-run/approvalDisplay'
 import { formatRunDay } from '@/pages/agent-run/runResultSummary'
+import { messages } from '@/i18n'
+import { localizedRecord } from '@/i18n/localized'
 
 /**
  * Display helpers for screen 19 (Review a run): row titles from the iteration item, the action
@@ -12,11 +14,7 @@ const itemNameKeys = ['name', 'title', 'label']
 const maxItemMetaParts = 2
 const maxItemMetaLength = 30
 
-const triggerLabels: Record<RunTrigger, string> = {
-  schedule: 'scheduled run',
-  manual: 'run now',
-  test: 'test run',
-}
+const triggerLabels: Readonly<Record<RunTrigger, string>> = localizedRecord(() => messages().agentRun.triggers)
 
 function asItemRecord(item: unknown): Record<string, unknown> | null {
   return item && typeof item === 'object' && !Array.isArray(item) ? (item as Record<string, unknown>) : null
@@ -35,8 +33,8 @@ export function buildRowTitle(approval: PendingApproval): string {
   }
   if (typeof item === 'string' && item.trim() && item.length <= maxItemMetaLength * 2) return item
   if (approval.toolCall) return describeToolName(approval.toolCall)
-  if (approval.container) return `Item ${approval.container.index + 1}`
-  return approval.prompt?.split('\n')[0] ?? approval.stepTitle ?? 'Question'
+  if (approval.container) return messages().agentRun.itemNumber(approval.container.index + 1)
+  return approval.prompt?.split('\n')[0] ?? approval.stepTitle ?? messages().agentRun.question
 }
 
 /** "Office · score 9": up to two short item fields besides its name. */
@@ -76,8 +74,8 @@ export function describeIterationProgress(pending: PendingApproval[]): string | 
   const container = pending.find((approval) => approval.container?.total !== null && approval.container?.total !== undefined)?.container
   if (!container || container.total === null) return null
   const finished = container.finished ?? 0
-  const title = container.title ?? 'items'
-  return `${finished} of ${container.total} done · ${title}`
+  const title = container.title ?? messages().agentRun.itemsWord
+  return messages().agentRun.iterationProgress(finished, container.total, title)
 }
 
 /** True when the iteration has items after the questions shown now (or graphrt did not say). */

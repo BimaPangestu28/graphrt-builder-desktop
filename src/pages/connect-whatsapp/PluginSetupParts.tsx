@@ -7,6 +7,7 @@ import { describeInstallProgress } from '../plugins/pluginDisplay'
 import { PluginPermissionList } from '../plugins/PluginPermissionList'
 import { pluginRuntimeInstallNote } from '../plugins/PluginRuntimeCard'
 import { PluginTrustToggle } from '../plugins/PluginTrustToggle'
+import { messages } from '@/i18n'
 
 function PluginErrorMessage({ plugins, pluginName }: { plugins: PluginsState; pluginName: string }) {
   const errorMessage = plugins.errorByName[pluginName]
@@ -22,32 +23,32 @@ function PluginErrorMessage({ plugins, pluginName }: { plugins: PluginsState; pl
 export function PluginInstallStepBody({ plugins, pluginName }: { plugins: PluginsState; pluginName: string }) {
   const needsPluginRuntime = isPluginRuntimeMissing(usePluginRuntime())
   const inventory = plugins.data
-  if (plugins.error) return <p role="alert" className="m-0 text-[13px] text-danger">Could not load plugins: {describeError(plugins.error)}</p>
-  if (!inventory) return <p className="m-0 text-[13px] text-muted">Checking plugins…</p>
+  if (plugins.error) return <p role="alert" className="m-0 text-[13px] text-danger">{messages().chatbot.couldNotLoadPlugins}{' '}{describeError(plugins.error)}</p>
+  if (!inventory) return <p className="m-0 text-[13px] text-muted">{messages().chatbot.checkingPlugins}</p>
   const pluginLabel = findInventoryDisplayName(inventory, pluginName)
   const installedPlugin = inventory.installed.find((candidate) => candidate.name === pluginName)
-  if (installedPlugin) return <p className="m-0 text-[13px] text-body">{pluginLabel} v{installedPlugin.version} is installed</p>
+  if (installedPlugin) return <p className="m-0 text-[13px] text-body">{pluginLabel} v{installedPlugin.version} {messages().chatbot.isInstalled}</p>
 
   const catalogEntry = inventory.catalog?.plugins.find((entry) => entry.name === pluginName)
   if (!catalogEntry) {
-    const reason = inventory.catalogError ? describeError(inventory.catalogError) : `the catalog has no ${pluginLabel} plugin`
-    return <p role="alert" className="m-0 text-[13px] text-danger">Could not find the plugin to install: {reason}</p>
+    const reason = inventory.catalogError ? describeError(inventory.catalogError) : messages().chatbot.theCatalogHasNoPluginlabelPlugin(pluginLabel)
+    return <p role="alert" className="m-0 text-[13px] text-danger">{messages().chatbot.couldNotFindThePluginTo}{' '}{reason}</p>
   }
   const progress = plugins.progressByName[pluginName]
   const isInstalling = plugins.operationByName[pluginName] === 'installing'
   return (
     <>
-      <span className="text-[13px] text-body">{catalogEntry.description}. It asks for:</span>
+      <span className="text-[13px] text-body">{catalogEntry.description}{messages().chatbot.itAsksFor}</span>
       <PluginPermissionList pluginLabel={pluginLabel} permissions={catalogEntry.permissions} needsBrowser={catalogEntry.needsBrowser} />
-      {needsPluginRuntime && <span className="text-[13px] text-body">{pluginRuntimeInstallNote}</span>}
+      {needsPluginRuntime && <span className="text-[13px] text-body">{pluginRuntimeInstallNote()}</span>}
       <div className="flex flex-wrap items-center gap-3">
         <Button
           size="sm"
-          aria-label={`Install ${pluginLabel}`}
+          aria-label={messages().chatbot.installPluginlabel(pluginLabel)}
           disabled={isInstalling}
           onClick={() => void plugins.install(pluginName, catalogEntry.permissions, { withPluginRuntime: needsPluginRuntime })}
         >
-          {isInstalling ? 'Installing…' : 'Install'}
+          {isInstalling ? messages().chatbot.installing : messages().chatbot.install}
         </Button>
         {progress && (
           <span role="status" className="text-[13px] text-ink-2">

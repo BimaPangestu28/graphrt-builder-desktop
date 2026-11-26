@@ -1,6 +1,7 @@
 import type { RunReview } from '@/api/runReviewTypes'
 import { formatRunDay } from '@/pages/agent-run/runResultSummary'
 import { describeIterationProgress, summarizeAnswers } from './runReviewModel'
+import { messages } from '@/i18n'
 
 function FactRow({ label, value, hasDivider }: { label: string; value: string; hasDivider: boolean }) {
   return (
@@ -18,18 +19,18 @@ function FactRow({ label, value, hasDivider }: { label: string; value: string; h
 export function RunReviewSidePanel({ review }: { review: RunReview }) {
   const actionTitles = new Map(review.pending.flatMap((approval) => approval.actions.map((action) => [action.id, action.title] as const)))
   const facts = [
-    { label: 'Agent', value: review.agentName },
-    { label: 'Started', value: formatRunDay(review.startedAt) },
-    { label: 'Waiting at', value: review.pending[0]?.stepTitle ?? null },
-    { label: 'Progress', value: describeIterationProgress(review.pending) },
-    { label: 'Answered so far', value: summarizeAnswers(review, actionTitles) },
+    { label: messages().agentRun.agent, value: review.agentName },
+    { label: messages().agentRun.started, value: formatRunDay(review.startedAt) },
+    { label: messages().agentRun.waitingAt, value: review.pending[0]?.stepTitle ?? null },
+    { label: messages().agentRun.progress, value: describeIterationProgress(review.pending) },
+    { label: messages().agentRun.answeredSoFar, value: summarizeAnswers(review, actionTitles) },
   ].filter((fact): fact is { label: string; value: string } => fact.value !== null)
 
   return (
     <aside className="box-border flex min-w-0 flex-[1_1_300px] flex-col gap-5 border-l border-line bg-subtle p-6">
       <section aria-labelledby="run-facts-h" className="flex flex-col gap-2.5">
         <h2 id="run-facts-h" className="m-0 text-[15px] font-semibold">
-          This run
+          {messages().agentRun.thisRun}
         </h2>
         <dl className="m-0 rounded-xl border border-line bg-surface px-3.5 py-1">
           {facts.map((fact, index) => (
@@ -37,7 +38,7 @@ export function RunReviewSidePanel({ review }: { review: RunReview }) {
           ))}
         </dl>
       </section>
-      <p className="m-0 text-[13px] leading-normal text-body">Paused safely. You can close the app and come back; the run waits here and in Runs</p>
+      <p className="m-0 text-[13px] leading-normal text-body">{messages().agentRun.pausedSafelyYouCanCloseThe2}</p>
     </aside>
   )
 }

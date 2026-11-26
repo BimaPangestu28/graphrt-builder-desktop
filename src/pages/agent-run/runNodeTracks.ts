@@ -1,6 +1,7 @@
 import type { GraphrtEvent, RunEventRecord } from '@/api/types'
 import type { TestRunStepState } from '@/pages/agent-run/testRunTypes'
 import { isRecord, readFrame, readNumber, readString } from './runEventValues'
+import { messages } from '@/i18n'
 
 /**
  * Replays a run's graphrt events into one track per node, with one execution per frame
@@ -127,7 +128,7 @@ function applyNodeEvent(execution: NodeExecution, record: RunEventRecord): void 
       return
     case 'node_failed':
       finishExecution(execution, record, 'failed')
-      execution.errorMessage = readString(event, 'error') ?? 'This step failed'
+      execution.errorMessage = readString(event, 'error') ?? messages().agentRun.thisStepFailed
       return
     case 'node_skipped':
       finishExecution(execution, record, 'skipped')

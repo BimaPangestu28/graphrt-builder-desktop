@@ -1,5 +1,6 @@
 import type { ElkNode } from 'elkjs/lib/elk-api.js'
 import elkWorkerUrl from 'elkjs/lib/elk-worker.min.js?url'
+import { messages } from '@/i18n'
 
 /**
  * Where ELK runs. Laying out a large graph takes long enough to freeze the canvas, so the
@@ -22,7 +23,7 @@ export interface LayoutEngine {
 /** The layout worker could not start or crashed (not a problem with the graph). */
 export class LayoutWorkerError extends Error {
   constructor(detail: string) {
-    super(`the layout worker failed: ${detail}`)
+    super(messages().nodes.theLayoutWorkerFailedDetail(detail))
     this.name = 'LayoutWorkerError'
   }
 }
@@ -31,7 +32,7 @@ let sharedEngine: Promise<LayoutEngine> | null = null
 
 /** ELK in a worker; `layout` rejects when the worker fails to load or crashes. */
 async function createWorkerEngine(): Promise<LayoutEngine> {
-  if (typeof Worker === 'undefined') throw new LayoutWorkerError('this window cannot start Web Workers')
+  if (typeof Worker === 'undefined') throw new LayoutWorkerError(messages().nodes.thisWindowCannotStartWebWorkers)
   const { default: ElkApi } = await import('elkjs/lib/elk-api.js')
   let rejectWithWorkerError: (error: LayoutWorkerError) => void = () => {}
   const workerFailure = new Promise<never>((_resolve, reject) => {
@@ -43,7 +44,7 @@ async function createWorkerEngine(): Promise<LayoutEngine> {
     workerUrl: elkWorkerUrl,
     workerFactory: (url) => {
       const worker = new Worker(url ?? elkWorkerUrl)
-      worker.addEventListener('error', (event) => rejectWithWorkerError(new LayoutWorkerError(event.message || 'could not load it')))
+      worker.addEventListener('error', (event) => rejectWithWorkerError(new LayoutWorkerError(event.message || messages().lib.couldNotLoadIt)))
       return worker
     },
   })

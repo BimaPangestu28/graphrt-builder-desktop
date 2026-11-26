@@ -5,6 +5,7 @@ import { buildModelOptionGroups, describeModelName, modelChoiceKey } from '@/lib
 import { readConfigNumber, readConfigObject, readConfigText, type ConfigPath } from './configPaths'
 import { Field, inputClassName, NumberInput } from './fields'
 import { useInspector } from './InspectorContext'
+import { messages } from '@/i18n'
 
 /**
  * The model of a model step (`model: {provider, name, completion_params}`), picked from
@@ -35,7 +36,7 @@ export function ModelField({ path = ['model'], showParams = false }: ModelFieldP
     if (separator < 0) return
     const nextProvider = key.slice(0, separator)
     const nextName = key.slice(separator + 1)
-    setConfigValue(path, { ...model, provider: nextProvider, name: nextName }, `set the model to ${nextName}`)
+    setConfigValue(path, { ...model, provider: nextProvider, name: nextName }, messages().nodes.setTheModelToNextname(nextName))
   }
   const setParam = (param: string, value: number | null, what: string) => {
     const params = readConfigObject(model, ['completion_params'])
@@ -46,13 +47,13 @@ export function ModelField({ path = ['model'], showParams = false }: ModelFieldP
 
   return (
     <>
-      <Field label="Model" htmlFor={selectId} required error={currentKey ? null : 'Pick a model'}>
+      <Field label={messages().nodes.model} htmlFor={selectId} required error={currentKey ? null : messages().nodes.pickAModel}>
         <select id={selectId} value={currentKey} disabled={readOnly} onChange={(event) => pickModel(event.target.value)} className={`${inputClassName} cursor-pointer`}>
-          {!currentKey && <option value="">Choose a model…</option>}
+          {!currentKey && <option value="">{messages().nodes.chooseAModel}</option>}
           {currentKey && !isListed && (
             <option value={currentKey}>
               {provider} · {name}
-              {setup ? ' (not connected)' : ''}
+              {setup ? messages().nodes.notConnected : ''}
             </option>
           )}
           {groups.map((group) => (
@@ -68,11 +69,11 @@ export function ModelField({ path = ['model'], showParams = false }: ModelFieldP
       </Field>
       {showParams && (
         <div className="grid grid-cols-2 gap-2">
-          <Field label="Temperature">
-            <NumberInput ariaLabel="Temperature" wide value={readConfigNumber(model, ['completion_params', 'temperature'])} min={0} max={2} step={0.1} placeholder="default" disabled={readOnly} onCommit={(value) => setParam('temperature', value, 'set the temperature')} />
+          <Field label={messages().nodes.temperature}>
+            <NumberInput ariaLabel={messages().nodes.temperature} wide value={readConfigNumber(model, ['completion_params', 'temperature'])} min={0} max={2} step={0.1} placeholder={messages().nodes.default} disabled={readOnly} onCommit={(value) => setParam('temperature', value, messages().nodes.setTheTemperature)} />
           </Field>
-          <Field label="Max tokens">
-            <NumberInput ariaLabel="Max tokens" wide value={readConfigNumber(model, ['completion_params', 'max_tokens'])} min={1} step={1} placeholder="default" disabled={readOnly} onCommit={(value) => setParam('max_tokens', value === null ? null : Math.round(value), 'set max tokens')} />
+          <Field label={messages().nodes.maxTokens}>
+            <NumberInput ariaLabel={messages().nodes.maxTokens} wide value={readConfigNumber(model, ['completion_params', 'max_tokens'])} min={1} step={1} placeholder={messages().nodes.default} disabled={readOnly} onCommit={(value) => setParam('max_tokens', value === null ? null : Math.round(value), messages().nodes.setMaxTokens)} />
           </Field>
         </div>
       )}

@@ -7,6 +7,7 @@ import { useInspector } from './InspectorContext'
 import { describeReference, formatReference, templateReferences } from './references'
 import { createChip, currentRange, insertChipAtCaret, insertNodeAtRange, renderTemplateInto, serializeEditor } from './templateEditorDom'
 import { ValuePicker } from './ValuePicker'
+import { messages } from '@/i18n'
 
 /**
  * Template text with value chips (spec B6): references show as chips
@@ -128,7 +129,7 @@ function ReferenceProblemList({ problems, graph, readOnly, onReplace }: { proble
         <p key={path.join('.')} role="alert" className={joinClassNames('m-0 text-[12px]', check.status === 'unknown-step' ? 'text-danger' : 'text-amber-strong')}>
           <b className="font-semibold">{describeReference(path, graph)}</b>: {check.message} ·{' '}
           <button type="button" className={linkButtonClassName} disabled={readOnly} onClick={() => onReplace(path)}>
-            Pick another value
+            {messages().nodes.pickAnotherValue}
           </button>
         </p>
       ))}
@@ -190,7 +191,7 @@ export function TemplateField({ label, value, onCommit, required, multiline = fa
   const isEmpty = draft.trim() === ''
 
   return (
-    <Field label={label} htmlFor={editorId} fieldPath={fieldPath} required={required} hint={hint} error={error ?? (required && isEmpty ? 'Required' : null)}>
+    <Field label={label} htmlFor={editorId} fieldPath={fieldPath} required={required} hint={hint} error={error ?? (required && isEmpty ? messages().nodes.required2 : null)}>
       {showAsText ? (
         <textarea
           id={editorId}
@@ -219,10 +220,10 @@ export function TemplateField({ label, value, onCommit, required, multiline = fa
       <ReferenceProblemList problems={referenceProblems(draft, graph, valueGroups)} graph={graph} readOnly={readOnly} onReplace={(path) => setPicker({ replacing: path })} />
       <div className="flex items-center gap-3">
         <button type="button" className={linkButtonClassName} disabled={readOnly} onMouseDown={saveSelection} onClick={() => setPicker(picker ? null : { replacing: null })}>
-          Insert value {'{'}
+          {messages().nodes.insertValue}{' '}{'{'}
         </button>
         <button type="button" className={joinClassNames(linkButtonClassName, 'text-muted')} onClick={() => setShowAsText((shown) => !shown)}>
-          {showAsText ? 'Show as chips' : 'Show as text'}
+          {showAsText ? messages().nodes.showAsChips : messages().nodes.showAsText}
         </button>
       </div>
       {picker && <ValuePicker groups={valueGroups} onPick={pick} onClose={() => setPicker(null)} />}

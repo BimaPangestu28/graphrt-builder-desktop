@@ -7,6 +7,7 @@ import { Button, Icon } from '@/components/ui'
 import { notifyAgentsChanged } from '@/hooks/useAgents'
 import { describeError } from '@/lib/agentDisplay'
 import { routePaths } from '@/routes'
+import { messages } from '@/i18n'
 
 interface AgentIdentityHeaderProps {
   agent: Agent
@@ -31,18 +32,18 @@ export function AgentIdentityHeader({ agent, onRenamed }: AgentIdentityHeaderPro
           <button
             type="button"
             onClick={() => setIsEditing(true)}
-            title="Rename"
+            title={messages().builder.rename}
             className="group flex min-w-0 cursor-pointer items-center gap-2 border-0 bg-transparent p-0 text-left text-ink"
           >
             <h1 className="m-0 truncate text-[22px] font-semibold">{agent.name}</h1>
-            <span className="sr-only">Rename agent</span>
+            <span className="sr-only">{messages().builder.renameAgent}</span>
             <Icon name="edit" size={16} className="shrink-0 text-muted opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
           </button>
         )}
         {!isEditing && !isConfirmingDelete && (
           <Button variant="ghost" size="sm" onClick={() => setIsConfirmingDelete(true)} className="text-danger hover:bg-danger-tint">
             <Icon name="trash" size={14} />
-            Delete agent
+            {messages().builder.deleteAgent}
           </Button>
         )}
       </div>
@@ -98,7 +99,7 @@ export function RenameForm({ agent, onDone, onRenamed, variant = 'title' }: Rena
       notifyAgentsChanged()
       onDone()
     } catch (renameError) {
-      setErrorMessage(`Could not rename: ${describeError(renameError)}`)
+      setErrorMessage(messages().builder.couldNotRenameReason(describeError(renameError)))
       setIsSaving(false)
     }
   }
@@ -106,7 +107,7 @@ export function RenameForm({ agent, onDone, onRenamed, variant = 'title' }: Rena
   return (
     <form onSubmit={(event) => void handleSubmit(event)} className={styles.form}>
       <label htmlFor={inputId} className="sr-only">
-        Agent name
+        {messages().builder.agentName}
       </label>
       <div className={styles.row}>
         <input
@@ -120,10 +121,10 @@ export function RenameForm({ agent, onDone, onRenamed, variant = 'title' }: Rena
           className={styles.input}
         />
         <Button type="submit" size="sm" disabled={isSaving || name.trim() === ''}>
-          {isSaving ? 'Saving…' : 'Save'}
+          {isSaving ? messages().builder.saving : messages().builder.save}
         </Button>
         <Button type="button" variant="ghost" size="sm" onClick={onDone} disabled={isSaving}>
-          Cancel
+          {messages().builder.cancel}
         </Button>
       </div>
       {errorMessage && (
@@ -153,7 +154,7 @@ export function DeleteConfirmation({ agent, onCancel, onDeleted }: { agent: Agen
       if (onDeleted) onDeleted()
       else navigate(routePaths.home, { replace: true })
     } catch (deleteError) {
-      setErrorMessage(`Could not delete: ${describeError(deleteError)}`)
+      setErrorMessage(messages().builder.couldNotDeleteReason(describeError(deleteError)))
       setIsDeleting(false)
     }
   }
@@ -163,18 +164,17 @@ export function DeleteConfirmation({ agent, onCancel, onDeleted }: { agent: Agen
   return (
     <div role="alertdialog" aria-labelledby={titleId} aria-describedby={detailId} className="mt-2 flex flex-col gap-3 rounded-xl border border-danger-line bg-danger-tint p-4">
       <span id={titleId} className="font-semibold text-danger-deep">
-        Delete “{agent.name}”?
+        {messages().builder.delete}{agent.name}”?
       </span>
       <span id={detailId} className="text-[13px] leading-normal text-body">
-        Its steps, every version, its run history and its schedules are deleted, and any run still going or waiting for you is
-        stopped. Keys and secrets in {getCredentialStoreName()} stay. This can't be undone.
+        {messages().builder.itsStepsEveryVersionItsRun}{' '}{getCredentialStoreName()} {messages().builder.stayThisCantBeUndone}
       </span>
       <div className="flex flex-wrap gap-2">
         <Button variant="danger" size="sm" onClick={() => void confirmDelete()} disabled={isDeleting} className="bg-danger !text-white hover:bg-danger-deep">
-          {isDeleting ? 'Deleting…' : 'Delete agent'}
+          {isDeleting ? messages().builder.deleting : messages().builder.deleteAgent}
         </Button>
         <Button variant="secondary" size="sm" onClick={onCancel} disabled={isDeleting}>
-          Keep it
+          {messages().builder.keepIt}
         </Button>
       </div>
       {errorMessage && (

@@ -11,23 +11,24 @@ import {
   type ApprovalMode,
 } from '@/pages/schedule-agent/scheduleOptions'
 import { useSchedulePreview } from '@/hooks/useTriggers'
-import { buildCronExpression, formatFireTime, toMissedRunPolicy } from '@/lib/schedule'
+import { buildCronExpression, formatFireTime } from '@/lib/schedule'
 import { agentPath, routePaths, sampleAgentId } from '@/routes'
 import { ScheduleBackdrop } from '@/pages/schedule-agent/ScheduleBackdrop'
 import { FrequencyRadioTiles, ScheduleFieldset, StackedField, WeekdayToggleGroup, scheduleControlClassNames } from '@/pages/schedule-agent/ScheduleFormFields'
 import { toError } from '@/lib/errors'
+import { messages } from '@/i18n'
 
-/** The dialog promises "A missed run starts when it wakes up", which is this missed-run choice. */
-const dialogMissedRunOption = 'Run once when it wakes up'
+/** The dialog promises "A missed run starts when it wakes up": the run-once policy. */
+const dialogMissedRunPolicy = 'run_once'
 
 function RunnerAwakeNotice() {
   return (
     <div className="flex items-start gap-3 rounded-xl bg-canvas px-4 py-3.5">
       <Icon name="monitor" size={18} className="mt-px shrink-0 text-ink-2" />
       <span className="flex flex-col gap-1 leading-normal">
-        <span>Runs while this computer is awake. A missed run starts when it wakes up</span>
+        <span>{messages().schedule.runsWhileThisComputerIsAwake}</span>
         <Link to={routePaths.settings} className="font-medium">
-          Want it always on? Run it on your own server, free
+          {messages().schedule.wantItAlwaysOnRunIt}
         </Link>
       </span>
     </div>
@@ -58,7 +59,7 @@ export function buildNewTrigger(agentId: string, settings: AgentScheduleSettings
     agentId,
     cronExpression,
     timezone: settings.timeZone,
-    missedRunPolicy: toMissedRunPolicy(dialogMissedRunOption),
+    missedRunPolicy: dialogMissedRunPolicy,
     inputs: {
       keyword: settings.searchKeyword,
       city: settings.city,
@@ -72,13 +73,13 @@ export function buildNewTrigger(agentId: string, settings: AgentScheduleSettings
 function NextRunsPreview({ settings }: { settings: AgentScheduleSettings }) {
   const cronExpression = buildSettingsCron(settings)
   const { fireTimes, error } = useSchedulePreview(cronExpression, settings.timeZone)
-  if (settings.frequency === 'manual') return <span className="text-[13px] text-body">Runs only when you start it</span>
-  if (!cronExpression) return <span className="text-[13px] text-body">Pick a time and at least one day</span>
-  if (error) return <span className="text-[13px] text-danger">Could not preview this schedule: {error.message}</span>
+  if (settings.frequency === 'manual') return <span className="text-[13px] text-body">{messages().schedule.runsOnlyWhenYouStartIt}</span>
+  if (!cronExpression) return <span className="text-[13px] text-body">{messages().schedule.pickATimeAndAtLeast}</span>
+  if (error) return <span className="text-[13px] text-danger">{messages().schedule.couldNotPreviewThisSchedule}{' '}{error.message}</span>
   if (fireTimes.length === 0) return null
   return (
     <span aria-live="polite" className="text-[13px] text-body">
-      Next runs: {fireTimes.map((fireTime) => formatFireTime(fireTime, settings.timeZone)).join(' · ')}
+      {messages().schedule.nextRuns}{' '}{fireTimes.map((fireTime) => formatFireTime(fireTime, settings.timeZone)).join(' · ')}
     </span>
   )
 }
@@ -109,7 +110,7 @@ export function ScheduleAgentPage() {
     event.preventDefault()
     const newTrigger = buildNewTrigger(agentId, scheduleSettings)
     if (!newTrigger && !isManualOnly) {
-      setSaveError(new Error('Pick a time and at least one day'))
+      setSaveError(new Error(messages().schedule.pickATimeAndAtLeast))
       return
     }
     setIsSaving(true)
@@ -137,13 +138,13 @@ export function ScheduleAgentPage() {
           <div className="flex items-start justify-between gap-3">
             <div className="flex flex-col gap-1">
               <h2 id={titleId} className="m-0 text-[24px] font-semibold">
-                Run it on a schedule
+                {messages().schedule.runItOnASchedule}
               </h2>
-              <span className="text-body">Maps leads to WhatsApp</span>
+              <span className="text-body">{messages().schedule.mapsLeadsToWhatsapp}</span>
             </div>
             <button
               type="button"
-              aria-label="Close"
+              aria-label={messages().schedule.close}
               onClick={closeDialog}
               className="flex size-9 cursor-pointer items-center justify-center rounded-lg border-0 bg-canvas text-ink-2 hover:bg-selected"
             >
@@ -151,13 +152,13 @@ export function ScheduleAgentPage() {
             </button>
           </div>
 
-          <ScheduleFieldset legend="When">
+          <ScheduleFieldset legend={messages().schedule.when}>
             <FrequencyRadioTiles value={scheduleSettings.frequency} onChange={(frequency) => updateSetting('frequency', frequency)} />
             {scheduleSettings.frequency === 'custom' && (
               <WeekdayToggleGroup value={scheduleSettings.customWeekdays} onChange={(weekdays) => updateSetting('customWeekdays', weekdays)} />
             )}
             <div className="grid grid-cols-2 gap-2.5">
-              <StackedField label="Time">
+              <StackedField label={messages().schedule.time}>
                 <input
                   type="time"
                   value={scheduleSettings.time}
@@ -166,7 +167,7 @@ export function ScheduleAgentPage() {
                   className={`${scheduleControlClassNames} disabled:opacity-50`}
                 />
               </StackedField>
-              <StackedField label="Time zone">
+              <StackedField label={messages().schedule.timeZone}>
                 <select
                   value={scheduleSettings.timeZone}
                   disabled={isManualOnly}
@@ -184,9 +185,9 @@ export function ScheduleAgentPage() {
             <NextRunsPreview settings={scheduleSettings} />
           </ScheduleFieldset>
 
-          <ScheduleFieldset legend="Each run">
+          <ScheduleFieldset legend={messages().schedule.eachRun}>
             <div className="grid grid-cols-2 gap-2.5">
-              <StackedField label="Search for">
+              <StackedField label={messages().schedule.searchFor}>
                 <input
                   type="text"
                   value={scheduleSettings.searchKeyword}
@@ -194,7 +195,7 @@ export function ScheduleAgentPage() {
                   className={scheduleControlClassNames}
                 />
               </StackedField>
-              <StackedField label="City">
+              <StackedField label={messages().schedule.city}>
                 <input type="text" value={scheduleSettings.city} onChange={(event) => updateSetting('city', event.target.value)} className={scheduleControlClassNames} />
               </StackedField>
             </div>
@@ -205,9 +206,9 @@ export function ScheduleAgentPage() {
                 onChange={(event) => updateSetting('skipAlreadyMessaged', event.target.checked)}
                 className="size-[18px] accent-brand"
               />
-              Skip places I already messaged
+              {messages().schedule.skipPlacesIAlreadyMessaged}
             </label>
-            <StackedField label="Approval">
+            <StackedField label={messages().schedule.approval}>
               <select
                 value={scheduleSettings.approvalMode}
                 onChange={(event) => updateSetting('approvalMode', event.target.value as ApprovalMode)}
@@ -226,7 +227,7 @@ export function ScheduleAgentPage() {
 
           {saveError && (
             <div role="alert" className="rounded-xl border border-danger-soft px-4 py-3 text-[13px] text-danger">
-              Could not activate the schedule: {saveError.message}
+              {messages().schedule.couldNotActivateTheSchedule}{' '}{saveError.message}
             </div>
           )}
 
@@ -236,14 +237,14 @@ export function ScheduleAgentPage() {
               onClick={closeDialog}
               className="h-11 cursor-pointer rounded-xl border border-line-strong bg-surface px-[18px] text-[14px] font-medium text-ink hover:bg-subtle"
             >
-              Cancel
+              {messages().schedule.cancel}
             </button>
             <button
               type="submit"
               disabled={isSaving}
               className="h-11 cursor-pointer rounded-xl border-0 bg-ink px-5 text-[14px] font-semibold text-white hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isSaving ? 'Activating…' : 'Activate agent'}
+              {isSaving ? messages().schedule.activating : messages().schedule.activateAgent}
             </button>
           </div>
         </form>

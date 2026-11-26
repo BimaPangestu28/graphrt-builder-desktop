@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import type { TeamGuardrails } from '@/api/teamTypes'
+import { messages } from '@/i18n'
 
 const smallButtonClassNames = 'h-7 cursor-pointer rounded-md border border-line-strong bg-surface px-2 text-[12px] font-medium text-ink hover:bg-subtle'
 
@@ -22,9 +23,9 @@ function AgentCallLimit({ limit, isSaving, onSave }: AgentCallLimitProps) {
   if (!isEditing) {
     return (
       <span className="flex items-center justify-end gap-2">
-        {limit === null ? 'No limit' : `Max ${limit}`}
-        <button type="button" aria-label="Change agent calls per run" className={smallButtonClassNames} onClick={() => setIsEditing(true)}>
-          Change
+        {limit === null ? messages().team.noLimit : messages().team.maxLimit(limit)}
+        <button type="button" aria-label={messages().team.changeAgentCallsPerRun} className={smallButtonClassNames} onClick={() => setIsEditing(true)}>
+          {messages().team.change}
         </button>
       </span>
     )
@@ -32,7 +33,7 @@ function AgentCallLimit({ limit, isSaving, onSave }: AgentCallLimitProps) {
   return (
     <form onSubmit={submit} className="flex items-center justify-end gap-1.5">
       <label className="sr-only" htmlFor="max-agent-calls">
-        Most agent calls per run (empty for no limit)
+        {messages().team.mostAgentCallsPerRunEmpty}
       </label>
       <input
         id="max-agent-calls"
@@ -40,12 +41,12 @@ function AgentCallLimit({ limit, isSaving, onSave }: AgentCallLimitProps) {
         min={1}
         max={100}
         value={draftLimit}
-        placeholder="No limit"
+        placeholder={messages().team.noLimit}
         onChange={(event) => setDraftLimit(event.target.value)}
         className="box-border h-7 w-20 rounded-md border border-line-strong px-2 text-[13px]"
       />
       <button type="submit" disabled={isSaving} className={smallButtonClassNames}>
-        Save
+        {messages().team.save}
       </button>
     </form>
   )
@@ -66,23 +67,23 @@ export function TeamGuardrailsPanel({ guardrails, isSaving, onSaveLimit }: TeamG
   return (
     <section aria-labelledby="team-guardrails-heading" className="flex min-w-0 flex-[2_1_240px] flex-col gap-3">
       <h2 id="team-guardrails-heading" className="m-0 text-[15px] font-semibold">
-        Guardrails
+        {messages().team.guardrails}
       </h2>
       {guardrails && (
         <dl className="m-0 rounded-xl border border-line px-3.5 py-1">
           <div className="flex items-center justify-between gap-2 border-b border-chip py-2.5">
-            <dt className="text-body">Agent calls per run</dt>
+            <dt className="text-body">{messages().team.agentCallsPerRun}</dt>
             <dd className="m-0 text-right font-medium">
               <AgentCallLimit key={String(guardrails.maxAgentCallsPerRun)} limit={guardrails.maxAgentCallsPerRun} isSaving={isSaving} onSave={onSaveLimit} />
             </dd>
           </div>
           <div className="flex justify-between gap-2 border-b border-chip py-2.5">
-            <dt className="text-body">Sending</dt>
-            <dd className="m-0 text-right font-medium">{sendingSteps.length === 0 ? 'Always ask me' : `Sends without asking: ${sendingSteps.join(', ')}`}</dd>
+            <dt className="text-body">{messages().team.sending}</dt>
+            <dd className="m-0 text-right font-medium">{sendingSteps.length === 0 ? messages().team.alwaysAskMe : messages().team.sendsWithoutAskingValue(sendingSteps.join(', '))}</dd>
           </div>
           <div className="flex justify-between gap-2 py-2.5">
-            <dt className="text-body">New members</dt>
-            <dd className="m-0 text-right font-medium">Only you add them</dd>
+            <dt className="text-body">{messages().team.newMembers}</dt>
+            <dd className="m-0 text-right font-medium">{messages().team.onlyYouAddThem}</dd>
           </div>
         </dl>
       )}

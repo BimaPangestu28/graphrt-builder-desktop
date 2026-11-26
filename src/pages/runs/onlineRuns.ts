@@ -1,14 +1,18 @@
 import type { OnlineRun } from '@/api/deployTypes'
 import type { RunRecord, RunStatus } from './runRecordTypes'
+import { intlTag, messages } from '@/i18n'
 
 /** Runs filter: everything, only this computer, or only online agents and servers. */
 export type RunsPlaceFilter = 'all' | 'local' | 'online'
 
-export const placeFilterOptions: Array<{ key: RunsPlaceFilter; label: string }> = [
-  { key: 'all', label: 'All' },
-  { key: 'local', label: 'On this computer' },
-  { key: 'online', label: 'Online' },
-]
+const placeFilterKeys: readonly RunsPlaceFilter[] = ['all', 'local', 'online']
+
+export const placeFilterOptions: ReadonlyArray<{ key: RunsPlaceFilter; readonly label: string }> = placeFilterKeys.map((key) => ({
+  key,
+  get label() {
+    return messages().runs.places[key]
+  },
+}))
 
 /** Reads `?where=` (from "Open runs" after putting an agent online). */
 export function toPlaceFilter(value: string | null): RunsPlaceFilter {
@@ -36,18 +40,19 @@ function formatWhen(isoTime: string | null, now: Date): string {
   if (!isoTime) return '—'
   const started = new Date(isoTime)
   if (Number.isNaN(started.getTime())) return '—'
-  const clock = started.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+  const t = messages().runs
+  const clock = started.toLocaleTimeString(intlTag(), { hour: '2-digit', minute: '2-digit' })
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
-  if (started.getTime() >= startOfToday) return `Today ${clock}`
-  if (started.getTime() >= startOfToday - 86_400_000) return `Yesterday ${clock}`
-  return `${started.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${clock}`
+  if (started.getTime() >= startOfToday) return t.today(clock)
+  if (started.getTime() >= startOfToday - 86_400_000) return t.yesterday(clock)
+  return `${started.toLocaleDateString(intlTag(), { month: 'short', day: 'numeric' })} ${clock}`
 }
 
 function describeDuration(run: OnlineRun['run']): string | null {
   if (!run.startedAt || !run.finishedAt) return null
   const seconds = Math.round((new Date(run.finishedAt).getTime() - new Date(run.startedAt).getTime()) / 1000)
   if (!(seconds >= 0)) return null
-  return seconds < 60 ? `took ${seconds} second${seconds === 1 ? '' : 's'}` : `took ${Math.round(seconds / 60)} min`
+  return seconds < 60 ? messages().runs.tookSeconds(seconds) : messages().runs.tookMinutes(Math.round(seconds / 60))
 }
 
 /**
@@ -59,8 +64,9 @@ function describeDuration(run: OnlineRun['run']): string | null {
 export function toOnlineRunRecord(onlineRun: OnlineRun, now: Date = new Date()): RunRecord {
   const { run } = onlineRun
   const status = statusByCloudStatus[run.status.toLowerCase()] ?? 'done'
-  const result = run.error ?? (status === 'running' ? 'Running online' : status === 'needsYou' ? 'Waiting for your approval' : 'Finished online')
-  const timing = [formatWhen(run.startedAt, now), describeDuration(run), `ran online on ${onlineRun.place}`].filter(Boolean).join(' · ')
+  const t = messages().runs
+  const result = run.error ?? (status === 'running' ? t.runningOnline : status === 'needsYou' ? t.waitingApproval : t.finishedOnline)
+  const timing = [formatWhen(run.startedAt, now), describeDuration(run), t.ranOnlineOn(onlineRun.place)].filter(Boolean).join(' · ')
   return {
     id: `online:${onlineRun.place}:${run.id}`,
     agentId: onlineRun.agentId ?? undefined,

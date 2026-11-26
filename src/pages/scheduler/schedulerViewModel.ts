@@ -1,6 +1,7 @@
 import type { Run, RunStatus, Trigger } from '@/api/types'
 import type { PastRun, RunOutcome, ScheduleTrigger } from '@/lib/scheduleCalendar'
 import { describeCronSchedule, formatZonedIsoDate, parseCronExpression } from '@/lib/schedule'
+import { messages } from '@/i18n'
 
 /**
  * Maps backend triggers onto the Scheduler screen's (10) `ScheduleTrigger`, so the trigger list and
@@ -39,8 +40,8 @@ const outcomeByStatus: Record<RunStatus, RunOutcome> = {
 /** Text under a past run: "14 sent" when the run reports `messages_sent`, otherwise its outcome. */
 function summarizeScheduledRun(run: Run): string {
   const messagesSent = run.outputs?.messages_sent
-  if (run.status === 'succeeded' && typeof messagesSent === 'number') return `${messagesSent} sent`
-  const summaries: Record<RunStatus, string> = { succeeded: 'Done', failed: 'Failed', aborted: 'Stopped', paused: 'Needs you', running: 'Running' }
+  if (run.status === 'succeeded' && typeof messagesSent === 'number') return messages().schedule.sentCount(messagesSent)
+  const summaries: Record<RunStatus, string> = { succeeded: messages().schedule.done, failed: messages().schedule.failed, aborted: messages().schedule.stopped, paused: messages().schedule.needsYou, running: messages().schedule.running }
   return summaries[run.status]
 }
 

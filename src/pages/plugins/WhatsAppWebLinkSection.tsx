@@ -1,6 +1,7 @@
 import type { InstalledPlugin } from '@/api/pluginTypes'
 import { whatsAppWebPluginName } from '../connect-whatsapp/useWhatsAppActions'
 import { WhatsAppWebLinkPanel } from '../connect-whatsapp/WhatsAppWebLinkPanel'
+import { messages } from '@/i18n'
 
 /**
  * `whatsapp-web` links by QR code, nothing to type: the link panel once the plugin is trusted
@@ -8,7 +9,7 @@ import { WhatsAppWebLinkPanel } from '../connect-whatsapp/WhatsAppWebLinkPanel'
  */
 export function WhatsAppWebLinkSection({ installed, isBrowserReady }: { installed: InstalledPlugin; isBrowserReady: boolean }) {
   if (installed.name !== whatsAppWebPluginName) return null
-  if (!installed.trusted) return <span className="text-[13px] text-ink-2">Trust the plugin, then link WhatsApp by scanning a QR code</span>
-  if (!isBrowserReady) return <span className="text-[13px] text-ink-2">Install the browser runtime above, then link WhatsApp by scanning a QR code</span>
+  if (!installed.trusted) return <span className="text-[13px] text-ink-2">{messages().plugins.trustThenLink}</span>
+  if (!isBrowserReady) return <span className="text-[13px] text-ink-2">{messages().plugins.installBrowserThenLink}</span>
   return <WhatsAppWebLinkPanel />
 }

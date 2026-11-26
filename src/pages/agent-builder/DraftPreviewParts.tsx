@@ -1,5 +1,6 @@
 import { joinClassNames } from '@/components/ui'
 import { StepNumberBadge } from './StepNumberBadge'
+import { messages } from '@/i18n'
 
 /**
  * Pieces that show what the model is writing while a build or revision streams
@@ -37,7 +38,7 @@ export function DraftStepCards({ stepTitles, minimumCardCount, isWriting }: Draf
   return (
     <div className="flex flex-col gap-2">
       {stepTitles.length > 0 && (
-        <ol aria-label="Steps written so far" className="m-0 flex list-none flex-col gap-2 p-0">
+        <ol aria-label={messages().builder.stepsWrittenSoFar} className="m-0 flex list-none flex-col gap-2 p-0">
           {stepTitles.map((stepTitle, stepIndex) => (
             <li
               key={stepIndex}
@@ -58,7 +59,7 @@ export function DraftStepCards({ stepTitles, minimumCardCount, isWriting }: Draf
 export function CompactDraftStepList({ stepTitles }: { stepTitles: string[] }) {
   if (stepTitles.length === 0) return null
   return (
-    <ol aria-label="Steps being written" className="m-0 flex list-none flex-col gap-1 rounded-lg border border-line bg-subtle px-3 py-2 text-[13px]">
+    <ol aria-label={messages().builder.stepsBeingWritten} className="m-0 flex list-none flex-col gap-1 rounded-lg border border-line bg-subtle px-3 py-2 text-[13px]">
       {stepTitles.map((stepTitle, stepIndex) => (
         <li key={stepIndex} className={joinClassNames('flex gap-2', enterAnimationClassNames)}>
           <span className="w-4 shrink-0 text-right text-muted tabular-nums">{stepIndex + 1}</span>

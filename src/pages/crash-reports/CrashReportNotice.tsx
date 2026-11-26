@@ -3,6 +3,7 @@ import { dismissCrashNotice, getCrashNotice, openCrashReportIssue } from '@/api/
 import { useAsyncData } from '@/hooks/useAsyncData'
 import { describeError } from '@/lib/agentDisplay'
 import { CrashReportViewer } from './CrashReportViewer'
+import { messages } from '@/i18n'
 
 const noticeButtonClassNames =
   'cursor-pointer rounded-lg border-0 bg-transparent px-2 py-1 font-sans text-[13px] font-semibold text-brand hover:bg-brand-tint hover:text-brand-strong'
@@ -34,7 +35,7 @@ export function CrashReportNotice() {
     try {
       await openCrashReportIssue(reportId)
     } catch (openError) {
-      setActionError(`Could not open GitHub: ${describeError(openError)}`)
+      setActionError(messages().misc.couldNotOpenGithubReason(describeError(openError)))
     }
   }
 
@@ -42,21 +43,21 @@ export function CrashReportNotice() {
     <>
       <aside
         role="status"
-        aria-label="Crash report notice"
+        aria-label={messages().misc.crashReportNotice}
         className="fixed right-4 bottom-4 z-40 box-border flex max-w-[min(440px,calc(100vw-32px))] flex-col gap-1.5 rounded-[12px] border border-line-strong bg-surface px-4 py-3 font-sans shadow-[0_12px_32px_rgba(0,0,0,0.12)]"
       >
-        <p className="m-0 text-[13px] leading-normal text-ink">graphrt closed unexpectedly. A crash report was saved on this computer</p>
+        <p className="m-0 text-[13px] leading-normal text-ink">{messages().misc.graphrtClosedUnexpectedlyACrashReport}</p>
         <span className="-ml-2 flex flex-wrap items-center gap-1">
           <button type="button" onClick={() => setIsViewing(true)} className={noticeButtonClassNames}>
-            View
+            {messages().misc.view}
           </button>
           {crashNotice.offersSharing && (
             <button type="button" onClick={() => void handleOpenIssue()} className={noticeButtonClassNames}>
-              Open a GitHub issue
+              {messages().misc.openAGithubIssue}
             </button>
           )}
           <button type="button" onClick={() => void handleDismiss()} className={noticeButtonClassNames}>
-            Dismiss
+            {messages().misc.dismiss}
           </button>
         </span>
         {actionError && (

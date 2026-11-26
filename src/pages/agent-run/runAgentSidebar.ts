@@ -2,13 +2,10 @@ import { getAgent } from '@/api/agents'
 import type { Agent, AgentStatus } from '@/api/types'
 import type { SidebarAgentsState } from '@/components/layout'
 import { useLoadedData } from '@/hooks/useRunData'
+import { messages } from '@/i18n'
+import { localizedRecord } from '@/i18n/localized'
 
-const agentStatusLabels: Record<AgentStatus, string> = {
-  draft: 'Draft',
-  tested: 'Tested',
-  active: 'Active',
-  paused: 'Paused',
-}
+const agentStatusLabels: Readonly<Record<AgentStatus, string>> = localizedRecord(() => messages().agentRun.agentStatuses)
 
 interface SidebarAgentOptions {
   /** Replaces the agent's own status, e.g. "Testing · waiting for you". */

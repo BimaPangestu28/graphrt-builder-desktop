@@ -11,6 +11,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::desktop::run_limits::RunLimitsSettings;
+use crate::desktop::ui_language::{UiLanguage, UiStrings};
 use crate::error::AppResult;
 use crate::storage::models::MissedRunPolicy;
 use crate::storage::Database;
@@ -28,6 +29,7 @@ const KEY_RUN_HISTORY_RETENTION_DAYS: &str = "app.run_history_retention_days";
 const KEY_AUTO_DOWNLOAD_UPDATES: &str = "app.auto_download_updates";
 const KEY_AUTO_UPDATE_PLUGINS: &str = "app.auto_update_plugins";
 const KEY_DEVELOPER_MODE: &str = "app.developer_mode";
+const KEY_LANGUAGE: &str = "app.language";
 
 /// Stored value of [`AppSettings::run_history_retention_days`] = `None`.
 const RETENTION_FOREVER: &str = "forever";
@@ -75,6 +77,9 @@ pub struct AppSettings {
     /// Developer options, off by default: the Plugins page offers "Install from folder or
     /// archive…" (sideloading, see `plugins::sideload`), which the backend refuses otherwise.
     pub developer_mode: bool,
+    /// UI language (`en` / `id`). `None` until the frontend stores the system language on
+    /// first launch; saving `None` keeps the stored value, so an older frontend cannot clear it.
+    pub language: Option<UiLanguage>,
 }
 
 impl Default for AppSettings {
@@ -95,6 +100,7 @@ impl Default for AppSettings {
             auto_update_plugins: true,
             run_limits: RunLimitsSettings::default(),
             developer_mode: false,
+            language: None,
         }
     }
 }
@@ -120,6 +126,7 @@ impl AppSettings {
             auto_update_plugins: read_flag(db, KEY_AUTO_UPDATE_PLUGINS, defaults.auto_update_plugins)?,
             run_limits: RunLimitsSettings::load(db)?,
             developer_mode: read_flag(db, KEY_DEVELOPER_MODE, defaults.developer_mode)?,
+            language: read_language(db)?,
         })
     }
 
@@ -163,7 +170,15 @@ impl AppSettings {
             None => RETENTION_FOREVER.to_owned(),
         };
         db.set_setting(KEY_RUN_HISTORY_RETENTION_DAYS, &retention_text)?;
+        if let Some(language) = self.language {
+            db.set_setting(KEY_LANGUAGE, language.as_str())?;
+        }
         db.set_setting(KEY_MISSED_RUN_POLICY, policy_text(self.missed_run_default_policy))
+    }
+
+    /// The tray and notification strings in the stored language (English until one is stored).
+    pub fn ui_strings(&self) -> UiStrings {
+        UiStrings::new(self.language.unwrap_or_default())
     }
 
     /// Deletes the event logs of runs finished before the retention window
@@ -211,6 +226,10 @@ fn read_retention(db: &Database, default_days: Option<u32>) -> AppResult<Option<
     })
 }
 
+fn read_language(db: &Database) -> AppResult<Option<UiLanguage>> {
+    Ok(db.get_setting(KEY_LANGUAGE)?.as_deref().and_then(UiLanguage::parse))
+}
+
 fn read_policy(db: &Database, default_policy: MissedRunPolicy) -> AppResult<MissedRunPolicy> {
     Ok(match db.get_setting(KEY_MISSED_RUN_POLICY)?.as_deref() {
         Some("run_once") => MissedRunPolicy::RunOnce,
@@ -254,6 +273,7 @@ mod tests {
             auto_update_plugins: false,
             run_limits: RunLimitsSettings { max_parallel_steps: 8, ..RunLimitsSettings::default() },
             developer_mode: true,
+            language: Some(UiLanguage::Id),
         };
         changed.save(&database).unwrap();
         assert_eq!(AppSettings::load(&database).unwrap(), changed);
@@ -333,6 +353,18 @@ mod tests {
         let older_frontend: AppSettings = serde_json::from_value(serde_json::json!({ "openAtLogin": false })).unwrap();
         assert!(!older_frontend.developer_mode);
         assert_eq!(serde_json::to_value(AppSettings::default()).unwrap()["developerMode"], false);
+    }
+
+    #[test]
+    fn language_is_kept_when_a_save_does_not_name_one() {
+        let database = test_database();
+        assert_eq!(AppSettings::load(&database).unwrap().language, None);
+        AppSettings { language: Some(UiLanguage::Id), ..AppSettings::default() }.save(&database).unwrap();
+        AppSettings { language: None, ..AppSettings::default() }.save(&database).unwrap();
+        assert_eq!(AppSettings::load(&database).unwrap().language, Some(UiLanguage::Id));
+        assert_eq!(serde_json::to_value(AppSettings::default()).unwrap()["language"], serde_json::Value::Null);
+        database.set_setting(KEY_LANGUAGE, "klingon").unwrap();
+        assert_eq!(AppSettings::load(&database).unwrap().language, None);
     }
 
     #[test]

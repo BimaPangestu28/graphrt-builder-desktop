@@ -4,6 +4,7 @@ import { listAllWorkflowSecrets } from '@/api/credentials'
 import { useAsyncData } from '@/hooks/useAsyncData'
 import { AddSecretForm } from '@/pages/connections/AddSecretForm'
 import { hintClassName, SelectInput } from './fields'
+import { messages } from '@/i18n'
 
 /**
  * Picks the secret a step signs in with (HTTP request, spec B9): the agent's own secrets
@@ -55,14 +56,14 @@ export function SecretPicker({ graph, value, disabled, onPick }: SecretPickerPro
   const otherSaved = (savedNames ?? []).filter((name) => !agentNames.has(name))
   const savedSet = new Set(savedNames ?? [])
   const options = [
-    ...agentSecrets.map((variable) => ({ value: variable.name, label: `${variable.name} · ${savedSet.has(variable.name) ? 'saved' : 'not saved yet'} · this agent` })),
-    ...otherSaved.map((name) => ({ value: name, label: `${name} · saved` })),
-    { value: addSecretChoice, label: 'Add a new secret…' },
+    ...agentSecrets.map((variable) => ({ value: variable.name, label: messages().nodes.secretOption(variable.name, savedSet.has(variable.name)) })),
+    ...otherSaved.map((name) => ({ value: name, label: messages().nodes.nameSaved(name) })),
+    { value: addSecretChoice, label: messages().nodes.addANewSecret },
   ]
   return (
     <div className="flex flex-col gap-2">
       <SelectInput
-        ariaLabel="Secret"
+        ariaLabel={messages().nodes.secret}
         value={value}
         disabled={disabled}
         options={options}
@@ -74,7 +75,7 @@ export function SecretPicker({ graph, value, disabled, onPick }: SecretPickerPro
           if (choice) onPick(choice)
         }}
       />
-      {value && !savedSet.has(value) && savedNames && <p className="m-0 text-[12px] text-amber-strong">{value} has no value yet. Add it in Connections › Secrets, or add a new secret here</p>}
+      {value && !savedSet.has(value) && savedNames && <p className="m-0 text-[12px] text-amber-strong">{value} {messages().nodes.hasNoValueYetAddIt}</p>}
       {isAdding && (
         <AddSecretForm
           onAdded={async (secretName) => {
@@ -85,7 +86,7 @@ export function SecretPicker({ graph, value, disabled, onPick }: SecretPickerPro
           onClose={() => setIsAdding(false)}
         />
       )}
-      {!isAdding && options.length === 1 && <p className={hintClassName}>No saved secrets yet. Add one (e.g. API_TOKEN); its value goes to the keychain and is never shown here.</p>}
+      {!isAdding && options.length === 1 && <p className={hintClassName}>{messages().nodes.noSavedSecretsYetAddOne}</p>}
     </div>
   )
 }

@@ -10,6 +10,7 @@ import { RunErrorNotice } from '@/pages/agent-run/RunErrorNotice'
 import { RunReviewList } from './batch-approval/RunReviewList'
 import { buildRowTitle, describeReviewedRun } from './batch-approval/runReviewModel'
 import { toError } from '@/lib/errors'
+import { messages } from '@/i18n'
 
 /** Run events after which the review is read again. */
 const reviewRefreshEventTypes = new Set(['status_changed', 'run_paused', 'run_succeeded', 'run_failed', 'run_aborted'])
@@ -76,7 +77,7 @@ function useReviewAnswering(review: RunReview | null, reload: () => void) {
     const autoAnswers = buildAutoAnswers(pending, autoAnswer)
     if ('blockedTitle' in autoAnswers) {
       setAutoAnswer(null)
-      setAutoStopNotice(`Stopped answering automatically: ${autoAnswers.blockedTitle} needs you`)
+      setAutoStopNotice(messages().agentRun.autoStopped(autoAnswers.blockedTitle))
       return
     }
     void submitAnswers(autoAnswers.answers)
@@ -104,20 +105,20 @@ function PageHeader({ title, subtitle }: { title: string; subtitle?: string }) {
 /** What the run is doing when nothing waits for an answer right now. */
 function RunStateNotice({ review, isAutoAnswering }: { review: RunReview; isAutoAnswering: boolean }) {
   if (review.status === 'running') {
-    return <p className="m-0 text-body">{isAutoAnswering ? 'Answering automatically. Waiting for the next item…' : 'The run is working. The next question shows here when it asks.'}</p>
+    return <p className="m-0 text-body">{isAutoAnswering ? messages().agentRun.answeringAutomaticallyWaitingForTheNext : messages().agentRun.theRunIsWorkingTheNext}</p>
   }
   if (review.status === 'paused') {
     const kinds = review.otherPauseKinds.join(', ') || 'unknown'
-    return <p className="m-0 text-body">This run waits for something this screen cannot answer ({kinds}).</p>
+    return <p className="m-0 text-body">{messages().agentRun.thisRunWaitsForSomethingThis}{kinds}).</p>
   }
-  const finishedText = { succeeded: 'The run finished.', failed: 'The run did not finish.', aborted: 'The run was stopped.' }[review.status]
+  const finishedText = { succeeded: messages().agentRun.theRunFinished2, failed: messages().agentRun.theRunDidNotFinish, aborted: messages().agentRun.theRunWasStopped2 }[review.status]
   return (
     <div className="flex flex-col gap-2">
       <p className="m-0 text-body">
-        {finishedText} {review.answered.length > 0 && `You answered ${review.answered.length}.`}
+        {finishedText} {review.answered.length > 0 && messages().agentRun.youAnsweredCount(review.answered.length)}
       </p>
       <Link to={agentPath('runResult', review.agentId, { runId: review.runId })} className="self-start font-medium">
-        See what it did
+        {messages().agentRun.seeWhatItDid}
       </Link>
     </div>
   )
@@ -126,11 +127,11 @@ function RunStateNotice({ review, isAutoAnswering }: { review: RunReview; isAuto
 function NothingToReview() {
   return (
     <>
-      <PageHeader title="Nothing to review" />
+      <PageHeader title={messages().agentRun.nothingToReview} />
       <div className="flex flex-col gap-2 px-6 py-5">
-        <p className="m-0 text-body">No run is waiting for your answer right now.</p>
+        <p className="m-0 text-body">{messages().agentRun.noRunIsWaitingForYour}</p>
         <Link to={routePaths.runs} className="self-start font-medium">
-          Open Runs
+          {messages().agentRun.openRuns}
         </Link>
       </div>
     </>
@@ -157,12 +158,12 @@ export function BatchApprovalPage() {
 
   const notices = (
     <>
-      {error && <RunErrorNotice title="Could not load this run" error={error} />}
-      {answering.submitError && <RunErrorNotice title="Could not send the answers" error={answering.submitError} />}
+      {error && <RunErrorNotice title={messages().agentRun.couldNotLoadThisRun} error={error} />}
+      {answering.submitError && <RunErrorNotice title={messages().agentRun.couldNotSendTheAnswers} error={answering.submitError} />}
       {answering.autoStopNotice && <p className="m-0 text-[13px] text-amber-strong">{answering.autoStopNotice}</p>}
       {answering.isAutoAnswering && (
         <button type="button" onClick={answering.stopAutoAnswer} className="self-start rounded-lg border border-line-strong bg-surface px-3 py-1.5 text-[13px] font-medium text-ink">
-          Stop answering automatically
+          {messages().agentRun.stopAnsweringAutomatically}
         </button>
       )}
     </>
@@ -184,17 +185,17 @@ export function BatchApprovalPage() {
         </>
       ) : review ? (
         <>
-          <PageHeader title="Review a run" subtitle={describeReviewedRun(review)} />
+          <PageHeader title={messages().agentRun.reviewARun} subtitle={describeReviewedRun(review)} />
           <div className="flex flex-col gap-3 px-6 py-5">
             {notices}
             <RunStateNotice review={review} isAutoAnswering={answering.isAutoAnswering} />
           </div>
         </>
       ) : isLoading ? (
-        <PageHeader title="Review a run" subtitle="Loading the run…" />
+        <PageHeader title={messages().agentRun.reviewARun} subtitle={messages().agentRun.loadingTheRun} />
       ) : error ? (
         <>
-          <PageHeader title="Review a run" />
+          <PageHeader title={messages().agentRun.reviewARun} />
           <div className="flex flex-col gap-3 px-6 py-5">{notices}</div>
         </>
       ) : (

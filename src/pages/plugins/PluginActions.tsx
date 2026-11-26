@@ -1,6 +1,7 @@
 import { Button, type ButtonSize } from '@/components/ui'
 import type { PluginsState } from '@/hooks/usePlugins'
 import { describeInstallProgress, type PluginListItem } from './pluginDisplay'
+import { useT } from '@/i18n'
 
 interface PluginActionProps {
   item: PluginListItem
@@ -23,33 +24,36 @@ interface PluginInstallButtonProps extends PluginActionProps {
  * to it (the detail page, or the card's approval step), so the click is an informed OK.
  */
 export function PluginInstallButton({ item, plugins, size = 'sm', ariaLabel, withPluginRuntime = false }: PluginInstallButtonProps) {
+  const t = useT().plugins
   const isInstalling = plugins.operationByName[item.name] === 'installing'
   return (
     <Button
       size={size}
-      aria-label={ariaLabel ?? `Install ${item.displayName}`}
+      aria-label={ariaLabel ?? t.installPlugin(item.displayName)}
       disabled={isBusy(item, plugins)}
       onClick={() => void plugins.install(item.name, item.permissions, { withPluginRuntime })}
     >
-      {isInstalling ? 'Installing…' : 'Install'}
+      {isInstalling ? t.installing : t.install}
     </Button>
   )
 }
 
 export function PluginUpdateButton({ item, plugins, size = 'sm' }: PluginActionProps) {
+  const t = useT().plugins
   const isUpdating = plugins.operationByName[item.name] === 'updating'
   return (
-    <Button size={size} aria-label={`Update ${item.displayName}`} disabled={isBusy(item, plugins)} onClick={() => void plugins.update(item.name)}>
-      {isUpdating ? 'Updating…' : `Update to v${item.version}`}
+    <Button size={size} aria-label={t.updatePlugin(item.displayName)} disabled={isBusy(item, plugins)} onClick={() => void plugins.update(item.name)}>
+      {isUpdating ? t.updating : t.updateTo(item.version)}
     </Button>
   )
 }
 
 export function PluginRemoveButton({ item, plugins, size = 'sm' }: PluginActionProps) {
+  const t = useT().plugins
   const isRemoving = plugins.operationByName[item.name] === 'removing'
   return (
-    <Button variant="danger" size={size} aria-label={`Remove ${item.displayName}`} disabled={isBusy(item, plugins)} onClick={() => void plugins.remove(item.name)}>
-      {isRemoving ? 'Removing…' : 'Remove'}
+    <Button variant="danger" size={size} aria-label={t.removePlugin(item.displayName)} disabled={isBusy(item, plugins)} onClick={() => void plugins.remove(item.name)}>
+      {isRemoving ? t.removing : t.remove}
     </Button>
   )
 }

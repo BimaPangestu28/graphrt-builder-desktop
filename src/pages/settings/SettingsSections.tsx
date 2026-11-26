@@ -5,14 +5,11 @@ import { revealDataFolder } from '@/api/appInfo'
 import type { AppSettings } from '@/api/appSettingsTypes'
 import type { AppInfo } from '@/api/connectionTypes'
 import type { MissedRunPolicy } from '@/api/types'
-import {
-  appearanceOptions,
-  describeRetention,
-  languageOptions,
-  missedRunPolicyLabels,
-  modelFallbackOptions,
-  runHistoryRetentionChoices,
-} from '@/lib/settings'
+import { appearanceKeys, describeRetention, missedRunPolicyLabels, modelFallbackKeys, runHistoryRetentionChoices } from '@/lib/settings'
+import { useLocale, useT } from '@/i18n'
+import { saveLocale } from '@/i18n/persistLocale'
+import type { Locale } from '@/i18n/types'
+import { keepSectionAcrossLanguageSwitch } from './languageSwitch'
 import { describeError } from '@/lib/agentDisplay'
 import { connectionsTabPath } from '@/routes'
 import { useOnboardingTour } from '../onboarding/onboardingTourContext'
@@ -39,59 +36,58 @@ interface AppSettingsSectionProps extends SectionProps {
   updateAppSetting: UpdateAppSetting
 }
 
-type MissedRunPolicyLabel = (typeof missedRunPolicyLabels)[MissedRunPolicy]
-const missedRunPolicyOptions = Object.values(missedRunPolicyLabels)
-
-function findMissedRunPolicy(label: MissedRunPolicyLabel): MissedRunPolicy {
-  return label === missedRunPolicyLabels.skip ? 'skip' : 'run_once'
+function findMissedRunPolicy(label: string): MissedRunPolicy {
+  return label === missedRunPolicyLabels().skip ? 'skip' : 'run_once'
 }
 
 /** Runner group: login item, menu bar, keep awake, missed runs and model choices. */
 export function RunnerSection({ settingsValues, updateSetting, showsPreviewOnlySettings, appSettings, updateAppSetting }: AppSettingsSectionProps) {
+  const t = useT().settings
+  const policyLabels = missedRunPolicyLabels()
   return (
-    <SettingsGroup headingId="settings-runner-heading" title="Runner">
+    <SettingsGroup headingId="settings-runner-heading" title={t.runner}>
       <ToggleRow
-        title="Start graphrt when I log in"
-        description="So scheduled agents run without opening the app"
+        title={t.openAtLogin}
+        description={t.openAtLoginHint}
         isChecked={appSettings.openAtLogin}
         onToggle={(isChecked) => void updateAppSetting('openAtLogin', isChecked)}
       />
       <ToggleRow
-        title={`Show in the ${getTrayAreaName()}`}
-        description="Approve and check runs without opening the window"
+        title={t.showInTray(getTrayAreaName())}
+        description={t.showInTrayHint}
         isChecked={appSettings.showInMenuBar}
         onToggle={(isChecked) => void updateAppSetting('showInMenuBar', isChecked)}
       />
       <ToggleRow
-        title="Keep the computer awake while an agent runs"
-        description={appSettings.keepAwakeOnlyOnPower ? 'Only while plugged in' : 'Also on battery'}
+        title={t.keepAwake}
+        description={appSettings.keepAwakeOnlyOnPower ? t.onlyPluggedIn : t.alsoOnBattery}
         isChecked={appSettings.keepAwakeWhileRunning}
         onToggle={(isChecked) => void updateAppSetting('keepAwakeWhileRunning', isChecked)}
       />
       {appSettings.keepAwakeWhileRunning && (
         <ToggleRow
-          title="Only while plugged in"
-          description="On battery the computer sleeps as usual"
+          title={t.onlyPluggedIn}
+          description={t.onBatterySleeps}
           isChecked={appSettings.keepAwakeOnlyOnPower}
           onToggle={(isChecked) => void updateAppSetting('keepAwakeOnlyOnPower', isChecked)}
         />
       )}
       <SelectRow
-        title="If a scheduled run was missed"
-        description="Default for new schedules, when the computer was asleep or off"
-        value={missedRunPolicyLabels[appSettings.missedRunDefaultPolicy]}
-        options={missedRunPolicyOptions}
+        title={t.missedRun}
+        description={t.missedRunHint}
+        value={policyLabels[appSettings.missedRunDefaultPolicy]}
+        options={Object.values(policyLabels)}
         onSelect={(label) => void updateAppSetting('missedRunDefaultPolicy', findMissedRunPolicy(label))}
         hasDivider
       />
       <DefaultModelRow />
       {showsPreviewOnlySettings && (
         <SelectRow
-          title="If the main model fails"
-          description="Out of credit, rate limited or offline"
-          value={settingsValues.modelFallback}
-          options={modelFallbackOptions}
-          onSelect={(fallback) => updateSetting('modelFallback', fallback)}
+          title={t.modelFails}
+          description={t.modelFailsHint}
+          value={t.modelFallbackOptions[settingsValues.modelFallback]}
+          options={modelFallbackKeys.map((key) => t.modelFallbackOptions[key])}
+          onSelect={(label) => updateSetting('modelFallback', modelFallbackKeys.find((key) => t.modelFallbackOptions[key] === label) ?? settingsValues.modelFallback)}
           hasDivider={false}
         />
       )}
@@ -124,6 +120,7 @@ interface PrivacySectionProps extends SectionProps {
 
 /** Privacy and data group: data folder, run history retention, crash reports, export and delete. */
 export function PrivacySection({ appSettings, updateAppSetting, appInfo, onDataDeleted }: PrivacySectionProps) {
+  const t = useT().settings
   const [folderAction, setFolderAction] = useState<FolderActionState>({ kind: 'idle' })
 
   async function handleReveal() {
@@ -131,26 +128,26 @@ export function PrivacySection({ appSettings, updateAppSetting, appInfo, onDataD
       await revealDataFolder()
       setFolderAction({ kind: 'revealed' })
     } catch (revealError) {
-      setFolderAction({ kind: 'failed', message: `Could not open the data folder: ${describeError(revealError)}` })
+      setFolderAction({ kind: 'failed', message: t.couldNotOpenDataFolder(describeError(revealError)) })
     }
   }
 
   return (
-    <SettingsGroup headingId="settings-privacy-heading" title="Privacy and data">
+    <SettingsGroup headingId="settings-privacy-heading" title={t.sections.privacy}>
       <ActionRow
-        title="Data folder"
-        description={appInfo?.dataFolderPath ?? 'Loading…'}
+        title={t.dataFolder}
+        description={appInfo?.dataFolderPath ?? t.loadingEllipsis}
         isMonospace
         action={
           <button type="button" onClick={() => void handleReveal()} className={`${settingsButtonClassNames} h-[34px] rounded-lg px-3`}>
-            Show in {getFileManagerName()}
+            {t.showIn(getFileManagerName())}
           </button>
         }
       />
       {appSettings && (
         <SelectRow
-          title="Keep run history for"
-          description="Step-by-step logs of finished runs; their results are kept"
+          title={t.keepHistory}
+          description={t.keepHistoryHint}
           value={describeRetention(appSettings.runHistoryRetentionDays)}
           options={listRetentionLabels(appSettings.runHistoryRetentionDays)}
           onSelect={(label) => void updateAppSetting('runHistoryRetentionDays', findRetentionDays(label, appSettings.runHistoryRetentionDays))}
@@ -159,7 +156,7 @@ export function PrivacySection({ appSettings, updateAppSetting, appInfo, onDataD
       <CrashReportsPanel />
       {folderAction.kind === 'revealed' && (
         <p role="status" className="m-0 text-[13px] text-body">
-          Opened the data folder in {getFileManagerName()}
+          {t.openedDataFolder(getFileManagerName())}
         </p>
       )}
       {folderAction.kind === 'failed' && (
@@ -174,22 +171,21 @@ export function PrivacySection({ appSettings, updateAppSetting, appInfo, onDataD
 
 /** Dark promo card pointing people at running graphrt on their own server (browser preview only). */
 export function RemoteRunnerBanner({ onConnectServer }: { onConnectServer: () => void }) {
+  const t = useT().settings
   return (
     <section aria-labelledby="settings-remote-banner-heading" className="flex flex-wrap items-center gap-4 rounded-[14px] bg-ink p-[18px] text-white">
       <span className="flex flex-[1_1_280px] flex-col gap-1">
         <h2 id="settings-remote-banner-heading" className="m-0 text-[15px] font-semibold">
-          Free, no limits
+          {t.freeNoLimits}
         </h2>
-        <span className="text-[13px] text-line-heavy">
-          Want agents running when your computer is off? Install graphrt on your own server or VPS and connect it here
-        </span>
+        <span className="text-[13px] text-line-heavy">{t.remoteBannerText}</span>
       </span>
       <button
         type="button"
         onClick={onConnectServer}
         className="h-[38px] cursor-pointer rounded-[9px] border-0 bg-surface px-4 font-sans text-[13px] font-semibold text-ink"
       >
-        Connect a server
+        {t.connectServer}
       </button>
     </section>
   )
@@ -197,6 +193,7 @@ export function RemoteRunnerBanner({ onConnectServer }: { onConnectServer: () =>
 
 /** Remote runner group (browser preview only: no remote runner exists yet). */
 export function RemoteRunnerSection({ settingsValues, updateSetting }: SectionProps) {
+  const t = useT().settings
   const [connectedServerUrl, setConnectedServerUrl] = useState<string | null>(null)
   const trimmedServerUrl = settingsValues.remoteServerUrl.trim()
 
@@ -206,13 +203,13 @@ export function RemoteRunnerSection({ settingsValues, updateSetting }: SectionPr
   }
 
   return (
-    <SettingsGroup headingId="settings-remote-heading" title="Remote runner">
+    <SettingsGroup headingId="settings-remote-heading" title={t.sections.remote}>
       <p className="m-0 leading-normal text-body">
-        Run <code className="font-mono text-[13px]">npx graphrt runner</code> on your server, then paste the address it prints. Agents keep running when this computer is off
+        {t.remoteRun} <code className="font-mono text-[13px]">npx graphrt runner</code> {t.remoteRunAfter}
       </p>
       <form onSubmit={handleConnect} className="flex flex-wrap items-end gap-2 py-3.5">
         <label className="flex flex-[1_1_280px] flex-col gap-1.5">
-          <span className="font-medium">Server address</span>
+          <span className="font-medium">{t.serverAddress}</span>
           <input
             type="url"
             value={settingsValues.remoteServerUrl}
@@ -226,12 +223,12 @@ export function RemoteRunnerSection({ settingsValues, updateSetting }: SectionPr
           disabled={!trimmedServerUrl}
           className="h-9 cursor-pointer rounded-[9px] border-0 bg-ink px-4 font-sans text-[13px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Connect
+          {t.connect}
         </button>
       </form>
       {connectedServerUrl && (
         <p role="status" className="m-0 text-[13px] text-ok-strong">
-          Connected to {connectedServerUrl}. New runs can use this server
+          {t.connectedTo(connectedServerUrl)}
         </p>
       )}
     </SettingsGroup>
@@ -239,52 +236,89 @@ export function RemoteRunnerSection({ settingsValues, updateSetting }: SectionPr
 }
 
 /** General group: appearance and language (browser preview only: no dark theme or translations yet). */
-export function GeneralSection({ settingsValues, updateSetting }: SectionProps) {
+/** Language names stay in their own language, so anyone can find theirs. */
+const languageNames: Record<Locale, string> = { en: 'English', id: 'Bahasa Indonesia' }
+const localeOptions: readonly Locale[] = ['en', 'id']
+
+function LanguageRow({ hasDivider }: { hasDivider: boolean }) {
+  const t = useT().settings
+  const locale = useLocale()
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  function selectLanguage(name: string) {
+    const nextLocale = localeOptions.find((option) => languageNames[option] === name)
+    if (!nextLocale || nextLocale === locale) return
+    setSaveError(null)
+    keepSectionAcrossLanguageSwitch('general')
+    saveLocale(nextLocale).catch((saveFailure: unknown) => {
+      console.warn('Could not store the UI language', saveFailure)
+      setSaveError(t.languageSaveFailed)
+    })
+  }
+
   return (
-    <SettingsGroup headingId="settings-general-heading" title="General">
+    <>
       <SelectRow
-        title="Appearance"
-        value={settingsValues.appearance}
-        options={appearanceOptions}
-        onSelect={(appearance) => updateSetting('appearance', appearance)}
+        title={t.languageLabel}
+        description={t.languageDescription}
+        value={languageNames[locale]}
+        options={localeOptions.map((option) => languageNames[option])}
+        onSelect={selectLanguage}
+        hasDivider={hasDivider}
       />
-      <SelectRow
-        title="Language"
-        description="Used for the app and for messages agents write"
-        value={settingsValues.language}
-        options={languageOptions}
-        onSelect={(language) => updateSetting('language', language)}
-        hasDivider={false}
-      />
+      {saveError && (
+        <p role="alert" className="m-0 text-[13px] text-danger">
+          {saveError}
+        </p>
+      )}
+    </>
+  )
+}
+
+export function GeneralSection({ settingsValues, updateSetting, showsPreviewOnlySettings }: SectionProps & { appSettings: AppSettings | null }) {
+  const t = useT().settings
+  return (
+    <SettingsGroup headingId="settings-general-heading" title={t.sections.general}>
+      <LanguageRow hasDivider={showsPreviewOnlySettings} />
+      {showsPreviewOnlySettings && (
+        <SelectRow
+          title={t.appearance}
+          value={t.appearanceOptions[settingsValues.appearance]}
+          options={appearanceKeys.map((key) => t.appearanceOptions[key])}
+          onSelect={(label) => updateSetting('appearance', appearanceKeys.find((key) => t.appearanceOptions[key] === label) ?? settingsValues.appearance)}
+          hasDivider={false}
+        />
+      )}
     </SettingsGroup>
   )
 }
 
 /** Notifications group: which events show a system notification (all stored by the backend). */
 export function NotificationsSection({ appSettings, updateAppSetting }: AppSettingsSectionProps) {
+  const t = useT().settings
   return (
-    <SettingsGroup headingId="settings-notifications-heading" title="Notifications">
+    <SettingsGroup headingId="settings-notifications-heading" title={t.notifications}>
       <ToggleRow
-        title="An agent needs my approval"
-        description="Before it sends a message or spends money"
+        title={t.notifyApproval}
+        description={t.notifyApprovalHint}
         isChecked={appSettings.notifyOnApproval}
         onToggle={(isChecked) => void updateAppSetting('notifyOnApproval', isChecked)}
       />
       <ToggleRow
-        title="A run fails"
-        description="With one button that fixes it"
+        title={t.notifyFailure}
+        description={t.notifyFailureHint}
         isChecked={appSettings.notifyOnFailure}
         onToggle={(isChecked) => void updateAppSetting('notifyOnFailure', isChecked)}
       />
       <ToggleRow
-        title="A chatbot conversation needs me"
-        description="When a chatbot hands a customer chat over to you"
+        title={t.notifyChat}
+        description={t.notifyChatHint}
         isChecked={appSettings.notifyOnChatHandoff}
         onToggle={(isChecked) => void updateAppSetting('notifyOnChatHandoff', isChecked)}
       />
       <ToggleRow
-        title="Daily summary at 18:00"
-        description="How many runs succeeded or failed in the last 24 hours"
+        title={t.notifyDaily}
+        description={t.notifyDailyHint}
         isChecked={appSettings.notifyDailySummary}
         onToggle={(isChecked) => void updateAppSetting('notifyDailySummary', isChecked)}
         hasDivider={false}
@@ -295,15 +329,16 @@ export function NotificationsSection({ appSettings, updateAppSetting }: AppSetti
 
 /** "Show the tour again", when the app's tour provider is there (hidden otherwise). */
 function TourRow() {
+  const t = useT().settings
   const onboardingTour = useOnboardingTour()
   if (!onboardingTour) return null
   return (
     <ActionRow
-      title="Onboarding tour"
-      description="A short walk through what graphrt does and where things are"
+      title={t.tour}
+      description={t.tourHint}
       action={
         <button type="button" onClick={onboardingTour.openTour} className={`${settingsButtonClassNames} h-[34px]`}>
-          Show the tour again
+          {t.showTourAgain}
         </button>
       }
     />
@@ -312,11 +347,12 @@ function TourRow() {
 
 /** "Developer mode": unlocks sideloading on the Plugins page; waits for the stored preferences. */
 function DeveloperModeRow({ appSettings, updateAppSetting }: { appSettings: AppSettings | null; updateAppSetting: UpdateAppSetting }) {
+  const t = useT().settings
   if (!appSettings) return null
   return (
     <ToggleRow
-      title="Developer mode"
-      description="Adds “Install from folder or archive…” on the Plugins page, for plugins you build yourself. They are not reviewed, start untrusted and never update by themselves"
+      title={t.developerMode}
+      description={t.developerModeHint}
       isChecked={appSettings.developerMode}
       onToggle={(isChecked) => void updateAppSetting('developerMode', isChecked)}
       hasDivider={false}
@@ -333,17 +369,18 @@ interface AboutSectionProps {
 
 /** About group: version, the onboarding tour, helpful links and Developer mode. */
 export function AboutSection({ appInfo, appSettings, updateAppSetting }: AboutSectionProps) {
-  const versionText = appInfo ? `Version ${appInfo.version}${appInfo.updateStatus ? ` · ${appInfo.updateStatus}` : ''}` : 'Loading…'
+  const t = useT().settings
+  const versionText = appInfo ? `${t.version(appInfo.version)}${appInfo.updateStatus ? ` · ${appInfo.updateStatus}` : ''}` : t.loadingEllipsis
   return (
-    <SettingsGroup headingId="settings-about-heading" title="About">
-      <ActionRow title="graphrt" description={versionText} action={null} />
+    <SettingsGroup headingId="settings-about-heading" title={t.about}>
+      <ActionRow title={t.appName} description={versionText} action={null} />
       <TourRow />
       <ActionRow
-        title="Connected accounts"
-        description="AI model keys, secrets and MCP servers"
+        title={t.connectedAccounts}
+        description={t.connectedAccountsHint}
         action={
           <Link to={connectionsTabPath('models')} className={`${settingsButtonClassNames} inline-flex h-[34px] items-center rounded-lg px-3 no-underline !text-ink`}>
-            Open Connections
+            {t.openConnections}
           </Link>
         }
       />

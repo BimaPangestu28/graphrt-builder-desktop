@@ -16,6 +16,7 @@ import {
 } from './pluginTypes'
 import type { PluginRequirement, PluginSessionState } from './pluginRequirementTypes'
 import { samplePluginsBackend, subscribeToSampleBrowserRuntimeEvents, subscribeToSamplePluginEvents } from './sampleBackend/plugins'
+import { messages } from '@/i18n'
 
 /**
  * graphrt plugins: the online catalog, installed plugins with their trust and settings,
@@ -83,8 +84,8 @@ export async function pickLocalPluginPath(kind: LocalPluginPickKind): Promise<st
   const { open } = await import('@tauri-apps/plugin-dialog')
   const picked =
     kind === 'folder'
-      ? await open({ title: 'Choose a plugin folder', directory: true, multiple: false })
-      : await open({ title: 'Choose a plugin archive', multiple: false, filters: [{ name: 'Plugin archive (.tar.gz)', extensions: ['gz', 'tgz'] }] })
+      ? await open({ title: messages().lib.chooseAPluginFolder, directory: true, multiple: false })
+      : await open({ title: messages().lib.chooseAPluginArchive, multiple: false, filters: [{ name: messages().lib.pluginArchiveFilter, extensions: ['gz', 'tgz'] }] })
   return typeof picked === 'string' ? picked : null
 }
 

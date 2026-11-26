@@ -1,5 +1,6 @@
 import type { AgentGraph, NodeLayout } from '@/api/agentGraphTypes'
 import { parseGraphClipboard, serializeGraphClipboard, type GraphClipboard } from './clipboard'
+import { messages } from '@/i18n'
 
 /**
  * Small helpers behind the canvas commands: the words of each edit (they become the
@@ -64,14 +65,14 @@ export async function readClipboardForPaste(): Promise<GraphClipboard | null> {
 export function describeNodeList(graph: AgentGraph, nodeIds: string[]): string {
   const titles = nodeIds.map((nodeId) => graph.nodes.find((node) => node.id === nodeId)?.displayTitle ?? nodeId)
   if (titles.length <= 2) return titles.join(' and ')
-  return `${titles.length} steps`
+  return messages().nodes.valueSteps(titles.length)
 }
 
 /** The chat draft for "Ask the builder about this" (the person finishes the sentence). */
 export function buildAskBuilderText(graph: AgentGraph, nodeIds: string[]): string {
   const titles = nodeIds.map((nodeId) => graph.nodes.find((node) => node.id === nodeId)?.displayTitle ?? nodeId)
-  if (titles.length === 1) return `About the "${titles[0]}" step: `
-  return `About the steps ${titles.map((title) => `"${title}"`).join(', ')}: `
+  if (titles.length === 1) return messages().nodes.aboutTheValueStep(titles[0])
+  return messages().nodes.aboutTheSteps(titles.map((title) => `"${title}"`).join(', '))
 }
 
 /** Steps a delete or copy applies to: visible steps only (body markers go with their loop). */

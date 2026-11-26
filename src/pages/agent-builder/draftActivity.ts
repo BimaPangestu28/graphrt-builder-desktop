@@ -1,4 +1,5 @@
 import type { BuildStage } from '@/api/types'
+import { messages } from '@/i18n'
 
 /** Groups thousands for the token count ("1,204"), independent of the machine's locale. */
 const tokenCountFormat = new Intl.NumberFormat('en-US')
@@ -28,6 +29,6 @@ export function formatTokenCount(outputTokens: number): string {
  * describeDraftActivity('repairing', 1204) // 'Fixing… 1,204 tokens'
  */
 export function describeDraftActivity(stage: BuildStage, outputTokens: number): string {
-  const verb = stage === 'repairing' ? 'Fixing…' : 'Writing…'
+  const verb = stage === 'repairing' ? messages().builder.fixing : messages().builder.writing
   return `${verb} ${formatTokenCount(outputTokens)}`
 }

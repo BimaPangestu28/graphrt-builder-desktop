@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { messages } from '@/i18n'
 
 interface SecretValueInputProps {
   /** Accessible name, e.g. "Value of MY_SERVER_TOKEN". */
@@ -32,12 +33,12 @@ export function SecretValueInput({ label, value, onChange, placeholder, autoFocu
       />
       <button
         type="button"
-        aria-label={isValueVisible ? `Hide ${label}` : `Show ${label}`}
+        aria-label={isValueVisible ? messages().connections.hideLabel(label) : messages().connections.showLabel(label)}
         aria-pressed={isValueVisible}
         onClick={() => setIsValueVisible((wasVisible) => !wasVisible)}
         className="mr-1 h-7 shrink-0 cursor-pointer rounded-md border-0 bg-transparent px-2 text-[12px] font-medium text-ink-2 hover:bg-subtle"
       >
-        {isValueVisible ? 'Hide' : 'Show'}
+        {isValueVisible ? messages().connections.hide : messages().connections.show}
       </button>
     </span>
   )

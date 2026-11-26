@@ -8,6 +8,7 @@ import { Button, buttonClassNames, Spinner } from '@/components/ui'
 import { describeError } from '@/lib/agentDisplay'
 import { pluginDetailPath } from '@/routes'
 import { useAppSettings } from '@/pages/settings/useAppSettings'
+import { useT, messages } from '@/i18n'
 
 /** Where "Install from folder or archive…" is: closed, choosing, busy, asking to replace, or finished. */
 type LocalInstallStep =
@@ -71,16 +72,17 @@ function useLocalInstall(onInstalled: LocalPluginInstallProps['onInstalled']) {
 
 function LocalPluginInstallPanel({ onInstalled }: LocalPluginInstallProps) {
   const { step, setStep, install, pickAndInstall } = useLocalInstall(onInstalled)
+  const t = useT().plugins
   const close = () => setStep({ kind: 'closed' })
   if (step.kind === 'closed') {
     return (
       <Button variant="secondary" size="sm" className="self-start" onClick={() => setStep({ kind: 'choosing' })}>
-        Install from folder or archive…
+        {t.installFromFolder}
       </Button>
     )
   }
   return (
-    <section aria-label="Install a plugin from this computer" className={panelClassNames}>
+    <section aria-label={t.installFromComputer} className={panelClassNames}>
       <LocalInstallStepContent
         step={step}
         onPick={(pickKind) => void pickAndInstall(pickKind)}
@@ -102,6 +104,7 @@ interface StepContentProps {
 }
 
 function LocalInstallStepContent({ step, onPick, onDropPath, onReplace, onClose }: StepContentProps) {
+  const t = useT().plugins
   switch (step.kind) {
     case 'choosing':
       return <ChoosingStep onPick={onPick} onDropPath={onDropPath} onClose={onClose} />
@@ -109,7 +112,7 @@ function LocalInstallStepContent({ step, onPick, onDropPath, onReplace, onClose 
       return (
         <p role="status" className="m-0 inline-flex items-center gap-2 text-[13px] text-body">
           <Spinner />
-          Installing from <code className="font-mono text-[12px] [overflow-wrap:anywhere]">{step.path}</code>…
+          {t.installingFrom} <code className="font-mono text-[12px] [overflow-wrap:anywhere]">{step.path}</code>…
         </p>
       )
     case 'confirmReplace':
@@ -120,38 +123,38 @@ function LocalInstallStepContent({ step, onPick, onDropPath, onReplace, onClose 
       return (
         <>
           <p role="alert" className="m-0 text-[13px] leading-normal text-danger">
-            Could not install from this computer: {step.message}
+            {t.couldNotInstallLocal(step.message)}
           </p>
-          <StepButtons onClose={onClose} closeLabel="Close" />
+          <StepButtons onClose={onClose} closeLabel={t.close} />
         </>
       )
   }
 }
 
 function ChoosingStep({ onPick, onDropPath, onClose }: Pick<StepContentProps, 'onPick' | 'onDropPath' | 'onClose'>) {
+  const t = useT().plugins
   return (
     <>
       <p className="m-0 text-[13px] leading-normal text-body">
-        For plugin developers: drop or pick a plugin folder or a <code className="font-mono text-[12px]">.tar.gz</code> archive. graphrt checks its files like a catalog plugin, but nobody has reviewed the code. It is labelled Local · not reviewed,
-        starts untrusted and never updates by itself.
+        {t.localIntroBefore} <code className="font-mono text-[12px]">{messages().plugins.tarGz}</code> {t.localIntroAfter}
       </p>
       <FileDropZone
         compact
-        itemDescription="a plugin folder or .tar.gz archive"
+        itemDescription={t.localDropItem}
         accept={localPluginDropAccept}
         onDrop={([droppedItem]) => onDropPath(droppedItem.path)}
-        chooseLabel="Choose folder…"
+        chooseLabel={t.chooseFolder}
         onChoose={() => onPick('folder')}
         secondaryActions={
           <Button variant="secondary" size="sm" onClick={() => onPick('archive')}>
-            Choose .tar.gz…
+            {t.chooseArchive}
           </Button>
         }
-        hint="A folder holding graphrt-plugin.json, or a .tar.gz / .tgz archive of one"
+        hint={t.localDropHint}
       />
       <div className="flex flex-wrap gap-2">
         <Button variant="ghost" size="sm" onClick={onClose}>
-          Cancel
+          {t.cancel}
         </Button>
       </div>
     </>
@@ -159,18 +162,19 @@ function ChoosingStep({ onPick, onDropPath, onClose }: Pick<StepContentProps, 'o
 }
 
 function ConfirmReplaceStep({ path, onReplace, onClose }: { path: string; onReplace: (path: string) => void; onClose: () => void }) {
+  const t = useT().plugins
   return (
-    <div role="group" aria-label="Replace the catalog plugin?" className="flex flex-col gap-2.5">
+    <div role="group" aria-label={t.replaceQuestion} className="flex flex-col gap-2.5">
       <p className="m-0 text-[13px] leading-normal text-body">
-        A plugin with the same name is already installed from the catalog. Replace it with the copy from <code className="font-mono text-[12px] [overflow-wrap:anywhere]">{path}</code>? Its saved settings are removed, and the new copy
-        starts untrusted and is never updated from the catalog.
+        {t.replaceBefore} <code className="font-mono text-[12px] [overflow-wrap:anywhere]">{path}</code>
+        {t.replaceAfter}
       </p>
       <div className="flex flex-wrap gap-2">
         <Button variant="danger" size="sm" onClick={() => onReplace(path)}>
-          Replace
+          {t.replace}
         </Button>
         <Button variant="ghost" size="sm" onClick={onClose}>
-          Cancel
+          {t.cancel}
         </Button>
       </div>
     </div>
@@ -178,17 +182,18 @@ function ConfirmReplaceStep({ path, onReplace, onClose }: { path: string; onRepl
 }
 
 function InstalledStep({ installedPlugin, onClose }: { installedPlugin: InstalledPlugin; onClose: () => void }) {
+  const t = useT().plugins
   return (
     <>
       <p role="status" className="m-0 text-[13px] leading-normal text-body">
-        Installed {installedPlugin.displayName} v{installedPlugin.version} from this computer. It starts untrusted: open it to trust it and add its settings
+        {t.installedLocal(installedPlugin.displayName, installedPlugin.version)}
       </p>
       <div className="flex flex-wrap gap-2">
         <Link to={pluginDetailPath(installedPlugin.name)} className={buttonClassNames('primary', 'sm', '!text-white')}>
-          Open {installedPlugin.displayName}
+          {t.openPlugin(installedPlugin.displayName)}
         </Link>
         <Button variant="ghost" size="sm" onClick={onClose}>
-          Close
+          {t.close}
         </Button>
       </div>
     </>

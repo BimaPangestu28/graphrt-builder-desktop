@@ -1,3 +1,4 @@
+import { messages } from '@/i18n'
 /**
  * graphrt plugin types, mirroring `src-tauri/src/plugins/models.rs`
  * (serialized camelCase; enums are snake_case strings).
@@ -161,7 +162,9 @@ export type PluginRuntimeStatus = BrowserRuntimeStatus
 export type PluginRuntimeSource = 'downloaded' | 'development' | 'system' | 'missing'
 
 /** Download size of the plugin runtime, shown before the user starts it (the archives are 26-36 MB). */
-export const pluginRuntimeDownloadSizeNote = 'about 30 MB download'
+export function pluginRuntimeDownloadSizeNote(): string {
+  return messages().platform.runtimeDownloadSize
+}
 
 /**
  * The plugin runtime and browser runtime (`node_runtime_info`). graphrt no longer bundles

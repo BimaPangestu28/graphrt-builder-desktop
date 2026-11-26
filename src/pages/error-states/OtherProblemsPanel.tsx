@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { Problem } from '@/api/problemTypes'
 import { joinClassNames } from '@/components/ui'
 import { CommandOutcomeMessage, ProblemActionControl, type CommandOutcome, type ProblemActionStyle } from './ProblemActionControl'
+import { messages } from '@/i18n'
 
 /** Problems waiting on the user lead with a dark button; the others with quieter ones. */
 function getActionStyle(problem: Problem, actionIndex: number): ProblemActionStyle {
@@ -56,15 +57,15 @@ export function OtherProblemsPanel({ problems, isLoading, error }: OtherProblems
       className="box-border flex min-w-0 flex-[2_1_380px] flex-col gap-3.5 border-l border-line bg-subtle px-6 py-8"
     >
       <h2 id="other-problems-heading" className="m-0 text-[15px] font-semibold">
-        Other problems
+        {messages().agentRun.otherProblems}
       </h2>
-      <span className="text-[13px] leading-normal text-body">Each one says what happened and what fixes it</span>
+      <span className="text-[13px] leading-normal text-body">{messages().agentRun.eachOneSaysWhatHappenedAnd}</span>
       {error && (
         <p role="alert" className="m-0 text-[13px] text-danger">
-          Could not check for problems: {error.message}
+          {messages().agentRun.couldNotCheckForProblems}{' '}{error.message}
         </p>
       )}
-      {!error && !isLoading && problems.length === 0 && <p className="m-0 text-[13px] text-body">Nothing else needs you right now</p>}
+      {!error && !isLoading && problems.length === 0 && <p className="m-0 text-[13px] text-body">{messages().agentRun.nothingElseNeedsYouRightNow}</p>}
       {problems.map((problem) => (
         <ProblemCard key={problem.id} problem={problem} />
       ))}

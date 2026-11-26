@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { joinClassNames } from '@/components/ui'
+import { messages } from '@/i18n'
 
 interface SetupStepProps {
   number: number
@@ -24,7 +25,7 @@ export function SetupStep({ number, title, isDone, children }: SetupStepProps) {
       <div className="flex min-w-0 flex-auto flex-col gap-2">
         <span className="font-semibold">
           {title}
-          {isDone && <span className="ml-2 text-[12px] font-medium text-ok-strong">Done</span>}
+          {isDone && <span className="ml-2 text-[12px] font-medium text-ok-strong">{messages().chatbot.done}</span>}
         </span>
         {children}
       </div>

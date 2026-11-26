@@ -1,8 +1,10 @@
 import { Icon, PillTabBadge, pillTabClassNames } from '@/components/ui'
 import { pluginCategoryLabels, type PluginCategory } from './pluginCategories'
 import type { PluginFilter } from './pluginDisplay'
+import { messages } from '@/i18n'
+import { localizedRecord } from '@/i18n/localized'
 
-const tabLabels: Record<PluginFilter, string> = { all: 'All', installed: 'Installed', updates: 'Updates', attention: 'Needs attention' }
+const tabLabels: Readonly<Record<PluginFilter, string>> = localizedRecord(() => messages().plugins.tabs)
 const tabOrder: PluginFilter[] = ['all', 'installed', 'updates', 'attention']
 
 /** Small count after a tab label; amber for updates and attention so they stand out. */
@@ -24,7 +26,7 @@ interface PluginTabsProps {
 /** All · Installed · Updates · Needs attention, each with its count. */
 export function PluginTabs({ activeFilter, counts, onChange }: PluginTabsProps) {
   return (
-    <div role="group" aria-label="Show plugins" className="flex flex-wrap gap-1.5">
+    <div role="group" aria-label={messages().plugins.showPlugins} className="flex flex-wrap gap-1.5">
       {tabOrder.map((filter) => (
         <button key={filter} type="button" aria-pressed={activeFilter === filter} onClick={() => onChange(filter)} className={pillTabClassNames(activeFilter === filter, 'md')}>
           {tabLabels[filter]}
@@ -41,8 +43,8 @@ export function PluginSearchBox({ searchText, onChange }: { searchText: string; 
       <Icon name="search" size={15} />
       <input
         type="search"
-        aria-label="Search plugins"
-        placeholder="Search plugins or steps"
+        aria-label={messages().plugins.searchPlugins}
+        placeholder={messages().plugins.searchPlaceholder}
         value={searchText}
         onChange={(event) => onChange(event.target.value)}
         className="h-full min-w-0 flex-1 border-0 bg-transparent text-[13px] text-ink outline-none"
@@ -62,9 +64,9 @@ interface PluginCategoryChipsProps {
 export function PluginCategoryChips({ categoryCounts, activeCategory, onChange }: PluginCategoryChipsProps) {
   if (categoryCounts.length < 2 && activeCategory === null) return null
   return (
-    <div role="group" aria-label="Category" className="flex flex-wrap gap-1.5">
+    <div role="group" aria-label={messages().plugins.categoryGroup} className="flex flex-wrap gap-1.5">
       <button type="button" aria-pressed={activeCategory === null} onClick={() => onChange(null)} className={pillTabClassNames(activeCategory === null, 'sm')}>
-        Any category
+        {messages().plugins.anyCategory}
       </button>
       {categoryCounts.map(({ category, count }) => (
         <button

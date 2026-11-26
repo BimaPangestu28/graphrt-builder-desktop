@@ -2,6 +2,7 @@ import { Badge, joinClassNames } from '@/components/ui'
 import type { RunRecord } from '@/pages/runs/runRecordTypes'
 import { toPreviewText } from '@/lib/previewText'
 import { RunStatusPill } from './RunStatusPill'
+import { messages, useT } from '@/i18n'
 
 interface RunsTableProps {
   runs: RunRecord[]
@@ -17,12 +18,12 @@ const headerCellClassNames = 'whitespace-nowrap border-b border-line px-3.5 py-3
  * lines; the Result column takes what is left, and the table stops growing past `max-w-[1100px]`.
  */
 const columns = [
-  { label: 'Agent', widthClassName: 'w-[28%]' },
-  { label: 'Started by', widthClassName: 'w-[104px]' },
-  { label: 'When', widthClassName: 'w-[124px]' },
-  { label: 'Result', widthClassName: '' },
-  { label: 'Status', widthClassName: 'w-[112px]' },
-]
+  { key: 'agent', widthClassName: 'w-[28%]' },
+  { key: 'startedBy', widthClassName: 'w-[112px]' },
+  { key: 'when', widthClassName: 'w-[124px]' },
+  { key: 'result', widthClassName: '' },
+  { key: 'status', widthClassName: 'w-[120px]' },
+] as const
 
 function RunRow({ run, isSelected, isLast, onSelectRun }: { run: RunRecord; isSelected: boolean; isLast: boolean; onSelectRun: (runId: string) => void }) {
   const cellClassNames = joinClassNames('px-3.5 py-3 align-top', !isLast && 'border-b border-chip')
@@ -39,7 +40,7 @@ function RunRow({ run, isSelected, isLast, onSelectRun }: { run: RunRecord; isSe
             event.stopPropagation()
             onSelectRun(run.id)
           }}
-          aria-label={`Show run: ${run.agentName}, ${run.when}`}
+          aria-label={messages().runs.showRun(run.agentName, run.when)}
           title={run.agentName}
           className="block w-full cursor-pointer truncate border-0 bg-transparent p-0 text-left text-[13px] font-[inherit] text-ink"
         >
@@ -47,7 +48,7 @@ function RunRow({ run, isSelected, isLast, onSelectRun }: { run: RunRecord; isSe
         </button>
         {run.place && (
           <Badge tone={run.place === 'online' ? 'brand' : 'neutral'} className="mt-1">
-            {run.place === 'online' ? 'Online' : 'On this computer'}
+            {run.place === 'online' ? messages().runs.online : messages().runs.onThisComputer}
           </Badge>
         )}
       </td>
@@ -70,15 +71,16 @@ function RunRow({ run, isSelected, isLast, onSelectRun }: { run: RunRecord; isSe
  * plain preview clamped to two lines (a failed run's error in plain words), with the full or
  * raw text on hover.
  */
-export function RunsTable({ runs, selectedRunId, onSelectRun, emptyMessage = 'No runs match these filters' }: RunsTableProps) {
+export function RunsTable({ runs, selectedRunId, onSelectRun, emptyMessage }: RunsTableProps) {
+  const t = useT().runs
   return (
     <div className="max-w-[1100px] overflow-x-auto rounded-[14px] border border-line">
       <table className="w-full min-w-[620px] table-fixed border-collapse text-[13px]">
         <thead>
           <tr className="text-left text-muted">
             {columns.map((column) => (
-              <th key={column.label} scope="col" className={joinClassNames(headerCellClassNames, column.widthClassName)}>
-                {column.label}
+              <th key={column.key} scope="col" className={joinClassNames(headerCellClassNames, column.widthClassName)}>
+                {t.columns[column.key]}
               </th>
             ))}
           </tr>
@@ -90,7 +92,7 @@ export function RunsTable({ runs, selectedRunId, onSelectRun, emptyMessage = 'No
           {runs.length === 0 && (
             <tr>
               <td colSpan={5} className="px-3.5 py-6 text-center text-muted">
-                {emptyMessage}
+                {emptyMessage ?? t.noMatch}
               </td>
             </tr>
           )}

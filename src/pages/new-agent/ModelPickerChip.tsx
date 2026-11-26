@@ -7,6 +7,7 @@ import { useDefaultModel } from '@/hooks/useDefaultModel'
 import { describeError } from '@/lib/agentDisplay'
 import { buildModelOptionGroups, describeCompactModelChoice, modelChoiceKey } from '@/lib/modelChoices'
 import { connectionsTabPath } from '@/routes'
+import { messages } from '@/i18n'
 
 const chipClassNames = 'flex h-[30px] items-center gap-1.5 rounded-lg bg-canvas px-2.5 text-[13px] text-ink-2'
 
@@ -16,7 +17,7 @@ const chipClassNames = 'flex h-[30px] items-center gap-1.5 rounded-lg bg-canvas 
  * (asked from the provider; the recommended model while loading or if that fails). Changing it updates the default
  * (the same setting as Settings › Default AI model). With no provider it links to Connections.
  */
-export function ModelPickerChip({ label = 'Model for new agents' }: { label?: string }) {
+export function ModelPickerChip({ label = messages().newAgent.modelForNewAgents }: { label?: string }) {
   const defaultModelState = useDefaultModel()
   const statusesState = useAsyncData(() => listProviderStatuses(), [])
   const availableModelsState = useAvailableModels()
@@ -24,12 +25,12 @@ export function ModelPickerChip({ label = 'Model for new agents' }: { label?: st
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null)
   const defaultModel = defaultModelState.data
 
-  if (defaultModelState.isLoading) return <span className={chipClassNames}>Checking model…</span>
+  if (defaultModelState.isLoading) return <span className={chipClassNames}>{messages().newAgent.checkingModel}</span>
   if (!defaultModel) {
     return (
       <span className={chipClassNames}>
         <Link to={connectionsTabPath('models')} className="font-medium">
-          {defaultModelState.error ? 'Could not check the model' : 'Connect a model'}
+          {defaultModelState.error ? messages().newAgent.couldNotCheckTheModel : messages().newAgent.connectAModel}
         </Link>
       </span>
     )
@@ -47,7 +48,7 @@ export function ModelPickerChip({ label = 'Model for new agents' }: { label?: st
       await setDefaultModel(choice)
       await defaultModelState.reload()
     } catch (saveError) {
-      setSaveErrorMessage(`Could not change the model: ${describeError(saveError)}`)
+      setSaveErrorMessage(messages().newAgent.couldNotChangeTheModelReason(describeError(saveError)))
     } finally {
       setIsSaving(false)
     }

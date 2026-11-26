@@ -33,6 +33,7 @@ import { SyncBanner } from './SyncBanner'
 import { autosaveDelayMs as defaultAutosaveDelayMs, useGraphAutosave } from './sync/useGraphAutosave'
 import { useAgentGraph, type AgentGraphController } from './useAgentGraph'
 import { useNodeKinds } from './useNodeKinds'
+import { messages } from '@/i18n'
 
 /** Positions are saved this long after the last move or zoom. */
 export const layoutSaveDelayMs = 800
@@ -104,7 +105,7 @@ export function toPluginStatuses(requirements: NodesPluginRequirement[]): Record
   const statuses: Record<string, NodeSetupStatus> = {}
   for (const requirement of requirements) {
     if (!requirement.pluginName || !requirement.pluginState || requirement.pluginState === 'ready') continue
-    const label = requirement.pluginState === 'not_linked' ? 'Not linked' : requirement.pluginState === 'not_installed' ? 'Not installed' : (requirement.detail ?? 'Needs setup')
+    const label = requirement.pluginState === 'not_linked' ? messages().nodes.notLinked : requirement.pluginState === 'not_installed' ? messages().nodes.notInstalled : (requirement.detail ?? messages().nodes.needsSetup)
     statuses[requirement.pluginName] = { label, tone: 'amber' }
   }
   return statuses
@@ -215,8 +216,8 @@ export function NodesView({
     await validation.validate()
   }
 
-  if (controller.loadError) return <p className="m-0 p-6 text-muted">Could not read the steps: {describeError(controller.loadError)}</p>
-  if (!graph) return <p className="m-0 p-6 text-muted">Loading the steps…</p>
+  if (controller.loadError) return <p className="m-0 p-6 text-muted">{messages().nodes.couldNotReadTheSteps}{' '}{describeError(controller.loadError)}</p>
+  if (!graph) return <p className="m-0 p-6 text-muted">{messages().nodes.loadingTheSteps}</p>
 
   return (
     <CanvasClockProvider isTicking={live.isActive}>
@@ -259,9 +260,9 @@ export function NodesView({
                     onSelectionChange={setSelectedNodeIds}
                     onMoveNodes={moveNodes}
                     onViewportChange={controller.setViewport}
-                    onConnect={(edge) => controller.addEdge(edge, `connected ${describeNodeList(graph, [edge.source])} to ${describeNodeList(graph, [edge.target])}`)}
+                    onConnect={(edge) => controller.addEdge(edge, messages().nodes.connectedNodelistToNodelist2(describeNodeList(graph, [edge.source]), describeNodeList(graph, [edge.target])))}
                     onDelete={({ nodeIds, edgeIds }) =>
-                      applyEdit((current) => removeGraphEdges(removeGraphNodes(current, nodeIds), edgeIds), nodeIds.length > 0 ? `deleted ${describeNodeList(graph, nodeIds)}` : 'deleted an arrow')
+                      applyEdit((current) => removeGraphEdges(removeGraphNodes(current, nodeIds), edgeIds), nodeIds.length > 0 ? messages().nodes.deletedNodelist(describeNodeList(graph, nodeIds)) : messages().nodes.deletedAnArrow)
                     }
                     onApplyEdit={applyEdit}
                     onUndo={controller.undo}
@@ -293,7 +294,7 @@ export function NodesView({
                 controller.applyEdit((current) => {
                   const withNode = addGraphNode(current, node)
                   return options.connectFrom ? addGraphEdge(withNode, options.connectFrom) : withNode
-                }, `added ${node.displayTitle}`)
+                }, messages().nodes.addedDisplaytitle(node.displayTitle))
                 if (options.position) moveNodes([options.position])
               }}
               onClose={palette.close}

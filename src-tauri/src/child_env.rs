@@ -52,8 +52,6 @@ pub fn host_path_string() -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use std::ffi::OsStr;
-
     use super::*;
 
     #[test]
@@ -71,6 +69,8 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn the_appimage_rules_come_from_graphrt_core() {
+        use std::ffi::OsStr;
+
         let appdir = std::path::Path::new("/tmp/.mount_graphremPBnj");
         let vars = [
             ("LD_LIBRARY_PATH", "/tmp/.mount_graphremPBnj/usr/lib/:/tmp/.mount_graphremPBnj/usr/lib64/:"),

@@ -1,3 +1,5 @@
+import { messages } from '@/i18n'
+import { localizedRecord } from '@/i18n/localized'
 /**
  * The Runs screen's (20) row shape and status wording. Rows are built from backend runs in
  * `runViewModel.ts`; the sample history lives in `api/sampleBackend/fixtures/runRecords.ts`.
@@ -36,10 +38,4 @@ export interface RunRecord {
   followUp?: { label: string; path: string }
 }
 
-export const runStatusLabels: Record<RunStatus, string> = {
-  running: 'Running',
-  done: 'Done',
-  needsYou: 'Needs you',
-  failed: 'Failed',
-  stopped: 'Stopped',
-}
+export const runStatusLabels: Readonly<Record<RunStatus, string>> = localizedRecord(() => messages().runs.statusLabels)

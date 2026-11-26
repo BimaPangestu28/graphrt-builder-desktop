@@ -7,6 +7,7 @@ import { describeNodeList } from './canvasCommands'
 import { findDropContainer, grownContainerLayout, placeInsideContainer, type CanvasBox } from './containerDrop'
 import { useReactFlow } from './flowLibrary'
 import type { StepFlowEdge, StepFlowNode } from './toFlowElements'
+import { messages } from '@/i18n'
 
 /**
  * Dragging steps into and out of loops (spec I1 "a loop moves with its steps"; containers
@@ -142,12 +143,12 @@ export function useContainerDrag({ graph, canEdit, mergedPositions, onApplyEdit,
       }
       const check = checkReparentNodes(graph, steps.ids, target)
       if (!check.allowed) {
-        announce(`Can't move it there: ${check.reason}`)
+        announce(messages().nodes.cantMoveItThereReason(check.reason))
         resetFlowNodes()
         return true
       }
       const loopTitle = describeNodeList(graph, [target ?? (steps.parent as string)])
-      const description = target ? `moved ${describeNodeList(graph, steps.ids)} into ${loopTitle}` : `moved ${describeNodeList(graph, steps.ids)} out of ${loopTitle}`
+      const description = target ? messages().nodes.movedNodelistIntoLooptitle(describeNodeList(graph, steps.ids), loopTitle) : messages().nodes.movedNodelistOutOfLooptitle(describeNodeList(graph, steps.ids), loopTitle)
       const layouts = target
         ? layoutsInside(target, steps.ids)
         : steps.ids.flatMap((stepId) => {

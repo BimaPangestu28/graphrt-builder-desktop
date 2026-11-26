@@ -6,17 +6,18 @@ import { agentPath } from '@/routes'
 import { DevelopersDetails } from './DeployDialog'
 import { NewAccessKey } from './NewAccessKey'
 import { deployModeLabels, describeDeploymentStatus, describeTimeAgo, plainErrorMessage, serverAreaLabels } from './deployDisplay'
+import { messages } from '@/i18n'
 
 /** "On this computer" or "Online · working / paused / needs attention" under the agent's name. */
 export function RunPlaceBadge({ view }: { view: DeploymentView | null }) {
   if (!view || view.deployment.status === 'failed') {
-    return <Badge>On this computer</Badge>
+    return <Badge>{messages().deploy.onThisComputer}</Badge>
   }
   const display = describeDeploymentStatus(view.deployment.status)
   return (
     <Badge tone={display.tone}>
       <StatusDot tone={display.dot} />
-      Online · {display.label}
+      {messages().deploy.online}{' '}{display.label}
     </Badge>
   )
 }
@@ -25,21 +26,21 @@ function TakeOfflineConfirmation({ agentName, providerName, onConfirm, onCancel,
   const [typedName, setTypedName] = useState('')
   const inputId = useId()
   return (
-    <div role="alertdialog" aria-label="Take offline?" className="flex flex-col gap-3 rounded-xl border border-danger-line bg-danger-tint p-4">
-      <span className="font-semibold text-danger-deep">Take “{agentName}” offline?</span>
+    <div role="alertdialog" aria-label={messages().deploy.takeOffline} className="flex flex-col gap-3 rounded-xl border border-danger-line bg-danger-tint p-4">
+      <span className="font-semibold text-danger-deep">{messages().deploy.take}{agentName}{messages().deploy.offline}</span>
       <span className="text-[13px] leading-normal text-body">
-        This removes the online copy, its storage and its keys from your {providerName} account. It keeps working on this computer.
+        {messages().deploy.thisRemovesTheOnlineCopyIts}{' '}{providerName} {messages().deploy.accountItKeepsWorkingOnThis}
       </span>
       <label htmlFor={inputId} className="text-[13px] text-ink-2">
-        Type the agent's name to confirm
+        {messages().deploy.typeTheAgentsNameToConfirm}
       </label>
       <input id={inputId} value={typedName} onChange={(event) => setTypedName(event.target.value)} className="h-9 rounded-lg border border-line-strong bg-surface px-3 text-[14px]" />
       <div className="flex flex-wrap gap-2">
         <Button variant="danger" size="sm" onClick={onConfirm} disabled={isBusy || typedName.trim() !== agentName.trim()} className="bg-danger !text-white hover:bg-danger-deep">
-          {isBusy ? 'Taking offline…' : 'Take offline'}
+          {isBusy ? messages().deploy.takingOffline : messages().deploy.takeOffline2}
         </Button>
         <Button variant="secondary" size="sm" onClick={onCancel} disabled={isBusy}>
-          Keep it online
+          {messages().deploy.keepItOnline}
         </Button>
       </div>
     </div>
@@ -50,22 +51,22 @@ function DeployHistory({ versions, onRollback, isBusy }: { versions: DeployedVer
   if (versions.length === 0) return null
   return (
     <div className="flex flex-col gap-2">
-      <h3 className="m-0 text-[14px] font-semibold">History</h3>
+      <h3 className="m-0 text-[14px] font-semibold">{messages().deploy.history}</h3>
       <ol className="m-0 flex list-none flex-col gap-1.5 p-0">
         {versions.map((version, index) => (
           <li key={version.label} className="flex flex-wrap items-center justify-between gap-2 rounded-[10px] border border-line bg-surface px-3 py-2.5">
             <span className="flex flex-col">
-              <span className="font-medium">{version.isCurrent ? 'Online now' : index === versions.length - 1 ? 'First time online' : 'Earlier version'}</span>
+              <span className="font-medium">{version.isCurrent ? messages().deploy.onlineNow : index === versions.length - 1 ? messages().deploy.firstTimeOnline : messages().deploy.earlierVersion}</span>
               <span className="text-[13px] text-body">
                 {new Date(version.deployedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                 {version.changeSummary && ` · “${version.changeSummary}”`}
               </span>
             </span>
             {version.isCurrent ? (
-              <Badge tone="ok">Current</Badge>
+              <Badge tone="ok">{messages().deploy.current}</Badge>
             ) : (
               <Button size="sm" variant="secondary" onClick={() => onRollback(version.label)} disabled={isBusy}>
-                Go back to this
+                {messages().deploy.goBackToThis}
               </Button>
             )}
           </li>
@@ -115,16 +116,16 @@ export function AgentOnlinePanel({ agentId, agentName, view, onViewChange }: Age
 
   if (deployment.status === 'failed') {
     return (
-      <section aria-label="Online" className="flex flex-col gap-2 rounded-[14px] border border-danger-line bg-danger-tint p-4">
-        <span className="font-semibold text-danger-deep">It didn't go online</span>
-        <span className="text-[13px] text-body">{deployment.statusMessage ?? 'The last try failed.'}</span>
+      <section aria-label={messages().deploy.online2} className="flex flex-col gap-2 rounded-[14px] border border-danger-line bg-danger-tint p-4">
+        <span className="font-semibold text-danger-deep">{messages().deploy.itDidntGoOnline}</span>
+        <span className="text-[13px] text-body">{deployment.statusMessage ?? messages().deploy.theLastTryFailed}</span>
         <div className="flex flex-wrap gap-2">
           <LinkButton to={agentPath('putOnline', agentId)} size="sm" className="w-fit">
-            Try again
+            {messages().deploy.tryAgain}
           </LinkButton>
           {/* A failed first deploy can leave an app behind on the provider (e.g. after its key was stored). */}
           <Button size="sm" variant="secondary" onClick={() => void run({ action: 'remove' }, 'remove')} disabled={busyAction !== null}>
-            {busyAction === 'remove' ? 'Removing…' : `Remove what was created on ${view.providerName}`}
+            {busyAction === 'remove' ? messages().deploy.removing : messages().deploy.removeWhatWasCreatedOnProvidername(view.providerName)}
           </Button>
         </div>
         {errorMessage && (
@@ -141,27 +142,27 @@ export function AgentOnlinePanel({ agentId, agentName, view, onViewChange }: Age
   const details = [`Last update: ${describeTimeAgo(deployment.updatedAt)}`, deployModeLabels[deployment.mode].title, view.area ? serverAreaLabels[view.area] : null].filter(Boolean).join(' · ')
   const updateLink = (
     <LinkButton to={agentPath('putOnline', agentId, { screen: 'review' })} size="sm">
-      Update with latest changes
+      {messages().deploy.updateWithLatestChanges}
     </LinkButton>
   )
 
   return (
-    <section aria-label="Online" className="flex flex-col gap-4">
+    <section aria-label={messages().deploy.online2} className="flex flex-col gap-4">
       {view.hasChanges && (
         <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-amber-line bg-amber-tint px-4 py-3">
-          <span className="font-medium text-amber-deep">You changed this agent — update the online version?</span>
+          <span className="font-medium text-amber-deep">{messages().deploy.youChangedThisAgentUpdateThe}</span>
           {updateLink}
         </div>
       )}
       <div className="flex flex-col gap-3 rounded-[14px] border border-line bg-surface p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <span className="flex flex-col gap-0.5">
-            <span className="font-semibold">Online on {view.providerName}</span>
+            <span className="font-semibold">{messages().deploy.onlineOn}{' '}{view.providerName}</span>
             <span className="text-[13px] text-body">{details}</span>
           </span>
           <Badge tone={display.tone}>
             <StatusDot tone={display.dot} />
-            Online · {display.label}
+            {messages().deploy.online}{' '}{display.label}
           </Badge>
         </div>
         {deployment.status === 'needs_attention' && deployment.statusMessage && <span className="text-[13px] text-amber-strong">{deployment.statusMessage}</span>}
@@ -169,19 +170,19 @@ export function AgentOnlinePanel({ agentId, agentName, view, onViewChange }: Age
           {updateLink}
           {isPaused ? (
             <Button size="sm" variant="secondary" onClick={() => void run({ action: 'resume' }, 'resume')} disabled={busyAction !== null}>
-              {busyAction === 'resume' ? 'Resuming…' : 'Resume'}
+              {busyAction === 'resume' ? messages().deploy.resuming : messages().deploy.resume}
             </Button>
           ) : (
             <Button size="sm" variant="secondary" onClick={() => void run({ action: 'pause' }, 'pause')} disabled={busyAction !== null}>
-              {busyAction === 'pause' ? 'Pausing…' : 'Pause'}
+              {busyAction === 'pause' ? messages().deploy.pausing : messages().deploy.pause}
             </Button>
           )}
           <Button size="sm" variant="danger" onClick={() => setIsConfirmingOffline(true)} disabled={busyAction !== null}>
-            Take offline
+            {messages().deploy.takeOffline2}
           </Button>
         </div>
         <span className="text-[12px] leading-normal text-muted">
-          Pause stops answering until you resume. Take offline removes the online copy from your {view.providerName} account (you confirm first).
+          {messages().deploy.pauseStopsAnsweringUntilYouResume}{' '}{view.providerName} {messages().deploy.accountYouConfirmFirst}
         </span>
         {isConfirmingOffline && (
           <TakeOfflineConfirmation
@@ -201,15 +202,15 @@ export function AgentOnlinePanel({ agentId, agentName, view, onViewChange }: Age
       <DeployHistory versions={versions} isBusy={busyAction !== null} onRollback={(version) => void run({ action: 'rollback', version }, 'rollback')} />
       <DevelopersDetails>
         <span>
-          {deployment.provider === 'fly' ? 'Fly app' : 'Deployment'} <code>{deployment.app ?? deployment.deploymentName}</code> · deployed {label ?? '–'} (desktop version{' '}
-          {deployment.deployedAgentVersion ?? '–'}, now {view.agentVersion}) · region <code>{deployment.region ?? '–'}</code>
+          {deployment.provider === 'fly' ? messages().deploy.flyApp : messages().deploy.deployment} <code>{deployment.app ?? deployment.deploymentName}</code> {messages().deploy.deployed}{' '}{label ?? '–'} {messages().deploy.desktopVersion}{' '}
+          {deployment.deployedAgentVersion ?? '–'}{messages().deploy.now}{' '}{view.agentVersion}{messages().deploy.region}{' '}<code>{deployment.region ?? '–'}</code>
         </span>
         {deployment.url && (
           <span>
-            Address <code className="break-all">{deployment.url}</code> · health <code>GET /healthz</code> checked {describeTimeAgo(deployment.statusCheckedAt)}
+            {messages().deploy.address}{' '}<code className="break-all">{deployment.url}</code> {messages().deploy.health}{' '}<code>{messages().deploy.getHealthz}</code> {messages().deploy.checked}{' '}{describeTimeAgo(deployment.statusCheckedAt)}
           </span>
         )}
-        <span>{view.hasApiKey ? 'Access key: kept on this computer (shown only when it was made).' : 'Access key: none saved on this computer.'}</span>
+        <span>{view.hasApiKey ? messages().deploy.accessKeyKeptOnThisComputer : messages().deploy.accessKeyNoneSavedOnThis}</span>
         <NewAccessKey agentId={agentId} onViewChange={onViewChange} />
       </DevelopersDetails>
     </section>

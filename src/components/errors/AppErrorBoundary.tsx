@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { sendFrontendErrorReport } from '@/lib/frontendErrorReporting'
+import { useT } from '@/i18n'
 
 interface AppErrorBoundaryProps {
   children: ReactNode
@@ -17,19 +18,20 @@ function reloadWindow(): void {
 
 /** The friendly screen shown instead of a broken one. */
 function ErrorFallback({ onReload }: { onReload: () => void }) {
+  const t = useT().shell.errorBoundary
   return (
     <main role="alert" className="flex min-h-screen items-center justify-center bg-canvas p-6 font-sans">
       <div className="flex max-w-[420px] flex-col items-center gap-3 rounded-[14px] border border-line-strong bg-surface p-7 text-center">
-        <h1 className="m-0 text-[18px] font-semibold text-ink">Something went wrong</h1>
+        <h1 className="m-0 text-[18px] font-semibold text-ink">{t.title}</h1>
         <p className="m-0 text-[14px] leading-normal text-body">
-          This screen stopped working. Your agents and runs are safe. A crash report was saved on this computer
+          {t.body}
         </p>
         <button
           type="button"
           onClick={onReload}
           className="h-9 cursor-pointer rounded-[9px] border-0 bg-ink px-4 font-sans text-[13px] font-semibold text-white"
         >
-          Reload
+          {t.reload}
         </button>
       </div>
     </main>

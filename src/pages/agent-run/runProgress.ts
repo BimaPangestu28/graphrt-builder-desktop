@@ -1,4 +1,5 @@
 import type { FlowSummary } from '@/api/types'
+import { formatNumber, messages } from '@/i18n'
 
 /**
  * The expected steps of a run (from the flow summary) and the time formats the run screens
@@ -53,10 +54,11 @@ export function humanizeNodeId(nodeId: string): string {
  */
 export function formatDurationMs(durationMs: number): string {
   const safeMs = Math.max(0, durationMs)
-  if (safeMs < 60_000) return `${(safeMs / 1000).toFixed(1)}s`
+  const t = messages().agentRun
+  if (safeMs < 60_000) return t.durationDecimalSeconds(formatNumber(safeMs / 1000, { minimumFractionDigits: 1, maximumFractionDigits: 1 }))
   const totalSeconds = Math.round(safeMs / 1000)
-  if (totalSeconds < 3600) return `${Math.floor(totalSeconds / 60)}m ${String(totalSeconds % 60).padStart(2, '0')}s`
-  return `${Math.floor(totalSeconds / 3600)}h ${Math.floor((totalSeconds % 3600) / 60)}m`
+  if (totalSeconds < 3600) return t.durationMinutesSeconds(Math.floor(totalSeconds / 60), String(totalSeconds % 60).padStart(2, '0'))
+  return t.durationHoursMinutes(Math.floor(totalSeconds / 3600), String(Math.floor((totalSeconds % 3600) / 60)))
 }
 
 /**
@@ -76,7 +78,8 @@ export function formatElapsedClock(elapsedMs: number): string {
 /** "14s ago", "3m ago" or "2h ago" between two instants. */
 export function formatElapsedSince(startedAt: string, now: Date = new Date()): string {
   const elapsedSeconds = Math.max(0, Math.round((now.getTime() - new Date(startedAt).getTime()) / 1000))
-  if (elapsedSeconds < 60) return `${elapsedSeconds}s ago`
-  if (elapsedSeconds < 3600) return `${Math.floor(elapsedSeconds / 60)}m ago`
-  return `${Math.floor(elapsedSeconds / 3600)}h ago`
+  const t = messages().agentRun
+  if (elapsedSeconds < 60) return t.secondsAgo(elapsedSeconds)
+  if (elapsedSeconds < 3600) return t.minutesAgo(Math.floor(elapsedSeconds / 60))
+  return t.hoursAgo(Math.floor(elapsedSeconds / 3600))
 }

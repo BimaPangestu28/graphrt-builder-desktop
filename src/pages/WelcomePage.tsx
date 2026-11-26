@@ -4,6 +4,8 @@ import { ConnectStep } from './welcome/ConnectStep'
 import { useWelcomeWizard, type WelcomeWizard } from './welcome/useWelcomeWizard'
 import { WizardProgress } from './welcome/WizardProgress'
 import { ApproachStep, BackgroundStep, DoneStep, WelcomeStep } from './welcome/WizardSteps'
+import { LanguageToggle } from '@/components/LanguageToggle'
+import { messages, useT } from '@/i18n'
 
 /** The current step's content. Keyed by step so each step mounts fresh (and focuses its heading). */
 function CurrentStep({ wizard }: { wizard: WelcomeWizard }) {
@@ -23,10 +25,11 @@ function CurrentStep({ wizard }: { wizard: WelcomeWizard }) {
 
 /** The primary button's text on each step. */
 function primaryLabel(wizard: WelcomeWizard): string {
-  if (wizard.stepId === 'welcome') return 'Get started'
-  if (wizard.stepId !== 'done') return 'Next'
-  if (wizard.isSaving) return 'Saving…'
-  return wizard.answers.approach === 'later' ? 'Explore graphrt' : 'Build my first agent'
+  const t = messages().welcome
+  if (wizard.stepId === 'welcome') return t.getStarted
+  if (wizard.stepId !== 'done') return t.next
+  if (wizard.isSaving) return t.saving
+  return wizard.answers.approach === 'later' ? t.exploreApp : t.buildFirstAgent
 }
 
 /**
@@ -41,6 +44,7 @@ function primaryLabel(wizard: WelcomeWizard): string {
  * New agent screen, or Home after "Decide later".
  */
 export function WelcomePage() {
+  const t = useT().welcome
   const wizard = useWelcomeWizard()
   const isFirstStep = wizard.stepId === 'welcome'
 
@@ -51,13 +55,14 @@ export function WelcomePage() {
   }
 
   return (
-    <div className="box-border flex min-h-screen w-full flex-col items-center justify-center gap-8 bg-canvas px-4 py-12 text-[14px] text-ink sm:px-6">
+    <div className="relative box-border flex min-h-screen w-full flex-col items-center justify-center gap-8 bg-canvas px-4 py-12 text-[14px] text-ink sm:px-6">
+      {isFirstStep && <LanguageToggle className="absolute top-4 right-4 sm:top-6 sm:right-6" />}
       <div className="flex items-center gap-3">
         <LogoMark size={40} />
-        <span className="text-[26px] font-bold tracking-[-0.5px]">graphrt</span>
+        <span className="text-[26px] font-bold tracking-[-0.5px]">{t.brand}</span>
       </div>
 
-      <form onSubmit={submit} aria-label="Set up graphrt" className="box-border flex w-full max-w-[1040px] flex-col gap-7 rounded-[20px] border border-line bg-surface p-6 sm:p-10">
+      <form onSubmit={submit} aria-label={t.formLabel} className="box-border flex w-full max-w-[1040px] flex-col gap-7 rounded-[20px] border border-line bg-surface p-6 sm:p-10">
         <WizardProgress steps={wizard.steps} currentStepId={wizard.stepId} />
 
         <CurrentStep key={wizard.stepId} wizard={wizard} />
@@ -68,7 +73,7 @@ export function WelcomePage() {
           ) : (
             <Button variant="ghost" size="lg" onClick={wizard.goBack} disabled={wizard.isSaving}>
               <Icon name="arrowLeft" size={16} />
-              Back
+              {t.back}
             </Button>
           )}
           <Button type="submit" size="lg" disabled={!wizard.canGoNext}>

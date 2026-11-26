@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { HashRouter } from 'react-router-dom'
 import { App } from './App'
+import { LocaleRoot } from './i18n/LocaleRoot'
 import { AppErrorBoundary } from './components/errors/AppErrorBoundary'
 import { OpenRunNavigation } from './hooks/useOpenRunNavigation'
 import { installFrontendErrorReporting } from './lib/frontendErrorReporting'
@@ -22,17 +23,19 @@ installFrontendErrorReporting()
 
 createRoot(rootElement).render(
   <StrictMode>
-    <AppErrorBoundary>
-      <HashRouter>
-        <OpenRunNavigation />
-        <AppUpdateProvider>
-          <OnboardingTourProvider>
-            <App />
-          </OnboardingTourProvider>
-        </AppUpdateProvider>
-        <CrashReportNotice />
-        <PluginRuntimeNotice />
-      </HashRouter>
-    </AppErrorBoundary>
+    <LocaleRoot>
+      <AppErrorBoundary>
+        <HashRouter>
+          <OpenRunNavigation />
+          <AppUpdateProvider>
+            <OnboardingTourProvider>
+              <App />
+            </OnboardingTourProvider>
+          </AppUpdateProvider>
+          <CrashReportNotice />
+          <PluginRuntimeNotice />
+        </HashRouter>
+      </AppErrorBoundary>
+    </LocaleRoot>
   </StrictMode>,
 )

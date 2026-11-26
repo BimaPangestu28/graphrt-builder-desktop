@@ -3,6 +3,7 @@ import { listPluginCatalog } from '@/api/plugins'
 import type { PluginCatalog } from '@/api/pluginTypes'
 import { describeError } from '@/lib/agentDisplay'
 import type { PluginsState } from './usePlugins'
+import { messages } from '@/i18n'
 
 /** The Plugins page refetches a catalog the app fetched longer ago than this. */
 export const CATALOG_STALE_AFTER_MS = 10 * 60 * 1000
@@ -63,7 +64,7 @@ export function usePluginCatalogRefresh(plugins: PluginsState): PluginCatalogRef
     try {
       const refreshedCatalog = await listPluginCatalog(true)
       if (refreshedCatalog.fromCache && isMountedRef.current) {
-        setRefreshError(refreshedCatalog.fetchError ? `${refreshedCatalog.fetchError}, so the last saved copy is shown` : 'the catalog could not be reached, so the last saved copy is shown')
+        setRefreshError(refreshedCatalog.fetchError ? messages().plugins.catalogUnreachableWith(refreshedCatalog.fetchError) : messages().plugins.catalogUnreachable)
       }
       await reload()
     } catch (refreshFailure) {

@@ -3,6 +3,7 @@ import type { AgentGraph } from '@/api/agentGraphTypes'
 import type { AddNodeAnchor } from '../contracts'
 import { describeAnchor } from './nodePlacement'
 import { findDropTarget, isNodeKindDrag, nodeKindDragType, type DropTarget } from './paletteDrag'
+import { messages } from '@/i18n'
 
 interface PaletteDropZoneProps {
   graph: AgentGraph
@@ -14,9 +15,9 @@ interface PaletteDropZoneProps {
 }
 
 function ghostLabel(graph: AgentGraph, anchor: AddNodeAnchor): string {
-  if (anchor.type === 'on-edge') return 'Insert here'
-  if (anchor.type === 'after-node' || anchor.type === 'after-exit') return `Add ${describeAnchor(graph, anchor)}`
-  return anchor.parentId ? `Add ${describeAnchor(graph, anchor)}` : 'Drop to add it here'
+  if (anchor.type === 'on-edge') return messages().nodes.insertHere
+  if (anchor.type === 'after-node' || anchor.type === 'after-exit') return messages().nodes.addAnchor(describeAnchor(graph, anchor))
+  return anchor.parentId ? messages().nodes.addAnchor(describeAnchor(graph, anchor)) : messages().nodes.dropToAddItHere
 }
 
 const ghostWidth = 220
@@ -35,8 +36,8 @@ function DropGhost({ graph, dropTarget, kindName, zoneWidth }: { graph: AgentGra
       <div className="absolute flex flex-col items-start gap-1" style={{ left, top: dropTarget.ghostY + 14, width: ghostWidth }}>
         <span className="whitespace-nowrap rounded-md bg-ok-strong px-2 py-0.5 text-[11px] font-semibold text-white">{label}</span>
         <div className="flex w-full flex-col gap-0.5 rounded-xl border-2 border-dashed border-ok bg-surface/95 px-3 py-2 shadow-[0_4px_14px_rgba(0,0,0,0.08)]">
-          <span className="truncate text-[13px] font-semibold text-ink">{kindName ?? 'New step'}</span>
-          <span className="line-clamp-2 text-[11px] leading-snug text-muted">{isOnEdge ? `Drop to put it ${describeAnchor(graph, dropTarget.anchor)}` : 'Release to add it'}</span>
+          <span className="truncate text-[13px] font-semibold text-ink">{kindName ?? messages().nodes.newStep}</span>
+          <span className="line-clamp-2 text-[11px] leading-snug text-muted">{isOnEdge ? messages().nodes.dropToPutItAnchor(describeAnchor(graph, dropTarget.anchor)) : messages().nodes.releaseToAddIt}</span>
         </div>
       </div>
     </div>

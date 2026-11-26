@@ -9,6 +9,7 @@ import { NodeKindIcon } from './NodeKindIcon'
 import type { PreviewSegment } from './nodePreview'
 import { cardHeightFor, portOffset } from './nodeGeometry'
 import type { StepFlowNode, StepNodeData } from './toFlowElements'
+import { messages } from '@/i18n'
 
 /**
  * Canvas renderers for the three node types (spec N1 anatomy): a step card, a
@@ -22,13 +23,13 @@ function useIsCompact(): boolean {
 }
 
 function portLabel(outputPort: NodePort): string {
-  if (outputPort.role === 'fail-branch') return 'On error'
+  if (outputPort.role === 'fail-branch') return messages().nodes.onError
   return outputPort.label || outputPort.id
 }
 
 function describePort(outputPort: NodePort, nodeTitle: string): string {
-  if (outputPort.role === 'default') return `Connect from ${nodeTitle}`
-  return `Connect from the ${portLabel(outputPort)} exit of ${nodeTitle}`
+  if (outputPort.role === 'default') return messages().nodes.connectFromNodetitle(nodeTitle)
+  return messages().nodes.connectFromTheValueExitOf(portLabel(outputPort), nodeTitle)
 }
 
 interface OutputPortsProps {
@@ -82,7 +83,7 @@ function OutputPorts({ data, height, showLabels }: OutputPortsProps) {
               tabIndex={readOnly ? -1 : 0}
               role="button"
               aria-label={describePort(outputPort, node.displayTitle)}
-              title={isNamed && !isConnected && outputPort.role !== 'fail-branch' ? `${portLabel(outputPort)}: no arrow, this item ends here` : undefined}
+              title={isNamed && !isConnected && outputPort.role !== 'fail-branch' ? messages().nodes.valueNoArrowThisItemEnds(portLabel(outputPort)) : undefined}
               onKeyDown={(event) => handlePortKey(event, outputPort)}
               data-port-role={outputPort.role}
               className={joinClassNames('step-port', outputPort.role === 'fail-branch' && 'step-port-error')}
@@ -164,7 +165,7 @@ function BadgeRow({ data }: { data: StepNodeData }) {
       ))}
       {problems.length > 0 && (
         <span className={joinClassNames('inline-flex items-center rounded-md px-1.5 py-px text-[11px] font-semibold', errorCount > 0 ? 'bg-danger-soft text-danger' : 'bg-amber-soft text-amber-strong')}>
-          {problems.length === 1 ? '1 problem' : `${problems.length} problems`}
+          {problems.length === 1 ? messages().nodes.n1Problem : messages().nodes.valueProblems(problems.length)}
         </span>
       )}
     </span>
@@ -190,7 +191,7 @@ function ConnectionHint({ data }: { data: StepNodeData }) {
   const check = data.connectionCheck
   if (!check) return null
   if (check.allowed) {
-    return <span className="connect-hint pointer-events-none absolute -top-3 left-3 rounded-md bg-brand px-1.5 py-px text-[11px] font-semibold text-white">Drop to connect</span>
+    return <span className="connect-hint pointer-events-none absolute -top-3 left-3 rounded-md bg-brand px-1.5 py-px text-[11px] font-semibold text-white">{messages().nodes.dropToConnect}</span>
   }
   return (
     <span role="tooltip" className="connect-hint pointer-events-none absolute left-0 top-full z-10 mt-2 w-[240px] rounded-lg bg-ink px-2.5 py-1.5 text-[12px] leading-[1.4] text-white shadow-md">
@@ -224,7 +225,7 @@ function CompactCard({ data, selected, height }: { data: StepNodeData; selected:
       <InputPort data={data} />
       <NodeKindIcon kind={node.kind} pluginName={node.plugin} tone={node.needsApproval ? 'amber' : 'neutral'} />
       <span className="line-clamp-2 min-w-0 flex-1 text-[18px] font-semibold leading-tight text-ink">{node.displayTitle}</span>
-      {hasMarks && <span aria-label="Has badges" className={joinClassNames('size-2.5 shrink-0 rounded-full', data.setupStatus || data.problems.length > 0 ? 'bg-amber' : 'bg-faint')} />}
+      {hasMarks && <span aria-label={messages().nodes.hasBadges} className={joinClassNames('size-2.5 shrink-0 rounded-full', data.setupStatus || data.problems.length > 0 ? 'bg-amber' : 'bg-faint')} />}
       <OutputPorts data={data} height={height} showLabels={false} />
       <NodeDecoration nodeId={node.id} />
     </div>
@@ -272,7 +273,7 @@ export const ContainerNodeCard = memo(function ContainerNodeCard({ id, data, sel
   return (
     <section
       data-testid={`node-${node.id}`}
-      aria-label={`${node.displayTitle}, a loop`}
+      aria-label={messages().nodes.displaytitleALoop(node.displayTitle)}
       data-drop-target={dropHint ? (dropHint.allowed ? 'allowed' : 'refused') : undefined}
       className={joinClassNames(
         'step-card relative box-border h-full w-full rounded-2xl border-2 border-dashed bg-subtle/90',
@@ -290,7 +291,7 @@ export const ContainerNodeCard = memo(function ContainerNodeCard({ id, data, sel
             dropHint.allowed ? 'bg-brand' : 'bg-danger',
           )}
         >
-          {dropHint.allowed ? `Drop to move into ${node.displayTitle}` : dropHint.reason}
+          {dropHint.allowed ? messages().nodes.dropToMoveIntoDisplaytitle(node.displayTitle) : dropHint.reason}
         </span>
       )}
       <NodeResizer
@@ -365,7 +366,7 @@ export const EndNodePill = memo(function EndNodePill({ data, selected }: NodePro
 export const MarkerNodeDot = memo(function MarkerNodeDot({ data }: NodeProps<StepFlowNode>) {
   return (
     <div data-testid={`marker-${data.node.id}`} className="h-3 w-3">
-      <OutputPorts data={{ ...data, node: { ...data.node, displayTitle: `the start of ${data.node.parent ?? 'the loop'}` } }} height={12} showLabels={false} />
+      <OutputPorts data={{ ...data, node: { ...data.node, displayTitle: messages().nodes.startOfLoop(data.node.parent ?? null) } }} height={12} showLabels={false} />
     </div>
   )
 })

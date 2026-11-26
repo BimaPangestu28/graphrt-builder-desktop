@@ -5,15 +5,10 @@ import { usePluginRuntime, type PluginRuntimeState } from '@/hooks/usePluginRunt
 import { describeError } from '@/lib/agentDisplay'
 import { describePluginRuntimeStatus } from '../plugins/PluginRuntimeCard'
 import { ActionRow, SettingsGroup, settingsButtonClassNames } from './SettingRows'
+import { messages, useT } from '@/i18n'
 
 const rowButtonClassNames = `${settingsButtonClassNames} h-[34px] rounded-lg px-3 disabled:cursor-default disabled:opacity-60`
 
-const sourceLabels: Record<PluginRuntimeInfo['source'], string> = {
-  downloaded: 'downloaded from nodejs.org',
-  development: 'development copy (src-tauri/binaries)',
-  system: 'Node.js on PATH (debug build)',
-  missing: 'not installed',
-}
 
 /**
  * The plugin runtime row's description, e.g. "Node.js v22.23.5, downloaded from nodejs.org · /…/node".
@@ -21,19 +16,21 @@ const sourceLabels: Record<PluginRuntimeInfo['source'], string> = {
  * @returns One line for the settings row (string)
  */
 export function describePluginRuntimeDetails(info: PluginRuntimeInfo | null): string {
-  if (!info) return 'Node.js, which plugins run on'
-  if (info.status !== 'installed') return `Node.js v${info.pinnedVersion}, which plugins run on · ${pluginRuntimeDownloadSizeNote} when a plugin needs it`
+  const t = messages().settings
+  if (!info) return t.runtimeWhat
+  if (info.status !== 'installed') return t.runtimeNotInstalled(info.pinnedVersion, pluginRuntimeDownloadSizeNote())
   const location = info.path ? ` · ${info.path}` : ''
-  return `Node.js ${info.version ?? `v${info.pinnedVersion}`}, ${sourceLabels[info.source]}${location}`
+  return t.runtimeInstalled(info.version ?? `v${info.pinnedVersion}`, t.runtimeSources[info.source], location)
 }
 
 function PluginRuntimeAction({ runtime }: { runtime: PluginRuntimeState }) {
+  const t = useT().settings
   const [isConfirmingRemove, setIsConfirmingRemove] = useState(false)
   const status = describePluginRuntimeStatus(runtime)
   if (runtime.status === 'not_installed' && runtime.info?.downloadable !== false) {
     return (
       <button type="button" className={rowButtonClassNames} onClick={() => void runtime.install()}>
-        Install
+        {t.install}
       </button>
     )
   }
@@ -41,14 +38,14 @@ function PluginRuntimeAction({ runtime }: { runtime: PluginRuntimeState }) {
     if (!isConfirmingRemove) {
       return (
         <button type="button" className={rowButtonClassNames} disabled={runtime.isRemoving} onClick={() => setIsConfirmingRemove(true)}>
-          {runtime.isRemoving ? 'Removing…' : 'Remove'}
+          {runtime.isRemoving ? t.removing : t.remove}
         </button>
       )
     }
     return (
-      <span role="group" aria-label="Remove the plugin runtime?" className="flex shrink-0 items-center gap-2">
+      <span role="group" aria-label={t.removeRuntimeQuestion} className="flex shrink-0 items-center gap-2">
         <button type="button" className={rowButtonClassNames} onClick={() => setIsConfirmingRemove(false)}>
-          Cancel
+          {t.cancel}
         </button>
         <button
           type="button"
@@ -58,7 +55,7 @@ function PluginRuntimeAction({ runtime }: { runtime: PluginRuntimeState }) {
             void runtime.remove()
           }}
         >
-          Remove plugin runtime
+          {t.removeRuntime}
         </button>
       </span>
     )
@@ -76,31 +73,32 @@ function PluginRuntimeAction({ runtime }: { runtime: PluginRuntimeState }) {
  * installed again; it can be downloaded again any time).
  */
 export function PluginRuntimeSection() {
+  const t = useT().settings
   const runtime = usePluginRuntime()
   return (
-    <SettingsGroup headingId="settings-plugin-runtime-heading" title="Plugin runtime">
-      <ActionRow title="Plugin runtime" description={describePluginRuntimeDetails(runtime.info)} action={<PluginRuntimeAction runtime={runtime} />} />
+    <SettingsGroup headingId="settings-plugin-runtime-heading" title={t.pluginRuntime}>
+      <ActionRow title={t.pluginRuntime} description={describePluginRuntimeDetails(runtime.info)} action={<PluginRuntimeAction runtime={runtime} />} />
       {runtime.status === 'installing' && (
         <p role="status" className="m-0 text-[13px] text-body">
-          {runtime.progressText ?? 'Installing…'}
+          {runtime.progressText ?? t.installing}
         </p>
       )}
       {runtime.status === 'installed' && runtime.info?.removable && (
-        <p className="m-0 text-[13px] text-muted">Removing it frees about 110 MB. Plugins stop working until it is installed again</p>
+        <p className="m-0 text-[13px] text-muted">{t.removeRuntimeHint}</p>
       )}
       {runtime.installError && (
         <p role="alert" className="m-0 text-[13px] text-danger">
-          Could not install the plugin runtime: {runtime.installError}
+          {t.couldNotInstallRuntime(runtime.installError)}
         </p>
       )}
       {runtime.removeError && (
         <p role="alert" className="m-0 text-[13px] text-danger">
-          Could not remove the plugin runtime: {runtime.removeError}
+          {t.couldNotRemoveRuntime(runtime.removeError)}
         </p>
       )}
       {runtime.loadError && (
         <p role="alert" className="m-0 text-[13px] text-danger">
-          Could not check the plugin runtime: {describeError(runtime.loadError)}
+          {t.couldNotCheckRuntime(describeError(runtime.loadError))}
         </p>
       )}
     </SettingsGroup>

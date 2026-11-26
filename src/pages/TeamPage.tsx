@@ -15,6 +15,7 @@ import { CoordinatorChat } from './team/CoordinatorChat'
 import { TeamActivityLog } from './team/TeamActivityLog'
 import { TeamGuardrailsPanel } from './team/TeamGuardrailsPanel'
 import { TeamMemberCard } from './team/TeamMemberCard'
+import { messages } from '@/i18n'
 
 /** Team agent shown without `?agentId=` (the sample team). */
 const defaultTeamAgentId = 'sales-team'
@@ -46,17 +47,17 @@ function TeamHeader({ team, isBusy, onAddMember, onTogglePaused }: TeamHeaderPro
         <div className="flex items-center gap-2.5">
           <h1 className="m-0 text-[22px] font-semibold tracking-[-0.3px]">{team.name}</h1>
           <span className={joinClassNames('rounded-full px-2 py-[3px] text-[12px] font-medium', isPaused ? 'bg-selected text-ink-2' : 'bg-ok-soft text-ok-strong')}>
-            {isPaused ? 'Paused' : 'Working'}
+            {isPaused ? messages().team.paused : messages().team.working}
           </span>
         </div>
         <span className="text-body">{team.description}</span>
       </div>
       <div className="flex gap-2">
         <button type="button" className={headerButtonClassNames} onClick={onAddMember}>
-          Add member
+          {messages().team.addMember}
         </button>
         <button type="button" className={headerButtonClassNames} aria-pressed={isPaused} disabled={isBusy} onClick={onTogglePaused}>
-          {isPaused ? 'Resume team' : 'Pause team'}
+          {isPaused ? messages().team.resumeTeam : messages().team.pauseTeam}
         </button>
       </div>
     </div>
@@ -108,7 +109,7 @@ export function TeamPage() {
       await setTeamMaxAgentCalls(teamAgentId, limit)
       await guardrails.reload()
     } catch (rawError) {
-      setActionError(rawError instanceof Error ? rawError.message : 'Could not save the guardrail')
+      setActionError(rawError instanceof Error ? rawError.message : messages().team.couldNotSaveTheGuardrail)
     } finally {
       setIsSavingGuardrail(false)
     }
@@ -121,7 +122,7 @@ export function TeamPage() {
       await action()
       await reload()
     } catch (rawError) {
-      setActionError(rawError instanceof Error ? rawError.message : 'Something went wrong')
+      setActionError(rawError instanceof Error ? rawError.message : messages().team.somethingWentWrong)
     } finally {
       setIsBusy(false)
     }
@@ -137,10 +138,10 @@ export function TeamPage() {
       <div className="box-border flex min-w-0 flex-[2_1_520px] flex-col gap-6 px-7 py-6">
         {error && (
           <p role="alert" className="m-0 text-amber-strong">
-            Could not load the team: {error.message}
+            {messages().team.couldNotLoadTheTeam}{' '}{error.message}
           </p>
         )}
-        {!team && !error && <p className="m-0 text-muted">Loading the team…</p>}
+        {!team && !error && <p className="m-0 text-muted">{messages().team.loadingTheTeam}</p>}
         {team && (
           <>
             <TeamHeader
@@ -167,8 +168,8 @@ export function TeamPage() {
                 }
               />
             )}
-            <section aria-label="Members" className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-2.5">
-              {team.members.length === 0 && <p className="m-0 text-[13px] text-muted">No members yet. Add one of your agents</p>}
+            <section aria-label={messages().team.members} className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-2.5">
+              {team.members.length === 0 && <p className="m-0 text-[13px] text-muted">{messages().team.noMembersYetAddOneOf}</p>}
               {team.members.map((member) => (
                 <TeamMemberCard key={member.agentId} member={member} isTeamPaused={team.status === 'paused'} />
               ))}

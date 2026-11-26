@@ -6,6 +6,7 @@ import { agentPath, routePaths } from '@/routes'
 import { DevelopersDetails } from './DeployDialog'
 import { NewAccessKey } from './NewAccessKey'
 import { currentDeployStep, deployProgressPercent, deployStepLabels, deployStepOrder, type StepStates } from './deployDisplay'
+import { messages } from '@/i18n'
 
 interface DeployProgressViewProps {
   stepStates: StepStates
@@ -22,9 +23,9 @@ export function DeployProgressView({ stepStates, logLines, errorMessage, onCance
   const percent = deployProgressPercent(stepStates)
   const currentStep = currentDeployStep(stepStates)
   return (
-    <section aria-label="Putting it online" className="flex max-w-[720px] flex-col gap-5">
+    <section aria-label={messages().deploy.puttingItOnline} className="flex max-w-[720px] flex-col gap-5">
       <div className="flex flex-col gap-1">
-        <h2 className="m-0 text-[20px] font-semibold tracking-[-0.2px]">{errorMessage ? 'It could not go online' : 'Putting it online…'}</h2>
+        <h2 className="m-0 text-[20px] font-semibold tracking-[-0.2px]">{errorMessage ? messages().deploy.itCouldNotGoOnline : messages().deploy.puttingItOnline2}</h2>
         {!errorMessage && <span className="text-body">{deployStepLabels[currentStep]}</span>}
       </div>
       {errorMessage ? (
@@ -33,7 +34,7 @@ export function DeployProgressView({ stepStates, logLines, errorMessage, onCance
         </p>
       ) : (
         <div className="flex items-center gap-3">
-          <div role="progressbar" aria-label="Progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} className="h-2 flex-1 overflow-hidden rounded-full bg-chip">
+          <div role="progressbar" aria-label={messages().deploy.progress} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} className="h-2 flex-1 overflow-hidden rounded-full bg-chip">
             <div className="h-full rounded-full bg-brand transition-[width] duration-500" style={{ width: `${percent}%` }} />
           </div>
           <span className="w-10 text-right text-[13px] font-semibold text-ink-2">{percent}%</span>
@@ -57,16 +58,16 @@ export function DeployProgressView({ stepStates, logLines, errorMessage, onCance
           )
         })}
       </ol>
-      <DevelopersDetails summary="Details">
-        <span className="text-[12px] text-muted">Technical log for developers</span>
-        <pre className="m-0 max-h-[240px] overflow-auto rounded-lg bg-subtle p-3 font-mono text-[12px] leading-[1.6] text-ink-2">{logLines.length > 0 ? logLines.join('\n') : 'Waiting for the first message…'}</pre>
+      <DevelopersDetails summary={messages().deploy.details}>
+        <span className="text-[12px] text-muted">{messages().deploy.technicalLogForDevelopers}</span>
+        <pre className="m-0 max-h-[240px] overflow-auto rounded-lg bg-subtle p-3 font-mono text-[12px] leading-[1.6] text-ink-2">{logLines.length > 0 ? logLines.join('\n') : messages().deploy.waitingForTheFirstMessage}</pre>
       </DevelopersDetails>
       <div className="flex gap-2">
         {errorMessage ? (
-          <Button onClick={onRetry}>Try again</Button>
+          <Button onClick={onRetry}>{messages().deploy.tryAgain}</Button>
         ) : (
           <Button variant="secondary" onClick={onCancel} disabled={isCancelling}>
-            {isCancelling ? 'Stopping…' : 'Cancel'}
+            {isCancelling ? messages().deploy.stopping : messages().deploy.cancel}
           </Button>
         )}
       </div>
@@ -90,33 +91,33 @@ export function DeployDoneView({ agentId, agentName, outcome }: DeployDoneViewPr
   const url = outcome.view.deployment.url ?? ''
   // graphrt names the workflow after the agent file the desktop sends (`agent.yaml`).
   const runsEndpoint = `${url}/v1/workflows/${outcome.workflow ?? 'agent'}/runs`
-  const curlExample = `curl -X POST ${runsEndpoint} \\\n  -H "Authorization: Bearer $GRAPHRT_API_KEY" \\\n  -H "Content-Type: application/json" -d '{"inputs":{}}'`
+  const curlExample = messages().deploy.curlXPostRunsendpointHAuthorization(runsEndpoint)
   return (
-    <section aria-label="It is online" className="flex max-w-[720px] flex-col gap-5">
+    <section aria-label={messages().deploy.itIsOnline} className="flex max-w-[720px] flex-col gap-5">
       <div className="flex flex-col gap-2">
-        <h2 className="m-0 text-[22px] font-semibold tracking-[-0.3px]">{agentName} is online</h2>
+        <h2 className="m-0 text-[22px] font-semibold tracking-[-0.3px]">{agentName} {messages().deploy.isOnline}</h2>
         <Badge tone="ok" className="w-fit">
-          <StatusDot tone="ok" /> Online · working
+          <StatusDot tone="ok" /> {messages().deploy.onlineWorking}
         </Badge>
-        <span className="leading-normal text-body">It keeps working when your computer is off. You'll see what it does in Runs.</span>
+        <span className="leading-normal text-body">{messages().deploy.itKeepsWorkingWhenYourComputer}</span>
       </div>
       <div className="flex flex-wrap gap-2">
-        <LinkButton to={`${routePaths.runs}?where=online`}>Open runs</LinkButton>
+        <LinkButton to={`${routePaths.runs}?where=online`}>{messages().deploy.openRuns}</LinkButton>
         <LinkButton to={agentPath('builder', agentId)} variant="secondary">
-          Back to the agent
+          {messages().deploy.backToTheAgent}
         </LinkButton>
       </div>
-      <DevelopersDetails summary="Connection details for developers">
-        <span className="font-medium text-ink-2">Web address</span>
+      <DevelopersDetails summary={messages().deploy.connectionDetailsForDevelopers}>
+        <span className="font-medium text-ink-2">{messages().deploy.webAddress}</span>
         <code className="break-all rounded-lg bg-subtle px-3 py-2 font-mono text-[12px]">{runsEndpoint}</code>
-        <span className="font-medium text-ink-2">Access key</span>
+        <span className="font-medium text-ink-2">{messages().deploy.accessKey}</span>
         {outcome.apiKey ? (
           <>
             <code className="break-all rounded-lg bg-subtle px-3 py-2 font-mono text-[12px]">{isKeyShown ? outcome.apiKey : 'grk_••••••••••••••••'}</code>
             <span className="flex flex-wrap gap-2">
               {!isKeyShown && (
                 <Button size="sm" variant="secondary" onClick={() => setIsKeyShown(true)}>
-                  Show access key once
+                  {messages().deploy.showAccessKeyOnce}
                 </Button>
               )}
               <Button
@@ -127,13 +128,13 @@ export function DeployDoneView({ agentId, agentName, outcome }: DeployDoneViewPr
                   setCopied(true)
                 }}
               >
-                {copied ? 'Copied' : 'Copy example'}
+                {copied ? messages().deploy.copied : messages().deploy.copyExample}
               </Button>
             </span>
-            <span className="text-[12px] text-muted">After you leave this page the key is only kept in {getCredentialStoreName()}, for Runs.</span>
+            <span className="text-[12px] text-muted">{messages().deploy.afterYouLeaveThisPageThe}{' '}{getCredentialStoreName()}{messages().deploy.forRuns}</span>
           </>
         ) : (
-          <span>{outcome.view.hasApiKey ? `The same key as before, kept in ${getCredentialStoreName()}.` : 'No key is saved on this computer. Make a new one to call it.'}</span>
+          <span>{outcome.view.hasApiKey ? messages().deploy.theSameKeyAsBeforeKept(getCredentialStoreName()) : messages().deploy.noKeyIsSavedOnThis}</span>
         )}
         <NewAccessKey agentId={agentId} />
       </DevelopersDetails>

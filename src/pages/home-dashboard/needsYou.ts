@@ -9,6 +9,7 @@ import { getProblemActionPath } from '@/pages/error-states/problemActions'
 import { agentPath, connectionsTabPath, routePaths } from '@/routes'
 import { failedRunPath, findLatestRunByAgent } from './homeLinks'
 import { buildConnectionReminderItems, buildInboxAttentionItem, buildPausedRunItems, describeRunResult, type AgentNameLookup } from './homeViewModel'
+import { messages } from '@/i18n'
 
 /**
  * The Home "Needs you" list (09): everything that blocks the user, most urgent first, one row
@@ -45,13 +46,14 @@ export interface NeedsYouSources {
  */
 export function describePluginGap(requirement: PluginRequirement): string {
   const pluginLabel = requirement.displayName
-  if (!requirement.installed) return `${pluginLabel} isn't installed`
-  if (!requirement.trusted && !requirement.trustNotNeeded) return `${pluginLabel} isn't trusted yet`
-  if (requirement.missingConfig.length > 0) return `${pluginLabel} needs ${requirement.missingConfig.join(', ')}`
-  if (requirement.needsNodeRuntime && !requirement.nodeRuntimeReady) return `${pluginLabel} needs the plugin runtime installed`
-  if (!requirement.browserReady) return `${pluginLabel} needs the browser installed`
-  if (requirement.needsSession && !requirement.sessionLinked) return `${pluginLabel} isn't linked yet`
-  return `${pluginLabel} isn't ready`
+  const t = messages().home
+  if (!requirement.installed) return t.pluginNotInstalled(pluginLabel)
+  if (!requirement.trusted && !requirement.trustNotNeeded) return t.pluginNotTrusted(pluginLabel)
+  if (requirement.missingConfig.length > 0) return t.pluginNeedsConfig(pluginLabel, requirement.missingConfig.join(', '))
+  if (requirement.needsNodeRuntime && !requirement.nodeRuntimeReady) return t.pluginNeedsRuntime(pluginLabel)
+  if (!requirement.browserReady) return t.pluginNeedsBrowser(pluginLabel)
+  if (requirement.needsSession && !requirement.sessionLinked) return t.pluginNotLinked(pluginLabel)
+  return t.pluginNotReady(pluginLabel)
 }
 
 /** One row per agent whose latest run failed, with the humanized reason. */
@@ -61,9 +63,9 @@ function buildFailedRunItems(runs: Run[], agentName: AgentNameLookup, now: Date)
     .map((run) => ({
       id: `failed-${run.agentId}`,
       kind: 'failed_run',
-      title: run.trigger === 'test' ? `${agentName(run.agentId)} failed its test` : `${agentName(run.agentId)}'s last run failed`,
+      title: run.trigger === 'test' ? messages().home.failedItsTest(agentName(run.agentId)) : messages().home.lastRunFailed(agentName(run.agentId)),
       detail: `${describeRunResult(run)} · ${formatRunDay(run.startedAt, now)}`,
-      actionLabel: 'See what went wrong',
+      actionLabel: messages().home.action.seeWhatWentWrong,
       actionPath: failedRunPath(run.id),
       isPrimaryAction: false,
     }))
@@ -98,9 +100,9 @@ function buildSetupItems(problems: Problem[], pluginRequirements: Map<string, Pl
   return [...collectSetupGaps(problems, pluginRequirements)].map(([agentId, gaps]) => ({
     id: `setup-${agentId}`,
     kind: 'setup',
-    title: `${agentName(agentId)} isn't ready to run`,
+    title: messages().home.notReadyToRun(agentName(agentId)),
     detail: gaps.reasons.join(' · '),
-    actionLabel: 'Set up',
+    actionLabel: messages().home.setUp,
     // Plugins and secrets are set up in the build chat; model keys and credit in Connections.
     actionPath: gaps.isConnectionsOnly ? connectionsTabPath('models') : agentPath('builder', agentId),
     isPrimaryAction: false,
@@ -120,7 +122,7 @@ function buildScheduleItems(problems: Problem[]): AttentionItem[] {
     seenAgents.add(dedupeKey)
     const scheduleAction = problem.actions.find((action) => action.kind === 'open_schedule')
     const actionPath = (scheduleAction && getProblemActionPath(scheduleAction)) ?? (problem.agentId ? agentPath('scheduleAgent', problem.agentId) : routePaths.scheduler)
-    return [{ id: `schedule-${dedupeKey}`, kind: 'schedule', title: problem.title, detail: problem.detail, actionLabel: 'Fix schedule', actionPath, isPrimaryAction: false }]
+    return [{ id: `schedule-${dedupeKey}`, kind: 'schedule', title: problem.title, detail: problem.detail, actionLabel: messages().home.fixSchedule, actionPath, isPrimaryAction: false }]
   })
 }
 

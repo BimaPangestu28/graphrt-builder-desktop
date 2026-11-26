@@ -1,4 +1,5 @@
 import type { GraphEdge, GraphNode, NodeConfig, NodePort, NodePorts, OnErrorStrategy } from '@/api/agentGraphTypes'
+import { messages } from '@/i18n'
 
 /**
  * Graph rules the Nodes view applies locally, mirroring the backend
@@ -46,7 +47,7 @@ const kindTitles: Record<string, string> = {
 /** `some-node_kind` → `Some node kind`. */
 function humanizeKind(kind: string): string {
   const words = kind.replace(/[-_]/g, ' ').trim()
-  return words ? words[0].toUpperCase() + words.slice(1) : 'Step'
+  return words ? words[0].toUpperCase() + words.slice(1) : messages().lib.step
 }
 
 /**
@@ -88,12 +89,12 @@ function exitPorts(kind: string, config: NodeConfig): NodePort[] {
   if (noOutputKinds.has(kind)) return []
   if (kind === 'if-else') {
     const cases = listPorts(config, 'cases', 'case_id', [])
-    if (cases.length === 0 && 'conditions' in config) cases.push(port('true', 'If', 'branch'))
-    return [...cases, port(ELSE_HANDLE, 'Else', 'else')]
+    if (cases.length === 0 && 'conditions' in config) cases.push(port('true', messages().lib.if, 'branch'))
+    return [...cases, port(ELSE_HANDLE, messages().lib.else, 'else')]
   }
   if (kind === 'human-input') {
     const actions = listPorts(config, 'actions', 'id', ['title'])
-    return actions.length > 0 ? actions : [port('submit', 'Submit', 'branch')]
+    return actions.length > 0 ? actions : [port('submit', messages().lib.submit, 'branch')]
   }
   if (kind === 'question-classifier') return listPorts(config, 'classes', 'id', ['label', 'name'])
   return [port(SOURCE_HANDLE, '', 'default')]
@@ -106,7 +107,7 @@ function exitPorts(kind: string, config: NodeConfig): NodePort[] {
 export function deriveNodePorts(kind: string, config: NodeConfig, onErrorStrategy: OnErrorStrategy): NodePorts {
   const inputs = noInputKinds.has(kind) ? [] : [port(TARGET_HANDLE, '', 'input')]
   const outputs = exitPorts(kind, config)
-  if (onErrorStrategy === 'fail-branch') outputs.push(port(FAIL_BRANCH_HANDLE, 'On error', 'fail-branch'))
+  if (onErrorStrategy === 'fail-branch') outputs.push(port(FAIL_BRANCH_HANDLE, messages().lib.onError, 'fail-branch'))
   return { inputs, outputs }
 }
 
@@ -145,8 +146,8 @@ function leadsTo(edges: Pick<GraphEdge, 'source' | 'target'>[], from: string, to
 
 function describeCrossScope(nodesById: Map<string, GraphNode>, source: GraphNode, target: GraphNode): string {
   const titleOf = (nodeId: string) => nodesById.get(nodeId)?.displayTitle ?? nodeId
-  if (source.parent) return `Can't connect: steps inside ${titleOf(source.parent)} can't link to steps outside it`
-  return `Can't connect: steps outside ${titleOf(target.parent as string)} can't link to steps inside it`
+  if (source.parent) return messages().lib.cantConnectStepsInsideValueCant(titleOf(source.parent))
+  return messages().lib.cantConnectStepsOutsideValueCant(titleOf(target.parent as string))
 }
 
 /**
@@ -167,16 +168,16 @@ export function checkConnection(graph: { nodes: GraphNode[]; edges: GraphEdge[] 
   const source = nodesById.get(ends.source)
   const target = nodesById.get(ends.target)
   const sourceHandle = ends.sourceHandle || SOURCE_HANDLE
-  if (!source || !target) return { allowed: false, reason: "Can't connect: that step no longer exists" }
-  if (source.id === target.id) return { allowed: false, reason: "Can't connect a step to itself" }
+  if (!source || !target) return { allowed: false, reason: messages().lib.cantConnectThatStepNoLonger }
+  if (source.id === target.id) return { allowed: false, reason: messages().lib.cantConnectAStepToItself }
   if (target.ports.inputs.length === 0) {
-    return { allowed: false, reason: target.kind === 'start' ? "Can't connect: Start never has arrows coming in" : "Can't connect: this step has no input" }
+    return { allowed: false, reason: target.kind === 'start' ? messages().lib.cantConnectStartNeverHasArrows : messages().lib.cantConnectThisStepHasNo }
   }
-  if (!source.ports.outputs.some((outputPort) => outputPort.id === sourceHandle)) return { allowed: false, reason: `Can't connect: ${source.displayTitle} has no such exit` }
+  if (!source.ports.outputs.some((outputPort) => outputPort.id === sourceHandle)) return { allowed: false, reason: messages().lib.cantConnectDisplaytitleHasNoSuch(source.displayTitle) }
   if (source.parent !== target.parent) return { allowed: false, reason: describeCrossScope(nodesById, source, target) }
   if (graph.edges.some((edge) => edge.source === source.id && edge.sourceHandle === sourceHandle && edge.target === target.id)) {
-    return { allowed: false, reason: 'Already connected' }
+    return { allowed: false, reason: messages().lib.alreadyConnected }
   }
-  if (leadsTo(graph.edges, target.id, source.id)) return { allowed: false, reason: "Can't connect: that would make a circle of steps" }
+  if (leadsTo(graph.edges, target.id, source.id)) return { allowed: false, reason: messages().lib.cantConnectThatWouldMakeA }
   return { allowed: true }
 }

@@ -1,3 +1,4 @@
+import { messages } from '@/i18n'
 /**
  * "Put it online" shapes, mirroring `src-tauri/src/deploy` (serde camelCase). Secrets never
  * appear here except `DeployOutcome.apiKey`, which is shown once and then only in the keychain.
@@ -17,8 +18,9 @@ export const deployProviderNames: Record<DeployProvider, string> = {
  * Why online deploy can't be used yet (mirrors `NOT_AVAILABLE_MESSAGE` in `src-tauri/src/deploy`):
  * no graphrt release with `deploy --direct` and its server image is pinned in this app build.
  */
-export const onlineDeployNotAvailableMessage =
-  'Online deploy is not available yet. It needs a graphrt release that can put agents online (graphrt deploy --direct) and the matching graphrt server image published with it, and neither exists yet. It comes with an app update.'
+export function onlineDeployNotAvailableMessage(): string {
+  return messages().deploy.notAvailable
+}
 
 /** `not_available`: this app build pins no graphrt release yet. */
 export type CliStatus = 'not_available' | 'not_installed' | 'installing' | 'installed'

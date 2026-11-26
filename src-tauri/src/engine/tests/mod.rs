@@ -237,7 +237,12 @@ async fn approval_pauses_with_reasons_and_resume_succeeds() {
         .resume_run(&run.id, json!({"approve_message": {"action": "approve", "values": {"note": "ok"}}}))
         .await
         .unwrap();
-    assert_eq!(resumed.status, RunStatus::Running);
+    // resume_run reads the row back after starting the task, which may already have finished.
+    assert!(
+        matches!(resumed.status, RunStatus::Running | RunStatus::Succeeded),
+        "resume left the run {:?}",
+        resumed.status
+    );
     wait_for_status(&harness.sink, &run.id, RunStatus::Succeeded).await;
 
     let finished = harness.db.get_run(&run.id).unwrap();

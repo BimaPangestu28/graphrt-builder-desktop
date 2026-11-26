@@ -5,6 +5,7 @@ import type { NodeSetupStatus } from '../contracts'
 import { MarkerType, type Edge, type Node } from './flowLibrary'
 import { containerMinimumSize, endNodeSize, flowDirectionOf, isEndPillNode, stepNodeSize, type FlowDirection } from './autoLayout'
 import { describeNodeBadges, describeNodePreview, type NodeBadge, type PreviewSegment } from './nodePreview'
+import { messages } from '@/i18n'
 
 /**
  * Turns an {@link AgentGraph} and positions into React Flow nodes and edges.
@@ -95,7 +96,7 @@ function setupStatusOf(node: GraphNode, options: FlowElementOptions): NodeSetupS
   const known = options.pluginStatuses?.[node.plugin]
   if (known) return known
   const kindInfo = options.kindsByKind?.[node.kind]
-  if (kindInfo?.plugin && !kindInfo.plugin.installed) return { label: 'Not installed', tone: 'amber' }
+  if (kindInfo?.plugin && !kindInfo.plugin.installed) return { label: messages().nodes.notInstalled, tone: 'amber' }
   return null
 }
 
@@ -176,14 +177,14 @@ export const edgeColors: Record<EdgeKind | 'selected', string> = {
 /** The exit's name for branch and error arrows ("Send", "Else", "On error"); drawn on the port. */
 function branchLabelOf(edge: GraphEdge, nodesById: Map<string, GraphNode>): string | undefined {
   if (edge.sourceHandle === 'source') return undefined
-  if (edge.sourceHandle === FAIL_BRANCH_HANDLE) return 'On error'
+  if (edge.sourceHandle === FAIL_BRANCH_HANDLE) return messages().nodes.onError
   const sourcePort = nodesById.get(edge.source)?.ports.outputs.find((outputPort) => outputPort.id === edge.sourceHandle)
   return sourcePort?.label || edge.sourceHandle
 }
 
 /** The words on an arrow: its exit's name, plus "not used" when the exit is gone. */
 export function edgeLabelOf(branchLabel: string | undefined, kind: EdgeKind): string | null {
-  if (kind === 'unused') return branchLabel ? `${branchLabel} · not used` : 'not used'
+  if (kind === 'unused') return branchLabel ? messages().nodes.branchlabelNotUsed(branchLabel) : messages().nodes.notUsed
   return branchLabel ?? null
 }
 
@@ -218,7 +219,7 @@ export function toFlowEdges(graph: AgentGraph, selectedEdgeIds: string[] = []): 
         selected: isSelected,
         markerEnd: { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
         className: `is-${kind}`,
-        ariaLabel: `Arrow from ${nodesById.get(edge.source)?.displayTitle}${branchLabel ? ` (${branchLabel})` : ''} to ${nodesById.get(edge.target)?.displayTitle}${kind === 'unused' ? ', not used' : ''}`,
+        ariaLabel: messages().nodes.arrowLabel(nodesById.get(edge.source)?.displayTitle ?? edge.source, branchLabel ?? null, nodesById.get(edge.target)?.displayTitle ?? edge.target, kind === 'unused'),
         data: { edge, kind, label: edgeLabelOf(branchLabel, kind) },
       }
     })

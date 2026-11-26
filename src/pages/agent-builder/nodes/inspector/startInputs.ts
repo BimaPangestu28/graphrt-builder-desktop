@@ -1,6 +1,7 @@
 import type { AgentGraph, GraphNode, JsonValue } from '@/api/agentGraphTypes'
 import { updateGraphNode } from '../graphEdits'
 import { isJsonObject, readConfigList, type JsonObject } from './configPaths'
+import { messages } from '@/i18n'
 
 /**
  * The Start node's inputs as graphrt reads them (`graphrt-core/src/nodes/start.rs`,
@@ -26,16 +27,17 @@ export interface StartInputType {
  * The input kinds `StartNode` accepts (`InputVariable::value_type`), in the order the
  * type menu shows them. The Test form (`runInputValues.ts`) renders each the same way.
  */
-export const startInputTypes: StartInputType[] = [
-  { value: 'text-input', label: 'Short text', description: 'A one-line text box' },
-  { value: 'paragraph', label: 'Paragraph', description: 'A multi-line text box' },
-  { value: 'number', label: 'Number', description: 'A number box' },
-  { value: 'select', label: 'Dropdown', description: 'One of a list of choices' },
-  { value: 'checkbox', label: 'Checkbox', description: 'Yes or no' },
-  { value: 'file', label: 'File', description: 'One file' },
-  { value: 'file-list', label: 'Files', description: 'Several files' },
-  { value: 'json', label: 'JSON', description: 'Any JSON value (object, list, text, number)' },
-]
+const startInputTypeValues = ['text-input', 'paragraph', 'number', 'select', 'checkbox', 'file', 'file-list', 'json'] as const
+
+export const startInputTypes: readonly StartInputType[] = startInputTypeValues.map((value) => ({
+  value,
+  get label() {
+    return messages().nodes.inputTypes[value][0]
+  },
+  get description() {
+    return messages().nodes.inputTypes[value][1]
+  },
+}))
 
 /** The runtime's default when `type` is missing (`default_kind`). */
 export const defaultStartInputType = 'text-input'
@@ -143,10 +145,10 @@ export function uniqueVariableName(base: string, taken: string[]): string {
  * @param otherNames - Names of the other inputs (string[])
  */
 export function validateVariableName(name: string, otherNames: string[]): string | null {
-  if (name.trim() === '') return 'Give it a name'
-  if (name.length > maxVariableNameLength) return `At most ${maxVariableNameLength} characters`
-  if (!variableNamePattern.test(name)) return 'Use letters, digits, _ or - only (no spaces or dots)'
-  if (otherNames.includes(name)) return 'Another input already has this name'
+  if (name.trim() === '') return messages().nodes.giveItAName
+  if (name.length > maxVariableNameLength) return messages().nodes.atMostMaxvariablenamelengthCharacters(maxVariableNameLength)
+  if (!variableNamePattern.test(name)) return messages().nodes.useLettersDigitsOrOnlyNo
+  if (otherNames.includes(name)) return messages().nodes.anotherInputAlreadyHasThisName
   return null
 }
 
@@ -206,7 +208,7 @@ function withKey(variable: StartVariable, key: string, value: JsonValue | undefi
 export function changeVariableType(variable: StartVariable, type: string): StartVariable {
   let next = withKey(variable, 'type', type)
   const options = variableOptionsOf(variable)
-  if (type === 'select' && options.length === 0) next.options = ['Option 1']
+  if (type === 'select' && options.length === 0) next.options = [messages().nodes.option1]
   if (type !== 'select') next = withKey(next, 'options', undefined)
   if (!takesMaxLength(type)) next = withKey(next, 'max_length', undefined)
   return withKey(next, 'default', convertDefaultForType(variable.default, type, variableOptionsOf(next)))

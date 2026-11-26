@@ -1,29 +1,29 @@
 /** Static option lists and labels for screen 22 · Settings. */
 
 import type { LocalCliProvider, ModelChoice, ModelProvider } from '@/api/types'
+import { messages } from '@/i18n'
 
 export type SettingsSectionKey = 'general' | 'runner' | 'notifications' | 'privacy' | 'remote' | 'updates' | 'about'
 
-export const settingsSections: Array<{ key: SettingsSectionKey; label: string }> = [
-  { key: 'general', label: 'General' },
-  { key: 'runner', label: 'Runner' },
-  { key: 'notifications', label: 'Notifications' },
-  { key: 'privacy', label: 'Privacy and data' },
-  { key: 'remote', label: 'Remote runner' },
-  { key: 'updates', label: 'Updates' },
-  { key: 'about', label: 'About' },
-]
+export const settingsSectionKeys: readonly SettingsSectionKey[] = ['general', 'runner', 'notifications', 'privacy', 'remote', 'updates', 'about']
+
+/** The Settings sub-nav entries with their labels in the current language. */
+export function listSettingsSections(): Array<{ key: SettingsSectionKey; label: string }> {
+  const labels = messages().settings.sections
+  return settingsSectionKeys.map((key) => ({ key, label: labels[key] }))
+}
 
 /**
- * Sections whose controls have no backend yet (appearance and language: the design has
- * no dark theme and the app no translations; the remote runner does not exist). The
- * desktop app hides them; the browser preview shows the full design.
+ * Sections whose controls have no backend yet (the remote runner does not exist). The
+ * desktop app hides them; the browser preview shows the full design. General holds the
+ * language (real everywhere) and the appearance (preview only: there is no dark theme yet).
  */
-export const previewOnlySettingsSections: readonly SettingsSectionKey[] = ['general', 'remote']
+export const previewOnlySettingsSections: readonly SettingsSectionKey[] = ['remote']
 
-export const modelFallbackOptions = ['Switch to Ollama', 'Pause and tell me'] as const
-export const appearanceOptions = ['Match the system', 'Light', 'Dark'] as const
-export const languageOptions = ['English', 'Bahasa Indonesia'] as const
+export const modelFallbackKeys = ['ollama', 'pause'] as const
+export type ModelFallbackKey = (typeof modelFallbackKeys)[number]
+export const appearanceKeys = ['system', 'light', 'dark'] as const
+export type AppearanceKey = (typeof appearanceKeys)[number]
 
 /** Display names of the model providers. */
 export const modelProviderNames: Record<ModelProvider, string> = {
@@ -32,13 +32,27 @@ export const modelProviderNames: Record<ModelProvider, string> = {
   gemini: 'Google Gemini',
   deepseek: 'DeepSeek',
   ollama: 'Ollama',
-  'claude-code-cli': 'Claude Code (on this computer)',
-  'codex-cli': 'Codex (on this computer)',
-  'gemini-cli': 'Gemini CLI (on this computer)',
-  'cursor-cli': 'Cursor CLI (on this computer)',
-  'copilot-cli': 'GitHub Copilot CLI (on this computer)',
-  'opencode-cli': 'OpenCode (on this computer)',
-  'qwen-code-cli': 'Qwen Code (on this computer)',
+  get 'claude-code-cli'() {
+    return messages().settings.onThisComputer('Claude Code')
+  },
+  get 'codex-cli'() {
+    return messages().settings.onThisComputer('Codex')
+  },
+  get 'gemini-cli'() {
+    return messages().settings.onThisComputer('Gemini CLI')
+  },
+  get 'cursor-cli'() {
+    return messages().settings.onThisComputer('Cursor CLI')
+  },
+  get 'copilot-cli'() {
+    return messages().settings.onThisComputer('GitHub Copilot CLI')
+  },
+  get 'opencode-cli'() {
+    return messages().settings.onThisComputer('OpenCode')
+  },
+  get 'qwen-code-cli'() {
+    return messages().settings.onThisComputer('Qwen Code')
+  },
 }
 
 /** The local CLI providers, in the backend's order (`LocalCli::ALL`). */
@@ -87,7 +101,9 @@ export const localCliPlanNames: Record<LocalCliProvider, string> = {
   'gemini-cli': 'Google (Gemini)',
   'cursor-cli': 'Cursor',
   'copilot-cli': 'GitHub Copilot',
-  'opencode-cli': 'AI provider',
+  get 'opencode-cli'() {
+    return messages().settings.aiProvider
+  },
   'qwen-code-cli': 'Qwen',
 }
 
@@ -106,9 +122,10 @@ export function isLocalCliProvider(provider: string): provider is LocalCliProvid
  * @returns One plain-language paragraph (string)
  */
 export function describeLocalCliUsageNote(provider: LocalCliProvider): string {
+  const t = messages().settings
   const shortName = localCliShortNames[provider]
-  const planText = provider === 'opencode-cli' ? 'the AI provider accounts OpenCode is signed in to' : `your ${localCliPlanNames[provider]} plan`
-  return `Experimental · uses your ${shortName} sign-in on this computer. Usage counts against ${planText} and its limits. For apps you share with others, use an API key.`
+  const planText = provider === 'opencode-cli' ? t.usageNoteOpenCode : t.usageNotePlan(localCliPlanNames[provider])
+  return t.usageNote(shortName, planText)
 }
 
 /**
@@ -127,12 +144,12 @@ export const runHistoryRetentionChoices: ReadonlyArray<number | null> = [30, 90,
 
 /** "30 days" / "Forever". */
 export function describeRetention(retentionDays: number | null): string {
-  if (retentionDays === null) return 'Forever'
-  return retentionDays === 1 ? '1 day' : `${retentionDays} days`
+  const t = messages().settings
+  if (retentionDays === null) return t.retentionForever
+  return t.retentionDays(retentionDays)
 }
 
-/** Labels of the missed-run policy select, by backend value. */
-export const missedRunPolicyLabels = {
-  run_once: 'Run it once when the computer wakes',
-  skip: 'Skip it',
-} as const
+/** Labels of the missed-run policy select, by backend value, in the current language. */
+export function missedRunPolicyLabels(): Record<'run_once' | 'skip', string> {
+  return messages().settings.missedRunOptions
+}

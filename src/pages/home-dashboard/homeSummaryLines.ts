@@ -1,6 +1,7 @@
 import type { Trigger } from '@/api/types'
 import { formatClockTime } from '@/pages/agent-run/runResultSummary'
 import { describeCronExpression } from '@/lib/schedule'
+import { formatMonthShort, formatWeekdayShort, messages } from '@/i18n'
 
 /** Text lines of the Home screen (09) built from real counts and schedules. */
 
@@ -10,8 +11,9 @@ import { describeCronExpression } from '@/lib/schedule'
  * @param count - Paused runs plus chats waiting for the user (number)
  */
 export function describeNeedsYouCount(count: number): string {
-  if (count === 0) return 'Nothing needs you'
-  return count === 1 ? '1 thing needs you' : `${count} things need you`
+  const t = messages().home
+  if (count === 0) return t.nothingNeedsYou
+  return t.thingsNeedYou(count)
 }
 
 function addLocalDays(date: Date, days: number): Date {
@@ -24,10 +26,11 @@ function addLocalDays(date: Date, days: number): Date {
 export function formatUpcomingTime(isoTimestamp: string, now: Date = new Date()): string {
   const instant = new Date(isoTimestamp)
   const clockTime = formatClockTime(isoTimestamp)
-  if (instant.toDateString() === now.toDateString()) return `today ${clockTime}`
-  if (instant.toDateString() === addLocalDays(now, 1).toDateString()) return `tomorrow ${clockTime}`
-  const weekday = instant.toLocaleString('en-GB', { weekday: 'short' })
-  const month = instant.toLocaleString('en-GB', { month: 'short' })
+  const t = messages().home
+  if (instant.toDateString() === now.toDateString()) return t.today(clockTime)
+  if (instant.toDateString() === addLocalDays(now, 1).toDateString()) return t.tomorrow(clockTime)
+  const weekday = formatWeekdayShort(instant)
+  const month = formatMonthShort(instant)
   return `${weekday} ${instant.getDate()} ${month} ${clockTime}`
 }
 
@@ -43,7 +46,8 @@ export function describeNextRun(triggers: Trigger[], now: Date = new Date()): st
     .filter((trigger) => trigger.enabled && trigger.nextFireAt)
     .map((trigger) => trigger.nextFireAt as string)
     .sort((first, second) => new Date(first).getTime() - new Date(second).getTime())
-  return upcomingTimes.length > 0 ? `next run ${formatUpcomingTime(upcomingTimes[0], now)}` : 'no runs scheduled'
+  const t = messages().home
+  return upcomingTimes.length > 0 ? t.nextRun(formatUpcomingTime(upcomingTimes[0], now)) : t.noRunsScheduled
 }
 
 /**
@@ -53,11 +57,12 @@ export function describeNextRun(triggers: Trigger[], now: Date = new Date()): st
  * @returns The line, or null when the agent has no schedule (string | null)
  */
 export function describeAgentSchedule(agentTriggers: Trigger[]): string | null {
+  const t = messages().home
   const enabledTriggers = agentTriggers.filter((trigger) => trigger.enabled)
   if (enabledTriggers.length === 0) {
-    return agentTriggers.length > 0 ? `Schedule off · ${describeCronExpression(agentTriggers[0].cronExpression)}` : null
+    return agentTriggers.length > 0 ? t.scheduleOff(describeCronExpression(agentTriggers[0].cronExpression)) : null
   }
   const firstSchedule = describeCronExpression(enabledTriggers[0].cronExpression)
   const otherCount = enabledTriggers.length - 1
-  return otherCount > 0 ? `${firstSchedule} · +${otherCount} more` : firstSchedule
+  return otherCount > 0 ? t.moreSchedules(firstSchedule, otherCount) : firstSchedule
 }

@@ -27,6 +27,7 @@ function createInitialSettings(): AppSettings {
     autoUpdatePlugins: true,
     runLimits: { ...defaultRunLimits },
     developerMode: false,
+    language: null,
   }
 }
 
@@ -52,7 +53,7 @@ export const sampleAppSettingsBackend = {
     respondWith(() => {
       const invalidLimit = findInvalidRunLimit(settings.runLimits)
       if (invalidLimit) throw new BackendError('invalid_input', invalidLimit)
-      storedSettings = { ...settings, runLimits: { ...settings.runLimits } }
+      storedSettings = { ...settings, runLimits: { ...settings.runLimits }, language: settings.language ?? storedSettings.language }
       return { ...storedSettings }
     }),
   exportAgents: (path: string): Promise<ExportSummary> => exportSampleAgents(path),

@@ -2,6 +2,7 @@ import { useId, type ClipboardEventHandler, type ReactNode } from 'react'
 import { Button, Icon, joinClassNames } from '@/components/ui'
 import type { DroppedItem, FileDropAccept } from '@/lib/fileDrop'
 import { useFileDropZone, type FileDragState } from './useFileDropZone'
+import { messages, useT } from '@/i18n'
 
 export interface FileDropZoneProps {
   /** What to drop, completing "Drag … here": "your plugin folder or .tar.gz archive". */
@@ -36,9 +37,10 @@ const zoneStateClassNames: Record<FileDragState, string> = {
 }
 
 function headline(dragState: FileDragState, itemDescription: string): string {
-  if (dragState === 'accepting') return 'Drop to add'
-  if (dragState === 'refusing') return 'This cannot be added here'
-  return `Drag ${itemDescription} here or`
+  const t = messages().shell.fileDrop
+  if (dragState === 'accepting') return t.dropToAdd
+  if (dragState === 'refusing') return t.cannotBeAdded
+  return t.dragHereOr(itemDescription)
 }
 
 /**
@@ -76,13 +78,14 @@ export function FileDropZone({
 }: FileDropZoneProps) {
   const hintId = useId()
   const { zoneRef, dragState, rejection, clearRejection, browserDropHandlers } = useFileDropZone({ accept, multiple, onDrop, disabled })
-  const statusText = rejection ?? (dragState === 'accepting' ? 'Drop to add' : '')
+  const t = useT().shell.fileDrop
+  const statusText = rejection ?? (dragState === 'accepting' ? t.dropToAdd : '')
 
   return (
     <div
       ref={zoneRef}
       role="group"
-      aria-label={`Drop ${itemDescription}`}
+      aria-label={t.dropLabel(itemDescription)}
       aria-describedby={hint ? hintId : undefined}
       aria-disabled={disabled || undefined}
       data-drag-state={dragState}

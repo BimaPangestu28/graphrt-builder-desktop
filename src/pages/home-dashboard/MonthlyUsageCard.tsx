@@ -1,5 +1,6 @@
 import { HomeSectionHeader } from './HomeSectionHeader'
 import type { MonthlyNumbers } from './monthlyUsage'
+import { useT } from '@/i18n'
 
 interface MonthlyUsageCardProps {
   /** From `buildMonthlyNumbers`; null while loading. */
@@ -8,9 +9,10 @@ interface MonthlyUsageCardProps {
 }
 
 function MonthlyUsageBody({ monthlyNumbers, loadError }: MonthlyUsageCardProps) {
-  if (loadError && !monthlyNumbers) return <p className="m-0 text-muted">Could not load this month's runs: {loadError.message}</p>
-  if (!monthlyNumbers) return <p className="m-0 text-muted">Loading this month…</p>
-  if (monthlyNumbers.isEmpty) return <p className="m-0 leading-normal text-muted">Nothing ran this month yet. Numbers show up after your first run</p>
+  const t = useT().home
+  if (loadError && !monthlyNumbers) return <p className="m-0 text-muted">{t.couldNotLoadMonth(loadError.message)}</p>
+  if (!monthlyNumbers) return <p className="m-0 text-muted">{t.loadingMonth}</p>
+  if (monthlyNumbers.isEmpty) return <p className="m-0 leading-normal text-muted">{t.nothingRanThisMonth}</p>
   return (
     <dl className="m-0 flex flex-col gap-3.5">
       {monthlyNumbers.rows.map((usageRow) => (
@@ -25,9 +27,10 @@ function MonthlyUsageBody({ monthlyNumbers, loadError }: MonthlyUsageCardProps) 
 
 /** "This month": runs that succeeded and failed, what the agents did, and AI tokens. */
 export function MonthlyUsageCard({ monthlyNumbers, loadError }: MonthlyUsageCardProps) {
+  const t = useT().home
   return (
     <section aria-labelledby="home-this-month" className="flex min-w-0 flex-col gap-3">
-      <HomeSectionHeader headingId="home-this-month" heading="This month" />
+      <HomeSectionHeader headingId="home-this-month" heading={t.thisMonth} />
       <div className="flex flex-col gap-3.5 rounded-[14px] border border-line bg-surface p-[18px]">
         <MonthlyUsageBody monthlyNumbers={monthlyNumbers} loadError={loadError} />
       </div>

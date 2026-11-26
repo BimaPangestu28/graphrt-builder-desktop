@@ -4,6 +4,7 @@ import { buildApprovalAnswer, collectAnswersByResumeKey, findMissingRequiredFiel
 import { PendingApprovalRow } from './PendingApprovalRow'
 import { RunReviewSidePanel } from './RunReviewSidePanel'
 import { buildRowTitle, describeReviewedRun, findSharedActionPair, hasItemsAfterThese } from './runReviewModel'
+import { messages } from '@/i18n'
 
 /** How many questions show before "Show N more". */
 export const initiallyVisibleCount = 4
@@ -63,13 +64,13 @@ export function RunReviewList({ review, pending, isSubmitting, onSubmit, onAnswe
     <>
       <header className="box-border flex min-h-[72px] flex-wrap items-center justify-between gap-3 border-b border-line px-6 py-3.5">
         <div className="flex flex-col gap-0.5">
-          <h1 className="m-0 text-[20px] font-semibold tracking-[-0.3px]">Review {pending.length === 1 ? '1 item' : `${pending.length} items`}</h1>
+          <h1 className="m-0 text-[20px] font-semibold tracking-[-0.3px]">{messages().agentRun.review}{' '}{pending.length === 1 ? messages().agentRun.n1Item : messages().agentRun.itemsCount(pending.length)}</h1>
           <span className="text-body">{describeReviewedRun(review)}</span>
         </div>
         <div className="flex flex-wrap gap-2">
           {actionPair && (
             <button type="button" className={secondaryButtonClassNames} disabled={isBlocked} onClick={() => onSubmit(buildAnswers(() => actionPair[1].id))}>
-              {actionPair[1].title} all
+              {actionPair[1].title} {messages().agentRun.all}
             </button>
           )}
           <button
@@ -78,13 +79,13 @@ export function RunReviewList({ review, pending, isSubmitting, onSubmit, onAnswe
             disabled={isBlocked || (actionPair !== null && selectedCount === 0)}
             onClick={() => onSubmit(buildAnswers(answers.chosenActionFor))}
           >
-            {actionPair ? `${actionPair[0].title} ${selectedCount} selected` : `Answer ${pending.length}`}
+            {actionPair ? messages().agentRun.actionSelected(actionPair[0].title, selectedCount) : messages().agentRun.answerCount(pending.length)}
           </button>
         </div>
       </header>
 
       <div className="flex flex-auto flex-wrap">
-      <section aria-label="Questions" className="box-border flex min-w-0 flex-[3_1_520px] flex-col gap-3 px-6 py-5">
+      <section aria-label={messages().agentRun.questions} className="box-border flex min-w-0 flex-[3_1_520px] flex-col gap-3 px-6 py-5">
         <div className="flex flex-wrap items-center justify-between gap-2.5">
           {actionPair ? (
             <label className="flex cursor-pointer items-center gap-2.5 font-medium">
@@ -94,14 +95,14 @@ export function RunReviewList({ review, pending, isSubmitting, onSubmit, onAnswe
                 onChange={() => answers.chooseForAll(selectedCount === pending.length ? actionPair[1].id : actionPair[0].id)}
                 className="size-[18px] cursor-pointer accent-ink"
               />
-              {selectedCount} of {pending.length} selected
+              {selectedCount} {messages().agentRun.of}{' '}{pending.length} {messages().agentRun.selected}
             </label>
           ) : (
-            <span className="font-medium">{pending.length} waiting</span>
+            <span className="font-medium">{pending.length} {messages().agentRun.waiting}</span>
           )}
-          {actionPair && <span className="text-[13px] text-muted">Unticked ones get “{actionPair[1].title}”</span>}
+          {actionPair && <span className="text-[13px] text-muted">{messages().agentRun.untickedOnesGet}{actionPair[1].title}”</span>}
         </div>
-        {blockedTitles.length > 0 && <p className="m-0 text-[13px] text-amber-strong">Fill in the required fields of {blockedTitles.join(', ')} first</p>}
+        {blockedTitles.length > 0 && <p className="m-0 text-[13px] text-amber-strong">{messages().agentRun.fillInTheRequiredFieldsOf}{' '}{blockedTitles.join(', ')} {messages().agentRun.first}</p>}
         <ul className="m-0 list-none overflow-hidden rounded-[14px] border border-line p-0">
           {visiblePending.map((approval, index) => (
             <PendingApprovalRow
@@ -125,7 +126,7 @@ export function RunReviewList({ review, pending, isSubmitting, onSubmit, onAnswe
                 onClick={() => setIsShowingAll(true)}
                 className="h-8 cursor-pointer rounded-lg border border-line-strong bg-surface px-3 text-[13px] font-medium text-ink hover:bg-subtle"
               >
-                Show {hiddenCount} more
+                {messages().agentRun.show}{' '}{hiddenCount} {messages().agentRun.more}
               </button>
             </li>
           )}
@@ -133,11 +134,10 @@ export function RunReviewList({ review, pending, isSubmitting, onSubmit, onAnswe
         {canAnswerAllRemaining && actionPair && (
           <div className="flex flex-col gap-1.5 rounded-xl border border-line bg-surface px-4 py-3">
             <button type="button" className={`${secondaryButtonClassNames} self-start`} disabled={isBlocked} onClick={() => onAnswerAllRemaining(actionPair[0].id, valuesByKey())}>
-              {actionPair[0].title} all remaining
+              {actionPair[0].title} {messages().agentRun.allRemaining}
             </button>
             <span className="text-[13px] text-body">
-              graphrt asks about the next items only after these are answered. This answers these and every next one with “{actionPair[0].title}”, each with its
-              own drafted values, while this screen stays open. It stops at any item that needs a field filled in.
+              {messages().agentRun.graphrtAsksAboutTheNextItems}{actionPair[0].title}{messages().agentRun.eachWithItsOwnDraftedValues}
             </span>
           </div>
         )}

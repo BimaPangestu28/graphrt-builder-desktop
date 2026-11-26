@@ -41,6 +41,8 @@ struct Harness {
     db: Arc<Database>,
     credentials: Arc<CredentialStore>,
     http: Arc<FakeHttp>,
+    /// Read only by the Unix-only fake-CLI tests.
+    #[cfg(unix)]
     events: Arc<RecordedEvents>,
     agent: Agent,
     _temp: tempfile::TempDir,
@@ -68,7 +70,16 @@ fn harness(flow_yaml: &str) -> Harness {
         http: http.clone(),
         events: events.clone(),
     });
-    Harness { service, db, credentials, http, events, agent, _temp: temp }
+    Harness {
+        service,
+        db,
+        credentials,
+        http,
+        #[cfg(unix)]
+        events,
+        agent,
+        _temp: temp,
+    }
 }
 
 fn ready_report() -> CompatibilityReport {

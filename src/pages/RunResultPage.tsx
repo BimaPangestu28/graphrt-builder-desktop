@@ -18,6 +18,7 @@ import { StatusPill } from '@/pages/agent-run/StatusPill'
 import { buildRunSidebarAgents, useRunAgent } from '@/pages/agent-run/runAgentSidebar'
 import { summarizeRunInputs } from '@/pages/agent-run/runInputValues'
 import { toError } from '@/lib/errors'
+import { messages } from '@/i18n'
 
 /** How many of the agent's newest runs are searched for its latest finished test. */
 const latestTestSearchLimit = 50
@@ -46,8 +47,8 @@ function WhatNextCard({ agentId, runInputs }: { agentId: string; runInputs: RunI
 
   return (
     <div className="flex box-content max-w-[92%] flex-col gap-3 rounded-[14px] border border-line p-4">
-      <span className="font-semibold">What next?</span>
-      {startError && <RunErrorNotice title="Could not start the run" error={startError} />}
+      <span className="font-semibold">{messages().agentRun.whatNext}</span>
+      {startError && <RunErrorNotice title={messages().agentRun.couldNotStartTheRun} error={startError} />}
       <div className="flex flex-col gap-2">
         {runInputs && (
           <button
@@ -56,7 +57,7 @@ function WhatNextCard({ agentId, runInputs }: { agentId: string; runInputs: RunI
             onClick={() => void runNow(runInputs)}
             className="h-11 cursor-pointer rounded-[10px] border border-line-strong bg-surface px-3.5 text-left text-[14px] font-medium text-ink hover:bg-subtle disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {isStarting ? 'Starting…' : 'Run it now with the same inputs'}
+            {isStarting ? messages().agentRun.starting : messages().agentRun.runItNowWithTheSame}
           </button>
         )}
         <button
@@ -64,7 +65,7 @@ function WhatNextCard({ agentId, runInputs }: { agentId: string; runInputs: RunI
           onClick={() => navigate(agentPath('scheduleAgent', agentId))}
           className="h-11 cursor-pointer rounded-[9px] border-0 bg-ink px-3.5 text-left text-[14px] font-semibold text-white hover:bg-ink-2"
         >
-          Put it on a schedule
+          {messages().agentRun.putItOnASchedule}
         </button>
       </div>
     </div>
@@ -72,11 +73,11 @@ function WhatNextCard({ agentId, runInputs }: { agentId: string; runInputs: RunI
 }
 
 function ResultStatusPill({ run, isLoading }: { run: RunSummary | null; isLoading: boolean }) {
-  if (isLoading || !run) return <StatusPill tone="neutral" size="title">Loading</StatusPill>
-  if (run.status === 'succeeded') return <StatusPill tone="ok" size="title">Succeeded</StatusPill>
-  if (run.status === 'failed') return <StatusPill tone="danger" size="title">Failed</StatusPill>
-  if (run.status === 'paused') return <StatusPill tone="amber" size="title">Waiting for you</StatusPill>
-  return <StatusPill tone="neutral" size="title">{run.status === 'aborted' ? 'Stopped' : 'Running'}</StatusPill>
+  if (isLoading || !run) return <StatusPill tone="neutral" size="title">{messages().agentRun.loading}</StatusPill>
+  if (run.status === 'succeeded') return <StatusPill tone="ok" size="title">{messages().agentRun.succeeded}</StatusPill>
+  if (run.status === 'failed') return <StatusPill tone="danger" size="title">{messages().agentRun.failed}</StatusPill>
+  if (run.status === 'paused') return <StatusPill tone="amber" size="title">{messages().agentRun.waitingForYou2}</StatusPill>
+  return <StatusPill tone="neutral" size="title">{run.status === 'aborted' ? messages().agentRun.stopped : messages().agentRun.running}</StatusPill>
 }
 
 /** The run named by `?runId=`, else the agent's latest finished test run; null when it has none. */
@@ -115,7 +116,7 @@ function useResultRun(agentId: string, runId: string | null) {
 function MissingOutputsNotice({ hasNoCounters }: { hasNoCounters: boolean }) {
   return (
     <p className="m-0 rounded-xl border border-line bg-surface px-4 py-3 text-body">
-      {hasNoCounters ? 'This run did not list the things it handled or report any counts.' : 'This run did not list the things it handled.'}
+      {hasNoCounters ? messages().agentRun.thisRunDidNotListThe : messages().agentRun.thisRunDidNotListThe2}
     </p>
   )
 }
@@ -124,10 +125,10 @@ function MissingOutputsNotice({ hasNoCounters }: { hasNoCounters: boolean }) {
 function NoTestRunNotice({ agentId }: { agentId: string }) {
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface px-4 py-3">
-      <span className="font-semibold">No finished test yet</span>
-      <span className="text-[13px] text-body">Test this agent to see what it did here.</span>
+      <span className="font-semibold">{messages().agentRun.noFinishedTestYet}</span>
+      <span className="text-[13px] text-body">{messages().agentRun.testThisAgentToSeeWhat}</span>
       <Link to={agentPath('testRun', agentId)} className="self-start font-medium">
-        Test it
+        {messages().agentRun.testIt}
       </Link>
     </div>
   )
@@ -159,13 +160,13 @@ export function RunResultPage() {
   const { data: resultRun, error, isLoading } = useResultRun(agentId, runId)
   const view = resultRun ? buildRunResultView(resultRun.summary) : null
   const inputsSummary = summarizeRunInputs(resultRun?.inputs ?? null)
-  const meta = isLoading ? 'Loading the run…' : (view?.meta ?? 'No run to show')
+  const meta = isLoading ? messages().agentRun.loadingTheRun : (view?.meta ?? messages().agentRun.noRunToShow)
 
   return (
     <AppShell agents={buildRunSidebarAgents(agentId, agent)}>
       <RunWorkspace>
         <BuildChatPanel>
-          {resultRun && <UserChatBubble>{inputsSummary ? `Test with ${inputsSummary}` : 'Test this agent'}</UserChatBubble>}
+          {resultRun && <UserChatBubble>{inputsSummary ? messages().agentRun.testWith(inputsSummary) : messages().agentRun.testThisAgent}</UserChatBubble>}
           {view && <BuilderReply>{view.builderReply}</BuilderReply>}
           {resultRun && <WhatNextCard agentId={agentId} runInputs={resultRun.inputs} />}
         </BuildChatPanel>
@@ -174,17 +175,17 @@ export function RunResultPage() {
           headerAction={
             view?.table && (
               <a href={buildTableCsvHref(view.table)} download={`run-${resultRun?.summary.runId.slice(0, 8)}.csv`} className={runHeaderActionClassNames}>
-                Export CSV
+                {messages().agentRun.exportCsv}
               </a>
             )
           }
         >
           <RunTitleRow meta={meta} status={<ResultStatusPill run={resultRun?.summary ?? null} isLoading={isLoading} />} />
-          {error && <RunErrorNotice title="Could not load this run" error={error} />}
+          {error && <RunErrorNotice title={messages().agentRun.couldNotLoadThisRun} error={error} />}
           {resultRun && <ResultDetails resultRun={resultRun} />}
           {!isLoading && !error && !resultRun && <NoTestRunNotice agentId={agentId} />}
           <Link to={routePaths.runs} className="self-start font-medium">
-            Open the step by step log
+            {messages().agentRun.openTheStepByStepLog}
           </Link>
         </RunPanel>
       </RunWorkspace>

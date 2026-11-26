@@ -14,6 +14,7 @@ import { LocalCliCard } from './LocalCliCard'
 import { MoreLocalCliSection } from './MoreLocalCliSection'
 import type { ModelConnection } from './modelConnections'
 import { ProviderKeyForm } from './ProviderKeyForm'
+import { messages } from '@/i18n'
 
 /** Same column rule as the Apps grid, so cards line up across tabs. */
 export const connectionCardGridClassNames = 'grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3'
@@ -37,17 +38,17 @@ function KeyActions({ connection, isRemoving, isMakingDefault, onReplace, onRemo
   return (
     <>
       {canMakeDefault && (
-        <Button size="sm" variant="secondary" aria-label={`Use ${connection.name} by default`} onClick={onMakeDefault} disabled={isMakingDefault}>
-          {isMakingDefault ? 'Saving…' : 'Use by default'}
+        <Button size="sm" variant="secondary" aria-label={messages().connections.useNameByDefault(connection.name)} onClick={onMakeDefault} disabled={isMakingDefault}>
+          {isMakingDefault ? messages().connections.saving : messages().connections.useByDefault}
         </Button>
       )}
       {connection.usesApiKey && (
         <span className="ml-auto flex items-center gap-1">
-          <Button size="sm" variant="ghost" aria-label={`Replace key ${connection.name}`} onClick={onReplace}>
-            Replace key
+          <Button size="sm" variant="ghost" aria-label={messages().connections.replaceKeyName(connection.name)} onClick={onReplace}>
+            {messages().connections.replaceKey}
           </Button>
-          <Button size="sm" variant="ghost" aria-label={`Remove key ${connection.name}`} onClick={onRemove} disabled={isRemoving} className="!text-danger hover:!bg-danger-tint">
-            {isRemoving ? 'Removing…' : 'Remove'}
+          <Button size="sm" variant="ghost" aria-label={messages().connections.removeKeyName(connection.name)} onClick={onRemove} disabled={isRemoving} className="!text-danger hover:!bg-danger-tint">
+            {isRemoving ? messages().connections.removing : messages().connections.remove}
           </Button>
         </span>
       )}
@@ -86,7 +87,7 @@ export function ModelProvidersSection({ connections, defaultModel, loadError, on
       await setDefaultModel(recommendedModelFor(connection.provider))
       await onKeysChanged()
     } catch (defaultError) {
-      setRemoveErrorMessage(`Could not make ${connection.name} the default: ${describeError(defaultError)}`)
+      setRemoveErrorMessage(messages().connections.couldNotMakeNameTheDefault(connection.name, describeError(defaultError)))
     } finally {
       setDefaultingProvider(null)
     }
@@ -105,7 +106,7 @@ export function ModelProvidersSection({ connections, defaultModel, loadError, on
       await deleteApiKey(connection.provider)
       await onKeysChanged()
     } catch (removeError) {
-      setRemoveErrorMessage(`Could not remove the ${connection.name} key: ${describeError(removeError)}`)
+      setRemoveErrorMessage(messages().connections.couldNotRemoveTheNameKey(connection.name, describeError(removeError)))
     } finally {
       setRemovingProvider(null)
     }
@@ -169,19 +170,19 @@ export function ModelProvidersSection({ connections, defaultModel, loadError, on
     <ConnectionsSection
       id="connections-models"
       title={connectionCategoryTitles.models}
-      description={`The models your agents think with: an API key, a local model with Ollama, or an AI tool already signed in on this computer (Claude Code, Codex, Gemini CLI and more). Keys stay in ${getCredentialStoreName()}; new agents use the default`}
+      description={messages().connections.theModelsYourAgentsThinkWith(getCredentialStoreName())}
     >
-      {loadError && <ConnectionsNotice tone="danger">Could not load AI models: {describeError(loadError)}</ConnectionsNotice>}
-      {!loadError && !connections && <ConnectionsNotice>Loading AI models…</ConnectionsNotice>}
+      {loadError && <ConnectionsNotice tone="danger">{messages().connections.couldNotLoadAiModels}{' '}{describeError(loadError)}</ConnectionsNotice>}
+      {!loadError && !connections && <ConnectionsNotice>{messages().connections.loadingAiModels}</ConnectionsNotice>}
       {connections && <div className={connectionCardGridClassNames}>{keyedConnections.map(renderCard)}</div>}
       {localCliConnections.length > 0 && (
         <div role="group" aria-labelledby="connections-local-cli-h" className="flex min-w-0 flex-col gap-3 pt-2">
           <div className="flex flex-col gap-0.5">
             <h3 id="connections-local-cli-h" className="m-0 text-[14px] font-semibold">
-              Already signed in on this computer
+              {messages().connections.alreadySignedInOnThisComputer}
             </h3>
             <p className="m-0 text-[13px] leading-normal text-muted">
-              Experimental: graphrt can think with your own Claude Code or Codex. Each stays off until you turn it on
+              {messages().connections.experimentalGraphrtCanThinkWithYour}
             </p>
           </div>
           <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,360px),1fr))] gap-3">{localCliConnections.map(renderLocalCliCard)}</div>

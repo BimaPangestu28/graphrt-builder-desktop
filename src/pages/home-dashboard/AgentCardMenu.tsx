@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 import { Icon } from '@/components/ui'
 import type { Agent } from '@/api/types'
+import { useT } from '@/i18n'
 
 const menuItemClassNames =
   'flex w-full cursor-pointer items-center gap-2 border-0 bg-transparent px-3 py-2 text-left text-[13px] text-ink hover:bg-chip focus-visible:bg-chip focus-visible:outline-none'
@@ -16,6 +17,7 @@ interface AgentCardMenuProps {
  * Escape, on a click outside, or after choosing. Arrow keys move between the two items.
  */
 export function AgentCardMenu({ agent, onRename, onDelete }: AgentCardMenuProps) {
+  const t = useT().home
   const [isOpen, setIsOpen] = useState(false)
   const menuId = useId()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -61,7 +63,7 @@ export function AgentCardMenu({ agent, onRename, onDelete }: AgentCardMenuProps)
       <button
         ref={buttonRef}
         type="button"
-        aria-label={`More actions for ${agent.name}`}
+        aria-label={t.moreActionsFor(agent.name)}
         aria-haspopup="menu"
         aria-expanded={isOpen}
         aria-controls={isOpen ? menuId : undefined}
@@ -74,13 +76,13 @@ export function AgentCardMenu({ agent, onRename, onDelete }: AgentCardMenuProps)
         <div
           id={menuId}
           role="menu"
-          aria-label={`Actions for ${agent.name}`}
+          aria-label={t.actionsFor(agent.name)}
           onKeyDown={handleMenuKeyDown}
           className="absolute right-0 top-9 z-10 flex min-w-40 flex-col overflow-hidden rounded-[10px] border border-line bg-surface py-1 shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
         >
           <button ref={(element) => (itemRefs.current[0] = element)} type="button" role="menuitem" onClick={() => choose(onRename)} className={menuItemClassNames}>
             <Icon name="edit" size={14} />
-            Rename
+            {t.rename}
           </button>
           <button
             ref={(element) => (itemRefs.current[1] = element)}
@@ -90,7 +92,7 @@ export function AgentCardMenu({ agent, onRename, onDelete }: AgentCardMenuProps)
             className={`${menuItemClassNames} !text-danger`}
           >
             <Icon name="trash" size={14} />
-            Delete
+            {t.delete}
           </button>
         </div>
       )}

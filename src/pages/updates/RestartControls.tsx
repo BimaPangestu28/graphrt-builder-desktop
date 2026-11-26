@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui'
 import { describeRunningRuns, type AppUpdateControls } from './updateContext'
+import { messages } from '@/i18n'
 
 interface RestartControlsProps {
   updateControls: AppUpdateControls
@@ -17,24 +18,24 @@ export function RestartControls({ updateControls, onLater }: RestartControlsProp
     case 'installing':
       return (
         <p role="status" className="m-0 text-[13px] text-body">
-          Installing the update…
+          {messages().misc.installingTheUpdate}
         </p>
       )
     case 'confirmingBusy':
       return (
         <div className="flex flex-col gap-2">
           <p role="alert" className="m-0 text-[13px] text-body">
-            {describeRunningRuns(restartState.runningCount)}. Restarting now stops {restartState.runningCount === 1 ? 'it' : 'them'}.
+            {describeRunningRuns(restartState.runningCount)}{messages().misc.restartingNowStops}{' '}{restartState.runningCount === 1 ? 'it' : 'them'}.
           </p>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" onClick={restartWhenIdle}>
-              Restart when idle
+              {messages().misc.restartWhenIdle}
             </Button>
             <Button size="sm" variant="secondary" onClick={() => void restartNow()}>
-              Restart now
+              {messages().misc.restartNow}
             </Button>
             <Button size="sm" variant="ghost" onClick={cancelRestart}>
-              Cancel
+              {messages().misc.cancel}
             </Button>
           </div>
         </div>
@@ -43,14 +44,14 @@ export function RestartControls({ updateControls, onLater }: RestartControlsProp
       return (
         <div className="flex flex-col gap-2">
           <p role="status" className="m-0 text-[13px] text-body">
-            graphrt restarts when no agent is running
+            {messages().misc.graphrtRestartsWhenNoAgentIs}
           </p>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="secondary" onClick={() => void restartNow()}>
-              Restart now
+              {messages().misc.restartNow}
             </Button>
             <Button size="sm" variant="ghost" onClick={cancelRestart}>
-              Cancel
+              {messages().misc.cancel}
             </Button>
           </div>
         </div>
@@ -61,16 +62,16 @@ export function RestartControls({ updateControls, onLater }: RestartControlsProp
         <div className="flex flex-col gap-2">
           {restartState.kind === 'installFailed' && (
             <p role="alert" className="m-0 text-[13px] text-danger">
-              Could not install the update: {restartState.message}
+              {messages().misc.couldNotInstallTheUpdate}{' '}{restartState.message}
             </p>
           )}
           <div className="flex flex-wrap gap-2">
             <Button size="sm" onClick={() => void requestRestart()}>
-              Restart to update
+              {messages().misc.restartToUpdate}
             </Button>
             {onLater && (
               <Button size="sm" variant="ghost" onClick={onLater}>
-                Later
+                {messages().misc.later}
               </Button>
             )}
           </div>

@@ -1,6 +1,7 @@
 import { joinClassNames } from '@/components/ui'
 import { calendarFirstHour, getCalendarHourLabels, getDayOfMonth, getWeekdayName, type CalendarEntry } from '@/lib/scheduleCalendar'
 import { CalendarEntryBlock } from './CalendarEntryBlock'
+import { messages } from '@/i18n'
 
 interface CalendarGridProps {
   /** Dates shown as columns: seven for the week view, one for the day view. */
@@ -24,7 +25,7 @@ function DayColumnHeader({ isoDate, column, isToday }: { isoDate: string; column
         isToday ? 'border-b-2 border-b-brand bg-brand-tint font-semibold text-brand-strong' : 'border-b border-b-line text-muted',
       )}
     >
-      {isToday ? 'Today' : getWeekdayName(isoDate)}
+      {isToday ? messages().schedule.today : getWeekdayName(isoDate)}
       <b className={joinClassNames('text-[16px]', isToday ? 'font-bold' : 'font-semibold text-ink')}>{getDayOfMonth(isoDate)}</b>
     </div>
   )

@@ -1,5 +1,6 @@
 import type { RunInputs } from '@/api/runReviewTypes'
 import type { FlowInput } from '@/api/types'
+import { messages } from '@/i18n'
 
 /**
  * Form state of a flow's start inputs (screen 06): the control each graphrt input type gets,
@@ -77,7 +78,7 @@ export interface ParsedRunInputs {
 
 function parseFileValue(input: FlowInput, formValue: RunInputValue | undefined): { value?: unknown; problem?: string } {
   const paths = (Array.isArray(formValue) ? formValue : typeof formValue === 'string' ? [formValue] : []).map((path) => path.trim()).filter(Boolean)
-  if (paths.length === 0) return input.required ? { problem: `Choose ${controlForInput(input) === 'file' ? 'a file' : 'files'} for ${input.label}` } : {}
+  if (paths.length === 0) return input.required ? { problem: controlForInput(input) === 'file' ? messages().agentRun.chooseInputFile(input.label) : messages().agentRun.chooseInputFiles(input.label) } : {}
   return { value: controlForInput(input) === 'file' ? paths[0] : paths }
 }
 
@@ -86,16 +87,16 @@ function parseInputValue(input: FlowInput, formValue: RunInputValue | undefined)
   if (control === 'checkbox') return { value: formValue === true }
   if (control === 'file' || control === 'file-list') return parseFileValue(input, formValue)
   const text = typeof formValue === 'string' ? formValue.trim() : ''
-  if (text === '') return input.required ? { problem: `Fill in ${input.label}` } : {}
+  if (text === '') return input.required ? { problem: messages().agentRun.fillInField(input.label) } : {}
   if (control === 'number') {
     const numberValue = Number(text)
-    return Number.isFinite(numberValue) ? { value: numberValue } : { problem: `${input.label} must be a number` }
+    return Number.isFinite(numberValue) ? { value: numberValue } : { problem: messages().agentRun.mustBeNumber(input.label) }
   }
   if (control === 'json') {
     try {
       return { value: JSON.parse(text) as unknown }
     } catch {
-      return { problem: `${input.label} is not valid JSON` }
+      return { problem: messages().agentRun.notValidJson(input.label) }
     }
   }
   return { value: typeof formValue === 'string' ? formValue : text }

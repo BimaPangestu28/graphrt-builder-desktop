@@ -2,6 +2,7 @@ import { createContext, memo, useContext, useEffect, useState, type ReactNode } 
 import type { CanvasNote, CanvasNoteColor } from '@/api/agentGraphTypes'
 import { joinClassNames } from '@/components/ui'
 import { NodeResizer, type Node, type NodeProps } from '../flow/flowLibrary'
+import { messages } from '@/i18n'
 
 /** Smallest size a note can be resized to (canvas units). */
 export const noteMinimumSize = { w: 140, h: 72 }
@@ -83,30 +84,30 @@ export const NoteNodeCard = memo(function NoteNodeCard({ data, selected }: NodeP
         onResizeEnd={(_event, params) => updateNote(note.noteId, { x: Math.round(params.x), y: Math.round(params.y), w: Math.round(params.width), h: Math.round(params.height) })}
       />
       <div className="flex h-6 shrink-0 cursor-grab items-center gap-1 px-2">
-        <span className="flex-1 text-[10px] font-semibold tracking-wide text-muted uppercase">Note</span>
+        <span className="flex-1 text-[10px] font-semibold tracking-wide text-muted uppercase">{messages().nodes.note}</span>
         {!readOnly && selected && (
           <>
             {noteColors.map((color) => (
               <button
                 key={color}
                 type="button"
-                aria-label={`Make the note ${color}`}
+                aria-label={messages().nodes.makeTheNoteColor(color)}
                 aria-pressed={note.color === color}
                 onClick={() => updateNote(note.noteId, { color })}
                 className={joinClassNames('nodrag size-3 cursor-pointer rounded-full border p-0', colorClassNames[color], note.color === color && 'ring-1 ring-ink')}
               />
             ))}
-            <button type="button" aria-label="Delete note" onClick={() => removeNote(note.noteId)} className="nodrag ml-1 cursor-pointer border-0 bg-transparent p-0 text-[12px] text-muted hover:text-danger">
+            <button type="button" aria-label={messages().nodes.deleteNote} onClick={() => removeNote(note.noteId)} className="nodrag ml-1 cursor-pointer border-0 bg-transparent p-0 text-[12px] text-muted hover:text-danger">
               ✕
             </button>
           </>
         )}
       </div>
       <textarea
-        aria-label="Note text"
+        aria-label={messages().nodes.noteText}
         value={draftText}
         readOnly={readOnly}
-        placeholder={readOnly ? '' : 'Write a note…'}
+        placeholder={readOnly ? '' : messages().nodes.writeANote}
         maxLength={4000}
         onChange={(event) => setDraftText(event.target.value)}
         onBlur={() => draftText !== note.text && updateNote(note.noteId, { text: draftText })}

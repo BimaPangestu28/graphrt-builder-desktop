@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { joinClassNames } from '@/components/ui'
 import type { StepDiffRow } from './stepDiffRows'
+import { messages } from '@/i18n'
 
 const markerBaseClassNames = 'w-[22px] shrink-0 text-center text-[12px]'
 
@@ -32,19 +33,19 @@ function StepDiffRowContent({ row }: { row: StepDiffRow }) {
       return <UnchangedRow name={row.step.title} position={row.position} />
     case 'removed':
       return (
-        <MarkedRow marker="−" label="Removed" tone="danger">
+        <MarkedRow marker="−" label={messages().misc.removed} tone="danger">
           <span className="text-danger-deep line-through">{row.step.title}</span>
         </MarkedRow>
       )
     case 'added':
       return (
-        <MarkedRow marker="+" label="Added" tone="ok">
+        <MarkedRow marker="+" label={messages().misc.added} tone="ok">
           <span>{row.step.title}</span>
         </MarkedRow>
       )
     case 'changed':
       return (
-        <MarkedRow marker="~" label="Changed" tone="amber">
+        <MarkedRow marker="~" label={messages().misc.changed} tone="amber">
           <span>{row.step.title}</span>
           <span className="text-[13px] text-amber-deep">
             {row.fromSetting} → {row.toSetting}
@@ -64,7 +65,7 @@ const rowBackgroundClassNames: Record<StepDiffRow['kind'], string> = {
 /** Bordered list of steps, highlighting what a restore would remove, add or change. */
 export function StepDiffList({ rows }: { rows: StepDiffRow[] }) {
   return (
-    <ol aria-label="Steps" className="m-0 list-none overflow-hidden rounded-[14px] border border-line p-0">
+    <ol aria-label={messages().misc.steps} className="m-0 list-none overflow-hidden rounded-[14px] border border-line p-0">
       {rows.map((row) => (
         <li
           key={`${row.kind}-${row.step.id}`}

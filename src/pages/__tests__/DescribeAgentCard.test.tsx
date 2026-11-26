@@ -28,7 +28,7 @@ describe('DescribeAgentCard', () => {
     renderDescribeAgentCard()
     const prompt = screen.getByLabelText('What should your agent do?')
     expect(prompt).toHaveValue('')
-    expect(prompt).toHaveAttribute('placeholder', describeAgentPlaceholder)
+    expect(prompt).toHaveAttribute('placeholder', describeAgentPlaceholder())
     expect(screen.getByRole('button', { name: 'Build agent' })).toBeDisabled()
   })
 

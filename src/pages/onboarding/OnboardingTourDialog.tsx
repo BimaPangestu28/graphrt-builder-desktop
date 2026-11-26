@@ -6,6 +6,7 @@ import { TourStepDots } from './TourStepDots'
 import { tourSteps, type TourStep } from './tourSteps'
 import { useFocusOnOpenAndRestore } from './useDialogFocusTrap'
 import { useTourKeyboard } from './useTourKeyboard'
+import { messages } from '@/i18n'
 
 /** How the tour ended: read to the last step, or closed early. */
 export type TourOutcome = 'completed' | 'skipped'
@@ -27,7 +28,7 @@ function TourStepBody({ step, titleId, explanationId, onFollowTryLink }: { step:
       </p>
       {step.tryLink && (
         <Link to={step.tryLink.path} onClick={onFollowTryLink} className="inline-flex w-fit items-center gap-1 font-semibold text-brand">
-          Try it: {step.tryLink.label}
+          {messages().misc.tryIt}{' '}{step.tryLink.label}
           <Icon name="arrowRight" size={14} />
         </Link>
       )}
@@ -74,11 +75,11 @@ export function OnboardingTourDialog({ onClose, steps = tourSteps }: OnboardingT
       >
         <div className="flex items-center justify-between gap-3">
           <span className="text-[12px] font-semibold text-brand-strong">
-            Step {currentStepIndex + 1} of {steps.length}
+            {messages().misc.step}{' '}{currentStepIndex + 1} {messages().misc.of}{' '}{steps.length}
           </span>
           <button
             type="button"
-            aria-label="Close tour"
+            aria-label={messages().misc.closeTour}
             onClick={() => onClose('skipped')}
             className="flex size-8 cursor-pointer items-center justify-center rounded-lg border-0 bg-canvas text-ink-2 hover:bg-selected"
           >
@@ -92,16 +93,16 @@ export function OnboardingTourDialog({ onClose, steps = tourSteps }: OnboardingT
           <div className="flex items-center gap-2">
             {!isLastStep && (
               <Button variant="ghost" size="sm" onClick={() => onClose('skipped')}>
-                Skip tour
+                {messages().misc.skipTour}
               </Button>
             )}
             {!isFirstStep && (
               <Button variant="secondary" size="sm" onClick={() => goToStep(currentStepIndex - 1)}>
-                Back
+                {messages().misc.back}
               </Button>
             )}
             <button ref={primaryButtonRef} type="button" onClick={goForward} className={buttonClassNames('primary', 'sm')}>
-              {isLastStep ? 'Done' : 'Next'}
+              {isLastStep ? messages().misc.done : messages().misc.next}
             </button>
           </div>
         </div>

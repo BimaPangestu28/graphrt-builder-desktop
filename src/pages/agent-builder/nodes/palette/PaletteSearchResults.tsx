@@ -1,6 +1,7 @@
 import type { PaletteRowHandlers } from './PaletteBrowse'
 import { PaletteOptionRow } from './PaletteOptionRow'
 import { describeSearchSummary, type PaletteSearchResult } from './paletteSearch'
+import { messages } from '@/i18n'
 
 /** Results shown before "Show all N results". */
 export const searchPreviewCount = 12
@@ -23,14 +24,14 @@ export function PaletteSearchResults({ query, results, showsAll, handlers, onSho
   if (results.length === 0) {
     return (
       <div role="status" className="flex flex-col items-center gap-1 px-4 py-10 text-center">
-        <span className="text-[13px] font-semibold text-ink">Nothing matches “{query.trim()}”</span>
-        <span className="text-[12px] leading-normal text-muted">Try another word, like “send”, “model” or “list”. Plugins not in the catalog can be added in Plugins.</span>
+        <span className="text-[13px] font-semibold text-ink">{messages().nodes.nothingMatches}{query.trim()}”</span>
+        <span className="text-[12px] leading-normal text-muted">{messages().nodes.tryAnotherWordLikeSendModel}</span>
       </div>
     )
   }
   const shownResults = visibleSearchResults(results, showsAll)
   return (
-    <section aria-label="Search results" className="flex flex-col gap-0.5">
+    <section aria-label={messages().nodes.searchResults} className="flex flex-col gap-0.5">
       <p role="status" className="m-0 px-2 pb-1 pt-2 text-[12px] text-muted">
         {describeSearchSummary(results)}
       </p>
@@ -51,7 +52,7 @@ export function PaletteSearchResults({ query, results, showsAll, handlers, onSho
       </ul>
       {shownResults.length < results.length && (
         <button type="button" onClick={onShowAll} className="cursor-pointer self-start border-0 bg-transparent px-2 py-1 text-[12px] font-medium text-ok-strong hover:underline">
-          Show all {results.length} results
+          {messages().nodes.showAll}{' '}{results.length} {messages().nodes.results}
         </button>
       )}
     </section>

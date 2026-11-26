@@ -1,5 +1,6 @@
 import { getDayOfMonth, getWeekdayName, type CalendarEntry } from '@/lib/scheduleCalendar'
 import { CalendarEntryBlock } from './CalendarEntryBlock'
+import { messages } from '@/i18n'
 
 interface ScheduleListProps {
   entries: CalendarEntry[]
@@ -16,7 +17,7 @@ export function ScheduleList({ entries, label }: ScheduleListProps) {
   return (
     <section aria-label={label} className="min-w-0 flex-[999_1_620px] rounded-2xl border border-line bg-surface p-2">
       {sortedEntries.length === 0 ? (
-        <p className="m-0 p-4 text-body">Nothing scheduled this week</p>
+        <p className="m-0 p-4 text-body">{messages().schedule.nothingScheduledThisWeek}</p>
       ) : (
         <ol className="m-0 flex list-none flex-col p-0">
           {sortedEntries.map((entry) => (

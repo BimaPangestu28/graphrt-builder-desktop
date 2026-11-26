@@ -2,6 +2,7 @@ import { useState, type MouseEvent } from 'react'
 import { openModelInstallPage } from '@/api/credentials'
 import type { InstallableModelProvider } from '@/api/types'
 import { describeError } from '@/lib/agentDisplay'
+import { messages } from '@/i18n'
 
 interface InstallPageLinkProps {
   provider: InstallableModelProvider
@@ -25,7 +26,7 @@ export function InstallPageLink({ provider, url, label }: InstallPageLinkProps) 
     try {
       await openModelInstallPage(provider)
     } catch (openError) {
-      setErrorMessage(`Could not open the page: ${describeError(openError)}`)
+      setErrorMessage(messages().platform.couldNotOpenPage(describeError(openError)))
     }
   }
 

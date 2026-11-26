@@ -1,6 +1,7 @@
 import type { Run } from '@/api/types'
 import { formatDurationMs, formatElapsedClock } from './runProgress'
 import { countTopLevelSteps, type RunStepView } from './runSteps'
+import { messages } from '@/i18n'
 
 /** Header and sidebar texts of the Test run screen (06), from the run and its steps. */
 
@@ -22,15 +23,16 @@ function measureElapsedMs(run: Run, now: number): number {
  * @param now - Current time in ms (number)
  */
 export function buildRunHeaderMeta(run: Run | null, steps: RunStepView[], now: number): string {
-  if (!run) return 'Starting the test…'
+  const t = messages().agentRun
+  if (!run) return t.startingTest
   const { doneCount, totalCount } = countTopLevelSteps(steps)
-  const countPart = totalCount > 0 ? ` · ${doneCount} of ${totalCount} steps done` : ''
+  const countPart = totalCount > 0 ? t.stepsDoneOf(doneCount, totalCount) : ''
   const elapsedMs = measureElapsedMs(run, now)
-  if (run.status === 'running') return `Running · ${formatElapsedClock(elapsedMs)}${countPart}`
-  if (run.status === 'paused') return `Waiting for you · ${formatElapsedClock(elapsedMs)}${countPart}`
-  if (run.status === 'failed') return `Failed after ${formatDurationMs(elapsedMs)}${countPart}`
-  if (run.status === 'aborted') return `Stopped after ${formatDurationMs(elapsedMs)}${countPart}`
-  return `Finished in ${formatDurationMs(elapsedMs)}`
+  if (run.status === 'running') return t.headerRunning(formatElapsedClock(elapsedMs), countPart)
+  if (run.status === 'paused') return t.headerWaiting(formatElapsedClock(elapsedMs), countPart)
+  if (run.status === 'failed') return t.headerFailed(formatDurationMs(elapsedMs), countPart)
+  if (run.status === 'aborted') return t.headerStopped(formatDurationMs(elapsedMs), countPart)
+  return t.finishedIn(formatDurationMs(elapsedMs))
 }
 
 export interface SidebarRunStatus {
@@ -40,9 +42,10 @@ export interface SidebarRunStatus {
 
 /** The sidebar's agent status while testing and after the test ended. */
 export function buildSidebarRunStatus(run: Run | null): SidebarRunStatus {
-  if (run?.status === 'paused') return { status: 'Testing · waiting for you', statusTone: 'amber' }
-  if (run?.status === 'failed') return { status: 'Test failed', statusTone: 'danger' }
-  if (run?.status === 'aborted') return { status: 'Test stopped', statusTone: 'amber' }
-  if (run?.status === 'succeeded') return { status: 'Tested', statusTone: 'brand' }
-  return { status: 'Testing', statusTone: 'brand' }
+  const t = messages().agentRun
+  if (run?.status === 'paused') return { status: t.sidebarTestingWaiting, statusTone: 'amber' }
+  if (run?.status === 'failed') return { status: t.sidebarTestFailed, statusTone: 'danger' }
+  if (run?.status === 'aborted') return { status: t.sidebarTestStopped, statusTone: 'amber' }
+  if (run?.status === 'succeeded') return { status: t.sidebarTested, statusTone: 'brand' }
+  return { status: t.sidebarTesting, statusTone: 'brand' }
 }

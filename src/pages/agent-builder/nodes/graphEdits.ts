@@ -1,5 +1,6 @@
 import type { AgentGraph, EdgeEdit, GraphEdge, GraphEdit, GraphNode, JsonValue, NodeEdit, NodeLayout } from '@/api/agentGraphTypes'
 import { deriveNodePorts, isEdgeUnused, nodeKindTitle, pluginOfKind, SOURCE_HANDLE } from '@/lib/agentGraphRules'
+import { messages } from '@/i18n'
 
 /**
  * Pure edit operations on an {@link AgentGraph} working copy. `useAgentGraph` runs
@@ -71,7 +72,7 @@ export function updateGraphNode(graph: AgentGraph, nodeId: string, changes: Node
 
 /** Adds a node (after its container's last child when it has a parent, else at the end). */
 export function addGraphNode(graph: AgentGraph, node: GraphNode): AgentGraph {
-  if (graph.nodes.some((existing) => existing.id === node.id)) throw new Error(`a node called ${node.id} already exists`)
+  if (graph.nodes.some((existing) => existing.id === node.id)) throw new Error(messages().nodes.aNodeCalledIdAlreadyExists(node.id))
   return { ...graph, nodes: [...graph.nodes, node] }
 }
 
@@ -328,9 +329,9 @@ function checkLeavingLoop(graph: AgentGraph, node: GraphNode, movedIds: Set<stri
   const oldParent = node.parent as string
   const oldBody = containerBodyIds(graph, oldParent)
   const usesLoopValue = [...referencedNodeIds(graph, node)].some((referencedId) => referencedId === oldParent || (oldBody.has(referencedId) && !movedIds.has(referencedId)))
-  if (usesLoopValue) return `${node.displayTitle} uses values from inside ${titleOfNode(graph, oldParent)}`
+  if (usesLoopValue) return messages().nodes.displaytitleUsesValuesFromInsideValue(node.displayTitle, titleOfNode(graph, oldParent))
   const container = graph.nodes.find((candidate) => candidate.id === oldParent)
-  if (container && referencedNodeIds(graph, container).has(node.id)) return `${container.displayTitle} collects its result from ${node.displayTitle}`
+  if (container && referencedNodeIds(graph, container).has(node.id)) return messages().nodes.displaytitleCollectsItsResultFromDisplaytitle2(container.displayTitle, node.displayTitle)
   return null
 }
 
@@ -339,13 +340,13 @@ function checkEnteringLoop(graph: AgentGraph, node: GraphNode, newParent: string
   const outsideUser = graph.nodes.find(
     (candidate) => candidate.id !== newParent && !newBody.has(candidate.id) && !movedIds.has(candidate.id) && referencedNodeIds(graph, candidate).has(node.id),
   )
-  return outsideUser ? `${outsideUser.displayTitle} uses its result outside ${titleOfNode(graph, newParent)}` : null
+  return outsideUser ? messages().nodes.displaytitleUsesItsResultOutsideValue(outsideUser.displayTitle, titleOfNode(graph, newParent)) : null
 }
 
 function checkOneReparent(graph: AgentGraph, node: GraphNode, newParent: string | null, movedIds: Set<string>): string | null {
-  if (node.hidden) return "Can't move the start of a loop body"
-  if (newParent && (node.kind === 'start' || node.kind === 'end')) return `${node.displayTitle} stays outside loops`
-  if (newParent && node.container) return "A loop can't go inside another loop"
+  if (node.hidden) return messages().nodes.cantMoveTheStartOfA
+  if (newParent && (node.kind === 'start' || node.kind === 'end')) return messages().nodes.displaytitleStaysOutsideLoops(node.displayTitle)
+  if (newParent && node.container) return messages().nodes.aLoopCantGoInsideAnother
   if (node.parent && node.parent !== newParent) {
     const reason = checkLeavingLoop(graph, node, movedIds)
     if (reason) return reason
@@ -369,11 +370,11 @@ function checkOneReparent(graph: AgentGraph, node: GraphNode, newParent: string 
  * // { allowed: false, reason: 'Write a short message uses values from inside For each place' }
  */
 export function checkReparentNodes(graph: AgentGraph, nodeIds: string[], newParent: string | null): ReparentCheck {
-  if (newParent && !graph.nodes.some((node) => node.id === newParent && node.container)) return { allowed: false, reason: 'Steps can only go inside a loop' }
+  if (newParent && !graph.nodes.some((node) => node.id === newParent && node.container)) return { allowed: false, reason: messages().nodes.stepsCanOnlyGoInsideA }
   const movedIds = new Set(nodeIds)
   for (const nodeId of nodeIds) {
     const node = graph.nodes.find((candidate) => candidate.id === nodeId)
-    if (!node) return { allowed: false, reason: `There is no step called ${nodeId}` }
+    if (!node) return { allowed: false, reason: messages().nodes.thereIsNoStepCalledNodeid(nodeId) }
     const reason = checkOneReparent(graph, node, newParent, movedIds)
     if (reason) return { allowed: false, reason }
   }

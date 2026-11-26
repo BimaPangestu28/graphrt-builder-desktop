@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { getCredentialStoreName, getCredentialStoreShortName } from '@/lib/platform'
 import { Icon, LogoMark, StatusDot, joinClassNames } from '@/components/ui'
 import type { TourStepId } from './tourSteps'
+import { messages } from '@/i18n'
 
 /**
  * Small decorative pictures for the onboarding tour, drawn with the app's own tokens and
@@ -23,7 +24,7 @@ function MiniCard({ children, className }: { children: ReactNode; className?: st
 }
 
 function HowItWorksIllustration() {
-  const stages = ['Describe', 'Steps', 'Test', 'Schedule']
+  const stages = [messages().misc.describe, messages().misc.steps, messages().misc.test, messages().misc.schedule]
   return (
     <div className="flex flex-wrap items-center justify-center gap-1.5">
       {stages.map((stage, index) => (
@@ -39,12 +40,12 @@ function HowItWorksIllustration() {
 function BuildWithChatIllustration() {
   return (
     <div className="flex w-full max-w-[320px] flex-col gap-1.5 text-[12px]">
-      <span className="self-end rounded-[10px] bg-ink px-2.5 py-1.5 text-white">Also send me a summary</span>
+      <span className="self-end rounded-[10px] bg-ink px-2.5 py-1.5 text-white">{messages().misc.alsoSendMeASummary}</span>
       <span className="flex items-center gap-1.5 self-start rounded-[10px] border border-line-strong bg-surface px-2.5 py-1.5 text-ink-2">
         <LogoMark size={14} />
-        Added step 6 · Send summary
+        {messages().misc.addedStep6SendSummary}
       </span>
-      <span className={joinClassNames(chipClassNames, 'self-start')}>Version 3 saved</span>
+      <span className={joinClassNames(chipClassNames, 'self-start')}>{messages().misc.version3Saved}</span>
     </div>
   )
 }
@@ -53,15 +54,15 @@ function TestRunIllustration() {
   return (
     <div className="grid w-full max-w-[340px] grid-cols-2 gap-2">
       <MiniCard className="border-2 border-amber-line">
-        <span className="font-semibold">Ask me before sending</span>
+        <span className="font-semibold">{messages().misc.askMeBeforeSending}</span>
         <span className="flex gap-1">
-          <span className="rounded-md bg-ok px-1.5 py-0.5 text-[11px] font-semibold text-white">Approve</span>
-          <span className="rounded-md border border-line-strong px-1.5 py-0.5 text-[11px]">Skip</span>
+          <span className="rounded-md bg-ok px-1.5 py-0.5 text-[11px] font-semibold text-white">{messages().misc.approve}</span>
+          <span className="rounded-md border border-line-strong px-1.5 py-0.5 text-[11px]">{messages().misc.skip}</span>
         </span>
       </MiniCard>
       <MiniCard>
         <span className="flex items-center gap-1 font-semibold">
-          <StatusDot tone="ok" /> Live view
+          <StatusDot tone="ok" /> {messages().misc.liveView}
         </span>
         <span className="h-2 w-4/5 rounded bg-chip" />
         <span className="h-2 w-3/5 rounded bg-chip" />
@@ -73,10 +74,10 @@ function TestRunIllustration() {
 function PluginsIllustration() {
   return (
     <div className="flex w-full max-w-[340px] flex-col gap-1.5">
-      {['Google Maps scraper', 'WhatsApp Web'].map((pluginName, index) => (
+      {[messages().misc.googleMapsScraper, messages().misc.whatsappWeb].map((pluginName, index) => (
         <MiniCard key={pluginName} className="flex-row items-center justify-between">
           <span className="font-semibold">{pluginName}</span>
-          <span className={joinClassNames(chipClassNames, index === 0 ? 'border-ok-soft bg-ok-tint text-ok-strong' : '')}>{index === 0 ? 'Trusted' : 'Scan QR code'}</span>
+          <span className={joinClassNames(chipClassNames, index === 0 ? 'border-ok-soft bg-ok-tint text-ok-strong' : '')}>{index === 0 ? messages().misc.trusted : messages().misc.scanQrCode}</span>
         </MiniCard>
       ))}
     </div>
@@ -86,7 +87,7 @@ function PluginsIllustration() {
 function SecretsIllustration() {
   return (
     <MiniCard className="w-full max-w-[300px]">
-      <span className="font-mono font-semibold">CRM_API_TOKEN</span>
+      <span className="font-mono font-semibold">{messages().misc.crmApiToken}</span>
       <span className="flex items-center justify-between text-muted">
         <span className="tracking-[2px]">••••••••••</span>
         <span>{getCredentialStoreName()}</span>
@@ -97,9 +98,9 @@ function SecretsIllustration() {
 
 function RunsScheduleInboxIllustration() {
   const rows = [
-    { label: 'Maps leads to WhatsApp', meta: 'Succeeded', tone: 'ok' as const },
-    { label: 'Morning digest', meta: 'Next: 08:00', tone: 'brand' as const },
-    { label: 'Catering assistant', meta: 'Waiting for you', tone: 'amber' as const },
+    { label: messages().misc.mapsLeadsToWhatsapp, meta: messages().misc.succeeded, tone: 'ok' as const },
+    { label: messages().misc.morningDigest, meta: messages().misc.next0800, tone: 'brand' as const },
+    { label: messages().misc.cateringAssistant, meta: messages().misc.waitingForYou, tone: 'amber' as const },
   ]
   return (
     <div className="flex w-full max-w-[340px] flex-col gap-1">
@@ -139,8 +140,8 @@ function PrivacyIllustration() {
         <path d="M34 14v-3a4 4 0 0 1 8 0v3" stroke="currentColor" strokeWidth="2" />
       </svg>
       <span className="flex flex-col gap-1">
-        <span className={chipClassNames}>Agents and runs</span>
-        <span className={chipClassNames}>Keys in {getCredentialStoreShortName()}</span>
+        <span className={chipClassNames}>{messages().misc.agentsAndRuns}</span>
+        <span className={chipClassNames}>{messages().misc.keysIn}{' '}{getCredentialStoreShortName()}</span>
       </span>
     </div>
   )

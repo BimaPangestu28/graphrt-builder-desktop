@@ -20,6 +20,7 @@ use tauri::{AppHandle, Emitter};
 use tauri_plugin_notification::NotificationExt;
 
 use super::app_settings::AppSettings;
+use super::ui_language::UiStrings;
 use crate::engine::{RunEventPayload, RunEventSink};
 use crate::storage::models::{Run, RunStatus, RunTrigger};
 use crate::storage::Database;
@@ -89,9 +90,13 @@ impl NotifyingSink {
         if run.trigger == RunTrigger::Test {
             return None;
         }
-        let agent_name =
-            self.db.get_agent(&payload.agent_id).map(|agent| agent.name).unwrap_or_else(|_| "An agent".into());
-        Some(describe_run(&agent_name, &run, payload.status))
+        let strings = settings.ui_strings();
+        let agent_name = self
+            .db
+            .get_agent(&payload.agent_id)
+            .map(|agent| agent.name)
+            .unwrap_or_else(|_| strings.unknown_agent().into());
+        Some(describe_run(strings, &agent_name, &run, payload.status))
     }
 }
 
@@ -112,19 +117,19 @@ fn is_attention_status_change(payload: &RunEventPayload) -> bool {
 }
 
 /// "Maps leads to WhatsApp needs your approval" / "Morning email digest failed".
-fn describe_run(agent_name: &str, run: &Run, status: RunStatus) -> RunNotification {
+fn describe_run(strings: UiStrings, agent_name: &str, run: &Run, status: RunStatus) -> RunNotification {
     let target = RunNotificationTarget { run_id: run.id.clone(), agent_id: run.agent_id.clone() };
     if status == RunStatus::Paused {
         let waiting_count = run.pause_reasons.as_ref().and_then(|reasons| reasons.as_array()).map_or(1, Vec::len);
         let body = if waiting_count > 1 {
-            format!("{waiting_count} items are waiting for you. Click to review them")
+            strings.items_waiting_body(waiting_count)
         } else {
-            "Click to review it before anything is sent".to_owned()
+            strings.review_before_sending_body().to_owned()
         };
-        return RunNotification { title: format!("{agent_name} needs your approval"), body, target };
+        return RunNotification { title: strings.needs_approval_title(agent_name), body, target };
     }
-    let body = run.error_message.clone().unwrap_or_else(|| "Click to see what went wrong".to_owned());
-    RunNotification { title: format!("{agent_name} failed"), body, target }
+    let body = run.error_message.clone().unwrap_or_else(|| strings.see_what_went_wrong_body().to_owned());
+    RunNotification { title: strings.failed_title(agent_name), body, target }
 }
 
 /// Shows notifications through `tauri-plugin-notification` and remembers which
@@ -318,6 +323,21 @@ mod tests {
         assert_eq!(shown.len(), 1);
         assert_eq!(shown[0].title, "Maps leads to WhatsApp failed");
         assert_eq!(shown[0].body, "Gmail said no");
+    }
+
+    #[test]
+    fn notifies_in_the_stored_language() {
+        let fixture = fixture(RunTrigger::Manual);
+        AppSettings { language: Some(crate::desktop::ui_language::UiLanguage::Id), ..AppSettings::default() }
+            .save(&fixture.db)
+            .unwrap();
+        fixture.db.finish_run(&fixture.run.id, RunStatus::Failed, None, None).unwrap();
+
+        fixture.sink.send(payload(&fixture.run, RunStatus::Failed, "status_changed"));
+
+        let shown = notifications(&fixture);
+        assert_eq!(shown[0].title, "Maps leads to WhatsApp gagal");
+        assert_eq!(shown[0].body, "Klik untuk melihat apa yang salah");
     }
 
     #[test]

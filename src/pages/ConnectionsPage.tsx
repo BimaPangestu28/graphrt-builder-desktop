@@ -19,6 +19,7 @@ import { buildModelConnections } from './connections/modelConnections'
 import { ModelProvidersSection } from './connections/ModelProvidersSection'
 import { SecretsSection } from './connections/SecretsSection'
 import { OnlineAccountsSection } from './deploy/OnlineAccountsSection'
+import { messages } from '@/i18n'
 
 /**
  * `/connections`: redirects to a tab. Old `?section=` links still land in the right place
@@ -48,11 +49,11 @@ function SignedOutBanner({ connection, onReconnect }: { connection: Connection; 
     <div role="alert" className="flex flex-wrap items-center gap-x-3.5 gap-y-2 rounded-[14px] border border-danger-line bg-danger-tint px-4 py-3">
       <Icon name="alert" size={18} className="shrink-0 text-danger" />
       <span className="min-w-0 flex-[1_1_280px] leading-normal">
-        <b className="font-semibold">{connection.name} needs you to sign in again.</b>{' '}
-        <span className="text-danger-deep">{connection.connectedDescription.replace('Used by ', '')} is paused until then</span>
+        <b className="font-semibold">{connection.name} {messages().connections.needsYouToSignInAgain}</b>{' '}
+        <span className="text-danger-deep">{connection.connectedDescription.replace(/^(Used by|Dipakai oleh) /, '')} {messages().connections.isPausedUntilThen}</span>
       </span>
       <Button size="sm" onClick={() => onReconnect(connection.id)} className="ml-auto">
-        Reconnect {connection.name}
+        {messages().connections.reconnect}{' '}{connection.name}
       </Button>
     </div>
   )
@@ -84,7 +85,7 @@ function ConnectionsScreen({ activeTab }: { activeTab: ConnectionsTab }) {
   return (
     <AppShell activeNav="connections">
       <PageFrame className="gap-6">
-        <PageTitleBlock title="Connections" subtitle={`AI models, secrets, tools and the accounts that keep your agents online. Keys and secrets stay in ${getCredentialStoreName()}`} />
+        <PageTitleBlock title={messages().connections.connections} subtitle={messages().connections.aiModelsSecretsToolsAndThe(getCredentialStoreName())} />
         {signedOutConnections.map((connection) => (
           <SignedOutBanner key={connection.id} connection={connection} onReconnect={markConnected} />
         ))}

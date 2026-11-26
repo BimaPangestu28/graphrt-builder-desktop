@@ -4,6 +4,7 @@ import { joinClassNames, StrokeIcon } from '@/components/ui'
 import { PluginIcon } from '@/pages/plugins/PluginIcon'
 import type { PaletteAction } from './paletteCatalog'
 import { startNodeKindDrag } from './paletteDrag'
+import { messages } from '@/i18n'
 
 /** Line icon per built-in group, so the list scans like the library (artboard 46). */
 const groupIconPaths: Record<NodeKindGroup, ReactNode> = {
@@ -77,8 +78,8 @@ function ActionTile({ action, variant }: { action: PaletteAction; variant: 'brow
 
 function StatusBadge({ action }: { action: PaletteAction }) {
   if (!action.plugin) return null
-  if (action.plugin.installed) return <span className="shrink-0 text-[11px] font-medium text-ok-strong">Installed</span>
-  return <span className="shrink-0 rounded-md border border-line-strong bg-surface px-1.5 py-px text-[11px] font-semibold text-ink">Install</span>
+  if (action.plugin.installed) return <span className="shrink-0 text-[11px] font-medium text-ok-strong">{messages().nodes.installed}</span>
+  return <span className="shrink-0 rounded-md border border-line-strong bg-surface px-1.5 py-px text-[11px] font-semibold text-ink">{messages().nodes.install}</span>
 }
 
 interface PaletteOptionRowProps {

@@ -1,4 +1,5 @@
 import type { FormEvent, KeyboardEvent } from 'react'
+import { messages } from '@/i18n'
 
 interface ReplyComposerProps {
   draft: string
@@ -35,7 +36,7 @@ export function ReplyComposer({ draft, onDraftChange, onSend, canReply, disabled
     <form onSubmit={handleSubmit} className="flex flex-col gap-2.5 border-t border-line px-5 pt-3 pb-4">
       {canReply && suggestedReply && (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[12px] text-muted">Suggested</span>
+          <span className="text-[12px] text-muted">{messages().inbox.suggested}</span>
           <button
             type="button"
             lang="id"
@@ -47,7 +48,7 @@ export function ReplyComposer({ draft, onDraftChange, onSend, canReply, disabled
         </div>
       )}
       <label htmlFor="reply" className="sr-only">
-        Your reply
+        {messages().inbox.yourReply}
       </label>
       <div className="flex items-end gap-2">
         <textarea
@@ -57,7 +58,7 @@ export function ReplyComposer({ draft, onDraftChange, onSend, canReply, disabled
           disabled={!canReply}
           onChange={(event) => onDraftChange(event.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={canReply ? 'Reply as yourself' : disabledPlaceholder}
+          placeholder={canReply ? messages().inbox.replyAsYourself : disabledPlaceholder}
           className="min-w-0 flex-1 resize-none rounded-xl border border-line-strong px-3 py-2.5 text-[14px] leading-normal text-ink outline-none focus:border-brand disabled:bg-subtle"
         />
         <button
@@ -65,7 +66,7 @@ export function ReplyComposer({ draft, onDraftChange, onSend, canReply, disabled
           disabled={!canSend}
           className="h-11 cursor-pointer rounded-[10px] border-0 bg-ink px-4 text-[14px] font-medium text-white hover:bg-ink-2 disabled:cursor-default disabled:opacity-50"
         >
-          Send
+          {messages().inbox.send}
         </button>
       </div>
     </form>

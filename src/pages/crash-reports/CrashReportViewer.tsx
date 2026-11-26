@@ -4,6 +4,7 @@ import { getCrashReport } from '@/api/crashReports'
 import { StrokeIcon } from '@/components/ui'
 import { useAsyncData } from '@/hooks/useAsyncData'
 import { keepTabFocusInside, useFocusOnOpenAndRestore } from '@/pages/onboarding/useDialogFocusTrap'
+import { messages } from '@/i18n'
 
 interface CrashReportViewerProps {
   reportId: string
@@ -51,14 +52,14 @@ export function CrashReportViewer({ reportId, onClose }: CrashReportViewerProps)
         <div className="flex items-start justify-between gap-3">
           <span className="flex flex-col gap-1">
             <h2 id={titleId} className="m-0 text-[15px] font-semibold text-ink">
-              Crash report
+              {messages().misc.crashReport}
             </h2>
-            <span className="text-[13px] text-body">Exactly what is saved and what would be shared. Keys, inputs, outputs, file contents, emails and your user name are removed</span>
+            <span className="text-[13px] text-body">{messages().misc.exactlyWhatIsSavedAndWhat}</span>
           </span>
           <button
             ref={closeButtonRef}
             type="button"
-            aria-label="Close the crash report"
+            aria-label={messages().misc.closeTheCrashReport}
             onClick={onClose}
             className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent text-muted hover:bg-subtle focus-visible:outline-2 focus-visible:outline-brand"
           >
@@ -69,17 +70,17 @@ export function CrashReportViewer({ reportId, onClose }: CrashReportViewerProps)
         </div>
         {error && (
           <p role="alert" className="m-0 text-[13px] text-danger">
-            Could not open the report: {error.message}
+            {messages().misc.couldNotOpenTheReport}{' '}{error.message}
           </p>
         )}
         {!error && reportJson === null && (
           <p role="status" className="m-0 text-[13px] text-muted">
-            Loading the report…
+            {messages().misc.loadingTheReport}
           </p>
         )}
         {reportJson !== null && (
           <pre
-            aria-label="Crash report contents"
+            aria-label={messages().misc.crashReportContents}
             className="m-0 min-h-0 flex-auto overflow-auto rounded-lg border border-line bg-subtle p-3 font-mono text-[12px] leading-relaxed whitespace-pre-wrap break-words text-ink"
           >
             {reportJson}

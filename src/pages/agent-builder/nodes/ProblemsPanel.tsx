@@ -1,6 +1,7 @@
 import { joinClassNames } from '@/components/ui'
 import type { ProblemsPanelProps } from './contracts'
 import { buildFixRequest, describeProblemLabel, problemNodeTitle, problemTargetNodeId, sortProblems } from './problems/problemDisplay'
+import { messages } from '@/i18n'
 
 const panelButtonClassNames = 'h-7 cursor-pointer rounded-md border border-line-strong bg-surface px-2.5 text-[12px] font-medium text-ink hover:bg-subtle'
 
@@ -17,24 +18,24 @@ export function ProblemsPanel({ problems, graph, onSelectNode, onShowProblem, on
   if (sorted.length === 0) {
     if (!wasValidated) return null
     return (
-      <section aria-label="Problems" className="flex items-center gap-2 border-t border-line bg-surface px-4 py-2 text-[12px] text-ok-strong">
-        <span className="flex-1">Validate found no problems</span>
+      <section aria-label={messages().nodes.problems} className="flex items-center gap-2 border-t border-line bg-surface px-4 py-2 text-[12px] text-ok-strong">
+        <span className="flex-1">{messages().nodes.validateFoundNoProblems}</span>
         {onClose && (
           <button type="button" onClick={onClose} className={panelButtonClassNames}>
-            Close
+            {messages().nodes.close}
           </button>
         )}
       </section>
     )
   }
-  const heading = errorCount > 0 ? `${errorCount === 1 ? '1 problem' : `${errorCount} problems`} to fix before it runs` : `${sorted.length === 1 ? '1 warning' : `${sorted.length} warnings`}`
+  const heading = errorCount > 0 ? messages().nodes.problemsToFix(errorCount) : messages().nodes.warningsCount(sorted.length)
   return (
-    <section aria-label="Problems" className="box-border flex max-h-56 flex-col gap-2 overflow-y-auto border-t border-line bg-surface px-4 py-2.5 text-[12px]">
+    <section aria-label={messages().nodes.problems} className="box-border flex max-h-56 flex-col gap-2 overflow-y-auto border-t border-line bg-surface px-4 py-2.5 text-[12px]">
       <div className="flex items-center gap-2">
         <span className={joinClassNames('flex-1 text-[13px] font-semibold', errorCount > 0 ? 'text-danger' : 'text-amber-strong')}>{heading}</span>
         {onClose && (
           <button type="button" onClick={onClose} className={panelButtonClassNames}>
-            Close
+            {messages().nodes.close}
           </button>
         )}
       </div>
@@ -59,17 +60,17 @@ export function ProblemsPanel({ problems, graph, onSelectNode, onShowProblem, on
               <div className="flex flex-wrap gap-1.5">
                 {trustHost && onTrustHost && (
                   <button type="button" onClick={() => onTrustHost(trustHost)} className={panelButtonClassNames}>
-                    Trust {trustHost}
+                    {messages().nodes.trust}{' '}{trustHost}
                   </button>
                 )}
                 {nodeId && (
                   <button type="button" onClick={() => (onShowProblem ? onShowProblem(problem, nodeId) : onSelectNode(nodeId))} className={panelButtonClassNames}>
-                    Show node
+                    {messages().nodes.showNode}
                   </button>
                 )}
                 {onFixWithBuilder && (
                   <button type="button" onClick={() => onFixWithBuilder(buildFixRequest(problem, graph))} className={panelButtonClassNames}>
-                    Fix with builder
+                    {messages().nodes.fixWithBuilder}
                   </button>
                 )}
               </div>

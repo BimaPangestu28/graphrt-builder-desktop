@@ -11,6 +11,7 @@ import { InspectorFooter, InspectorHeader } from './inspector/InspectorHeader'
 import { InspectorProvider, useInspector } from './inspector/InspectorContext'
 import { pickSettingsPanel } from './inspector/panelRegistry'
 import { SectionRequestProvider, useFieldRequestFallback } from './inspector/sectionRequest'
+import { messages } from '@/i18n'
 
 /**
  * The settings of the selected step (spec B-boards B1–B17), on the right of the Nodes
@@ -44,7 +45,7 @@ export function duplicateInspectedNode(graph: AgentGraph, nodeId: string, positi
 function ProblemList({ problems }: { problems: GraphProblem[] }) {
   if (problems.length === 0) return null
   return (
-    <ul aria-label="Problems with this step" className="m-0 flex list-none flex-col gap-1 p-0">
+    <ul aria-label={messages().nodes.problemsWithThisStep} className="m-0 flex list-none flex-col gap-1 p-0">
       {problems.map((problem) => (
         <li
           key={`${problem.code}-${problem.edgeId ?? ''}-${problem.message}`}
@@ -69,16 +70,16 @@ function InspectorBody({ problems, onClose, onAskBuilder }: InspectorBodyProps) 
   useFieldRequestFallback(bodyRef)
   const SettingsPanel = pickSettingsPanel(node, kindInfo)
   const outputs = listNodeOutputs(node, kindInfo ?? undefined).map((output) => ({ name: output.path.slice(1).join('.'), hint: output.typeHint }))
-  const errorOutputs = node.onError.strategy !== 'fail' ? [{ name: 'error_message', hint: 'text · when it failed' }, { name: 'error_type', hint: 'text · when it failed' }] : []
+  const errorOutputs = node.onError.strategy !== 'fail' ? [{ name: 'error_message', hint: messages().nodes.textWhenItFailed }, { name: 'error_type', hint: messages().nodes.textWhenItFailed }] : []
 
   const duplicate = () => {
     const { layouts } = duplicateInspectedNode(graph, node.id, controller.positions)
     // The edit starts from the controller's latest graph; positions follow once it exists.
-    controller.applyEdit((current) => duplicateInspectedNode(current, node.id, controller.positions).graph, `duplicated ${node.displayTitle}`)
+    controller.applyEdit((current) => duplicateInspectedNode(current, node.id, controller.positions).graph, messages().nodes.duplicatedDisplaytitle(node.displayTitle))
     if (layouts.length > 0) controller.moveNodes(layouts)
   }
   const remove = () => {
-    controller.removeNodes([node.id], `removed ${node.displayTitle}`)
+    controller.removeNodes([node.id], messages().nodes.removedDisplaytitle(node.displayTitle))
     onClose()
   }
 
@@ -86,7 +87,7 @@ function InspectorBody({ problems, onClose, onAskBuilder }: InspectorBodyProps) 
     <div ref={bodyRef} className="contents">
       <InspectorHeader onClose={onClose} />
       <ProblemList problems={problems} />
-      {readOnly && <p className="m-0 rounded-[10px] bg-subtle px-3 py-2 text-[12px] text-muted">The builder is changing this agent. Settings are read-only until it is done.</p>}
+      {readOnly && <p className="m-0 rounded-[10px] bg-subtle px-3 py-2 text-[12px] text-muted">{messages().nodes.theBuilderIsChangingThisAgent2}</p>}
       <SettingsPanel key={node.id} />
       <ErrorHandlingSection />
       <OutputsList outputs={[...outputs, ...errorOutputs]} />
@@ -113,7 +114,7 @@ export function NodeInspector({ node, graph, kindInfo, nodeKinds, problems, read
   const request = useRequestForNode(requestedSection, node?.id ?? null)
   if (!node) return null
   return (
-    <aside aria-label="Step settings" className="box-border flex w-[340px] shrink-0 flex-col gap-4 overflow-y-auto border-l border-line bg-surface p-4" data-testid="node-inspector">
+    <aside aria-label={messages().nodes.stepSettings} className="box-border flex w-[340px] shrink-0 flex-col gap-4 overflow-y-auto border-l border-line bg-surface p-4" data-testid="node-inspector">
       <InspectorProvider node={node} graph={graph} kindInfo={kindInfo} nodeKinds={nodeKinds} readOnly={readOnly} controller={controller}>
         <SectionRequestProvider request={request}>
           <InspectorBody key={node.id} problems={problems} onClose={onClose} onAskBuilder={onAskBuilder} />

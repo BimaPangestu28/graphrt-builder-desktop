@@ -1,10 +1,8 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 use graphrt_core::tool::ToolSpec;
-use graphrt_llm::{ChatDelta, ChatModel, ChatRequest, FinishReason, LlmError, Message, ResponseFormat, ToolChoice};
+use graphrt_llm::{ChatDelta, ChatRequest, FinishReason, LlmError, Message, ResponseFormat, ToolChoice};
 
 use super::adapters::{self, claude_models, parse_codex_catalog};
 use super::capability::capability_gap;
@@ -458,6 +456,11 @@ fn real_cli_detection() {
 
 #[cfg(unix)]
 mod fake_binaries {
+    use std::sync::Arc;
+    use std::time::{Duration, Instant};
+
+    use graphrt_llm::ChatModel;
+
     use super::*;
 
     fn write_script(dir: &Path, name: &str, body: &str) -> PathBuf {

@@ -3,6 +3,7 @@ import type { AgentGraph, NodeLayout } from '@/api/agentGraphTypes'
 import type { NodeCanvasProps } from '../contracts'
 import { disconnectGraphNodes } from '../graphEdits'
 import { describeNodeList, editableNodeIds, nudgeLayouts } from './canvasCommands'
+import { messages } from '@/i18n'
 
 /**
  * Delete, disconnect and nudge on the Nodes canvas. Shared by the keyboard shortcuts,
@@ -45,7 +46,7 @@ export function useCanvasEditCommands(options: CanvasEditCommandsOptions): Canva
       onDelete({ nodeIds: deletableNodeIds, edgeIds })
       onSelectionChange([])
       clearEdgeSelection()
-      announce(deletableNodeIds.length > 0 ? `Deleted ${describeNodeList(graph, deletableNodeIds)}` : 'Deleted the arrow')
+      announce(deletableNodeIds.length > 0 ? messages().nodes.deletedNodelist2(describeNodeList(graph, deletableNodeIds)) : messages().nodes.deletedTheArrow)
     },
     [readOnly, onDelete, graph, onSelectionChange, clearEdgeSelection, announce],
   )
@@ -53,7 +54,7 @@ export function useCanvasEditCommands(options: CanvasEditCommandsOptions): Canva
   const disconnectNodes = useCallback(
     (nodeIds: string[]) => {
       if (!canEdit) return
-      onApplyEdit?.((current) => disconnectGraphNodes(current, nodeIds), `disconnected ${describeNodeList(graph, nodeIds)}`)
+      onApplyEdit?.((current) => disconnectGraphNodes(current, nodeIds), messages().nodes.disconnectedNodelist(describeNodeList(graph, nodeIds)))
     },
     [canEdit, onApplyEdit, graph],
   )

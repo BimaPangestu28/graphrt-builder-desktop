@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import type { AppSettings } from '@/api/appSettingsTypes'
 import { SettingsPage } from '@/pages/SettingsPage'
+import { LocaleRoot } from '@/i18n/LocaleRoot'
 
 /**
  * The Settings screen inside the desktop app: every visible control is stored by the
@@ -27,6 +28,7 @@ function createStoredSettings(): AppSettings {
     autoUpdatePlugins: true,
     runLimits: { stepTimeoutSeconds: 120, runDurationMinutes: 30, maxStepAttempts: 10_000, maxNestingDepth: 8, maxParallelSteps: 64 },
     developerMode: false,
+    language: null,
   }
 }
 
@@ -86,10 +88,27 @@ describe('SettingsPage in the desktop app', () => {
   it('hides the controls that have no backend', async () => {
     renderSettingsPage()
     await screen.findByRole('checkbox', { name: /Start graphrt when I log in/ })
-    expect(screen.queryByRole('button', { name: 'General' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Remote runner' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Connect a server' })).not.toBeInTheDocument()
     expect(screen.queryByRole('combobox', { name: /If the main model fails/ })).not.toBeInTheDocument()
+  })
+
+  it('switches the language from General, stores it and stays on General', async () => {
+    render(
+      <LocaleRoot>
+        <MemoryRouter>
+          <SettingsPage />
+        </MemoryRouter>
+      </LocaleRoot>,
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'General' }))
+    expect(screen.queryByRole('combobox', { name: /Appearance/ })).not.toBeInTheDocument()
+    fireEvent.change(screen.getByRole('combobox', { name: /Language/ }), { target: { value: 'Bahasa Indonesia' } })
+
+    expect(await screen.findByRole('heading', { name: 'Pengaturan' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Umum', current: 'page' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: /Bahasa/ })).toHaveValue('Bahasa Indonesia')
+    await waitFor(() => expect(storedSettings.language).toBe('id'))
   })
 
   it('shows the crash reports with the sharing opt-in stored by the backend', async () => {

@@ -6,6 +6,7 @@ import { StatusPill, type StatusPillTone } from '@/pages/agent-run/StatusPill'
 import { routePaths } from '@/routes'
 import { HomeSectionHeader } from './HomeSectionHeader'
 import { toPreviewText } from '@/lib/previewText'
+import { messages, useT } from '@/i18n'
 
 const runStatusTones: Record<RecentRunStatus, StatusPillTone> = {
   'Needs you': 'amber',
@@ -18,11 +19,11 @@ const runStatusTones: Record<RecentRunStatus, StatusPillTone> = {
 const cellClassNames = 'px-4 py-3 align-top'
 /** Fixed widths keep a long result from squeezing the agent name onto several lines. */
 const columns = [
-  { label: 'Agent', widthClassName: 'w-[30%]' },
-  { label: 'Started', widthClassName: 'w-[112px]' },
-  { label: 'Result', widthClassName: '' },
-  { label: 'Status', widthClassName: 'w-[116px]' },
-]
+  { key: 'agent', widthClassName: 'w-[30%]' },
+  { key: 'started', widthClassName: 'w-[112px]' },
+  { key: 'result', widthClassName: '' },
+  { key: 'status', widthClassName: 'w-[124px]' },
+] as const
 
 interface RecentRunsTableProps {
   /** Null while loading. */
@@ -57,24 +58,25 @@ function RecentRunRow({ run }: { run: RecentRun }) {
         </Link>
       </td>
       <td className={joinClassNames(cellClassNames, 'whitespace-nowrap')}>
-        <StatusPill tone={runStatusTones[run.status]}>{run.status}</StatusPill>
+        <StatusPill tone={runStatusTones[run.status]}>{messages().home.recentStatus[run.status]}</StatusPill>
       </td>
     </tr>
   )
 }
 
 function RecentRunsBody({ runs, loadError }: RecentRunsTableProps) {
-  if (loadError) return <p className="m-0 text-muted">Could not load recent runs: {loadError.message}</p>
-  if (!runs) return <p className="m-0 text-muted">Loading runs…</p>
-  if (runs.length === 0) return <p className="m-0 text-muted">No runs yet. Test an agent to see it here</p>
+  const t = useT().home
+  if (loadError) return <p className="m-0 text-muted">{t.couldNotLoadRecentRuns(loadError.message)}</p>
+  if (!runs) return <p className="m-0 text-muted">{t.loadingRuns}</p>
+  if (runs.length === 0) return <p className="m-0 text-muted">{t.noRunsYet}</p>
   return (
     <div className="overflow-x-auto rounded-[14px] border border-line bg-surface">
       <table className="w-full min-w-[560px] table-fixed border-collapse text-[13px]">
         <thead>
           <tr className="text-left text-muted">
             {columns.map((column) => (
-              <th key={column.label} scope="col" className={joinClassNames('border-b border-line px-4 py-3 font-medium', column.widthClassName)}>
-                {column.label}
+              <th key={column.key} scope="col" className={joinClassNames('border-b border-line px-4 py-3 font-medium', column.widthClassName)}>
+                {t.columns[column.key]}
               </th>
             ))}
           </tr>
@@ -95,15 +97,16 @@ function RecentRunsBody({ runs, loadError }: RecentRunsTableProps) {
  * the full text on hover) and its status. A row opens the run; "See all runs" opens Runs.
  */
 export function RecentRunsTable({ runs, loadError }: RecentRunsTableProps) {
+  const t = useT().home
   const seeAllLink =
     runs && runs.length > 0 ? (
       <Link to={routePaths.runs} className="text-[13px] font-medium !text-body no-underline hover:underline">
-        See all runs
+        {t.seeAllRuns}
       </Link>
     ) : null
   return (
     <section aria-labelledby="home-recent-runs" className="flex min-w-0 flex-col gap-3">
-      <HomeSectionHeader headingId="home-recent-runs" heading="Recent runs" trailing={seeAllLink} />
+      <HomeSectionHeader headingId="home-recent-runs" heading={t.recentRuns} trailing={seeAllLink} />
       <RecentRunsBody runs={runs} loadError={loadError} />
     </section>
   )

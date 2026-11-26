@@ -1,6 +1,7 @@
 import type { ApprovalAction, ApprovalField, ContainerPosition, PendingApproval, PendingToolCall, TimeoutAction } from './runReviewTypes'
 import { redactSecrets } from './secretRedaction'
 import type { Run } from './types'
+import { messages } from '@/i18n'
 
 /**
  * Reads the questions of a paused run straight from its graphrt pause reasons, the same way
@@ -21,8 +22,18 @@ export const allowActionId = 'allow'
 
 /** The two buttons of a tool call question. */
 export const toolCallActions: ApprovalAction[] = [
-  { id: allowActionId, title: 'Allow' },
-  { id: 'decline', title: 'Decline' },
+  {
+    id: allowActionId,
+    get title() {
+      return messages().lib.allow
+    },
+  },
+  {
+    id: 'decline',
+    get title() {
+      return messages().lib.decline
+    },
+  },
 ]
 
 type JsonRecord = Record<string, unknown>

@@ -3,14 +3,15 @@ import { Button, Icon, StrokeIcon, joinClassNames } from '@/components/ui'
 import { useAgents } from '@/hooks/useAgents'
 import { pageTitleClassName } from '@/components/layout'
 import { agentPath, routePaths } from '@/routes'
+import { messages } from '@/i18n'
+import { withLocalizedLabels } from '@/i18n/localized'
 
 export type ScheduleViewMode = 'day' | 'week' | 'list'
 
-const viewModeOptions: Array<{ mode: ScheduleViewMode; label: string }> = [
-  { mode: 'day', label: 'Day' },
-  { mode: 'week', label: 'Week' },
-  { mode: 'list', label: 'List' },
-]
+const viewModeOptions: ReadonlyArray<{ mode: ScheduleViewMode; readonly label: string }> = withLocalizedLabels(
+  [{ mode: 'day' as const }, { mode: 'week' as const }, { mode: 'list' as const }],
+  (option) => messages().schedule.views[option.mode],
+)
 
 interface ScheduleToolbarProps {
   subtitle: string
@@ -27,11 +28,11 @@ export function ScheduleToolbar({ subtitle, viewMode, onViewModeChange, onShiftW
   return (
     <div className="flex flex-[1_1_100%] flex-wrap items-end justify-between gap-4">
       <div className="flex flex-col gap-1">
-        <h1 className={pageTitleClassName}>Schedule</h1>
+        <h1 className={pageTitleClassName}>{messages().schedule.schedule}</h1>
         <span className="text-body">{subtitle}</span>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <div role="group" aria-label="View" className="flex gap-1 rounded-[10px] bg-selected p-1">
+        <div role="group" aria-label={messages().schedule.view} className="flex gap-1 rounded-[10px] bg-selected p-1">
           {viewModeOptions.map((option) => {
             const isSelected = option.mode === viewMode
             return (
@@ -50,12 +51,12 @@ export function ScheduleToolbar({ subtitle, viewMode, onViewModeChange, onShiftW
             )
           })}
         </div>
-        <button type="button" aria-label="Previous week" onClick={() => onShiftWeek(-1)} className={squareIconButtonClassNames}>
+        <button type="button" aria-label={messages().schedule.previousWeek} onClick={() => onShiftWeek(-1)} className={squareIconButtonClassNames}>
           <StrokeIcon size={16}>
             <path d="M15 5l-7 7 7 7" />
           </StrokeIcon>
         </button>
-        <button type="button" aria-label="Next week" onClick={() => onShiftWeek(1)} className={squareIconButtonClassNames}>
+        <button type="button" aria-label={messages().schedule.nextWeek} onClick={() => onShiftWeek(1)} className={squareIconButtonClassNames}>
           <StrokeIcon size={16}>
             <path d="M9 5l7 7-7 7" />
           </StrokeIcon>
@@ -78,21 +79,21 @@ function NewTriggerAction() {
     return (
       <Button onClick={() => navigate(target)}>
         <Icon name="plus" size={16} />
-        New trigger
+        {messages().schedule.newTrigger}
       </Button>
     )
   }
   return (
     <label className="flex h-10 items-center gap-2 rounded-[9px] bg-ink px-3 text-[14px] font-semibold text-white">
       <Icon name="plus" size={16} />
-      <span className="sr-only">New trigger for</span>
+      <span className="sr-only">{messages().schedule.newTriggerFor}</span>
       <select
         value=""
         onChange={(event) => event.target.value && navigate(agentPath('scheduleAgent', event.target.value))}
         className="cursor-pointer border-0 bg-transparent text-[14px] font-semibold text-white outline-none"
       >
         <option value="" disabled>
-          New trigger for…
+          {messages().schedule.newTriggerFor2}
         </option>
         {agents.map((agent) => (
           <option key={agent.id} value={agent.id} className="text-ink">

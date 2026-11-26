@@ -2,6 +2,7 @@ import type { PluginRequirement } from '@/api/pluginRequirementTypes'
 import type { Agent, ModelChoice, ProviderStatus, Run, Trigger } from '@/api/types'
 import { isModelConnected } from '@/lib/firstLaunch'
 import { agentPath, connectionsTabPath, routePaths } from '@/routes'
+import { messages } from '@/i18n'
 
 /** The Home "Getting started" checklist (09), each step derived from real data. */
 
@@ -56,24 +57,25 @@ export function deriveGettingStartedSteps(sources: GettingStartedSources): Getti
   const agentNeedingSetup = agents.find((agent) => !isAgentSetUp(agent.id, sources))
   const untestedAgent = agents.find((agent) => !hasPassedTest(agent, runs)) ?? firstAgent
   const testedAgent = agents.find((agent) => hasPassedTest(agent, runs)) ?? firstAgent
+  const t = messages().home.steps
   return [
-    { id: 'model', label: 'Connect a model', isDone: isModelConnected(providerStatuses, sources.defaultModel ?? null), path: connectionsTabPath('models') },
-    { id: 'agent', label: 'Build your first agent', isDone: agents.length > 0, path: routePaths.newAgent },
+    { id: 'model', label: t.model, isDone: isModelConnected(providerStatuses, sources.defaultModel ?? null), path: connectionsTabPath('models') },
+    { id: 'agent', label: t.agent, isDone: agents.length > 0, path: routePaths.newAgent },
     {
       id: 'plugins',
-      label: 'Set up its plugins',
+      label: t.plugins,
       isDone: agents.length > 0 && !agentNeedingSetup,
       path: agentNeedingSetup || firstAgent ? agentPath('builder', (agentNeedingSetup ?? firstAgent).id) : routePaths.newAgent,
     },
     {
       id: 'test',
-      label: 'Pass a test run',
+      label: t.test,
       isDone: agents.some((agent) => hasPassedTest(agent, runs)),
       path: untestedAgent ? agentPath('testRun', untestedAgent.id) : routePaths.newAgent,
     },
     {
       id: 'schedule',
-      label: 'Schedule it',
+      label: t.schedule,
       isDone: triggers.some((trigger) => trigger.enabled) || agents.some((agent) => agent.kind === 'chatbot' && agent.status === 'active'),
       path: testedAgent ? agentPath('scheduleAgent', testedAgent.id) : routePaths.scheduler,
     },

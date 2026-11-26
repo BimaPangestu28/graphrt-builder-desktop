@@ -1,4 +1,5 @@
 import type { RunLimits } from '@/api/appSettingsTypes'
+import { formatNumber, messages } from '@/i18n'
 
 /**
  * The run limits shown in Settings › Runner › Run limits: defaults, allowed ranges and the
@@ -16,55 +17,39 @@ export const defaultRunLimits: RunLimits = {
 
 export interface RunLimitField {
   key: keyof RunLimits
-  title: string
-  description: string
+  /** In the current language. */
+  readonly title: string
+  readonly description: string
   /** Shown after the number, e.g. "seconds". */
-  unit: string
+  readonly unit: string
   min: number
   max: number
 }
 
+/** A limit's bounds; its texts come from the dictionary when read. */
+function limitField(key: keyof RunLimits, min: number, max: number): RunLimitField {
+  return {
+    key,
+    min,
+    max,
+    get title() {
+      return messages().settings.runLimitFields[key].title
+    },
+    get description() {
+      return messages().settings.runLimitFields[key].description
+    },
+    get unit() {
+      return messages().settings.runLimitFields[key].unit
+    },
+  }
+}
+
 export const runLimitFields: readonly RunLimitField[] = [
-  {
-    key: 'stepTimeoutSeconds',
-    title: 'Time for one step',
-    description: 'Unless the step sets its own time limit',
-    unit: 'seconds',
-    min: 10,
-    max: 3_600,
-  },
-  {
-    key: 'runDurationMinutes',
-    title: 'Time for one run',
-    description: "Active time. Waiting for your answer doesn't count",
-    unit: 'minutes',
-    min: 1,
-    max: 1_440,
-  },
-  {
-    key: 'maxStepAttempts',
-    title: 'Step attempts per run',
-    description: 'Retries and loop rounds count too',
-    unit: 'attempts',
-    min: 100,
-    max: 1_000_000,
-  },
-  {
-    key: 'maxNestingDepth',
-    title: 'Loops inside loops',
-    description: 'How deep a loop may sit inside another',
-    unit: 'deep',
-    min: 1,
-    max: 32,
-  },
-  {
-    key: 'maxParallelSteps',
-    title: 'Steps at the same time',
-    description: 'Within one loop or branch',
-    unit: 'steps',
-    min: 1,
-    max: 256,
-  },
+  limitField('stepTimeoutSeconds', 10, 3_600),
+  limitField('runDurationMinutes', 1, 1_440),
+  limitField('maxStepAttempts', 100, 1_000_000),
+  limitField('maxNestingDepth', 1, 32),
+  limitField('maxParallelSteps', 1, 256),
 ]
 
 /**
@@ -81,5 +66,5 @@ export function findInvalidRunLimit(runLimits: RunLimits): string | null {
     const limitValue = runLimits[field.key]
     return !Number.isInteger(limitValue) || limitValue < field.min || limitValue > field.max
   })
-  return invalidField ? `${invalidField.title} must be between ${invalidField.min.toLocaleString('en-US')} and ${invalidField.max.toLocaleString('en-US')}` : null
+  return invalidField ? messages().settings.limitOutOfRange(invalidField.title, formatNumber(invalidField.min), formatNumber(invalidField.max)) : null
 }

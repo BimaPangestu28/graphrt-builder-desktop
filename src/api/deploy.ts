@@ -20,6 +20,7 @@ import type {
 } from './deployTypes'
 import { sampleDeployBackend, subscribeToSampleDeployEvents } from './sampleBackend/deploy'
 import type { Agent } from './types'
+import { messages } from '@/i18n'
 
 /**
  * "Put it online": the graphrt tools, online accounts, the compatibility checklist, deploying
@@ -136,10 +137,10 @@ export async function pickAgentFileSavePath(suggestedName: string): Promise<stri
   if (useSample()) return `~/Downloads/${suggestedName}.grt`
   const [{ save }, { downloadDir, join }] = await Promise.all([import('@tauri-apps/plugin-dialog'), import('@tauri-apps/api/path')])
   const chosenPath = await save({
-    title: 'Save the agent file',
+    title: messages().lib.saveAgentFile,
     defaultPath: await join(await downloadDir(), `${suggestedName}.grt`),
     filters: [
-      { name: 'graphrt agent file', extensions: ['grt'] },
+      { name: messages().lib.agentFileFilter, extensions: ['grt'] },
       { name: 'YAML', extensions: ['yaml'] },
     ],
   })

@@ -1,4 +1,5 @@
 import { detectDesktopPlatform } from '@/lib/platform'
+import { messages } from '@/i18n'
 
 /**
  * Canvas keyboard shortcuts (spec I1): which action a key press means. ⌘ on macOS,
@@ -107,20 +108,20 @@ export interface ShortcutHelpRow {
 export function listShortcutHelp(isMac: boolean): ShortcutHelpRow[] {
   const command = isMac ? '⌘' : 'Ctrl+'
   return [
-    { label: 'Pan', keys: 'Space + drag, or scroll' },
-    { label: 'Zoom', keys: `${command} scroll, + / −` },
-    { label: 'Fit the whole agent', keys: 'F or Shift 1' },
-    { label: 'Add node', keys: 'A' },
-    { label: 'Select several', keys: 'Drag on empty canvas, Shift-click' },
-    { label: 'Select all', keys: `${command}A` },
-    { label: 'Copy / Paste', keys: `${command}C / ${command}V` },
-    { label: 'Duplicate', keys: `${command}D` },
-    { label: 'Delete', keys: 'Delete or ⌫' },
-    { label: 'Undo / Redo', keys: isMac ? '⌘Z / ⇧⌘Z' : 'Ctrl+Z / Ctrl+Shift+Z' },
-    { label: 'Next node', keys: 'Tab' },
-    { label: 'Open its settings', keys: 'Enter' },
-    { label: 'Node menu', keys: 'Shift F10' },
-    { label: 'Move a node', keys: 'Arrow keys (Shift: further)' },
-    { label: 'Close / deselect', keys: 'Esc' },
+    { label: messages().nodes.pan, keys: messages().nodes.spaceDragOrScroll },
+    { label: messages().nodes.zoom, keys: messages().nodes.commandScroll(command) },
+    { label: messages().nodes.fitTheWholeAgent, keys: messages().nodes.fOrShift1 },
+    { label: messages().nodes.addNode, keys: 'A' },
+    { label: messages().nodes.selectSeveral, keys: messages().nodes.dragOnEmptyCanvasShiftClick },
+    { label: messages().nodes.selectAll, keys: `${command}A` },
+    { label: messages().nodes.copyPaste, keys: `${command}C / ${command}V` },
+    { label: messages().nodes.duplicate, keys: `${command}D` },
+    { label: messages().nodes.delete, keys: messages().nodes.deleteOr },
+    { label: messages().nodes.undoRedo, keys: isMac ? '⌘Z / ⇧⌘Z' : messages().nodes.ctrlZCtrlShiftZ },
+    { label: messages().nodes.nextNode, keys: messages().nodes.tab },
+    { label: messages().nodes.openItsSettings, keys: messages().nodes.enter },
+    { label: messages().nodes.nodeMenu, keys: messages().nodes.shiftF10 },
+    { label: messages().nodes.moveANode, keys: messages().nodes.arrowKeysShiftFurther },
+    { label: messages().nodes.closeDeselect, keys: messages().nodes.esc },
   ]
 }

@@ -1,12 +1,13 @@
 import { stoppedReplyText, type BuilderMessage } from '@/api/types'
 import { BuilderExplanation } from './BuilderExplanation'
 import { assistantBlockClassNames, describeFailedChange, UserChatBubble } from './ChatBubbles'
+import { messages } from '@/i18n'
 
 /** A saved builder reply: the model's explanation and the summary, or why the change failed. */
 function SavedBuilderReply({ message, agentId }: { message: BuilderMessage; agentId: string }) {
   if (message.status === 'failed') return <p className="m-0 max-w-[92%] leading-[1.55] text-danger">{describeFailedChange(message.text)}</p>
   // A stopped change saved nothing (no version after it): "Stopped by you", quietly.
-  if (message.versionAfter === null && message.text === stoppedReplyText) return <p className="m-0 max-w-[92%] leading-[1.55] text-muted">{message.text}</p>
+  if (message.versionAfter === null && message.text === stoppedReplyText) return <p className="m-0 max-w-[92%] leading-[1.55] text-muted">{messages().lib.stoppedByYou}</p>
   return (
     <div className={`${assistantBlockClassNames} gap-2.5`}>
       {message.explanation && <BuilderExplanation text={message.explanation} agentId={agentId} />}

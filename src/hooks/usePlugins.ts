@@ -17,6 +17,8 @@ import { findPluginDisplayName } from '@/lib/pluginDisplayName'
 import { useAsyncData, type AsyncDataState } from './useAsyncData'
 import { useBackendSubscription } from './useBackendSubscription'
 import { toError } from '@/lib/errors'
+import { messages } from '@/i18n'
+import { localizedRecord } from '@/i18n/localized'
 
 /** Installed plugins plus the catalog. The catalog may fail on its own (offline) without hiding installed plugins. */
 export interface PluginInventory {
@@ -35,7 +37,7 @@ export interface PluginInstallProgress {
 
 export type PluginOperation = 'installing' | 'updating' | 'removing' | 'trusting'
 
-const operationVerbs: Record<PluginOperation, string> = { installing: 'install', updating: 'update', removing: 'remove', trusting: 'change trust for' }
+const operationVerbs: Readonly<Record<PluginOperation, string>> = localizedRecord(() => messages().plugins.operations)
 
 /** Extra work the same install click approved. */
 export interface PluginInstallOptions {
@@ -56,7 +58,7 @@ async function installPluginWithRuntime(name: string, approvedPermissions: Plugi
   try {
     await installPluginRuntime()
   } catch (runtimeError) {
-    throw new Error(`it is installed, but the plugin runtime (Node.js) could not be downloaded: ${describeError(runtimeError)}. Try again from the Plugins page`)
+    throw new Error(messages().plugins.runtimeDownloadFailed(describeError(runtimeError)))
   }
 }
 
@@ -161,7 +163,7 @@ export function usePlugins(): PluginsState {
         await work()
         await reload()
       } catch (operationError) {
-        setErrorByName((previous) => ({ ...previous, [name]: `Could not ${operationVerbs[operation]} ${findInventoryDisplayName(inventory, name)}: ${describeError(operationError)}` }))
+        setErrorByName((previous) => ({ ...previous, [name]: messages().plugins.couldNotOperate(operationVerbs[operation], findInventoryDisplayName(inventory, name), describeError(operationError)) }))
       } finally {
         setOperationByName((previous) => withoutKey(previous, name))
         clearProgress(name)

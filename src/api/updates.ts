@@ -2,6 +2,7 @@ import type { Update } from '@tauri-apps/plugin-updater'
 import { isDesktopApp } from './client'
 import { listRuns } from './runs'
 import { sampleAppInfoBackend } from './sampleBackend/appInfo'
+import { messages } from '@/i18n'
 
 /**
  * Auto-update through `tauri-plugin-updater` (signed bundles from the latest GitHub
@@ -103,6 +104,6 @@ export async function countRunningRuns(): Promise<number> {
 }
 
 function requireFoundUpdate(): Update {
-  if (!foundUpdate) throw new Error('No update was found yet; check for updates first')
+  if (!foundUpdate) throw new Error(messages().lib.noUpdateWasFoundYetCheck)
   return foundUpdate
 }

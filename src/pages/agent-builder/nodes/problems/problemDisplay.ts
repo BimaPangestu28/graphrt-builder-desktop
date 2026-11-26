@@ -1,4 +1,6 @@
 import type { AgentGraph, GraphProblem } from '@/api/agentGraphTypes'
+import { messages } from '@/i18n'
+import { localizedRecord } from '@/i18n/localized'
 
 /**
  * Plain-words display of the validation problems (`GraphProblem.code`, stable codes from
@@ -6,24 +8,7 @@ import type { AgentGraph, GraphProblem } from '@/api/agentGraphTypes'
  * artboard 37), plus the "Fix with builder" request and the reason Test is off.
  */
 
-const problemLabels: Record<string, string> = {
-  unreadable_document: 'Cannot be read',
-  unknown_reference: 'Uses a missing step',
-  cross_scope_edge: 'Arrow crosses a loop',
-  cycle: 'Goes in a circle',
-  entry: 'No single start',
-  node_config: 'Settings need fixing',
-  compile: 'Cannot run',
-  unreachable: 'Not connected',
-  compile_warning: 'Check this',
-  send_without_approval: 'Sends without asking',
-  approval_timeout_sends: 'Sends when time runs out',
-  placeholder_address: 'Placeholder address',
-  model_provider_not_set_up: 'Model not connected',
-  model_capability: 'Model can’t do this',
-  unused_edge: 'Arrow never taken',
-  plugin_not_installed: 'Plugin not installed',
-}
+const problemLabels: Readonly<Record<string, string>> = localizedRecord(() => messages().nodes.problemLabels)
 
 /** A config path named in a problem message (`url`, "tool_parameters.city"), if any. */
 function fieldNamedIn(message: string): string | null {
@@ -51,7 +36,7 @@ export function inspectorTargetForProblem(problem: GraphProblem): string | null 
 
 /** Short chip text: "Not connected", "Settings need fixing". */
 export function describeProblemLabel(problem: GraphProblem): string {
-  return problemLabels[problem.code] ?? (problem.severity === 'error' ? 'Problem' : 'Check this')
+  return problemLabels[problem.code] ?? (problem.severity === 'error' ? messages().nodes.problem : messages().nodes.checkThis)
 }
 
 /** The step a problem is about: its title, or null for problems of the whole agent. */
@@ -78,7 +63,7 @@ export function problemTargetNodeId(problem: GraphProblem, graph: AgentGraph): s
  */
 export function buildFixRequest(problem: GraphProblem, graph: AgentGraph): string {
   const title = problemNodeTitle(problem, graph)
-  return title ? `Fix ${title}: ${problem.message}` : `Fix this problem: ${problem.message}`
+  return title ? messages().nodes.fixTitleReason(title, problem.message) : messages().nodes.fixThisProblemReason(problem.message)
 }
 
 /** Errors first, then warnings, each in the order they came. */
@@ -124,17 +109,17 @@ export function describeTestBlock(options: { problems: GraphProblem[]; graph: Ag
   const errors = problems.filter((problem) => problem.severity === 'error')
   const problemPart = errors.length > 0 ? describeFirstError(errors, graph) : null
   if (builderBusy) {
-    const reason = problemPart ? `Test is off while the builder works, and while an edit can't be saved: ${problemPart}` : 'Test is off while the builder works'
+    const reason = problemPart ? messages().nodes.testIsOffWhileTheBuilder(problemPart) : messages().nodes.testIsOffWhileTheBuilder2
     return { reason, isBlocking: true }
   }
-  if (problemPart) return { reason: `Test is off until this is fixed: ${problemPart}`, isBlocking: true }
-  if (isSaving) return { reason: 'Test waits until your edit is saved', isBlocking: true }
-  if (!arePluginsReady) return { reason: 'Set up the plugins this agent needs first', isBlocking: false }
+  if (problemPart) return { reason: messages().nodes.testIsOffUntilThisIs(problemPart), isBlocking: true }
+  if (isSaving) return { reason: messages().nodes.testWaitsUntilYourEditIs, isBlocking: true }
+  if (!arePluginsReady) return { reason: messages().nodes.setUpThePluginsThisAgent, isBlocking: false }
   return null
 }
 
 function describeFirstError(errors: GraphProblem[], graph: AgentGraph): string {
-  const count = errors.length === 1 ? '1 problem' : `${errors.length} problems`
+  const count = errors.length === 1 ? messages().nodes.n1Problem : messages().nodes.valueProblems(errors.length)
   const title = problemNodeTitle(errors[0], graph)
   return `${count}, ${describeProblemLabel(errors[0])}${title ? ` in ${title}` : ''}`
 }

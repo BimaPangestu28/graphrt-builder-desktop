@@ -6,9 +6,9 @@
 //! file says so and names its source on its first line).
 
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use graphrt_llm::{ChatDelta, ChatModel, ChatRequest, FinishReason, LlmError, Message, ToolChoice};
+use graphrt_llm::{ChatDelta, ChatRequest, FinishReason, LlmError, Message, ToolChoice};
 
 use super::adapters::{self, CURSOR_FIXED_REQUEST, GEMINI_POLICY_FILE_NAME, QWEN_EXCLUDED_TOOLS};
 use super::capability::capability_gap;
@@ -115,6 +115,8 @@ fn every_cli_lists_cli_default_first() {
 #[test]
 fn gemini_command_line_denies_every_tool_and_reads_stdin() {
     let workdir = Path::new("/tmp/w");
+    // Joined the platform's way (`\` on Windows).
+    let policy = workdir.join(GEMINI_POLICY_FILE_NAME).display().to_string();
     let plan = command::plan_call(
         LocalCli::GeminiCli,
         &detection_with_flags(&["--skip-trust"]),
@@ -130,7 +132,7 @@ fn gemini_command_line_denies_every_tool_and_reads_stdin() {
             "--approval-mode",
             "default",
             "--policy",
-            "/tmp/w/graphrt-deny-all.toml",
+            &policy,
             "--skip-trust",
             "-m",
             "flash",
@@ -453,8 +455,11 @@ fn opencode_models_are_its_provider_model_lines() {
 
 #[cfg(unix)]
 mod fake_binaries {
+    use std::path::PathBuf;
     use std::sync::Arc;
     use std::time::{Duration, Instant};
+
+    use graphrt_llm::ChatModel;
 
     use super::*;
     use crate::local_cli::detect::{self, Locator};

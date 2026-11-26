@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { Icon, StrokeIcon, joinClassNames } from '@/components/ui'
 import type { AgentStepInfo } from '@/api/chainTypes'
 import { routePaths } from '@/routes'
+import { messages } from '@/i18n'
 
 /**
  * Agents in the catalog whose name or description matches the search text (case-insensitive).
@@ -19,9 +20,9 @@ export function filterAgentCatalog(agents: AgentStepInfo[], searchText: string):
 /** "In place · Out score, reason" */
 function describeSignature(agent: AgentStepInfo): string {
   const parts = []
-  if (agent.inputs.length > 0) parts.push(`In ${agent.inputs.map((input) => input.name).join(', ')}`)
-  if (agent.outputs.length > 0) parts.push(`Out ${agent.outputs.join(', ')}`)
-  if (agent.usedByCount > 0) parts.push(`used in ${agent.usedByCount} ${agent.usedByCount === 1 ? 'agent' : 'agents'}`)
+  if (agent.inputs.length > 0) parts.push(messages().team.inputsList(agent.inputs.map((input) => input.name).join(', ')))
+  if (agent.outputs.length > 0) parts.push(messages().team.outValue(agent.outputs.join(', ')))
+  if (agent.usedByCount > 0) parts.push(messages().team.usedInAgents(agent.usedByCount))
   return parts.join(' · ')
 }
 
@@ -33,17 +34,17 @@ interface CatalogItemCardProps {
 }
 
 function CatalogItemAction({ agent, isAdded, isAdding, onAdd }: CatalogItemCardProps) {
-  if (isAdded) return <span className="text-[12px] font-medium text-ok-strong">Added</span>
-  if (!agent.usableAsStep) return <span className="text-[12px] text-muted">Can't run as a step</span>
+  if (isAdded) return <span className="text-[12px] font-medium text-ok-strong">{messages().team.added}</span>
+  if (!agent.usableAsStep) return <span className="text-[12px] text-muted">{messages().team.cantRunAsAStep}</span>
   return (
     <button
       type="button"
-      aria-label={`Add ${agent.name}`}
+      aria-label={messages().team.addName(agent.name)}
       disabled={isAdding}
       onClick={() => onAdd(agent.agentId)}
       className="h-[30px] cursor-pointer rounded-lg border border-line-strong bg-surface px-3 text-[12px] font-medium text-ink hover:bg-subtle disabled:cursor-default disabled:text-muted"
     >
-      Add
+      {messages().team.add}
     </button>
   )
 }
@@ -77,9 +78,9 @@ export function AddStepPanel({ searchText, onSearchTextChange, visibleAgents, ad
     <aside aria-labelledby="add-step-heading" className="box-border flex min-w-0 flex-[1_1_360px] flex-col gap-4 border-l border-line bg-subtle p-6">
       <div className="flex items-center justify-between">
         <h2 id="add-step-heading" className="m-0 text-[18px] font-semibold">
-          Add one of your agents
+          {messages().team.addOneOfYourAgents}
         </h2>
-        <Link to={routePaths.chain} aria-label="Close" className="flex size-8 items-center justify-center rounded-lg !text-ink-2 hover:bg-chip">
+        <Link to={routePaths.chain} aria-label={messages().team.close} className="flex size-8 items-center justify-center rounded-lg !text-ink-2 hover:bg-chip">
           <Icon name="close" size={16} />
         </Link>
       </div>
@@ -90,15 +91,15 @@ export function AddStepPanel({ searchText, onSearchTextChange, visibleAgents, ad
         </StrokeIcon>
         <input
           type="search"
-          aria-label="Search agents"
-          placeholder="Search your agents"
+          aria-label={messages().team.searchAgents}
+          placeholder={messages().team.searchYourAgents}
           value={searchText}
           onChange={(event) => onSearchTextChange(event.target.value)}
           className="min-w-0 flex-auto border-0 bg-transparent text-[14px] text-ink outline-none"
         />
       </label>
-      <div aria-label="My agents" role="list" className="flex flex-col gap-2">
-        {visibleAgents.length === 0 && <p className="m-0 text-[13px] text-muted">{searchText ? `Nothing matches “${searchText}”` : 'No other agents yet'}</p>}
+      <div aria-label={messages().team.myAgents} role="list" className="flex flex-col gap-2">
+        {visibleAgents.length === 0 && <p className="m-0 text-[13px] text-muted">{searchText ? messages().team.nothingMatchesSearchtext(searchText) : messages().team.noOtherAgentsYet}</p>}
         {visibleAgents.map((agent) => (
           <div role="listitem" key={agent.agentId}>
             <CatalogItemCard agent={agent} isAdded={agent.agentId === addedAgentId} isAdding={isAdding} onAdd={onAddAgent} />
@@ -106,7 +107,7 @@ export function AddStepPanel({ searchText, onSearchTextChange, visibleAgents, ad
         ))}
       </div>
       <p className="m-0 text-[13px] leading-normal text-body">
-        An agent works as a step when it says what it needs and what it gives back. Agents that stop to ask you cannot run as a step yet
+        {messages().team.anAgentWorksAsAStep}
       </p>
     </aside>
   )

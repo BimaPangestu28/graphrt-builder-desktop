@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import type { CoordinatorExchange } from '@/api/teamTypes'
 import { StrokeIcon, VisuallyHidden } from '@/components/ui'
 import { agentPath } from '@/routes'
+import { messages } from '@/i18n'
 
 function UserBubble({ text }: { text: string }) {
   return <div className="box-content max-w-[88%] self-end rounded-[14px_14px_4px_14px] bg-canvas px-3.5 py-3 leading-normal">{text}</div>
@@ -11,17 +12,17 @@ function UserBubble({ text }: { text: string }) {
 function ReplyStatus({ exchange, teamAgentId }: { exchange: CoordinatorExchange; teamAgentId: string }) {
   switch (exchange.status) {
     case 'running':
-      return <p className="m-0 text-[13px] text-muted">Working on it…</p>
+      return <p className="m-0 text-[13px] text-muted">{messages().team.workingOnIt}</p>
     case 'paused':
       return (
         <Link to={agentPath('testRun', teamAgentId, { runId: exchange.runId })} className="text-[13px] font-medium">
-          Waiting for you · open the run
+          {messages().team.waitingForYouOpenTheRun}
         </Link>
       )
     case 'failed':
-      return <p className="m-0 text-[13px] text-amber-strong">Stopped: {exchange.errorMessage ?? 'something went wrong'}</p>
+      return <p className="m-0 text-[13px] text-amber-strong">{messages().team.stopped}{' '}{exchange.errorMessage ?? messages().team.somethingWentWrong2}</p>
     case 'aborted':
-      return <p className="m-0 text-[13px] text-muted">Stopped</p>
+      return <p className="m-0 text-[13px] text-muted">{messages().team.stopped2}</p>
     default:
       return null
   }
@@ -38,8 +39,8 @@ function CoordinatorReply({ exchange, teamAgentId }: { exchange: CoordinatorExch
           {exchange.memberCalls.map((memberCall, index) => (
             <li key={index}>
               <b className="font-semibold text-ink">{memberCall.memberName}</b> {memberCall.task}
-              {memberCall.status === 'failed' && <span className="text-amber-strong"> · failed</span>}
-              {memberCall.status === 'working' && <span className="text-muted"> · working</span>}
+              {memberCall.status === 'failed' && <span className="text-amber-strong"> {messages().team.failed}</span>}
+              {memberCall.status === 'working' && <span className="text-muted"> {messages().team.working2}</span>}
             </li>
           ))}
         </ol>
@@ -75,25 +76,25 @@ export function CoordinatorChat({ teamAgentId, exchanges, onSend }: CoordinatorC
       await onSend(trimmedMessage)
     } catch (rawError) {
       setDraftMessage(trimmedMessage)
-      setSendError(rawError instanceof Error ? rawError.message : 'Could not send the message')
+      setSendError(rawError instanceof Error ? rawError.message : messages().team.couldNotSendTheMessage)
     } finally {
       setIsSending(false)
     }
   }
 
   return (
-    <section aria-label="Talk to the coordinator" className="box-border flex min-w-0 flex-[1_1_340px] flex-col border-r border-line">
+    <section aria-label={messages().team.talkToTheCoordinator} className="box-border flex min-w-0 flex-[1_1_340px] flex-col border-r border-line">
       <header className="box-border flex h-16 items-center gap-2.5 border-b border-line px-5">
         <span aria-hidden="true" className="flex size-7 items-center justify-center rounded-full bg-ink text-[12px] font-semibold text-white">
-          CO
+          {messages().team.co}
         </span>
         <span className="flex flex-col">
-          <span className="font-semibold">Coordinator</span>
-          <span className="text-[12px] text-muted">Plans and hands out work</span>
+          <span className="font-semibold">{messages().team.coordinator}</span>
+          <span className="text-[12px] text-muted">{messages().team.plansAndHandsOutWork}</span>
         </span>
       </header>
       <div aria-live="polite" className="flex flex-auto flex-col gap-4 p-5">
-        {exchanges?.length === 0 && <p className="m-0 text-[13px] text-muted">Give the team a goal. Each message starts a run of the team</p>}
+        {exchanges?.length === 0 && <p className="m-0 text-[13px] text-muted">{messages().team.giveTheTeamAGoalEach}</p>}
         {exchanges?.map((exchange) => (
           <div key={exchange.runId} className="flex flex-col gap-4">
             {exchange.message && <UserBubble text={exchange.message} />}
@@ -108,20 +109,20 @@ export function CoordinatorChat({ teamAgentId, exchanges, onSend }: CoordinatorC
       </div>
       <form onSubmit={(event) => void sendMessage(event)} className="px-5 pt-3 pb-5">
         <label htmlFor="coordinator-message">
-          <VisuallyHidden>Message the coordinator</VisuallyHidden>
+          <VisuallyHidden>{messages().team.messageTheCoordinator}</VisuallyHidden>
         </label>
         <div className="flex items-center gap-2 rounded-xl border border-line-strong py-1.5 pr-1.5 pl-3.5">
           <input
             id="coordinator-message"
             type="text"
-            placeholder="Give the team a goal"
+            placeholder={messages().team.giveTheTeamAGoal}
             value={draftMessage}
             onChange={(event) => setDraftMessage(event.target.value)}
             className="h-9 min-w-0 flex-auto border-0 bg-transparent text-[14px] text-ink outline-none"
           />
           <button
             type="submit"
-            aria-label="Send"
+            aria-label={messages().team.send}
             disabled={isSending}
             className="flex size-9 cursor-pointer items-center justify-center rounded-[9px] border-0 bg-ink text-white hover:bg-ink-2 disabled:opacity-60"
           >

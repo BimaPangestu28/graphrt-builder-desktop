@@ -1,19 +1,15 @@
 import { joinClassNames } from '@/components/ui'
+import { messages } from '@/i18n'
 
 export type WhatsAppConnectionOption = 'business' | 'personal'
 
-const connectionOptions: Array<{ value: WhatsAppConnectionOption; title: string; description: string }> = [
-  {
-    value: 'business',
-    title: 'WhatsApp Business (official API)',
-    description: 'Meta’s Cloud API with an access token. Made for business messaging',
-  },
-  {
-    value: 'personal',
-    title: 'Personal WhatsApp (QR)',
-    description: 'Links your own number like WhatsApp Web. Low volume only',
-  },
-]
+function listConnectionOptions(): Array<{ value: WhatsAppConnectionOption; title: string; description: string }> {
+  const t = messages().chatbot
+  return [
+    { value: 'business', title: t.businessTitle, description: t.businessDescription },
+    { value: 'personal', title: t.personalTitle, description: t.personalDescription },
+  ]
+}
 
 interface WhatsAppOptionPickerProps {
   selectedOption: WhatsAppConnectionOption | null
@@ -24,8 +20,8 @@ interface WhatsAppOptionPickerProps {
 export function WhatsAppOptionPicker({ selectedOption, onSelect }: WhatsAppOptionPickerProps) {
   return (
     <fieldset className="m-0 flex flex-wrap gap-2.5 border-0 p-0">
-      <legend className="mb-2 p-0 text-[13px] font-medium text-muted">How do you want to connect?</legend>
-      {connectionOptions.map((option) => {
+      <legend className="mb-2 p-0 text-[13px] font-medium text-muted">{messages().chatbot.howDoYouWantToConnect}</legend>
+      {listConnectionOptions().map((option) => {
         const isSelected = option.value === selectedOption
         return (
           <label

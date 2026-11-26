@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { getAppInfo } from '@/api/appInfo'
 import { isDesktopApp } from '@/api/client'
 import type { AppInfo } from '@/api/connectionTypes'
 import { AppShell, PageFrame, PageTitleBlock } from '@/components/layout'
 import { joinClassNames } from '@/components/ui'
-import { previewOnlySettingsSections, settingsSections, type SettingsSectionKey } from '@/lib/settings'
+import { listSettingsSections, previewOnlySettingsSections, type SettingsSectionKey } from '@/lib/settings'
+import { useT } from '@/i18n'
 import { useAsyncData } from '@/hooks/useAsyncData'
 import {
   AboutSection,
@@ -20,17 +21,19 @@ import { RunLimitsPanel } from './settings/RunLimitsPanel'
 import { UpdatesSection } from './settings/UpdatesSection'
 import { useAppSettings, type AppSettingsState } from './settings/useAppSettings'
 import { useSettingsState, type SettingsValues, type UpdateSetting } from './settings/useSettingsState'
+import { forgetSectionAfterLanguageSwitch, sectionToOpen } from './settings/languageSwitch'
 
 interface SettingsSubNavProps {
-  sections: typeof settingsSections
+  sections: ReturnType<typeof listSettingsSections>
   activeSection: SettingsSectionKey
   onSelectSection: (section: SettingsSectionKey) => void
 }
 
 function SettingsSubNav({ sections, activeSection, onSelectSection }: SettingsSubNavProps) {
+  const t = useT().settings
   return (
     <nav
-      aria-label="Settings sections"
+      aria-label={t.sectionsLabel}
       className="-ml-2.5 box-border flex min-w-0 flex-[0_1_200px] flex-col gap-0.5"
     >
       {sections.map((section) => {
@@ -66,19 +69,20 @@ interface SettingsSectionContentProps {
 
 /** Shown in place of the sections that need the stored desktop preferences until they load. */
 function AppSettingsPlaceholder({ appSettingsState }: { appSettingsState: AppSettingsState }) {
+  const t = useT().settings
   if (appSettingsState.loadError) {
     return (
       <div role="alert" className="flex flex-wrap items-center gap-3 text-[13px] text-danger">
-        Could not load your settings: {appSettingsState.loadError.message}
+        {t.couldNotLoad(appSettingsState.loadError.message)}
         <button type="button" onClick={() => void appSettingsState.reload()} className="cursor-pointer rounded-[9px] border border-line-strong bg-surface px-3 py-1.5 font-sans text-[13px] text-ink">
-          Try again
+          {t.tryAgain}
         </button>
       </div>
     )
   }
   return (
     <p role="status" className="m-0 text-[13px] text-muted">
-      Loading settings…
+      {t.loading}
     </p>
   )
 }
@@ -94,7 +98,7 @@ function SettingsSectionContent({ activeSection, onSelectSection, appSettingsSta
   )
   switch (activeSection) {
     case 'general':
-      return <GeneralSection {...sectionProps} />
+      return <GeneralSection {...sectionProps} appSettings={appSettings} />
     case 'notifications':
       if (!appSettings) return <AppSettingsPlaceholder appSettingsState={appSettingsState} />
       return <NotificationsSection {...sectionProps} appSettings={appSettings} updateAppSetting={updateAppSetting} />
@@ -136,17 +140,20 @@ function SettingsSectionContent({ activeSection, onSelectSection, appSettingsSta
  * only in the browser preview, so the desktop app never offers a switch that does nothing.
  */
 export function SettingsPage() {
-  const [activeSection, setActiveSection] = useState<SettingsSectionKey>('runner')
+  const t = useT().settings
+  const [activeSection, setActiveSection] = useState<SettingsSectionKey>(sectionToOpen)
+  useEffect(forgetSectionAfterLanguageSwitch, [])
   const { settingsValues, updateSetting } = useSettingsState()
   const appSettingsState = useAppSettings()
   const { data: appInfo } = useAsyncData(getAppInfo, [])
   const showsPreviewOnlySettings = !isDesktopApp()
+  const settingsSections = listSettingsSections()
   const visibleSections = showsPreviewOnlySettings ? settingsSections : settingsSections.filter((section) => !previewOnlySettingsSections.includes(section.key))
 
   return (
     <AppShell activeNav="settings" agents={{ kind: 'list' }}>
       <PageFrame>
-        <PageTitleBlock title="Settings" subtitle="How this app runs your agents, tells you what happened and keeps your data" />
+        <PageTitleBlock title={t.title} subtitle={t.subtitle} />
         <div className="flex flex-wrap items-start gap-x-10 gap-y-6">
           <SettingsSubNav sections={visibleSections} activeSection={activeSection} onSelectSection={setActiveSection} />
           <div className="box-border flex min-w-0 max-w-[760px] flex-[1_1_520px] flex-col gap-7">
@@ -161,7 +168,7 @@ export function SettingsPage() {
             />
             {appSettingsState.saveError && (
               <p role="alert" className="m-0 text-[13px] text-danger">
-                Could not save the change: {appSettingsState.saveError}
+                {t.couldNotSave(appSettingsState.saveError)}
               </p>
             )}
           </div>
