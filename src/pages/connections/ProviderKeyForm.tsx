@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui'
 import { getCredentialStoreName } from '@/lib/platform'
 import { describeError } from '@/lib/agentDisplay'
+import { messages } from '@/i18n'
 
 interface ProviderKeyFormProps {
   providerName: string
@@ -27,7 +28,7 @@ export function ProviderKeyForm({ providerName, isReplacing, onSave, onCancel }:
     try {
       await onSave(apiKey.trim())
     } catch (saveError) {
-      setErrorMessage(`Could not save the key: ${describeError(saveError)}`)
+      setErrorMessage(messages().connections.couldNotSaveTheKeyReason(describeError(saveError)))
       setIsSaving(false)
     }
   }
@@ -35,17 +36,17 @@ export function ProviderKeyForm({ providerName, isReplacing, onSave, onCancel }:
   return (
     <form
       onSubmit={handleSubmit}
-      aria-label={`${providerName} key`}
+      aria-label={messages().connections.providernameKey(providerName)}
       className="flex h-full min-w-0 flex-col gap-2.5 rounded-[14px] border border-line-heavy bg-surface p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)]"
     >
       <div className="flex flex-col gap-0.5">
         <b className="text-[14px] font-semibold">{providerName}</b>
-        <span className="text-[12px] text-muted">Saved in {getCredentialStoreName()}, never shown again</span>
+        <span className="text-[12px] text-muted">{messages().connections.savedIn}{' '}{getCredentialStoreName()}{messages().connections.neverShownAgain}</span>
       </div>
       <input
         type="password"
-        aria-label={`${providerName} API key`}
-        placeholder={isReplacing ? 'Paste the new key' : 'Paste your API key'}
+        aria-label={messages().connections.providernameApiKey(providerName)}
+        placeholder={isReplacing ? messages().connections.pasteTheNewKey : messages().connections.pasteYourApiKey}
         value={apiKey}
         autoFocus
         onChange={(event) => setApiKey(event.target.value)}
@@ -58,10 +59,10 @@ export function ProviderKeyForm({ providerName, isReplacing, onSave, onCancel }:
       )}
       <div className="mt-auto flex justify-end gap-2 border-t border-chip pt-3">
         <Button variant="ghost" size="sm" onClick={onCancel}>
-          Cancel
+          {messages().connections.cancel}
         </Button>
         <Button type="submit" size="sm" disabled={!canSave}>
-          {isSaving ? 'Saving…' : 'Save key'}
+          {isSaving ? messages().connections.saving : messages().connections.saveKey}
         </Button>
       </div>
     </form>

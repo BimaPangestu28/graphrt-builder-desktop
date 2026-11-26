@@ -10,6 +10,7 @@ import { describeLocalCliDetection, describeLocalCliSignIn, type LocalCliHintTon
 import { describeModelName } from '@/lib/modelChoices'
 import { cardStateClassNames, ConnectionCardFooter, statusBadgeTones } from './ConnectionCard'
 import type { ModelConnection } from './modelConnections'
+import { messages } from '@/i18n'
 
 type CardAction = 'turnOn' | 'turnOff' | 'makeDefault' | 'check' | 'detect' | 'pickModel'
 
@@ -28,7 +29,7 @@ const hintDotTones: Record<LocalCliHintTone, StatusDotTone> = { ok: 'ok', amber:
 
 function describeCardStatus(connection: ModelConnection, localCli: LocalCliStatus): { label: string; tone: BadgeTone } {
   if (connection.state !== 'available') return { label: connection.connectedLabel, tone: statusBadgeTones[connection.state] }
-  return { label: localCli.installed ? 'Off' : 'Not installed', tone: 'neutral' }
+  return { label: localCli.installed ? messages().connections.off : messages().connections.notInstalled, tone: 'neutral' }
 }
 
 /** The CLI's models as select options, "CLI default" first; just "CLI default" until the list arrives. */
@@ -80,30 +81,30 @@ export function LocalCliCard({ connection, provider, localCli, defaultModel, mod
   const modelOptions = listModelOptions(provider, models)
   const isListed = modelOptions.some((option) => option.name === selectedModelName)
 
-  const turnOn = () => runAction('turnOn', `Could not turn on ${shortName}`, async () => {
+  const turnOn = () => runAction('turnOn', messages().connections.couldNotTurnOnShortname(shortName), async () => {
     await setLocalCliEnabled(provider, true)
     await onChanged()
   })
-  const turnOff = () => runAction('turnOff', `Could not turn off ${shortName}`, async () => {
+  const turnOff = () => runAction('turnOff', messages().connections.couldNotTurnOffShortname(shortName), async () => {
     setCheckResult(null)
     await setLocalCliEnabled(provider, false)
     await onChanged()
   })
-  const makeDefault = () => runAction('makeDefault', `Could not make ${shortName} the default`, async () => {
+  const makeDefault = () => runAction('makeDefault', messages().connections.couldNotMakeShortnameTheDefault(shortName), async () => {
     await setDefaultModel({ provider, name: pickedModelName })
     await onChanged()
   })
-  const checkConnection = () => runAction('check', `Could not check ${shortName}`, async () => {
+  const checkConnection = () => runAction('check', messages().connections.couldNotCheckShortname(shortName), async () => {
     setCheckResult(null)
     setCheckResult(await checkLocalCli(provider))
   })
-  const detectAgain = () => runAction('detect', `Could not look for ${shortName}`, async () => {
+  const detectAgain = () => runAction('detect', messages().connections.couldNotLookForShortname(shortName), async () => {
     await listProviderStatuses(true)
     await onChanged()
   })
   const pickModel = (modelName: string) => {
     if (!isDefault) return setPickedModelName(modelName)
-    void runAction('pickModel', 'Could not change the model', async () => {
+    void runAction('pickModel', messages().connections.couldNotChangeTheModel, async () => {
       await setDefaultModel({ provider, name: modelName })
       await onChanged()
     })
@@ -114,7 +115,7 @@ export function LocalCliCard({ connection, provider, localCli, defaultModel, mod
       <div className="flex flex-col items-start gap-1.5">
         <b className="min-w-0 text-[14px] font-semibold [overflow-wrap:anywhere]">{connection.name}</b>
         <span className="flex flex-wrap gap-1">
-          <Badge tone="amber">Experimental</Badge>
+          <Badge tone="amber">{messages().connections.experimental}</Badge>
           <Badge tone={status.tone}>{status.label}</Badge>
         </span>
       </div>
@@ -123,7 +124,7 @@ export function LocalCliCard({ connection, provider, localCli, defaultModel, mod
         {!localCli.installed && (
           <>
             <span aria-hidden="true">·</span>
-            <InstallPageLink provider={provider} url={localCli.installUrl} label={`How to install ${shortName}`} />
+            <InstallPageLink provider={provider} url={localCli.installUrl} label={messages().connections.howToInstallShortname(shortName)} />
           </>
         )}
       </p>
@@ -136,9 +137,9 @@ export function LocalCliCard({ connection, provider, localCli, defaultModel, mod
       <p className="m-0 text-[12px] leading-normal text-muted">{describeLocalCliUsageNote(provider)}</p>
       {isOn && (
         <label className="flex flex-col gap-1 text-[12px] font-medium text-ink-2">
-          {isDefault ? 'Model new agents use' : 'Model'}
+          {isDefault ? messages().connections.modelNewAgentsUse : messages().connections.model}
           <select
-            aria-label={`${shortName} model`}
+            aria-label={messages().connections.shortnameModel(shortName)}
             value={selectedModelName}
             disabled={busyAction !== null}
             onChange={(event) => pickModel(event.target.value)}
@@ -165,29 +166,29 @@ export function LocalCliCard({ connection, provider, localCli, defaultModel, mod
       )}
       <ConnectionCardFooter>
         {!isOn && localCli.installed && (
-          <Button size="sm" variant="secondary" aria-label={`Turn on ${shortName}`} onClick={() => void turnOn()} disabled={busyAction !== null}>
-            {busyAction === 'turnOn' ? 'Turning on…' : 'Turn on'}
+          <Button size="sm" variant="secondary" aria-label={messages().connections.turnOnShortname(shortName)} onClick={() => void turnOn()} disabled={busyAction !== null}>
+            {busyAction === 'turnOn' ? messages().connections.turningOn : messages().connections.turnOn}
           </Button>
         )}
         {isOn && !isDefault && (
-          <Button size="sm" variant="secondary" aria-label={`Use ${connection.name} by default`} onClick={() => void makeDefault()} disabled={busyAction !== null}>
-            {busyAction === 'makeDefault' ? 'Saving…' : 'Use by default'}
+          <Button size="sm" variant="secondary" aria-label={messages().connections.useNameByDefault(connection.name)} onClick={() => void makeDefault()} disabled={busyAction !== null}>
+            {busyAction === 'makeDefault' ? messages().connections.saving : messages().connections.useByDefault}
           </Button>
         )}
         {isOn && (
-          <Button size="sm" variant="ghost" aria-label={`Check ${shortName} connection`} onClick={() => void checkConnection()} disabled={busyAction !== null}>
-            {busyAction === 'check' ? 'Checking…' : 'Check connection'}
+          <Button size="sm" variant="ghost" aria-label={messages().connections.checkShortnameConnection(shortName)} onClick={() => void checkConnection()} disabled={busyAction !== null}>
+            {busyAction === 'check' ? messages().connections.checking : messages().connections.checkConnection}
           </Button>
         )}
         <span className="ml-auto flex items-center gap-1">
           {!isOn && (
-            <Button size="sm" variant="ghost" aria-label={`Detect ${shortName} again`} onClick={() => void detectAgain()} disabled={busyAction !== null}>
-              {busyAction === 'detect' ? 'Looking…' : 'Detect again'}
+            <Button size="sm" variant="ghost" aria-label={messages().connections.detectShortnameAgain(shortName)} onClick={() => void detectAgain()} disabled={busyAction !== null}>
+              {busyAction === 'detect' ? messages().connections.looking : messages().connections.detectAgain}
             </Button>
           )}
           {isOn && (
-            <Button size="sm" variant="ghost" aria-label={`Turn off ${shortName}`} onClick={() => void turnOff()} disabled={busyAction !== null} className="!text-danger hover:!bg-danger-tint">
-              {busyAction === 'turnOff' ? 'Turning off…' : 'Turn off'}
+            <Button size="sm" variant="ghost" aria-label={messages().connections.turnOffShortname(shortName)} onClick={() => void turnOff()} disabled={busyAction !== null} className="!text-danger hover:!bg-danger-tint">
+              {busyAction === 'turnOff' ? messages().connections.turningOff : messages().connections.turnOff}
             </Button>
           )}
         </span>

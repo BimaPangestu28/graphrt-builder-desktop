@@ -1,5 +1,6 @@
 import type { LocalCliProvider, LocalCliStatus } from '@/api/types'
 import { localCliCommands } from '@/lib/settings'
+import { messages } from '@/i18n'
 
 /** Plain-language text about a local CLI (Claude Code, Codex) for Welcome and Connections. */
 
@@ -22,9 +23,9 @@ export interface LocalCliHint {
  */
 export function describeLocalCliSignIn(provider: LocalCliProvider, localCli: LocalCliStatus): LocalCliHint | null {
   if (!localCli.installed || localCli.problem) return null
-  if (localCli.signIn === 'signed_in') return { text: 'Signed in', tone: 'ok' }
-  if (localCli.signIn === 'signed_out') return { text: `Not signed in: run \`${localCliCommands[provider]}\` in Terminal`, tone: 'amber' }
-  return { text: 'Sign-in not confirmed yet', tone: 'muted' }
+  if (localCli.signIn === 'signed_in') return { text: messages().connections.signedIn, tone: 'ok' }
+  if (localCli.signIn === 'signed_out') return { text: messages().connections.notSignedInRunValueIn(localCliCommands[provider]), tone: 'amber' }
+  return { text: messages().connections.signInNotConfirmedYet, tone: 'muted' }
 }
 
 /**
@@ -34,7 +35,7 @@ export function describeLocalCliSignIn(provider: LocalCliProvider, localCli: Loc
  * @returns One short line (string)
  */
 export function describeLocalCliDetection(localCli: LocalCliStatus): string {
-  if (!localCli.installed) return 'Not installed'
+  if (!localCli.installed) return messages().connections.notInstalled
   if (localCli.problem) return localCli.problem
-  return localCli.version ? `Installed · ${localCli.version}` : 'Installed'
+  return localCli.version ? messages().connections.installedVersion(localCli.version) : messages().connections.installed
 }

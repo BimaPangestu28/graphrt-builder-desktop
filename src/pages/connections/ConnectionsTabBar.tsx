@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { PillTabBadge, pillTabClassNames } from '@/components/ui'
 import { connectionsTabPath, type ConnectionsTab } from '@/routes'
 import type { ConnectionsTabItem } from './connectionsTabs'
+import { messages } from '@/i18n'
 
 interface ConnectionsTabBarProps {
   tabs: ConnectionsTabItem[]
@@ -14,7 +15,7 @@ interface ConnectionsTabBarProps {
  */
 export function ConnectionsTabBar({ tabs, activeTab }: ConnectionsTabBarProps) {
   return (
-    <nav aria-label="Connections sections" className="flex flex-wrap gap-1.5">
+    <nav aria-label={messages().connections.connectionsSections} className="flex flex-wrap gap-1.5">
       {tabs.map(({ tab, label, badge }) => {
         const isActive = tab === activeTab
         return (

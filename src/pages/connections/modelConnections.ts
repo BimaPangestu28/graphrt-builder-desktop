@@ -1,10 +1,11 @@
 import { isDesktopApp } from '@/api/client'
 import { getCredentialStoreShortName } from '@/lib/platform'
 import type { LocalCliStatus, ModelChoice, ModelProvider, ProviderStatus } from '@/api/types'
-import { modelCardTemplates } from '@/pages/connections/modelCardTemplates'
+import { listModelCardTemplates } from '@/pages/connections/modelCardTemplates'
 import type { Connection } from '@/api/appConnectionTypes'
 import { isLocalCliProvider, modelProviderNames } from '@/lib/settings'
 import { describeModelName } from '@/lib/modelChoices'
+import { messages } from '@/i18n'
 
 /** A model provider card: the shared Connection shape plus what the key actions need. */
 export interface ModelConnection extends Connection {
@@ -25,19 +26,19 @@ function isModelProvider(connectionId: string): connectionId is ModelProvider {
  */
 function describeConnectedProvider(status: ProviderStatus, defaultModel: ModelChoice, isDefault: boolean): string {
   const location = describeProviderLocation(status)
-  return isDefault ? `${location} · default model ${describeModelName(defaultModel)}` : location
+  return isDefault ? messages().connections.locationDefaultModelModelname(location, describeModelName(defaultModel)) : location
 }
 
 function describeProviderLocation(status: ProviderStatus): string {
-  if (status.provider === 'ollama') return status.baseUrl ?? 'Local server'
-  if (isLocalCliProvider(status.provider)) return status.localCli?.version ?? 'On this computer'
-  return `Key in ${getCredentialStoreShortName()}`
+  if (status.provider === 'ollama') return status.baseUrl ?? messages().connections.localServer
+  if (isLocalCliProvider(status.provider)) return status.localCli?.version ?? messages().connections.onThisComputer
+  return messages().connections.keyInCredentialstoreshortname(getCredentialStoreShortName())
 }
 
 function describeConnectedLabel(provider: ModelProvider, isDefault: boolean): string {
-  if (isDefault) return 'Default'
-  if (provider === 'ollama') return 'Found on this computer'
-  return isLocalCliProvider(provider) ? 'Turned on' : 'Connected'
+  if (isDefault) return messages().connections.default
+  if (provider === 'ollama') return messages().connections.foundOnThisComputer
+  return isLocalCliProvider(provider) ? messages().connections.turnedOn : messages().connections.connected
 }
 
 /**
@@ -54,7 +55,7 @@ export function buildModelConnections(
   defaultModel: ModelChoice,
   { useDesignText = !isDesktopApp() }: { useDesignText?: boolean } = {},
 ): ModelConnection[] {
-  return modelCardTemplates.flatMap((template) => {
+  return listModelCardTemplates().flatMap((template) => {
     const status = statuses.find((candidate) => candidate.provider === template.id)
     if (!status || !isModelProvider(template.id)) return []
     const state: Connection['state'] = !status.configured ? 'available' : status.provider === defaultModel.provider ? 'default' : 'connected'

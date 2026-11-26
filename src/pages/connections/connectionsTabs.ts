@@ -3,6 +3,8 @@ import type { Connection } from '@/api/appConnectionTypes'
 import type { DeployAccount } from '@/api/deployTypes'
 import { connectionsTabPath, legacyConnectionsPluginsSection, routePaths, type ConnectionsTab } from '@/routes'
 import { isSecretMissing } from './secretDisplay'
+import { messages } from '@/i18n'
+import { localizedRecord } from '@/i18n/localized'
 
 /** The small status after a tab label, e.g. "2 connected" or "1 missing" (amber). */
 export interface ConnectionsTabBadge {
@@ -27,7 +29,7 @@ export interface ConnectionsTabSources {
   deployAccounts?: DeployAccount[] | null
 }
 
-const tabLabels: Record<ConnectionsTab, string> = { models: 'AI models', secrets: 'Secrets', mcp: 'MCP servers', online: 'Online accounts', apps: 'Apps' }
+const tabLabels: Readonly<Record<ConnectionsTab, string>> = localizedRecord(() => messages().connections.tabLabels)
 const tabOrder: ConnectionsTab[] = ['models', 'secrets', 'mcp', 'online', 'apps']
 
 function isConnectedState(connection: Connection): boolean {
@@ -36,30 +38,30 @@ function isConnectedState(connection: Connection): boolean {
 
 function describeModelsBadge(modelConnections: Connection[]): ConnectionsTabBadge {
   const connectedCount = modelConnections.filter(isConnectedState).length
-  return connectedCount > 0 ? { text: `${connectedCount} connected`, isWarning: false } : { text: 'None connected', isWarning: true }
+  return connectedCount > 0 ? { text: messages().connections.connectedcountConnected(connectedCount), isWarning: false } : { text: messages().connections.noneConnected, isWarning: true }
 }
 
 function describeSecretsBadge(secrets: WorkflowSecretOverview[]): ConnectionsTabBadge | null {
   const missingCount = secrets.filter(isSecretMissing).length
-  if (missingCount > 0) return { text: `${missingCount} missing`, isWarning: true }
+  if (missingCount > 0) return { text: messages().connections.missingcountMissing(missingCount), isWarning: true }
   const savedCount = secrets.filter((secret) => secret.configured).length
-  return savedCount > 0 ? { text: `${savedCount} saved`, isWarning: false } : null
+  return savedCount > 0 ? { text: messages().connections.savedcountSaved(savedCount), isWarning: false } : null
 }
 
 function describeMcpBadge(mcpServers: McpServerDefinition[]): ConnectionsTabBadge | null {
-  return mcpServers.length > 0 ? { text: `${mcpServers.length} added`, isWarning: false } : null
+  return mcpServers.length > 0 ? { text: messages().connections.valueAdded(mcpServers.length), isWarning: false } : null
 }
 
 function describeAppsBadge(appConnections: Connection[]): ConnectionsTabBadge | null {
   const signedOutCount = appConnections.filter((connection) => connection.state === 'signedOut').length
-  if (signedOutCount > 0) return { text: `${signedOutCount} signed out`, isWarning: true }
+  if (signedOutCount > 0) return { text: messages().connections.signedoutcountSignedOut(signedOutCount), isWarning: true }
   const connectedCount = appConnections.filter(isConnectedState).length
-  return connectedCount > 0 ? { text: `${connectedCount} connected`, isWarning: false } : null
+  return connectedCount > 0 ? { text: messages().connections.connectedcountConnected(connectedCount), isWarning: false } : null
 }
 
 function describeOnlineBadge(accounts: DeployAccount[]): ConnectionsTabBadge | null {
   const connectedCount = accounts.filter((account) => account.connected).length
-  return connectedCount > 0 ? { text: `${connectedCount} connected`, isWarning: false } : null
+  return connectedCount > 0 ? { text: messages().connections.connectedcountConnected(connectedCount), isWarning: false } : null
 }
 
 function describeTabBadge(tab: ConnectionsTab, sources: ConnectionsTabSources): ConnectionsTabBadge | null {

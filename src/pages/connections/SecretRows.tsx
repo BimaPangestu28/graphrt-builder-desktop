@@ -6,8 +6,9 @@ import { Badge, Button, joinClassNames } from '@/components/ui'
 import { describeError } from '@/lib/agentDisplay'
 import { formatSavedAt } from '@/pages/version-history/formatSavedAt'
 import { ConnectionsNotice, connectionsCardClassNames } from './ConnectionsSection'
-import { describeSecretUsers, isSecretMissing } from './secretDisplay'
+import { describeSecretUsers, isSecretMissing, listSecretUsers } from './secretDisplay'
 import { SecretValueInput } from './SecretValueInput'
+import { messages } from '@/i18n'
 
 const rowClassNames = 'flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-chip px-4 py-3 last:border-b-0'
 
@@ -32,28 +33,28 @@ function SecretValueForm({ secret, onSave, onCancel }: SecretValueFormProps) {
     try {
       await onSave(secretValue)
     } catch (saveError) {
-      setErrorMessage(`Could not save ${secret.name}: ${describeError(saveError)}`)
+      setErrorMessage(messages().connections.couldNotSaveNameReason(secret.name, describeError(saveError)))
       setIsSaving(false)
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} aria-label={`${secret.name} value`} className="flex w-full flex-wrap items-center gap-2">
+    <form onSubmit={handleSubmit} aria-label={messages().connections.nameValue(secret.name)} className="flex w-full flex-wrap items-center gap-2">
       <SecretValueInput
-        label={`Value of ${secret.name}`}
+        label={messages().connections.valueOfName(secret.name)}
         value={secretValue}
         onChange={setSecretValue}
-        placeholder={secret.configured ? 'Paste the new value' : 'Paste the value'}
+        placeholder={secret.configured ? messages().connections.pasteTheNewValue : messages().connections.pasteTheValue}
         autoFocus
         className="flex-[1_1_240px]"
       />
       <Button type="submit" size="sm" disabled={!canSave}>
-        {isSaving ? 'Saving…' : 'Save'}
+        {isSaving ? messages().connections.saving : messages().connections.save}
       </Button>
       <Button variant="ghost" size="sm" onClick={onCancel}>
-        Cancel
+        {messages().connections.cancel}
       </Button>
-      <span className="w-full text-[12px] text-muted">Saved in {getCredentialStoreName()}, never shown again</span>
+      <span className="w-full text-[12px] text-muted">{messages().connections.savedIn}{' '}{getCredentialStoreName()}{messages().connections.neverShownAgain}</span>
       {errorMessage && (
         <span aria-live="polite" className="w-full text-[13px] text-danger">
           {errorMessage}
@@ -74,18 +75,18 @@ interface RemoveConfirmationProps {
 function RemoveConfirmation({ secret, isRemoving, onConfirm, onCancel }: RemoveConfirmationProps) {
   const consequence =
     secret.agents.length + secret.mcpServers.length > 0
-      ? `${describeSecretUsers(secret).replace('Used by ', '')} will stop working until you add it again.`
-      : 'Agents can no longer use it.'
+      ? messages().connections.willStopWorking(listSecretUsers(secret))
+      : messages().connections.agentsCanNoLongerUseIt
   return (
-    <div role="alertdialog" aria-label={`Remove ${secret.name}?`} className="flex w-full flex-wrap items-center gap-2 rounded-[10px] border border-danger-line bg-danger-tint px-3 py-2">
+    <div role="alertdialog" aria-label={messages().connections.removeName2(secret.name)} className="flex w-full flex-wrap items-center gap-2 rounded-[10px] border border-danger-line bg-danger-tint px-3 py-2">
       <span className="flex-[1_1_240px] text-[13px] leading-normal text-danger-deep [overflow-wrap:anywhere]">
-        Remove {secret.name} from {getCredentialStoreName()}? {consequence}
+        {messages().connections.remove}{' '}{secret.name} {messages().connections.from}{' '}{getCredentialStoreName()}? {consequence}
       </span>
       <Button variant="secondary" size="sm" onClick={onCancel}>
-        Keep it
+        {messages().connections.keepIt}
       </Button>
       <Button size="sm" disabled={isRemoving} onClick={onConfirm} className="!border-danger !bg-danger hover:!bg-danger-deep">
-        {isRemoving ? 'Removing…' : `Yes, remove ${secret.name}`}
+        {isRemoving ? messages().connections.removing : messages().connections.yesRemoveName(secret.name)}
       </Button>
     </div>
   )
@@ -93,13 +94,13 @@ function RemoveConfirmation({ secret, isRemoving, onConfirm, onCancel }: RemoveC
 
 function describeSecretDetails(secret: WorkflowSecretOverview): string {
   const details = [secret.description ? secret.name : null, secret.note, describeSecretUsers(secret)]
-  if (secret.configured && secret.updatedAt) details.push(`Saved ${formatSavedAt(secret.updatedAt)}`)
+  if (secret.configured && secret.updatedAt) details.push(messages().connections.savedSavedat(formatSavedAt(secret.updatedAt)))
   return details.filter(Boolean).join(' · ')
 }
 
 function SecretStatus({ secret }: { secret: WorkflowSecretOverview }) {
-  if (secret.configured) return <Badge tone="ok">Saved</Badge>
-  return isSecretMissing(secret) ? <Badge tone="danger">Missing</Badge> : <Badge>Optional</Badge>
+  if (secret.configured) return <Badge tone="ok">{messages().connections.saved}</Badge>
+  return isSecretMissing(secret) ? <Badge tone="danger">{messages().connections.missing}</Badge> : <Badge>{messages().connections.optional}</Badge>
 }
 
 interface SecretRowProps {
@@ -130,7 +131,7 @@ function SecretRow({ secret, onChanged }: SecretRowProps) {
       setIsConfirmingRemove(false)
       await onChanged()
     } catch (removeError) {
-      setRemoveErrorMessage(`Could not remove ${secret.name}: ${describeError(removeError)}`)
+      setRemoveErrorMessage(messages().connections.couldNotRemoveNameReason(secret.name, describeError(removeError)))
     } finally {
       setIsRemoving(false)
     }
@@ -151,11 +152,11 @@ function SecretRow({ secret, onChanged }: SecretRowProps) {
             aria-label={`${secret.configured ? 'Replace' : 'Add'} ${secret.name}`}
             onClick={() => setIsEditing(true)}
           >
-            {secret.configured ? 'Replace' : 'Add value'}
+            {secret.configured ? messages().connections.replace : messages().connections.addValue}
           </Button>
           {(secret.configured || secret.createdAt) && (
-            <Button variant="ghost" size="sm" aria-label={`Remove ${secret.name}`} onClick={() => setIsConfirmingRemove(true)} className="!text-danger hover:!bg-danger-tint">
-              Remove
+            <Button variant="ghost" size="sm" aria-label={messages().connections.removeName(secret.name)} onClick={() => setIsConfirmingRemove(true)} className="!text-danger hover:!bg-danger-tint">
+              {messages().connections.remove}
             </Button>
           )}
         </span>
@@ -188,11 +189,11 @@ export interface SecretsListState {
  */
 export function SecretsList({ secretsState }: { secretsState: SecretsListState }) {
   const { secrets, loadError, reload } = secretsState
-  if (loadError) return <ConnectionsNotice tone="danger">Could not load secrets: {describeError(loadError)}</ConnectionsNotice>
-  if (!secrets) return <ConnectionsNotice>Loading secrets…</ConnectionsNotice>
-  if (secrets.length === 0) return <ConnectionsNotice>No secrets yet. Use Add secret, or add an agent that needs one and it appears here</ConnectionsNotice>
+  if (loadError) return <ConnectionsNotice tone="danger">{messages().connections.couldNotLoadSecrets}{' '}{describeError(loadError)}</ConnectionsNotice>
+  if (!secrets) return <ConnectionsNotice>{messages().connections.loadingSecrets}</ConnectionsNotice>
+  if (secrets.length === 0) return <ConnectionsNotice>{messages().connections.noSecretsYetUseAddSecret}</ConnectionsNotice>
   return (
-    <div role="list" aria-label="Saved and needed secrets" className={connectionsCardClassNames}>
+    <div role="list" aria-label={messages().connections.savedAndNeededSecrets} className={connectionsCardClassNames}>
       {secrets.map((secret) => (
         <SecretRow key={secret.name} secret={secret} onChanged={reload} />
       ))}

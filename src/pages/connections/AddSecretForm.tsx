@@ -6,6 +6,7 @@ import { describeError } from '@/lib/agentDisplay'
 import { connectionsCardClassNames } from './ConnectionsSection'
 import { describeSecretNameProblem, normalizeSecretName } from './secretDisplay'
 import { SecretValueInput } from './SecretValueInput'
+import { messages } from '@/i18n'
 
 const fieldLabelClassNames = 'flex flex-col gap-1 text-[12px] font-medium text-muted'
 const textInputClassNames =
@@ -50,25 +51,25 @@ export function AddSecretForm({ onAdded, onClose }: AddSecretFormProps) {
       setSavedName(name)
       await onAdded(name)
     } catch (saveError) {
-      setErrorMessage(`Could not save ${name}: ${describeError(saveError)}`)
+      setErrorMessage(messages().connections.couldNotSaveNameReason(name, describeError(saveError)))
     } finally {
       setIsSaving(false)
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} aria-label="Add a secret" className={`flex flex-col gap-3 p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] ${connectionsCardClassNames}`}>
+    <form onSubmit={handleSubmit} aria-label={messages().connections.addASecret} className={`flex flex-col gap-3 p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] ${connectionsCardClassNames}`}>
       <span className="flex flex-col gap-0.5">
-        <span className="text-[14px] font-semibold">Add a secret</span>
-        <span className="text-[12px] text-muted">Server logins, API tokens, database passwords. Saved in {getCredentialStoreName()}, never shown again</span>
+        <span className="text-[14px] font-semibold">{messages().connections.addASecret}</span>
+        <span className="text-[12px] text-muted">{messages().connections.serverLoginsApiTokensDatabasePasswords}{' '}{getCredentialStoreName()}{messages().connections.neverShownAgain}</span>
       </span>
       <div className="flex flex-wrap gap-3">
         <label className={`${fieldLabelClassNames} flex-[1_1_200px]`}>
-          Name
+          {messages().connections.name}
           <input
             type="text"
             value={secretName}
-            placeholder="MY_SERVER_TOKEN"
+            placeholder={messages().connections.myServerToken}
             autoComplete="off"
             spellCheck={false}
             aria-invalid={shownNameProblem ? true : undefined}
@@ -80,17 +81,17 @@ export function AddSecretForm({ onAdded, onClose }: AddSecretFormProps) {
           />
         </label>
         <span className={`${fieldLabelClassNames} flex-[1_1_240px]`}>
-          Value
-          <SecretValueInput label="Value" value={secretValue} onChange={setSecretValue} placeholder="Paste the value" />
+          {messages().connections.value}
+          <SecretValueInput label={messages().connections.value} value={secretValue} onChange={setSecretValue} placeholder={messages().connections.pasteTheValue} />
         </span>
       </div>
       <label className={fieldLabelClassNames}>
-        Note (optional)
+        {messages().connections.noteOptional}
         <input
           type="text"
           value={secretNote}
           maxLength={200}
-          placeholder="e.g. Deploy token for my home server"
+          placeholder={messages().connections.eGDeployTokenForMy}
           onChange={(event) => setSecretNote(event.target.value)}
           className={textInputClassNames}
         />
@@ -102,7 +103,7 @@ export function AddSecretForm({ onAdded, onClose }: AddSecretFormProps) {
       )}
       {hasTriedSaving && !shownNameProblem && !secretValue.trim() && (
         <span role="alert" className="text-[13px] text-danger">
-          Paste the value to save
+          {messages().connections.pasteTheValueToSave}
         </span>
       )}
       {errorMessage && (
@@ -112,15 +113,15 @@ export function AddSecretForm({ onAdded, onClose }: AddSecretFormProps) {
       )}
       {savedName && !errorMessage && (
         <span aria-live="polite" className="text-[13px] text-ok-strong">
-          {savedName} is saved in {getCredentialStoreName()}. Agents read it as {`{{#env.${savedName}#}}`}
+          {savedName} {messages().connections.isSavedIn}{' '}{getCredentialStoreName()}{messages().connections.agentsReadItAs}{' '}{`{{#env.${savedName}#}}`}
         </span>
       )}
       <div className="flex justify-end gap-2 border-t border-chip pt-3">
         <Button variant="ghost" size="sm" onClick={onClose}>
-          {savedName ? 'Done' : 'Cancel'}
+          {savedName ? messages().connections.done : messages().connections.cancel}
         </Button>
         <Button type="submit" size="sm" disabled={isSaving}>
-          {isSaving ? 'Saving…' : 'Save secret'}
+          {isSaving ? messages().connections.saving : messages().connections.saveSecret}
         </Button>
       </div>
     </form>
