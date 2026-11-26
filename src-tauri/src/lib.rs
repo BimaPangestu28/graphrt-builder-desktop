@@ -26,6 +26,7 @@
 //! - [`workflow_secrets`]: every workflow secret across agents and MCP servers
 //! - [`desktop`]: menu bar / tray icon, notifications, keep running when closed, launch at login
 //! - [`crash_reports`]: local, scrubbed crash reports (panic hook, frontend errors); no telemetry
+//! - [`meeting`]: meeting notetaker (detect a call, ask, record mic + system audio, transcribe)
 //! - [`deploy`]: Put it online: running agents with an online provider or on an IT team's server
 //! - [`commands`]: the Tauri commands the frontend calls
 
@@ -50,6 +51,7 @@ pub mod linux_display;
 pub mod live_view;
 pub mod local_cli;
 pub mod mcp;
+pub mod meeting;
 pub mod model_catalog;
 pub mod node_runtime;
 pub mod plugins;
@@ -150,6 +152,7 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
     engine::spawn_approval_expiry(runs.clone());
     let scheduler = scheduler::spawn(db.clone(), runs.clone());
     desktop::daily_summary::spawn(db.clone(), notifier.clone());
+    let meetings = spawn_meeting_notetaker(app, &db, &data_dir, notifier.clone());
     plugins::auto_update::spawn(plugins.clone());
     Ok(AppState {
         db,
@@ -163,7 +166,29 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         plugins,
         model_catalog: Arc::new(model_catalog::ModelCatalog::with_http()?),
         deploy,
+        meetings,
     })
+}
+
+/// The meeting notetaker and its microphone watcher (idle until detection is turned on).
+fn spawn_meeting_notetaker(
+    app: &tauri::App,
+    db: &Arc<Database>,
+    data_dir: &std::path::Path,
+    notifier: Arc<TauriRunNotifier>,
+) -> Arc<meeting::MeetingService> {
+    let (probe, recorder, is_supported) = meeting::platform_backends();
+    let service = Arc::new(meeting::MeetingService::new(meeting::MeetingServiceConfig {
+        db: db.clone(),
+        meetings_dir: data_dir.join(meeting::store::MEETINGS_DIR_NAME),
+        probe,
+        recorder,
+        is_supported,
+        events: Arc::new(meeting::TauriMeetingEventSink::new(app.handle().clone())),
+        notifier: Some(notifier),
+    }));
+    service.spawn_watcher();
+    service
 }
 
 /// Start-up work nothing on the first screen waits for, run on a blocking thread once
@@ -385,6 +410,15 @@ pub fn run() {
             commands::crash_reports::get_crash_report_sharing,
             commands::crash_reports::set_crash_report_sharing,
             commands::crash_reports::open_crash_report_issue,
+            commands::meetings::get_meeting_status,
+            commands::meetings::update_meeting_settings,
+            commands::meetings::dismiss_meeting_prompt,
+            commands::meetings::start_meeting_recording,
+            commands::meetings::stop_meeting_recording,
+            commands::meetings::list_meetings,
+            commands::meetings::transcribe_meeting,
+            commands::meetings::get_meeting_transcript,
+            commands::meetings::delete_meeting,
         ])
         .build(tauri::generate_context!())
         .expect("failed to start the graphrt desktop app")

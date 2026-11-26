@@ -38,6 +38,7 @@ export function StrokeIcon({ size = 16, strokeWidth = 2, className, label, child
 
 const icons = {
   plus: <path d="M12 5v14M5 12h14" />,
+  mic: <path d="M12 3a3 3 0 00-3 3v6a3 3 0 006 0V6a3 3 0 00-3-3zM5 11a7 7 0 0014 0M12 18v3" />,
   arrowRight: <path d="M5 12h14M13 6l6 6-6 6" />,
   arrowLeft: <path d="M19 12H5M11 6l-6 6 6 6" />,
   check: <path d="M5 12.5l4.5 4.5L19 7.5" />,

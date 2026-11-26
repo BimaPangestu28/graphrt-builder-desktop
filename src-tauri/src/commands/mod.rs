@@ -15,6 +15,7 @@ pub mod credentials;
 pub mod deploy;
 pub mod knowledge;
 pub mod mcp;
+pub mod meetings;
 pub mod node_runtime;
 pub mod plugins;
 pub mod problems;

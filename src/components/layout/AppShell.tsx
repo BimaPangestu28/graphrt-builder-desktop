@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { joinClassNames } from '@/components/ui'
+import { MeetingOverlay } from '@/components/meetings/MeetingOverlay'
 import { Sidebar, type SidebarProps } from './Sidebar'
 
 interface AppShellProps extends SidebarProps {
@@ -25,6 +26,7 @@ export function AppShell({ mainClassName, children, ...sidebarProps }: AppShellP
       >
         {children}
       </main>
+      <MeetingOverlay />
     </div>
   )
 }
