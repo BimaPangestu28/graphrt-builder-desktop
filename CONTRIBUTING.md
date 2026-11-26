@@ -156,12 +156,15 @@ when a `vX.Y.Z` tag is pushed.
    git tag -a v0.2.0 -m "v0.2.0" && git push origin v0.2.0
    ```
 5. The workflow checks that every version equals the tag
-   (`scripts/check-version.sh v0.2.0`), creates a **draft** release with the
-   CHANGELOG section as its body, builds macOS (universal `.dmg` and `.app.tar.gz`),
+   (`scripts/check-version.sh v0.2.0`), creates a **draft** release titled
+   "Graphrt Desktop 0.2.0" with the CHANGELOG section under "What's new" and an
+   empty "Download" heading for the platform checksum blocks, builds macOS (universal `.dmg` and `.app.tar.gz`),
    Windows x64 (`.msi`, NSIS `.exe`) and Linux x64 and arm64 (`.AppImage`, `.deb`,
    `.rpm`) bundles, and
    attaches them with a `SHA256SUMS` file, the updater signatures (`.sig`) and
-   `latest.json`. Review the draft on GitHub and publish it: installed apps pick
+   `latest.json`. Review the draft on GitHub (keep "What's new" to short bullets
+   in plain language, since the readers are mostly not engineers, and keep every
+   `<!-- name:start -->` / `<!-- name:end -->` marker as is) and publish it: installed apps pick
    the update up from `releases/latest/download/latest.json` within six hours
    (or right away with Settings > Updates > Check for updates).
 

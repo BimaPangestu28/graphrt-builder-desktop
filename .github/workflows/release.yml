@@ -64,7 +64,21 @@ jobs:
       - name: Versions match the tag
         run: scripts/check-version.sh "$RELEASE_TAG"
       - name: Release notes from CHANGELOG.md
-        run: scripts/changelog-section.sh "$RELEASE_TAG" > release-notes.md
+        # Same layout as scripts/release-macos-local.sh: "What's new", then "Download", where
+        # platform blocks (<!-- name:start/end -->) are added by scripts/merge-release-notes.py.
+        run: |
+          {
+            echo "## What's new"
+            echo
+            scripts/changelog-section.sh "$RELEASE_TAG"
+            echo
+            echo "Installed apps are offered this update automatically."
+            echo
+            echo "## Download"
+            echo
+            echo "Checksums of every file are in \`SHA256SUMS\`."
+          } > release-notes.md
+          cat release-notes.md
       - name: Create (or reuse) the draft release
         id: draft
         env:
@@ -84,7 +98,7 @@ jobs:
             echo "Reusing draft release $release_id"
           else
             release_id="$(gh api -X POST "repos/$GITHUB_REPOSITORY/releases" \
-              -f tag_name="$RELEASE_TAG" -f name="$RELEASE_TAG" -F draft=true \
+              -f tag_name="$RELEASE_TAG" -f name="Graphrt Desktop ${RELEASE_TAG#v}" -F draft=true \
               -F body=@release-notes.md --jq .id)"
             echo "Created draft release $release_id"
           fi

@@ -36,7 +36,7 @@ done
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo_root"
-repository="BimaPangestu28/graphrt-builder-desktop"
+repository="Graphrt/graphrt-builder-desktop"
 signing_identity="${DEVELOPER_ID:-Developer ID Application: Bima Pangestu (5Z53R3J88D)}"
 bundle_dir="src-tauri/target/aarch64-apple-darwin/release/bundle"
 app_path="$bundle_dir/macos/graphrt.app"
@@ -161,16 +161,20 @@ if $release_exists; then
   gh release edit "v$version" -R "$repository" --notes-file "$work_dir/notes.md" > /dev/null
   echo "added the macOS build to the existing release v$version"
 else
+  # Release body: "What's new" (the notes file, short plain bullets), then "Download" with
+  # one block per platform between <!-- name:start/end --> markers.
   {
-    echo "graphrt Desktop $version."
+    echo "## What's new"
     echo
     cat "$notes_file"
     echo
     echo "Installed apps are offered this update automatically."
     echo
+    echo "## Download"
+    echo
     cat "$work_dir/macos-notes.md"
   } > "$work_dir/notes.md"
-  gh release create "v$version" -R "$repository" --draft --target "$release_commit" --title "graphrt Desktop v$version" \
+  gh release create "v$version" -R "$repository" --draft --target "$release_commit" --title "Graphrt Desktop $version" \
     --notes-file "$work_dir/notes.md" "$dmg_path" "$updater_archive" "$updater_archive.sig" \
     "$work_dir/latest.json" "$work_dir/SHA256SUMS" > /dev/null
 fi
