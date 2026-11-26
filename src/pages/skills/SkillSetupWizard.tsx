@@ -145,6 +145,29 @@ export function SkillSetupWizard({ title, review, onInstall, onReviewAgain, desc
   )
 }
 
+/**
+ * The instructions as a person reads them: headings in bold without their `#` marks, the
+ * rest as written. Nothing else is interpreted, so the text shown is the text saved.
+ */
+function InstructionsPreview({ text }: { text: string }) {
+  const lines = text.trim().split('\n')
+  return (
+    <div className="flex max-h-[280px] flex-col gap-1 overflow-auto rounded-[10px] bg-subtle p-3 text-[13px] leading-relaxed text-body">
+      {lines.map((line, index) => {
+        const heading = /^#{1,6}\s+(.*)$/.exec(line)
+        if (heading) {
+          return (
+            <span key={index} className="font-semibold text-ink">
+              {heading[1]}
+            </span>
+          )
+        }
+        return line.trim() ? <span key={index}>{line}</span> : null
+      })}
+    </div>
+  )
+}
+
 /** "What it does": who it is from, what it is for, and for an update what changes. */
 function AboutStep({ review }: { review: SkillReview }) {
   const t = useT().skills
@@ -165,7 +188,7 @@ function AboutStep({ review }: { review: SkillReview }) {
       {review.instructions && (
         <div className="flex flex-col gap-1">
           <span className="text-[12px] font-semibold tracking-wide text-muted uppercase">{t.about.instructionsLabel}</span>
-          <pre className="m-0 max-h-[280px] overflow-auto rounded-[10px] bg-subtle p-3 font-sans text-[13px] leading-relaxed whitespace-pre-wrap text-body">{review.instructions}</pre>
+          <InstructionsPreview text={review.instructions} />
         </div>
       )}
       {review.update && (
