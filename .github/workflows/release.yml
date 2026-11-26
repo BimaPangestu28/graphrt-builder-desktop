@@ -221,7 +221,8 @@ jobs:
           args: ${{ matrix.args }}
           # Each job adds its platforms to the release's latest.json (the universal
           # macOS build is listed for both darwin-aarch64 and darwin-x86_64).
-          includeUpdaterJson: true
+          # tauri-action v1 renamed this input from `includeUpdaterJson`.
+          uploadUpdaterJson: true
           # Windows updates install through the NSIS installer (same as a fresh install).
           updaterJsonPreferNsis: true
 
