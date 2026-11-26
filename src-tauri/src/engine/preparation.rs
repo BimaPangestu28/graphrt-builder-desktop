@@ -45,6 +45,11 @@ pub(super) fn build_engine(
     let services = services.with(crate::knowledge::knowledge_service_for_runs(db, credentials)?);
     // Files the user chose for `file` / `file-list` inputs (and data URLs).
     let services = services.with(super::chosen_files::run_file_resolver());
+    // Installed skills for `agent` steps that list `skills` (the store is read on first use).
+    let services = match crate::skills::skills_service() {
+        Some(skills) => services.with(skills),
+        None => services,
+    };
     Ok(Engine::new(Arc::new(graph)).with_services(services).with_limits(run_limits(db)))
 }
 

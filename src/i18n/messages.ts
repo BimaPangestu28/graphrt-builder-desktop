@@ -13,6 +13,7 @@ import { agentRun } from './locales/agentRun'
 import { runs } from './locales/runs'
 import { inbox } from './locales/inbox'
 import { plugins } from './locales/plugins'
+import { skills } from './locales/skills'
 import { knowledge } from './locales/knowledge'
 import { home } from './locales/home'
 import { settings } from './locales/settings'
@@ -41,6 +42,7 @@ const english = {
   runs: runs.en,
   inbox: inbox.en,
   plugins: plugins.en,
+  skills: skills.en,
   knowledge: knowledge.en,
   home: home.en,
   settings: settings.en,
@@ -68,6 +70,7 @@ const indonesian: Messages = {
   runs: runs.id,
   inbox: inbox.id,
   plugins: plugins.id,
+  skills: skills.id,
   knowledge: knowledge.id,
   home: home.id,
   settings: settings.id,

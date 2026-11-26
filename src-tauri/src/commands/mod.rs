@@ -23,6 +23,7 @@ pub mod run_review;
 pub mod run_summary;
 pub mod runs;
 pub mod schedule_rules;
+pub mod skills;
 pub mod teams;
 pub mod triggers;
 pub mod trusted_hosts;

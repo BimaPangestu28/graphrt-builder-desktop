@@ -7,6 +7,12 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ## [Unreleased]
 
+### Added
+
+- **Skills**: teach your agents how you do things, like your refund rules or your tone of voice. The new **Skills** page shows your skills and the ones in the catalog. A skill is only instructions: it never runs code, and it may use a tool only if you allow it.
+- **Add a skill from the catalog**: a short wizard shows what the skill is for, lets you tick which tools it may use (nothing is ticked for you, and a ticked tool asks you first every time unless you choose otherwise), shows what the safety check found, and then lets you pick the agents that use it. An update shows what changed and asks again what it may use.
+- **Create your own skill**: give it a name, say when the agent should use it and list the steps. It goes through the same checks as a catalog skill.
+
 ## [0.2.0] - 2026-11-26
 
 Agents can now start on their own when something happens, the app speaks Bahasa Indonesia, and agents can use online services through MCP sign-in.

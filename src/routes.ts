@@ -29,6 +29,8 @@ export const routePaths = {
   versionHistory: '/agents/maps-leads/history', // 24
   menuBar: '/menu-bar', // 25
   plugins: '/plugins', // 26, moved out of Connections (21) into its own sidebar item
+  skills: '/skills', // 68, Skills (your skills and the catalog's)
+  skillCreate: '/skills/new', // 69, Create a skill (wizard)
   putOnline: '/agents/maps-leads/online', // 57-64, Put it online (Where, Provider, Review, progress, done)
   ownServer: '/agents/maps-leads/own-server', // 67, My own server (For IT teams)
   screenIndex: '/screens',
@@ -81,6 +83,32 @@ export const pluginDetailPattern = '/plugins/:pluginName'
  */
 export function pluginDetailPath(pluginName: string): string {
   return pluginDetailPattern.replace(':pluginName', encodeURIComponent(pluginName))
+}
+
+/** The add / update wizard of a catalog skill. */
+export const skillAddPattern = '/skills/add/:skillName'
+
+/**
+ * Builds the URL of the wizard that adds (or updates) a catalog skill.
+ *
+ * @example
+ * skillAddPath('refund-policy') // "/skills/add/refund-policy"
+ */
+export function skillAddPath(skillName: string): string {
+  return skillAddPattern.replace(':skillName', encodeURIComponent(skillName))
+}
+
+/** The page of an installed skill. */
+export const skillDetailPattern = '/skills/view/:skillName'
+
+/**
+ * Builds the URL of an installed skill's page.
+ *
+ * @example
+ * skillDetailPath('refund-policy') // "/skills/view/refund-policy"
+ */
+export function skillDetailPath(skillName: string): string {
+  return skillDetailPattern.replace(':skillName', encodeURIComponent(skillName))
 }
 
 /**

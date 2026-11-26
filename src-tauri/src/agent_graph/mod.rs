@@ -20,6 +20,7 @@ mod document;
 pub mod library;
 pub mod model;
 mod ports;
+pub mod skills;
 #[cfg(test)]
 mod tests;
 pub mod tool_schemas;

@@ -59,6 +59,7 @@ pub mod problems;
 pub mod run_review;
 pub mod run_summary;
 pub mod scheduler;
+pub mod skills;
 pub mod state;
 pub mod storage;
 pub mod teams;
@@ -153,6 +154,8 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         events: Arc::new(plugins::events::TauriPluginEventSink::new(app.handle().clone())),
     }));
     plugins.activate_installed();
+    let skills = Arc::new(skills::SkillService::new(&data_dir, plugins.clone()));
+    skills.activate();
     mcp::publish_from_database(&db);
     engine::spawn_approval_expiry(runs.clone());
     let scheduler = scheduler::spawn(db.clone(), runs.clone());
@@ -171,6 +174,7 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         knowledge,
         node_runtime,
         plugins,
+        skills,
         model_catalog: Arc::new(model_catalog::ModelCatalog::with_http()?),
         deploy,
         plugin_triggers,
@@ -366,6 +370,17 @@ pub fn run() {
             commands::node_runtime::install_browser_runtime,
             commands::node_runtime::install_node_runtime,
             commands::node_runtime::remove_node_runtime,
+            commands::skills::list_installed_skills,
+            commands::skills::list_skill_catalog,
+            commands::skills::review_catalog_skill,
+            commands::skills::install_catalog_skill,
+            commands::skills::review_authored_skill,
+            commands::skills::install_authored_skill,
+            commands::skills::set_skill_permissions,
+            commands::skills::set_skill_enabled,
+            commands::skills::remove_skill,
+            commands::skills::list_agent_skills,
+            commands::skills::set_agent_step_skills,
             commands::plugins::list_plugin_catalog,
             commands::plugins::list_plugin_catalog_steps,
             commands::plugins::list_installed_plugins,

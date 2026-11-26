@@ -43,6 +43,7 @@ mod sending;
 pub(crate) mod session;
 mod settings;
 mod sideload;
+mod skill_catalog;
 pub(crate) mod source;
 
 #[cfg(test)]
@@ -55,6 +56,7 @@ use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::Duration;
 
 pub use active::{add_plugin_tools, register_catalog_placeholders, register_plugin_nodes};
+pub(crate) use catalog::is_newer_version;
 pub use catalog::DEFAULT_CATALOG_URL;
 use display_name::resolve_display_name;
 use download::{require_https, Downloader, ProgressCallback};

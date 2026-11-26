@@ -77,6 +77,16 @@ describe('Sidebar', () => {
     await screen.findByRole('link', { name: /Maps leads to WhatsApp/ })
   })
 
+  it('has a Skills item right after Plugins, marked current on the Skills pages', async () => {
+    renderSidebar({ activeNav: 'skills' })
+    const skillsLink = screen.getByRole('link', { name: 'Skills' })
+    expect(skillsLink).toHaveAttribute('href', routePaths.skills)
+    expect(skillsLink).toHaveAttribute('aria-current', 'page')
+    const mainLinkNames = screen.getAllByRole('link').map((link) => link.textContent)
+    expect(mainLinkNames.indexOf('Skills')).toBe(mainLinkNames.indexOf('Plugins') + 1)
+    await screen.findByRole('link', { name: /Maps leads to WhatsApp/ })
+  })
+
   it('counts plugin updates next to Plugins without changing the link name', async () => {
     renderSidebar({ activeNav: 'home' })
     const badge = await screen.findByTestId('plugin-update-badge')
