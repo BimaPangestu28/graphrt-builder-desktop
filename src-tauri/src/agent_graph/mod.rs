@@ -17,6 +17,7 @@
 //! `storage::node_layouts` and are copied forward to each new version.
 
 mod document;
+pub mod learning;
 pub mod library;
 pub mod model;
 mod ports;

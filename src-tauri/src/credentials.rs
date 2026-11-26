@@ -119,6 +119,11 @@ impl ModelProvider {
         ALL_PROVIDERS.into_iter().find(|provider| provider.registry_name() == name)
     }
 
+    /// Every provider the app knows.
+    pub(crate) fn all() -> [ModelProvider; 12] {
+        ALL_PROVIDERS
+    }
+
     /// The local CLI behind this provider, if it is one.
     pub fn local_cli(self) -> Option<LocalCli> {
         LocalCli::from_provider_name(self.registry_name())

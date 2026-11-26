@@ -1872,6 +1872,7 @@ dependencies = [
  "graphrt-bundle",
  "graphrt-core",
  "graphrt-http",
+ "graphrt-learn",
  "graphrt-llm",
  "graphrt-mcp",
  "graphrt-plugin",
@@ -1915,7 +1916,7 @@ dependencies = [
 [[package]]
 name = "graphrt-bundle"
 version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=18424ba4ccceabd9dcfdb652753ded7c6596bc45#18424ba4ccceabd9dcfdb652753ded7c6596bc45"
+source = "git+https://github.com/Graphrt/graphrt?rev=49663b5f11a18a128197ff3c7d676d2c4307667d#49663b5f11a18a128197ff3c7d676d2c4307667d"
 dependencies = [
  "ed25519-dalek",
  "getrandom 0.3.4",
@@ -1932,7 +1933,7 @@ dependencies = [
 [[package]]
 name = "graphrt-core"
 version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=18424ba4ccceabd9dcfdb652753ded7c6596bc45#18424ba4ccceabd9dcfdb652753ded7c6596bc45"
+source = "git+https://github.com/Graphrt/graphrt?rev=49663b5f11a18a128197ff3c7d676d2c4307667d#49663b5f11a18a128197ff3c7d676d2c4307667d"
 dependencies = [
  "futures",
  "indexmap 2.14.2",
@@ -1947,7 +1948,7 @@ dependencies = [
 [[package]]
 name = "graphrt-doc"
 version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=18424ba4ccceabd9dcfdb652753ded7c6596bc45#18424ba4ccceabd9dcfdb652753ded7c6596bc45"
+source = "git+https://github.com/Graphrt/graphrt?rev=49663b5f11a18a128197ff3c7d676d2c4307667d#49663b5f11a18a128197ff3c7d676d2c4307667d"
 dependencies = [
  "calamine",
  "encoding_rs",
@@ -1967,7 +1968,7 @@ dependencies = [
 [[package]]
 name = "graphrt-http"
 version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=18424ba4ccceabd9dcfdb652753ded7c6596bc45#18424ba4ccceabd9dcfdb652753ded7c6596bc45"
+source = "git+https://github.com/Graphrt/graphrt?rev=49663b5f11a18a128197ff3c7d676d2c4307667d#49663b5f11a18a128197ff3c7d676d2c4307667d"
 dependencies = [
  "base64 0.22.1",
  "futures",
@@ -1983,9 +1984,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "graphrt-learn"
+version = "0.1.0"
+source = "git+https://github.com/Graphrt/graphrt?rev=49663b5f11a18a128197ff3c7d676d2c4307667d#49663b5f11a18a128197ff3c7d676d2c4307667d"
+dependencies = [
+ "futures",
+ "graphrt-core",
+ "graphrt-skill",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "graphrt-llm"
 version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=18424ba4ccceabd9dcfdb652753ded7c6596bc45#18424ba4ccceabd9dcfdb652753ded7c6596bc45"
+source = "git+https://github.com/Graphrt/graphrt?rev=49663b5f11a18a128197ff3c7d676d2c4307667d#49663b5f11a18a128197ff3c7d676d2c4307667d"
 dependencies = [
  "futures",
  "graphrt-core",
@@ -2001,7 +2016,7 @@ dependencies = [
 [[package]]
 name = "graphrt-mcp"
 version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=18424ba4ccceabd9dcfdb652753ded7c6596bc45#18424ba4ccceabd9dcfdb652753ded7c6596bc45"
+source = "git+https://github.com/Graphrt/graphrt?rev=49663b5f11a18a128197ff3c7d676d2c4307667d#49663b5f11a18a128197ff3c7d676d2c4307667d"
 dependencies = [
  "futures",
  "graphrt-core",
@@ -2020,7 +2035,7 @@ dependencies = [
 [[package]]
 name = "graphrt-plugin"
 version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=18424ba4ccceabd9dcfdb652753ded7c6596bc45#18424ba4ccceabd9dcfdb652753ded7c6596bc45"
+source = "git+https://github.com/Graphrt/graphrt?rev=49663b5f11a18a128197ff3c7d676d2c4307667d#49663b5f11a18a128197ff3c7d676d2c4307667d"
 dependencies = [
  "futures",
  "graphrt-core",
@@ -2038,7 +2053,7 @@ dependencies = [
 [[package]]
 name = "graphrt-rag"
 version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=18424ba4ccceabd9dcfdb652753ded7c6596bc45#18424ba4ccceabd9dcfdb652753ded7c6596bc45"
+source = "git+https://github.com/Graphrt/graphrt?rev=49663b5f11a18a128197ff3c7d676d2c4307667d#49663b5f11a18a128197ff3c7d676d2c4307667d"
 dependencies = [
  "futures",
  "graphrt-core",
@@ -2055,7 +2070,7 @@ dependencies = [
 [[package]]
 name = "graphrt-skill"
 version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=18424ba4ccceabd9dcfdb652753ded7c6596bc45#18424ba4ccceabd9dcfdb652753ded7c6596bc45"
+source = "git+https://github.com/Graphrt/graphrt?rev=49663b5f11a18a128197ff3c7d676d2c4307667d#49663b5f11a18a128197ff3c7d676d2c4307667d"
 dependencies = [
  "futures",
  "graphrt-core",
@@ -2069,7 +2084,7 @@ dependencies = [
 [[package]]
 name = "graphrt-ui"
 version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=18424ba4ccceabd9dcfdb652753ded7c6596bc45#18424ba4ccceabd9dcfdb652753ded7c6596bc45"
+source = "git+https://github.com/Graphrt/graphrt?rev=49663b5f11a18a128197ff3c7d676d2c4307667d#49663b5f11a18a128197ff3c7d676d2c4307667d"
 dependencies = [
  "graphrt-core",
  "serde",
