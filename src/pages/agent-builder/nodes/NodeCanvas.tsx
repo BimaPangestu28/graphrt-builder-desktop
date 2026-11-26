@@ -7,7 +7,7 @@ import type { NodeCanvasProps } from './contracts'
 import { CanvasNodeActionsContext, ContainerDropHintContext, type CanvasNodeActions } from './flow/canvasActions'
 import { EmptyCanvas, SelectionBar, ShortcutsPanel, ZoomControls } from './flow/CanvasOverlays'
 import { buildAskBuilderText, describeNodeList, editableNodeIds } from './flow/canvasCommands'
-import { Background, BackgroundVariant, ConnectionLineType, MiniMap, ReactFlow, ReactFlowProvider, SelectionMode, useReactFlow, useStore } from './flow/flowLibrary'
+import { Background, BackgroundVariant, ConnectionLineType, MiniMap, ReactFlow, ReactFlowProvider, SelectionMode, useReactFlow, useViewportStore } from './flow/flowLibrary'
 import { NodeContextMenu } from './flow/NodeContextMenu'
 import { isMacPlatform } from './flow/shortcuts'
 import { flowEdgeTypes } from './flow/StepEdge'
@@ -99,7 +99,7 @@ function useStableSelectionHandler(onSelectionChange: (nodeIds: string[]) => voi
 function CanvasBody(props: NodeCanvasProps) {
   const { graph, positions, viewport, kindNames, kindsByKind, pluginStatuses, selectedNodeIds, readOnly, onSelectionChange, onMoveNodes, onViewportChange } = props
   const reactFlow = useReactFlow<StepFlowNode, StepFlowEdge>()
-  const zoom = useStore((state) => state.transform[2])
+  const zoom = useViewportStore((state) => state.transform[2])
   const containerRef = useRef<HTMLDivElement>(null)
   const measuredRef = useRef<MeasuredSizes>(new Map())
   const isMac = useMemo(isMacPlatform, [])
@@ -250,6 +250,8 @@ function CanvasBody(props: NodeCanvasProps) {
             defaultViewport={viewport ?? undefined}
             fitView={!viewport}
             fitViewOptions={fitViewOptions}
+            // React Flow 13 follows the system color scheme by default; the app is light only.
+            forceColorMode="light"
             nodesDraggable={!readOnly}
             nodesConnectable={!readOnly && Boolean(props.onConnect)}
             edgesReconnectable={canEdit}
