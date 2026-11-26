@@ -1,5 +1,6 @@
 import type { OnlineRun } from '@/api/deployTypes'
 import type { RunRecord, RunStatus } from './runRecordTypes'
+import { formatDurationMs } from '@/pages/agent-run/runResultSummary'
 import { intlTag, messages } from '@/i18n'
 
 /** Runs filter: everything, only this computer, or only online agents and servers. */
@@ -48,10 +49,15 @@ function formatWhen(isoTime: string | null, now: Date): string {
   return `${started.toLocaleDateString(intlTag(), { month: 'short', day: 'numeric' })} ${clock}`
 }
 
-function describeDuration(run: OnlineRun['run']): string | null {
+function readDurationSeconds(run: OnlineRun['run']): number | null {
   if (!run.startedAt || !run.finishedAt) return null
   const seconds = Math.round((new Date(run.finishedAt).getTime() - new Date(run.startedAt).getTime()) / 1000)
-  if (!(seconds >= 0)) return null
+  return seconds >= 0 ? seconds : null
+}
+
+function describeDuration(run: OnlineRun['run']): string | null {
+  const seconds = readDurationSeconds(run)
+  if (seconds === null) return null
   return seconds < 60 ? messages().runs.tookSeconds(seconds) : messages().runs.tookMinutes(Math.round(seconds / 60))
 }
 
@@ -63,6 +69,7 @@ function describeDuration(run: OnlineRun['run']): string | null {
  */
 export function toOnlineRunRecord(onlineRun: OnlineRun, now: Date = new Date()): RunRecord {
   const { run } = onlineRun
+  const durationSeconds = readDurationSeconds(run)
   const status = statusByCloudStatus[run.status.toLowerCase()] ?? 'done'
   const t = messages().runs
   const result = run.error ?? (status === 'running' ? t.runningOnline : status === 'needsYou' ? t.waitingApproval : t.finishedOnline)
@@ -74,6 +81,7 @@ export function toOnlineRunRecord(onlineRun: OnlineRun, now: Date = new Date()):
     startedBy: onlineRun.place,
     when: formatWhen(run.startedAt, now),
     startedAt: run.startedAt ?? undefined,
+    duration: durationSeconds === null ? undefined : formatDurationMs(durationSeconds * 1000),
     result,
     status,
     timing,

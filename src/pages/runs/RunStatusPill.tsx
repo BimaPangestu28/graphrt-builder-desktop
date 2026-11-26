@@ -1,3 +1,4 @@
+import { joinClassNames } from '@/components/ui'
 import { runStatusLabels, type RunStatus } from '@/pages/runs/runRecordTypes'
 
 const statusClassNames: Record<RunStatus, string> = {
@@ -8,7 +9,21 @@ const statusClassNames: Record<RunStatus, string> = {
   stopped: 'bg-chip text-ink-2',
 }
 
-/** Compact status pill used in the runs table (13px, medium weight, tighter than the shared Badge). */
+/** Dot colour per status; `running` also pulses (unless the user asks for less motion). */
+export const runStatusDotClassNames: Record<RunStatus, string> = {
+  running: 'bg-brand motion-safe:animate-pulse',
+  done: 'bg-ok',
+  needsYou: 'bg-amber',
+  failed: 'bg-danger',
+  stopped: 'bg-faint',
+}
+
+/** Compact status pill used in the runs table: a coloured dot and the status in plain words. */
 export function RunStatusPill({ status }: { status: RunStatus }) {
-  return <span className={`whitespace-nowrap rounded-full px-2 py-[3px] font-medium ${statusClassNames[status]}`}>{runStatusLabels[status]}</span>
+  return (
+    <span className={joinClassNames('inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-[3px] text-[12px] font-semibold', statusClassNames[status])}>
+      <span aria-hidden="true" className={joinClassNames('size-1.5 shrink-0 rounded-full', runStatusDotClassNames[status])} />
+      {runStatusLabels[status]}
+    </span>
+  )
 }
