@@ -12,21 +12,26 @@ import { DeployDoneView, DeployProgressView } from './deploy/DeployProgress'
 import { ProviderList } from './deploy/ProviderList'
 import { ReviewStep, type DeployChoice } from './deploy/ReviewStep'
 import { WhereStep, type RunPlace } from './deploy/WhereStep'
+import { messages } from '@/i18n'
+import { withLocalizedLabels } from '@/i18n/localized'
 
 /** The wizard's screens; the stepper shows Where (where + check), Provider and Review. */
 export type PutOnlineScreen = 'where' | 'check' | 'provider' | 'review' | 'deploying' | 'done'
 
-const stepperSteps = [
-  { label: 'Where', screens: ['where', 'check'] },
-  { label: 'Provider', screens: ['provider'] },
-  { label: 'Review', screens: ['review'] },
-] as const
+const stepperSteps = withLocalizedLabels(
+  [
+    { key: 'where', screens: ['where', 'check'] },
+    { key: 'provider', screens: ['provider'] },
+    { key: 'review', screens: ['review'] },
+  ] as const,
+  (step) => messages().deploy.stepper[step.key],
+)
 
 /** "1 Where · 2 Provider · 3 Review" in one row. */
 function WizardStepper({ screen }: { screen: PutOnlineScreen }) {
   const activeIndex = stepperSteps.findIndex((step) => (step.screens as readonly string[]).includes(screen))
   return (
-    <ol aria-label="Steps" className="m-0 flex list-none flex-nowrap items-center gap-2 overflow-x-auto p-0">
+    <ol aria-label={messages().deploy.steps} className="m-0 flex list-none flex-nowrap items-center gap-2 overflow-x-auto p-0">
       {stepperSteps.map((step, index) => {
         const isDone = index < activeIndex
         const isActive = index === activeIndex
@@ -169,8 +174,8 @@ export function PutOnlinePage() {
 
   return (
     <AppShell agents={{ kind: 'list', activeAgentId: agentId }}>
-      <PageFrame ariaLabel="Put it online" className="gap-5">
-        <PageTitleBlock title="Put it online" subtitle={agentName} />
+      <PageFrame ariaLabel={messages().deploy.putItOnline} className="gap-5">
+        <PageTitleBlock title={messages().deploy.putItOnline} subtitle={agentName} />
         {screen !== 'deploying' && screen !== 'done' && <WizardStepper screen={screen} />}
         {loadError && (
           <p role="alert" className="m-0 rounded-[12px] border border-danger-line bg-danger-tint px-4 py-3 text-danger-deep">
@@ -193,20 +198,20 @@ export function PutOnlinePage() {
           />
         )}
         {screen === 'provider' && (
-          <section aria-label="Where online?" className="flex flex-col gap-4">
+          <section aria-label={messages().deploy.whereOnline} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1">
-              <h2 className="m-0 text-[20px] font-semibold tracking-[-0.2px]">Where online?</h2>
-              <span className="text-body">Your agent runs in your own account with the provider you choose</span>
+              <h2 className="m-0 text-[20px] font-semibold tracking-[-0.2px]">{messages().deploy.whereOnline}</h2>
+              <span className="text-body">{messages().deploy.yourAgentRunsInYourOwn}</span>
             </div>
-            {accounts ? <ProviderList accounts={accounts} selectedProvider={provider} onSelect={setProvider} onAccountsChanged={() => void loadAccounts()} /> : <p className="m-0 text-muted">Loading providers…</p>}
+            {accounts ? <ProviderList accounts={accounts} selectedProvider={provider} onSelect={setProvider} onAccountsChanged={() => void loadAccounts()} /> : <p className="m-0 text-muted">{messages().deploy.loadingProviders}</p>}
             <div className="flex flex-wrap items-center gap-2">
               <Button onClick={() => void goTo('review')} disabled={!selectedAccount?.connected}>
-                Next
+                {messages().deploy.next}
               </Button>
               <Button variant="ghost" onClick={() => setScreen('check')}>
-                Back
+                {messages().deploy.back}
               </Button>
-              {!selectedAccount?.connected && <span className="text-[13px] text-muted">Connect {selectedAccount?.displayName ?? 'a provider'} to continue</span>}
+              {!selectedAccount?.connected && <span className="text-[13px] text-muted">{messages().deploy.connect}{' '}{selectedAccount?.displayName ?? messages().deploy.aProvider} {messages().deploy.toContinue}</span>}
             </div>
           </section>
         )}
@@ -221,7 +226,7 @@ export function PutOnlinePage() {
               onConfirm={(choice) => void confirm(choice)}
             />
           ) : (
-            <p className="m-0 text-muted">Loading the review…</p>
+            <p className="m-0 text-muted">{messages().deploy.loadingTheReview}</p>
           ))}
         {screen === 'deploying' && (
           <DeployProgressView

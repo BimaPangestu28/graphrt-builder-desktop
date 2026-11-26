@@ -4,6 +4,7 @@ import type { DeploymentView, RotatedApiKey } from '@/api/deployTypes'
 import { Button } from '@/components/ui'
 import { getCredentialStoreName } from '@/lib/platform'
 import { plainErrorMessage } from './deployDisplay'
+import { messages } from '@/i18n'
 
 interface NewAccessKeyProps {
   agentId: string
@@ -40,7 +41,7 @@ export function NewAccessKey({ agentId, onViewChange }: NewAccessKeyProps) {
   if (rotated) {
     return (
       <div className="flex flex-col gap-1.5">
-        <span className="font-medium text-ink-2">New access key</span>
+        <span className="font-medium text-ink-2">{messages().deploy.newAccessKey}</span>
         <code className="break-all rounded-lg bg-subtle px-3 py-2 font-mono text-[12px]">{rotated.apiKey}</code>
         <span className="flex flex-wrap items-center gap-2">
           <Button
@@ -51,9 +52,9 @@ export function NewAccessKey({ agentId, onViewChange }: NewAccessKeyProps) {
               setIsCopied(true)
             }}
           >
-            {isCopied ? 'Copied' : 'Copy key'}
+            {isCopied ? messages().deploy.copied : messages().deploy.copyKey}
           </Button>
-          <span className="text-[12px] text-muted">Shown once. The old key no longer works. Kept in {getCredentialStoreName()}, for Runs.</span>
+          <span className="text-[12px] text-muted">{messages().deploy.shownOnceTheOldKeyNo}{' '}{getCredentialStoreName()}{messages().deploy.forRuns}</span>
         </span>
         {rotated.problem && (
           <p role="status" className="m-0 text-[13px] text-amber-strong">
@@ -68,19 +69,19 @@ export function NewAccessKey({ agentId, onViewChange }: NewAccessKeyProps) {
     <div className="flex flex-col gap-1.5">
       {isConfirming ? (
         <>
-          <span className="leading-normal">Make a new access key? The current one stops working, so apps that use it need the new one. The agent restarts briefly.</span>
+          <span className="leading-normal">{messages().deploy.makeANewAccessKeyThe}</span>
           <span className="flex flex-wrap gap-2">
             <Button size="sm" variant="secondary" onClick={() => void makeNewKey()} disabled={isMaking}>
-              {isMaking ? 'Making a new key…' : 'Make a new key'}
+              {isMaking ? messages().deploy.makingANewKey : messages().deploy.makeANewKey}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setIsConfirming(false)} disabled={isMaking}>
-              Cancel
+              {messages().deploy.cancel}
             </Button>
           </span>
         </>
       ) : (
         <Button size="sm" variant="secondary" className="w-fit" onClick={() => setIsConfirming(true)}>
-          Make a new key
+          {messages().deploy.makeANewKey}
         </Button>
       )}
       {errorMessage && (

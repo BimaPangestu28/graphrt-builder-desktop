@@ -9,6 +9,7 @@ import { agentPath, sampleAgentId } from '@/routes'
 import { ConnectServerDialog } from './deploy/ConnectServerDialog'
 import { DevelopersDetails } from './deploy/DeployDialog'
 import { plainErrorMessage } from './deploy/deployDisplay'
+import { messages } from '@/i18n'
 
 /** `menu-chatbot`: a file name from the agent's name. */
 function fileNameFor(agentName: string): string {
@@ -44,14 +45,14 @@ function AgentFileCard({ agentId, agentName }: { agentId: string; agentName: str
   }
   return (
     <section className="flex flex-col gap-3 rounded-[14px] border border-line bg-surface p-5">
-      <h2 className="m-0 text-[17px] font-semibold">Give it to your IT team</h2>
-      <span className="leading-normal text-body">One file with your agent. Your keys are not inside: your IT team adds them on the server.</span>
+      <h2 className="m-0 text-[17px] font-semibold">{messages().deploy.giveItToYourItTeam}</h2>
+      <span className="leading-normal text-body">{messages().deploy.oneFileWithYourAgentYour}</span>
       <Button className="w-fit" onClick={() => void download()} disabled={isSaving}>
-        {isSaving ? 'Saving…' : 'Download agent file (.grt)'}
+        {isSaving ? messages().deploy.saving : messages().deploy.downloadAgentFileGrt}
       </Button>
       {savedPath && (
         <span role="status" className="text-[13px] text-ok-strong">
-          Saved to {savedPath}
+          {messages().deploy.savedTo}{' '}{savedPath}
         </span>
       )}
       {errorMessage && (
@@ -59,10 +60,10 @@ function AgentFileCard({ agentId, agentName }: { agentId: string; agentName: str
           {errorMessage}
         </span>
       )}
-      <DevelopersDetails summary="Instructions for your IT team">
-        <span>Put the .grt file in ./bundles, then run graphrt with Docker:</span>
+      <DevelopersDetails summary={messages().deploy.instructionsForYourItTeam}>
+        <span>{messages().deploy.putTheGrtFileInBundles}</span>
         <pre className="m-0 overflow-x-auto rounded-lg bg-subtle p-3 font-mono text-[12px] leading-[1.6] text-ink-2">{dockerInstructions(fileNameFor(agentName))}</pre>
-        <span>Save as .yaml in the dialog for the plain workflow document instead. Knowledge bases are not inside the file yet.</span>
+        <span>{messages().deploy.saveAsYamlInTheDialog}</span>
       </DevelopersDetails>
     </section>
   )
@@ -75,9 +76,9 @@ function RunningServers() {
   return (
     <section className="flex flex-col gap-3 rounded-[14px] border border-line bg-surface p-5">
       <h2 className="m-0 flex items-center gap-2 text-[17px] font-semibold">
-        A server that's already running <Badge>For IT teams</Badge>
+        {messages().deploy.aServerThatsAlreadyRunning}{' '}<Badge>{messages().deploy.forItTeams}</Badge>
       </h2>
-      <span className="text-body">See its runs here once it's connected.</span>
+      <span className="text-body">{messages().deploy.seeItsRunsHereOnceIts}</span>
       {servers.length > 0 && (
         <ul className="m-0 flex list-none flex-col gap-2 p-0">
           {servers.map(({ server, health }) => (
@@ -85,17 +86,17 @@ function RunningServers() {
               <StatusDot tone={health?.healthy ? 'ok' : 'amber'} />
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="font-medium">{server.name}</span>
-                <span className="text-[13px] text-body">{health?.healthy ? 'Connected' : health?.message}</span>
+                <span className="text-[13px] text-body">{health?.healthy ? messages().deploy.connected : health?.message}</span>
               </span>
               <Button size="sm" variant="ghost" onClick={() => void removeOwnServer(server.id).then(serversState.reload)}>
-                Remove
+                {messages().deploy.remove}
               </Button>
             </li>
           ))}
         </ul>
       )}
       <Button variant="secondary" className="w-fit" onClick={() => setIsConnecting(true)}>
-        Connect a running server
+        {messages().deploy.connectARunningServer}
       </Button>
       {isConnecting && <ConnectServerDialog onClose={() => setIsConnecting(false)} onConnected={() => void serversState.reload()} />}
     </section>
@@ -109,13 +110,13 @@ export function OwnServerPage() {
   const agentName = agent?.name ?? 'This agent'
   return (
     <AppShell agents={{ kind: 'list', activeAgentId: agentId }}>
-      <PageFrame ariaLabel="My own server" className="gap-5">
+      <PageFrame ariaLabel={messages().deploy.myOwnServer} className="gap-5">
         <PageTitleBlock
-          title="My own server"
-          subtitle={`For IT teams · ${agentName}`}
+          title={messages().deploy.myOwnServer}
+          subtitle={messages().deploy.forItTeamsAgentname(agentName)}
           actions={
             <LinkButton to={agentPath('builder', agentId)} variant="secondary">
-              Back to the agent
+              {messages().deploy.backToTheAgent}
             </LinkButton>
           }
         />

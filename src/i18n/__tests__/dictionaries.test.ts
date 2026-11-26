@@ -21,6 +21,16 @@ function sampleText(message: (...args: never[]) => string): string | null {
   }
 }
 
+/** Shell commands and code samples shown as-is, in both languages. */
+function isCodeSample(text: string): boolean {
+  return /^(curl|fly|npx|graphrt|docker)\b/.test(text.trim()) || /\s-{1,2}[a-zA-Z]/.test(text)
+}
+
+/** "graphrt" stays lowercase where it is the command or a resource name. */
+function stripCommandBrand(text: string): string {
+  return text.replace(/graphrt (deploy|serve|runner|dengan Docker)|“graphrt”|ghcr\.io\/\S+|graphrt-plugin\.json|GRAPHRT_\w+/g, '')
+}
+
 const english = collectLeaves(dictionaries.en)
 const indonesian = collectLeaves(dictionaries.id)
 
@@ -48,7 +58,7 @@ describe('dictionaries', () => {
   it('follow the Indonesian copy rules: no arrows, no semicolons, no colons before a word', () => {
     const offending = indonesian
       .map(({ path, value }) => ({ path, text: typeof value === 'string' ? value : typeof value === 'function' ? sampleText(value as () => string) : null }))
-      .filter((entry): entry is { path: string; text: string } => entry.text !== null)
+      .filter((entry): entry is { path: string; text: string } => entry.text !== null && !isCodeSample(entry.text))
       .filter(({ text }) => /[→←↑↓⇒➜]|;|:\s/u.test(text))
       .map(({ path, text }) => `${path}: ${text}`)
     expect(offending).toEqual([])
@@ -56,7 +66,7 @@ describe('dictionaries', () => {
 
   it('write the brand as Graphrt in Indonesian', () => {
     const lowercaseBrand = indonesian
-      .filter(({ value }) => typeof value === 'string' && /(^|[^\w./-])graphrt(?![\w.-])/.test(value))
+      .filter(({ value }) => typeof value === 'string' && !isCodeSample(value) && /(^|[^\w./-])graphrt(?![\w.-])/.test(stripCommandBrand(value)))
       .map(({ path }) => path)
     expect(lowercaseBrand).toEqual([])
   })

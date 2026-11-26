@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Badge, Button, Icon, joinClassNames } from '@/components/ui'
+import { messages } from '@/i18n'
 
 export type RunPlace = 'local' | 'online' | 'own_server'
 
@@ -61,56 +62,56 @@ interface WhereStepProps {
 /** "Where should it run?": This computer (default), Online (Beta), and My own server under "For IT teams". */
 export function WhereStep({ agentName, selectedPlace, onSelect, connectedServerCount, onNext, onCancel }: WhereStepProps) {
   return (
-    <section aria-label="Where should it run?" className="flex flex-col gap-4">
+    <section aria-label={messages().deploy.whereShouldItRun} className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
-        <h2 className="m-0 text-[20px] font-semibold tracking-[-0.2px]">Where should it run?</h2>
-        <span className="text-body">{agentName} · you can change this later</span>
+        <h2 className="m-0 text-[20px] font-semibold tracking-[-0.2px]">{messages().deploy.whereShouldItRun}</h2>
+        <span className="text-body">{agentName} {messages().deploy.youCanChangeThisLater}</span>
       </div>
-      <div role="radiogroup" aria-label="Where it runs" className="flex flex-col gap-2">
+      <div role="radiogroup" aria-label={messages().deploy.whereItRuns} className="flex flex-col gap-2">
         <PlaceOption
           place="local"
           selectedPlace={selectedPlace}
           onSelect={onSelect}
-          title="This computer"
-          badges={<Badge>Default</Badge>}
-          detail="Runs while your computer is on and the app is open."
+          title={messages().deploy.thisComputer}
+          badges={<Badge>{messages().deploy.default}</Badge>}
+          detail={messages().deploy.runsWhileYourComputerIsOn}
           icon={<Icon name="monitor" size={20} />}
         />
         <PlaceOption
           place="online"
           selectedPlace={selectedPlace}
           onSelect={onSelect}
-          title="Online"
+          title={messages().deploy.online2}
           badges={
             <>
-              <Badge tone="brand">Recommended for 24/7 agents</Badge>
-              <Badge tone="amber">Beta</Badge>
+              <Badge tone="brand">{messages().deploy.recommendedFor247Agents}</Badge>
+              <Badge tone="amber">{messages().deploy.beta}</Badge>
             </>
           }
-          detail="Keep this agent running online, even when your computer is off. It uses your own account with an online provider, who bills you directly."
+          detail={messages().deploy.keepThisAgentRunningOnlineEven}
           icon={cloudIcon}
         />
         <details open={selectedPlace === 'own_server'} className="rounded-[14px]">
-          <summary className="cursor-pointer py-1.5 text-[13px] font-semibold text-ink-2">For IT teams</summary>
+          <summary className="cursor-pointer py-1.5 text-[13px] font-semibold text-ink-2">{messages().deploy.forItTeams}</summary>
           <div className="mt-2">
             <PlaceOption
               place="own_server"
               selectedPlace={selectedPlace}
               onSelect={onSelect}
-              title="My own server"
-              badges={connectedServerCount > 0 ? <Badge tone="ok">{connectedServerCount} server{connectedServerCount === 1 ? '' : 's'} connected</Badge> : undefined}
-              detail="Run it on a server your IT team manages. You get a file and instructions to hand over."
+              title={messages().deploy.myOwnServer}
+              badges={connectedServerCount > 0 ? <Badge tone="ok">{connectedServerCount} {messages().deploy.server}{connectedServerCount === 1 ? '' : 's'} {messages().deploy.connected3}</Badge> : undefined}
+              detail={messages().deploy.runItOnAServerYour}
               icon={serverIcon}
             />
           </div>
         </details>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Button onClick={onNext}>Next</Button>
+        <Button onClick={onNext}>{messages().deploy.next}</Button>
         <Button variant="ghost" onClick={onCancel}>
-          Cancel
+          {messages().deploy.cancel}
         </Button>
-        <span className="text-[13px] text-muted">Nothing goes online until you review and confirm</span>
+        <span className="text-[13px] text-muted">{messages().deploy.nothingGoesOnlineUntilYouReview}</span>
       </div>
     </section>
   )

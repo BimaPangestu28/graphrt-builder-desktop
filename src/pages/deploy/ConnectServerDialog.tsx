@@ -5,6 +5,7 @@ import { Badge, Button, Icon } from '@/components/ui'
 import { getCredentialStoreName } from '@/lib/platform'
 import { DeployDialog, GuideSteps } from './DeployDialog'
 import { plainErrorMessage } from './deployDisplay'
+import { messages } from '@/i18n'
 
 const inputClassName = 'box-border h-10 w-full rounded-[9px] border border-line-strong bg-surface px-3 text-[14px] text-ink outline-none focus:border-ink'
 
@@ -34,17 +35,17 @@ export function ConnectServerDialog({ onClose, onConnected }: { onClose: () => v
 
   const leading = (
     <span aria-hidden="true" className="flex size-9 items-center justify-center rounded-[10px] bg-subtle text-[12px] font-semibold text-ink-2">
-      IT
+      {messages().deploy.it}
     </span>
   )
 
   if (connected) {
     return (
-      <DeployDialog title="Connect a running server" leading={leading} onClose={onClose} footer={<Button onClick={onClose}>Done</Button>}>
+      <DeployDialog title={messages().deploy.connectARunningServer} leading={leading} onClose={onClose} footer={<Button onClick={onClose}>{messages().deploy.done}</Button>}>
         <div role="status" className="flex items-start gap-3 rounded-[12px] border border-ok-soft bg-ok-tint px-4 py-3">
           <Icon name="check" size={18} className="mt-0.5 shrink-0 text-ok" />
           <span>
-            <b className="font-semibold">Connected.</b> {connected.server.name} answers. Its runs now show in Runs.
+            <b className="font-semibold">{messages().deploy.connected2}</b> {connected.server.name} {messages().deploy.answersItsRunsNowShowIn}
           </span>
         </div>
       </DeployDialog>
@@ -52,23 +53,23 @@ export function ConnectServerDialog({ onClose, onConnected }: { onClose: () => v
   }
 
   return (
-    <DeployDialog title="Connect a running server" leading={leading} onClose={onClose}>
-      <form onSubmit={(event) => void handleSubmit(event)} aria-label="Connect a running server" className="flex flex-col gap-4">
-        <GuideSteps steps={["Ask your IT team for the server's address and access key", 'Fill them in below and connect']} />
+    <DeployDialog title={messages().deploy.connectARunningServer} leading={leading} onClose={onClose}>
+      <form onSubmit={(event) => void handleSubmit(event)} aria-label={messages().deploy.connectARunningServer} className="flex flex-col gap-4">
+        <GuideSteps steps={[messages().deploy.askYourItTeamForThe2, messages().deploy.fillThemInBelowAndConnect]} />
         <label className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-2">
-          Name
-          <input value={name} onChange={(event) => setName(event.target.value)} placeholder="home-nas" className={inputClassName} />
+          {messages().deploy.name}
+          <input value={name} onChange={(event) => setName(event.target.value)} placeholder={messages().deploy.homeNas} className={inputClassName} />
         </label>
         <label className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-2">
-          Address
-          <input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://agents.example.com" className={inputClassName} spellCheck={false} />
+          {messages().deploy.address}
+          <input value={url} onChange={(event) => setUrl(event.target.value)} placeholder={messages().deploy.httpsAgentsExampleCom} className={inputClassName} spellCheck={false} />
         </label>
         <label className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-2">
-          Access key
+          {messages().deploy.accessKey}
           <input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} className={inputClassName} autoComplete="off" />
         </label>
         <p className="m-0 text-[13px] leading-normal text-muted">
-          The access key lets graphrt read this server's runs and approvals. Kept in {getCredentialStoreName()}, never shown again. <Badge>For IT teams</Badge>
+          {messages().deploy.theAccessKeyLetsGraphrtRead}{' '}{getCredentialStoreName()}{messages().deploy.neverShownAgain}{' '}<Badge>{messages().deploy.forItTeams}</Badge>
         </p>
         {errorMessage && (
           <p role="alert" className="m-0 rounded-[10px] border border-danger-line bg-danger-tint px-3 py-2 text-[13px] text-danger-deep">
@@ -77,10 +78,10 @@ export function ConnectServerDialog({ onClose, onConnected }: { onClose: () => v
         )}
         <div className="flex flex-wrap justify-end gap-2">
           <Button variant="ghost" onClick={onClose} disabled={isConnecting}>
-            Cancel
+            {messages().deploy.cancel}
           </Button>
           <Button type="submit" disabled={isConnecting || !name.trim() || !url.trim() || !apiKey.trim()}>
-            {isConnecting ? 'Connecting…' : errorMessage ? 'Try again' : 'Connect'}
+            {isConnecting ? messages().deploy.connecting : errorMessage ? messages().deploy.tryAgain : messages().deploy.connect}
           </Button>
         </div>
       </form>
