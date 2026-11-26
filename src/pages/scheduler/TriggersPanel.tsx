@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { StrokeIcon, joinClassNames } from '@/components/ui'
 import type { ScheduleTrigger, TriggerIconKind } from '@/lib/scheduleCalendar'
+import { messages } from '@/i18n'
 
 const triggerIconPaths: Record<TriggerIconKind, ReactNode> = {
   schedule: (
@@ -43,10 +44,10 @@ function TriggerRow({ trigger, onToggle }: TriggerRowProps) {
           type="checkbox"
           checked={trigger.isEnabled}
           onChange={() => onToggle(trigger.id)}
-          aria-label={`${trigger.agentName} trigger`}
+          aria-label={messages().schedule.triggerFor(trigger.agentName)}
           className="size-[18px] accent-brand"
         />
-        {trigger.isEnabled ? 'On' : 'Off'}
+        {trigger.isEnabled ? messages().schedule.on : messages().schedule.off}
       </label>
     </div>
   )
@@ -62,9 +63,9 @@ export function TriggersPanel({ triggers, onToggleTrigger }: TriggersPanelProps)
   return (
     <section aria-labelledby="scheduler-triggers-heading" className="flex flex-col gap-3.5 rounded-2xl border border-line bg-surface p-[18px]">
       <h2 id="scheduler-triggers-heading" className="m-0 text-[16px] font-semibold">
-        Triggers
+        {messages().schedule.triggers}
       </h2>
-      {triggers.length === 0 && <p className="m-0 text-[13px] text-body">No schedules yet. Schedule an agent from its page to see it here</p>}
+      {triggers.length === 0 && <p className="m-0 text-[13px] text-body">{messages().schedule.noSchedulesYetScheduleAnAgent}</p>}
       {triggers.map((trigger) => (
         <TriggerRow key={trigger.id} trigger={trigger} onToggle={onToggleTrigger} />
       ))}

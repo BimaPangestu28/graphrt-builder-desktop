@@ -20,3 +20,35 @@ export function localizedRecord<Key extends string, Value>(read: () => Readonly<
     },
   })
 }
+
+/**
+ * Option lists declared at module level whose `label` follows the current language: each item
+ * gets a `label` getter reading `labelOf(item)` from the dictionary.
+ *
+ * @example
+ * export const viewModeOptions = withLocalizedLabels([{ mode: 'day' }, { mode: 'week' }], (option) => messages().schedule.views[option.mode])
+ */
+export function withLocalizedLabels<Item extends object>(items: readonly Item[], labelOf: (item: Item) => string): Array<Item & { readonly label: string }> {
+  return items.map((item) => {
+    const withLabel = { ...item } as Item & { readonly label: string }
+    Object.defineProperty(withLabel, 'label', { get: () => labelOf(item), enumerable: true })
+    return withLabel
+  })
+}
+
+/**
+ * A read-only array whose items come from the current dictionary on every access (indexing,
+ * `map`, `find`, spreading), for module-level lists such as weekday names.
+ */
+export function localizedArray<Item>(read: () => readonly Item[]): readonly Item[] {
+  return new Proxy([] as Item[], {
+    get: (_target, property) => Reflect.get(read(), property),
+    has: (_target, property) => Reflect.has(read(), property),
+    ownKeys: () => Reflect.ownKeys(read()),
+    getOwnPropertyDescriptor: (_target, property) => {
+      const descriptor = Reflect.getOwnPropertyDescriptor(read(), property)
+      if (!descriptor) return undefined
+      return property === 'length' ? descriptor : { ...descriptor, configurable: true }
+    },
+  })
+}

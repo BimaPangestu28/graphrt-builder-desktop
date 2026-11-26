@@ -74,3 +74,16 @@ describe('localizedRecord', () => {
     expect(Object.keys(labels)).toEqual(['all', 'installed', 'updates', 'attention'])
   })
 })
+
+describe('localizedArray', () => {
+  it('maps, finds and indexes in the current language', async () => {
+    const { localizedArray } = await import('../localized')
+    const { setLocale, messages } = await import('../index')
+    const weekdays = localizedArray(() => messages().schedule.shortWeekdays)
+    expect(weekdays.map((name) => name)).toEqual(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'])
+    setLocale('id')
+    expect(weekdays[1]).toBe('Sen')
+    expect(weekdays.find((name) => name.startsWith('Ka'))).toBe('Kam')
+    expect([...weekdays]).toHaveLength(7)
+  })
+})

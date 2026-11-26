@@ -19,6 +19,7 @@ import { ScheduleRulesPanel } from './scheduler/ScheduleRulesPanel'
 import { ScheduleToolbar, type ScheduleViewMode } from './scheduler/ScheduleToolbar'
 import { TriggersPanel } from './scheduler/TriggersPanel'
 import { getRunHistoryWindow, sortTriggersByOrder, toPastRuns, toScheduleTrigger } from './scheduler/schedulerViewModel'
+import { messages } from '@/i18n'
 
 /** Dark promo card pointing to moving schedules onto a server so they run with the computer off. */
 function RemoteRunnerPromo() {
@@ -28,8 +29,8 @@ function RemoteRunnerPromo() {
         <path d="M7 18a4 4 0 0 1-.6-8 6 6 0 0 1 11.6 1.5A3.5 3.5 0 0 1 17.5 18z" />
       </StrokeIcon>
       <span className="flex flex-col gap-0.5">
-        <span className="font-semibold">Runs even when the computer is off</span>
-        <span className="text-[13px] text-line-strong">Move schedules to your own server or VPS, free</span>
+        <span className="font-semibold">{messages().schedule.runsEvenWhenTheComputerIs}</span>
+        <span className="text-[13px] text-line-strong">{messages().schedule.moveSchedulesToYourOwnServer}</span>
       </span>
     </Link>
   )
@@ -97,7 +98,7 @@ export function SchedulerPage() {
   const { pastRuns, error: historyError } = usePastRuns(weekDates, triggers, timezone)
   const visibleDates = viewMode === 'day' ? [weekDates.includes(todayIsoDate) ? todayIsoDate : weekDates[0]] : weekDates
   const entries = buildCalendarEntries({ dates: visibleDates, triggers: scheduleTriggers, todayIsoDate, runs: pastRuns })
-  const viewLabel = viewMode === 'day' ? 'Day view' : viewMode === 'week' ? 'Week view' : 'List view'
+  const viewLabel = viewMode === 'day' ? messages().schedule.dayView : viewMode === 'week' ? messages().schedule.weekView : messages().schedule.listView
 
   return (
     <AppShell activeNav="schedule" agents={{ kind: 'list' }}>
@@ -110,12 +111,12 @@ export function SchedulerPage() {
         />
         {error && (
           <div className="flex-[1_1_100%]">
-            <RunErrorNotice title="Could not update the schedules" error={error} />
+            <RunErrorNotice title={messages().schedule.couldNotUpdateTheSchedules} error={error} />
           </div>
         )}
         {historyError && (
           <div className="flex-[1_1_100%]">
-            <RunErrorNotice title="Could not load past runs" error={historyError} />
+            <RunErrorNotice title={messages().schedule.couldNotLoadPastRuns} error={historyError} />
           </div>
         )}
         {viewMode === 'list' ? (
@@ -123,7 +124,7 @@ export function SchedulerPage() {
         ) : (
           <CalendarGrid dates={visibleDates} entries={entries} todayIsoDate={todayIsoDate} label={viewLabel} />
         )}
-        <aside aria-label="Triggers and rules" className="flex min-w-0 flex-[1_1_300px] flex-col gap-4">
+        <aside aria-label={messages().schedule.triggersAndRules} className="flex min-w-0 flex-[1_1_300px] flex-col gap-4">
           <TriggersPanel triggers={scheduleTriggers} onToggleTrigger={toggleTrigger} />
           <ScheduleRulesPanel />
           {/* Running schedules on a server does not exist yet, so the desktop app does not advertise it. */}

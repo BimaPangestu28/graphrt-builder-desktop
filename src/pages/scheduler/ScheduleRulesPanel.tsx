@@ -3,6 +3,7 @@ import { isDesktopApp } from '@/api/client'
 import { concurrencyOptions, ifMacAsleepOptions } from '@/lib/scheduleCalendar'
 import { missedRunPolicyByOption, toMissedRunPolicy } from '@/lib/schedule'
 import { useScheduleRules } from './useScheduleRules'
+import { messages } from '@/i18n'
 
 const fieldLabelClassNames = 'text-[12px] font-medium text-ink-2'
 const fieldControlClassNames = 'box-border h-10 rounded-[10px] border border-line-strong bg-surface text-[14px] text-ink'
@@ -14,7 +15,7 @@ function findMissedRunOption(policy: string): string {
 /** The design's choices, plus the stored limit when it is not one of them (set elsewhere). */
 function listConcurrencyChoices(maxConcurrentRuns: number) {
   const isKnown = concurrencyOptions.some((option) => option.maxConcurrentRuns === maxConcurrentRuns)
-  return isKnown ? concurrencyOptions : [...concurrencyOptions, { label: `Up to ${maxConcurrentRuns}`, maxConcurrentRuns }]
+  return isKnown ? concurrencyOptions : [...concurrencyOptions, { label: messages().schedule.upTo(maxConcurrentRuns), maxConcurrentRuns }]
 }
 
 /**
@@ -25,7 +26,7 @@ function QuietHoursPreviewField() {
   const [quietHours, setQuietHours] = useState('21:00 to 07:00')
   return (
     <label className="flex flex-col gap-1.5">
-      <span className={fieldLabelClassNames}>Quiet hours, nothing sends to other people</span>
+      <span className={fieldLabelClassNames}>{messages().schedule.quietHoursNothingSendsToOther}</span>
       <input type="text" value={quietHours} onChange={(event) => setQuietHours(event.target.value)} className={`${fieldControlClassNames} px-3`} />
     </label>
   )
@@ -42,10 +43,10 @@ export function ScheduleRulesPanel() {
   return (
     <section aria-labelledby="scheduler-rules-heading" className="flex flex-col gap-3.5 rounded-2xl border border-line bg-surface p-[18px]">
       <h2 id="scheduler-rules-heading" className="m-0 text-[16px] font-semibold">
-        Rules for every schedule
+        {messages().schedule.rulesForEverySchedule}
       </h2>
       <label className="flex flex-col gap-1.5">
-        <span className={fieldLabelClassNames}>If the computer was asleep</span>
+        <span className={fieldLabelClassNames}>{messages().schedule.ifTheComputerWasAsleep}</span>
         <select
           value={findMissedRunOption(values?.missedRunDefaultPolicy ?? 'run_once')}
           disabled={!values}
@@ -59,11 +60,11 @@ export function ScheduleRulesPanel() {
         </select>
       </label>
       <span id="missed-run-rule-hint" className="-mt-2 text-[12px] text-muted">
-        New schedules start with this; each schedule can change it
+        {messages().schedule.newSchedulesStartWithThisEach}
       </span>
       {!isDesktopApp() && <QuietHoursPreviewField />}
       <label className="flex flex-col gap-1.5">
-        <span className={fieldLabelClassNames}>Agents running at the same time</span>
+        <span className={fieldLabelClassNames}>{messages().schedule.agentsRunningAtTheSameTime}</span>
         <select
           value={String(maxConcurrentRuns)}
           disabled={!values}
@@ -79,7 +80,7 @@ export function ScheduleRulesPanel() {
         </select>
       </label>
       <span id="concurrency-rule-hint" className="-mt-2 text-[12px] text-muted">
-        A schedule that comes due beyond this skips that run
+        {messages().schedule.aScheduleThatComesDueBeyond}
       </span>
       <label className="flex cursor-pointer items-center gap-2.5">
         <input
@@ -89,11 +90,11 @@ export function ScheduleRulesPanel() {
           onChange={(event) => void saveRule('keepAwakeWhileRunning', event.target.checked)}
           className="size-[18px] accent-brand"
         />
-        Keep the computer awake while an agent runs
+        {messages().schedule.keepTheComputerAwakeWhileAn}
       </label>
       {error && (
         <p role="alert" className="m-0 text-[13px] text-danger">
-          Could not save the rule: {error.message}
+          {messages().schedule.couldNotSaveTheRule}{' '}{error.message}
         </p>
       )}
     </section>
