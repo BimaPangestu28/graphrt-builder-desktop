@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { startRun } from '@/api/runs'
+import { sampleAgentsBackend } from '@/api/sampleBackend/agents'
 import { resetSampleRuns, sampleRunStepDelayMs, sampleRunsBackend, sampleStepsUntilApproval } from '@/api/sampleBackend/runs'
 import { RunsPage } from '../RunsPage'
 
@@ -15,7 +16,7 @@ function renderRunsPage(initialEntry = '/runs') {
 
 /** Waits for the run list (header row + 6 seeded runs). */
 async function findRunRows() {
-  const table = screen.getByRole('table')
+  const table = await screen.findByRole('table')
   await within(table).findByText('Gmail sign-in expired')
   return within(table).getAllByRole('row')
 }
@@ -138,7 +139,7 @@ describe('RunsPage', () => {
       { ...run, id: 'paused-run', status: 'paused', pauseReasons: [{ node_id: 'approve', kind: 'human_input', data: { prompt: '## Send to\n**Kopi Kenangan**?' } }] },
     ])
     renderRunsPage()
-    const table = screen.getByRole('table')
+    const table = await screen.findByRole('table')
     const friendlyError = await within(table).findByText("Could not reach the server: that address doesn't exist")
     expect(friendlyError.closest('td')).toHaveAttribute('title', rawError)
     expect(within(table).queryByText(/dns error/)).not.toBeInTheDocument()
@@ -146,7 +147,10 @@ describe('RunsPage', () => {
     expect(within(stoppedRow).getAllByText('Stopped')).toHaveLength(2)
     expect(within(stoppedRow).queryByText('Failed')).not.toBeInTheDocument()
     expect(within(pausedRow).getByText('Send to Kopi Kenangan?')).toBeInTheDocument()
-    expect(within(pausedRow).getByText(/^Today \d\d:\d\d$/)).toBeInTheDocument()
+    // When: relative for recent runs, the exact day and time on hover; a waiting run has no duration yet.
+    const pausedWhen = within(pausedRow).getByText('just now')
+    expect(pausedWhen.closest('td')).toHaveAttribute('title', expect.stringMatching(/^Today \d\d:\d\d/))
+    expect(within(pausedRow).getByText('Waiting')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Failed 1' })).toBeInTheDocument()
   })
 
@@ -154,5 +158,46 @@ describe('RunsPage', () => {
     vi.spyOn(sampleRunsBackend, 'listRuns').mockRejectedValue(new BackendError('database', 'Database is locked'))
     renderRunsPage()
     expect(await screen.findByRole('alert')).toHaveTextContent('Database is locked')
+  })
+
+  it('sums up today and colours the status counts', async () => {
+    renderRunsPage()
+    await findRunRows()
+    const summary = screen.getByRole('region', { name: 'Today at a glance' })
+    expect(within(summary).getByText('Runs today').nextSibling).toHaveTextContent(/^\d+$/)
+    expect(within(summary).getByText('Needs you').nextSibling).toHaveTextContent('1')
+    const statusGroup = screen.getByRole('group', { name: 'Status' })
+    expect(within(statusGroup).getByRole('button', { name: 'Needs you 1' })).toBeInTheDocument()
+  })
+
+  it('offers to clear the filters when runs exist but none match', async () => {
+    renderRunsPage()
+    await findRunRows()
+    fireEvent.change(screen.getByRole('combobox', { name: 'Agent' }), { target: { value: 'morning-digest' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Running 0' }))
+    expect(await screen.findByText('No runs match these filters')).toBeInTheDocument()
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
+    expect(await findRunRows()).toHaveLength(7)
+    expect(screen.getByRole('combobox', { name: 'Agent' })).toHaveValue('all')
+  })
+
+  it('offers a new agent when there are no agents and no runs', async () => {
+    vi.spyOn(sampleRunsBackend, 'listRuns').mockResolvedValue([])
+    vi.spyOn(sampleAgentsBackend, 'listAgents').mockResolvedValue([])
+    renderRunsPage()
+    expect(await screen.findByText('No agents yet')).toBeInTheDocument()
+    const page = screen.getByRole('region', { name: 'All runs' })
+    expect(within(page).getByRole('link', { name: 'New agent' })).toHaveAttribute('href', '/new')
+    expect(screen.queryByRole('toolbar', { name: 'Filter runs' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Today at a glance' })).not.toBeInTheDocument()
+  })
+
+  it('says no runs yet when agents exist but none has run', async () => {
+    vi.spyOn(sampleRunsBackend, 'listRuns').mockResolvedValue([])
+    renderRunsPage()
+    expect(await screen.findByText('No runs yet')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Go to your agents' })).toHaveAttribute('href', '/home')
+    expect(within(screen.getByRole('region', { name: 'All runs' })).queryByRole('link', { name: 'New agent' })).not.toBeInTheDocument()
   })
 })

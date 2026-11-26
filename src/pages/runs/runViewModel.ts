@@ -35,6 +35,11 @@ const startedByLabels: Readonly<Record<RunTrigger, string>> = localizedRecord(()
 
 const fallbackResultByStatus: Readonly<Record<BackendRunStatus, string>> = localizedRecord(() => messages().runs.fallbackResult)
 
+/** The Runs screen's status word for a backend status (`paused` -> `needsYou`, `aborted` -> `stopped`). */
+export function toScreenStatus(status: BackendRunStatus): RunsScreenStatus {
+  return screenStatusByBackendStatus[status]
+}
+
 /** Value of the agent select meaning "every agent". */
 export const allAgentsFilterValue = 'all'
 
@@ -119,10 +124,11 @@ export function toRunRecord(run: Run, agentName: string, now: Date = new Date())
     startedBy: startedByLabels[run.trigger],
     when: formatRunDay(run.startedAt, now),
     startedAt: run.startedAt,
+    duration: formatRunDuration(run.startedAt, run.finishedAt) ?? undefined,
     place: 'local',
     result,
     resultTitle,
-    status: screenStatusByBackendStatus[run.status],
+    status: toScreenStatus(run.status),
     timing: buildTiming(run, now),
     steps: [],
     output: readOutputText(run, 'message') ?? run.errorMessage ?? readPauseQuestion(run) ?? result,

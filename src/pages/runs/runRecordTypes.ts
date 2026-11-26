@@ -30,6 +30,8 @@ export interface RunRecord {
   steps: RunStep[]
   output: string
   rawLog: string[]
+  /** How long a finished run took, e.g. "2m 05s"; absent while it runs or waits. */
+  duration?: string
   /** RFC 3339 start time, for ordering local and online runs together. */
   startedAt?: string
   /** Where it ran: this computer (default) or online (Put it online). */

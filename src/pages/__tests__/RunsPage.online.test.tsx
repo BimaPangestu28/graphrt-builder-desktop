@@ -25,7 +25,7 @@ describe('RunsPage on this computer / online', () => {
   it('marks every run with where it ran and filters by place', async () => {
     seedSampleDeployment(sampleAgentId)
     renderRunsPage()
-    const table = screen.getByRole('table')
+    const table = await screen.findByRole('table')
     await within(table).findByText('Gmail sign-in expired')
     expect(await within(table).findAllByText('Online')).toHaveLength(2)
     expect(within(table).getAllByText('On this computer').length).toBeGreaterThan(0)

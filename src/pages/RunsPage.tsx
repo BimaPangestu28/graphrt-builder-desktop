@@ -2,11 +2,11 @@ import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { Run } from '@/api/types'
 import { AppShell, PageFrame, PageTitleBlock } from '@/components/layout'
-import { joinClassNames } from '@/components/ui'
 import { getPreviewContent } from '@/api/previewContent'
 import { listOnlineRuns } from '@/api/deploy'
 import { useAsyncData } from '@/hooks/useAsyncData'
 import { useAgentNames, type AgentNameLookup } from '@/hooks/useAgentNames'
+import { useAgents } from '@/hooks/useAgents'
 import { getVersionFlowSummary } from '@/api/versions'
 import { useNow } from '@/hooks/useNow'
 import { useLoadedData } from '@/hooks/useRunData'
@@ -16,90 +16,13 @@ import { toRunStepTemplate } from '@/pages/agent-run/runProgress'
 import { buildRunStepViews } from '@/pages/agent-run/runSteps'
 import { RunDetailPanel } from './runs/RunDetailPanel'
 import { RunsTable } from './runs/RunsTable'
-import { mergeRunsByPlace, placeFilterOptions, toOnlineRunRecord, toPlaceFilter, type RunsPlaceFilter } from './runs/onlineRuns'
+import { RunsToolbar } from './runs/RunsToolbar'
+import { RunsEmptyStateView, RunsSummary } from './runs/RunsOverviewParts'
+import { mergeRunsByPlace, toOnlineRunRecord, toPlaceFilter, type RunsPlaceFilter } from './runs/onlineRuns'
 import type { RunRecord } from './runs/runRecordTypes'
-import { allAgentsFilterValue, countRunsForFilter, toRunFilter, toRunRecord, withRunEvents, type RunsStatusFilter } from './runs/runViewModel'
+import { chooseRunsEmptyState, summarizeRunsToday } from './runs/runsOverview'
+import { allAgentsFilterValue, toRunFilter, toRunRecord, toScreenStatus, withRunEvents, type RunsStatusFilter } from './runs/runViewModel'
 import { useT } from '@/i18n'
-
-const statusFilterKeys: readonly RunsStatusFilter[] = ['all', 'needsYou', 'running', 'failed']
-
-/** Agent ids in the order they first appear in the run list. */
-function listAgentIds(runs: Run[]): string[] {
-  return Array.from(new Set(runs.map((run) => run.agentId)))
-}
-
-interface RunsFilterBarProps {
-  agentFilter: string
-  statusFilter: RunsStatusFilter
-  allRuns: Run[]
-  getAgentName: AgentNameLookup
-  onAgentFilterChange: (agentId: string) => void
-  onStatusFilterChange: (status: RunsStatusFilter) => void
-}
-
-function RunsFilterBar({ agentFilter, statusFilter, allRuns, getAgentName, onAgentFilterChange, onStatusFilterChange }: RunsFilterBarProps) {
-  const t = useT().runs
-  const agentRuns = agentFilter === allAgentsFilterValue ? allRuns : allRuns.filter((run) => run.agentId === agentFilter)
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <select
-        aria-label={t.agent}
-        value={agentFilter}
-        onChange={(event) => onAgentFilterChange(event.target.value)}
-        className="h-[34px] rounded-full border border-line-strong bg-surface px-3 text-[13px] font-medium text-ink"
-      >
-        <option value={allAgentsFilterValue}>{t.allAgents}</option>
-        {listAgentIds(allRuns).map((agentId) => (
-          <option key={agentId} value={agentId}>
-            {getAgentName(agentId)}
-          </option>
-        ))}
-      </select>
-      {statusFilterKeys.map((key) => ({ key, label: t.statusFilters[key] })).map((option) => {
-        const isActive = option.key === statusFilter
-        const runCount = countRunsForFilter(agentRuns, option.key)
-        return (
-          <button
-            key={option.key}
-            type="button"
-            aria-pressed={isActive}
-            onClick={() => onStatusFilterChange(option.key)}
-            className={joinClassNames(
-              'h-[34px] cursor-pointer rounded-full px-3 text-[13px] font-medium',
-              isActive ? 'border-0 bg-ink text-white' : 'border border-line-strong bg-surface text-ink hover:bg-subtle',
-            )}
-          >
-            {option.label}
-            {runCount !== null && ` ${runCount}`}
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
-/** All · On this computer · Online. */
-function PlaceFilterBar({ placeFilter, onChange }: { placeFilter: RunsPlaceFilter; onChange: (filter: RunsPlaceFilter) => void }) {
-  const t = useT().runs
-  return (
-    <div role="group" aria-label={t.whereItRan} className="flex flex-wrap gap-1 rounded-[10px] bg-selected p-1 self-start">
-      {placeFilterOptions.map((option) => (
-        <button
-          key={option.key}
-          type="button"
-          aria-pressed={option.key === placeFilter}
-          onClick={() => onChange(option.key)}
-          className={joinClassNames(
-            'h-8 cursor-pointer rounded-[7px] border-0 px-3.5 text-[13px]',
-            option.key === placeFilter ? 'bg-surface font-semibold text-ink' : 'bg-transparent font-medium text-body hover:text-ink',
-          )}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
-  )
-}
 
 /** A run of an online agent: what the server told us (no local events). */
 function OnlineRunPanel({ record, onClose }: { record: RunRecord; onClose: () => void }) {
@@ -137,41 +60,68 @@ export function RunsPage() {
   const allRunsData = useRuns()
   const visibleRunsData = useRuns(toRunFilter(agentFilter, statusFilter))
 
+  const { data: agents } = useAgents()
+
   const allRuns = allRunsData.data ?? []
+  const allOnlineRecords = (onlineRunsState.data?.runs ?? []).map((onlineRun) => toOnlineRunRecord(onlineRun))
   const localRecords = (visibleRunsData.data ?? []).map((run) => toRunRecord(run, getAgentName(run.agentId)))
-  const onlineRecords = (onlineRunsState.data?.runs ?? [])
-    .map((onlineRun) => toOnlineRunRecord(onlineRun))
+  const onlineRecords = allOnlineRecords
     .filter((record) => agentFilter === allAgentsFilterValue || record.agentId === agentFilter)
-    .filter((record) => statusFilter === 'all' || (statusFilter === 'needsYou' ? record.status === 'needsYou' : record.status === statusFilter))
+    .filter((record) => statusFilter === 'all' || record.status === statusFilter)
   const visibleRecords = mergeRunsByPlace(localRecords, onlineRecords, placeFilter)
   const selectedRun = allRuns.find((run) => run.id === selectedRunId)
   const selectedOnlineRecord = onlineRecords.find((record) => record.id === selectedRunId)
   const loadError = allRunsData.error ?? visibleRunsData.error
   const isFirstLoad = visibleRunsData.isLoading && visibleRunsData.data === null
+  const hasAgentOrStatusFilter = agentFilter !== allAgentsFilterValue || statusFilter !== 'all'
+  const emptyState = chooseRunsEmptyState({
+    visibleRunCount: isFirstLoad ? 0 : visibleRecords.length,
+    localRunCount: isFirstLoad ? null : (allRunsData.data?.length ?? null),
+    // An online list that failed to load counts as none; its problem is shown above the table.
+    onlineRunCount: onlineRunsState.data ? onlineRunsState.data.runs.length : onlineRunsState.error ? 0 : null,
+    agentCount: agents ? agents.length : null,
+    placeFilter,
+    hasAgentOrStatusFilter,
+  })
+  const hasAnyRun = allRuns.length > 0 || allOnlineRecords.length > 0
+  const isNothingToFilter = emptyState === 'noAgents' || emptyState === 'noRunsYet'
+  const todaySummary = summarizeRunsToday([
+    ...allRuns.map((run) => ({ status: toScreenStatus(run.status), startedAt: run.startedAt })),
+    ...allOnlineRecords,
+  ])
+
+  function clearFilters() {
+    setAgentFilter(allAgentsFilterValue)
+    setStatusFilter('all')
+    setPlaceFilter('all')
+  }
 
   return (
     <AppShell activeNav="runs" mainClassName="flex flex-wrap">
       <PageFrame ariaLabel={t.allRuns} className="flex-[3_1_560px]">
         <PageTitleBlock title={t.title} subtitle={t.subtitle} />
-        <PlaceFilterBar placeFilter={placeFilter} onChange={setPlaceFilter} />
-        <RunsFilterBar
-          agentFilter={agentFilter}
-          statusFilter={statusFilter}
-          allRuns={allRuns}
-          getAgentName={getAgentName}
-          onAgentFilterChange={setAgentFilter}
-          onStatusFilterChange={setStatusFilter}
-        />
+        {hasAnyRun && <RunsSummary summary={todaySummary} />}
+        {!isNothingToFilter && (
+          <RunsToolbar
+            agentFilter={agentFilter}
+            statusFilter={statusFilter}
+            placeFilter={placeFilter}
+            allRuns={allRuns}
+            getAgentName={getAgentName}
+            onAgentFilterChange={setAgentFilter}
+            onStatusFilterChange={setStatusFilter}
+            onPlaceFilterChange={setPlaceFilter}
+          />
+        )}
         {loadError && <RunErrorNotice title={t.couldNotLoad} error={loadError} />}
         {placeFilter !== 'local' && (onlineRunsState.data?.problems.length ?? 0) > 0 && (
           <p role="status" className="m-0 text-[13px] text-amber-strong">{t.onlineProblems(onlineRunsState.data?.problems.join(' · ') ?? '')}</p>
         )}
-        <RunsTable
-          runs={visibleRecords}
-          selectedRunId={selectedRunId}
-          onSelectRun={setSelectedRunId}
-          emptyMessage={isFirstLoad ? t.loading : placeFilter === 'online' ? t.noOnlineRuns : t.noMatch}
-        />
+        {emptyState ? (
+          <RunsEmptyStateView state={emptyState} onClearFilters={clearFilters} />
+        ) : (
+          <RunsTable runs={visibleRecords} selectedRunId={selectedRunId} onSelectRun={setSelectedRunId} />
+        )}
       </PageFrame>
       {selectedOnlineRecord && <OnlineRunPanel record={selectedOnlineRecord} onClose={() => setSelectedRunId(null)} />}
       {selectedRun && <SelectedRunPanel key={selectedRun.id} run={selectedRun} getAgentName={getAgentName} onClose={() => setSelectedRunId(null)} />}
