@@ -12,6 +12,8 @@
 //! Quit graphrt
 //! ```
 //!
+//! While meeting notes are being recorded, "● Recording meeting notes · Stop" comes first.
+//!
 //! The menu is rebuilt by [`refresh_tray`] whenever a run changes status, the
 //! pause is toggled or ends, or settings change. On macOS the icon is a
 //! template image (black + alpha, `icons/tray-template.png` from the mono logo)
@@ -37,6 +39,7 @@ const MENU_OPEN: &str = "open";
 const MENU_PAUSE: &str = "pause";
 const MENU_RESUME: &str = "resume";
 const MENU_QUIT: &str = "quit";
+const MENU_STOP_MEETING: &str = "stop-meeting-notes";
 
 /// How long "Pause all agents" lasts.
 pub const PAUSE_DURATION_MINUTES: i64 = 60;
@@ -150,6 +153,12 @@ fn current_status(app_handle: &AppHandle) -> TrayStatus {
 
 fn build_menu(app_handle: &AppHandle, status: &TrayStatus) -> tauri::Result<Menu<tauri::Wry>> {
     let menu = Menu::new(app_handle)?;
+    let is_recording_meeting = app_handle.try_state::<AppState>().is_some_and(|state| state.meetings.is_recording());
+    if is_recording_meeting {
+        let stop = "● Recording meeting notes · Stop";
+        menu.append(&MenuItem::with_id(app_handle, MENU_STOP_MEETING, stop, true, None::<&str>)?)?;
+        menu.append(&PredefinedMenuItem::separator(app_handle)?)?;
+    }
     for (line_index, line) in status.lines().into_iter().enumerate() {
         let item = MenuItem::with_id(app_handle, format!("status-{line_index}"), line, false, None::<&str>)?;
         menu.append(&item)?;
@@ -172,8 +181,21 @@ fn handle_menu_event(app_handle: &AppHandle, event: MenuEvent) {
         MENU_PAUSE => pause_agents(app_handle),
         MENU_RESUME => resume_agents(app_handle),
         MENU_QUIT => app_handle.exit(0),
+        MENU_STOP_MEETING => stop_meeting_notes(app_handle),
         _ => {}
     }
+}
+
+fn stop_meeting_notes(app_handle: &AppHandle) {
+    let Some(state) = app_handle.try_state::<AppState>() else {
+        return;
+    };
+    let meetings = state.meetings.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(error) = meetings.stop_recording().await {
+            log::warn!("could not stop the meeting notes from the tray: {error}");
+        }
+    });
 }
 
 fn pause_agents(app_handle: &AppHandle) {

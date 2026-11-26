@@ -16,6 +16,7 @@ import { agentPath, routePaths, sampleAgentId } from '@/routes'
 import { ScheduleBackdrop } from '@/pages/schedule-agent/ScheduleBackdrop'
 import { FrequencyRadioTiles, ScheduleFieldset, StackedField, WeekdayToggleGroup, scheduleControlClassNames } from '@/pages/schedule-agent/ScheduleFormFields'
 import { toError } from '@/lib/errors'
+import { MeetingTriggerField, useMeetingTriggerChoice } from '@/pages/schedule-agent/MeetingTriggerField'
 
 /** The dialog promises "A missed run starts when it wakes up", which is this missed-run choice. */
 const dialogMissedRunOption = 'Run once when it wakes up'
@@ -98,6 +99,7 @@ export function ScheduleAgentPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<Error | null>(null)
   const isManualOnly = scheduleSettings.frequency === 'manual'
+  const meetingTrigger = useMeetingTriggerChoice(agentId)
 
   const updateSetting = <Key extends keyof AgentScheduleSettings>(key: Key, value: AgentScheduleSettings[Key]) =>
     setScheduleSettings((previousSettings) => ({ ...previousSettings, [key]: value }))
@@ -116,6 +118,7 @@ export function ScheduleAgentPage() {
     setSaveError(null)
     try {
       const trigger = newTrigger ? await createTrigger(newTrigger) : null
+      await meetingTrigger.save()
       navigate(routePaths.home, { state: { activatedSchedule: scheduleSettings, triggerId: trigger?.id ?? null } })
     } catch (createFailure) {
       setSaveError(toError(createFailure))
@@ -182,6 +185,7 @@ export function ScheduleAgentPage() {
               </StackedField>
             </div>
             <NextRunsPreview settings={scheduleSettings} />
+            <MeetingTriggerField choice={meetingTrigger} />
           </ScheduleFieldset>
 
           <ScheduleFieldset legend="Each run">

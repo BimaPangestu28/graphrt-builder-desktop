@@ -1,18 +1,17 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useMemo, useState } from 'react'
 import { dismissMeetingPrompt, startMeetingRecording, stopMeetingRecording } from '@/api/meetings'
 import type { MeetingStatus } from '@/api/meetingTypes'
 import { Button } from '@/components/ui'
 import { useMeetingStatus } from '@/hooks/useMeetings'
 import { useNow } from '@/hooks/useNow'
 import { toErrorMessage } from '@/lib/errors'
-import { formatElapsed } from '@/pages/meetings/meetingDisplay'
-import { routePaths } from '@/routes'
+import { describeAutoStop, describeNoteTakers, formatElapsed } from '@/lib/meetingDisplay'
 
 /**
- * The notetaker on every screen, bottom right: the "Meeting detected, take notes?" card
- * while a prompt is open, and a red "Recording" pill with Stop while it records. Renders
- * nothing otherwise (and outside the desktop app).
+ * Meeting notes on every screen, bottom right (the only UI the notes add besides a few
+ * Settings rows and the meeting trigger of an agent's schedule): the "Meeting detected.
+ * Take notes?" card while a prompt is open, and a red "Recording" pill with Stop while it
+ * records. Renders nothing otherwise, and outside the desktop app.
  */
 export function MeetingOverlay() {
   const { data: status, reload } = useMeetingStatus()
@@ -29,6 +28,11 @@ export function MeetingOverlayView({ status, onChanged }: MeetingOverlayViewProp
   const [isBusy, setIsBusy] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const now = useNow(status.recording !== null)
+  // The backend reports seconds left at fetch time; count down locally from there.
+  const autoStopAtMs = useMemo(
+    () => (status.autoStopInSeconds === null ? null : Date.now() + status.autoStopInSeconds * 1000),
+    [status.autoStopInSeconds],
+  )
 
   async function act(action: () => Promise<unknown>) {
     setIsBusy(true)
@@ -53,17 +57,17 @@ export function MeetingOverlayView({ status, onChanged }: MeetingOverlayViewProp
       >
         <div className="flex items-center gap-3">
           <span aria-hidden="true" className="size-2.5 shrink-0 animate-pulse rounded-full bg-danger" />
-          <Link to={routePaths.meetings} className="min-w-0 flex-1 no-underline !text-ink">
+          <div className="min-w-0 flex-1">
             <span className="block font-semibold">Recording {formatElapsed(status.recording.startedAt, now)}</span>
             <span className="block truncate text-[12px] text-muted">{status.recording.title}</span>
-          </Link>
+          </div>
           <Button variant="danger" size="sm" disabled={isBusy} onClick={() => void act(stopMeetingRecording)}>
             Stop
           </Button>
         </div>
-        {status.meetingSeemsOver && (
+        {autoStopAtMs !== null && (
           <div className="flex items-center justify-between gap-2 border-t border-line pt-2 text-[13px]">
-            <span>The meeting seems over.</span>
+            <span>{describeAutoStop((autoStopAtMs - now) / 1000)}</span>
             <Button variant="ghost" size="sm" disabled={isBusy} onClick={() => void act(dismissMeetingPrompt)}>
               Keep recording
             </Button>
@@ -82,10 +86,12 @@ export function MeetingOverlayView({ status, onChanged }: MeetingOverlayViewProp
       >
         <strong className="text-[15px]">Meeting detected. Take notes?</strong>
         <span className="text-[13px] text-body">
-          {status.prompt.message}. graphrt records your microphone and the computer's sound on this computer until you press Stop.
+          {status.prompt.message}. graphrt records your microphone and the computer's sound until you press Stop.{' '}
+          {describeNoteTakers(status.prompt.agentNames)}
         </span>
+        <span className="text-[12px] text-muted">{status.prompt.consentReminder}</span>
         <div className="flex gap-2 pt-1">
-          <Button size="sm" disabled={isBusy} onClick={() => void act(() => startMeetingRecording())}>
+          <Button size="sm" disabled={isBusy} onClick={() => void act(startMeetingRecording)}>
             Take notes
           </Button>
           <Button variant="ghost" size="sm" disabled={isBusy} onClick={() => void act(dismissMeetingPrompt)}>

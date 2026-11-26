@@ -1,29 +1,29 @@
 import { callBackend, isDesktopApp, listenToBackend } from './client'
-import type { MeetingRecord, MeetingSettings, MeetingStatus } from './meetingTypes'
+import type { MeetingRecord, MeetingSettings, MeetingStatus, MeetingTrigger } from './meetingTypes'
 
 /**
- * Meeting notetaker: detection prompt, recording the microphone and the computer's sound,
- * and local transcripts (see docs/design/meeting-notetaker.md). Nothing records without a
- * call to {@link startMeetingRecording}, which only the user's click makes.
+ * Meeting notes (docs/design/meeting-notetaker.md): the "Meeting detected. Take notes?"
+ * card, the recording pill, the Settings rows and an agent's "When a meeting is
+ * recorded" trigger. Transcribing and summarizing are steps of the agent's workflow.
+ * Nothing records without {@link startMeetingRecording}, which only the user's click calls.
  *
- * Outside the desktop app (browser preview, tests) the notetaker reports itself as not
- * supported and has no meetings.
+ * Outside the desktop app (browser preview, tests) the notes are not supported and every
+ * trigger is off.
  */
 
-/** Tauri events (no payload): refetch the status / the list. */
+/** Tauri event (no payload): refetch the status. */
 export const meetingStatusEvent = 'meeting-status-changed'
-export const meetingsChangedEvent = 'meetings-changed'
 
 const unsupportedStatus: MeetingStatus = {
   isSupported: false,
-  settings: { detectionEnabled: false, whisperCliPath: null, whisperModelPath: null },
+  settings: { detectionEnabled: false, keepAudio: false, whisperCliPath: null, whisperModelPath: null },
+  triggeredAgents: [],
   micUsers: [],
   probeError: null,
   prompt: null,
-  meetingSeemsOver: false,
   recording: null,
-  transcribing: [],
-  transcriber: { whisperCli: null, whisperModel: null, modelsFolder: '', isReady: false },
+  autoStopInSeconds: null,
+  transcriber: { isInstalled: false, downloadMessage: null },
 }
 
 function hasBackend(): boolean {
@@ -35,56 +35,43 @@ export function getMeetingStatus(): Promise<MeetingStatus> {
   return callBackend('get_meeting_status')
 }
 
-/** Saves the detection switch and the whisper paths; returns them as saved (blank paths cleared). */
+/** Saves the detection switch and "Keep meeting audio"; returns them as saved. */
 export function updateMeetingSettings(settings: MeetingSettings): Promise<MeetingSettings> {
   if (!hasBackend()) return Promise.resolve(settings)
   return callBackend('update_meeting_settings', { settings })
 }
 
-/** "Not now" on the prompt, or "Keep recording" on "Meeting seems over". */
+/** "Not now" on the prompt, or "Keep recording" before it stops by itself. */
 export function dismissMeetingPrompt(): Promise<void> {
   if (!hasBackend()) return Promise.resolve()
   return callBackend('dismiss_meeting_prompt')
 }
 
 /**
- * Starts recording the microphone and the computer's sound.
+ * "Take notes": starts recording the microphone and the computer's sound.
  *
- * @param app - Names the meeting ("Zoom"); defaults to the program of the open prompt
  * @throws BackendError - `invalid_input` while already recording, `internal` when the audio system cannot record
  */
-export function startMeetingRecording(app?: string): Promise<MeetingRecord> {
-  return callBackend('start_meeting_recording', { app: app ?? null })
+export function startMeetingRecording(): Promise<MeetingRecord> {
+  return callBackend('start_meeting_recording')
 }
 
+/** Stop: finishes the recording and starts the agents with the meeting trigger. */
 export function stopMeetingRecording(): Promise<MeetingRecord> {
   return callBackend('stop_meeting_recording')
 }
 
-/** Every meeting, newest first. */
-export function listMeetings(): Promise<MeetingRecord[]> {
-  if (!hasBackend()) return Promise.resolve([])
-  return callBackend('list_meetings')
+/** Whether the agent runs when a meeting is recorded. */
+export function getMeetingTrigger(agentId: string): Promise<MeetingTrigger> {
+  if (!hasBackend()) return Promise.resolve({ enabled: false })
+  return callBackend('get_meeting_trigger', { agentId })
 }
 
-/** Transcribes a meeting on this computer with whisper.cpp; resolves when done (can take minutes). */
-export function transcribeMeeting(meetingId: string): Promise<MeetingRecord> {
-  return callBackend('transcribe_meeting', { meetingId })
-}
-
-/** The transcript as Markdown: `[00:01:05] You: …` / `Others: …`. */
-export function getMeetingTranscript(meetingId: string): Promise<string> {
-  return callBackend('get_meeting_transcript', { meetingId })
-}
-
-export function deleteMeeting(meetingId: string): Promise<void> {
-  return callBackend('delete_meeting', { meetingId })
+export function setMeetingTrigger(agentId: string, enabled: boolean): Promise<MeetingTrigger> {
+  if (!hasBackend()) return Promise.resolve({ enabled })
+  return callBackend('set_meeting_trigger', { agentId, enabled })
 }
 
 export function listenToMeetingStatus(onChange: (payload: null) => void): Promise<() => void> {
   return listenToBackend<null>(meetingStatusEvent, onChange)
-}
-
-export function listenToMeetingList(onChange: (payload: null) => void): Promise<() => void> {
-  return listenToBackend<null>(meetingsChangedEvent, onChange)
 }

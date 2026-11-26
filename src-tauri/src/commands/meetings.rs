@@ -1,4 +1,5 @@
-//! Meeting notes (Meetings page, the prompt and the recording pill). Logic lives in
+//! Meeting notes: the prompt card, the recording pill, the Settings section and the
+//! "When a meeting is recorded" trigger of an agent's schedule. Logic lives in
 //! `crate::meeting`; nothing here records without the user's click.
 
 use tauri::State;
@@ -6,6 +7,7 @@ use tauri::State;
 use crate::error::AppResult;
 use crate::meeting::settings::MeetingSettings;
 use crate::meeting::store::MeetingRecord;
+use crate::meeting::trigger::{self, MeetingTrigger};
 use crate::meeting::MeetingStatusView;
 use crate::state::AppState;
 
@@ -15,52 +17,42 @@ pub async fn get_meeting_status(state: State<'_, AppState>) -> AppResult<Meeting
     Ok(state.meetings.status().await)
 }
 
-/// Saves the detection switch and the whisper paths; returns them as saved.
+/// Saves the detection switch and "keep meeting audio"; returns them as saved.
 #[tauri::command]
 pub fn update_meeting_settings(state: State<'_, AppState>, settings: MeetingSettings) -> AppResult<MeetingSettings> {
     state.meetings.update_settings(settings)
 }
 
-/// "Not now" on the prompt, or "Keep recording" on "Meeting seems over".
+/// "Not now" on the prompt, or "Keep recording" before it stops by itself.
 #[tauri::command]
 pub fn dismiss_meeting_prompt(state: State<'_, AppState>) {
     state.meetings.dismiss_prompt();
 }
 
-/// Starts recording the microphone and the computer's sound (the user's click).
+/// "Take notes": starts recording the microphone and the computer's sound.
 ///
-/// Errors the UI shows: `invalid_input` while already recording, `internal` when
-/// the audio system cannot record (message says why).
+/// Errors the UI shows: `invalid_input` while already recording, `internal` when the
+/// audio system cannot record (the message says why).
 #[tauri::command]
-pub async fn start_meeting_recording(state: State<'_, AppState>, app: Option<String>) -> AppResult<MeetingRecord> {
-    Ok(state.meetings.start_recording(app).await?)
+pub async fn start_meeting_recording(state: State<'_, AppState>) -> AppResult<MeetingRecord> {
+    Ok(state.meetings.start_recording().await?)
 }
 
+/// Stop: finishes the recording and starts the agents with the meeting trigger.
 #[tauri::command]
 pub async fn stop_meeting_recording(state: State<'_, AppState>) -> AppResult<MeetingRecord> {
     Ok(state.meetings.stop_recording().await?)
 }
 
-/// Every meeting, newest first.
+/// Whether the agent runs when a meeting is recorded (Schedule screen).
 #[tauri::command]
-pub fn list_meetings(state: State<'_, AppState>) -> AppResult<Vec<MeetingRecord>> {
-    Ok(state.meetings.list()?)
+pub fn get_meeting_trigger(state: State<'_, AppState>, agent_id: String) -> AppResult<MeetingTrigger> {
+    trigger::load(&state.db, agent_id.trim())
 }
 
-/// Transcribes a meeting with whisper.cpp on this computer (can take minutes).
 #[tauri::command]
-pub async fn transcribe_meeting(state: State<'_, AppState>, meeting_id: String) -> AppResult<MeetingRecord> {
-    Ok(state.meetings.transcribe(meeting_id.trim()).await?)
-}
-
-/// The transcript as Markdown (`[00:01:05] You: …`).
-#[tauri::command]
-pub fn get_meeting_transcript(state: State<'_, AppState>, meeting_id: String) -> AppResult<String> {
-    Ok(state.meetings.transcript(meeting_id.trim())?)
-}
-
-/// Deletes a meeting's folder (audio and transcript).
-#[tauri::command]
-pub async fn delete_meeting(state: State<'_, AppState>, meeting_id: String) -> AppResult<()> {
-    Ok(state.meetings.delete(meeting_id.trim()).await?)
+pub fn set_meeting_trigger(state: State<'_, AppState>, agent_id: String, enabled: bool) -> AppResult<MeetingTrigger> {
+    let saved = trigger::save(&state.db, agent_id.trim(), MeetingTrigger { enabled })?;
+    state.meetings.triggers_changed();
+    Ok(saved)
 }

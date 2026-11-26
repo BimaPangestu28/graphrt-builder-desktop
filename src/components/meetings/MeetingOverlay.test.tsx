@@ -21,20 +21,22 @@ const recording: MeetingRecord = {
   status: 'recording',
   tracks: [],
   error: null,
+  runIds: [],
+  audioDeleted: false,
   folder: '/data/meetings/m1',
 }
 
 function status(overrides: Partial<MeetingStatus> = {}): MeetingStatus {
   return {
     isSupported: true,
-    settings: { detectionEnabled: true, whisperCliPath: null, whisperModelPath: null },
+    settings: { detectionEnabled: true, keepAudio: false, whisperCliPath: null, whisperModelPath: null },
+    triggeredAgents: ['Meeting notes to Notion'],
     micUsers: [],
     probeError: null,
     prompt: null,
-    meetingSeemsOver: false,
     recording: null,
-    transcribing: [],
-    transcriber: { whisperCli: null, whisperModel: null, modelsFolder: '/data/meetings/models', isReady: false },
+    autoStopInSeconds: null,
+    transcriber: { isInstalled: false, downloadMessage: null },
     ...overrides,
   }
 }
@@ -66,9 +68,17 @@ describe('MeetingOverlay', () => {
   })
 
   it('asks before taking notes and records only on Take notes', async () => {
-    const prompt = { apps: [{ kind: 'zoom' as const, label: 'Zoom', streamId: 7, pid: 42 }], message: 'Zoom is using the microphone' }
+    const prompt = {
+      apps: [{ kind: 'zoom' as const, label: 'Zoom', streamId: 7, pid: 42 }],
+      message: 'Zoom is using the microphone',
+      consentReminder: 'Let the others know you are taking notes.',
+      agentNames: ['Meeting notes to Notion'],
+    }
     const { onChanged } = renderOverlay(status({ prompt }))
-    expect(screen.getByRole('complementary', { name: 'Meeting detected' })).toHaveTextContent('Zoom is using the microphone')
+    const card = screen.getByRole('complementary', { name: 'Meeting detected' })
+    expect(card).toHaveTextContent('Zoom is using the microphone')
+    expect(card).toHaveTextContent('Meeting notes to Notion gets the notes.')
+    expect(card).toHaveTextContent('Let the others know you are taking notes.')
     expect(startMeetingRecording).not.toHaveBeenCalled()
 
     await userEvent.click(screen.getByRole('button', { name: 'Take notes' }))
@@ -77,7 +87,7 @@ describe('MeetingOverlay', () => {
   })
 
   it('Not now dismisses the prompt', async () => {
-    const prompt = { apps: [], message: 'A program is using the microphone' }
+    const prompt = { apps: [], message: 'A program is using the microphone', consentReminder: 'Tell them.', agentNames: [] }
     renderOverlay(status({ prompt }))
     await userEvent.click(screen.getByRole('button', { name: 'Not now' }))
     expect(dismissMeetingPrompt).toHaveBeenCalledTimes(1)
@@ -92,10 +102,10 @@ describe('MeetingOverlay', () => {
     expect(stopMeetingRecording).toHaveBeenCalledTimes(1)
   })
 
-  it('offers to keep recording when the meeting seems over, and shows errors', async () => {
+  it('counts down the automatic stop with Keep recording, and shows errors', async () => {
     stopMeetingRecording.mockRejectedValue(new Error('pw-record failed'))
-    renderOverlay(status({ recording, meetingSeemsOver: true }))
-    expect(screen.getByText('The meeting seems over.')).toBeInTheDocument()
+    renderOverlay(status({ recording, autoStopInSeconds: 18 }))
+    expect(screen.getByText(/The meeting seems over\. Notes stop in 1[78] s\./)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Stop' }))
     expect(await screen.findByText('pw-record failed')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Keep recording' }))

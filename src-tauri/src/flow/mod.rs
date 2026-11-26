@@ -128,6 +128,7 @@ pub fn builtin_node_registry() -> graphrt_core::Registry {
     graphrt_llm::register(&mut registry);
     graphrt_http::register(&mut registry);
     graphrt_rag::register(&mut registry);
+    crate::meeting::node::register(&mut registry);
     registry
 }
 

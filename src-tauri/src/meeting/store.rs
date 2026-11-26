@@ -52,6 +52,12 @@ pub struct MeetingRecord {
     pub status: MeetingStatus,
     pub tracks: Vec<TrackFile>,
     pub error: Option<String>,
+    /// Runs of the agents the meeting triggered.
+    #[serde(default)]
+    pub run_ids: Vec<String>,
+    /// The tracks were deleted after the transcript ("Keep meeting audio" off).
+    #[serde(default)]
+    pub audio_deleted: bool,
     /// Absolute folder of the meeting (not saved; filled in when read).
     #[serde(default, skip_deserializing)]
     pub folder: String,
@@ -87,6 +93,8 @@ impl MeetingStore {
             status: MeetingStatus::Recording,
             tracks: Vec::new(),
             error: None,
+            run_ids: Vec::new(),
+            audio_deleted: false,
             folder: String::new(),
         };
         self.save(&record)?;
@@ -188,6 +196,28 @@ impl MeetingStore {
         })
     }
 
+    pub fn transcript_lines(&self, id: &str) -> Result<Vec<TranscriptLine>, MeetingError> {
+        let path = self.folder(id)?.join(TRANSCRIPT_JSON_FILE);
+        let json = std::fs::read_to_string(&path).map_err(|error| match error.kind() {
+            std::io::ErrorKind::NotFound => MeetingError::NotFound(format!("the transcript of meeting {id}")),
+            _ => error.into(),
+        })?;
+        Ok(serde_json::from_str(&json)?)
+    }
+
+    /// Deletes the meeting's audio tracks (after the transcript), keeping the rest.
+    pub fn delete_audio(&self, id: &str) -> Result<(), MeetingError> {
+        let folder = self.folder(id)?;
+        for track in [TrackKind::Mic, TrackKind::System] {
+            match std::fs::remove_file(folder.join(track.file_name())) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+        Ok(())
+    }
+
     /// Removes the meeting's folder and everything in it.
     pub fn delete(&self, id: &str) -> Result<(), MeetingError> {
         let folder = self.folder(id)?;
@@ -279,6 +309,12 @@ mod tests {
         assert!(matches!(store.transcript_markdown(&record.id), Err(MeetingError::NotFound(_))));
         store.save_transcript(&record.id, &[], "# Meeting\n").expect("save transcript");
         assert_eq!(store.transcript_markdown(&record.id).expect("read"), "# Meeting\n");
+        assert!(store.transcript_lines(&record.id).expect("lines").is_empty());
+        let folder = store.folder(&record.id).expect("folder");
+        std::fs::write(folder.join("mic.wav"), b"x").expect("write");
+        store.delete_audio(&record.id).expect("delete audio");
+        assert!(!folder.join("mic.wav").exists());
+        assert!(folder.join(TRANSCRIPT_MARKDOWN_FILE).exists());
         store.delete(&record.id).expect("delete");
         assert!(store.list().expect("list").is_empty());
     }

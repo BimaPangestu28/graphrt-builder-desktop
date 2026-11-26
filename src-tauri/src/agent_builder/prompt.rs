@@ -23,6 +23,7 @@ const DOMAIN_GUIDES: &[&str] = &[
     include_str!("guides/agents_as_tools.md"), // other agents as tool steps and team members
     include_str!("guides/knowledge.md"),   // knowledge-retrieval over the user's knowledge bases
     include_str!("guides/trusted_lookups.md"), // read-only lookups on trusted hosts, "Trust <host>" proposals
+    include_str!("guides/meeting_notes.md"), // meeting trigger inputs and the meeting.transcribe step
 ];
 
 /// Prefix of the line carrying the agent's display name in a build reply.

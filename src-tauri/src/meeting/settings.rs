@@ -1,24 +1,23 @@
 //! The notetaker's settings, one JSON value under [`SETTINGS_KEY`] in the settings table.
 
-use std::path::{Path, PathBuf};
-
 use serde::{Deserialize, Serialize};
 
 use crate::error::AppResult;
 use crate::storage::Database;
 
 pub const SETTINGS_KEY: &str = "meeting_notetaker";
-/// Folder under the meetings folder searched for a `ggml-*.bin` whisper model.
-pub const MODELS_DIR_NAME: &str = "models";
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct MeetingSettings {
     /// Watch the microphone and offer to take notes. Off until the user turns it on.
     pub detection_enabled: bool,
-    /// whisper.cpp's `whisper-cli`; `None` looks it up on PATH.
+    /// Keep the recorded audio after the transcript is made (deleted by default).
+    pub keep_audio: bool,
+    /// whisper.cpp's `whisper-cli`; `None` looks on PATH, then downloads it on first use.
+    /// Not shown in the app: for developers and distributions packaging whisper.cpp.
     pub whisper_cli_path: Option<String>,
-    /// A ggml model file; `None` takes the first `ggml-*.bin` in the models folder.
+    /// A ggml model file; `None` downloads `ggml-base.bin` on first use.
     pub whisper_model_path: Option<String>,
 }
 
@@ -52,33 +51,6 @@ impl MeetingSettings {
     }
 }
 
-/// The whisper-cli program to run: the configured path, else `whisper-cli` on PATH.
-pub fn resolve_whisper_cli(settings: &MeetingSettings, search_path: Option<&str>) -> Option<PathBuf> {
-    if let Some(path) = &settings.whisper_cli_path {
-        return Some(PathBuf::from(path));
-    }
-    let search_path = search_path?;
-    std::env::split_paths(search_path).map(|dir| dir.join("whisper-cli")).find(|candidate| candidate.is_file())
-}
-
-/// The model to use: the configured path, else the first `ggml-*.bin` (by name) in `models_dir`.
-pub fn resolve_whisper_model(settings: &MeetingSettings, models_dir: &Path) -> Option<PathBuf> {
-    if let Some(path) = &settings.whisper_model_path {
-        return Some(PathBuf::from(path));
-    }
-    let mut models: Vec<PathBuf> = std::fs::read_dir(models_dir)
-        .ok()?
-        .flatten()
-        .map(|entry| entry.path())
-        .filter(|path| {
-            let name = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
-            name.starts_with("ggml-") && name.ends_with(".bin") && !name.starts_with("ggml-silero")
-        })
-        .collect();
-    models.sort();
-    models.into_iter().next()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -107,32 +79,5 @@ mod tests {
         .normalized();
         assert_eq!(settings.whisper_cli_path, None);
         assert_eq!(settings.whisper_model_path.as_deref(), Some("/m.bin"));
-    }
-
-    #[test]
-    fn finds_whisper_on_path_and_the_first_model() {
-        let dir = tempfile::tempdir().expect("temp dir");
-        let bin = dir.path().join("bin");
-        let models = dir.path().join("models");
-        std::fs::create_dir_all(&bin).expect("bin");
-        std::fs::create_dir_all(&models).expect("models");
-        std::fs::write(bin.join("whisper-cli"), "").expect("write");
-        for name in ["ggml-small.bin", "ggml-base.bin", "ggml-silero-v5.bin", "notes.txt"] {
-            std::fs::write(models.join(name), "").expect("write");
-        }
-        let defaults = MeetingSettings::default();
-        let search_path = std::env::join_paths([dir.path().join("empty"), bin.clone()]).expect("join");
-        assert_eq!(resolve_whisper_cli(&defaults, search_path.to_str()), Some(bin.join("whisper-cli")));
-        assert_eq!(resolve_whisper_cli(&defaults, None), None);
-        assert_eq!(resolve_whisper_model(&defaults, &models), Some(models.join("ggml-base.bin")));
-        assert_eq!(resolve_whisper_model(&defaults, &dir.path().join("none")), None);
-
-        let configured = MeetingSettings {
-            whisper_cli_path: Some("/opt/w".into()),
-            whisper_model_path: Some("/m.bin".into()),
-            ..defaults
-        };
-        assert_eq!(resolve_whisper_cli(&configured, None), Some(PathBuf::from("/opt/w")));
-        assert_eq!(resolve_whisper_model(&configured, &models), Some(PathBuf::from("/m.bin")));
     }
 }

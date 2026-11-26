@@ -1,4 +1,4 @@
-/** Meeting notetaker types, mirroring `src-tauri/src/meeting` (camelCase JSON). */
+/** Meeting notes types, mirroring `src-tauri/src/meeting` (camelCase JSON). */
 
 export type MeetingAppKind = 'zoom' | 'teams' | 'slack' | 'discord' | 'webex' | 'skype' | 'browser' | 'other'
 
@@ -21,7 +21,7 @@ export interface TrackFile {
 
 export type MeetingRecordStatus = 'recording' | 'recorded' | 'transcribing' | 'transcribed' | 'transcriptionFailed'
 
-/** One meeting: its folder holds the tracks and, once transcribed, the transcript. */
+/** One recorded meeting (a folder in the app data). */
 export interface MeetingRecord {
   id: string
   title: string
@@ -32,13 +32,19 @@ export interface MeetingRecord {
   status: MeetingRecordStatus
   tracks: TrackFile[]
   error: string | null
-  /** Absolute folder on disk. */
+  /** Runs of the agents the meeting started. */
+  runIds: string[]
+  audioDeleted: boolean
   folder: string
 }
 
+/** Settings > Runner > Meeting notes. */
 export interface MeetingSettings {
-  /** Watch the microphone and offer to take notes (off until turned on). */
+  /** Offer to take notes when another app uses the microphone (off until turned on). */
   detectionEnabled: boolean
+  /** Keep the audio after the transcript is made (deleted by default). */
+  keepAudio: boolean
+  /** Developer overrides, not shown in the app. */
   whisperCliPath: string | null
   whisperModelPath: string | null
 }
@@ -47,26 +53,35 @@ export interface MeetingPrompt {
   apps: MeetingApp[]
   /** "Zoom is using the microphone". */
   message: string
+  /** "Let the others know you are taking notes." */
+  consentReminder: string
+  /** The agents that will work on the notes. */
+  agentNames: string[]
 }
 
 export interface TranscriberStatus {
-  whisperCli: string | null
-  whisperModel: string | null
-  modelsFolder: string
-  isReady: boolean
+  /** whisper.cpp is on this computer (else it downloads on first use). */
+  isInstalled: boolean
+  downloadMessage: string | null
 }
 
 export interface MeetingStatus {
   /** False on systems without a notetaker backend yet (macOS, Windows). */
   isSupported: boolean
   settings: MeetingSettings
+  /** Agents with "When a meeting is recorded" on (tested or active). */
+  triggeredAgents: string[]
   micUsers: MeetingApp[]
   probeError: string | null
-  /** "Meeting detected, take notes?" — never acted on without the user. */
+  /** "Meeting detected. Take notes?" — never acted on without the user. */
   prompt: MeetingPrompt | null
-  /** Recording, and the microphone has been free for a while. */
-  meetingSeemsOver: boolean
   recording: MeetingRecord | null
-  transcribing: string[]
+  /** Recording stops by itself in this many seconds (the meeting app left the microphone). */
+  autoStopInSeconds: number | null
   transcriber: TranscriberStatus
+}
+
+/** An agent's "When a meeting is recorded" trigger. */
+export interface MeetingTrigger {
+  enabled: boolean
 }

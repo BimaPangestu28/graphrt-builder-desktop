@@ -26,7 +26,7 @@
 //! - [`workflow_secrets`]: every workflow secret across agents and MCP servers
 //! - [`desktop`]: menu bar / tray icon, notifications, keep running when closed, launch at login
 //! - [`crash_reports`]: local, scrubbed crash reports (panic hook, frontend errors); no telemetry
-//! - [`meeting`]: meeting notetaker (detect a call, ask, record mic + system audio, transcribe)
+//! - [`meeting`]: meeting notes: detect a call, ask, record; the meeting trigger and `meeting.transcribe` step
 //! - [`deploy`]: Put it online: running agents with an online provider or on an IT team's server
 //! - [`commands`]: the Tauri commands the frontend calls
 
@@ -144,7 +144,7 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         db: db.clone(),
         credentials: credentials.clone(),
         node_runtime: node_runtime.clone(),
-        downloader,
+        downloader: downloader.clone(),
         events: Arc::new(plugins::events::TauriPluginEventSink::new(app.handle().clone())),
     }));
     plugins.activate_installed();
@@ -152,7 +152,7 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
     engine::spawn_approval_expiry(runs.clone());
     let scheduler = scheduler::spawn(db.clone(), runs.clone());
     desktop::daily_summary::spawn(db.clone(), notifier.clone());
-    let meetings = spawn_meeting_notetaker(app, &db, &data_dir, notifier.clone());
+    let meetings = spawn_meeting_notetaker(app, &db, &data_dir, notifier.clone(), runs.clone(), downloader.clone());
     plugins::auto_update::spawn(plugins.clone());
     Ok(AppState {
         db,
@@ -176,6 +176,8 @@ fn spawn_meeting_notetaker(
     db: &Arc<Database>,
     data_dir: &std::path::Path,
     notifier: Arc<TauriRunNotifier>,
+    runs: Arc<RunManager>,
+    downloader: Arc<dyn plugins::download::Downloader>,
 ) -> Arc<meeting::MeetingService> {
     let (probe, recorder, is_supported) = meeting::platform_backends();
     let service = Arc::new(meeting::MeetingService::new(meeting::MeetingServiceConfig {
@@ -186,7 +188,11 @@ fn spawn_meeting_notetaker(
         is_supported,
         events: Arc::new(meeting::TauriMeetingEventSink::new(app.handle().clone())),
         notifier: Some(notifier),
+        runs: Some(runs),
+        downloader: Some(downloader),
+        transcriber: None,
     }));
+    meeting::node::install_host(service.clone());
     service.spawn_watcher();
     service
 }
@@ -415,10 +421,8 @@ pub fn run() {
             commands::meetings::dismiss_meeting_prompt,
             commands::meetings::start_meeting_recording,
             commands::meetings::stop_meeting_recording,
-            commands::meetings::list_meetings,
-            commands::meetings::transcribe_meeting,
-            commands::meetings::get_meeting_transcript,
-            commands::meetings::delete_meeting,
+            commands::meetings::get_meeting_trigger,
+            commands::meetings::set_meeting_trigger,
         ])
         .build(tauri::generate_context!())
         .expect("failed to start the graphrt desktop app")

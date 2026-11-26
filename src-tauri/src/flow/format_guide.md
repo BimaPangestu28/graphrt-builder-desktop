@@ -133,6 +133,9 @@ limit: { enabled: true, size: 10 }
 `query_variable_selector: [start, question]`, `dataset_ids: [kb_...]`, `multiple_retrieval_config: { top_k: 4 }`.
 Feed an `llm` with `context: { enabled: true, variable_selector: [look_up, result] }` and `{{#context#}}`.
 
+`meeting.transcribe` - a recorded meeting's transcript (local); outputs `text`, `lines`, `title`:
+`meeting_id: "{{#start.meeting_id#}}"`, `language: auto`, `timeout_ms: 1800000`.
+
 `variable-aggregator` - first non-null: `variables: [[branch_a, text], [branch_b, text]]`
 
 `iteration` (container) - runs its body once per item; output `output` (list):

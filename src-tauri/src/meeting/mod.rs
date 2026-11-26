@@ -1,57 +1,77 @@
-//! Meeting notetaker: notices a meeting on this computer, asks before taking notes,
-//! records the microphone and the computer's sound as two tracks, and transcribes them.
+//! Meeting notetaker, built on the app's agents instead of a screen of its own.
 //!
-//! Design: docs/design/meeting-notetaker.md. Nothing here records on its own: detection
-//! only raises a prompt ([`MeetingStatusView::prompt`] plus a system notification), and
-//! recording starts from [`MeetingService::start_recording`] (the user's click).
+//! Design: docs/design/meeting-notetaker.md. In short:
+//! - Detection (opt-in, Settings) notices another app on the microphone and, when at
+//!   least one agent has the "when a meeting is recorded" [`trigger`], asks
+//!   "Meeting detected. Take notes?" (notification + a card in the window). Nothing
+//!   records without that click.
+//! - While recording, a pill shows the time and Stop. When the meeting app releases the
+//!   microphone, recording stops by itself after ~30 s unless the user keeps it going.
+//! - On stop, every agent with the trigger runs with the meeting as inputs. Its
+//!   `meeting.transcribe` step ([`node`]) transcribes locally with whisper.cpp
+//!   (downloaded on first use, [`whisper_install`]), skipping silence ([`vad`]); then its
+//!   own `llm` and plugin steps summarize and deliver. The audio is deleted after the
+//!   transcript unless the user keeps it.
 //!
 //! - [`platform`]: the per-OS traits; [`linux`] implements them with PipeWire
-//! - [`detector`]: when to offer, when a recorded meeting seems over
+//! - [`detector`]: when to offer, when a recorded meeting is over
 //! - [`apps`]: naming the program that uses the microphone
-//! - [`store`]: meetings on disk; [`transcript`]: whisper.cpp and merging the tracks
-//! - [`settings`]: detection switch and transcriber paths
+//! - [`store`]: meetings on disk; [`transcript`]: whisper.cpp output and merging tracks
 
 pub mod apps;
 pub mod detector;
 #[cfg(target_os = "linux")]
 pub mod linux;
+pub mod node;
 pub mod platform;
 pub mod settings;
 pub mod store;
 pub mod transcript;
+pub mod trigger;
+pub mod vad;
+pub mod whisper_install;
 
-use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use chrono::Utc;
+use futures::future::BoxFuture;
 use serde::Serialize;
 
 use crate::desktop::notify::PlainNotifier;
 use crate::error::AppResult;
+use crate::plugins::download::Downloader;
 use crate::storage::Database;
 use apps::MeetingApp;
 use detector::{DetectorAction, DetectorConfig, MeetingDetector};
-use platform::{AudioActivityProbe, MeetingError, MeetingRecorder, RecordingSession};
+use node::{MeetingTranscript, MeetingTranscription};
+use platform::{AudioActivityProbe, MeetingError, MeetingRecorder, RecordingSession, TrackKind};
 use settings::MeetingSettings;
 use store::{MeetingRecord, MeetingStatus, MeetingStore, TrackFile};
 use transcript::{Transcriber, WhisperCli};
+use trigger::MeetingRunStarter;
 
 /// How often the microphone is checked while detection is on.
 pub const POLL_INTERVAL: Duration = Duration::from_secs(3);
-/// Tauri event: the status changed (prompt, recording, mic users); no payload, refetch.
+/// After the meeting app releases the microphone, recording stops this long after
+/// "the meeting seems over" was announced (which itself waits `release_after`).
+pub const AUTO_STOP_DELAY: Duration = Duration::from_secs(20);
+/// Microphone free this long before "the meeting seems over" (+ [`AUTO_STOP_DELAY`] ≈ 30 s).
+pub const RELEASE_AFTER: Duration = Duration::from_secs(10);
+/// Whisper segments within this distance of voiced audio are kept.
+const VAD_SLACK_MS: u64 = 500;
+/// Tauri event: the status changed (prompt, recording, download); no payload, refetch.
 pub const MEETING_STATUS_EVENT: &str = "meeting-status-changed";
-/// Tauri event: the list of meetings changed (new, transcribed, deleted); no payload.
-pub const MEETINGS_CHANGED_EVENT: &str = "meetings-changed";
+/// One line in every prompt: recording laws differ, and it is polite.
+pub const CONSENT_REMINDER: &str = "Let the others know you are taking notes.";
 
-/// Tells the UI something changed. The app emits Tauri events; tests count calls.
+/// Tells the UI something changed. The app emits a Tauri event; tests count calls.
 pub trait MeetingEventSink: Send + Sync + std::fmt::Debug {
     fn status_changed(&self);
-    fn meetings_changed(&self);
 }
 
-/// Emits [`MEETING_STATUS_EVENT`] / [`MEETINGS_CHANGED_EVENT`] to every window.
+/// Emits [`MEETING_STATUS_EVENT`] to every window and refreshes the tray menu.
 #[derive(Debug)]
 pub struct TauriMeetingEventSink {
     app_handle: tauri::AppHandle,
@@ -61,73 +81,68 @@ impl TauriMeetingEventSink {
     pub fn new(app_handle: tauri::AppHandle) -> Self {
         Self { app_handle }
     }
-
-    fn emit(&self, event: &str) {
-        use tauri::Emitter;
-        if let Err(error) = self.app_handle.emit(event, ()) {
-            log::warn!("could not emit {event}: {error}");
-        }
-    }
 }
 
 impl MeetingEventSink for TauriMeetingEventSink {
     fn status_changed(&self) {
-        self.emit(MEETING_STATUS_EVENT);
-    }
-
-    fn meetings_changed(&self) {
-        self.emit(MEETINGS_CHANGED_EVENT);
+        use tauri::Emitter;
+        if let Err(error) = self.app_handle.emit(MEETING_STATUS_EVENT, ()) {
+            log::warn!("could not emit {MEETING_STATUS_EVENT}: {error}");
+        }
+        // The tray shows "Recording meeting notes · Stop" while recording.
+        crate::desktop::tray::refresh_tray(&self.app_handle);
     }
 }
 
-/// "Meeting detected, take notes?"
+/// "Meeting detected. Take notes?"
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MeetingPrompt {
     pub apps: Vec<MeetingApp>,
     /// "Zoom is using the microphone".
     pub message: String,
+    /// [`CONSENT_REMINDER`].
+    pub consent_reminder: String,
+    /// The agents that will run on the notes ("Meeting notes to Notion").
+    pub agent_names: Vec<String>,
 }
 
-/// Where transcription stands: what would run, and whether it can.
+/// whisper.cpp on this computer.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TranscriberStatus {
-    pub whisper_cli: Option<String>,
-    pub whisper_model: Option<String>,
-    /// Where a downloaded `ggml-*.bin` model is found without configuring a path.
-    pub models_folder: String,
-    pub is_ready: bool,
+    /// Program and model are on disk (else they are downloaded on first use).
+    pub is_installed: bool,
+    /// "Downloading the speech model… 42%" while a download runs.
+    pub download_message: Option<String>,
 }
 
-/// Everything the Meetings page and the recording pill show.
+/// Everything the Settings section, the prompt card and the recording pill show.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MeetingStatusView {
     /// False on systems without a backend yet (macOS, Windows).
     pub is_supported: bool,
     pub settings: MeetingSettings,
-    /// Meeting candidates on the microphone at the last check (detection on only).
+    /// Names of the agents with the "when a meeting is recorded" trigger (tested or active).
+    pub triggered_agents: Vec<String>,
     pub mic_users: Vec<MeetingApp>,
-    /// Why the last check failed (pw-dump missing…), shown on the Meetings page.
+    /// Why the last check failed (pw-dump missing…).
     pub probe_error: Option<String>,
     pub prompt: Option<MeetingPrompt>,
-    /// Recording, and the microphone has been free for a while: "Meeting seems over".
-    pub meeting_seems_over: bool,
     pub recording: Option<MeetingRecord>,
-    /// Meetings being transcribed now.
-    pub transcribing: Vec<String>,
+    /// Recording stops by itself in this many seconds (the meeting app left the mic).
+    pub auto_stop_in_seconds: Option<u64>,
     pub transcriber: TranscriberStatus,
 }
 
-/// What the poll loop and the commands share; never held across an await.
 #[derive(Debug)]
 struct LiveState {
     detector: MeetingDetector,
     mic_users: Vec<MeetingApp>,
     probe_error: Option<String>,
-    meeting_seems_over: bool,
-    transcribing: HashSet<String>,
+    auto_stop_at: Option<Instant>,
+    download_message: Option<String>,
 }
 
 #[derive(Debug)]
@@ -147,6 +162,12 @@ pub struct MeetingServiceConfig {
     pub is_supported: bool,
     pub events: Arc<dyn MeetingEventSink>,
     pub notifier: Option<Arc<dyn PlainNotifier>>,
+    /// Starts the triggered agents' runs after a recording stops.
+    pub runs: Option<Arc<dyn MeetingRunStarter>>,
+    /// Fetches whisper.cpp on first use.
+    pub downloader: Option<Arc<dyn Downloader>>,
+    /// Replaces whisper.cpp (tests).
+    pub transcriber: Option<Arc<dyn Transcriber>>,
 }
 
 #[derive(Debug)]
@@ -158,8 +179,15 @@ pub struct MeetingService {
     is_supported: bool,
     events: Arc<dyn MeetingEventSink>,
     notifier: Option<Arc<dyn PlainNotifier>>,
+    runs: Option<Arc<dyn MeetingRunStarter>>,
+    downloader: Option<Arc<dyn Downloader>>,
+    transcriber: Option<Arc<dyn Transcriber>>,
     live: Mutex<LiveState>,
     active: tokio::sync::Mutex<Option<ActiveRecording>>,
+    /// Mirrors `active.is_some()` for synchronous readers (the tray menu).
+    is_recording: std::sync::atomic::AtomicBool,
+    /// One transcription at a time (several agents of one meeting share the result).
+    transcribing: tokio::sync::Mutex<()>,
 }
 
 /// The probe and recorder of this operating system, and whether they work.
@@ -191,14 +219,22 @@ impl MeetingService {
             is_supported: config.is_supported,
             events: config.events,
             notifier: config.notifier,
+            runs: config.runs,
+            downloader: config.downloader,
+            transcriber: config.transcriber,
             live: Mutex::new(LiveState {
-                detector: MeetingDetector::new(DetectorConfig::default()),
+                detector: MeetingDetector::new(DetectorConfig {
+                    release_after: RELEASE_AFTER,
+                    ..DetectorConfig::default()
+                }),
                 mic_users: Vec::new(),
                 probe_error: None,
-                meeting_seems_over: false,
-                transcribing: HashSet::new(),
+                auto_stop_at: None,
+                download_message: None,
             }),
             active: tokio::sync::Mutex::new(None),
+            is_recording: std::sync::atomic::AtomicBool::new(false),
+            transcribing: tokio::sync::Mutex::new(()),
         }
     }
 
@@ -218,6 +254,11 @@ impl MeetingService {
         });
     }
 
+    /// Whether a meeting is being recorded (for the tray menu).
+    pub fn is_recording(&self) -> bool {
+        self.is_recording.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
     fn live(&self) -> MutexGuard<'_, LiveState> {
         // A panic while holding the lock leaves plain data; keep using it.
         self.live.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -227,35 +268,48 @@ impl MeetingService {
         MeetingSettings::load(&self.db)
     }
 
+    fn triggered_agent_names(&self) -> Vec<String> {
+        match trigger::triggered_agents(&self.db) {
+            Ok(agents) => agents.into_iter().map(|agent| agent.name).collect(),
+            Err(error) => {
+                log::warn!("could not list the agents with a meeting trigger: {error}");
+                Vec::new()
+            }
+        }
+    }
+
     /// One detection step: ask the audio system, feed the detector, act on its answer.
+    /// Detection runs only when it is on and an agent would use the notes.
     pub async fn check_microphone(&self, now: Instant) {
-        if !self.settings().detection_enabled {
-            let had_state = {
-                let mut live = self.live();
-                let had_state = !live.mic_users.is_empty() || live.detector.prompted_apps().is_some();
-                live.detector.reset();
-                live.mic_users.clear();
-                live.probe_error = None;
-                had_state
-            };
-            if had_state {
-                self.events.status_changed();
+        let is_recording = self.active.lock().await.is_some();
+        if is_recording && self.is_auto_stop_due(now) {
+            match self.stop_recording().await {
+                Ok(record) => log::info!("meeting {} stopped by itself after the meeting app left", record.id),
+                Err(error) => log::warn!("could not stop the meeting notes automatically: {error}"),
             }
             return;
         }
+        let is_watching =
+            self.settings().detection_enabled && (is_recording || !self.triggered_agent_names().is_empty());
+        if !is_watching {
+            self.reset_detection();
+            return;
+        }
         let probed = self.probe.mic_users().await;
-        let is_recording = self.active.lock().await.is_some();
         let (action, changed) = {
             let mut live = self.live();
             match probed {
                 Ok(users) => {
                     let apps = apps::meeting_apps(&users);
                     let changed = apps != live.mic_users || live.probe_error.is_some();
+                    if !apps.is_empty() && live.auto_stop_at.take().is_some() {
+                        log::info!("the meeting app is back on the microphone; recording continues");
+                    }
                     live.mic_users = apps.clone();
                     live.probe_error = None;
                     let action = live.detector.observe(now, &apps, is_recording);
                     if action == Some(DetectorAction::MeetingEnded) {
-                        live.meeting_seems_over = true;
+                        live.auto_stop_at = Some(now + AUTO_STOP_DELAY);
                     }
                     (action, changed)
                 }
@@ -272,16 +326,37 @@ impl MeetingService {
         };
         match &action {
             Some(DetectorAction::Prompt(apps)) => self.notify(
-                "Meeting detected",
-                format!("{}. Take notes? Open graphrt to choose.", apps::describe_users(apps)),
+                "Meeting detected. Take notes?",
+                format!("{}. Open graphrt to choose. {CONSENT_REMINDER}", apps::describe_users(apps)),
             ),
             Some(DetectorAction::MeetingEnded) => self.notify(
-                "Is the meeting over?",
-                "The microphone has been free for a while. Open graphrt to stop the notes.".to_owned(),
+                "The meeting seems over",
+                format!(
+                    "Meeting notes stop in {} seconds. Open graphrt and choose Keep recording to continue.",
+                    AUTO_STOP_DELAY.as_secs()
+                ),
             ),
             Some(DetectorAction::WithdrawPrompt) | None => {}
         }
         if changed || action.is_some() {
+            self.events.status_changed();
+        }
+    }
+
+    fn is_auto_stop_due(&self, now: Instant) -> bool {
+        self.live().auto_stop_at.is_some_and(|at| now >= at)
+    }
+
+    fn reset_detection(&self) {
+        let had_state = {
+            let mut live = self.live();
+            let had_state = !live.mic_users.is_empty() || live.detector.prompted_apps().is_some();
+            live.detector.reset();
+            live.mic_users.clear();
+            live.probe_error = None;
+            had_state
+        };
+        if had_state {
             self.events.status_changed();
         }
     }
@@ -295,24 +370,36 @@ impl MeetingService {
     pub async fn status(&self) -> MeetingStatusView {
         let recording = self.active.lock().await.as_ref().map(|active| active.record.clone());
         let settings = self.settings();
-        let transcriber = self.transcriber_status(&settings);
+        let paths = whisper_install::find_installed(
+            &settings,
+            &self.whisper_dir(),
+            crate::child_env::host_path_string().as_deref(),
+        );
+        let triggered_agents = self.triggered_agent_names();
         let live = self.live();
-        let prompt = live
-            .detector
-            .prompted_apps()
-            .map(|apps| MeetingPrompt { apps: apps.to_vec(), message: apps::describe_users(apps) });
-        let mut transcribing: Vec<String> = live.transcribing.iter().cloned().collect();
-        transcribing.sort();
+        let prompt = live.detector.prompted_apps().map(|apps| MeetingPrompt {
+            apps: apps.to_vec(),
+            message: apps::describe_users(apps),
+            consent_reminder: CONSENT_REMINDER.to_owned(),
+            agent_names: triggered_agents.clone(),
+        });
+        let auto_stop_in_seconds = live
+            .auto_stop_at
+            .filter(|_| recording.is_some())
+            .map(|at| at.saturating_duration_since(Instant::now()).as_secs());
         MeetingStatusView {
             is_supported: self.is_supported,
             settings,
+            triggered_agents,
             mic_users: live.mic_users.clone(),
             probe_error: live.probe_error.clone(),
             prompt,
-            meeting_seems_over: live.meeting_seems_over && recording.is_some(),
             recording,
-            transcribing,
-            transcriber,
+            auto_stop_in_seconds,
+            transcriber: TranscriberStatus {
+                is_installed: paths.is_ready(),
+                download_message: live.download_message.clone(),
+            },
         }
     }
 
@@ -329,22 +416,27 @@ impl MeetingService {
         Ok(settings)
     }
 
-    /// "Not now" on the prompt, or "Keep recording" on "Meeting seems over".
+    /// An agent's meeting trigger was turned on or off: the Settings section lists them.
+    pub fn triggers_changed(&self) {
+        self.events.status_changed();
+    }
+
+    /// "Not now" on the prompt, or "Keep recording" when it was about to stop by itself.
     pub fn dismiss_prompt(&self) {
         {
             let mut live = self.live();
             live.detector.dismiss();
-            live.meeting_seems_over = false;
+            live.auto_stop_at = None;
         }
         self.events.status_changed();
     }
 
-    /// Starts recording both tracks. `app` names the meeting; without it, the program
-    /// of the open prompt does.
+    /// Starts recording both tracks (the user's "Take notes"). The program of the open
+    /// prompt names the meeting.
     ///
     /// # Errors
     /// `InvalidState` while already recording; the recorder's errors (no PipeWire…).
-    pub async fn start_recording(&self, app: Option<String>) -> Result<MeetingRecord, MeetingError> {
+    pub async fn start_recording(&self) -> Result<MeetingRecord, MeetingError> {
         if !self.is_supported {
             return Err(MeetingError::Unsupported);
         }
@@ -352,9 +444,7 @@ impl MeetingService {
         if active.is_some() {
             return Err(MeetingError::InvalidState("already taking notes of a meeting".into()));
         }
-        let app = app.map(|app| app.trim().to_owned()).filter(|app| !app.is_empty()).or_else(|| {
-            self.live().detector.prompted_apps().and_then(|apps| apps.first()).map(|app| app.label.clone())
-        });
+        let app = self.live().detector.prompted_apps().and_then(|apps| apps.first()).map(|app| app.label.clone());
         let mut record = self.store.create(Utc::now(), app)?;
         let folder = self.store.folder(&record.id)?;
         let session = match self.recorder.start(&folder).await {
@@ -374,18 +464,18 @@ impl MeetingService {
         self.store.save(&record)?;
         let record = self.store.get(&record.id)?;
         *active = Some(ActiveRecording { record: record.clone(), session });
+        self.is_recording.store(true, std::sync::atomic::Ordering::SeqCst);
         drop(active);
         {
             let mut live = self.live();
             live.detector.recording_started();
-            live.meeting_seems_over = false;
+            live.auto_stop_at = None;
         }
         self.events.status_changed();
-        self.events.meetings_changed();
         Ok(record)
     }
 
-    /// Stops the recording and finishes its files.
+    /// Stops the recording, finishes its files and starts the triggered agents' runs.
     ///
     /// # Errors
     /// `InvalidState` when nothing is recording.
@@ -393,143 +483,206 @@ impl MeetingService {
         let Some(ActiveRecording { mut record, session }) = self.active.lock().await.take() else {
             return Err(MeetingError::InvalidState("no meeting is being recorded".into()));
         };
+        self.is_recording.store(false, std::sync::atomic::Ordering::SeqCst);
         let stopped = session.stop().await;
         record.ended_at = Some(Utc::now());
         record.status = MeetingStatus::Recorded;
         if let Err(error) = &stopped {
             record.error = Some(format!("the recording did not stop cleanly: {error}"));
         }
-        self.store.save(&record)?;
         {
             let mut live = self.live();
             live.detector.recording_stopped();
-            live.meeting_seems_over = false;
+            live.auto_stop_at = None;
         }
+        record.run_ids = self.start_triggered_runs(&record).await;
+        self.store.save(&record)?;
         self.events.status_changed();
-        self.events.meetings_changed();
         self.store.get(&record.id)
     }
 
-    pub fn list(&self) -> Result<Vec<MeetingRecord>, MeetingError> {
-        self.store.list()
-    }
-
-    pub fn transcript(&self, id: &str) -> Result<String, MeetingError> {
-        self.store.transcript_markdown(id)
-    }
-
-    /// Deletes a meeting that is not recording or being transcribed.
-    pub async fn delete(&self, id: &str) -> Result<(), MeetingError> {
-        let is_recording = self.active.lock().await.as_ref().is_some_and(|active| active.record.id == id);
-        if is_recording || self.live().transcribing.contains(id) {
-            return Err(MeetingError::InvalidState("stop this meeting's notes before deleting it".into()));
+    async fn start_triggered_runs(&self, record: &MeetingRecord) -> Vec<String> {
+        let Some(runs) = &self.runs else { return Vec::new() };
+        let agents = match trigger::triggered_agents(&self.db) {
+            Ok(agents) => agents,
+            Err(error) => {
+                log::warn!("meeting {}: could not list the agents to run: {error}", record.id);
+                return Vec::new();
+            }
+        };
+        let inputs = trigger::run_inputs(record);
+        let mut run_ids = Vec::new();
+        for agent in agents {
+            match runs.start_meeting_run(&agent.id, inputs.clone()).await {
+                Ok(run_id) => run_ids.push(run_id),
+                Err(error) => {
+                    log::warn!("meeting {}: could not start {}: {error}", record.id, agent.name);
+                    self.notify(&format!("{} could not start", agent.name), error.to_string());
+                }
+            }
         }
-        self.store.delete(id)?;
-        self.events.meetings_changed();
-        Ok(())
-    }
-
-    fn transcriber_status(&self, settings: &MeetingSettings) -> TranscriberStatus {
-        let models_folder = self.store.root().join(settings::MODELS_DIR_NAME);
-        let whisper_cli = settings::resolve_whisper_cli(settings, crate::child_env::host_path_string().as_deref());
-        let whisper_model = settings::resolve_whisper_model(settings, &models_folder);
-        let is_ready = whisper_cli.as_ref().is_some_and(|path| path.is_file())
-            && whisper_model.as_ref().is_some_and(|path| path.is_file());
-        TranscriberStatus {
-            whisper_cli: whisper_cli.map(|path| path.to_string_lossy().into_owned()),
-            whisper_model: whisper_model.map(|path| path.to_string_lossy().into_owned()),
-            models_folder: models_folder.to_string_lossy().into_owned(),
-            is_ready,
+        if run_ids.is_empty() {
+            self.notify(
+                "Meeting notes saved",
+                "No agent took the notes. Turn on \"When a meeting is recorded\" in an agent's schedule.".to_owned(),
+            );
         }
+        run_ids
     }
 
-    fn local_transcriber(&self) -> Result<WhisperCli, MeetingError> {
+    fn whisper_dir(&self) -> PathBuf {
+        self.store.root().join(whisper_install::WHISPER_DIR_NAME)
+    }
+
+    fn set_download_message(&self, message: Option<String>) {
+        self.live().download_message = message;
+        self.events.status_changed();
+    }
+
+    /// whisper.cpp, downloading the program and the model the first time.
+    async fn local_whisper(&self, language: &str) -> Result<WhisperCli, MeetingError> {
         let settings = self.settings();
-        let status = self.transcriber_status(&settings);
-        let program = status.whisper_cli.ok_or_else(|| MeetingError::ToolMissing {
-            program: "whisper-cli".into(),
-            reason: "install whisper.cpp or set the path of whisper-cli on the Meetings page".into(),
-        })?;
-        let model = status.whisper_model.ok_or_else(|| MeetingError::ToolMissing {
-            program: "the whisper model".into(),
-            reason: format!("put a ggml model (ggml-base.bin) in {} or set its path", status.models_folder),
-        })?;
+        let whisper_dir = self.whisper_dir();
+        let found =
+            whisper_install::find_installed(&settings, &whisper_dir, crate::child_env::host_path_string().as_deref());
+        let program = match found.program {
+            Some(program) => program,
+            None => {
+                let file = whisper_install::PROGRAM.ok_or(MeetingError::Unsupported)?;
+                self.download("Downloading whisper.cpp", file).await?
+            }
+        };
+        let model = match found.model {
+            Some(model) => model,
+            None => self.download("Downloading the speech model", whisper_install::MODEL).await?,
+        };
         let threads = std::thread::available_parallelism().map(|count| count.get().min(8)).unwrap_or(4);
-        Ok(WhisperCli { program: program.into(), model: model.into(), language: "auto".into(), threads })
+        Ok(WhisperCli { program, model, language: language.to_owned(), threads })
     }
 
-    /// Transcribes both tracks locally with whisper.cpp and saves the merged transcript.
+    async fn download(&self, label: &str, file: whisper_install::PinnedFile) -> Result<PathBuf, MeetingError> {
+        let downloader = self.downloader.clone().ok_or_else(|| MeetingError::ToolMissing {
+            program: file.file_name.to_owned(),
+            reason: "no download client".into(),
+        })?;
+        let megabytes = file.size_bytes / 1_000_000;
+        self.set_download_message(Some(format!("{label} ({megabytes} MB)…")));
+        let result = whisper_install::ensure_file(&downloader, &self.whisper_dir(), file, None).await;
+        self.set_download_message(None);
+        result
+    }
+
+    /// Transcribes a recorded meeting (the `meeting.transcribe` step). A meeting already
+    /// transcribed returns its transcript, so several agents can share one meeting.
     ///
     /// # Errors
-    /// `InvalidState` while it records or is already being transcribed; the transcriber's
-    /// errors (also saved on the meeting as `TranscriptionFailed`).
-    pub async fn transcribe(&self, id: &str) -> Result<MeetingRecord, MeetingError> {
-        let transcriber = self.local_transcriber()?;
-        self.transcribe_with(id, &transcriber).await
-    }
-
-    pub async fn transcribe_with(
-        &self,
-        id: &str,
-        transcriber: &dyn Transcriber,
-    ) -> Result<MeetingRecord, MeetingError> {
-        let mut record = self.store.get(id)?;
+    /// `NotFound` for an unknown meeting or one whose audio is gone; `InvalidState` while
+    /// it records; whisper's errors (also saved on the meeting).
+    pub async fn transcribe(&self, meeting_id: &str, language: &str) -> Result<MeetingTranscript, MeetingError> {
+        let _one_at_a_time = self.transcribing.lock().await;
+        let mut record = self.store.get(meeting_id)?;
         if record.status == MeetingStatus::Recording {
-            return Err(MeetingError::InvalidState("stop the recording before transcribing it".into()));
+            return Err(MeetingError::InvalidState("the meeting is still being recorded".into()));
         }
-        if !self.live().transcribing.insert(id.to_owned()) {
-            return Err(MeetingError::InvalidState("this meeting is already being transcribed".into()));
+        if record.status == MeetingStatus::Transcribed {
+            if let Ok(lines) = self.store.transcript_lines(meeting_id) {
+                let markdown = self.store.transcript_markdown(meeting_id)?;
+                return Ok(MeetingTranscript { title: record.title, markdown, lines });
+            }
         }
         record.status = MeetingStatus::Transcribing;
         record.error = None;
-        let outcome = match self.store.save(&record) {
-            Ok(()) => {
-                self.events.status_changed();
-                self.events.meetings_changed();
-                self.run_transcription(&record, transcriber).await
-            }
-            Err(error) => Err(error),
-        };
-        self.live().transcribing.remove(id);
+        self.store.save(&record)?;
+        let outcome = self.run_transcription(&record, language).await;
         match &outcome {
-            Ok(()) => {
+            Ok(_) => {
                 record.status = MeetingStatus::Transcribed;
-                record.error = None;
+                if !self.settings().keep_audio {
+                    match self.store.delete_audio(&record.id) {
+                        Ok(()) => record.audio_deleted = true,
+                        Err(error) => log::warn!("meeting {}: could not delete the audio: {error}", record.id),
+                    }
+                }
             }
             Err(error) => {
                 record.status = MeetingStatus::TranscriptionFailed;
                 record.error = Some(error.to_string());
             }
         }
-        let saved = self.store.save(&record);
-        self.events.status_changed();
-        self.events.meetings_changed();
-        outcome?;
-        saved?;
-        self.store.get(id)
+        self.store.save(&record)?;
+        outcome
     }
 
     async fn run_transcription(
         &self,
         record: &MeetingRecord,
-        transcriber: &dyn Transcriber,
-    ) -> Result<(), MeetingError> {
+        language: &str,
+    ) -> Result<MeetingTranscript, MeetingError> {
+        if record.audio_deleted {
+            return Err(MeetingError::NotFound(
+                "the meeting's audio (it was deleted after an earlier transcript)".into(),
+            ));
+        }
         let folder = self.store.folder(&record.id)?;
         let mut tracks = Vec::new();
+        let mut whisper: Option<Arc<dyn Transcriber>> = self.transcriber.clone();
         for track in &record.tracks {
             let path = folder.join(&track.file_name);
             if !path.is_file() {
                 log::warn!("meeting {}: track {} is missing; skipped", record.id, track.file_name);
                 continue;
             }
-            tracks.push((track.kind, transcriber.transcribe(&path).await?));
+            let Some(ranges) = speech_in(&path, track.kind)? else {
+                tracks.push((track.kind, Vec::new()));
+                continue;
+            };
+            let transcriber = match &whisper {
+                Some(transcriber) => transcriber.clone(),
+                None => {
+                    let local: Arc<dyn Transcriber> = Arc::new(self.local_whisper(language).await?);
+                    whisper = Some(local.clone());
+                    local
+                }
+            };
+            let segments = transcriber.transcribe(&path).await?;
+            tracks.push((track.kind, vad::keep_voiced_segments(segments, &ranges, VAD_SLACK_MS)));
         }
         if tracks.is_empty() {
             return Err(MeetingError::NotFound("the recorded tracks".into()));
         }
         let lines = transcript::merge_tracks(tracks);
         let markdown = transcript::render_markdown(&record.title, &lines);
-        self.store.save_transcript(&record.id, &lines, &markdown)
+        self.store.save_transcript(&record.id, &lines, &markdown)?;
+        Ok(MeetingTranscript { title: record.title.clone(), markdown, lines })
+    }
+}
+
+/// The voiced stretches of a track, or `None` when it has (almost) no speech and is not
+/// worth transcribing. An unreadable file is transcribed whole.
+fn speech_in(path: &Path, track: TrackKind) -> Result<Option<Vec<vad::VoicedRange>>, MeetingError> {
+    let pcm = match vad::read_wav(path) {
+        Ok(pcm) => pcm,
+        Err(MeetingError::Parse(reason)) => {
+            log::warn!("{}: {reason}; transcribing it without silence detection", path.display());
+            return Ok(Some(vec![vad::VoicedRange { start_ms: 0, end_ms: u64::MAX / 2 }]));
+        }
+        Err(error) => return Err(error),
+    };
+    let ranges = vad::voiced_ranges(&pcm);
+    if vad::speech_ms(&ranges) < vad::MIN_SPEECH_MS {
+        log::info!("{}: {:?} track has no speech; not transcribed", path.display(), track);
+        return Ok(None);
+    }
+    Ok(Some(ranges))
+}
+
+impl MeetingTranscription for MeetingService {
+    fn transcribe_meeting<'a>(
+        &'a self,
+        meeting_id: &'a str,
+        language: &'a str,
+    ) -> BoxFuture<'a, Result<MeetingTranscript, MeetingError>> {
+        Box::pin(self.transcribe(meeting_id, language))
     }
 }
 

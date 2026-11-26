@@ -29,7 +29,6 @@ export const routePaths = {
   versionHistory: '/agents/maps-leads/history', // 24
   menuBar: '/menu-bar', // 25
   plugins: '/plugins', // 26, moved out of Connections (21) into its own sidebar item
-  meetings: '/meetings', // meeting notetaker (docs/design/meeting-notetaker.md)
   putOnline: '/agents/maps-leads/online', // 57-64, Put it online (Where, Provider, Review, progress, done)
   ownServer: '/agents/maps-leads/own-server', // 67, My own server (For IT teams)
   screenIndex: '/screens',
