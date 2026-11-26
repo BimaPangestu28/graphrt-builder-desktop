@@ -40,6 +40,8 @@ function buildMapsStep(state: RunStepView['state']): RunStepView {
     itemsDoneCount: null,
     itemDescription: null,
     stepDetail: null,
+    learnedNoteCount: 0,
+    unavailableSkillTools: [],
   }
 }
 

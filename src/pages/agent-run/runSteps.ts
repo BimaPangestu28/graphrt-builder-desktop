@@ -52,6 +52,50 @@ export interface RunStepView {
   itemDescription: string | null
   /** The flow summary's detail for this step ("POST api.example.com"), used to explain errors. */
   stepDetail: string | null
+  /** How many notes the agent learned were read for the shown execution (`lessons_applied`). */
+  learnedNoteCount: number
+  /** Tools a skill was allowed but could not use because nothing here provides them (`skill_tool_unavailable`). */
+  unavailableSkillTools: UnavailableSkillTool[]
+}
+
+/** A tool a skill may use that this computer does not have (its plugin was removed, say). */
+export interface UnavailableSkillTool {
+  /** Technical name of the skill. */
+  skill: string
+  /** The tool as the skill asks for it (`provider/tool`). */
+  tool: string
+}
+
+function readText(data: unknown, key: string): string | null {
+  if (!data || typeof data !== 'object') return null
+  const value = (data as Record<string, unknown>)[key]
+  return typeof value === 'string' && value ? value : null
+}
+
+/** Notes read by the execution: the ids of every `lessons_applied` report, each counted once. */
+export function countLearnedNotes(execution: NodeExecution): number {
+  const ids = new Set<string>()
+  for (const report of execution.progressReports) {
+    if (report.name !== 'lessons_applied' || !report.data || typeof report.data !== 'object') continue
+    const reportedIds = (report.data as Record<string, unknown>).ids
+    if (Array.isArray(reportedIds)) reportedIds.forEach((id) => typeof id === 'string' && ids.add(id))
+  }
+  return ids.size
+}
+
+/** The `skill_tool_unavailable` reports of the execution, one per skill and tool. */
+export function collectUnavailableSkillTools(execution: NodeExecution): UnavailableSkillTool[] {
+  const seen = new Set<string>()
+  const tools: UnavailableSkillTool[] = []
+  for (const report of execution.progressReports) {
+    if (report.name !== 'skill_tool_unavailable') continue
+    const skill = readText(report.data, 'skill')
+    const tool = readText(report.data, 'tool')
+    if (!skill || !tool || seen.has(`${skill}\n${tool}`)) continue
+    seen.add(`${skill}\n${tool}`)
+    tools.push({ skill, tool })
+  }
+  return tools
 }
 
 /** What a container tells the steps inside it. */
@@ -152,6 +196,8 @@ function buildEmptyView(step: RunStepTemplate, nodeType: string | null): RunStep
     itemsDoneCount: null,
     itemDescription: null,
     stepDetail: step.detail ?? null,
+    learnedNoteCount: 0,
+    unavailableSkillTools: [],
   }
 }
 
@@ -169,6 +215,8 @@ function applyExecution(view: RunStepView, execution: NodeExecution): RunStepVie
     errorMessage: execution.errorMessage,
     usage: execution.usage,
     detail: execution.detail,
+    learnedNoteCount: countLearnedNotes(execution),
+    unavailableSkillTools: collectUnavailableSkillTools(execution),
   }
 }
 

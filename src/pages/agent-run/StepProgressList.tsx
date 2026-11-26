@@ -133,7 +133,7 @@ function StepRow({ step, now, isExpanded, onToggle, fixAgentId, liveImage }: Ste
       )}
       {isExpanded && (
         <div className="ml-[30px]">
-          <StepDetails step={step} id={detailsId} fixAgentId={step.state === 'failed' ? fixAgentId : null} />
+          <StepDetails step={step} id={detailsId} fixAgentId={step.state === 'failed' ? fixAgentId : null} agentId={fixAgentId} />
         </div>
       )}
     </li>
