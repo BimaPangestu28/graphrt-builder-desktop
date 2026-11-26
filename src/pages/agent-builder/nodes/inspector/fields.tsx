@@ -155,7 +155,13 @@ export function Field({
 /** Keeps a local copy of `value` while editing; resets when `value` changes from outside. */
 function useDraft<Value>(value: Value): [Value, (next: Value) => void] {
   const [draft, setDraft] = useState(value)
-  useEffect(() => setDraft(value), [value])
+  // Reset the draft during render when `value` changes. An effect would also run once
+  // after mount and could overwrite what was typed before it ran.
+  const [syncedValue, setSyncedValue] = useState(value)
+  if (!Object.is(value, syncedValue)) {
+    setSyncedValue(value)
+    setDraft(value)
+  }
   return [draft, setDraft]
 }
 

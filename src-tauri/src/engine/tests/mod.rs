@@ -159,6 +159,17 @@ async fn wait_for_event(db: &Database, run_id: &str, event_type: &str) {
     }
 }
 
+/// Waits until the run's task has unregistered. The task sends the terminal status to
+/// the UI first and unregisters right after (see `RunManager::abort_run`), so a test
+/// that saw the status must wait for this before checking `active_runs`.
+async fn wait_until_unregistered(harness: &Harness, run_id: &str) {
+    let deadline = tokio::time::Instant::now() + WAIT_TIMEOUT;
+    while harness.runs.active_runs.is_registered(run_id) {
+        assert!(tokio::time::Instant::now() < deadline, "run {run_id} never unregistered");
+        tokio::time::sleep(Duration::from_millis(2)).await;
+    }
+}
+
 fn stored_event_types(db: &Database, run_id: &str) -> Vec<String> {
     db.list_run_events(run_id).unwrap().iter().map(|record| record.event["type"].as_str().unwrap().to_owned()).collect()
 }
@@ -294,11 +305,12 @@ async fn aborting_a_running_run_records_the_abort() {
 
     harness.runs.abort_run(&run.id).unwrap();
     wait_for_status(&harness.sink, &run.id, RunStatus::Aborted).await;
+    // The status reaches the UI just before the task unregisters.
+    wait_until_unregistered(&harness, &run.id).await;
 
     assert_eq!(harness.db.get_run(&run.id).unwrap().status, RunStatus::Aborted);
     let types = stored_event_types(&harness.db, &run.id);
     assert_eq!(types.last().map(String::as_str), Some("run_aborted"));
-    assert!(!harness.runs.active_runs.is_registered(&run.id));
 }
 
 #[tokio::test]

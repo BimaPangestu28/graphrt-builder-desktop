@@ -398,11 +398,3 @@ async fn wait_until_settled(harness: &Harness, run_id: &str) -> RunStatus {
         tokio::time::sleep(Duration::from_millis(2)).await;
     }
 }
-
-async fn wait_until_unregistered(harness: &Harness, run_id: &str) {
-    let deadline = tokio::time::Instant::now() + WAIT_TIMEOUT;
-    while harness.runs.active_runs.is_registered(run_id) {
-        assert!(tokio::time::Instant::now() < deadline, "run {run_id} never unregistered");
-        tokio::time::sleep(Duration::from_millis(2)).await;
-    }
-}
