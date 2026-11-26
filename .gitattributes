@@ -1,0 +1,4 @@
+# Check text files out with LF on every platform. Fixtures, checksummed plugin
+# files and shell scripts are compared byte for byte (or run by bash), so a
+# CRLF checkout on Windows breaks them.
+* text=auto eol=lf
