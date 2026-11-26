@@ -132,6 +132,15 @@ pub fn builtin_node_registry() -> graphrt_core::Registry {
     registry
 }
 
+/// Whether `kind` is one of the app's own node kinds (graphrt builtins and desktop kinds
+/// such as `meeting.transcribe`), never a plugin's, even when it has a dot.
+pub fn is_builtin_kind(kind: &str) -> bool {
+    static BUILTIN_KINDS: std::sync::OnceLock<std::collections::HashSet<String>> = std::sync::OnceLock::new();
+    BUILTIN_KINDS
+        .get_or_init(|| builtin_node_registry().descriptors().into_iter().map(|descriptor| descriptor.kind).collect())
+        .contains(kind)
+}
+
 /// Compiles the document with [`node_registry`]; `AppError::Workflow` carries graphrt's message.
 ///
 /// # Errors

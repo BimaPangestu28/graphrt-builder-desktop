@@ -141,6 +141,9 @@ pub(crate) fn plugin_requirements(
 
 /// The plugin a node kind belongs to; `None` for the app's own kinds.
 fn plugin_of_kind(kind: &str, sources: &RequirementSources<'_>) -> Option<String> {
+    if crate::flow::is_builtin_kind(kind) {
+        return None;
+    }
     if let Some(plugin) = sources.installed.iter().find(|plugin| plugin.declares_kind(kind)) {
         return Some(plugin.name.clone());
     }
@@ -241,6 +244,16 @@ fn missing_settings(
         }
     }
     Ok(missing)
+}
+
+#[cfg(test)]
+mod builtin_kind_tests {
+    #[test]
+    fn desktop_kinds_with_a_dot_are_not_plugins() {
+        assert!(crate::flow::is_builtin_kind(crate::meeting::node::TRANSCRIBE_KIND));
+        assert!(crate::flow::is_builtin_kind("llm"));
+        assert!(!crate::flow::is_builtin_kind("notion.create_page"));
+    }
 }
 
 #[cfg(test)]
