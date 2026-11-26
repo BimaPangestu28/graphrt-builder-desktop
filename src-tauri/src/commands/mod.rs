@@ -14,6 +14,7 @@ pub mod crash_reports;
 pub mod credentials;
 pub mod deploy;
 pub mod knowledge;
+pub mod learning;
 pub mod mcp;
 pub mod node_runtime;
 pub mod plugin_triggers;

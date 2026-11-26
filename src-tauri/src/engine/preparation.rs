@@ -50,6 +50,11 @@ pub(super) fn build_engine(
         Some(skills) => services.with(skills),
         None => services,
     };
+    // Approved lessons for `agent` steps with `learning` (read only; a run never writes one).
+    let services = match crate::learning::lessons_service() {
+        Some(lessons) => services.with(lessons),
+        None => services,
+    };
     Ok(Engine::new(Arc::new(graph)).with_services(services).with_limits(run_limits(db)))
 }
 

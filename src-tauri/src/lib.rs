@@ -46,6 +46,7 @@ pub mod engine;
 pub mod error;
 pub mod flow;
 pub mod knowledge;
+pub mod learning;
 #[cfg(target_os = "linux")]
 pub mod linux_display;
 pub mod live_view;
@@ -156,6 +157,8 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
     plugins.activate_installed();
     let skills = Arc::new(skills::SkillService::new(&data_dir, plugins.clone()));
     skills.activate();
+    let learning = Arc::new(learning::LearningService::new(&data_dir, db.clone(), credentials.clone()));
+    learning.activate();
     mcp::publish_from_database(&db);
     engine::spawn_approval_expiry(runs.clone());
     let scheduler = scheduler::spawn(db.clone(), runs.clone());
@@ -175,6 +178,7 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         node_runtime,
         plugins,
         skills,
+        learning,
         model_catalog: Arc::new(model_catalog::ModelCatalog::with_http()?),
         deploy,
         plugin_triggers,
@@ -370,6 +374,16 @@ pub fn run() {
             commands::node_runtime::install_browser_runtime,
             commands::node_runtime::install_node_runtime,
             commands::node_runtime::remove_node_runtime,
+            commands::learning::get_agent_learning,
+            commands::learning::decide_lesson,
+            commands::learning::edit_lesson,
+            commands::learning::delete_lesson,
+            commands::learning::apply_lesson_to_everyone,
+            commands::learning::forget_learning_person,
+            commands::learning::add_learning_note,
+            commands::learning::set_auto_learn,
+            commands::learning::set_agent_uses_learning,
+            commands::learning::record_run_feedback,
             commands::skills::list_installed_skills,
             commands::skills::list_skill_catalog,
             commands::skills::review_catalog_skill,
