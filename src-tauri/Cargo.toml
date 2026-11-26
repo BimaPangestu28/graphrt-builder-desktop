@@ -100,7 +100,7 @@ libc = "0.2"
 
 # "Keep the computer awake while an agent runs" on Windows (SetThreadExecutionState)
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.60", features = ["Win32_System_Power"] }
+windows-sys = { version = "0.61", features = ["Win32_System_Power"] }
 
 [dev-dependencies]
 minisign = "0.10.0"
