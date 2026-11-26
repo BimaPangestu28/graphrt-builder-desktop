@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { appearanceOptions, languageOptions, modelFallbackOptions } from '@/lib/settings'
+import type { AppearanceKey, ModelFallbackKey } from '@/lib/settings'
 
 /**
  * Settings that have no backend yet and live in memory only. The desktop app hides their
@@ -8,16 +8,14 @@ import { appearanceOptions, languageOptions, modelFallbackOptions } from '@/lib/
  * the backend through `useAppSettings` and the credentials commands.
  */
 export interface SettingsValues {
-  modelFallback: (typeof modelFallbackOptions)[number]
-  appearance: (typeof appearanceOptions)[number]
-  language: (typeof languageOptions)[number]
+  modelFallback: ModelFallbackKey
+  appearance: AppearanceKey
   remoteServerUrl: string
 }
 
 const initialSettingsValues: SettingsValues = {
-  modelFallback: 'Switch to Ollama',
-  appearance: 'Match the system',
-  language: 'English',
+  modelFallback: 'ollama',
+  appearance: 'system',
   remoteServerUrl: '',
 }
 

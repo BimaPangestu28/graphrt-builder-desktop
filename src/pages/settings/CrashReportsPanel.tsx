@@ -5,6 +5,7 @@ import { useAsyncData } from '@/hooks/useAsyncData'
 import { describeError } from '@/lib/agentDisplay'
 import { CrashReportViewer } from '../crash-reports/CrashReportViewer'
 import { ToggleRow, settingsButtonClassNames } from './SettingRows'
+import { intlTag, messages, useT } from '@/i18n'
 
 type CrashReportActionState =
   | { kind: 'idle' }
@@ -13,14 +14,17 @@ type CrashReportActionState =
   | { kind: 'done'; message: string }
   | { kind: 'failed'; message: string }
 
-const reportTimeFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+function formatReportTime(isoTimestamp: string): string {
+  return new Intl.DateTimeFormat(intlTag(), { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(isoTimestamp))
+}
 
 function describeReportCount(reportCount: number): string {
-  return `${reportCount} crash ${reportCount === 1 ? 'report' : 'reports'}`
+  return messages().settings.crashReportCount(reportCount)
 }
 
 /** The opt-in toggle; saved right away, put back when the save fails. */
 function SharingToggle() {
+  const t = useT().settings
   const { data: storedOffersSharing } = useAsyncData(getCrashReportSharing, [])
   const [pendingOffersSharing, setPendingOffersSharing] = useState<boolean | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -34,15 +38,15 @@ function SharingToggle() {
       setPendingOffersSharing(await setCrashReportSharing(isChecked))
     } catch (saveFailure) {
       setPendingOffersSharing(!isChecked)
-      setSaveError(`Could not save the change: ${describeError(saveFailure)}`)
+      setSaveError(t.couldNotSave(describeError(saveFailure)))
     }
   }
 
   return (
     <>
       <ToggleRow
-        title="Help improve graphrt: offer to share crash reports"
-        description="After a crash, offer to open a GitHub issue you can read before you submit it. Nothing is ever sent by itself"
+        title={t.shareCrashReports}
+        description={t.shareCrashReportsHint}
         isChecked={offersSharing}
         onToggle={(isChecked) => void handleToggle(isChecked)}
       />
@@ -56,19 +60,20 @@ function SharingToggle() {
 }
 
 function CrashReportList({ reports, onView }: { reports: CrashReportSummary[]; onView: (reportId: string) => void }) {
-  if (reports.length === 0) return <p className="m-0 py-2 text-[13px] text-muted">No crash reports on this computer</p>
+  const t = useT().settings
+  if (reports.length === 0) return <p className="m-0 py-2 text-[13px] text-muted">{t.noCrashReports}</p>
   return (
-    <ul aria-label="Saved crash reports" className="m-0 flex max-h-[260px] list-none flex-col overflow-auto rounded-[10px] border border-line p-0">
+    <ul aria-label={t.savedCrashReports} className="m-0 flex max-h-[260px] list-none flex-col overflow-auto rounded-[10px] border border-line p-0">
       {reports.map((report) => (
         <li key={report.id} className="flex items-center gap-3 border-b border-chip px-3 py-2 last:border-b-0">
           <span className="flex min-w-0 flex-auto flex-col">
             <span className="text-[12px] text-muted">
-              {reportTimeFormat.format(new Date(report.createdAt))} · {report.kind === 'panic' ? 'App closed' : 'Window error'}
+              {formatReportTime(report.createdAt)} · {report.kind === 'panic' ? t.appClosed : t.windowError}
             </span>
-            <span className="truncate text-[13px] text-ink">{report.message || 'No message'}</span>
+            <span className="truncate text-[13px] text-ink">{report.message || t.noMessage}</span>
           </span>
-          <button type="button" aria-label={`View the crash report from ${reportTimeFormat.format(new Date(report.createdAt))}`} onClick={() => onView(report.id)} className={`${settingsButtonClassNames} h-[30px] shrink-0`}>
-            View
+          <button type="button" aria-label={t.viewCrashReportFrom(formatReportTime(report.createdAt))} onClick={() => onView(report.id)} className={`${settingsButtonClassNames} h-[30px] shrink-0`}>
+            {t.view}
           </button>
         </li>
       ))}
@@ -100,6 +105,7 @@ function ActionMessage({ actionState }: { actionState: CrashReportActionState })
  * (system save dialog) and Delete all (asks first).
  */
 export function CrashReportsPanel() {
+  const t = useT().settings
   const { data: reports, error: loadError, reload } = useAsyncData(listCrashReports, [])
   const [viewedReportId, setViewedReportId] = useState<string | null>(null)
   const [actionState, setActionState] = useState<CrashReportActionState>({ kind: 'idle' })
@@ -112,9 +118,9 @@ export function CrashReportsPanel() {
       const exportPath = await pickCrashReportExportPath()
       if (!exportPath) return setActionState({ kind: 'idle' })
       const summary = await exportCrashReports(exportPath)
-      setActionState({ kind: 'done', message: `Exported ${describeReportCount(summary.reportCount)} to ${summary.path}` })
+      setActionState({ kind: 'done', message: t.exportedTo(describeReportCount(summary.reportCount), summary.path) })
     } catch (exportFailure) {
-      setActionState({ kind: 'failed', message: `Could not export: ${describeError(exportFailure)}` })
+      setActionState({ kind: 'failed', message: t.couldNotExport(describeError(exportFailure)) })
     }
   }
 
@@ -122,31 +128,29 @@ export function CrashReportsPanel() {
     setActionState({ kind: 'working' })
     try {
       const deletedCount = await deleteAllCrashReports()
-      setActionState({ kind: 'done', message: `Deleted ${describeReportCount(deletedCount)}` })
+      setActionState({ kind: 'done', message: t.deletedCount(describeReportCount(deletedCount)) })
       await reload()
     } catch (deleteFailure) {
-      setActionState({ kind: 'failed', message: `Could not delete: ${describeError(deleteFailure)}` })
+      setActionState({ kind: 'failed', message: t.couldNotDelete(describeError(deleteFailure)) })
     }
   }
 
   return (
     <section aria-labelledby="settings-crash-reports-heading" className="flex flex-col gap-2 border-b border-chip py-3.5">
       <h3 id="settings-crash-reports-heading" className="m-0 text-[14px] font-medium">
-        Crash reports
+        {t.crashReports}
       </h3>
-      <p className="m-0 text-[13px] leading-normal text-body">
-        graphrt sends no telemetry. When it crashes, a report is saved only on this computer, without keys, secrets, workflow inputs, run outputs, file contents, emails or your user name
-      </p>
+      <p className="m-0 text-[13px] leading-normal text-body">{t.crashReportsText}</p>
       <SharingToggle />
       {loadError && (
         <p role="alert" className="m-0 text-[13px] text-danger">
-          Could not list the crash reports: {loadError.message}
+          {t.couldNotListCrashReports(loadError.message)}
         </p>
       )}
       {reports && <CrashReportList reports={reports} onView={setViewedReportId} />}
       <div className="flex gap-2 pt-1.5">
         <button type="button" disabled={!hasReports || isWorking} onClick={() => void handleExport()} className={`${settingsButtonClassNames} h-9 disabled:cursor-not-allowed disabled:opacity-50`}>
-          Export all
+          {t.exportAll}
         </button>
         <button
           type="button"
@@ -154,17 +158,17 @@ export function CrashReportsPanel() {
           onClick={() => setActionState({ kind: 'confirmDelete' })}
           className="h-9 cursor-pointer rounded-[9px] border border-danger-line bg-surface px-3.5 font-sans text-[13px] font-medium text-danger hover:bg-danger-tint disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Delete all
+          {t.deleteAll}
         </button>
       </div>
       {actionState.kind === 'confirmDelete' && (
         <div role="alert" className="flex flex-wrap items-center gap-3 rounded-[10px] border border-danger-line bg-danger-tint px-3.5 py-3">
-          <span className="flex-auto text-[13px] text-danger-deep">Delete every crash report on this computer?</span>
+          <span className="flex-auto text-[13px] text-danger-deep">{t.deleteAllCrashReportsQuestion}</span>
           <button type="button" onClick={() => setActionState({ kind: 'idle' })} className={`${settingsButtonClassNames} h-[34px]`}>
-            Cancel
+            {t.cancel}
           </button>
           <button type="button" onClick={() => void handleDelete()} className="h-[34px] cursor-pointer rounded-[9px] border-0 bg-danger px-3.5 font-sans text-[13px] font-semibold text-white">
-            Delete crash reports
+            {t.deleteCrashReports}
           </button>
         </div>
       )}

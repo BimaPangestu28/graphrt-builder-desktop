@@ -96,7 +96,7 @@ function PluginRuntimeDownloadAction({ setup }: { setup: PluginSetupState }) {
         <Button size="sm" variant="secondary" disabled={isDownloading} onClick={() => void setup.downloadPluginRuntime()}>
           {isDownloading ? 'Downloading…' : 'Install plugin runtime'}
         </Button>
-        <span className="text-[12px] text-muted">Node.js · {pluginRuntimeDownloadSizeNote}, once for all plugins</span>
+        <span className="text-[12px] text-muted">Node.js · {pluginRuntimeDownloadSizeNote()}, once for all plugins</span>
       </div>
       <span role="status" className="text-[13px] text-ink-2">
         {isDownloading ? (progressText ?? 'Starting the download…') : ''}

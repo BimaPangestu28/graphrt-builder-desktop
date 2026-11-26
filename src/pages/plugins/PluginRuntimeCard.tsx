@@ -4,10 +4,10 @@ import type { PluginRuntimeState } from '@/hooks/usePluginRuntime'
 import { describeError } from '@/lib/agentDisplay'
 
 /** What the plugin runtime is, in one line: shown before anything is downloaded. */
-export const pluginRuntimeNeedNote = `Needs the plugin runtime (Node.js, ${pluginRuntimeDownloadSizeNote})`
+export const pluginRuntimeNeedNote = `Needs the plugin runtime (Node.js, ${pluginRuntimeDownloadSizeNote()})`
 
 /** Added to an install approval while the plugin runtime is missing: the same click downloads it. */
-export const pluginRuntimeInstallNote = `Also downloads the plugin runtime (Node.js, ${pluginRuntimeDownloadSizeNote}, once for all plugins) from nodejs.org.`
+export const pluginRuntimeInstallNote = `Also downloads the plugin runtime (Node.js, ${pluginRuntimeDownloadSizeNote()}, once for all plugins) from nodejs.org.`
 
 /** Status badge text and tone of the plugin runtime. */
 export function describePluginRuntimeStatus(runtime: PluginRuntimeState): { label: string; tone: BadgeTone } {
@@ -71,7 +71,7 @@ export function PluginRuntimeCard({ runtime, isEmbedded = false }: PluginRuntime
             </Badge>
           </span>
         </div>
-        <p className="m-0 text-[13px] text-body">Node.js, which plugins run on · {pluginRuntimeDownloadSizeNote}, once for all plugins</p>
+        <p className="m-0 text-[13px] text-body">Node.js, which plugins run on · {pluginRuntimeDownloadSizeNote()}, once for all plugins</p>
         <PluginRuntimeErrors runtime={runtime} />
       </div>
       <div className="ml-auto">
@@ -105,7 +105,7 @@ export function PluginRuntimeBanner({ runtime, pluginLabels }: PluginRuntimeBann
         </Badge>
       </span>
       <span className="min-w-0 flex-1 text-[12px] text-muted">
-        {pluginLabels.join(', ')} {pluginLabels.length === 1 ? 'needs' : 'need'} the plugin runtime (Node.js, {pluginRuntimeDownloadSizeNote})
+        {pluginLabels.join(', ')} {pluginLabels.length === 1 ? 'needs' : 'need'} the plugin runtime (Node.js, {pluginRuntimeDownloadSizeNote()})
       </span>
       <PluginRuntimeInstallButton runtime={runtime} />
       <PluginRuntimeErrors runtime={runtime} />

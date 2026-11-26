@@ -3,6 +3,7 @@ import type { RunLimits } from '@/api/appSettingsTypes'
 import { joinClassNames } from '@/components/ui'
 import { defaultRunLimits, runLimitFields, type RunLimitField } from '@/lib/runLimits'
 import { SettingsGroup, settingsButtonClassNames } from './SettingRows'
+import { formatNumber, messages, useT } from '@/i18n'
 
 interface RunLimitsPanelProps {
   runLimits: RunLimits
@@ -25,7 +26,7 @@ function readDraftValue(field: RunLimitField, draftText: string): number | null 
 }
 
 function describeRange(field: RunLimitField): string {
-  return `${field.min.toLocaleString('en-US')} to ${field.max.toLocaleString('en-US')}`
+  return messages().settings.rangeTo(formatNumber(field.min), formatNumber(field.max))
 }
 
 interface RunLimitRowProps {
@@ -37,6 +38,7 @@ interface RunLimitRowProps {
 }
 
 function RunLimitRow({ field, draftText, savedValue, onChangeDraft, onCommit }: RunLimitRowProps) {
+  const t = useT().settings
   const isInvalid = readDraftValue(field, draftText) === null
   const inputId = `run-limit-${field.key}`
   const isDefault = savedValue === defaultRunLimits[field.key]
@@ -50,11 +52,11 @@ function RunLimitRow({ field, draftText, savedValue, onChangeDraft, onCommit }: 
         <span className="font-medium">{field.title}</span>
         <span className="text-[13px] text-body">
           {field.description}
-          {isDefault ? ' · default' : ` · default ${defaultRunLimits[field.key].toLocaleString('en-US')}`}
+          {isDefault ? t.isDefault : t.defaultValue(formatNumber(defaultRunLimits[field.key]))}
         </span>
         {isInvalid && (
           <span role="alert" className="text-[12px] text-danger">
-            Use a whole number from {describeRange(field)}
+            {t.useWholeNumber(describeRange(field))}
           </span>
         )}
       </label>
@@ -76,7 +78,7 @@ function RunLimitRow({ field, draftText, savedValue, onChangeDraft, onCommit }: 
             isInvalid ? 'border-danger' : 'border-line-strong',
           )}
         />
-        <span className="w-16 text-[13px] text-body">{field.unit}</span>
+        <span className="w-20 text-[13px] text-body">{field.unit}</span>
       </span>
     </div>
   )
@@ -88,6 +90,7 @@ function RunLimitRow({ field, draftText, savedValue, onChangeDraft, onCommit }: 
  * when the field loses focus or on Enter, and applies to runs started or resumed afterwards.
  */
 export function RunLimitsPanel({ runLimits, onSave }: RunLimitsPanelProps) {
+  const t = useT().settings
   const [draftValues, setDraftValues] = useState<DraftValues>(() => toDraftValues(runLimits))
   const isAtDefaults = runLimitFields.every((field) => runLimits[field.key] === defaultRunLimits[field.key])
 
@@ -103,11 +106,8 @@ export function RunLimitsPanel({ runLimits, onSave }: RunLimitsPanelProps) {
   }
 
   return (
-    <SettingsGroup headingId="settings-run-limits-heading" title="Run limits">
-      <p className="m-0 text-[13px] text-body">
-        Every run gets these limits, so a stuck step or a loop that never ends stops on its own. A step or run that goes past one stops with an error. Changes
-        apply to runs started or continued afterwards.
-      </p>
+    <SettingsGroup headingId="settings-run-limits-heading" title={t.runLimits}>
+      <p className="m-0 text-[13px] text-body">{t.runLimitsText}</p>
       {runLimitFields.map((field) => (
         <RunLimitRow
           key={field.key}
@@ -119,9 +119,9 @@ export function RunLimitsPanel({ runLimits, onSave }: RunLimitsPanelProps) {
         />
       ))}
       <div className="flex items-center justify-between gap-4 py-3.5">
-        <span className="text-[13px] text-body">A step's own “Time limit for each try” still wins over the time for one step</span>
+        <span className="text-[13px] text-body">{t.stepTimeLimitWins}</span>
         <button type="button" disabled={isAtDefaults} onClick={resetToDefaults} className={joinClassNames(settingsButtonClassNames, 'h-[34px] shrink-0 disabled:cursor-not-allowed disabled:opacity-50')}>
-          Reset to defaults
+          {t.resetToDefaults}
         </button>
       </div>
     </SettingsGroup>

@@ -15,6 +15,7 @@ export const platform = defineMessages(
     fileManagerWindows: 'File Explorer',
     fileManagerLinux: 'your file manager',
     genericError: 'Something went wrong',
+    runtimeDownloadSize: 'about 30 MB download',
     couldNotOpenPage: (reason: string) => `Could not open the page: ${reason}`,
   },
   {
@@ -30,6 +31,7 @@ export const platform = defineMessages(
     fileManagerWindows: 'File Explorer',
     fileManagerLinux: 'file manager kamu',
     genericError: 'Ada yang tidak beres',
+    runtimeDownloadSize: 'unduhan sekitar 30 MB',
     couldNotOpenPage: (reason) => `Halaman gagal dibuka. ${reason}`,
   },
 )

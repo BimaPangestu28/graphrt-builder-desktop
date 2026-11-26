@@ -64,7 +64,7 @@ export function PluginRuntimeNotice() {
     >
       <b className="font-semibold">Your plugins need a one-time download</b>
       <p className="m-0 text-[13px] leading-normal text-body">
-        graphrt no longer ships Node.js inside the app, so it is much smaller. {describeWaitingPlugins(waitingPluginLabels)} {waitingPluginLabels.length === 1 ? 'needs' : 'need'} the plugin runtime (Node.js v{pinnedVersion}, {pluginRuntimeDownloadSizeNote} from nodejs.org) before {waitingPluginLabels.length === 1 ? 'it runs' : 'they run'} again.
+        graphrt no longer ships Node.js inside the app, so it is much smaller. {describeWaitingPlugins(waitingPluginLabels)} {waitingPluginLabels.length === 1 ? 'needs' : 'need'} the plugin runtime (Node.js v{pinnedVersion}, {pluginRuntimeDownloadSizeNote()} from nodejs.org) before {waitingPluginLabels.length === 1 ? 'it runs' : 'they run'} again.
       </p>
       {runtime.isInstalling && (
         <p role="status" className="m-0 text-[13px] text-ink-2">
