@@ -1,176 +1,183 @@
-# Meeting notetaker (local, Linux first)
+# Meeting notes (local, Linux first)
 
-Status: prototype (Linux / PipeWire). macOS and Windows follow behind the same traits.
+Status: implemented on Linux (PipeWire). macOS and Windows follow behind the same traits.
 
-graphrt Desktop notices that a meeting started on this computer, **asks** whether to take
-notes, records the user's microphone and the computer's sound as two separate tracks, and
-turns them into a transcript (and later a summary sent to Notion / Slack / email). No bot
-joins the call and no Zoom / Meet / Teams API is used: everything is observed from the
-laptop itself, like Granola.
+graphrt notices that a meeting started on this computer, **asks** whether to take notes,
+records the user's microphone and the computer's sound as two tracks, and hands the meeting
+to the user's **agents**: a normal workflow transcribes it, summarizes it and sends it to
+Notion, Slack, email or anything else a plugin reaches. No bot joins the call and no
+Zoom / Meet / Teams API is used.
 
-## Principles
+## Principle: no new feature area
 
-- **Never record on its own.** Detection only offers ("Meeting detected, take notes?").
-  Recording starts when the user clicks *Take notes* (or *Start recording* on the Meetings
-  page), and a red "Recording" pill with a *Stop* button stays on every screen while it runs.
-- **Local by default.** Audio, transcripts and summaries live in the app data folder
-  (`<app data>/meetings/<id>/`). Nothing leaves the computer unless the user chooses an API
-  transcriber or sends the notes to a plugin.
-- **Detection is off until the user turns it on** (Meetings page). Manual recording works
-  without it.
+Meeting notes are not a screen or a menu. They reuse what graphrt already has:
 
-## Pieces
+| Need | Existing concept it becomes |
+|---|---|
+| "When a meeting happens, do X" | a **trigger** of an agent, next to its schedules: *Also run when a meeting is recorded* on the Schedule screen (08) |
+| Transcribe | a workflow **step**, `meeting.transcribe` (desktop built-in node kind, like `knowledge-retrieval`) |
+| Summarize | the existing `llm` step |
+| Send to Notion / Slack / email | the existing **plugin** steps (`notion.*`, `slack.*`, `email.*`…) |
+| Build it from plain words | the **builder**: a guide teaches it the trigger inputs and the step ("after each meeting, send action items to Slack") |
+| History, retries, failures, approvals | **Runs**, Problems and approvals, unchanged |
 
-```
-src-tauri/src/meeting/
-  mod.rs          MeetingService: poll loop, prompt/recording state, commands' logic
-  platform.rs     traits per OS: AudioActivityProbe, MeetingRecorder, RecordingSession
-  apps.rs         which program is it (Zoom, Teams, browser…), volume meters to ignore
-  detector.rs     detection state machine (pure, unit tested)
-  store.rs        meetings on disk: meta.json, tracks, transcript files
-  transcript.rs   Transcriber trait, whisper.cpp JSON parsing, merging the two tracks
-  settings.rs     detection on/off, transcriber paths (one JSON value in the settings table)
-  linux/          PipeWire: pw-dump parser (mic users) and pw-record recorder
-src-tauri/src/commands/meetings.rs   Tauri commands
-src/api/meetings*.ts, src/pages/MeetingsPage.tsx, src/pages/meetings/*   UI
-```
+The only UI it adds:
 
-### 1. Detection
+1. **"Meeting detected. Take notes?"**: a system notification and the same card at the
+   bottom right of the window (*Take notes* / *Not now*), with one line: *Let the others
+   know you are taking notes.* Linux notifications cannot carry reliable action buttons
+   through tauri-plugin-notification, so the choice is made on the card.
+2. **Recording indicator with Stop**: a red pill "● Recording 12:34 · Stop" at the bottom
+   right of every screen, and "● Recording meeting notes · Stop" at the top of the tray menu
+   (works with the window closed).
+3. **Settings > Runner > Meeting notes**: *Offer to take meeting notes* (off by default),
+   *Keep meeting audio* (off by default), which agents get the notes, whether speech to
+   text is installed.
+4. On the Schedule screen of an agent: one checkbox, *Also run when a meeting is recorded*.
 
-Signal, strongest first:
-
-1. **Another program captures the microphone.** On PipeWire, `pw-dump` lists every node,
-   client and link. A *mic user* is a `Stream/Input/Audio` node with a link coming from an
-   `Audio/Source*` node (a real microphone; sink monitors are `Audio/Sink` and do not count).
-   Program name, binary and PID come from the node or, when the node lacks them, from its
-   client (`client.id`). Our own recorder streams are named `graphrt-meeting-*` and skipped,
-   as is our own PID. On plain PulseAudio the same data is `pactl list source-outputs`; this
-   machine runs PipeWire without `pactl`, so the prototype reads `pw-dump` (pipewire-pulse
-   keeps working for apps either way).
-2. **Which program.** `apps.rs` maps binary / application name to a known meeting app
-   (zoom, teams / teams-for-linux, slack, discord, webex, skype) or a browser (chrome,
-   chromium, firefox, brave, edge, vivaldi). Volume meters and audio tools (pavucontrol,
-   GNOME volume control, easyeffects, wireplumber) are ignored.
-3. **Browser tab (Meet).** Not reliable on Linux: Chrome's capture stream is named
-   "Google Chrome input" with no tab title, and Wayland gives no window titles to other
-   apps (GNOME would need a shell extension). The prompt therefore says "Google Chrome is
-   using the microphone". A later option is a small browser extension, or matching with
-   the calendar (below).
-4. **Calendar (optional, later).** With the `google-calendar` plugin installed, an event
-   happening now (or starting within 5 minutes) that has a conference link names the
-   meeting ("Weekly sync with Acme") and gives attendees for the summary. It only enriches
-   the prompt; it never starts recording.
-
-State machine (`detector.rs`), fed every 3 s with the current mic users:
+## Flow
 
 ```
-Idle ──mic used──▶ Pending ──still used after 5 s──▶ Prompted ──Take notes──▶ Recording
-  ▲                  │ mic free                         │ Not now                │
-  │                  ▼                                  ▼                        │ mic free 15 s
-  └──────────────── Idle ◀──mic free 15 s──────── Dismissed                      ▼
-                                                                         MeetingEnded (once):
-                                                                         "Meeting seems over, stop?"
+Settings: "Offer to take meeting notes" on   +   ≥1 tested/active agent with the meeting trigger
+        │
+        ▼  every 3 s: who captures the microphone? (pw-dump)
+Zoom on the mic for 5 s ──▶ notification + card "Meeting detected. Take notes?"  (never records by itself)
+        │ Take notes                                   │ Not now → quiet until the mic is free
+        ▼
+pw-record ×2: mic.wav (You) + system.wav (Others)      pill + tray "Recording · Stop"
+        │ Stop  ─ or ─  Zoom leaves the mic: after 10 s "The meeting seems over, notes stop in 20 s"
+        │                (Keep recording cancels; Zoom coming back cancels) → stops at ~30 s
+        ▼
+every agent with the meeting trigger starts a run with the meeting as inputs
+        │
+        ▼  the agent's own workflow, e.g.:
+start(meeting_id…) → meeting.transcribe → llm "summary + action items" → notion.create_page / slack.post_message
 ```
 
-- *Pending* filters a quick mic check or a voice message.
-- *Dismissed* stays quiet until the mic is free for 15 s, so the same meeting is not
-  offered again.
-- After *Stop*, a meeting still holding the mic goes to *Dismissed* (not offered again).
-- While recording, the mic going free for 15 s raises "Meeting seems over" once.
-  Auto-stop is an owner decision (see below); the prototype only asks.
+### The trigger
 
-### 2. UX
+- Stored per agent in `agent_settings` (key `meeting_trigger`, `{ "enabled": true }`): no new
+  table, nothing to migrate, deleted with the agent. Set from the Schedule screen; saved with
+  *Activate agent* (works with "By hand" too).
+- Only **tested or active** agents run (a draft has never run; a paused agent is paused).
+- With no such agent, detection stays quiet: there would be nobody to take the notes.
+- The run is started like a manual run (`RunTrigger::Manual`, the user pressed Take notes
+  and Stop). A dedicated `meeting` trigger value needs a table rebuild of `runs` (its CHECK
+  constraint) and can come later if the Runs list should tell them apart.
+- Run inputs: `meeting_id`, `meeting_title` ("Zoom meeting, Nov 26 14:05"), `meeting_app`,
+  `started_at`, `ended_at` (RFC 3339), `duration_minutes`. The workflow's `start` node
+  declares the ones it uses.
 
-- System notification: "Meeting detected: Zoom is using the microphone. Take notes?"
-  Clicking it shows the window. Desktop notifications on Linux cannot carry reliable action
-  buttons through tauri-plugin-notification, so the choice is in the app: a card at the
-  bottom right of every screen with **Take notes** / **Not now**.
-- While recording: a red pill "● Recording 12:34 · Stop" at the bottom right of every
-  screen, plus the Meetings page header.
-- Meetings page: detection switch, who uses the mic now, Start / Stop, past meetings with
-  their tracks, *Transcribe* and the transcript.
+### The `meeting.transcribe` step
 
-### 3. Recording
-
-Two tracks, 16 kHz mono 16-bit WAV (what whisper wants, ~1.9 MB per minute per track):
-
-- `mic.wav`: `pw-record -P '{ node.name=graphrt-meeting-mic }' --rate 16000 --channels 1 --format s16`
-  on the default source.
-- `system.wav`: same with `stream.capture.sink=true` (and `node.name=graphrt-meeting-system`),
-  which WirePlumber links to the default sink's monitor: everything the other people say.
-
-Stop sends SIGINT so pw-record finalizes the WAV header, then waits (SIGKILL after 5 s).
-Two separate tracks give speaker separation for free: mic = "You", system = "Others".
-A meeting left in *recording* when the app quit is marked *recorded* on the next start.
-
-Later: Opus/FLAC compression after the meeting, echo cancellation when the user has no
-headphones (the mic track then also contains the other side; PipeWire's
-`module-echo-cancel` or deduplicating segments that appear in both tracks).
-
-### 4. Transcription
-
-`Transcriber` trait, one implementation per engine, each track transcribed on its own and
-merged by start time into `transcript.json` (segments) and `transcript.md`:
-
-```
-[00:00:03] You: Okay, let's start with the launch plan.
-[00:00:07] Others: Sounds good, I have the numbers.
+```yaml
+- id: transcribe
+  type: meeting.transcribe
+  title: Transcribe the meeting
+  meeting_id: "{{#start.meeting_id#}}"
+  language: auto            # or en, id, …
+  timeout_ms: 1800000       # the default step limit (Settings, 2 min) is too short for a long meeting
 ```
 
-- **Local: whisper.cpp** (prototype). The `whisper-cli` binary plus a ggml model
-  (`ggml-base.bin`, 148 MB, multilingual incl. Indonesian), run as a child process with
-  `-oj` (JSON segments). Paths are set on the Meetings page or found automatically
-  (`whisper-cli` on PATH, `<app data>/meetings/models/ggml-*.bin`). Later: bundle via
-  `whisper-rs` (needs cmake in the release builders) or download binary + model on demand,
-  like the Node runtime.
-  Seen in the prototype: on a near-silent mic track whisper `base` invents a line
-  ("ndoong sotali…"); next step is skipping silent stretches (whisper.cpp's Silero VAD,
-  `--vad`) and dropping low-confidence segments.
-- **API: Deepgram / AssemblyAI plugins** (next). Through `PluginService::run_action`:
-  `deepgram.transcribe_file` (needs the plugin's `DEEPGRAM_UPLOAD_DIR` to cover the meetings
-  folder) or `assemblyai.upload_file` + `assemblyai.transcribe`. Same `Transcriber` trait,
-  same merge.
+Outputs `text` (one `[00:01:05] You: …` / `Others: …` paragraph per turn), `lines`
+(`{start_ms, end_ms, speaker, text}`) and `title`. Registered in `flow::builtin_node_registry`
+(`meeting::node`), so validation, the Nodes view and the builder see it like any built-in.
+graphrt's node factories get no app state, so the step calls the app's `MeetingService`
+through a host installed once at start-up.
 
-### 5. Summary and delivery (next)
+- whisper `base` on 8 threads runs at roughly 20–40× real time here, so an hour of audio
+  needs a few minutes: the builder guide sets `timeout_ms: 1800000` on the step (graphrt's
+  per-node time limit), since the app's default step limit is 2 minutes.
+- Two agents on one meeting share one transcription (the second gets the saved transcript).
+- A failed transcription keeps the audio and marks the meeting; the run fails with the
+  reason (Problems shows it, *Retry* works).
 
-After the transcript, "Send to…" starts a graphrt agent run with inputs
-`{ title, started_at, attendees, transcript }`. A template agent "Meeting notes" does:
-LLM summary (decisions, action items, owners) → Notion page / Slack message / email via
-the existing plugins. Using a normal agent keeps model choice, approvals, retries and run
-history as they are, and lets users change the destination in the builder.
+### Transcription engine: whisper.cpp, on demand
 
-### 6. Other operating systems
+- Not bundled. The first transcription downloads, into `<app data>/meetings/whisper/`:
+  - `whisper-cli` (4 MB): whisper.cpp v1.9.6 has no Linux binaries, so graphrt builds it
+    (static ggml, x86-64-v3, needs glibc ≥ 2.35, MIT license included) and publishes it on
+    the `whisper-cpp-v1.9.6` **prerelease** of this repository (not an app release).
+  - `ggml-base.bin` (148 MB, multilingual incl. Indonesian) from the model's Hugging Face
+    repository.
+- Both pinned by SHA-256 in `meeting::whisper_install`; only `huggingface.co` and
+  `github.com` URLs are accepted; a mismatch is discarded. Settings shows "Downloading the
+  speech model (147 MB)…" while it runs.
+- A `whisper-cli` on PATH, or paths in the settings JSON (developer overrides, not in the
+  UI), are used instead of downloading.
+- **Silence detection (VAD)** before whisper: 30 ms frames, a frame is voiced when its RMS is
+  3× the track's noise floor and above an absolute minimum; pauses < 300 ms are bridged.
+  A track with < 1 s of speech is not transcribed, and whisper segments that do not overlap
+  voiced audio are dropped. This removes whisper's invented lines on a silent mic track
+  (seen in the first prototype).
+- API engines (the Deepgram / AssemblyAI plugins) stay available as ordinary plugin steps
+  for users who prefer them; `meeting.transcribe` may get an `engine:` option later.
 
-`platform.rs` traits:
+### Recording (Linux)
 
-```rust
-trait AudioActivityProbe { fn mic_users(&self) -> BoxFuture<Result<Vec<MicUser>, MeetingError>>; }
-trait MeetingRecorder     { fn start(&self, dir: &Path) -> BoxFuture<Result<Box<dyn RecordingSession>, MeetingError>>; }
-trait RecordingSession    { fn tracks(&self) -> Vec<TrackInfo>; fn stop(self: Box<Self>) -> BoxFuture<Result<(), MeetingError>>; }
-```
+Two `pw-record` processes, 16 kHz mono 16-bit WAV (what whisper reads):
 
-- macOS: mic in use via CoreAudio `kAudioDevicePropertyDeviceIsRunningSomewhere` (per process
-  on 14.4+ with `kAudioHardwarePropertyProcessObjectList`), system audio via a Core Audio
-  process tap (14.2+) or ScreenCaptureKit; needs the microphone + "screen & system audio
-  recording" permissions.
-- Windows: mic in use via the `CapabilityAccessManager\ConsentStore\microphone` registry
-  (`LastUsedTimeStop == 0`) or WASAPI session enumeration, system audio via WASAPI loopback.
+- `mic.wav`: default source, stream `node.name=graphrt-meeting-mic`.
+- `system.wav`: `stream.capture.sink=true` (`node.name=graphrt-meeting-system`), which
+  WirePlumber links to the default sink's monitor: everything the others say.
 
-Everything above the traits (detector, store, transcript merge, UI) is shared.
+Stop sends SIGINT so pw-record finishes the WAV header (SIGKILL after 5 s). Two tracks give
+speaker separation for free (mic = "You", system = "Others"). A meeting left *recording*
+when the app quit is marked *recorded* at the next start.
 
-## Prototype scope (this PR)
+### Detection (Linux)
 
-- Linux probe (`pw-dump`) and recorder (`pw-record`), detector, notification + in-app prompt,
-  recording pill with Stop, Meetings page, local whisper.cpp transcription end to end.
-- Not yet: API transcribers, calendar matching, summary/delivery, compression, echo
-  cancellation, macOS/Windows backends (they report "not supported on this system").
+- `pw-dump` every 3 s: a mic user is a `Stream/Input/Audio` node linked from an
+  `Audio/Source*` node (sink monitors do not count). Name / binary / PID from the node or its
+  client. Our own `graphrt-meeting-*` streams and our PID are skipped. Plain PulseAudio
+  systems would use `pactl list source-outputs` behind the same trait (this machine runs
+  PipeWire without `pactl`).
+- Known apps (Zoom, Teams, Slack, Discord, Webex, Skype) and browsers are named; volume
+  meters (pavucontrol, GNOME volume control, EasyEffects…) are ignored.
+- A Meet tab is not identifiable: Chrome's stream is "Google Chrome input" without the tab,
+  and Wayland does not expose window titles. Later: match a `google-calendar` event happening
+  now (title, attendees) to name the meeting.
+- State machine (`meeting::detector`): Idle → Pending (5 s) → Prompted → Recording, or
+  Dismissed until the mic is free; while recording, mic free for 10 s → "seems over", and
+  20 s later it stops (≈30 s), unless *Keep recording* or the app returns.
 
-## Decisions for the owner
+### Verified on this machine (Ubuntu, GNOME Wayland, PipeWire 1.6.2)
 
-1. Auto-stop when the meeting app releases the mic, or keep asking? (prototype: ask)
-2. Detection on by default after install, or opt-in? (prototype: opt-in)
-3. Local whisper distribution: bundle `whisper-rs` (bigger app, cmake in builders) vs.
-   download `whisper-cli` + model on demand vs. API-only by default.
-4. Retention: keep audio after a transcript exists, or delete it after N days?
-5. Consent: show a reminder to tell other participants that notes are being taken
-   (recording laws differ by country)?
+Debug build, isolated profile, agent "Meeting transcript" (`start → meeting.transcribe → end`)
+with the trigger on: a stream named "ZOOM VoiceEngine" on the mic → card → Take notes → speech
+played to the speakers → Stop → run `manual / succeeded` in 7 s, including the first-use
+download of `whisper-cli` (prerelease) and `ggml-base.bin` (Hugging Face), both SHA-256
+checked. The silent mic track was skipped by the VAD, the audio deleted, run output:
+`[00:00:00] Others: And so my fellow Americans, ask not what your country can do for you, …`.
+The automatic stop was seen too: "The meeting seems over. Notes stop in 9 s." then stopped.
+
+### Storage and retention
+
+`<app data>/meetings/<id>/`: `meta.json` (title, app, times, status, runs it started),
+`mic.wav`, `system.wav`, `transcript.json`, `transcript.md`. After a successful transcript the
+audio is **deleted** unless *Keep meeting audio* is on; the transcript stays (the agents' runs
+and outputs are where the user reads it). Not yet: deleting old untranscribed recordings and
+old transcripts (follow the "Keep run history for" setting).
+
+### Other operating systems
+
+`meeting::platform` traits (`AudioActivityProbe`, `MeetingRecorder`, `RecordingSession`).
+Everything above them (detector, trigger, step, VAD, store, UI) is shared.
+
+- macOS: mic in use via CoreAudio (`kAudioDevicePropertyDeviceIsRunningSomewhere`, per
+  process on 14.4+), system audio via a Core Audio process tap (14.2+) or ScreenCaptureKit;
+  microphone + "screen & system audio recording" permissions; whisper-cli for arm64 published
+  next to the Linux one.
+- Windows: mic in use via the `CapabilityAccessManager\ConsentStore\microphone` registry or
+  WASAPI sessions, system audio via WASAPI loopback; whisper.cpp ships Windows binaries.
+
+Until then they report "not supported" and the Settings rows and the checkbox are hidden.
+
+## Decisions (owner, 2026-11-26)
+
+1. Auto-stop ~30 s after the meeting app releases the mic, with a cancellable notice. ✔
+2. Detection off by default (opt-in). ✔
+3. whisper.cpp downloaded on first use, not bundled (graphrt-built `whisper-cli` on a
+   prerelease, model from Hugging Face). ✔
+4. Audio deleted after the transcript; *Keep meeting audio* in Settings. ✔
+5. A one-line consent reminder in the prompt. ✔
