@@ -171,7 +171,10 @@ verify_shasums_signature() {
   local gnupg_home="$work_dir/gnupg"
   local signed_file="$work_dir/SHASUMS256.txt.asc"
   local status_file="$work_dir/gpg-status"
-  mkdir -m 700 "$gnupg_home"
+  # Git Bash on Windows cannot set Unix modes on its temp dir (`mkdir -m` fails there),
+  # and Windows does not need them; on Unix chmod always succeeds.
+  mkdir "$gnupg_home"
+  chmod 700 "$gnupg_home" 2> /dev/null || true
   download "$dist_url/SHASUMS256.txt.asc" "$signed_file"
   local fingerprint
   for fingerprint in "${release_key_fingerprints[@]}"; do

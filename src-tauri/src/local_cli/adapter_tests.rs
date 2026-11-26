@@ -6,9 +6,9 @@
 //! file says so and names its source on its first line).
 
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use graphrt_llm::{ChatDelta, ChatModel, ChatRequest, FinishReason, LlmError, Message, ToolChoice};
+use graphrt_llm::{ChatDelta, ChatRequest, FinishReason, LlmError, Message, ToolChoice};
 
 use super::adapters::{self, CURSOR_FIXED_REQUEST, GEMINI_POLICY_FILE_NAME, QWEN_EXCLUDED_TOOLS};
 use super::capability::capability_gap;
@@ -453,8 +453,11 @@ fn opencode_models_are_its_provider_model_lines() {
 
 #[cfg(unix)]
 mod fake_binaries {
+    use std::path::PathBuf;
     use std::sync::Arc;
     use std::time::{Duration, Instant};
+
+    use graphrt_llm::ChatModel;
 
     use super::*;
     use crate::local_cli::detect::{self, Locator};
