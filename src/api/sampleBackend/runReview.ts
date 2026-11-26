@@ -73,6 +73,7 @@ function buildSamplePending(): PendingApproval[] {
       expiresAt: null,
       onTimeout: null,
       toolCall: null,
+      card: null,
       container: {
         nodeId: iterationNodeId,
         nodeType: 'iteration',

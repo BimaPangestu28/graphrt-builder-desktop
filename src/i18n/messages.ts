@@ -20,6 +20,7 @@ import { common } from './locales/common'
 import { shell } from './locales/shell'
 import { welcome } from './locales/welcome'
 import { platform } from './locales/platform'
+import { visuals } from './locales/visuals'
 
 /**
  * Every dictionary of the app, by language. Add an area by importing its `defineMessages` pair
@@ -47,6 +48,7 @@ const english = {
   shell: shell.en,
   welcome: welcome.en,
   platform: platform.en,
+  visuals: visuals.en,
 }
 
 export type Messages = Translation<typeof english>
@@ -73,6 +75,7 @@ const indonesian: Messages = {
   shell: shell.id,
   welcome: welcome.id,
   platform: platform.id,
+  visuals: visuals.id,
 }
 
 export const dictionaries: Record<Locale, Messages> = { en: english, id: indonesian }

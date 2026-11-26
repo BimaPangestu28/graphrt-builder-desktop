@@ -1,5 +1,6 @@
 import type { GraphrtEvent, Run, RunStatus, RunTrigger } from '../types'
 import { runRecords } from '@/api/sampleBackend/fixtures/runRecords'
+import { sampleMapsLeadsVisuals } from '@/api/sampleBackend/fixtures/sampleVisualOutputs'
 import type { RunRecord } from '@/pages/runs/runRecordTypes'
 
 /**
@@ -27,6 +28,8 @@ interface RunSeedTiming {
   aiCostUsd?: number
   /** Numeric run outputs (the run output convention's counters), e.g. `messages_sent`. */
   counters?: Record<string, number>
+  /** UI blocks among the outputs (cards, charts, KPI tiles). */
+  visuals?: Record<string, unknown>
   trigger: RunTrigger
 }
 
@@ -38,6 +41,7 @@ const seedTimingsByRunId: Record<string, RunSeedTiming> = {
     durationSeconds: 47 * 60 + 12,
     aiCostUsd: 0.05,
     counters: { places_found: 15, messages_sent: 11 },
+    visuals: sampleMapsLeadsVisuals,
     trigger: 'schedule',
   },
   'catering-assistant-0852': { startClock: '08:52:10', daysAgo: 0, trigger: 'manual' },
@@ -139,6 +143,7 @@ function buildSeededRun(record: RunRecord, nowMs: number): SeededRun {
     outputs: {
       summary: record.result,
       ...timing.counters,
+      ...timing.visuals,
       message: record.output,
       ...(timing.aiCostUsd === undefined ? {} : { aiCostUsd: timing.aiCostUsd }),
     },

@@ -62,6 +62,7 @@ pub mod scheduler;
 pub mod state;
 pub mod storage;
 pub mod teams;
+pub mod ui_blocks;
 pub mod usage_summary;
 pub mod workflow_secrets;
 
@@ -270,6 +271,7 @@ pub fn run() {
             commands::runs::list_run_events,
             commands::run_summary::get_run_summary,
             commands::run_summary::list_agent_run_stats,
+            commands::run_summary::open_card_link,
             commands::usage_summary::get_usage_summary,
             commands::run_review::get_run_review,
             commands::run_review::get_run_inputs,

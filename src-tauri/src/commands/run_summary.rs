@@ -17,3 +17,16 @@ pub fn get_run_summary(state: State<'_, AppState>, run_id: String) -> AppResult<
 pub fn list_agent_run_stats(state: State<'_, AppState>, agent_id: Option<String>) -> AppResult<Vec<AgentRunStats>> {
     run_summary::agent_run_stats(&state.db, agent_id.as_deref())
 }
+
+/// Opens the target of a card's `Action.OpenUrl` in the default browser, after the person
+/// clicked it. Only `https` and `mailto` links (see [`crate::ui_blocks::is_openable_link`]).
+///
+/// @throws AppError::InvalidInput - when the link is not https or mailto
+/// @throws AppError::Internal - when the browser cannot be started
+#[tauri::command]
+pub fn open_card_link(url: String) -> AppResult<()> {
+    if !crate::ui_blocks::is_openable_link(&url) {
+        return Err(crate::error::AppError::InvalidInput("cards can only open https and mailto links".into()));
+    }
+    crate::crash_reports::sharing::open_in_browser(&url)
+}

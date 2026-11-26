@@ -1,3 +1,4 @@
+import type { UiBlock } from '@/components/visuals/uiBlockTypes'
 import type { RunStatus, RunTrigger } from './types'
 
 /**
@@ -88,6 +89,8 @@ export interface PendingApproval {
   /** The call a `toolCall` question is about; null for forms. */
   toolCall: PendingToolCall | null
   container: ContainerPosition | null
+  /** An Adaptive Card (or other UI block) shown with the question, validated by graphrt-ui; null shows the plain form. */
+  card: UiBlock | null
 }
 
 /** An answer already given in this run. */

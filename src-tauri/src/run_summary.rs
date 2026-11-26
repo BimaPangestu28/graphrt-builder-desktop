@@ -22,6 +22,7 @@ use serde_json::Value as Json;
 use crate::error::AppResult;
 use crate::storage::models::{Run, RunFilter, RunStatus};
 use crate::storage::Database;
+use crate::ui_blocks::{collect_run_visuals, RejectedVisual, RunVisual};
 
 /// Node kinds that only mark structure; they are not steps the user would recognise.
 const BOOKKEEPING_NODE_KINDS: &[&str] = &["start", "end", "iteration-start", "loop-start", "loop-end"];
@@ -92,6 +93,10 @@ pub struct RunSummary {
     pub items: Vec<Json>,
     /// Numeric top-level outputs, in output order.
     pub counters: Vec<RunCounter>,
+    /// Cards, charts, tables and KPI tiles the run shows (see [`crate::ui_blocks`]).
+    pub visuals: Vec<RunVisual>,
+    /// Blocks that failed validation, shown as notices.
+    pub rejected_visuals: Vec<RejectedVisual>,
     pub error_message: Option<String>,
 }
 
@@ -134,6 +139,7 @@ pub fn summarize_run(run: &Run, events: &[Json]) -> RunSummary {
     let tally = EventTally::from_events(events);
     let outputs = run.outputs.as_ref().and_then(Json::as_object);
     let approvals = ApprovalCounts { waiting: count_waiting_approvals(run), ..tally.approvals };
+    let visuals = collect_run_visuals(events, run.outputs.as_ref());
     RunSummary {
         run_id: run.id.clone(),
         agent_id: run.agent_id.clone(),
@@ -147,6 +153,8 @@ pub fn summarize_run(run: &Run, events: &[Json]) -> RunSummary {
         headline: outputs.and_then(read_headline),
         items: outputs.map(read_items).unwrap_or_default(),
         counters: outputs.map(read_counters).unwrap_or_default(),
+        visuals: visuals.visuals,
+        rejected_visuals: visuals.rejected,
         error_message: run.error_message.clone(),
     }
 }

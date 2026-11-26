@@ -4,6 +4,7 @@ import { getRunInputs } from '@/api/runReview'
 import type { RunInputs } from '@/api/runReviewTypes'
 import { listRuns, startRun } from '@/api/runs'
 import { getRunSummary } from '@/api/runSummary'
+import { RunVisualList } from '@/components/visuals/RunVisualList'
 import type { RunSummary } from '@/api/runSummaryTypes'
 import type { Run } from '@/api/types'
 import { AppShell } from '@/components/layout'
@@ -140,7 +141,12 @@ function ResultDetails({ resultRun }: { resultRun: ResultRun }) {
     <>
       <RunStatTiles stats={view.stats} />
       {view.activity && <p className="m-0 text-[13px] text-body">{view.activity}</p>}
-      {view.table ? <RunItemsTable table={view.table} /> : <MissingOutputsNotice hasNoCounters={view.hasNoOutputs} />}
+      <RunVisualList visuals={resultRun.summary.visuals} rejected={resultRun.summary.rejectedVisuals} />
+      {view.table ? (
+        <RunItemsTable table={view.table} />
+      ) : (
+        resultRun.summary.visuals.length === 0 && <MissingOutputsNotice hasNoCounters={view.hasNoOutputs} />
+      )}
     </>
   )
 }

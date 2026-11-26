@@ -51,6 +51,35 @@
   --color-danger-line: #FECACA;
 }
 
+/*
+ * Chart series (src/components/visuals): 8 categorical hues in a fixed order, validated for
+ * colour-vision deficiency on the white surface (adjacent-pair CVD ΔE ≥ 11.8). Series keep
+ * their slot; past 8 the view adds dashes / lighter fills. Values and labels stay in text inks.
+ * Plain custom properties, not @theme: no utility uses them, so Tailwind would drop them.
+ */
+:root {
+  --color-series-1: #257DE0;
+  --color-series-2: #F47230;
+  --color-series-3: #00B894;
+  --color-series-4: #F2A600;
+  --color-series-5: #EE7FAC;
+  --color-series-6: #008A17;
+  --color-series-7: #6A4CE2;
+  --color-series-8: #EC4647;
+}
+
+/* The same hues stepped for a dark surface (validated separately), for when the app gets a dark theme. */
+:root[data-theme="dark"] {
+  --color-series-1: #338CED;
+  --color-series-2: #E76624;
+  --color-series-3: #00A888;
+  --color-series-4: #D28E05;
+  --color-series-5: #E24D8B;
+  --color-series-6: #0AAC23;
+  --color-series-7: #9887EF;
+  --color-series-8: #EB6263;
+}
+
 /* Expanded step rows on the run screens fade in (only with motion-safe). */
 @keyframes step-details-in {
   from { opacity: 0; transform: translateY(-4px); }

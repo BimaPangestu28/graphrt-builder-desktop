@@ -35,6 +35,7 @@ function buildPending(index: number, changes: Partial<PendingApproval> = {}): Pe
     expiresAt: null,
     onTimeout: null,
     toolCall: null,
+    card: null,
     container: { nodeId: 'each_order', nodeType: 'iteration', title: 'For each order', index, total: 3, finished: index, item: { name: `[ORDER ${index + 1}]` } },
     ...changes,
   }

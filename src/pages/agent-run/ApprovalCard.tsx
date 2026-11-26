@@ -5,6 +5,15 @@ import { ApprovalFieldInput } from './ApprovalFieldInput'
 import { describeDeadline, describeToolName, formatToolArguments } from './approvalDisplay'
 import { buildApprovalAnswer, findMissingRequiredFields, initialApprovalValues, splitApprovalPrompt, type ApprovalValues } from './approvalForm'
 import { messages } from '@/i18n'
+import { VisualBlock } from '@/components/visuals/VisualBlock'
+import type { UiBlock } from '@/components/visuals/uiBlockTypes'
+
+/** Whether the card replaces the form and buttons: an Adaptive Card with its own submit buttons. */
+export function cardAnswersQuestion(card: UiBlock | null | undefined): boolean {
+  if (!card || card.$ui !== 'adaptive_card') return false
+  const json = JSON.stringify(card.card)
+  return json.includes('"Action.Submit"') || json.includes('"Action.Execute"')
+}
 
 interface ApprovalCardProps {
   approval: PendingApproval
@@ -50,6 +59,8 @@ export function ApprovalCard({ approval, onAnswer, isSubmitting = false }: Appro
   const missingFields = findMissingRequiredFields(approval, values)
   const isAnswerBlocked = missingFields.length > 0 || isSubmitting
   const deadline = describeDeadline(approval, now)
+  const card = approval.card ?? null
+  const cardAnswers = cardAnswersQuestion(card)
 
   return (
     <section aria-labelledby={titleId} className="flex flex-col gap-3.5 rounded-2xl border-2 border-amber-line bg-surface p-5">
@@ -61,6 +72,19 @@ export function ApprovalCard({ approval, onAnswer, isSubmitting = false }: Appro
         {deadline && <span className="text-[12px] font-medium text-amber-strong">{deadline}</span>}
       </div>
       {approval.toolCall && <ToolCallDetails toolCall={approval.toolCall} />}
+      {card && (
+        <div className="rounded-xl border border-line bg-surface p-4">
+          <VisualBlock
+            block={card}
+            bare
+            answering={{ onSubmit: (submission) => onAnswer({ action: submission.action, values: submission.values }), answerActionIds: approval.actions.map((action) => action.id), isSubmitting }}
+          />
+        </div>
+      )}
+      {cardAnswers ? (
+        <span className="text-[12px] text-muted">{messages().agentRun.pausedSafelyYouCanCloseThe}</span>
+      ) : (
+        <>
       {approval.fields.map((field) => (
         <ApprovalFieldInput
           key={field.name}
@@ -85,6 +109,8 @@ export function ApprovalCard({ approval, onAnswer, isSubmitting = false }: Appro
         {approval.actions.length === 0 && <span className="text-[13px] text-body">{messages().agentRun.thisStepOffersNoAnswerTo}</span>}
         <span className="ml-auto text-[12px] text-muted">{messages().agentRun.pausedSafelyYouCanCloseThe}</span>
       </div>
+        </>
+      )}
     </section>
   )
 }
