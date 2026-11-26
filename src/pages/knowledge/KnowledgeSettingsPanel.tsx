@@ -2,11 +2,14 @@ import { useEffect, useState } from 'react'
 import type { EmbeddingChoice, KnowledgeBase, KnowledgeSettings } from '@/api/knowledgeTypes'
 import { CheckboxRow, LabeledField, SectionHeading, compactButtonClassNames, fieldControlClassNames } from './FormControls'
 import { parseMatchThreshold } from './TestQuestionSection'
+import { messages, useT } from '@/i18n'
 
-const embeddingOptions: { value: EmbeddingChoice; label: string }[] = [
-  { value: 'local', label: 'On this computer (free, private)' },
-  { value: 'openai', label: 'OpenAI text-embedding-3-small' },
-]
+function listEmbeddingOptions(): { value: EmbeddingChoice; label: string }[] {
+  return [
+    { value: 'local', label: messages().knowledge.embeddingLocal },
+    { value: 'openai', label: 'OpenAI text-embedding-3-small' },
+  ]
+}
 const passagesPerAnswerOptions = [2, 4, 6, 8, 10]
 
 interface KnowledgeSettingsPanelProps {
@@ -24,6 +27,7 @@ interface KnowledgeSettingsPanelProps {
  * threshold and source citing. Selects save at once; text fields save when they lose focus.
  */
 export function KnowledgeSettingsPanel({ knowledgeBase, thresholdText, onThresholdTextChange, onSaveSettings, onRename, onDelete }: KnowledgeSettingsPanelProps) {
+  const t = useT().knowledge
   const { settings } = knowledgeBase
   const [nameText, setNameText] = useState(knowledgeBase.name)
   useEffect(() => setNameText(knowledgeBase.name), [knowledgeBase.name])
@@ -33,8 +37,8 @@ export function KnowledgeSettingsPanel({ knowledgeBase, thresholdText, onThresho
 
   return (
     <section aria-labelledby="set-h" className="flex flex-col gap-3">
-      <SectionHeading id="set-h">Settings</SectionHeading>
-      <LabeledField label="Name">
+      <SectionHeading id="set-h">{t.settings}</SectionHeading>
+      <LabeledField label={t.name}>
         <input
           type="text"
           value={nameText}
@@ -45,20 +49,20 @@ export function KnowledgeSettingsPanel({ knowledgeBase, thresholdText, onThresho
           className={fieldControlClassNames}
         />
       </LabeledField>
-      <LabeledField label="Embedding model">
+      <LabeledField label={t.embeddingModel}>
         <select
           value={settings.embedding}
           onChange={(event) => onSaveSettings({ ...settings, embedding: event.target.value as EmbeddingChoice })}
           className={fieldControlClassNames}
         >
-          {embeddingOptions.map((option) => (
+          {listEmbeddingOptions().map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
             </option>
           ))}
         </select>
       </LabeledField>
-      <LabeledField label="Passages per answer">
+      <LabeledField label={t.passagesPerAnswer}>
         <select
           value={String(settings.passagesPerAnswer)}
           onChange={(event) => onSaveSettings({ ...settings, passagesPerAnswer: Number(event.target.value) })}
@@ -69,7 +73,7 @@ export function KnowledgeSettingsPanel({ knowledgeBase, thresholdText, onThresho
           ))}
         </select>
       </LabeledField>
-      <LabeledField label="Ignore matches below">
+      <LabeledField label={t.ignoreBelow}>
         <input
           type="text"
           inputMode="decimal"
@@ -83,10 +87,10 @@ export function KnowledgeSettingsPanel({ knowledgeBase, thresholdText, onThresho
         />
       </LabeledField>
       <CheckboxRow checked={settings.showSources} onChange={(isChecked) => onSaveSettings({ ...settings, showSources: isChecked })}>
-        Always show the source in answers
+        {t.alwaysShowSource}
       </CheckboxRow>
       <button type="button" onClick={onDelete} className={compactButtonClassNames('secondary', 'self-start !text-danger')}>
-        Delete knowledge base
+        {t.deleteBase}
       </button>
     </section>
   )

@@ -29,12 +29,13 @@ describe('dictionaries', () => {
     expect(indonesian.map((leaf) => leaf.path).sort()).toEqual(english.map((leaf) => leaf.path).sort())
   })
 
-  it('have the same kind of value and the same parameters for every key', () => {
+  it('have the same kind of value for every key, and translations take no extra parameters', () => {
     const indonesianByPath = new Map(indonesian.map((leaf) => [leaf.path, leaf.value]))
     for (const { path, value } of english) {
       const translated = indonesianByPath.get(path)
       expect(typeof translated, path).toBe(typeof value)
-      if (typeof value === 'function' && typeof translated === 'function') expect(translated.length, path).toBe(value.length)
+      // A translation may ignore a parameter (Indonesian needs no plural flag), never expect more.
+      if (typeof value === 'function' && typeof translated === 'function') expect(translated.length, path).toBeLessThanOrEqual(value.length)
     }
   })
 

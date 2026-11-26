@@ -2,6 +2,7 @@ import { Icon, joinClassNames } from '@/components/ui'
 import type { KnowledgeSource } from '@/api/knowledgeTypes'
 import { SourceTypeTile } from './SourceTypeTile'
 import { sourceDetailText, sourceTileType, sourceUpdateText } from './knowledgeDisplay'
+import { formatNumber, messages, useT } from '@/i18n'
 
 type StatusTone = 'ready' | 'warning' | 'reading' | 'failed' | 'pending'
 
@@ -14,15 +15,16 @@ const statusToneClassNames: Record<StatusTone, string> = {
 }
 
 function describeStatus(source: KnowledgeSource, readingPercent: number | undefined): { tone: StatusTone; label: string } {
+  const t = messages().knowledge
   switch (source.status) {
     case 'pending':
-      return { tone: 'pending', label: 'Waiting' }
+      return { tone: 'pending', label: t.sourceWaiting }
     case 'reading':
-      return { tone: 'reading', label: readingPercent ? `Reading… ${readingPercent}%` : 'Reading…' }
+      return { tone: 'reading', label: readingPercent ? t.sourceReadingPercent(readingPercent) : t.sourceReading }
     case 'failed':
-      return { tone: 'failed', label: 'Failed' }
+      return { tone: 'failed', label: t.sourceFailed }
     case 'indexed':
-      return source.failedCount > 0 ? { tone: 'warning', label: source.statusMessage ?? 'Some files failed' } : { tone: 'ready', label: 'Ready' }
+      return source.failedCount > 0 ? { tone: 'warning', label: source.statusMessage ?? t.someFilesFailed } : { tone: 'ready', label: t.sourceReady }
   }
 }
 
@@ -47,20 +49,21 @@ interface KnowledgeSourcesTableProps {
 
 /** Table of the files, folders and websites inside a knowledge base (screen 18). */
 export function KnowledgeSourcesTable({ sources, readingPercents = {}, onRemove }: KnowledgeSourcesTableProps) {
+  const t = useT().knowledge
   if (sources.length === 0) {
-    return <p className="m-0 rounded-xl border border-dashed border-line-heavy bg-subtle px-4 py-6 text-center text-[13px] text-muted">No sources yet. Add files, a folder or a link</p>
+    return <p className="m-0 rounded-xl border border-dashed border-line-heavy bg-subtle px-4 py-6 text-center text-[13px] text-muted">{t.noSourcesHint}</p>
   }
   return (
     <div className="overflow-x-auto rounded-xl border border-line">
       <table className="w-full border-collapse text-[13px]">
         <thead>
           <tr className="text-left text-muted">
-            <th className={headerCellClassNames}>Source</th>
-            <th className={headerCellClassNames}>Passages</th>
-            <th className={headerCellClassNames}>Updates</th>
-            <th className={headerCellClassNames}>Status</th>
+            <th className={headerCellClassNames}>{t.columnSource}</th>
+            <th className={headerCellClassNames}>{t.columnPassages}</th>
+            <th className={headerCellClassNames}>{t.columnUpdates}</th>
+            <th className={headerCellClassNames}>{t.columnStatus}</th>
             <th className={headerCellClassNames}>
-              <span className="sr-only">Actions</span>
+              <span className="sr-only">{t.columnActions}</span>
             </th>
           </tr>
         </thead>
@@ -82,7 +85,7 @@ export function KnowledgeSourcesTable({ sources, readingPercents = {}, onRemove 
                     </span>
                   </span>
                 </td>
-                <td className={joinClassNames(cellClassNames, 'text-ink-2')}>{isBusy && source.passageCount === 0 ? '…' : source.passageCount.toLocaleString('en-US')}</td>
+                <td className={joinClassNames(cellClassNames, 'text-ink-2')}>{isBusy && source.passageCount === 0 ? '…' : formatNumber(source.passageCount)}</td>
                 <td className={joinClassNames(cellClassNames, 'text-ink-2')}>{sourceUpdateText(source)}</td>
                 <td className={cellClassNames}>
                   <SourceStatusPill source={source} readingPercent={readingPercents[source.id]} />
@@ -90,7 +93,7 @@ export function KnowledgeSourcesTable({ sources, readingPercents = {}, onRemove 
                 <td className={joinClassNames(cellClassNames, 'text-right')}>
                   <button
                     type="button"
-                    aria-label={`Remove ${source.name}`}
+                    aria-label={t.removeSource(source.name)}
                     onClick={() => onRemove(source)}
                     className="inline-flex size-8 cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent text-muted hover:bg-subtle hover:text-ink"
                   >

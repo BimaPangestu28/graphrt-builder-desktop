@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { isWebLink } from '@/api/knowledge'
 import { compactButtonClassNames, fieldControlClassNames } from './FormControls'
+import { useT } from '@/i18n'
 
 interface AddLinkFormProps {
   onAddLink: (url: string) => Promise<void>
@@ -10,7 +11,8 @@ interface AddLinkFormProps {
 }
 
 /** "Paste a link" field with an Add button; rejects text that is not an http(s) link. */
-export function AddLinkForm({ onAddLink, label, buttonText = 'Add link' }: AddLinkFormProps) {
+export function AddLinkForm({ onAddLink, label, buttonText }: AddLinkFormProps) {
+  const t = useT().knowledge
   const [linkText, setLinkText] = useState('')
   const [isAdding, setIsAdding] = useState(false)
   const [validationMessage, setValidationMessage] = useState<string | null>(null)
@@ -18,7 +20,7 @@ export function AddLinkForm({ onAddLink, label, buttonText = 'Add link' }: AddLi
   const submitLink = async (event: FormEvent) => {
     event.preventDefault()
     if (!isWebLink(linkText)) {
-      setValidationMessage('Paste a link that starts with https://')
+      setValidationMessage(t.pasteHttpsLink)
       return
     }
     setValidationMessage(null)
@@ -44,7 +46,7 @@ export function AddLinkForm({ onAddLink, label, buttonText = 'Add link' }: AddLi
           className={`${fieldControlClassNames} min-w-0 flex-1`}
         />
         <button type="submit" disabled={isAdding} className={compactButtonClassNames('secondary', 'h-10')}>
-          {buttonText}
+          {buttonText ?? t.addLink}
         </button>
       </div>
       {validationMessage && <span className="text-[12px] text-danger">{validationMessage}</span>}

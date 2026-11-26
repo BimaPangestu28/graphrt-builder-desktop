@@ -1,6 +1,7 @@
 import { joinClassNames } from '@/components/ui'
 import type { KnowledgePassage } from '@/api/knowledgeTypes'
 import { passageCitation } from './knowledgeDisplay'
+import { formatNumber, useT } from '@/i18n'
 
 interface PassageMatchProps {
   passage: KnowledgePassage
@@ -13,14 +14,15 @@ interface PassageMatchProps {
  * Used by the knowledge search (17) and "Test a question" (18).
  */
 export function PassageMatch({ passage, isWeak = false }: PassageMatchProps) {
-  const scoreLabel = passage.score.toFixed(2)
+  const t = useT().knowledge
+  const scoreLabel = formatNumber(passage.score, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   if (isWeak) {
     return (
       <div className="flex gap-3 rounded-[10px] border border-amber-line bg-amber-tint px-3.5 py-3">
         <span className="shrink-0 text-[12px] font-semibold text-amber-strong">{scoreLabel}</span>
         <span className="flex flex-col gap-1">
-          <span className="leading-normal">Best match is weak. {passage.text}</span>
-          <span className="text-[12px] text-amber-deep">Agents ignore matches this weak. Add a source that answers it so they stop guessing</span>
+          <span className="leading-normal">{t.weakMatch(passage.text)}</span>
+          <span className="text-[12px] text-amber-deep">{t.weakMatchHint}</span>
         </span>
       </div>
     )
