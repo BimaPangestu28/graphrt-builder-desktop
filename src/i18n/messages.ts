@@ -1,4 +1,5 @@
 import type { Locale, Translation } from './types'
+import { lib } from './locales/lib'
 import { misc } from './locales/misc'
 import { team } from './locales/team'
 import { chatbot } from './locales/chatbot'
@@ -25,6 +26,7 @@ import { platform } from './locales/platform'
  * and listing it in both objects below (the completeness test checks they match).
  */
 const english = {
+  lib: lib.en,
   misc: misc.en,
   team: team.en,
   chatbot: chatbot.en,
@@ -50,6 +52,7 @@ const english = {
 export type Messages = Translation<typeof english>
 
 const indonesian: Messages = {
+  lib: lib.id,
   misc: misc.id,
   team: team.id,
   chatbot: chatbot.id,

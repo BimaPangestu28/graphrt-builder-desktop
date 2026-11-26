@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { restoreAgentVersion } from '@/api/agents'
 import { reviseAgent, stopAgentRevision } from '@/api/builder'
 import { isBackendErrorWithCode } from '@/api/client'
-import { stoppedReplyText, type BuildProgress, type BuildStage, type DraftPreview } from '@/api/types'
+import { type BuildProgress, type BuildStage, type DraftPreview } from '@/api/types'
 import { useIsMountedRef } from '@/hooks/useIsMountedRef'
 import { describeError } from '@/lib/agentDisplay'
 import { describeFailedChange } from './ChatBubbles'
@@ -109,7 +109,7 @@ export function useAgentRevisions({ agentId, currentVersion, onAgentChanged }: U
       setLatestRevision({ exchangeId, versionBefore: currentVersion, versionAfter: revision.agent.currentVersion, isUndone: false })
     } catch (revisionError) {
       if (isBackendErrorWithCode(revisionError, 'stopped')) {
-        updateExchange(exchangeId, { status: 'stopped', reply: stoppedReplyText, draft: null, writingStage: null })
+        updateExchange(exchangeId, { status: 'stopped', reply: messages().lib.stoppedByYou, draft: null, writingStage: null })
         return
       }
       updateExchange(exchangeId, { status: 'failed', reply: describeFailedChange(describeError(revisionError)), draft: null, writingStage: null })

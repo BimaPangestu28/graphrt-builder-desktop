@@ -248,7 +248,10 @@ export interface RevisionResult {
   explanation: string
 }
 
-/** The builder's reply to a change the user stopped (same words as the desktop backend). */
+/**
+ * The builder's reply to a change the user stopped (same words as the desktop backend, which
+ * stores it in English). Shown through `describeStoppedReply`.
+ */
 export const stoppedReplyText = 'Stopped by you'
 
 /** One saved message of an agent's builder chat (mirrors `storage::models::BuilderMessage`). */
