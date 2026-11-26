@@ -209,7 +209,7 @@ jobs:
             echo "::error::Repository secret TAURI_SIGNING_PRIVATE_KEY is not set: updater bundles cannot be signed (CONTRIBUTING.md > Releasing)."
             exit 1
           fi
-      - uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ github.token }}
           # Signs the updater bundles (.app.tar.gz, NSIS / MSI, AppImage, deb, rpm) -> .sig
