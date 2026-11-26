@@ -30,6 +30,7 @@ export function PluginTabs({ activeFilter, counts, onChange }: PluginTabsProps) 
       {tabOrder.map((filter) => (
         <button key={filter} type="button" aria-pressed={activeFilter === filter} onClick={() => onChange(filter)} className={pillTabClassNames(activeFilter === filter, 'md')}>
           {tabLabels[filter]}
+          {/* Keeps the accessible name "All 9", not "All9" (whitespace adds no flex item). */}{' '}
           <TabCount filter={filter} count={counts[filter]} isActive={activeFilter === filter} />
         </button>
       ))}

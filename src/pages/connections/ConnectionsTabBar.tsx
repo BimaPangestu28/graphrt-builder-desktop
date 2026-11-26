@@ -21,6 +21,8 @@ export function ConnectionsTabBar({ tabs, activeTab }: ConnectionsTabBarProps) {
         return (
           <Link key={tab} to={connectionsTabPath(tab)} aria-current={isActive ? 'page' : undefined} className={pillTabClassNames(isActive)}>
             {label}
+            {/* Keeps the accessible name "AI models 2 connected", not "AI models2 connected". */}
+            {badge && ' '}
             {badge && (
               <PillTabBadge isActive={isActive} isWarning={badge.isWarning}>
                 {badge.text}

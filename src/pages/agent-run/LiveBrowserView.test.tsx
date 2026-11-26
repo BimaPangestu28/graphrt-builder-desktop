@@ -3,6 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LiveBrowserView, NO_FRAME_HINT_DELAY_MS } from './LiveBrowserView'
 import { readFrameAspectRatio } from './useDecodedFrame'
 
+/** The frame box's aspect ratio as a number; CSSOM may serialize `1.6` as "1.6 / 1". */
+function frameBoxRatio(): number {
+  const [width, height = '1'] = screen.getByTestId(frameBoxTestId).style.aspectRatio.split('/')
+  return Number(width) / Number(height)
+}
+
 const frameBoxTestId = 'live-browser-frame-box'
 
 describe('LiveBrowserView', () => {
@@ -24,7 +30,7 @@ describe('LiveBrowserView', () => {
 
   it('uses a 16:10 box before the first frame', () => {
     render(<LiveBrowserView image={null} />)
-    expect(screen.getByTestId(frameBoxTestId).style.aspectRatio).toBe(String(16 / 10))
+    expect(frameBoxRatio()).toBeCloseTo(16 / 10)
   })
 })
 
@@ -62,9 +68,9 @@ describe('LiveBrowserView with decoded frames', () => {
   it('shapes the box like the frame once it has decoded', async () => {
     frameSizes['data:image/jpeg;base64,d2lkZQ=='] = { width: 960, height: 540 }
     render(<LiveBrowserView image="data:image/jpeg;base64,d2lkZQ==" />)
-    expect(screen.getByTestId(frameBoxTestId).style.aspectRatio).toBe(String(16 / 10))
+    expect(frameBoxRatio()).toBeCloseTo(16 / 10)
     await finishDecode('data:image/jpeg;base64,d2lkZQ==')
-    expect(screen.getByTestId(frameBoxTestId).style.aspectRatio).toBe(String(960 / 540))
+    expect(frameBoxRatio()).toBeCloseTo(960 / 540)
   })
 
   it('keeps the previous frame until the next one has decoded, and skips a broken one', async () => {
