@@ -14,8 +14,7 @@ use super::models::{CatalogIndex, CatalogPlugin, PluginCatalog, PluginCatalogEnt
 use crate::error::{AppError, AppResult};
 
 /// Where the published v1 catalog lives; v2 sits next to it (see [`v2_catalog_url`]).
-pub const DEFAULT_CATALOG_URL: &str =
-    "https://github.com/Graphrt/graphrt-plugins/releases/download/catalog/index.json";
+pub const DEFAULT_CATALOG_URL: &str = "https://github.com/Graphrt/graphrt-plugins/releases/download/catalog/index.json";
 /// File name of the v1 catalog in its release; the v2 index replaces it with [`V2_INDEX_FILE_NAME`].
 const V1_INDEX_FILE_NAME: &str = "index.json";
 const V2_INDEX_FILE_NAME: &str = "index-v2.json";
