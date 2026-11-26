@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type MutableRefObject } from 'react'
 import type { AgentGraph } from '@/api/agentGraphTypes'
-import { applyNodeChanges, type EdgeChange, type NodeChange } from './flowLibrary'
+import { NodeChangeset, type EdgeChangeset } from './flowLibrary'
 import type { StepFlowEdge, StepFlowNode } from './toFlowElements'
 import type { MeasuredSizes } from './useCanvasLayout'
 
@@ -20,7 +20,7 @@ export interface FlowNodeState {
   flowNodes: StepFlowNode[]
   /** Back to where the graph says (a refused drop into a loop snaps the step back). */
   resetFlowNodes: () => void
-  handleNodesChange: (changes: NodeChange<StepFlowNode>[]) => void
+  handleNodesChange: (changes: NodeChangeset<StepFlowNode>) => void
 }
 
 /**
@@ -40,12 +40,15 @@ export function useFlowNodeState(flowNodesFromGraph: StepFlowNode[], options: { 
   const resetFlowNodes = useCallback(() => setFlowNodes((current) => keepMeasuredSizes(current, flowNodesFromGraph)), [flowNodesFromGraph])
   useEffect(resetFlowNodes, [resetFlowNodes])
 
-  function handleNodesChange(changes: NodeChange<StepFlowNode>[]) {
-    for (const change of changes) {
+  function handleNodesChange(changes: NodeChangeset<StepFlowNode>) {
+    const changeList = changes.toArray()
+    for (const change of changeList) {
       if (change.type === 'dimensions' && change.dimensions) measuredRef.current.set(change.id, change.dimensions)
     }
-    const allowed = changes.filter((change) => change.type !== 'remove' && (!readOnly || change.type === 'select' || change.type === 'dimensions'))
-    setFlowNodes((current) => applyNodeChanges(allowed, current))
+    const allowed = new NodeChangeset<StepFlowNode>(
+      changeList.filter((change) => change.type !== 'remove' && (!readOnly || change.type === 'select' || change.type === 'dimensions')),
+    )
+    setFlowNodes((current) => allowed.applyTo(current))
   }
 
   return { flowNodes, resetFlowNodes, handleNodesChange }
@@ -54,7 +57,7 @@ export function useFlowNodeState(flowNodesFromGraph: StepFlowNode[], options: { 
 export interface EdgeSelection {
   /** Selected arrows that still exist in the graph. */
   selectedEdgeIds: string[]
-  handleEdgesChange: (changes: EdgeChange<StepFlowEdge>[]) => void
+  handleEdgesChange: (changes: EdgeChangeset<StepFlowEdge>) => void
   /** Stable. */
   clearEdgeSelection: () => void
 }
@@ -71,13 +74,12 @@ export function useEdgeSelection(graph: AgentGraph): EdgeSelection {
   const selectedEdgeIds = useMemo(() => rawSelectedEdgeIds.filter((edgeId) => graph.edges.some((edge) => edge.id === edgeId)), [graph, rawSelectedEdgeIds])
   const clearEdgeSelection = useCallback(() => setRawSelectedEdgeIds([]), [])
 
-  function handleEdgesChange(changes: EdgeChange<StepFlowEdge>[]) {
-    const selectChanges = changes.filter((change) => change.type === 'select')
+  function handleEdgesChange(changes: EdgeChangeset<StepFlowEdge>) {
+    const selectChanges = changes.getByType('select')
     if (selectChanges.length === 0) return
     setRawSelectedEdgeIds((current) => {
       const next = new Set(current)
       for (const change of selectChanges) {
-        if (change.type !== 'select') continue
         if (change.selected) next.add(change.id)
         else next.delete(change.id)
       }

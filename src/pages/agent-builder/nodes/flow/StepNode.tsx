@@ -3,7 +3,7 @@ import type { NodePort } from '@/api/agentGraphTypes'
 import { joinClassNames } from '@/components/ui'
 import { containerMinimumSize } from './autoLayout'
 import { compactZoomThreshold, useCanvasNodeActions, useContainerDropHint } from './canvasActions'
-import { Handle, NodeResizer, Position, useStore, type NodeProps } from './flowLibrary'
+import { Handle, NodeResizer, Position, useViewportStore, type NodeProps } from './flowLibrary'
 import { NodeDecoration } from '../run/NodeDecorations'
 import { NodeKindIcon } from './NodeKindIcon'
 import type { PreviewSegment } from './nodePreview'
@@ -19,7 +19,7 @@ import { messages } from '@/i18n'
 
 /** True while the canvas is zoomed out far enough for compact cards (below 60%). */
 function useIsCompact(): boolean {
-  return useStore((state) => state.transform[2] < compactZoomThreshold)
+  return useViewportStore((state) => state.transform[2] < compactZoomThreshold)
 }
 
 function portLabel(outputPort: NodePort): string {
