@@ -727,17 +727,15 @@ fn is_usable_executable(path: &Path) -> bool {
     let Ok(metadata) = std::fs::metadata(path) else {
         return false;
     };
-    if !metadata.is_file() || metadata.len() == 0 {
-        return false;
-    }
+    let has_content = metadata.is_file() && metadata.len() > 0;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        metadata.permissions().mode() & 0o111 != 0
+        has_content && metadata.permissions().mode() & 0o111 != 0
     }
     #[cfg(not(unix))]
     {
-        true
+        has_content
     }
 }
 

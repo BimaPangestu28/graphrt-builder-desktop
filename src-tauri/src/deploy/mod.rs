@@ -344,8 +344,8 @@ impl DeployService {
         }
     }
 
-    /// Tests: run this executable as `graphrt`.
-    #[cfg(test)]
+    /// Tests: run this executable as `graphrt` (the fake CLIs are shell scripts, so Unix only).
+    #[cfg(all(test, unix))]
     pub(crate) fn with_cli_executable(mut self, executable: PathBuf) -> Self {
         self.cli_override = Some(executable);
         self
