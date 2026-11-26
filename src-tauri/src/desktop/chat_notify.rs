@@ -141,6 +141,7 @@ mod tests {
             agent_id: fixture.agent_id.clone(),
             status: ConversationStatus::WaitingForYou,
             message: None,
+            draft: None,
         }
     }
 

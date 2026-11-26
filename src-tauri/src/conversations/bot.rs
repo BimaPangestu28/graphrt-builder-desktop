@@ -12,6 +12,8 @@
 //! `handoff`, `handoff_reason`, `summary` and `suggested_reply` follow the
 //! hand-off convention described in `guides/chatbot.md`.
 
+use std::time::{Duration, Instant};
+
 use futures::StreamExt;
 use graphrt_core::response::ResponseAssembler;
 use graphrt_core::{Engine, Event, IndexMap, RunInput, Selector, Value};
@@ -57,7 +59,14 @@ pub struct Handoff {
     pub reason: Option<String>,
 }
 
+/// Shortest gap between two reply drafts, so a fast model does not flood the UI.
+pub const DRAFT_INTERVAL: Duration = Duration::from_millis(50);
+
 /// Runs `engine` for `message_text` and collects the reply.
+///
+/// `on_draft` receives the reply assembled so far while model tokens stream in
+/// (the first text at once, then at most once per [`DRAFT_INTERVAL`]), so the
+/// UI can show the answer as it is written instead of after the whole run.
 ///
 /// # Errors
 /// `Workflow` when the run fails, is aborted, or pauses (a chatbot cannot wait
@@ -68,6 +77,7 @@ pub async fn run_bot_turn(
     conversation: &Conversation,
     message_text: &str,
     extra_sys_values: &[(String, String)],
+    on_draft: &(dyn Fn(&str) + Send + Sync),
 ) -> AppResult<BotTurn> {
     let mut variables = conversation.variables.as_object().cloned().unwrap_or_default();
     let mut assembler = ResponseAssembler::new(engine.graph());
@@ -82,9 +92,19 @@ pub async fn run_bot_turn(
 
     let mut assembled_reply = String::new();
     let mut outputs = None;
+    let mut last_draft: Option<Instant> = None;
     while let Some(event) = stream.next().await {
+        let mut grew = false;
         for chunk in assembler.push(&event) {
+            grew |= !chunk.text.is_empty();
             assembled_reply.push_str(&chunk.text);
+        }
+        if grew && last_draft.is_none_or(|sent| sent.elapsed() >= DRAFT_INTERVAL) {
+            let draft = assembled_reply.trim_start();
+            if !draft.is_empty() {
+                on_draft(draft);
+                last_draft = Some(Instant::now());
+            }
         }
         match event {
             Event::VariableUpdated { selector, value, .. } if selector.namespace() == "conversation" => {

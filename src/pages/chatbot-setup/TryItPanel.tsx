@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { sendCustomerMessage, startTestConversation } from '@/api/conversations'
 import type { ConversationMessage } from '@/api/conversationTypes'
-import { useConversationDetail } from '@/hooks/useConversations'
+import { useConversationDetail, useReplyDraft } from '@/hooks/useConversations'
 import { toErrorMessage } from '@/lib/errors'
 import { messages } from '@/i18n'
 
@@ -82,6 +82,7 @@ function useTestConversation(agentId: string) {
 export function TryItPanel({ agentId }: { agentId: string }) {
   const { conversationId, startError, startNew } = useTestConversation(agentId)
   const { data: detail } = useConversationDetail(conversationId)
+  const replyDraft = useReplyDraft(conversationId)
   const [testMessage, setTestMessage] = useState('')
   const [isWaitingForBot, setIsWaitingForBot] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
@@ -124,7 +125,14 @@ export function TryItPanel({ agentId }: { agentId: string }) {
           </span>
         )}
         {detail?.messages.map((message) => <TryItBubble key={message.id} message={message} />)}
-        {isWaitingForBot && (
+        {replyDraft !== null && (
+          <div data-testid="reply-draft" className="flex box-content max-w-[86%] flex-col gap-2 self-start rounded-[12px_12px_12px_4px] bg-surface px-3 py-2.5 leading-[1.45]">
+            {replyDraft.split('\n\n').map((paragraph, index) => (
+              <span key={index}>{paragraph}</span>
+            ))}
+          </div>
+        )}
+        {isWaitingForBot && replyDraft === null && (
           <span lang="en" className="self-start text-[12px] text-ink-2">
             {messages().chatbot.botIsTyping}
           </span>

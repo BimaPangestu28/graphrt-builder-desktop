@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use futures::future::BoxFuture;
+use futures::StreamExt;
 use graphrt_llm::mock::MockModel;
 use graphrt_llm::{ChatModel, ModelRegistry};
 use serde_json::json;
@@ -466,4 +467,118 @@ fn describes_known_handoff_reasons_in_plain_words() {
     assert_eq!(describe_handoff_reason(Some("order_to_confirm")), "order ready to confirm");
     assert_eq!(describe_handoff_reason(Some("wants_a_discount")), "wants a discount");
     assert_eq!(describe_handoff_reason(None), "needs your reply");
+}
+
+/// A model that streams `text` word by word: the first word after `first_token`, then one word every `per_token`.
+#[derive(Debug)]
+struct PacedModel {
+    text: String,
+    first_token: std::time::Duration,
+    per_token: std::time::Duration,
+}
+
+impl ChatModel for PacedModel {
+    fn chat(
+        &self,
+        _request: graphrt_llm::ChatRequest,
+    ) -> BoxFuture<'_, Result<graphrt_llm::ChatStream, graphrt_llm::LlmError>> {
+        let words: Vec<String> = self.text.split_inclusive(' ').map(str::to_owned).collect();
+        let (first_token, per_token) = (self.first_token, self.per_token);
+        Box::pin(async move {
+            let deltas = futures::stream::iter(words.into_iter().enumerate()).then(move |(index, word)| async move {
+                tokio::time::sleep(if index == 0 { first_token } else { per_token }).await;
+                Ok(graphrt_llm::ChatDelta::Text(word))
+            });
+            let finish = futures::stream::iter([Ok(graphrt_llm::ChatDelta::Finish(graphrt_llm::FinishReason::Stop))]);
+            let stream: graphrt_llm::ChatStream = Box::pin(deltas.chain(finish));
+            Ok(stream)
+        })
+    }
+}
+
+#[tokio::test]
+async fn reply_streams_as_drafts_before_the_finished_message() {
+    let db = Arc::new(Database::open_in_memory().unwrap());
+    let credentials = Arc::new(CredentialStore::in_memory());
+    credentials.set_api_key(ModelProvider::Openai, "sk-test").unwrap();
+    let sink = Arc::new(CollectingSink::default());
+    let model = Arc::new(PacedModel {
+        text: "Ada kak, paket nasi box mulai 25 ribu.".to_owned(),
+        first_token: std::time::Duration::from_millis(5),
+        // Slower than the draft interval, so every word arrives as its own draft.
+        per_token: bot::DRAFT_INTERVAL + std::time::Duration::from_millis(10),
+    });
+    let conversations = ConversationManager::new(db.clone(), credentials, sink.clone())
+        .with_model_registry_source(Arc::new(FixedModelSource { model }));
+    let agent = create_chatbot(&db, MEMORY_FLOW);
+    let conversation = conversations.start_test_conversation(&agent.id).unwrap().conversation;
+
+    conversations.send_customer_message(&conversation.id, "Ada nasi box?").await.unwrap();
+
+    let payloads = sink.payloads.lock().unwrap();
+    let drafts: Vec<&str> = payloads
+        .iter()
+        .filter(|payload| payload.kind == ConversationEventKind::ReplyDraft)
+        .map(|payload| payload.draft.as_deref().unwrap())
+        .collect();
+    assert_eq!(drafts.first(), Some(&"Ada "));
+    assert!(drafts.len() >= 3, "one draft per word, got {drafts:?}");
+    assert!(drafts.windows(2).all(|pair| pair[1].starts_with(pair[0])), "drafts only grow: {drafts:?}");
+    let last_draft = payloads.iter().rposition(|payload| payload.kind == ConversationEventKind::ReplyDraft).unwrap();
+    let bot_message = payloads
+        .iter()
+        .position(|payload| payload.message.as_ref().is_some_and(|message| message.author == MessageAuthor::Bot))
+        .unwrap();
+    assert!(last_draft < bot_message, "the finished reply comes after its drafts");
+    assert_eq!(payloads[bot_message].message.as_ref().unwrap().text, "Ada kak, paket nasi box mulai 25 ribu.");
+    assert!(payloads
+        .iter()
+        .all(|payload| payload.kind == ConversationEventKind::ReplyDraft || payload.draft.is_none()));
+}
+
+/// Records when each event arrived.
+#[derive(Debug, Default)]
+struct TimedSink {
+    events: Mutex<Vec<(std::time::Instant, ConversationEventPayload)>>,
+}
+
+impl ConversationEventSink for TimedSink {
+    fn send(&self, payload: ConversationEventPayload) {
+        self.events.lock().unwrap().push((std::time::Instant::now(), payload));
+    }
+}
+
+/// Times one bot reply with a model paced like a hosted one (first token after
+/// 800 ms, then 40 words at 30 ms): when the customer first sees text, and when
+/// the reply is complete. Run with `--ignored --nocapture`.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "timing report, not a check"]
+async fn bot_reply_timing_report() {
+    let db = Arc::new(Database::open_in_memory().unwrap());
+    let credentials = Arc::new(CredentialStore::in_memory());
+    credentials.set_api_key(ModelProvider::Openai, "sk-test").unwrap();
+    let sink = Arc::new(TimedSink::default());
+    let text = "word ".repeat(40);
+    let model = Arc::new(PacedModel {
+        text: text.trim_end().to_owned(),
+        first_token: std::time::Duration::from_millis(800),
+        per_token: std::time::Duration::from_millis(30),
+    });
+    let conversations = ConversationManager::new(db.clone(), credentials, sink.clone())
+        .with_model_registry_source(Arc::new(FixedModelSource { model }));
+    let agent = create_chatbot(&db, MEMORY_FLOW);
+    let conversation = conversations.start_test_conversation(&agent.id).unwrap().conversation;
+    let started = std::time::Instant::now();
+    conversations.send_customer_message(&conversation.id, "Ada nasi box?").await.unwrap();
+    let total = started.elapsed();
+    let events = sink.events.lock().unwrap();
+    let first_text = events
+        .iter()
+        .filter(|(at, _)| *at >= started)
+        .find(|(_, payload)| {
+            payload.message.as_ref().is_some_and(|message| message.author == MessageAuthor::Bot)
+                || payload.draft.as_deref().is_some_and(|draft| !draft.is_empty())
+        })
+        .map(|(at, _)| at.duration_since(started));
+    println!("TIMING first visible bot text: {first_text:?}, reply complete: {total:?}");
 }

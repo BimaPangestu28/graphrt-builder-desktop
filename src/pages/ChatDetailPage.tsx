@@ -4,7 +4,7 @@ import { closeConversation, handBack, sendOperatorReply, takeOver } from '@/api/
 import type { Conversation, ConversationDetail } from '@/api/conversationTypes'
 import { AppShell } from '@/components/layout'
 import { joinClassNames } from '@/components/ui'
-import { useConversationDetail, useConversationList } from '@/hooks/useConversations'
+import { useConversationDetail, useConversationList, useReplyDraft } from '@/hooks/useConversations'
 import { ChatMessageBubble } from './inbox/ChatMessageBubble'
 import { buildConversationPath } from './inbox/ConversationTable'
 import { CustomerPanel } from './inbox/CustomerPanel'
@@ -106,6 +106,7 @@ function ConversationWorkspace({ detail }: { detail: ConversationDetail }) {
   const [isOrderSaved, setIsOrderSaved] = useState(false)
   const actions = useConversationActions(conversation.id)
   const canReply = isOwnerReplying(conversation)
+  const replyDraft = useReplyDraft(conversation.id)
 
   async function sendReply() {
     if (await actions.reply(draft.trim())) setDraft('')
@@ -127,6 +128,11 @@ function ConversationWorkspace({ detail }: { detail: ConversationDetail }) {
           {messages.map((message) => (
             <ChatMessageBubble key={message.id} message={message} />
           ))}
+          {replyDraft !== null && (
+            <ChatMessageBubble
+              message={{ id: 'reply-draft', conversationId: conversation.id, author: 'bot', text: replyDraft, metadata: {}, createdAt: new Date().toISOString() }}
+            />
+          )}
         </div>
         {actions.actionError && (
           <p role="alert" className="m-0 px-5 pt-3 text-[13px] text-amber-strong">

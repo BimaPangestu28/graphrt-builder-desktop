@@ -1,4 +1,4 @@
-import { useEffect, useRef, type DependencyList } from 'react'
+import { useEffect, useRef, useState, type DependencyList } from 'react'
 import { countConversations, getConversation, listConversations, subscribeToConversationEvents } from '@/api/conversations'
 import type { Conversation, ConversationCounts, ConversationDetail, ConversationEventPayload, ConversationFilter } from '@/api/conversationTypes'
 import { useAsyncData, type AsyncDataState } from './useAsyncData'
@@ -41,9 +41,24 @@ function useLiveConversationData<Data>(
 ): AsyncDataState<Data> {
   const state = useAsyncData(loadData, dependencies)
   useConversationEvents((payload) => {
-    if (isRelevant(payload)) void state.reload()
+    // Drafts change nothing stored; reloading on each would query the database many times per reply.
+    if (payload.kind !== 'reply_draft' && isRelevant(payload)) void state.reload()
   })
   return state
+}
+
+/**
+ * The bot's reply to `conversationId` while it is being written, or null when the bot is not writing.
+ * Cleared by the next stored change of the conversation (the finished reply, a hand-off or an error).
+ */
+export function useReplyDraft(conversationId: string | null): string | null {
+  const [draft, setDraft] = useState<{ conversationId: string; text: string } | null>(null)
+  useConversationEvents((payload) => {
+    if (payload.conversationId !== conversationId) return
+    if (payload.kind === 'reply_draft') setDraft({ conversationId: payload.conversationId, text: payload.draft ?? '' })
+    else setDraft(null)
+  })
+  return draft && draft.conversationId === conversationId && draft.text !== '' ? draft.text : null
 }
 
 /** Conversations matching `filter`, most recently active first, kept live. */
