@@ -1,0 +1,113 @@
+name: macOS
+
+# The macOS half of CI (ci.yml builds Linux and Windows). It is optional for pull
+# requests: macOS runners are slow to start and made every pull request wait, so it runs
+#   - on every push to main and every night on the newest main commit (arm64),
+#   - on a manual run (arm64),
+#   - on a pull request labelled `macos` (Intel), for changes to Apple-only code.
+# It never runs in the merge queue, and the `ci-ok` check does not depend on it: a red
+# run here is reported to the maintainers, it does not block a merge.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 18 * * *" # 01:00 WIB
+  pull_request:
+    # `labeled` starts a run when the `macos` label is added to an open pull request.
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A new push to the same PR cancels the run it supersedes. Other runs (main, nightly,
+# manual) are never cancelled: each gets its own group (the run id).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # tauri::generate_context! embeds dist/ at compile time, so clippy needs the built
+  # frontend. It is built on Linux to keep the macOS runner for the Rust work.
+  frontend:
+    name: macOS / frontend build
+    timeout-minutes: 20
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'macos')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist
+          if-no-files-found: error
+          retention-days: 1
+
+  rust:
+    name: macOS / fmt + clippy + test
+    timeout-minutes: 40
+    needs: frontend
+    # Pull requests run on Intel (macos-26-intel): GitHub's arm64 macOS pool is often out
+    # of capacity and PR jobs waited for hours. main, nightly and manual runs keep arm64
+    # (macos-latest), the architecture most users have. Caches are keyed per architecture
+    # and only main saves them, so Intel PR jobs build without a Rust cache.
+    runs-on: ${{ github.event_name == 'pull_request' && 'macos-26-intel' || 'macos-latest' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: cargo fmt
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+      # macOS compiles its own `cfg` code (keep awake, tray icon, credential store).
+      - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+      # Tests that touch the real OS credential store are #[ignore]d.
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+
+  bundle:
+    name: macOS / desktop bundle
+    timeout-minutes: 45
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'macos')
+    runs-on: ${{ github.event_name == 'pull_request' && 'macos-26-intel' || 'macos-latest' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: pnpm install --frozen-lockfile
+      # The Node.js archive checksums the app pins must match Node's GPG-signed SHASUMS256.txt.
+      - name: Verify pinned Node.js checksums
+        shell: bash
+        env:
+          GRAPHRT_REQUIRE_NODE_SIGNATURE: "1"
+        run: scripts/fetch-node.sh --verify-checksums
+      - run: pnpm tauri build --no-bundle

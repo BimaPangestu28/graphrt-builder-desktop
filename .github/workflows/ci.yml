@@ -103,20 +103,18 @@ jobs:
           retention-days: 1
 
   rust:
-    name: fmt + clippy + test (${{ matrix.platform == 'macos-latest' && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'macos-26-intel' || matrix.platform }})
+    name: fmt + clippy + test (${{ matrix.platform }})
     timeout-minutes: 40
     needs: [changes, frontend]
     if: needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
       matrix:
-        platform: [macos-latest, windows-latest, ubuntu-22.04]
-    # macOS on pull requests and in the merge queue runs on Intel (macos-26-intel): GitHub's
-    # arm64 macOS pool is often out of capacity and those jobs waited for hours, which would
-    # stall the queue. main, tags and manual runs keep arm64 (macos-latest), the architecture
-    # most users have. Caches are keyed per architecture and only main saves them, so Intel
-    # jobs build without a Rust cache.
-    runs-on: ${{ matrix.platform == 'macos-latest' && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'macos-26-intel' || matrix.platform }}
+        platform: [windows-latest, ubuntu-22.04]
+    # macOS is not built here: its runners are slow to start and made every pull request
+    # wait. The same steps run on macOS in macos.yml (main, nightly, manual runs and pull
+    # requests labelled `macos`), and nothing here waits for them.
+    runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v7
       - name: Install Linux dependencies
@@ -140,7 +138,7 @@ jobs:
           name: dist
           path: dist
       - name: cargo fmt
-        if: runner.os == 'macOS'
+        if: runner.os == 'Linux'
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
       # The app bundles no Node.js (it downloads the pinned release on demand), so fmt /
       # clippy / tests stay network-free; build.rs compiles the pinned checksums in.
@@ -150,20 +148,18 @@ jobs:
       - run: cargo test --manifest-path src-tauri/Cargo.toml
 
   bundle:
-    name: desktop bundle (${{ matrix.platform == 'macos-latest' && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'macos-26-intel' || matrix.platform }})
+    name: desktop bundle (${{ matrix.platform }})
     timeout-minutes: 45
     needs: [changes, frontend]
     if: needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
       matrix:
-        platform: [macos-latest, windows-latest, ubuntu-22.04]
-    # macOS on pull requests and in the merge queue runs on Intel (macos-26-intel): GitHub's
-    # arm64 macOS pool is often out of capacity and those jobs waited for hours, which would
-    # stall the queue. main, tags and manual runs keep arm64 (macos-latest), the architecture
-    # most users have. Caches are keyed per architecture and only main saves them, so Intel
-    # jobs build without a Rust cache.
-    runs-on: ${{ matrix.platform == 'macos-latest' && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'macos-26-intel' || matrix.platform }}
+        platform: [windows-latest, ubuntu-22.04]
+    # macOS is not built here: its runners are slow to start and made every pull request
+    # wait. The same steps run on macOS in macos.yml (main, nightly, manual runs and pull
+    # requests labelled `macos`), and nothing here waits for them.
+    runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v7
       - name: Install Linux dependencies
@@ -194,10 +190,10 @@ jobs:
         run: scripts/fetch-node.sh --verify-checksums
       - run: pnpm tauri build --no-bundle
 
-  # The one check to require in the branch ruleset (and so in the merge queue). Its name
-  # never changes, unlike the matrix jobs, whose names carry the runner. It always runs,
-  # fails when a job above failed or was cancelled, and passes when each one succeeded or
-  # was skipped (a docs-only pull request skips the jobs gated on `code`).
+  # The one check to require in the branch ruleset (and so in the merge queue). It always
+  # runs, fails when a job above failed or was cancelled, and passes when each one
+  # succeeded or was skipped (a docs-only pull request skips the jobs gated on `code`).
+  # It does not depend on macOS (macos.yml): a red macOS run is reported, it blocks no merge.
   ci-ok:
     name: ci-ok
     timeout-minutes: 5
