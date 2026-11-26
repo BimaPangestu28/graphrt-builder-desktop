@@ -65,6 +65,10 @@ pub mod teams;
 pub mod usage_summary;
 pub mod workflow_secrets;
 
+// Only Unix tests write fake executables.
+#[cfg(all(test, unix))]
+mod test_support;
+
 use std::sync::Arc;
 
 use tauri::Manager;
