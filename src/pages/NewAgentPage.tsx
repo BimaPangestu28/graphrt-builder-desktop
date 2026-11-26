@@ -14,12 +14,13 @@ import {
 } from '@/pages/new-agent/agentTemplates'
 import type { BuildRequestLocationState } from './agent-builder/buildRequestState'
 import { ModelPickerChip } from './new-agent/ModelPickerChip'
+import { messages } from '@/i18n'
 
 /** Pill radio group for choosing what kind of agent to make. */
 function AgentKindPicker({ selectedKind, onSelect }: { selectedKind: AgentKind; onSelect: (kind: AgentKind) => void }) {
   return (
     <fieldset className="m-0 flex flex-wrap justify-center gap-2 border-0 p-0">
-      <legend className="sr-only">What are you making</legend>
+      <legend className="sr-only">{messages().newAgent.whatAreYouMaking}</legend>
       {agentKindOptions.map((option) => {
         const isSelected = option.value === selectedKind
         return (
@@ -71,12 +72,12 @@ function TemplateCard({ template, onPick }: { template: AgentTemplate; onPick: (
       </span>
       <span className="leading-normal text-body">{template.description}</span>
       <span className="mt-auto flex flex-col gap-1.5 pt-1">
-        <span role="list" aria-label={`${template.title} needs`} className="flex flex-wrap gap-1.5">
+        <span role="list" aria-label={messages().newAgent.titleNeeds(template.title)} className="flex flex-wrap gap-1.5">
           {template.needs.map((need) => (
             <TemplateNeedChip key={need} label={need} />
           ))}
         </span>
-        <span className="text-[12px] text-ink-2">You'll need: {template.setupNote}</span>
+        <span className="text-[12px] text-ink-2">{messages().newAgent.youllNeed}{' '}{template.setupNote}</span>
       </span>
       <span className="text-[12px] text-muted">{template.meta}</span>
     </button>
@@ -114,12 +115,12 @@ export function NewAgentPage() {
   }
 
   return (
-    <AppShell agents={{ kind: 'empty' }} runnerStatus="Online · OpenAI connected" mainClassName="flex flex-col items-center gap-12 px-8 pt-[72px] pb-12">
+    <AppShell agents={{ kind: 'empty' }} runnerStatus={messages().newAgent.onlineOpenaiConnected} mainClassName="flex flex-col items-center gap-12 px-8 pt-[72px] pb-12">
       <form onSubmit={handleSubmit} className="flex w-full max-w-[760px] flex-col gap-5">
-        <h1 className="m-0 text-center text-[36px] font-semibold tracking-[-0.8px]">What should your agent do?</h1>
+        <h1 className="m-0 text-center text-[36px] font-semibold tracking-[-0.8px]">{messages().newAgent.whatShouldYourAgentDo}</h1>
         <AgentKindPicker selectedKind={selectedKind} onSelect={setSelectedKind} />
         <label htmlFor="task" className="sr-only">
-          Describe the job
+          {messages().newAgent.describeTheJob}
         </label>
         <div className="flex flex-col gap-3.5 rounded-[18px] border border-line-strong bg-surface px-[18px] pt-[18px] pb-3.5">
           <textarea
@@ -127,7 +128,7 @@ export function NewAgentPage() {
             ref={jobDescriptionRef}
             rows={4}
             value={jobDescription}
-            placeholder={jobDescriptionPlaceholder}
+            placeholder={jobDescriptionPlaceholder()}
             onChange={(event) => setJobDescription(event.target.value)}
             className="resize-none border-0 bg-transparent text-[16px] leading-[1.6] text-ink outline-none placeholder:text-muted"
           />
@@ -135,7 +136,7 @@ export function NewAgentPage() {
             <div className="flex flex-wrap gap-2">
               <PromptChip>
                 <Icon name="monitor" size={14} />
-                Runs on this computer
+                {messages().newAgent.runsOnThisComputer}
               </PromptChip>
               <ModelPickerChip />
             </div>
@@ -144,16 +145,16 @@ export function NewAgentPage() {
               disabled={!canBuild}
               className="flex h-10 cursor-pointer items-center gap-2 rounded-[9px] border-0 bg-ink px-[18px] text-[14px] font-semibold text-white hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Build agent
+              {messages().newAgent.buildAgent}
               <Icon name="arrowRight" size={16} />
             </button>
           </div>
         </div>
-        <p className="m-0 text-center text-muted">Not sure which kind? Just describe it and graphrt picks. You see every step before anything runs</p>
+        <p className="m-0 text-center text-muted">{messages().newAgent.notSureWhichKindJustDescribe}</p>
       </form>
 
-      <section aria-label="Templates" className="flex w-full max-w-[960px] flex-col gap-3.5">
-        <span className="font-semibold">Or start from a template</span>
+      <section aria-label={messages().newAgent.templates} className="flex w-full max-w-[960px] flex-col gap-3.5">
+        <span className="font-semibold">{messages().newAgent.orStartFromATemplate}</span>
         <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
           {agentTemplates.map((template) => (
             <TemplateCard key={template.id} template={template} onPick={handleTemplatePick} />

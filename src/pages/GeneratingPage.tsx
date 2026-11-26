@@ -17,6 +17,8 @@ import { DraftStepCards, PoliteAnnouncement } from './agent-builder/DraftPreview
 import { PluginRequirementsMessage } from './agent-builder/PluginRequirementsMessage'
 import { usePluginSetup, type PluginSetupState } from './agent-builder/usePluginSetup'
 import { buildChecklistStages, openBuilderDelayMs, useAgentBuild, type AgentBuildState } from './agent-builder/useAgentBuild'
+import { messages } from '@/i18n'
+import { localizedRecord } from '@/i18n/localized'
 
 const placeholderStepCount = 4
 
@@ -24,13 +26,11 @@ const placeholderStepCount = 4
 const draftingStages: BuildStage[] = ['drafting', 'repairing']
 
 /** Checklist titles per backend stage, and what a line says if the backend skipped it. */
-const checklistTitles: Record<BuildStage, { title: string; skippedDetail: string }> = {
-  understanding: { title: 'Understood the job', skippedDetail: 'Read your description' },
-  drafting: { title: 'Picked the steps', skippedDetail: 'Steps drafted' },
-  repairing: { title: 'Fixed problems', skippedDetail: 'Nothing to fix' },
-  checking: { title: 'Checking it again', skippedDetail: 'No problems found' },
-  done: { title: 'Check what it needs to connect', skippedDetail: 'Ready to connect' },
-}
+const checklistTitles: Readonly<Record<BuildStage, { title: string; skippedDetail: string }>> = localizedRecord(() => {
+  const checklist = messages().newAgent.checklist
+  const entry = (stage: BuildStage) => ({ title: checklist[stage][0], skippedDetail: checklist[stage][1] })
+  return { understanding: entry('understanding'), drafting: entry('drafting'), repairing: entry('repairing'), checking: entry('checking'), done: entry('done') }
+})
 
 /** The draft being written right now, if its stage is the one running (none once the round is over). */
 function readActiveDraft(buildState: AgentBuildState): { stage: BuildStage; draft: DraftPreview } | null {
@@ -100,14 +100,14 @@ function BuildErrorNotice({ buildError, onRetry }: { buildError: Error; onRetry:
   const isMissingCredentials = buildError instanceof BackendError && buildError.code === 'missing_credentials'
   return (
     <div role="alert" className="flex max-w-[92%] flex-col items-start gap-2.5 rounded-[14px] border border-danger-line bg-danger-tint p-[18px]">
-      <span className="font-semibold">{isMissingCredentials ? 'Connect a model to build agents' : 'Could not build the agent'}</span>
+      <span className="font-semibold">{isMissingCredentials ? messages().newAgent.connectAModelToBuildAgents : messages().newAgent.couldNotBuildTheAgent}</span>
       <span className="leading-normal text-danger-deep">{describeError(buildError)}</span>
       {isMissingCredentials && (
-        <span className="leading-normal text-body">Use Claude Code or Codex on this computer, a local model with Ollama, or an API key</span>
+        <span className="leading-normal text-body">{messages().newAgent.useClaudeCodeOrCodexOn}</span>
       )}
       {isMissingCredentials ? (
         <Link to={connectionsTabPath('models')} className="font-medium">
-          Choose a model in Connections
+          {messages().newAgent.chooseAModelInConnections}
         </Link>
       ) : (
         <button
@@ -115,7 +115,7 @@ function BuildErrorNotice({ buildError, onRetry }: { buildError: Error; onRetry:
           onClick={onRetry}
           className="h-8 cursor-pointer rounded-lg border border-line-strong bg-surface px-3 text-[13px] font-medium text-ink hover:bg-subtle"
         >
-          Try again
+          {messages().newAgent.tryAgain}
         </button>
       )}
     </div>
@@ -154,15 +154,15 @@ function ContinueToStepsButton({ agentId, isReady }: { agentId: string; isReady:
   return (
     <div className="flex">
       <Button size="sm" variant={isReady ? 'primary' : 'secondary'} onClick={() => navigate(agentPath('builder', agentId))}>
-        {isReady ? 'Continue to steps' : 'Continue without them'}
+        {isReady ? messages().newAgent.continueToSteps : messages().newAgent.continueWithoutThem}
       </Button>
     </div>
   )
 }
 
 function describeAgentColumnStatus(isBuilt: boolean, isHeldForPlugins: boolean): string {
-  if (!isBuilt) return 'Steps appear here as they are ready'
-  return isHeldForPlugins ? 'All steps ready. Set up its plugins in the chat' : 'All steps ready. Opening the builder'
+  if (!isBuilt) return messages().newAgent.stepsAppearHereAsTheyAre
+  return isHeldForPlugins ? messages().newAgent.allStepsReadySetUpIts : messages().newAgent.allStepsReadyOpeningTheBuilder
 }
 
 /** Screen 03 opened without a request (screen index, reload): nothing to build, so point back to 02. */
@@ -171,11 +171,11 @@ function MissingBuildRequestNotice() {
     <AppShell agents={{ kind: 'list' }} mainClassName="flex flex-col items-center px-8 pt-[72px] pb-12">
       <section aria-labelledby="generating-nothing" className="flex max-w-[520px] flex-col items-center gap-3 text-center">
         <h1 id="generating-nothing" className="m-0 text-[22px] font-semibold">
-          Nothing to build yet
+          {messages().newAgent.nothingToBuildYet}
         </h1>
-        <p className="m-0 leading-normal text-body">Describe what your agent should do on the New agent screen, then press Build agent.</p>
+        <p className="m-0 leading-normal text-body">{messages().newAgent.describeWhatYourAgentShouldDo}</p>
         <Link to={routePaths.newAgent} className="font-medium">
-          Describe a new agent
+          {messages().newAgent.describeANewAgent}
         </Link>
       </section>
     </AppShell>
@@ -192,13 +192,13 @@ function AgentBuildScreen({ buildRequest }: { buildRequest: BuildRequest }) {
   )
   const pluginSetup = usePluginSetup(builtAgent?.id ?? null)
   const isHeldForPlugins = useOpenBuilderWhenReady(builtAgent?.id ?? null, pluginSetup)
-  const sidebarStatus = buildError ? 'Build stopped' : builtAgent ? 'Ready' : 'Building…'
+  const sidebarStatus = buildError ? messages().newAgent.buildStopped : builtAgent ? messages().newAgent.ready : messages().newAgent.building
 
   return (
-    <AppShell agents={{ kind: 'draft', name: builtAgent?.name ?? 'New agent', status: sidebarStatus, agentId: builtAgent?.id }} runnerStatus="Online · OpenAI connected" mainClassName={splitPaneMainClassName}>
-      <section aria-label="Chat" className={`box-border flex min-w-0 flex-[1_1_380px] flex-col border-r border-line bg-surface ${splitPaneColumnClassName}`}>
+    <AppShell agents={{ kind: 'draft', name: builtAgent?.name ?? 'New agent', status: sidebarStatus, agentId: builtAgent?.id }} runnerStatus={messages().newAgent.onlineOpenaiConnected} mainClassName={splitPaneMainClassName}>
+      <section aria-label={messages().newAgent.chat} className={`box-border flex min-w-0 flex-[1_1_380px] flex-col border-r border-line bg-surface ${splitPaneColumnClassName}`}>
         <PanelHeader>
-          <span className="font-semibold">Build with chat</span>
+          <span className="font-semibold">{messages().newAgent.buildWithChat}</span>
         </PanelHeader>
         <div ref={chatBodyRef} className={`flex flex-col gap-5 p-6 ${splitPaneScrollClassName}`}>
           <UserChatBubble>{buildRequest.description}</UserChatBubble>
@@ -214,12 +214,12 @@ function AgentBuildScreen({ buildRequest }: { buildRequest: BuildRequest }) {
         </div>
       </section>
 
-      <section aria-label="Agent" className={`box-border flex min-w-0 flex-[1_1_440px] flex-col bg-subtle ${splitPaneColumnClassName}`}>
+      <section aria-label={messages().newAgent.agent} className={`box-border flex min-w-0 flex-[1_1_440px] flex-col bg-subtle ${splitPaneColumnClassName}`}>
         <PanelHeader>
           <span className="text-body">{describeAgentColumnStatus(builtAgent !== null, isHeldForPlugins)}</span>
         </PanelHeader>
         <div className={`flex flex-col gap-6 p-6 ${splitPaneScrollClassName}`}>
-          <h1 className="m-0 text-[22px] font-semibold">{builtAgent?.name ?? 'New agent'}</h1>
+          <h1 className="m-0 text-[22px] font-semibold">{builtAgent?.name ?? messages().newAgent.newAgent}</h1>
           {builtAgent ? <BuiltStepsPreview agentId={builtAgent.id} loadingFallback={draftStepCards} /> : draftStepCards}
         </div>
       </section>

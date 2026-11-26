@@ -34,7 +34,7 @@ export const homeTemplateCount = 6
  * @param templates - The full gallery (AgentTemplate[])
  * @returns At most `homeTemplateCount` templates (AgentTemplate[])
  */
-export function pickHomeTemplates(templates: AgentTemplate[] = agentTemplates): AgentTemplate[] {
+export function pickHomeTemplates(templates: readonly AgentTemplate[] = agentTemplates): AgentTemplate[] {
   return templates.slice(0, homeTemplateCount)
 }
 
