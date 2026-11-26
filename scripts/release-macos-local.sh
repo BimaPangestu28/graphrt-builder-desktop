@@ -36,7 +36,7 @@ done
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo_root"
-repository="BimaPangestu28/graphrt-builder-desktop"
+repository="Graphrt/graphrt-builder-desktop"
 signing_identity="${DEVELOPER_ID:-Developer ID Application: Bima Pangestu (5Z53R3J88D)}"
 bundle_dir="src-tauri/target/aarch64-apple-darwin/release/bundle"
 app_path="$bundle_dir/macos/graphrt.app"

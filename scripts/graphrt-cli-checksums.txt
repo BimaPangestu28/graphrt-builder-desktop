@@ -2,7 +2,7 @@
 # (src-tauri/build.rs compiles them into the app; see src-tauri/src/deploy/cli_release.rs).
 #
 # Written by `scripts/pin-graphrt-cli.sh 0.6.0` from the SHA256SUMS of
-# https://github.com/BimaPangestu28/graphrt/releases/tag/v0.6.0; do not edit by hand.
+# https://github.com/Graphrt/graphrt/releases/tag/v0.6.0; do not edit by hand.
 # One line per release target: `<sha256>  <asset name>  <size in bytes>`.
 05598c50d2702f6f4b0fea347e2a8e83cc6e96aa1a9dcc2c01ab910eb2bf6328  graphrt-aarch64-apple-darwin.tar.gz  7988346
 70747ef2f5440a9404c8274d98ea0529e0fe9c78b876629aa7e39a093ddc050e  graphrt-x86_64-apple-darwin.tar.gz  8421839

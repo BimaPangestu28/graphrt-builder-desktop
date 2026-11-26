@@ -6,7 +6,7 @@ WhatsApp, and will run agents on your computer. We take security reports serious
 ## Reporting a vulnerability
 
 **Do not open a public issue.** Report privately through
-[GitHub Security Advisories](https://github.com/BimaPangestu28/graphrt-builder-desktop/security/advisories/new).
+[GitHub Security Advisories](https://github.com/Graphrt/graphrt-builder-desktop/security/advisories/new).
 
 Please include:
 
@@ -37,4 +37,4 @@ In scope, for example:
 - path traversal or unexpected file access through the desktop shell.
 
 Vulnerabilities in the agent runtime itself belong to
-[graphrt](https://github.com/BimaPangestu28/graphrt/security).
+[graphrt](https://github.com/Graphrt/graphrt/security).

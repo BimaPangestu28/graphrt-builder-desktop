@@ -37,7 +37,7 @@ This Code of Conduct applies within all community spaces, and also applies when 
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders responsible for enforcement at the project maintainers through a private report on GitHub (https://github.com/BimaPangestu28/graphrt-builder-desktop/security/advisories/new, choose "conduct" in the title). All complaints will be reviewed and investigated promptly and fairly.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders responsible for enforcement at the project maintainers through a private report on GitHub (https://github.com/Graphrt/graphrt-builder-desktop/security/advisories/new, choose "conduct" in the title). All complaints will be reviewed and investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the reporter of any incident.
 

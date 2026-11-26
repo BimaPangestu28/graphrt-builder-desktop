@@ -209,7 +209,7 @@ mod tests {
             let error = require_https(url).unwrap_err();
             assert!(error.to_string().contains("public addresses"), "{url}: {error}");
         }
-        assert!(require_https("https://github.com/BimaPangestu28/graphrt-plugins/releases/x.tgz").is_ok());
+        assert!(require_https("https://github.com/Graphrt/graphrt-plugins/releases/x.tgz").is_ok());
         assert!(require_https("http://github.com/x.tgz").is_err(), "https only");
     }
 

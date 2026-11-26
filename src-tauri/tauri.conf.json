@@ -56,7 +56,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/BimaPangestu28/graphrt-builder-desktop/releases/latest/download/latest.json"
+        "https://github.com/Graphrt/graphrt-builder-desktop/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEFGNDhCRDNGNjMxMzMyMDUKUldRRk1oTmpQNzFJcnhJakhPWGRLUDFnUEl2YVgxTE5rMHBEelhocW1Uc09lNEJ2MzBRbmhMV1MK",
       "windows": {

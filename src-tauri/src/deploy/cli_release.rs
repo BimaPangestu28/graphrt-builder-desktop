@@ -5,7 +5,7 @@
 //!   (`scripts/graphrt-cli-checksums.txt`) are compiled in by `build.rs`. While the version is
 //!   the placeholder `unreleased`, [`GRAPHRT_CLI_VERSION`] is `None` and nothing can be
 //!   downloaded: the UI says online deploy is not available yet.
-//! - **Source**: only `https://github.com/BimaPangestu28/graphrt/releases/download/v<pinned>/<pinned
+//! - **Source**: only `https://github.com/Graphrt/graphrt/releases/download/v<pinned>/<pinned
 //!   archive>` is fetched ([`is_allowed_download_url`]), capped at [`MAX_ARCHIVE_BYTES`]. Release
 //!   assets are named after the target only: `graphrt-<target>.tar.gz`, `graphrt-<target>.zip`
 //!   on Windows (graphrt `docs/deploy-direct.md`, "Getting the CLI"). The checksums come from the
@@ -39,7 +39,7 @@ include!(concat!(env!("OUT_DIR"), "/graphrt_cli_release.rs"));
 /// The only host the CLI is downloaded from (GitHub redirects to its asset host over HTTPS).
 pub const DOWNLOAD_HOST: &str = "github.com";
 /// The repository whose releases hold the CLI.
-pub const RELEASE_REPOSITORY: &str = "BimaPangestu28/graphrt";
+pub const RELEASE_REPOSITORY: &str = "Graphrt/graphrt";
 /// Largest archive accepted.
 pub const MAX_ARCHIVE_BYTES: u64 = 128 * 1024 * 1024;
 /// Largest `graphrt` executable accepted from an archive.
@@ -325,7 +325,7 @@ mod tests {
             assert_eq!(GRAPHRT_CLI_VERSION, None);
             assert!(GRAPHRT_CLI_ARCHIVES.is_empty());
             assert!(archive_for_this_computer().is_none());
-            let url = "https://github.com/BimaPangestu28/graphrt/releases/download/vunreleased/graphrt.tar.gz";
+            let url = "https://github.com/Graphrt/graphrt/releases/download/vunreleased/graphrt.tar.gz";
             assert!(!is_allowed_download_url(url));
         } else {
             assert_eq!(GRAPHRT_CLI_VERSION, Some(VERSION_FILE.trim()));
@@ -354,7 +354,7 @@ mod tests {
         let archive = mac_archive(b"x");
         assert_eq!(
             download_url("0.6.0", &archive),
-            "https://github.com/BimaPangestu28/graphrt/releases/download/v0.6.0/graphrt-aarch64-apple-darwin.tar.gz"
+            "https://github.com/Graphrt/graphrt/releases/download/v0.6.0/graphrt-aarch64-apple-darwin.tar.gz"
         );
         assert!(!is_allowed_download_url("http://github.com/x"));
         assert!(!is_allowed_download_url("not a url"));
