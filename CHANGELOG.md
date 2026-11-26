@@ -7,11 +7,30 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-26
+
+Agents can now start on their own when something happens, the app speaks Bahasa Indonesia, and agents can use online services through MCP sign-in.
+
 ### Added
 
-- **Sign in to MCP servers with OAuth**: a server reached by URL can now use "Sign in with my account (OAuth)" next to a bearer token secret or no sign-in (`auth: none | bearer | oauth`). **Sign in** finds the server's sign-in settings from its 401 answer (protected resource metadata, then the authorization server's metadata), registers graphrt as a public client (Dynamic Client Registration, or the graphrt Client ID Metadata Document when the server has no registration), opens the browser with PKCE (S256) and receives the code on `http://127.0.0.1:<port>/callback`. Tokens are kept in the OS keychain (`mcp-oauth:<server>:…`), refreshed before they expire and once more when the server rejects one mid-run (graphrt-mcp token provider); a rejected refresh shows **Sign in again** with the reason. **Sign out** (and removing the server) revokes the tokens when the server supports it. Tokens never reach the page, logs or error messages.
-- **MCP preset plugins**: a catalog plugin with `runtime: mcp` (no code, e.g. the Upwork plugin of graphrt-plugins) adds its remote MCP server to Connections > MCP servers when it is installed: address, sign-in kind, the plugin's approval rule (for Upwork only `find_…`, `get_…`, `list_…` and `search_…` tools run on their own, and never one whose name says it sends) and the plugin's guide for the builder. Updating the plugin refreshes them and keeps the tools you relaxed; removing it signs out (tokens revoked) and removes the server. The Plugins page marks such plugins "MCP server", and the plugin's templates show on the New agent screen.
-- **Per-tool approvals for every MCP server**: the server card lists which tools ask first and lets you change that per tool.
+- **Start an agent when something happens**: plugins can offer events, and an agent can run on one. Pick it on the agent's Schedule screen under **Also run on an event**, for example "Meeting Notes: When a meeting is recorded" from the new Meeting Notes plugin. Picking an event activates the agent; the app watches for events in the background.
+- **Bahasa Indonesia**: the whole app, the tray menu and notifications are in English or Bahasa Indonesia. It follows your system language at first and can be switched in Settings > General > Language or with the EN / ID toggle on the first Welcome screen.
+- **Sign in to MCP servers with your account (OAuth)**: a server reached by web address can use "Sign in with my account" next to a token or no sign-in. Graphrt opens your browser, keeps the tokens in the system keychain, refreshes them on its own, and asks you to sign in again when needed. **Sign out** revokes them.
+- **Plugins that add an online service**: installing a plugin such as Upwork adds its MCP server to Connections > MCP servers with safe approval rules (for Upwork, only tools that look things up run without asking, never one that sends). Removing the plugin signs out and removes the server.
+- **Choose which MCP tools ask first**: every MCP server card lists its tools and lets you change, per tool, whether it asks before it runs.
+- **Chatbot replies appear while they are written**: in Try it and in the chat view the bot's answer grows word by word instead of showing up only when it is finished.
+
+### Changed
+
+- **Runs page redesign**: the full width table shows where each run ran, a clear status, who started it and how long it took. One toolbar filters by status (with counts), agent and place, a Today summary shows runs, done, failed and waiting, and empty pages say what to do next.
+- **Home on a fresh install**: "What should your agent do?" is now the main box, with six templates under it and a Getting started stepper across the top.
+- **Knowledge page**: one **Add knowledge** card for files, a folder or a website, followed by your knowledge bases and search.
+- **Plugins page** loads more plugins as you scroll, and the sidebar has icons.
+
+### Fixed
+
+- The Connect step of the first-run setup no longer shows a stray amber dot before its warnings.
+- Windows builds and tests pass again (line endings, Windows-only checks).
 
 ## [0.1.8] - 2026-11-24
 
@@ -722,7 +741,8 @@ connected to the graphrt runtime**, so no agent actually runs.
 - The mobile companion screens from the design are not built.
 - macOS builds are unsigned.
 
-[Unreleased]: https://github.com/Graphrt/graphrt-builder-desktop/compare/v0.1.8...HEAD
+[Unreleased]: https://github.com/Graphrt/graphrt-builder-desktop/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Graphrt/graphrt-builder-desktop/compare/v0.1.8...v0.2.0
 [0.1.8]: https://github.com/Graphrt/graphrt-builder-desktop/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/Graphrt/graphrt-builder-desktop/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/Graphrt/graphrt-builder-desktop/compare/v0.1.5...v0.1.6
