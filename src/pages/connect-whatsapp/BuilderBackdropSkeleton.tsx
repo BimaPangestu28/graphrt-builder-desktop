@@ -1,4 +1,5 @@
 import { LogoMark } from '@/components/ui'
+import { messages } from '@/i18n'
 
 /** Dimmed, decorative outline of the builder that sits behind the dialog. */
 export function BuilderBackdropSkeleton() {
@@ -7,7 +8,7 @@ export function BuilderBackdropSkeleton() {
       <div aria-hidden="true" className="box-border flex flex-[1_1_232px] flex-col gap-[18px] px-3.5 py-5">
         <div className="flex items-center gap-2.5 px-1.5">
           <LogoMark size={28} />
-          <span className="text-[18px] font-bold">graphrt</span>
+          <span className="text-[18px] font-bold">{messages().chatbot.graphrt}</span>
         </div>
         <div className="h-10 rounded-[10px] bg-ink" />
         <div className="h-[120px] rounded-[10px] bg-selected" />

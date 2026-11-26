@@ -5,12 +5,13 @@ import { PluginConfigForm, type PluginConfigField } from '../plugins/PluginConfi
 import { PluginInstallStepBody, PluginTrustStepBody } from './PluginSetupParts'
 import { SetupStep } from './SetupStep'
 import { useBusinessConnectionCheck, whatsAppApiPluginName } from './useWhatsAppActions'
+import { messages } from '@/i18n'
+import { withLocalizedLabels } from '@/i18n/localized'
 
 /** The two settings screen 05 asks for; the others keep their defaults (on the whatsapp-api plugin page). */
-const credentialFields = [
-  { variable: 'WHATSAPP_ACCESS_TOKEN', label: 'Access token' },
-  { variable: 'WHATSAPP_PHONE_NUMBER_ID', label: 'Phone number ID' },
-]
+const credentialFields = withLocalizedLabels([{ variable: 'WHATSAPP_ACCESS_TOKEN' }, { variable: 'WHATSAPP_PHONE_NUMBER_ID' }], (field) =>
+  field.variable === 'WHATSAPP_ACCESS_TOKEN' ? messages().chatbot.accessToken : messages().chatbot.phoneNumberId,
+)
 
 function listCredentialFields(installedPlugin: InstalledPlugin): PluginConfigField[] {
   return credentialFields.map((field) => ({
@@ -23,20 +24,20 @@ function ConnectionCheck() {
   const { isChecking, result, checkConnection } = useBusinessConnectionCheck()
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-[13px] text-body">Asks WhatsApp for your business profile with the token and phone number ID</span>
+      <span className="text-[13px] text-body">{messages().chatbot.asksWhatsappForYourBusinessProfile}</span>
       <span>
         <Button size="sm" disabled={isChecking} onClick={() => void checkConnection()}>
-          {isChecking ? 'Checking…' : 'Check connection'}
+          {isChecking ? messages().chatbot.checking : messages().chatbot.checkConnection}
         </Button>
       </span>
       {result?.kind === 'connected' && (
         <p role="status" className="m-0 text-[13px] font-medium text-ok-strong">
-          Connected to WhatsApp Business{result.businessName ? ` as ${result.businessName}` : ''}
+          {messages().chatbot.connectedToWhatsappBusiness}{result.businessName ? ` as ${result.businessName}` : ''}
         </p>
       )}
       {result?.kind === 'failed' && (
         <p role="alert" className="m-0 text-[13px] text-danger">
-          Could not connect: {result.message}
+          {messages().chatbot.couldNotConnect}{' '}{result.message}
         </p>
       )}
     </div>
@@ -54,17 +55,17 @@ export function BusinessApiSetup({ plugins }: { plugins: PluginsState }) {
   const hasCredentials = fields.length > 0 && fields.every((field) => field.configured)
 
   return (
-    <ol aria-label="Set up WhatsApp Business" className="m-0 flex list-none flex-col gap-4 p-0">
-      <SetupStep number={1} title={`Install the ${findInventoryDisplayName(plugins.data, whatsAppApiPluginName)} plugin`} isDone={installedPlugin !== null}>
+    <ol aria-label={messages().chatbot.setUpWhatsappBusiness} className="m-0 flex list-none flex-col gap-4 p-0">
+      <SetupStep number={1} title={messages().chatbot.installTheInventorydisplaynamePlugin(findInventoryDisplayName(plugins.data, whatsAppApiPluginName))} isDone={installedPlugin !== null}>
         <PluginInstallStepBody plugins={plugins} pluginName={whatsAppApiPluginName} />
       </SetupStep>
-      <SetupStep number={2} title="Trust the plugin" isDone={isTrusted}>
+      <SetupStep number={2} title={messages().chatbot.trustThePlugin} isDone={isTrusted}>
         {installedPlugin && <PluginTrustStepBody plugins={plugins} installedPlugin={installedPlugin} />}
       </SetupStep>
-      <SetupStep number={3} title="Add your access token and phone number ID" isDone={hasCredentials}>
+      <SetupStep number={3} title={messages().chatbot.addYourAccessTokenAndPhone} isDone={hasCredentials}>
         {installedPlugin && isTrusted && (
           <>
-            <span className="text-[13px] text-body">Find both in Meta for Developers under WhatsApp, API setup</span>
+            <span className="text-[13px] text-body">{messages().chatbot.findBothInMetaForDevelopers}</span>
             <PluginConfigForm
               pluginLabel={findInventoryDisplayName(plugins.data, whatsAppApiPluginName)}
               fields={fields}
@@ -74,7 +75,7 @@ export function BusinessApiSetup({ plugins }: { plugins: PluginsState }) {
           </>
         )}
       </SetupStep>
-      <SetupStep number={4} title="Check the connection" isDone={false}>
+      <SetupStep number={4} title={messages().chatbot.checkTheConnection} isDone={false}>
         {isTrusted && hasCredentials && <ConnectionCheck />}
       </SetupStep>
     </ol>

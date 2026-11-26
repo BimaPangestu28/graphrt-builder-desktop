@@ -6,6 +6,7 @@ import { knowledgeDetailPath, routePaths } from '@/routes'
 import { SectionHeading, compactButtonClassNames, fieldControlClassNames } from '../knowledge/FormControls'
 import { SourceTypeTile, detectSourceType } from '../knowledge/SourceTypeTile'
 import { listRowClassNames } from './ChatbotSetupSections'
+import { messages } from '@/i18n'
 
 /**
  * Knowledge of the chatbot setup (screen 14): the knowledge bases the bot answers from,
@@ -16,11 +17,11 @@ import { listRowClassNames } from './ChatbotSetupSections'
 function describeSource(source: KnowledgeSource): { text: string; isProgress: boolean } {
   switch (source.status) {
     case 'indexed':
-      return { text: `${source.passageCount} passages · ready`, isProgress: false }
+      return { text: messages().chatbot.passagecountPassagesReady(source.passageCount), isProgress: false }
     case 'failed':
-      return { text: source.statusMessage ?? 'Could not be read', isProgress: false }
+      return { text: source.statusMessage ?? messages().chatbot.couldNotBeRead, isProgress: false }
     default:
-      return { text: 'Reading…', isProgress: true }
+      return { text: messages().chatbot.reading, isProgress: true }
   }
 }
 
@@ -43,11 +44,11 @@ function AttachedKnowledgeBase({ detail, isBusy, onDetach }: { detail: Knowledge
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
         <Link to={knowledgeDetailPath(knowledgeBase.id)} className="text-[13px] font-medium">
-          {knowledgeBase.name} · Manage
+          {knowledgeBase.name} {messages().chatbot.manage}
         </Link>
         <button
           type="button"
-          aria-label={`Remove ${knowledgeBase.name}`}
+          aria-label={messages().chatbot.removeName(knowledgeBase.name)}
           disabled={isBusy}
           onClick={onDetach}
           className="size-8 cursor-pointer rounded-lg border-0 bg-transparent text-muted hover:bg-chip"
@@ -56,7 +57,7 @@ function AttachedKnowledgeBase({ detail, isBusy, onDetach }: { detail: Knowledge
         </button>
       </div>
       {sources.length === 0 ? (
-        <p className="m-0 text-[13px] text-muted">No files or links in it yet</p>
+        <p className="m-0 text-[13px] text-muted">{messages().chatbot.noFilesOrLinksInIt}</p>
       ) : (
         <ul className="m-0 list-none rounded-xl border border-line p-0">
           {sources.map((source, index) => (
@@ -73,7 +74,7 @@ function AttachForm({ available, isBusy, onAttach, onCancel }: { available: Know
   if (available.length === 0) {
     return (
       <p className="m-0 text-[13px] text-muted">
-        No other knowledge bases yet. <Link to={routePaths.knowledge}>Create one in Knowledge</Link>
+        {messages().chatbot.noOtherKnowledgeBasesYet}{' '}<Link to={routePaths.knowledge}>{messages().chatbot.createOneInKnowledge}</Link>
       </p>
     )
   }
@@ -84,7 +85,7 @@ function AttachForm({ available, isBusy, onAttach, onCancel }: { available: Know
   return (
     <form onSubmit={submit} className="flex flex-wrap items-center gap-2">
       <label className="flex flex-auto flex-col gap-1.5">
-        <span className="text-[12px] font-medium text-ink-2">Knowledge base</span>
+        <span className="text-[12px] font-medium text-ink-2">{messages().chatbot.knowledgeBase}</span>
         <select value={chosenId} onChange={(event) => setChosenId(event.target.value)} className={joinClassNames(fieldControlClassNames, 'px-2.5')}>
           {available.map((knowledgeBase) => (
             <option key={knowledgeBase.id} value={knowledgeBase.id}>
@@ -95,10 +96,10 @@ function AttachForm({ available, isBusy, onAttach, onCancel }: { available: Know
       </label>
       <div className="flex gap-2 self-end">
         <button type="submit" disabled={isBusy} className={compactButtonClassNames('primary')}>
-          Use it
+          {messages().chatbot.useIt}
         </button>
         <button type="button" onClick={onCancel} className={compactButtonClassNames('secondary')}>
-          Cancel
+          {messages().chatbot.cancel}
         </button>
       </div>
     </form>
@@ -118,8 +119,8 @@ export function KnowledgeSection({ attached, available, isBusy, onAttach, onDeta
   const [isPicking, setIsPicking] = useState(false)
   return (
     <section aria-labelledby="k-h" className="flex flex-col gap-3">
-      <SectionHeading id="k-h">Knowledge</SectionHeading>
-      {attached.length === 0 && <p className="m-0 text-[13px] text-muted">The chatbot does not answer from any knowledge yet</p>}
+      <SectionHeading id="k-h">{messages().chatbot.knowledge}</SectionHeading>
+      {attached.length === 0 && <p className="m-0 text-[13px] text-muted">{messages().chatbot.theChatbotDoesNotAnswerFrom}</p>}
       {attached.map((detail) => (
         <AttachedKnowledgeBase key={detail.knowledgeBase.id} detail={detail} isBusy={isBusy} onDetach={() => onDetach(detail.knowledgeBase.id)} />
       ))}
@@ -139,7 +140,7 @@ export function KnowledgeSection({ attached, available, isBusy, onAttach, onDeta
           onClick={() => setIsPicking(true)}
           className="h-12 cursor-pointer rounded-xl border border-dashed border-line-heavy bg-subtle text-[14px] font-medium text-ink-2 hover:bg-canvas"
         >
-          Add a knowledge base
+          {messages().chatbot.addAKnowledgeBase}
         </button>
       )}
     </section>

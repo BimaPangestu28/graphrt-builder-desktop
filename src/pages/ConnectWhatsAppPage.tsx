@@ -10,6 +10,7 @@ import { BusinessApiSetup } from './connect-whatsapp/BusinessApiSetup'
 import { PersonalWhatsAppSetup } from './connect-whatsapp/PersonalWhatsAppSetup'
 import { WhatsAppOptionPicker, type WhatsAppConnectionOption } from './connect-whatsapp/WhatsAppOptionPicker'
 import { LockIcon } from './agent-builder/LockIcon'
+import { messages } from '@/i18n'
 
 /** The chosen option's setup steps, both backed by graphrt plugins. */
 function SelectedOptionSetup({ selectedOption }: { selectedOption: WhatsAppConnectionOption | null }) {
@@ -20,7 +21,7 @@ function SelectedOptionSetup({ selectedOption }: { selectedOption: WhatsAppConne
   return (
     <div className="flex items-center gap-2 text-[13px] text-ink-2">
       <LockIcon />
-      Tokens stay in {getCredentialStoreName()} and the WhatsApp session stays on this computer
+      {messages().chatbot.tokensStayIn}{' '}{getCredentialStoreName()} {messages().chatbot.andTheWhatsappSessionStaysOn}
     </div>
   )
 }
@@ -61,12 +62,12 @@ export function ConnectWhatsAppPage() {
         >
           <div className="flex items-start justify-between gap-3">
             <h2 id="wa-title" className="m-0 text-[24px] font-semibold">
-              Connect WhatsApp
+              {messages().chatbot.connectWhatsapp}
             </h2>
             <button
               ref={closeButtonRef}
               type="button"
-              aria-label="Close"
+              aria-label={messages().chatbot.close}
               onClick={closeDialog}
               className="flex size-9 cursor-pointer items-center justify-center rounded-lg border-0 bg-canvas text-ink-2 hover:bg-selected"
             >

@@ -21,8 +21,8 @@ export function PluginSessionLinkAction({ label, onSessionChange }: PluginSessio
     <span className="flex flex-col items-end gap-1.5">
       <span className="flex flex-wrap items-center justify-end gap-2">
         <Badge tone="amber">{messages().builder.notLinked}</Badge>
-        <Button size="sm" aria-label={messages().builder.linkwhatsappbuttonlabelForLabel(linkWhatsAppButtonLabel, label)} disabled={session.pendingAction !== null} onClick={() => void session.showQrCode()}>
-          {isLinking ? messages().builder.waitingForScan : linkWhatsAppButtonLabel}
+        <Button size="sm" aria-label={messages().builder.linkwhatsappbuttonlabelForLabel(linkWhatsAppButtonLabel(), label)} disabled={session.pendingAction !== null} onClick={() => void session.showQrCode()}>
+          {isLinking ? messages().builder.waitingForScan : linkWhatsAppButtonLabel()}
         </Button>
       </span>
       {session.errorMessage && (

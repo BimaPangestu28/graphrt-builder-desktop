@@ -12,6 +12,7 @@ import { KnowledgeSection } from './chatbot-setup/KnowledgeSection'
 import { TryItPanel } from './chatbot-setup/TryItPanel'
 import { useChatbotSetupForm, type ChatbotSetupForm } from './chatbot-setup/useChatbotSetupForm'
 import { compactButtonClassNames } from './knowledge/FormControls'
+import { messages } from '@/i18n'
 
 /** Chatbot opened when the URL names none (the sample "Catering assistant"). */
 const defaultChatbotId = 'catering-assistant'
@@ -27,18 +28,18 @@ function ChatbotSetupHeader({ agent, onToggleLive, isSaving }: ChatbotSetupHeade
   return (
     <header className="box-border flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-line px-6 py-3">
       <div className="flex items-center gap-2.5">
-        <h1 className="m-0 text-[16px] font-semibold">{agent?.name ?? 'Chatbot'}</h1>
-        <span className="rounded-full bg-brand-soft px-2 py-[3px] text-[12px] font-semibold text-brand-strong">Chatbot</span>
+        <h1 className="m-0 text-[16px] font-semibold">{agent?.name ?? messages().chatbot.chatbot}</h1>
+        <span className="rounded-full bg-brand-soft px-2 py-[3px] text-[12px] font-semibold text-brand-strong">{messages().chatbot.chatbot}</span>
         <span role="status" className={joinClassNames('rounded-full px-2 py-[3px] text-[12px] font-medium', isLive ? 'bg-ok-soft text-ok-strong' : 'bg-selected text-ink-2')}>
-          {isLive ? 'Live' : agent?.status === 'paused' ? 'Paused' : 'Not live yet'}
+          {isLive ? messages().chatbot.live : agent?.status === 'paused' ? messages().chatbot.paused : messages().chatbot.notLiveYet}
         </span>
       </div>
       <div className="flex gap-2">
         <Link to={agentPath('builder', agent?.id ?? defaultChatbotId)} className={compactButtonClassNames('secondary')}>
-          Open steps
+          {messages().chatbot.openSteps}
         </Link>
         <button type="button" onClick={onToggleLive} disabled={!agent || isSaving} className={compactButtonClassNames('primary')}>
-          {isLive ? 'Pause' : 'Go live'}
+          {isLive ? messages().chatbot.pause : messages().chatbot.goLive}
         </button>
       </div>
     </header>
@@ -47,14 +48,14 @@ function ChatbotSetupHeader({ agent, onToggleLive, isSaving }: ChatbotSetupHeade
 
 function SaveBar({ form }: { form: ChatbotSetupForm }) {
   const status = form.hasJustSaved
-    ? 'Saved · the bot uses it from its next reply'
+    ? messages().chatbot.savedTheBotUsesItFrom
     : form.savedSetup?.isSaved === false
-      ? 'Not saved yet · until then the bot follows its steps as built'
+      ? messages().chatbot.notSavedYetUntilThenThe
       : null
   return (
     <div className="flex flex-wrap items-center gap-3">
       <button type="submit" disabled={!form.isDirty || form.isBusy} className={compactButtonClassNames('primary')}>
-        {form.isBusy ? 'Saving…' : 'Save changes'}
+        {form.isBusy ? messages().chatbot.saving : messages().chatbot.saveChanges}
       </button>
       {status && (
         <span role="status" className="text-[13px] text-muted">
@@ -67,7 +68,7 @@ function SaveBar({ form }: { form: ChatbotSetupForm }) {
 
 function ChatbotSetupFormView({ form }: { form: ChatbotSetupForm }) {
   const { draft, savedSetup } = form
-  if (!draft || !savedSetup) return form.error ? null : <p className="m-0 text-muted">Loading the setup…</p>
+  if (!draft || !savedSetup) return form.error ? null : <p className="m-0 text-muted">{messages().chatbot.loadingTheSetup}</p>
   const toggleChannel = (channelId: string, isEnabled: boolean) => {
     const others = draft.disabledChannels.filter((disabledId) => disabledId !== channelId)
     form.setDraft({ ...draft, disabledChannels: isEnabled ? others : [...others, channelId] })
@@ -139,7 +140,7 @@ export function ChatbotSetupPage() {
             )}
             <ChatbotSetupFormView form={form} />
           </form>
-          <TrustedHostsSection agentId={agentId} note="A chat cannot stop to ask you, so the chatbot can look things up only on these sites." />
+          <TrustedHostsSection agentId={agentId} note={messages().chatbot.aChatCannotStopToAsk} />
         </div>
         <TryItPanel agentId={agentId} />
       </div>
