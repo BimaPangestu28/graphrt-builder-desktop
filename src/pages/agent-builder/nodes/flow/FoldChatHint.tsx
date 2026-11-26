@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Icon } from '@/components/ui'
+import { messages } from '@/i18n'
 
 /**
  * A one-click hint over a narrow canvas (the chat open beside a small window): fold the
@@ -10,11 +11,11 @@ export function FoldChatHint({ onFoldChat, isTight = false }: { onFoldChat: () =
   if (isDismissed) return null
   return (
     <div role="note" className="nodrag nopan absolute top-3 right-3 z-10 flex items-center gap-1 whitespace-nowrap rounded-full border border-line bg-surface py-0.5 pr-0.5 pl-3 text-[12px] text-ink-2 shadow-sm">
-      {!isTight && <span>Short on room?</span>}
+      {!isTight && <span>{messages().nodes.shortOnRoom}</span>}
       <button type="button" onClick={onFoldChat} className="h-6 cursor-pointer rounded-full border-0 bg-transparent px-2 text-[12px] font-semibold text-brand hover:bg-subtle hover:text-brand-strong">
-        Fold the chat
+        {messages().nodes.foldTheChat}
       </button>
-      <button type="button" aria-label="Hide this hint" onClick={() => setIsDismissed(true)} className="flex size-6 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-muted hover:bg-subtle hover:text-ink">
+      <button type="button" aria-label={messages().nodes.hideThisHint} onClick={() => setIsDismissed(true)} className="flex size-6 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-muted hover:bg-subtle hover:text-ink">
         <Icon name="close" size={11} />
       </button>
     </div>

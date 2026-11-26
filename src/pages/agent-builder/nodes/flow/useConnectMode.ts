@@ -5,6 +5,7 @@ import { reconnectGraphEdge, removeGraphEdges } from '../graphEdits'
 import { describeNodeList } from './canvasCommands'
 import type { Connection, OnConnectStartParams } from './flowLibrary'
 import type { StepFlowEdge } from './toFlowElements'
+import { messages } from '@/i18n'
 
 /**
  * Drawing arrows on the Nodes canvas: by dragging from a port, or from the keyboard (Enter
@@ -67,7 +68,7 @@ export function useConnectMode({ graph, readOnly, canEdit, onConnect, onApplyEdi
         return
       }
       onConnect({ source: ends.source, sourceHandle: ends.sourceHandle || SOURCE_HANDLE, target: ends.target })
-      announce(`Connected ${describeNodeList(graph, [ends.source])} to ${describeNodeList(graph, [ends.target])}`)
+      announce(messages().nodes.connectedNodelistToNodelist22(describeNodeList(graph, [ends.source]), describeNodeList(graph, [ends.target])))
     },
     [readOnly, onConnect, graph, announce],
   )
@@ -76,7 +77,7 @@ export function useConnectMode({ graph, readOnly, canEdit, onConnect, onApplyEdi
     (nodeId: string, handleId: string) => {
       if (readOnly || !onConnect) return
       setConnectingFrom({ nodeId, handleId, viaKeyboard: true })
-      announce('Choose the step to connect to: Tab to it and press Enter. Esc cancels')
+      announce(messages().nodes.chooseTheStepToConnectTo)
     },
     [readOnly, onConnect, announce],
   )
@@ -91,7 +92,7 @@ export function useConnectMode({ graph, readOnly, canEdit, onConnect, onApplyEdi
   function cancelConnect(): boolean {
     if (!connectingFrom) return false
     setConnectingFrom(null)
-    announce('Stopped connecting')
+    announce(messages().nodes.stoppedConnecting)
     return true
   }
 
@@ -108,7 +109,7 @@ export function useConnectMode({ graph, readOnly, canEdit, onConnect, onApplyEdi
       announce(check.reason)
       return
     }
-    onApplyEdit?.((current) => reconnectGraphEdge(current, oldEdge.id, ends), `moved the arrow from ${describeNodeList(graph, [ends.source])}`)
+    onApplyEdit?.((current) => reconnectGraphEdge(current, oldEdge.id, ends), messages().nodes.movedTheArrowFromNodelist(describeNodeList(graph, [ends.source])))
   }
 
   return {

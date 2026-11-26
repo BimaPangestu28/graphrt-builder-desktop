@@ -1,6 +1,7 @@
 import { ApprovalCard } from '@/pages/agent-run/ApprovalCard'
 import type { RunOverlayProps } from './contracts'
 import { RunCanvasStyles } from './run/RunCanvasStyles'
+import { messages } from '@/i18n'
 
 const noEdgeStates = {}
 
@@ -19,10 +20,10 @@ export function RunOverlay({ live, problems = [] }: RunOverlayProps) {
     <>
       <RunCanvasStyles edgeStates={runState?.edges ?? noEdgeStates} problems={problems} />
       {approval && (
-        <div role="dialog" aria-label="Review" className="absolute top-3 right-3 z-20 flex max-h-[calc(100%-24px)] w-[min(420px,calc(100%-24px))] flex-col gap-2 overflow-y-auto">
+        <div role="dialog" aria-label={messages().nodes.review} className="absolute top-3 right-3 z-20 flex max-h-[calc(100%-24px)] w-[min(420px,calc(100%-24px))] flex-col gap-2 overflow-y-auto">
           <div className="flex justify-end">
             <button type="button" onClick={() => setReviewNodeId(null)} className="cursor-pointer rounded-md border border-line-strong bg-surface px-2 py-0.5 text-[12px] text-ink hover:bg-subtle">
-              Close
+              {messages().nodes.close}
             </button>
           </div>
           <ApprovalCard

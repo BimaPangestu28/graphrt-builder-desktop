@@ -1,4 +1,5 @@
 import type { GraphNode, JsonValue, NodeConfig } from '@/api/agentGraphTypes'
+import { messages as currentMessages } from '@/i18n'
 
 /**
  * What a node card shows under its title (spec N1 anatomy): the setting that matters
@@ -132,7 +133,7 @@ export function describeNodePreview(node: GraphNode, nodesById: NodeLookup): Pre
   switch (node.kind) {
     case 'start': {
       const variables = titlesOf(config.variables, ['label', 'variable'])
-      return variables.length > 0 ? variables.flatMap((label, index) => [...(index > 0 ? [{ kind: 'text' as const, text: ' ' }] : []), { kind: 'reference' as const, text: label.toLowerCase() }]) : [{ kind: 'text', text: 'No inputs yet' }]
+      return variables.length > 0 ? variables.flatMap((label, index) => [...(index > 0 ? [{ kind: 'text' as const, text: ' ' }] : []), { kind: 'reference' as const, text: label.toLowerCase() }]) : [{ kind: 'text', text: currentMessages().nodes.noInputsYet }]
     }
     case 'llm':
     case 'agent':
@@ -149,7 +150,7 @@ export function describeNodePreview(node: GraphNode, nodesById: NodeLookup): Pre
     }
     case 'if-else': {
       const caseCount = asList(config.cases).length || (config.conditions ? 1 : 0)
-      return [{ kind: 'text', text: caseCount === 1 ? '1 case, else the Else port' : `${caseCount} cases, else the Else port` }]
+      return [{ kind: 'text', text: caseCount === 1 ? currentMessages().nodes.n1CaseElseTheElsePort : currentMessages().nodes.casecountCasesElseTheElsePort(caseCount) }]
     }
     case 'question-classifier': {
       const classes = titlesOf(config.classes, ['name', 'label', 'id'])
@@ -157,11 +158,11 @@ export function describeNodePreview(node: GraphNode, nodesById: NodeLookup): Pre
     }
     case 'iteration': {
       const segments = selectorReference(config.iterator_selector, nodesById)
-      if (segments.length > 0) pushText(segments, config.is_parallel ? ' · in parallel' : ' · one at a time')
+      if (segments.length > 0) pushText(segments, config.is_parallel ? currentMessages().nodes.inParallel : currentMessages().nodes.oneAtATime)
       return segments
     }
     case 'loop':
-      return [{ kind: 'text', text: `Up to ${typeof config.loop_count === 'number' ? config.loop_count : 1} rounds` }]
+      return [{ kind: 'text', text: currentMessages().nodes.upToRounds(typeof config.loop_count === 'number' ? config.loop_count : 1) }]
     case 'http-request': {
       const method = typeof config.method === 'string' ? config.method.toUpperCase() : 'GET'
       return typeof config.url === 'string' ? [{ kind: 'text', text: `${method} ` }, ...templateSegments(config.url, nodesById, 60)] : []
@@ -187,15 +188,15 @@ export function formatDuration(milliseconds: number): string {
   const seconds = milliseconds / 1000
   if (seconds < 60) return `${Number.isInteger(seconds) ? seconds : seconds.toFixed(1)} s`
   const minutes = seconds / 60
-  return `${Number.isInteger(minutes) ? minutes : minutes.toFixed(1)} min`
+  return currentMessages().nodes.valueMin(Number.isInteger(minutes) ? minutes : minutes.toFixed(1))
 }
 
 /** Retry N×, Error path / Fallback values, timeout (spec B3 node badges). */
 export function describeNodeBadges(node: Pick<GraphNode, 'retry' | 'onError' | 'timeoutMs'>): NodeBadge[] {
   const badges: NodeBadge[] = []
-  if (node.retry.maxRetries > 0) badges.push({ key: 'retry', label: `Retry ${node.retry.maxRetries}×`, tone: 'neutral' })
-  if (node.onError.strategy === 'fail-branch') badges.push({ key: 'error-path', label: 'Error path', tone: 'danger' })
-  if (node.onError.strategy === 'default-value') badges.push({ key: 'fallback', label: 'Fallback values', tone: 'neutral' })
+  if (node.retry.maxRetries > 0) badges.push({ key: 'retry', label: currentMessages().nodes.retryMaxretries(node.retry.maxRetries), tone: 'neutral' })
+  if (node.onError.strategy === 'fail-branch') badges.push({ key: 'error-path', label: currentMessages().nodes.errorPath, tone: 'danger' })
+  if (node.onError.strategy === 'default-value') badges.push({ key: 'fallback', label: currentMessages().nodes.fallbackValues, tone: 'neutral' })
   if (node.timeoutMs !== null && node.timeoutMs > 0) badges.push({ key: 'timeout', label: formatDuration(node.timeoutMs), tone: 'neutral' })
   return badges
 }

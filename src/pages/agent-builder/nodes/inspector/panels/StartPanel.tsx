@@ -30,6 +30,7 @@ import {
   type InputUsage,
   type StartVariable,
 } from '../startInputs'
+import { messages } from '@/i18n'
 
 /**
  * Settings of the Start step: the inputs a person fills in when the agent runs (the
@@ -46,15 +47,15 @@ const iconButtonClassNames =
 
 /** "Used by 2 steps" / "Not used yet". */
 export function describeUsageCount(count: number): string {
-  if (count === 0) return 'Not used yet'
-  return `Used by ${count} ${count === 1 ? 'step' : 'steps'}`
+  if (count === 0) return messages().nodes.notUsedYet
+  return messages().nodes.usedBySteps(count)
 }
 
 /** "Search Google Maps and Write message" / "A, B and C". */
 function joinTitles(usages: InputUsage[]): string {
   const titles = usages.map((usage) => usage.title)
   if (titles.length <= 1) return titles[0] ?? ''
-  return `${titles.slice(0, -1).join(', ')} and ${titles.at(-1)}`
+  return messages().nodes.valueAndValue2(titles.slice(0, -1).join(', '), titles.at(-1))
 }
 
 interface RowEditing {
@@ -66,81 +67,81 @@ interface RowEditing {
 
 function DefaultValueField({ variable, index, editing }: { variable: StartVariable; index: number; editing: RowEditing }) {
   const type = variableTypeOf(variable)
-  const label = variableLabelOf(variable) || `input ${index + 1}`
+  const label = variableLabelOf(variable) || messages().nodes.inputValue(index + 1)
   const setDefault = (value: JsonValue | undefined) =>
     editing.edit((graph) => updateStartVariable(graph, editing.startId, index, (current) => {
       const next = { ...current }
       if (value === undefined) delete next.default
       else next.default = value
       return next
-    }), `set the default of ${label}`)
+    }), messages().nodes.setTheDefaultOfLabel(label))
   const current = variable.default
   switch (defaultControlFor(type)) {
     case 'none':
-      return <p className={hintClassName}>Files have no default: the person picks them when it runs.</p>
+      return <p className={hintClassName}>{messages().nodes.filesHaveNoDefaultThePerson}</p>
     case 'checkbox':
-      return <ToggleRow label="Checked by default" checked={current === true} disabled={editing.readOnly} onChange={(checked) => setDefault(checked)} />
+      return <ToggleRow label={messages().nodes.checkedByDefault} checked={current === true} disabled={editing.readOnly} onChange={(checked) => setDefault(checked)} />
     case 'number':
       return (
-        <Field label="Default value" hint="Used when it is left empty">
-          <NumberInput ariaLabel="Default value" wide value={typeof current === 'number' ? current : null} disabled={editing.readOnly} onCommit={(next) => setDefault(next ?? undefined)} />
+        <Field label={messages().nodes.defaultValue} hint={messages().nodes.usedWhenItIsLeftEmpty}>
+          <NumberInput ariaLabel={messages().nodes.defaultValue} wide value={typeof current === 'number' ? current : null} disabled={editing.readOnly} onCommit={(next) => setDefault(next ?? undefined)} />
         </Field>
       )
     case 'select':
       return (
-        <Field label="Default choice">
+        <Field label={messages().nodes.defaultChoice}>
           <SelectInput
-            ariaLabel="Default choice"
+            ariaLabel={messages().nodes.defaultChoice}
             value={typeof current === 'string' ? current : ''}
             disabled={editing.readOnly}
-            options={[{ value: '', label: 'No default' }, ...variableOptionsOf(variable).map((option) => ({ value: option, label: option }))]}
+            options={[{ value: '', label: messages().nodes.noDefault }, ...variableOptionsOf(variable).map((option) => ({ value: option, label: option }))]}
             onChange={(choice) => setDefault(choice === '' ? undefined : choice)}
           />
         </Field>
       )
     case 'textarea':
       return (
-        <Field label="Default value" hint="Used when it is left empty">
-          <TextArea ariaLabel="Default value" rows={2} value={typeof current === 'string' ? current : ''} disabled={editing.readOnly} onCommit={(text) => setDefault(text === '' ? undefined : text)} />
+        <Field label={messages().nodes.defaultValue} hint={messages().nodes.usedWhenItIsLeftEmpty}>
+          <TextArea ariaLabel={messages().nodes.defaultValue} rows={2} value={typeof current === 'string' ? current : ''} disabled={editing.readOnly} onCommit={(text) => setDefault(text === '' ? undefined : text)} />
         </Field>
       )
     case 'text':
       return (
-        <Field label="Default value" hint="Used when it is left empty">
-          <TextInput ariaLabel="Default value" value={typeof current === 'string' ? current : ''} disabled={editing.readOnly} onCommit={(text) => setDefault(text === '' ? undefined : text)} />
+        <Field label={messages().nodes.defaultValue} hint={messages().nodes.usedWhenItIsLeftEmpty}>
+          <TextInput ariaLabel={messages().nodes.defaultValue} value={typeof current === 'string' ? current : ''} disabled={editing.readOnly} onCommit={(text) => setDefault(text === '' ? undefined : text)} />
         </Field>
       )
     default:
-      return <JsonBox label="Default value" value={current} hint="JSON, used when it is left empty" onCommit={setDefault} />
+      return <JsonBox label={messages().nodes.defaultValue} value={current} hint={messages().nodes.jsonUsedWhenItIsLeft} onCommit={setDefault} />
   }
 }
 
 function ChoicesEditor({ variable, index, editing }: { variable: StartVariable; index: number; editing: RowEditing }) {
   const options = variableOptionsOf(variable)
-  const label = variableLabelOf(variable) || `input ${index + 1}`
+  const label = variableLabelOf(variable) || messages().nodes.inputValue(index + 1)
   const write = (next: string[], what: string) => editing.edit((graph) => updateStartVariable(graph, editing.startId, index, (current) => changeVariableOptions(current, next)), `${what} of ${label}`)
   const duplicates = options.filter((option, optionIndex) => options.indexOf(option) !== optionIndex)
   return (
-    <div role="group" aria-label="Choices" className="flex flex-col gap-1.5">
-      <span className="text-[12px] font-medium text-ink-2">Choices</span>
+    <div role="group" aria-label={messages().nodes.choices} className="flex flex-col gap-1.5">
+      <span className="text-[12px] font-medium text-ink-2">{messages().nodes.choices}</span>
       {options.map((option, optionIndex) => (
         <div key={optionIndex} className="flex items-center gap-1.5">
           <TextInput
-            ariaLabel={`Choice ${optionIndex + 1}`}
+            ariaLabel={messages().nodes.choiceValue(optionIndex + 1)}
             value={option}
             disabled={editing.readOnly}
             invalid={duplicates.includes(option)}
             onCommit={(text) => {
               const trimmed = text.trim()
-              write(trimmed === '' ? options.filter((_unused, itemIndex) => itemIndex !== optionIndex) : options.map((item, itemIndex) => (itemIndex === optionIndex ? trimmed : item)), 'changed the choices')
+              write(trimmed === '' ? options.filter((_unused, itemIndex) => itemIndex !== optionIndex) : options.map((item, itemIndex) => (itemIndex === optionIndex ? trimmed : item)), messages().nodes.changedTheChoices)
             }}
           />
-          <RemoveButton label={`Remove choice ${optionIndex + 1}`} disabled={editing.readOnly || options.length <= 1} onClick={() => write(options.filter((_unused, itemIndex) => itemIndex !== optionIndex), 'removed a choice')} />
+          <RemoveButton label={messages().nodes.removeChoiceValue(optionIndex + 1)} disabled={editing.readOnly || options.length <= 1} onClick={() => write(options.filter((_unused, itemIndex) => itemIndex !== optionIndex), messages().nodes.removedAChoice)} />
         </div>
       ))}
-      {duplicates.length > 0 && <p className="m-0 text-[12px] text-danger">Each choice needs a different text</p>}
-      <AddButton disabled={editing.readOnly} onClick={() => write([...options, `Option ${options.length + 1}`], 'added a choice')}>
-        Add a choice
+      {duplicates.length > 0 && <p className="m-0 text-[12px] text-danger">{messages().nodes.eachChoiceNeedsADifferentText}</p>}
+      <AddButton disabled={editing.readOnly} onClick={() => write([...options, messages().nodes.optionValue(options.length + 1)], messages().nodes.addedAChoice)}>
+        {messages().nodes.addAChoice}
       </AddButton>
     </div>
   )
@@ -154,10 +155,10 @@ function VariableNameField({ variable, index, otherNames, editing, startId }: { 
   const problem = validateVariableName(draft, otherNames)
   const commit = () => {
     if (draft === name || problem) return
-    editing.edit((graph) => renameStartVariable(graph, editing.startId, index, draft), `renamed input ${name || index + 1} to ${draft}`)
+    editing.edit((graph) => renameStartVariable(graph, editing.startId, index, draft), messages().nodes.renamedInputValueToDraft(name || index + 1, draft))
   }
   return (
-    <Field label="Variable name" htmlFor={id} error={draft !== name ? problem : null} hint={<>Steps read it as <code className="font-mono text-[11px]">{formatReference([startId, problem ? name : draft])}</code>; renaming updates them</>}>
+    <Field label={messages().nodes.variableName} htmlFor={id} error={draft !== name ? problem : null} hint={<>{messages().nodes.stepsReadItAs}{' '}<code className="font-mono text-[11px]">{formatReference([startId, problem ? name : draft])}</code>{messages().nodes.renamingUpdatesThem}</>}>
       <input
         id={id}
         type="text"
@@ -182,16 +183,16 @@ function VariableNameField({ variable, index, otherNames, editing, startId }: { 
 
 function DeleteWarning({ label, usages, onDelete, onKeep }: { label: string; usages: InputUsage[]; onDelete: () => void; onKeep: () => void }) {
   return (
-    <div role="alertdialog" aria-label={`Delete ${label}?`} className="flex flex-col gap-2 rounded-lg border border-amber-line-2 bg-amber-tint px-2.5 py-2 text-[12px] leading-normal text-amber-deep">
+    <div role="alertdialog" aria-label={messages().nodes.deleteLabel(label)} className="flex flex-col gap-2 rounded-lg border border-amber-line-2 bg-amber-tint px-2.5 py-2 text-[12px] leading-normal text-amber-deep">
       <p className="m-0">
-        <b className="font-semibold">{joinTitles(usages)}</b> {usages.length === 1 ? 'uses' : 'use'} this input. Deleting it leaves {usages.length === 1 ? 'that step' : 'those steps'} reading an empty value.
+        <b className="font-semibold">{joinTitles(usages)}</b> {usages.length === 1 ? 'uses' : 'use'} {messages().nodes.thisInputDeletingItLeaves}{' '}{usages.length === 1 ? messages().nodes.thatStep : messages().nodes.thoseSteps} {messages().nodes.readingAnEmptyValue}
       </p>
       <div className="flex gap-2">
         <button type="button" onClick={onKeep} autoFocus className="h-7 cursor-pointer rounded-md border border-line-strong bg-surface px-2.5 text-[12px] font-medium text-ink hover:bg-subtle">
-          Keep it
+          {messages().nodes.keepIt}
         </button>
         <button type="button" onClick={onDelete} className="h-7 cursor-pointer rounded-md border-0 bg-danger px-2.5 text-[12px] font-medium text-white hover:opacity-90">
-          Delete anyway
+          {messages().nodes.deleteAnyway}
         </button>
       </div>
     </div>
@@ -252,9 +253,9 @@ function ReorderHandle({ row, count, rowActions }: { row: RowContext; count: num
       draggable={!editing.readOnly}
       disabled={editing.readOnly}
       data-reorder-handle={index}
-      aria-label={`Reorder ${label}`}
+      aria-label={messages().nodes.reorderLabel(label)}
       aria-keyshortcuts="ArrowUp ArrowDown"
-      title="Drag to reorder (or use the arrow keys)"
+      title={messages().nodes.dragToReorderOrUseThe}
       onKeyDown={handleKeyDown}
       onDragStart={(event) => rowActions.dragStart(index, event)}
       onDragEnd={rowActions.dragEnd}
@@ -275,12 +276,12 @@ function InputTypeSelect({ row }: { row: RowContext }) {
   const typeOptions = [...startInputTypes.map((inputType) => ({ value: inputType.value, label: inputType.label })), ...(isKnownType ? [] : [{ value: type, label: describeStartInputType(type) }])]
   return (
     <SelectInput
-      ariaLabel={`Type of ${label}`}
+      ariaLabel={messages().nodes.typeOfLabel(label)}
       value={type}
       disabled={editing.readOnly}
       options={typeOptions}
       className="!w-[100px] shrink-0"
-      onChange={(nextType) => editing.edit((graph) => updateStartVariable(graph, editing.startId, index, (current) => changeVariableType(current, nextType)), `made ${label} a ${describeStartInputType(nextType).toLowerCase()} input`)}
+      onChange={(nextType) => editing.edit((graph) => updateStartVariable(graph, editing.startId, index, (current) => changeVariableType(current, nextType)), messages().nodes.madeLabelALowercaseInput(label, describeStartInputType(nextType).toLowerCase()))}
     />
   )
 }
@@ -293,16 +294,16 @@ function StartInputHeader({ row, count, isExpanded, detailsId, rowActions }: { r
     <div className="flex items-center gap-1">
       <ReorderHandle row={row} count={count} rowActions={rowActions} />
       <TextInput
-        ariaLabel={`Label of input ${index + 1}`}
+        ariaLabel={messages().nodes.labelOfInputValue(index + 1)}
         value={typeof variable.label === 'string' ? variable.label : ''}
-        placeholder="Label, e.g. Area to search"
+        placeholder={messages().nodes.labelEGAreaToSearch}
         disabled={editing.readOnly}
-        onCommit={(text) => editing.edit((graph) => relabelStartVariable(graph, editing.startId, index, text.trim()), `relabelled input ${name || index + 1}`)}
+        onCommit={(text) => editing.edit((graph) => relabelStartVariable(graph, editing.startId, index, text.trim()), messages().nodes.relabelledInputValue(name || index + 1))}
       />
       <InputTypeSelect row={row} />
       <button
         type="button"
-        aria-label={`${isExpanded ? 'Hide' : 'Show'} options of ${label}`}
+        aria-label={messages().nodes.toggleOptions(isExpanded, label)}
         aria-expanded={isExpanded}
         aria-controls={detailsId}
         onClick={() => rowActions.toggleExpanded(index)}
@@ -324,23 +325,23 @@ function StartInputSummary({ row, usages, rowActions }: { row: RowContext; usage
           type="checkbox"
           checked={variable.required === true}
           disabled={editing.readOnly}
-          aria-label={`${label} is required`}
+          aria-label={messages().nodes.labelIsRequired(label)}
           onChange={(event) =>
             editing.edit((graph) => updateStartVariable(graph, editing.startId, index, (current) => ({ ...current, required: event.target.checked })), `${event.target.checked ? 'required' : 'made optional'} ${label}`)
           }
           className="h-[14px] w-[14px] cursor-pointer accent-ink"
         />
-        Required
+        {messages().nodes.required2}
       </label>
       <span className={joinClassNames('min-w-0 flex-1 truncate text-[12px]', usages.length > 0 ? 'text-ink-2' : 'text-muted')} title={usages.length > 0 ? joinTitles(usages) : undefined}>
         {describeUsageCount(usages.length)}
       </span>
-      <button type="button" aria-label={`Duplicate ${label}`} title="Duplicate" disabled={editing.readOnly} onClick={() => rowActions.duplicate(index)} className={joinClassNames(iconButtonClassNames, 'size-6')}>
+      <button type="button" aria-label={messages().nodes.duplicateLabel(label)} title={messages().nodes.duplicate} disabled={editing.readOnly} onClick={() => rowActions.duplicate(index)} className={joinClassNames(iconButtonClassNames, 'size-6')}>
         <StrokeIcon size={14}>
           <path d="M8 8h11v11H8zM5 16V5h11" />
         </StrokeIcon>
       </button>
-      <button type="button" aria-label={`Delete ${label}`} title="Delete" disabled={editing.readOnly} onClick={() => rowActions.requestDelete(index)} className={joinClassNames(iconButtonClassNames, 'size-6')}>
+      <button type="button" aria-label={messages().nodes.deleteLabel2(label)} title={messages().nodes.delete} disabled={editing.readOnly} onClick={() => rowActions.requestDelete(index)} className={joinClassNames(iconButtonClassNames, 'size-6')}>
         <Icon name="trash" size={14} />
       </button>
     </div>
@@ -358,15 +359,15 @@ function withMaxLength(variable: StartVariable, maxLength: number | null): Start
 function MaxLengthField({ row }: { row: RowContext }) {
   const { variable, index, label, editing } = row
   return (
-    <Field label="Max length" hint="Longest text it accepts, in characters">
+    <Field label={messages().nodes.maxLength} hint={messages().nodes.longestTextItAcceptsInCharacters}>
       <NumberInput
-        ariaLabel="Max length"
+        ariaLabel={messages().nodes.maxLength}
         wide
         min={1}
         step={1}
         value={typeof variable.max_length === 'number' ? variable.max_length : null}
         disabled={editing.readOnly}
-        onCommit={(next) => editing.edit((graph) => updateStartVariable(graph, editing.startId, index, (current) => withMaxLength(current, next)), `set the max length of ${label}`)}
+        onCommit={(next) => editing.edit((graph) => updateStartVariable(graph, editing.startId, index, (current) => withMaxLength(current, next)), messages().nodes.setTheMaxLengthOfLabel(label))}
       />
     </Field>
   )
@@ -382,14 +383,14 @@ function StartInputDetails({ row, otherNames, usages, detailsId }: { row: RowCon
       {type === 'select' && <ChoicesEditor variable={variable} index={index} editing={editing} />}
       <DefaultValueField variable={variable} index={index} editing={editing} />
       {takesMaxLength(type) && <MaxLengthField row={row} />}
-      {usages.length > 0 && <p className={hintClassName}>Used by {joinTitles(usages)}</p>}
+      {usages.length > 0 && <p className={hintClassName}>{messages().nodes.usedBy}{' '}{joinTitles(usages)}</p>}
     </div>
   )
 }
 
 function StartInputRow({ variable, index, count, otherNames, usages, isExpanded, isDropTarget, isConfirmingDelete, editing, rowActions }: StartInputRowProps) {
   const detailsId = useId()
-  const row: RowContext = { variable, index, label: variableLabelOf(variable) || `Input ${index + 1}`, editing }
+  const row: RowContext = { variable, index, label: variableLabelOf(variable) || messages().nodes.inputValue2(index + 1), editing }
   return (
     <li
       data-start-input={variableNameOf(variable)}
@@ -433,14 +434,14 @@ function useStartInputActions(editing: RowEditing, variables: StartVariable[], u
   const [dragFrom, setDragFrom] = useState<number | null>(null)
   const [dropTarget, setDropTarget] = useState<number | null>(null)
   const focusHandle = useFocusHandleAfterMove()
-  const labelOf = (index: number) => variableLabelOf(variables[index] ?? {}) || `input ${index + 1}`
+  const labelOf = (index: number) => variableLabelOf(variables[index] ?? {}) || messages().nodes.inputValue(index + 1)
   const remove = (index: number) => {
-    editing.edit((graph) => removeStartVariable(graph, editing.startId, index), `removed input ${labelOf(index)}`)
+    editing.edit((graph) => removeStartVariable(graph, editing.startId, index), messages().nodes.removedInputValue(labelOf(index)))
     setDeleteIndex(null)
     setExpandedIndex(null)
   }
   const move = (from: number, to: number) => {
-    editing.edit((graph) => moveStartVariable(graph, editing.startId, from, to), `moved input ${labelOf(from)}`)
+    editing.edit((graph) => moveStartVariable(graph, editing.startId, from, to), messages().nodes.movedInputValue(labelOf(from)))
     setExpandedIndex((current) => (current === from ? to : current === to ? from : current))
     setDeleteIndex(null)
     focusHandle(to)
@@ -449,7 +450,7 @@ function useStartInputActions(editing: RowEditing, variables: StartVariable[], u
     toggleExpanded: (index) => setExpandedIndex((current) => (current === index ? null : index)),
     move,
     duplicate: (index) => {
-      editing.edit((graph) => duplicateStartVariable(graph, editing.startId, index), `duplicated input ${labelOf(index)}`)
+      editing.edit((graph) => duplicateStartVariable(graph, editing.startId, index), messages().nodes.duplicatedInputValue(labelOf(index)))
       setExpandedIndex(index + 1)
     },
     requestDelete: (index) => ((usagesByIndex[index]?.length ?? 0) > 0 ? setDeleteIndex(index) : remove(index)),
@@ -489,22 +490,22 @@ function JsonEscapeHatch({ variables, editing }: { variables: StartVariable[]; e
   return (
     <div className="flex flex-col gap-2">
       <button type="button" aria-expanded={isOpen} onClick={() => setIsOpen((open) => !open)} className={linkButtonClassName}>
-        {isOpen ? 'Hide JSON' : 'Edit as JSON'}
+        {isOpen ? messages().nodes.hideJson : messages().nodes.editAsJson}
       </button>
       {isOpen && (
         <JsonBox
-          label="Inputs as JSON"
+          label={messages().nodes.inputsAsJson}
           value={variables}
           error={shapeError}
-          hint="Advanced: graphrt start variables ({ variable, label, type, required, default, options, max_length })"
+          hint={messages().nodes.advancedGraphrtStartVariablesVariableLabel}
           onCommit={(value) => {
             const isList = Array.isArray(value) && value.every((item) => typeof item === 'object' && item !== null && !Array.isArray(item))
             if (!isList) {
-              setShapeError('Needs a list of objects')
+              setShapeError(messages().nodes.needsAListOfObjects)
               return
             }
             setShapeError(null)
-            editing.edit((graph) => writeStartVariables(graph, editing.startId, value as StartVariable[]), 'changed the inputs as JSON')
+            editing.edit((graph) => writeStartVariables(graph, editing.startId, value as StartVariable[]), messages().nodes.changedTheInputsAsJson)
           }}
         />
       )}
@@ -529,17 +530,17 @@ export function StartPanel() {
   const focusLabel = useFocusLabelAfterAdd()
   const addInput = () => {
     const index = variables.length
-    editing.edit((graph) => addStartVariable(graph, node.id).graph, 'added an input')
+    editing.edit((graph) => addStartVariable(graph, node.id).graph, messages().nodes.addedAnInput)
     setExpandedIndex(index)
     focusLabel(index)
   }
   return (
-    <InspectorSection title="Inputs" badge={<span className="rounded-full bg-chip px-1.5 text-[11px] leading-[18px] font-medium text-ink-2">{variables.length}</span>} sectionKey="inputs">
-      <p className={hintClassName}>What a person fills in when the agent runs. The test form asks for these, in this order.</p>
+    <InspectorSection title={messages().nodes.inputs} badge={<span className="rounded-full bg-chip px-1.5 text-[11px] leading-[18px] font-medium text-ink-2">{variables.length}</span>} sectionKey="inputs">
+      <p className={hintClassName}>{messages().nodes.whatAPersonFillsInWhen}</p>
       {variables.length === 0 ? (
-        <p className="m-0 rounded-[10px] border border-dashed border-line-strong px-3 py-3 text-center text-[12px] text-muted">No inputs yet: the agent starts without asking anything.</p>
+        <p className="m-0 rounded-[10px] border border-dashed border-line-strong px-3 py-3 text-center text-[12px] text-muted">{messages().nodes.noInputsYetTheAgentStarts}</p>
       ) : (
-        <ol aria-label="Inputs" className="m-0 flex list-none flex-col gap-1.5 p-0">
+        <ol aria-label={messages().nodes.inputs} className="m-0 flex list-none flex-col gap-1.5 p-0">
           {variables.map((variable, index) => (
             <StartInputRow
               key={`${index}-${names[index]}`}
@@ -564,7 +565,7 @@ export function StartPanel() {
         className="inline-flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-line-strong bg-transparent px-3 text-[13px] font-medium text-ink-2 hover:border-ink hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
       >
         <Icon name="plus" size={14} />
-        Add an input
+        {messages().nodes.addAnInput}
       </button>
       <JsonEscapeHatch variables={variables} editing={editing} />
     </InspectorSection>

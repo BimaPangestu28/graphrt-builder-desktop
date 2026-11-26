@@ -3,6 +3,7 @@ import { joinClassNames } from '@/components/ui'
 import { useCanvasNodeActions } from './canvasActions'
 import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, type EdgeProps } from './flowLibrary'
 import { edgeColors, type EdgeKind, type StepFlowEdge } from './toFlowElements'
+import { messages } from '@/i18n'
 
 /**
  * One arrow (spec N1 "Ports and arrows"): grey with an arrowhead, dashed red from an
@@ -78,8 +79,8 @@ export const StepEdge = memo(function StepEdge(props: EdgeProps<StepFlowEdge>) {
             {showsAddButton && (
               <button
                 type="button"
-                aria-label="Add a step on this arrow"
-                title="Add a step on this arrow"
+                aria-label={messages().nodes.addAStepOnThisArrow}
+                title={messages().nodes.addAStepOnThisArrow}
                 onMouseEnter={enter}
                 onMouseLeave={leave}
                 onClick={(event) => {

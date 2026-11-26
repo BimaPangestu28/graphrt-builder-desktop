@@ -1,5 +1,7 @@
 import type { AgentGraph, NodeKindGroup, NodeKindInfo } from '@/api/agentGraphTypes'
 import type { PluginCatalogEntry } from '@/api/pluginTypes'
+import { messages } from '@/i18n'
+import { localizedArray } from '@/i18n/localized'
 
 /**
  * The palette's model of the node library: built-in kinds by group, installed plugins
@@ -46,15 +48,11 @@ export interface PaletteLibrary {
 }
 
 /** Library group labels (spec N1 / artboard 46) in library order, Start and finish last (rarely added). */
-export const builtinGroupLabels: Array<[NodeKindGroup, string]> = [
-  ['ai', 'AI'],
-  ['connect', 'Connect'],
-  ['decide-and-wait', 'Decide and wait'],
-  ['repeat', 'Repeat'],
-  ['data', 'Data'],
-  ['start-and-finish', 'Start and finish'],
-  ['other', 'Other'],
-]
+const builtinGroupOrder = ['ai', 'connect', 'decide-and-wait', 'repeat', 'data', 'start-and-finish', 'other'] as const satisfies readonly NodeKindGroup[]
+
+export const builtinGroupLabels: ReadonlyArray<[NodeKindGroup, string]> = localizedArray(() =>
+  builtinGroupOrder.map((group): [NodeKindGroup, string] => [group, messages().nodes.groupLabels[group]]),
+)
 
 /** True when the palette may offer this kind in this graph. */
 export function isOfferedKind(kindInfo: NodeKindInfo, graph: Pick<AgentGraph, 'nodes'>): boolean {

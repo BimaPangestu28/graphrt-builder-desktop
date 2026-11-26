@@ -7,6 +7,7 @@ import { readSelector } from './references'
 import { fieldPathAttribute } from './sectionRequest'
 import { SelectorField } from './SelectorField'
 import { TemplateField } from './TemplateField'
+import { messages } from '@/i18n'
 
 /**
  * The generic settings form, built from a kind's config JSON Schema (`get_node_kinds`):
@@ -118,7 +119,7 @@ export function JsonBox({ label, value, onCommit, required, error, hint }: { lab
             onCommit(JSON.parse(draft) as JsonValue)
             setParseError(null)
           } catch (rawError) {
-            setParseError(`Not valid JSON: ${rawError instanceof Error ? rawError.message : String(rawError)}`)
+            setParseError(messages().nodes.notValidJsonReason(rawError instanceof Error ? rawError.message : String(rawError)))
           }
         }}
         className="box-border w-full resize-y rounded-lg border border-line-strong bg-surface px-2 py-1.5 font-mono text-[12px] outline-none focus:border-ink"
@@ -142,11 +143,11 @@ function StringListField({ label, value, onChange, required, error, hint }: { la
         {items.map((item, index) => (
           <div key={index} className="flex items-center gap-1.5">
             <TextInput ariaLabel={`${label} ${index + 1}`} value={item} disabled={readOnly} onCommit={(text) => write(items.map((current, itemIndex) => (itemIndex === index ? text : current)))} />
-            <RemoveButton label={`Remove ${label.toLowerCase()} ${index + 1}`} disabled={readOnly} onClick={() => write(items.filter((_unused, itemIndex) => itemIndex !== index))} />
+            <RemoveButton label={messages().nodes.removeLowercaseValue(label.toLowerCase(), index + 1)} disabled={readOnly} onClick={() => write(items.filter((_unused, itemIndex) => itemIndex !== index))} />
           </div>
         ))}
         <AddButton disabled={readOnly} onClick={() => write([...items, ''])}>
-          Add
+          {messages().nodes.add}
         </AddButton>
       </div>
     </Field>
@@ -175,7 +176,7 @@ function ObjectListField({ label, property, value, onChange, required, error, hi
                 <span className="text-[12px] font-medium text-muted">
                   {label} {index + 1}
                 </span>
-                <RemoveButton label={`Remove ${label.toLowerCase()} ${index + 1}`} disabled={readOnly} onClick={() => write(items.filter((_unused, itemIndex) => itemIndex !== index))} />
+                <RemoveButton label={messages().nodes.removeLowercaseValue(label.toLowerCase(), index + 1)} disabled={readOnly} onClick={() => write(items.filter((_unused, itemIndex) => itemIndex !== index))} />
               </div>
               {itemProperties.map(([name, itemProperty]) => (
                 <SchemaPropertyInput key={name} name={name} property={itemProperty} value={object[name]} required={itemRequired.includes(name)} onChange={(next) => updateItem(index, name, next)} />
@@ -185,7 +186,7 @@ function ObjectListField({ label, property, value, onChange, required, error, hi
         })}
       </ol>
       <AddButton disabled={readOnly} onClick={() => write([...items, newItem()])}>
-        Add
+        {messages().nodes.add}
       </AddButton>
     </Field>
   )
@@ -219,7 +220,7 @@ function SchemaPropertyInput({ name, property, value, required, onChange, requir
   const label = propertyLabel(name, property)
   const description = typeof property.description === 'string' ? property.description : undefined
   const hint = [note, description].filter(Boolean).join(' · ') || undefined
-  const missing = required && isEmptyConfigValue(value) ? (requiredMessage ?? 'Required') : null
+  const missing = required && isEmptyConfigValue(value) ? (requiredMessage ?? messages().nodes.required2) : null
   switch (schemaFieldKind(property)) {
     case 'selector':
       return <SelectorField label={label} path={readSelector(value)} required={required} hint={hint} error={missing} onChange={(path) => onChange(path ?? undefined)} />
@@ -290,7 +291,7 @@ export function SchemaForm({ schema, config, onChange, requiredMessage, notes = 
   const required = schemaRequired(schema)
   const properties = schemaProperties(schema).filter(([name]) => !skip.includes(name))
   const ordered = [...properties.filter(([name]) => required.includes(name)), ...properties.filter(([name]) => !required.includes(name))]
-  if (ordered.length === 0) return <p className="m-0 text-[12px] text-muted">This step has no settings.</p>
+  if (ordered.length === 0) return <p className="m-0 text-[12px] text-muted">{messages().nodes.thisStepHasNoSettings}</p>
   return (
     <>
       {ordered.map(([name, property]) => (

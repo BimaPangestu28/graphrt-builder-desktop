@@ -3,6 +3,7 @@ import { addTrustedLookupHost, subscribeToTrustedHostChanges } from '@/api/trust
 import { toErrorMessage } from '@/lib/errors'
 import type { AgentGraphController } from '../useAgentGraph'
 import type { GraphValidation } from './useGraphValidation'
+import { messages } from '@/i18n'
 
 export interface TrustHostAction {
   /** "Trust <host>" on a problem: trusts it for the agent's lookups (the user clicked it). */
@@ -44,7 +45,7 @@ export function useTrustHostAction(agentId: string, controller: AgentGraphContro
         await addTrustedLookupHost(agentId, host)
         setTrustError(null)
       } catch (rawError) {
-        setTrustError(`Could not trust ${host}: ${toErrorMessage(rawError)}`)
+        setTrustError(messages().nodes.couldNotTrustHostReason(host, toErrorMessage(rawError)))
       }
     },
     [agentId],

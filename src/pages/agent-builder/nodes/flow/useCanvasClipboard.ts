@@ -2,6 +2,7 @@ import { useCallback, useRef } from 'react'
 import type { AgentGraph, NodeLayout } from '@/api/agentGraphTypes'
 import { copyToClipboards, describeNodeList, editableNodeIds, readClipboardForPaste } from './canvasCommands'
 import { copyGraphNodes, pasteGraphNodes, pasteOffset, type GraphClipboard } from './clipboard'
+import { messages } from '@/i18n'
 
 /**
  * Copy, paste and duplicate on the Nodes canvas (shortcuts, the context menus and the
@@ -72,7 +73,7 @@ export function useCanvasClipboard({ graph, positions, canEdit, onApplyEdit, onM
       readClipboardForPaste()
         .then((clipboard) => {
           if (clipboard) pasteClipboard(clipboard, 'pasted', at)
-          else announce('Nothing to paste: copy steps first')
+          else announce(messages().nodes.nothingToPasteCopyStepsFirst)
         })
         .catch((pasteError: unknown) => console.warn('could not paste the steps', pasteError))
     },
@@ -93,7 +94,7 @@ export function useCanvasClipboard({ graph, positions, canEdit, onApplyEdit, onM
       if (!clipboard) return false
       void copyToClipboards(clipboard)
       pasteCountRef.current = 0
-      announce(`Copied ${describeNodeList(graph, editableNodeIds(graph, nodeIds))}`)
+      announce(messages().nodes.copiedNodelist(describeNodeList(graph, editableNodeIds(graph, nodeIds))))
       return true
     },
     [readCopy, graph, announce],

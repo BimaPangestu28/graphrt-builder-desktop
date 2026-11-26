@@ -13,6 +13,7 @@ import { PluginInstallPrompt } from './palette/PluginInstallPrompt'
 import { usePaletteInstall, type PaletteInstallState } from './palette/usePaletteInstall'
 import { usePaletteNavigation } from './palette/usePaletteNavigation'
 import { usePaletteUsage } from './palette/usePaletteUsage'
+import { messages } from '@/i18n'
 
 /** Width of the floating palette (spec 34: 300px); the canvas fits clear of it. */
 export const paletteWidth = 300
@@ -139,7 +140,7 @@ function AddNodePalettePanel({
 
   return (
     <aside
-      aria-label="Add node"
+      aria-label={messages().nodes.addNode}
       className="absolute bottom-3 left-3 top-3 z-10 box-border flex w-[min(300px,calc(100%-24px))] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-[0_8px_28px_rgba(0,0,0,0.10)]"
       onKeyDown={(event) => {
         if (event.key === 'Escape' && !event.defaultPrevented) onClose()
@@ -147,10 +148,10 @@ function AddNodePalettePanel({
     >
       <header className="flex items-start justify-between gap-2 px-4 pb-2 pt-3.5">
         <div className="flex min-w-0 flex-col">
-          <h2 className="m-0 text-[14px] font-semibold text-ink">Add node</h2>
-          <span className="truncate text-[12px] text-muted">{isSearching ? 'Searching' : `Adds ${placementText}`}</span>
+          <h2 className="m-0 text-[14px] font-semibold text-ink">{messages().nodes.addNode}</h2>
+          <span className="truncate text-[12px] text-muted">{isSearching ? messages().nodes.searching : messages().nodes.addsPlacementtext(placementText)}</span>
         </div>
-        <button type="button" onClick={onClose} aria-label="Close Add node" className="flex size-7 cursor-pointer items-center justify-center rounded-lg border-0 bg-subtle text-muted hover:bg-chip">
+        <button type="button" onClick={onClose} aria-label={messages().nodes.closeAddNode} className="flex size-7 cursor-pointer items-center justify-center rounded-lg border-0 bg-subtle text-muted hover:bg-chip">
           <Icon name="close" size={14} />
         </button>
       </header>
@@ -161,12 +162,12 @@ function AddNodePalettePanel({
             ref={searchInputRef}
             autoFocus
             role="combobox"
-            aria-label="Search steps, plugins and actions"
+            aria-label={messages().nodes.searchStepsPluginsAndActions}
             aria-expanded="true"
             aria-controls="palette-options"
             aria-activedescendant={navigation.activeKind ? paletteOptionId(navigation.activeKind) : undefined}
             aria-autocomplete="list"
-            placeholder="Search steps, plugins and actions"
+            placeholder={messages().nodes.searchStepsPluginsAndActions}
             value={query}
             onChange={(event) => {
               setQuery(event.target.value)
@@ -178,7 +179,7 @@ function AddNodePalettePanel({
           />
         </label>
       </div>
-      {readOnly && <p className="m-0 mx-4 mb-2 rounded-lg bg-subtle px-2.5 py-2 text-[12px] text-muted">The builder is changing this agent. You can add steps when it finishes.</p>}
+      {readOnly && <p className="m-0 mx-4 mb-2 rounded-lg bg-subtle px-2.5 py-2 text-[12px] text-muted">{messages().nodes.theBuilderIsChangingThisAgent3}</p>}
       {install.pending && (
         <div className="px-4 pb-2">
           <PluginInstallPrompt
@@ -196,7 +197,7 @@ function AddNodePalettePanel({
           />
         </div>
       )}
-      <div id="palette-options" role="listbox" aria-label={isSearching ? 'Search results' : 'Steps and plugin actions'} className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+      <div id="palette-options" role="listbox" aria-label={isSearching ? messages().nodes.searchResults : messages().nodes.stepsAndPluginActions} className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         {isSearching ? (
           <PaletteSearchResults query={query} results={searchResults} showsAll={showsAllResults} handlers={handlers} onShowAll={() => setShowsAllResults(true)} />
         ) : (
@@ -205,8 +206,8 @@ function AddNodePalettePanel({
       </div>
       <p className="m-0 border-t border-line bg-subtle/60 px-4 py-2.5 text-[12px] leading-normal text-muted">
         {isSearching
-          ? `Enter adds the highlighted step ${placementText}. Not installed ones ask for your OK before they install`
-          : 'Drag a step onto the canvas, or onto an arrow to put it between two steps. Catalog plugins install only after you approve what they ask for'}
+          ? messages().nodes.enterAddsTheHighlightedStepPlacementtext(placementText)
+          : messages().nodes.dragAStepOntoTheCanvas}
       </p>
     </aside>
   )

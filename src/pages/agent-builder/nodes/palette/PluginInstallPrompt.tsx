@@ -7,6 +7,7 @@ import { describeCommunityInstallNote, describeInstallProgress, describePermissi
 import { PluginIcon } from '@/pages/plugins/PluginIcon'
 import { pluginRuntimeInstallNote } from '@/pages/plugins/PluginRuntimeCard'
 import type { PendingInstall } from './usePaletteInstall'
+import { messages } from '@/i18n'
 
 interface PluginInstallPromptProps {
   pending: PendingInstall
@@ -24,12 +25,12 @@ interface PluginInstallPromptProps {
 
 /** "It gets the internet, secrets and 2 settings (A, B)" from the catalog entry. */
 export function describeInstallAsks(catalogEntry: PluginCatalogEntry | null): string {
-  if (!catalogEntry) return 'Runs its code on this computer. It starts untrusted, without settings or secrets.'
+  if (!catalogEntry) return messages().nodes.runsItsCodeOnThisComputer
   const chips = describePermissionChips(catalogEntry.permissions, catalogEntry.needsBrowser).map((chip) => chip.toLowerCase())
   const settingNames = catalogEntry.permissions.env
   const asks = chips.map((chip) => (chip.endsWith('setting') || chip.endsWith('settings') ? `${chip} (${settingNames.join(', ')})` : chip))
-  const asksText = asks.length > 0 ? ` and asks for: ${asks.join(', ')}` : ''
-  return `Runs its code on this computer${asksText}. It starts untrusted, without settings or secrets.`
+  const asksText = asks.length > 0 ? messages().nodes.andAsksForValue(asks.join(', ')) : ''
+  return messages().nodes.runsItsCodeOnThisComputer2(asksText)
 }
 
 /**
@@ -47,7 +48,7 @@ export function PluginInstallPrompt({ pending, placementText, catalogEntry, isIn
   return (
     <section
       role="alertdialog"
-      aria-label={`Install ${plugin.displayName}?`}
+      aria-label={messages().nodes.installDisplayname(plugin.displayName)}
       aria-describedby="palette-install-asks"
       className="flex flex-col gap-2.5 rounded-xl border border-amber-line bg-amber-tint p-3"
       onKeyDown={(event) => {
@@ -60,9 +61,9 @@ export function PluginInstallPrompt({ pending, placementText, catalogEntry, isIn
       <div className="flex items-center gap-2.5">
         <PluginIcon name={plugin.name} iconUrl={catalogEntry?.iconUrl} />
         <div className="flex min-w-0 flex-col">
-          <span className="truncate text-[13px] font-semibold text-ink">Install {plugin.displayName}?</span>
+          <span className="truncate text-[13px] font-semibold text-ink">{messages().nodes.install}{' '}{plugin.displayName}?</span>
           <span className="text-[12px] leading-snug text-muted">
-            To add {pending.action.displayName} {placementText}
+            {messages().nodes.toAdd}{' '}{pending.action.displayName} {placementText}
           </span>
         </div>
       </div>
@@ -85,7 +86,7 @@ export function PluginInstallPrompt({ pending, placementText, catalogEntry, isIn
       <div className="flex justify-end gap-2">
         {!isInstalling && (
           <Button variant="ghost" size="sm" onClick={onCancel}>
-            Cancel
+            {messages().nodes.cancel}
           </Button>
         )}
         <button
@@ -94,9 +95,9 @@ export function PluginInstallPrompt({ pending, placementText, catalogEntry, isIn
           className={buttonClassNames('primary', 'sm')}
           disabled={isInstalling}
           onClick={() => onConfirm(needsPluginRuntime)}
-          aria-label={`Install ${plugin.displayName} and add ${pending.action.displayName}`}
+          aria-label={messages().nodes.installDisplaynameAndAddDisplayname2(plugin.displayName, pending.action.displayName)}
         >
-          {isInstalling ? 'Installing…' : 'Install and add'}
+          {isInstalling ? messages().nodes.installing : messages().nodes.installAndAdd}
         </button>
       </div>
     </section>

@@ -5,6 +5,7 @@ import { listMcpServers } from '@/api/mcpServers'
 import { listInstalledPlugins } from '@/api/plugins'
 import type { AgentInput } from '@/api/chainTypes'
 import { useAsyncData } from '@/hooks/useAsyncData'
+import { messages } from '@/i18n'
 
 /**
  * Tools a "Run an agent" or "Use a tool" step can call on this computer (spec B10 /
@@ -56,8 +57,8 @@ export async function loadToolSources(currentAgentId: string): Promise<ToolSourc
   const [agentSteps, plugins, servers, schemas] = await Promise.all([
     readOrEmpty(listAgentSteps, 'agents'),
     readOrEmpty(listInstalledPlugins, 'plugins'),
-    readOrEmpty(listMcpServers, 'MCP servers'),
-    readOrEmpty(getToolInputSchemas, 'tool input schemas'),
+    readOrEmpty(listMcpServers, messages().nodes.mcpServers),
+    readOrEmpty(getToolInputSchemas, messages().nodes.toolInputSchemas),
   ])
   const schemaFor = indexToolSchemas(schemas)
   return {
@@ -71,7 +72,7 @@ export async function loadToolSources(currentAgentId: string): Promise<ToolSourc
         source: 'agents' as const,
         inputs: agentStep.inputs,
         inputSchema: null,
-        note: agentStep.usableAsStep ? `${agentStep.inputs.length === 0 ? 'no' : agentStep.inputs.length} input${agentStep.inputs.length === 1 ? '' : 's'}` : agentStep.unusableReason,
+        note: agentStep.usableAsStep ? messages().nodes.agentToolInputs(agentStep.inputs.length) : agentStep.unusableReason,
       })),
     plugins: plugins.flatMap((plugin) =>
       plugin.tools.map((tool) => ({ reference: `${plugin.name}/${tool}`, provider: plugin.name, name: tool, label: tool, source: 'plugins' as const, inputs: [], inputSchema: schemaFor(plugin.name, tool), note: null })),

@@ -5,6 +5,7 @@ import { Field, linkButtonClassName, RemoveButton } from './fields'
 import { useInspector } from './InspectorContext'
 import { describeReference } from './references'
 import { ValuePicker } from './ValuePicker'
+import { messages } from '@/i18n'
 
 /**
  * A field that holds one value reference (a graphrt selector `[node, field, ...]`):
@@ -23,7 +24,7 @@ interface SelectorChipProps {
 }
 
 /** The chip + picker without a label (inside condition rows). */
-export function SelectorChip({ path, onChange, ariaLabel, emptyLabel = 'Pick a value', compact = false, groups }: SelectorChipProps) {
+export function SelectorChip({ path, onChange, ariaLabel, emptyLabel = messages().nodes.pickAValue, compact = false, groups }: SelectorChipProps) {
   const { graph, valueGroups: ownGroups, readOnly } = useInspector()
   const valueGroups = groups ?? ownGroups
   const [isPickerOpen, setIsPickerOpen] = useState(false)
@@ -41,7 +42,7 @@ export function SelectorChip({ path, onChange, ariaLabel, emptyLabel = 'Pick a v
           <>
             <button
               type="button"
-              aria-label={`${ariaLabel}: ${describeReference(path, graph)}. Change`}
+              aria-label={messages().nodes.arialabelReferenceChange(ariaLabel, describeReference(path, graph))}
               title={path.join('.')}
               disabled={readOnly}
               onClick={() => setIsPickerOpen((open) => !open)}
@@ -54,7 +55,7 @@ export function SelectorChip({ path, onChange, ariaLabel, emptyLabel = 'Pick a v
             </button>
             {!compact && source && <span className="truncate text-[12px] text-muted">{source.title}</span>}
             <span className="ml-auto">
-              <RemoveButton label={`Remove ${ariaLabel}`} disabled={readOnly} onClick={() => onChange(null)} />
+              <RemoveButton label={messages().nodes.removeArialabel(ariaLabel)} disabled={readOnly} onClick={() => onChange(null)} />
             </span>
           </>
         ) : (
@@ -72,7 +73,7 @@ export function SelectorChip({ path, onChange, ariaLabel, emptyLabel = 'Pick a v
         <ValuePicker
           groups={valueGroups}
           selectedPath={path}
-          label={`Values for ${ariaLabel}`}
+          label={messages().nodes.valuesForArialabel(ariaLabel)}
           onPick={(picked) => {
             setIsPickerOpen(false)
             onChange(picked)
@@ -96,7 +97,7 @@ interface SelectorFieldProps {
 /** A labelled {@link SelectorChip}. */
 export function SelectorField({ label, path, onChange, required, hint, error }: SelectorFieldProps) {
   return (
-    <Field label={label} required={required} hint={hint} error={error ?? (required && !path ? 'Required' : null)}>
+    <Field label={label} required={required} hint={hint} error={error ?? (required && !path ? messages().nodes.required2 : null)}>
       <SelectorChip path={path} onChange={onChange} ariaLabel={label} />
     </Field>
   )

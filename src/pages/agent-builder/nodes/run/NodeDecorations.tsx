@@ -7,6 +7,8 @@ import { formatDurationMs, formatElapsedClock } from '@/pages/agent-run/runProgr
 import { describeProblemLabel } from '../problems/problemDisplay'
 import { useCanvasNow } from './CanvasClock'
 import type { LoopRunProgress, NodeRunStatus, NodeRunView, RunCanvasState } from './nodeRunStates'
+import { messages } from '@/i18n'
+import { localizedRecord } from '@/i18n/localized'
 
 /**
  * What the canvas draws on top of each node card: the live run state (spec D1–D3) and the
@@ -41,16 +43,7 @@ export function useNodeDecorations(): NodeDecorationsValue {
   return useContext(NodeDecorationsContext)
 }
 
-const statusLabels: Record<NodeRunStatus, string> = {
-  pending: 'Not started',
-  running: 'Running',
-  done: 'Done',
-  waiting: 'Waiting for you',
-  failed: 'Failed',
-  'error-path': 'Failed',
-  fallback: 'Done',
-  skipped: 'Skipped',
-}
+const statusLabels: Readonly<Record<NodeRunStatus, string>> = localizedRecord(() => messages().nodes.runStatus)
 
 const statusClassNames: Record<NodeRunStatus, string> = {
   pending: 'border-line-strong bg-surface text-muted',
@@ -111,7 +104,7 @@ function RunStatusChip({ view }: { view: NodeRunView }) {
 
 /** "3 of 10", "8 done · 2 skipped · 1 failed" and a progress bar. */
 function LoopCounters({ loop }: { loop: LoopRunProgress }) {
-  const position = loop.currentNumber === null ? null : loop.total === null ? `Round ${loop.currentNumber}` : `${loop.currentNumber} of ${loop.total}`
+  const position = loop.currentNumber === null ? null : loop.total === null ? messages().nodes.roundCurrentnumber(loop.currentNumber) : `${loop.currentNumber} of ${loop.total}`
   const outcomes = [`${loop.doneCount} done`, loop.skippedCount > 0 && `${loop.skippedCount} skipped`, loop.failedCount > 0 && `${loop.failedCount} failed`].filter(Boolean).join(' · ')
   const finished = loop.doneCount + loop.skippedCount + loop.failedCount
   const percent = loop.total ? Math.min(100, Math.round((finished / loop.total) * 100)) : null
@@ -122,7 +115,7 @@ function LoopCounters({ loop }: { loop: LoopRunProgress }) {
         <span className={joinClassNames(loop.failedCount > 0 ? 'text-danger' : 'text-muted')}>{outcomes}</span>
       </div>
       {percent !== null && (
-        <div role="progressbar" aria-label="Items finished" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100} className="h-1 overflow-hidden rounded-full bg-line">
+        <div role="progressbar" aria-label={messages().nodes.itemsFinished} aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100} className="h-1 overflow-hidden rounded-full bg-line">
           <div className="h-full rounded-full bg-brand" style={{ width: `${percent}%` }} />
         </div>
       )}
@@ -142,11 +135,11 @@ function RunDetailLines({ view, onReview }: { view: NodeRunView; onReview?: (nod
   const lines: ReactNode[] = []
   if (view.errorMessage && view.status !== 'done') lines.push(<span key="error" className="text-danger">{view.errorMessage}</span>)
   if (view.attempt > 1 || (view.maxAttempts > 1 && ['failed', 'error-path'].includes(view.status))) {
-    lines.push(<span key="attempt" className="font-medium text-ink-2">Attempt {view.attempt} of {view.maxAttempts}</span>)
+    lines.push(<span key="attempt" className="font-medium text-ink-2">{messages().nodes.attempt}{' '}{view.attempt} {messages().nodes.of}{' '}{view.maxAttempts}</span>)
   }
-  if (view.status === 'error-path') lines.push(<span key="handled" className="font-medium text-danger">Going to the error path · success path skipped</span>)
-  if (view.status === 'fallback') lines.push(<span key="handled" className="font-medium text-amber-strong">Continued with fallback values</span>)
-  if (view.itemsDoneCount !== null && view.itemsDoneCount > 0) lines.push(<span key="items" className="text-muted">{view.itemsDoneCount} done</span>)
+  if (view.status === 'error-path') lines.push(<span key="handled" className="font-medium text-danger">{messages().nodes.goingToTheErrorPathSuccess}</span>)
+  if (view.status === 'fallback') lines.push(<span key="handled" className="font-medium text-amber-strong">{messages().nodes.continuedWithFallbackValues}</span>)
+  if (view.itemsDoneCount !== null && view.itemsDoneCount > 0) lines.push(<span key="items" className="text-muted">{view.itemsDoneCount} {messages().nodes.done}</span>)
   if (view.approval?.expiresAt) lines.push(<ApprovalDeadline key="deadline" approval={view.approval} />)
   if (view.status === 'waiting' && view.approval && onReview) {
     lines.push(
@@ -159,7 +152,7 @@ function RunDetailLines({ view, onReview }: { view: NodeRunView; onReview?: (nod
         }}
         className="nodrag nopan cursor-pointer self-start rounded-md border border-amber-line bg-amber px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-amber-strong"
       >
-        {view.approval.toolCall ? 'Review the tool call' : 'Review'}
+        {view.approval.toolCall ? messages().nodes.reviewTheToolCall : messages().nodes.review}
       </button>,
     )
   }
