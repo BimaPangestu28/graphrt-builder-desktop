@@ -1,6 +1,7 @@
 import type { Run } from '@/api/types'
 import { formatRunDay } from '@/pages/agent-run/runResultSummary'
 import { agentPath, routePaths, runReviewPath } from '@/routes'
+import { messages } from '@/i18n'
 
 /** Where Home sends the user for a run or a failure, and how it says when a run started. */
 
@@ -40,9 +41,10 @@ export function runPathFor(run: Run): string {
  */
 export function formatRelativeTime(isoTimestamp: string, now: Date = new Date()): string {
   const elapsedMinutes = Math.floor((now.getTime() - new Date(isoTimestamp).getTime()) / 60_000)
-  if (elapsedMinutes < 1) return 'just now'
-  if (elapsedMinutes < 60) return `${elapsedMinutes} min ago`
-  if (elapsedMinutes < 12 * 60) return `${Math.floor(elapsedMinutes / 60)} h ago`
+  const t = messages().home
+  if (elapsedMinutes < 1) return t.justNow
+  if (elapsedMinutes < 60) return t.minutesAgo(elapsedMinutes)
+  if (elapsedMinutes < 12 * 60) return t.hoursAgo(Math.floor(elapsedMinutes / 60))
   return formatRunDay(isoTimestamp, now)
 }
 

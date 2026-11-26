@@ -1,4 +1,5 @@
 import type { Locale, Translation } from './types'
+import { home } from './locales/home'
 import { settings } from './locales/settings'
 import { common } from './locales/common'
 import { shell } from './locales/shell'
@@ -10,6 +11,7 @@ import { platform } from './locales/platform'
  * and listing it in both objects below (the completeness test checks they match).
  */
 const english = {
+  home: home.en,
   settings: settings.en,
   common: common.en,
   shell: shell.en,
@@ -20,6 +22,7 @@ const english = {
 export type Messages = Translation<typeof english>
 
 const indonesian: Messages = {
+  home: home.id,
   settings: settings.id,
   common: common.id,
   shell: shell.id,

@@ -7,6 +7,7 @@ import { useAppUpdates, type AppUpdateControls } from '@/pages/updates/updateCon
 import { findPluginDisplayName } from '@/lib/pluginDisplayName'
 import { pluginDetailPath, routePaths } from '@/routes'
 import { buildUpdatesNoticeLines, hasUndismissedLine, readDismissedUpdateKeys, writeDismissedUpdateKeys, type UpdatesNoticeLine } from './updatesNoticeLines'
+import { useT } from '@/i18n'
 
 const updatesListPath = `${routePaths.plugins}?tab=updates`
 const actionClassNames = '!h-8 shrink-0 !rounded-[9px] !px-3'
@@ -19,14 +20,16 @@ interface LineActionProps {
 
 /** "Review", named for what it opens so it never reads like Needs you's "Review". */
 function ReviewLink({ path, isPrimary, ariaLabel }: { path: string; isPrimary: boolean; ariaLabel: string }) {
+  const t = useT().home
   return (
     <Link to={path} aria-label={ariaLabel} className={buttonClassNames(isPrimary ? 'primary' : 'secondary', 'sm', joinClassNames(actionClassNames, isPrimary ? '!text-white' : '!text-ink'))}>
-      Review
+      {t.review}
     </Link>
   )
 }
 
 function LineAction({ line, updateControls, pluginUpdates }: LineActionProps) {
+  const t = useT().home
   const { action } = line
   switch (action.kind) {
     case 'restart':
@@ -34,20 +37,20 @@ function LineAction({ line, updateControls, pluginUpdates }: LineActionProps) {
     case 'download':
       return updateControls ? (
         <Button size="sm" className={actionClassNames} onClick={() => void updateControls.downloadNow()}>
-          Download
+          {t.download}
         </Button>
       ) : null
     case 'updateAll':
       return (
         <div className="flex shrink-0 gap-2">
-          <ReviewLink path={action.reviewPath} isPrimary={false} ariaLabel="Review plugin updates" />
+          <ReviewLink path={action.reviewPath} isPrimary={false} ariaLabel={t.reviewPluginUpdates} />
           <Button size="sm" className={actionClassNames} disabled={pluginUpdates.isUpdatingAll} onClick={() => void pluginUpdates.updateAll()}>
-            {pluginUpdates.isUpdatingAll ? 'Updating…' : 'Update all'}
+            {pluginUpdates.isUpdatingAll ? t.updating : t.updateAll}
           </Button>
         </div>
       )
     case 'review':
-      return <ReviewLink path={action.path} isPrimary ariaLabel="Review updates needing approval" />
+      return <ReviewLink path={action.path} isPrimary ariaLabel={t.reviewApprovalUpdates} />
     case 'none':
       return null
   }
@@ -55,11 +58,12 @@ function LineAction({ line, updateControls, pluginUpdates }: LineActionProps) {
 
 /** "Updated 2 plugins" after Update all, and what could not be updated. */
 function UpdateAllResult({ pluginUpdates }: { pluginUpdates: PluginUpdatesState }) {
+  const t = useT().home
   const { lastSummary, updateAllError } = pluginUpdates
   if (updateAllError) {
     return (
       <p role="alert" className="m-0 px-[18px] pb-3 text-[13px] text-danger">
-        Could not update plugins: {updateAllError}
+        {t.couldNotUpdatePlugins(updateAllError)}
       </p>
     )
   }
@@ -70,12 +74,12 @@ function UpdateAllResult({ pluginUpdates }: { pluginUpdates: PluginUpdatesState 
     <div className="flex flex-col gap-1 px-[18px] pb-3 text-[13px]">
       {updatedCount > 0 && (
         <p role="status" className="m-0 text-body">
-          Updated {updatedCount === 1 ? findPluginDisplayName(catalogPlugins, lastSummary.updated[0].name) : `${updatedCount} plugins`}
+          {updatedCount === 1 ? t.updatedOne(findPluginDisplayName(catalogPlugins, lastSummary.updated[0].name)) : t.updatedMany(updatedCount)}
         </p>
       )}
       {lastSummary.failed.map((failure) => (
         <p key={failure.name} role="alert" className="m-0 text-danger">
-          Could not update {findPluginDisplayName(catalogPlugins, failure.name)}: {failure.message}
+          {t.couldNotUpdatePlugin(findPluginDisplayName(catalogPlugins, failure.name), failure.message)}
         </p>
       ))}
     </div>
@@ -90,6 +94,7 @@ function UpdateAllResult({ pluginUpdates }: { pluginUpdates: PluginUpdatesState 
  * Self-contained, so any Home layout can place it; renders nothing when there is no news.
  */
 export function UpdatesNotice() {
+  const t = useT().home
   const updateControls = useAppUpdates()
   const pluginUpdates = usePluginUpdates()
   const [dismissedKeys, setDismissedKeys] = useState(readDismissedUpdateKeys)
@@ -116,10 +121,10 @@ export function UpdatesNotice() {
       <div className="flex items-center justify-between gap-2 border-b border-chip px-[18px] py-2.5">
         <h2 id="home-updates" className="m-0 flex items-center gap-2 text-[14px] font-semibold">
           <span aria-hidden="true" className="size-2 rounded-full bg-brand" />
-          Updates
+          {t.updates}
         </h2>
-        <Button variant="ghost" size="sm" aria-label="Dismiss updates" onClick={dismiss}>
-          Dismiss
+        <Button variant="ghost" size="sm" aria-label={t.dismissUpdates} onClick={dismiss}>
+          {t.dismiss}
         </Button>
       </div>
       <ul className="m-0 list-none p-0">

@@ -1,3 +1,4 @@
+import { messages } from '@/i18n'
 /**
  * Picks the Home heading for the local hour of day.
  *
@@ -8,7 +9,8 @@
  * getGreetingForHour(14) // "Good afternoon"
  */
 export function getGreetingForHour(hour: number): string {
-  if (hour < 12) return 'Good morning'
-  if (hour < 18) return 'Good afternoon'
-  return 'Good evening'
+  const t = messages().home
+  if (hour < 12) return t.greetingMorning
+  if (hour < 18) return t.greetingAfternoon
+  return t.greetingEvening
 }

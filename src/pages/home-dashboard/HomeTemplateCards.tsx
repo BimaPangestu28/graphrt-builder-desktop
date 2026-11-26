@@ -4,6 +4,7 @@ import { newAgentTemplatePath, type AgentTemplate } from '@/pages/new-agent/agen
 import { routePaths } from '@/routes'
 import { HomeSectionHeader } from './HomeSectionHeader'
 import { pickHomeTemplates } from './homeLayout'
+import { useT } from '@/i18n'
 
 /** Three cards a row on a wide page, two on a medium one, one when narrow (container query). */
 const templateGridClassName = 'grid grid-cols-1 gap-3 @min-[560px]:grid-cols-2 @min-[880px]:grid-cols-3'
@@ -33,7 +34,7 @@ function HomeTemplateCard({ template }: { template: AgentTemplate }) {
           {template.meta}
         </span>
         <span className="flex shrink-0 items-center gap-1 text-[13px] font-semibold text-brand group-hover:text-brand-strong">
-          Use template
+          {useT().home.useTemplate}
           <Icon name="arrowRight" size={14} />
         </span>
       </span>
@@ -43,14 +44,15 @@ function HomeTemplateCard({ template }: { template: AgentTemplate }) {
 
 /** "Or start from a template": a few templates as cards, with "All templates" for the rest. */
 export function HomeTemplateCards() {
+  const t = useT().home
   const allTemplatesLink = (
     <Link to={routePaths.newAgent} className="text-[13px] font-medium !text-body no-underline hover:underline">
-      All templates
+      {t.allTemplates}
     </Link>
   )
   return (
     <section aria-labelledby="home-templates" className="@container flex min-w-0 flex-col gap-3">
-      <HomeSectionHeader headingId="home-templates" heading="Or start from a template" trailing={allTemplatesLink} />
+      <HomeSectionHeader headingId="home-templates" heading={t.orStartFromTemplate} trailing={allTemplatesLink} />
       <div className={templateGridClassName}>
         {pickHomeTemplates().map((template) => (
           <HomeTemplateCard key={template.id} template={template} />

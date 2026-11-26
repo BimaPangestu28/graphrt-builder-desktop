@@ -9,19 +9,12 @@ import { humanizeRunError } from '@/pages/agent-run/runErrorText'
 import { readPauseDeadline, readPauseQuestion } from '@/pages/agent-run/runPauseQuestion'
 import { formatRelativeTime, runPathFor } from './homeLinks'
 import { agentPath, connectionsTabPath, routePaths, runReviewPath } from '@/routes'
+import { formatDateTime, messages } from '@/i18n'
 
 /** Turns backend runs and run stats into what the Home screen (09) shows. */
 
 /** Looks up an agent's display name by id. */
 export type AgentNameLookup = (agentId: string) => string
-
-const lastRunWords: Record<RunStatus, string> = {
-  succeeded: 'ok',
-  failed: 'failed',
-  paused: 'waiting for you',
-  running: 'running',
-  aborted: 'stopped',
-}
 
 const recentRunStatuses: Record<RunStatus, RecentRunStatus> = {
   succeeded: 'Done',
@@ -44,13 +37,14 @@ const recentRunStatuses: Record<RunStatus, RecentRunStatus> = {
  */
 export function describeAgentRunStats(stats: AgentRunStats | undefined, now: Date = new Date()): AgentSummaryStat[] {
   if (!stats) return []
-  if (stats.runsThisWeek === 0 && !stats.lastRunStatus) return [{ label: 'No runs yet' }]
+  const t = messages().home
+  if (stats.runsThisWeek === 0 && !stats.lastRunStatus) return [{ label: t.noRunsYetStat }]
   const headlineCounter = pickHeadlineCounter(stats.counters)
   const weekStat: AgentSummaryStat = headlineCounter
-    ? { count: Math.round(headlineCounter.value), label: `${formatCounterLabel(headlineCounter.name).toLowerCase()} this week` }
-    : { count: stats.runsThisWeek, label: stats.runsThisWeek === 1 ? 'run this week' : 'runs this week' }
+    ? { count: Math.round(headlineCounter.value), label: t.counterThisWeek(formatCounterLabel(headlineCounter.name)) }
+    : { count: stats.runsThisWeek, label: t.runsThisWeek(stats.runsThisWeek) }
   if (!stats.lastRunStatus || !stats.lastRunAt) return [weekStat]
-  return [weekStat, { label: `Last run ${lastRunWords[stats.lastRunStatus]} · ${formatRunDay(stats.lastRunAt, now)}` }]
+  return [weekStat, { label: t.lastRun(t.lastRunWords[stats.lastRunStatus], formatRunDay(stats.lastRunAt, now)) }]
 }
 
 function groupRunsByAgent(runs: Run[]): Run[][] {
@@ -69,17 +63,18 @@ function groupRunsByAgent(runs: Run[]): Run[][] {
  */
 export function buildPausedRunItems(pausedRuns: Run[], agentName: AgentNameLookup, now: Date = new Date()): AttentionItem[] {
   return groupRunsByAgent(pausedRuns).map(([newestRun, ...olderRuns], index) => {
+    const t = messages().home
     const question = readPauseQuestion(newestRun)
-    const moreWaiting = olderRuns.length > 0 ? ` · ${olderRuns.length} more waiting` : ''
+    const moreWaiting = olderRuns.length > 0 ? t.moreWaiting(olderRuns.length) : ''
     const deadline = readPauseDeadline(newestRun, now.getTime())
-    const pausedAtLine = `${formatRunDay(newestRun.startedAt, now)} run · paused for your review${deadline ? ` · ${deadline}` : ''}${moreWaiting}`
+    const pausedAtLine = t.pausedForReview(formatRunDay(newestRun.startedAt, now), deadline ?? null, moreWaiting)
     return {
       id: `paused-${newestRun.id}`,
       kind: 'approval',
-      title: `${agentName(newestRun.agentId)} is waiting for you`,
+      title: t.waitingForYou(agentName(newestRun.agentId)),
       // The question can be a whole message to send, so it gets its own (clamped) line.
       ...(question ? { detail: question, meta: pausedAtLine } : { detail: pausedAtLine }),
-      actionLabel: 'Review',
+      actionLabel: t.review,
       actionPath: newestRun.trigger === 'test' ? agentPath('testRun', newestRun.agentId, { runId: newestRun.id }) : runReviewPath(newestRun.id),
       isPrimaryAction: index === 0,
     }
@@ -98,12 +93,13 @@ export function buildPausedRunItems(pausedRuns: Run[], agentName: AgentNameLooku
  */
 export function describeRunResult(run: Run): string {
   const summary = run.outputs?.summary
-  if (run.status === 'failed') return run.errorMessage ? humanizeRunError(run.errorMessage).summary : 'Failed'
+  const t = messages().home
+  if (run.status === 'failed') return run.errorMessage ? humanizeRunError(run.errorMessage).summary : t.resultFailed
   if (typeof summary === 'string' && summary.trim().length > 0) return summary.trim()
-  if (run.status === 'paused') return readPauseQuestion(run) ?? 'Waiting for you'
-  if (run.status === 'running') return 'Still running'
-  if (run.status === 'aborted') return 'Stopped'
-  return 'Finished'
+  if (run.status === 'paused') return readPauseQuestion(run) ?? t.resultWaiting
+  if (run.status === 'running') return t.resultRunning
+  if (run.status === 'aborted') return t.resultStopped
+  return t.resultFinished
 }
 
 /**
@@ -121,7 +117,7 @@ export function buildRecentRunRows(runs: Run[], agentName: AgentNameLookup, now:
     agentName: agentName(run.agentId),
     agentPath: agentPath('builder', run.agentId),
     startedAt: formatRelativeTime(run.startedAt, now),
-    startedAtTitle: new Date(run.startedAt).toLocaleString('en-GB'),
+    startedAtTitle: formatDateTime(new Date(run.startedAt)),
     resultSummary: describeRunResult(run),
     status: recentRunStatuses[run.status],
     runPath: runPathFor(run),
@@ -131,18 +127,18 @@ export function buildRecentRunRows(runs: Run[], agentName: AgentNameLookup, now:
 /** "9 minutes", "2 hours", "3 days" (at least one minute). */
 export function formatWaitingTime(sinceIsoTimestamp: string, now: Date = new Date()): string {
   const waitedMinutes = Math.max(1, Math.floor((now.getTime() - new Date(sinceIsoTimestamp).getTime()) / 60_000))
-  const pluralize = (count: number, unit: string) => `${count} ${unit}${count === 1 ? '' : 's'}`
-  if (waitedMinutes < 60) return pluralize(waitedMinutes, 'minute')
+  const t = messages().home
+  if (waitedMinutes < 60) return t.waitMinutes(waitedMinutes)
   const waitedHours = Math.floor(waitedMinutes / 60)
-  if (waitedHours < 24) return pluralize(waitedHours, 'hour')
-  return pluralize(Math.floor(waitedHours / 24), 'day')
+  if (waitedHours < 24) return t.waitHours(waitedHours)
+  return t.waitDays(Math.floor(waitedHours / 24))
 }
 
 function describeHandingAgents(waitingConversations: Conversation[], agentName: AgentNameLookup): string {
   const agentNames = Array.from(new Set(waitingConversations.map((conversation) => agentName(conversation.agentId))))
   if (agentNames.length === 1) return agentNames[0]
-  if (agentNames.length === 2) return `${agentNames[0]} and ${agentNames[1]}`
-  return 'Your chatbots'
+  if (agentNames.length === 2) return messages().home.twoAgents(agentNames[0], agentNames[1])
+  return messages().home.yourChatbots
 }
 
 /**
@@ -163,9 +159,9 @@ export function buildInboxAttentionItem(waitingConversations: Conversation[], ag
   return {
     id: 'inbox-waiting',
     kind: 'chat',
-    title: isSingle ? '1 customer is waiting in Inbox' : `${waitingConversations.length} customers are waiting in Inbox`,
-    detail: `${describeHandingAgents(waitingConversations, agentName)} passed ${isSingle ? 'it' : 'them'} to you · ${isSingle ? 'waiting' : 'oldest'} ${formatWaitingTime(oldestUpdate, now)}`,
-    actionLabel: 'Open Inbox',
+    title: isSingle ? messages().home.oneCustomerWaiting : messages().home.customersWaiting(waitingConversations.length),
+    detail: messages().home.passedToYou(describeHandingAgents(waitingConversations, agentName), isSingle, formatWaitingTime(oldestUpdate, now)),
+    actionLabel: messages().home.action.openInbox,
     actionPath: routePaths.inbox,
     isPrimaryAction: false,
   }

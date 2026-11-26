@@ -1,5 +1,6 @@
 import type { Agent } from '@/api/types'
 import { agentTemplates, type AgentTemplate } from '@/pages/new-agent/agentTemplates'
+import { messages } from '@/i18n'
 
 /** Which Home layout to show (09). */
 
@@ -46,6 +47,6 @@ export function pickHomeTemplates(templates: AgentTemplate[] = agentTemplates): 
  * @param nextRunLine - E.g. "next run tomorrow 07:00", or null while loading (string | null)
  */
 export function describeGreetingSubtitle(layout: HomeLayout, needsYouLine: string | null, nextRunLine: string | null): string {
-  if (layout === 'firstAgent') return "Let's build your first agent. Describe a job or pick a template"
+  if (layout === 'firstAgent') return messages().home.firstAgentSubtitle
   return [needsYouLine, nextRunLine].filter((part): part is string => part !== null).join(' · ')
 }

@@ -1,6 +1,7 @@
 import type { PluginAutoUpdate, PluginCatalogEntry } from '@/api/pluginTypes'
 import { findPluginDisplayName, pluginDisplayName, type NamedPlugin } from '@/lib/pluginDisplayName'
 import type { UpdateStatus } from '@/pages/updates/updateContext'
+import { messages } from '@/i18n'
 
 /** How long "Updated automatically" stays on Home. */
 export const recentAutoUpdateWindowMs = 24 * 60 * 60 * 1000
@@ -43,22 +44,23 @@ export interface UpdatesNoticeInputs {
 
 function buildAppLine(status: UpdateStatus | null): UpdatesNoticeLine | null {
   if (!status) return null
+  const t = messages().home
   switch (status.kind) {
     case 'ready':
-      return { key: `app:ready:${status.update.version}`, text: `graphrt ${status.update.version} is ready`, action: { kind: 'restart' }, needsApproval: false }
+      return { key: `app:ready:${status.update.version}`, text: t.appReady(status.update.version), action: { kind: 'restart' }, needsApproval: false }
     case 'downloading': {
       const percentText = status.percent === null ? '' : ` ${status.percent}%`
-      return { key: `app:${status.update.version}`, text: `Downloading graphrt ${status.update.version}…${percentText}`, action: { kind: 'none' }, needsApproval: false }
+      return { key: `app:${status.update.version}`, text: t.appDownloading(status.update.version, percentText), action: { kind: 'none' }, needsApproval: false }
     }
     case 'available':
-      return { key: `app:${status.update.version}`, text: `graphrt ${status.update.version} is available`, action: { kind: 'download' }, needsApproval: false }
+      return { key: `app:${status.update.version}`, text: t.appAvailable(status.update.version), action: { kind: 'download' }, needsApproval: false }
     default:
       return null
   }
 }
 
 function pluralizeUpdates(count: number): string {
-  return count === 1 ? '1 plugin update' : `${count} plugin updates`
+  return messages().home.pluginUpdates(count)
 }
 
 function versionKey(entries: PluginCatalogEntry[]): string {
@@ -67,7 +69,8 @@ function versionKey(entries: PluginCatalogEntry[]): string {
 
 function buildReadyPluginLine(readyUpdates: PluginCatalogEntry[], inputs: UpdatesNoticeInputs): UpdatesNoticeLine | null {
   if (readyUpdates.length === 0) return null
-  const text = readyUpdates.length === 1 ? `${pluginDisplayName(readyUpdates[0])} ${readyUpdates[0].version} is available` : `${pluralizeUpdates(readyUpdates.length)} available`
+  const t = messages().home
+  const text = readyUpdates.length === 1 ? t.pluginVersionAvailable(pluginDisplayName(readyUpdates[0]), readyUpdates[0].version) : t.updatesAvailable(pluralizeUpdates(readyUpdates.length))
   return { key: `plugins:${versionKey(readyUpdates)}`, text, action: { kind: 'updateAll', reviewPath: inputs.updatesListPath }, needsApproval: false }
 }
 
@@ -75,9 +78,8 @@ function buildApprovalLine(approvalUpdates: PluginCatalogEntry[], inputs: Update
   if (approvalUpdates.length === 0) return null
   const [firstUpdate] = approvalUpdates
   const isSingle = approvalUpdates.length === 1
-  const text = isSingle
-    ? `${pluginDisplayName(firstUpdate)} ${firstUpdate.version} asks for new permissions and needs your approval`
-    : `${pluralizeUpdates(approvalUpdates.length)} ask for new permissions and need your approval`
+  const t = messages().home
+  const text = isSingle ? t.oneNeedsApproval(pluginDisplayName(firstUpdate), firstUpdate.version) : t.manyNeedApproval(pluralizeUpdates(approvalUpdates.length))
   const path = isSingle ? inputs.pluginPath(firstUpdate.name) : inputs.updatesListPath
   return { key: `approval:${versionKey(approvalUpdates)}`, text, action: { kind: 'review', path }, needsApproval: true }
 }
@@ -89,9 +91,10 @@ function buildAutoUpdateLine(autoUpdates: PluginAutoUpdate[], inputs: UpdatesNot
     return Number.isFinite(updatedAt) && now.getTime() - updatedAt < recentAutoUpdateWindowMs
   })
   if (recentUpdates.length === 0) return null
-  const changes = recentUpdates.map((autoUpdate) => `${findPluginDisplayName(knownPlugins, autoUpdate.name)} ${autoUpdate.fromVersion} → ${autoUpdate.toVersion}`)
+  const t = messages().home
+  const changes = recentUpdates.map((autoUpdate) => t.autoUpdateChange(findPluginDisplayName(knownPlugins, autoUpdate.name), autoUpdate.fromVersion, autoUpdate.toVersion))
   const key = `auto:${recentUpdates.map((autoUpdate) => `${autoUpdate.name}@${autoUpdate.toVersion}@${autoUpdate.updatedAt}`).join(',')}`
-  return { key, text: `Updated automatically: ${changes.join(', ')}`, action: { kind: 'none' }, needsApproval: false }
+  return { key, text: t.updatedAutomatically(changes.join(', ')), action: { kind: 'none' }, needsApproval: false }
 }
 
 /**
