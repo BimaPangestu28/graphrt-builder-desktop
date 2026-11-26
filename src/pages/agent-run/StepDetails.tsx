@@ -3,6 +3,8 @@ import { buildFixStepPath } from './fixStepRequest'
 import { humanizeRunError } from './runErrorText'
 import type { RunStepView } from './runSteps'
 import { readFinalText, summarizeValues } from './stepValueSummary'
+import { humanizePluginName } from '@/lib/pluginDisplayName'
+import { agentPath, routePaths } from '@/routes'
 import { messages } from '@/i18n'
 
 /**
@@ -81,17 +83,71 @@ function describeEmptyState(step: RunStepView): string | null {
   return null
 }
 
+/** "Send message of WhatsApp API" from `whatsapp-api/send_message`; the whole plugin for `plugin/*`. */
+function describeUnavailableTool(tool: string): string {
+  const [provider, action] = tool.split('/')
+  const providerLabel = humanizePluginName(provider ?? tool)
+  if (!action || action === '*') return providerLabel
+  const actionLabel = action.replace(/[_.-]+/g, ' ').trim()
+  return messages().agentRun.toolOfPlugin(actionLabel.charAt(0).toUpperCase() + actionLabel.slice(1), providerLabel)
+}
+
+/**
+ * What the step used from Skills and from what the agent learned: how many learned notes it
+ * read (with a link to them when the agent is known), and tools a skill was allowed but could
+ * not use because nothing on this computer provides them.
+ */
+function SkillAndLearningNotes({ step, agentId }: { step: RunStepView; agentId?: string | null }) {
+  const t = messages().agentRun
+  if (step.learnedNoteCount === 0 && step.unavailableSkillTools.length === 0) return null
+  return (
+    <div className="flex flex-col gap-1.5">
+      {step.learnedNoteCount > 0 && (
+        <span className="text-[13px] text-body">
+          {t.usedLearnedNotes(step.learnedNoteCount)}
+          {agentId && (
+            <>
+              {' '}
+              <Link to={agentPath('learned', agentId, { tab: 'inUse' })} className="font-medium">
+                {t.seeLearnedNotes}
+              </Link>
+            </>
+          )}
+        </span>
+      )}
+      {step.unavailableSkillTools.length > 0 && (
+        <div role="note" className="flex flex-col gap-1 rounded-lg border border-amber-line-2 bg-amber-tint px-3 py-2 text-[13px] text-ink">
+          <span className="font-medium">{t.skillToolsMissing}</span>
+          <ul className="m-0 flex list-disc flex-col gap-0.5 pl-5">
+            {step.unavailableSkillTools.map((missing) => (
+              <li key={`${missing.skill}/${missing.tool}`}>{t.skillToolMissing(humanizePluginName(missing.skill), describeUnavailableTool(missing.tool))}</li>
+            ))}
+          </ul>
+          <span className="text-[12px] text-body">
+            {t.skillToolsMissingHint}{' '}
+            <Link to={routePaths.plugins} className="font-medium">
+              {t.openPlugins}
+            </Link>
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 interface StepDetailsProps {
   step: RunStepView
   id: string
   /** Agent whose builder "Ask the builder to fix this step" opens, for failed steps. */
   fixAgentId?: string | null
+  /** The run's agent, to link to what it learned. */
+  agentId?: string | null
 }
 
-export function StepDetails({ step, id, fixAgentId }: StepDetailsProps) {
+export function StepDetails({ step, id, fixAgentId, agentId }: StepDetailsProps) {
   const usageText = formatUsage(step)
   const emptyState = describeEmptyState(step)
-  const hasValues = step.outputs !== null || step.inputs !== undefined
+  const hasValues = step.outputs !== null || step.inputs !== undefined || step.learnedNoteCount > 0 || step.unavailableSkillTools.length > 0
   return (
     <div id={id} className="flex flex-col gap-3 pb-1 pt-2 motion-safe:animate-[step-details-in_160ms_ease-out]">
       {step.itemDescription && <span className="text-[13px] text-body">{step.itemDescription}</span>}
@@ -101,6 +157,7 @@ export function StepDetails({ step, id, fixAgentId }: StepDetailsProps) {
           {step.iteration.total !== null && messages().agentRun.ofTotal(step.iteration.total)}
         </span>
       )}
+      <SkillAndLearningNotes step={step} agentId={agentId} />
       {step.isModelStep && <ModelText step={step} />}
       {step.errorMessage && step.iteration === null && <ErrorExplanation rawError={step.errorMessage} stepDetail={step.stepDetail} fixStepPath={fixAgentId ? buildFixStepPath(fixAgentId, step) : null} />}
       {step.retryCount > 0 && (
