@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import type { SystemNotification } from '@/pages/menu-bar/menuBarIllustration'
 import { routePaths } from '@/routes'
+import { messages } from '@/i18n'
 
 /** App icon as macOS shows it in notifications: the tile mark without the loop's arrowhead. */
 function NotificationAppIcon() {
@@ -35,14 +36,14 @@ export function SystemNotificationCard({ notification, onSnooze }: SystemNotific
               onClick={() => navigate(routePaths.batchApproval)}
               className="h-[30px] cursor-pointer rounded-lg border-0 bg-ink px-3 text-[12px] font-semibold text-white hover:bg-ink-2"
             >
-              Review
+              {messages().misc.review}
             </button>
             <button
               type="button"
               onClick={() => onSnooze(notification.id)}
               className="h-[30px] cursor-pointer rounded-lg border border-line-strong bg-surface px-3 text-[12px] font-medium text-ink hover:bg-subtle"
             >
-              In 1 hour
+              {messages().misc.in1Hour}
             </button>
           </span>
         )}

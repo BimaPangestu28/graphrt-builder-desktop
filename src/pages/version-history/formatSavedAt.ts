@@ -1,3 +1,4 @@
+import { messages } from '@/i18n'
 const millisecondsPerMinute = 60_000
 
 function isSameDay(first: Date, second: Date): boolean {
@@ -22,10 +23,10 @@ export function formatSavedAt(savedAt: string, now: Date = new Date()): string {
   const savedDate = new Date(savedAt)
   if (Number.isNaN(savedDate.getTime())) return savedAt
   const elapsedMilliseconds = now.getTime() - savedDate.getTime()
-  if (elapsedMilliseconds >= 0 && elapsedMilliseconds < millisecondsPerMinute) return 'Just now'
-  if (isSameDay(savedDate, now)) return `Today ${formatClockTime(savedDate)}`
+  if (elapsedMilliseconds >= 0 && elapsedMilliseconds < millisecondsPerMinute) return messages().misc.justNow
+  if (isSameDay(savedDate, now)) return messages().misc.todayClocktime(formatClockTime(savedDate))
   const yesterday = new Date(now)
   yesterday.setDate(now.getDate() - 1)
-  if (isSameDay(savedDate, yesterday)) return `Yesterday ${formatClockTime(savedDate)}`
+  if (isSameDay(savedDate, yesterday)) return messages().misc.yesterdayClocktime(formatClockTime(savedDate))
   return savedDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
 }

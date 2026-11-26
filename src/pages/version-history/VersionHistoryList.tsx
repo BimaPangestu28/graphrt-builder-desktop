@@ -1,5 +1,6 @@
 import { joinClassNames } from '@/components/ui'
 import type { VersionEntry } from './useVersionHistory'
+import { messages } from '@/i18n'
 
 /** How many of the newest versions get their own card; older ones are grouped into one. */
 const listedVersionCount = 3
@@ -26,7 +27,7 @@ function OlderVersionsCard({ olderVersions }: { olderVersions: VersionEntry[] })
   const title = olderVersions.length === 1 ? `v${newestOlderVersion.number}` : `v${oldestOlderVersion.number} to v${newestOlderVersion.number}`
   return (
     <li className={joinClassNames(cardClassNames, 'border border-line px-3.5 py-3')}>
-      <VersionCardBody title={title} savedAt={newestOlderVersion.savedAt} summary={olderVersions.length === 1 ? newestOlderVersion.summary : 'Earlier versions'} />
+      <VersionCardBody title={title} savedAt={newestOlderVersion.savedAt} summary={olderVersions.length === 1 ? newestOlderVersion.summary : messages().misc.earlierVersions} />
     </li>
   )
 }
@@ -46,7 +47,7 @@ export function VersionHistoryList({ versions, currentVersionNumber, selectedVer
       className="box-border flex min-w-0 flex-[1_1_320px] flex-col gap-3 border-l border-line bg-subtle p-6"
     >
       <h2 id="version-history-heading" className="m-0 text-[15px] font-semibold">
-        History
+        {messages().misc.history}
       </h2>
       <ol className="m-0 flex list-none flex-col gap-1.5 p-0">
         {versions.slice(0, listedVersionCount).map((version) => {
@@ -65,7 +66,7 @@ export function VersionHistoryList({ versions, currentVersionNumber, selectedVer
                 )}
               >
                 <VersionCardBody
-                  title={isCurrent ? `v${version.number} · current` : `v${version.number}`}
+                  title={isCurrent ? messages().misc.vNumberCurrent(version.number) : `v${version.number}`}
                   savedAt={version.savedAt}
                   summary={version.summary}
                 />

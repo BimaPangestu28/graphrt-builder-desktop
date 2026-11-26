@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { routePaths } from '@/routes'
 import { RestartControls } from './RestartControls'
 import type { AppUpdateControls, UpdateStatus } from './updateContext'
+import { messages } from '@/i18n'
 
 /** Where "Later" is remembered, so a dismissed version stays hidden after a restart. */
 const DISMISSED_VERSION_KEY = 'graphrt.updateToast.dismissedVersion'
@@ -49,7 +50,7 @@ function UpdateToast({ label, children }: { label: string; children: ReactNode }
 function WhatsNewLink() {
   return (
     <Link to={routePaths.settings} className="text-[13px] font-medium">
-      What's new
+      {messages().misc.whatsNew}
     </Link>
   )
 }
@@ -59,22 +60,22 @@ function UpdateAvailableToast({ updateControls, onLater }: { updateControls: App
   const { status, currentVersion } = updateControls
   if (status.kind !== 'available') return null
   return (
-    <UpdateToast label="Update available">
+    <UpdateToast label={messages().misc.updateAvailable}>
       <div className="flex flex-col gap-0.5">
-        <p className="m-0 font-semibold">graphrt {status.update.version} is available</p>
-        {currentVersion && <span className="text-[13px] text-muted">You have {currentVersion}</span>}
+        <p className="m-0 font-semibold">{messages().misc.graphrt}{' '}{status.update.version} {messages().misc.isAvailable}</p>
+        {currentVersion && <span className="text-[13px] text-muted">{messages().misc.youHave}{' '}{currentVersion}</span>}
       </div>
       {status.downloadError && (
         <p role="alert" className="m-0 text-[13px] text-danger">
-          Could not download it: {status.downloadError}
+          {messages().misc.couldNotDownloadIt}{' '}{status.downloadError}
         </p>
       )}
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" className={primaryButtonClassNames} onClick={() => void updateControls.downloadNow()}>
-          {status.downloadError ? 'Try again' : 'Update'}
+          {status.downloadError ? messages().misc.tryAgain : messages().misc.update}
         </button>
         <button type="button" className={secondaryButtonClassNames} onClick={onLater}>
-          Later
+          {messages().misc.later}
         </button>
         <WhatsNewLink />
       </div>
@@ -88,18 +89,18 @@ function UpdateDownloadingToast({ updateControls, onHide }: { updateControls: Ap
   if (status.kind !== 'downloading') return null
   const percentLabel = status.percent === null ? '' : ` ${status.percent}%`
   return (
-    <UpdateToast label="Downloading update">
+    <UpdateToast label={messages().misc.downloadingUpdate}>
       <div className="flex items-center justify-between gap-3">
         <p className="m-0 font-semibold">
-          Downloading graphrt {status.update.version}…{percentLabel}
+          {messages().misc.downloadingGraphrt}{' '}{status.update.version}…{percentLabel}
         </p>
         <button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-[13px] font-medium text-ink-2" onClick={onHide}>
-          Hide
+          {messages().misc.hide}
         </button>
       </div>
       <div
         role="progressbar"
-        aria-label={`Downloading graphrt ${status.update.version}`}
+        aria-label={messages().misc.downloadingGraphrtVersion(status.update.version)}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={status.percent ?? undefined}
@@ -110,7 +111,7 @@ function UpdateDownloadingToast({ updateControls, onHide }: { updateControls: Ap
           style={status.percent === null ? undefined : { width: `${status.percent}%` }}
         />
       </div>
-      <span className="text-[13px] text-muted">You can keep working; it installs when you restart</span>
+      <span className="text-[13px] text-muted">{messages().misc.youCanKeepWorkingItInstalls}</span>
     </UpdateToast>
   )
 }
@@ -144,8 +145,8 @@ export function UpdateReadyBanner({ updateControls }: { updateControls: AppUpdat
   }
   if (status.kind !== 'ready') return null
   return (
-    <UpdateToast label="Update ready">
-      <p className="m-0 font-semibold">graphrt {status.update.version} is ready</p>
+    <UpdateToast label={messages().misc.updateReady}>
+      <p className="m-0 font-semibold">{messages().misc.graphrt}{' '}{status.update.version} {messages().misc.isReady}</p>
       <RestartControls updateControls={updateControls} onLater={dismiss} />
     </UpdateToast>
   )

@@ -3,6 +3,7 @@ import { getTrayAreaName } from '@/lib/platform'
 import { systemNotifications } from '@/pages/menu-bar/menuBarIllustration'
 import { MenuBarPopover } from '@/pages/menu-bar/MenuBarPopover'
 import { SystemNotificationCard } from '@/pages/menu-bar/SystemNotificationCard'
+import { messages } from '@/i18n'
 
 function CanvasColumnLabel({ children }: { children: string }) {
   return <span className="text-[13px] font-semibold text-ink-2">{children}</span>
@@ -26,23 +27,23 @@ export function MenuBarPage() {
     <div className="min-h-screen overflow-auto bg-[#E9E9EC]">
       <div className="mx-auto box-border flex h-[900px] w-[1440px] gap-16 p-16 text-[14px] text-ink">
         <div className="flex flex-[0_0_380px] flex-col gap-3">
-          <CanvasColumnLabel>{getTrayAreaName() === 'menu bar' ? 'Menu bar popover' : 'System tray menu'}</CanvasColumnLabel>
+          <CanvasColumnLabel>{getTrayAreaName() === 'menu bar' ? messages().misc.menuBarPopover : messages().misc.systemTrayMenu}</CanvasColumnLabel>
           <MenuBarPopover areAgentsPaused={areAgentsPaused} onTogglePause={() => setAreAgentsPaused((isPaused) => !isPaused)} />
         </div>
 
         <div className="flex flex-auto flex-col gap-3">
-          <CanvasColumnLabel>System notifications</CanvasColumnLabel>
+          <CanvasColumnLabel>{messages().misc.systemNotifications}</CanvasColumnLabel>
           <div className="flex w-[400px] flex-col gap-3">
             {visibleNotifications.map((notification) => (
               <SystemNotificationCard key={notification.id} notification={notification} onSnooze={snoozeNotification} />
             ))}
             {snoozedNotificationIds.length > 0 && (
               <p role="status" className="m-0 text-[13px] text-muted">
-                {snoozedNotificationIds.length} notification snoozed. It comes back in 1 hour
+                {snoozedNotificationIds.length} {messages().misc.notificationSnoozedItComesBackIn}
               </p>
             )}
             <p className="mt-2 mb-0 leading-[1.6] text-ink-2">
-              Only things that need you make a sound. Finished runs stay quiet and show up in Runs. Each type can be turned off in Settings › Notifications
+              {messages().misc.onlyThingsThatNeedYouMake}
             </p>
           </div>
         </div>

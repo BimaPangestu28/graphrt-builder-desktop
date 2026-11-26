@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react'
 import type { AvailableUpdate } from '@/api/updates'
+import { messages } from '@/i18n'
 
 /** Where the app is with finding and downloading a new version. */
 export type UpdateStatus =
@@ -73,6 +74,6 @@ export function calculateDownloadPercent(downloadedBytes: number, totalBytes: nu
 
 /** "1 agent run is in progress" / "3 agent runs are in progress"; null when unknown. */
 export function describeRunningRuns(runningCount: number | null): string {
-  if (runningCount === null) return 'Agent runs may be in progress'
-  return runningCount === 1 ? '1 agent run is in progress' : `${runningCount} agent runs are in progress`
+  if (runningCount === null) return messages().misc.agentRunsMayBeInProgress
+  return runningCount === 1 ? messages().misc.n1AgentRunIsInProgress : messages().misc.runningcountAgentRunsAreInProgress(runningCount)
 }
