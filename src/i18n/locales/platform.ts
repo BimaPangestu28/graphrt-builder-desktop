@@ -17,6 +17,7 @@ export const platform = defineMessages(
     genericError: 'Something went wrong',
     runtimeDownloadSize: 'about 30 MB download',
     couldNotOpenPage: (reason: string) => `Could not open the page: ${reason}`,
+    // en:end
   },
   {
     keychainMac: 'macOS Keychain',
@@ -33,5 +34,6 @@ export const platform = defineMessages(
     genericError: 'Ada yang tidak beres',
     runtimeDownloadSize: 'unduhan sekitar 30 MB',
     couldNotOpenPage: (reason) => `Halaman gagal dibuka. ${reason}`,
+    // id:end
   },
 )

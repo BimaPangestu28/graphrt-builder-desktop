@@ -164,6 +164,7 @@ export const home = defineMessages(
     manyNeedApproval: (updates: string) => `${updates} ask for new permissions and need your approval`,
     autoUpdateChange: (plugin: string, from: string, to: string) => `${plugin} ${from} → ${to}`,
     updatedAutomatically: (changes: string) => `Updated automatically: ${changes}`,
+    // en:end
   },
   {
     greetingMorning: 'Selamat pagi',
@@ -322,5 +323,6 @@ export const home = defineMessages(
     manyNeedApproval: (updates) => `${updates} meminta izin baru dan butuh persetujuan kamu`,
     autoUpdateChange: (plugin, from, to) => `${plugin} dari ${from} ke ${to}`,
     updatedAutomatically: (changes) => `Diperbarui otomatis, ${changes}`,
+    // id:end
   },
 )

@@ -50,6 +50,7 @@ export const runs = defineMessages(
     showRun: (agent: string, when: string) => `Show run: ${agent}, ${when}`,
     online: 'Online',
     onThisComputer: 'On this computer',
+    // en:end
   },
   {
     statusFilters: { all: 'Semua', needsYou: 'Perlu kamu', running: 'Berjalan', failed: 'Gagal' },
@@ -96,5 +97,6 @@ export const runs = defineMessages(
     showRun: (agent, when) => `Tampilkan run ${agent}, ${when}`,
     online: 'Online',
     onThisComputer: 'Di komputer ini',
+    // id:end
   },
 )

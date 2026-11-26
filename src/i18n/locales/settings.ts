@@ -176,6 +176,7 @@ export const settings = defineMessages(
     usageNotePlan: (plan: string) => `your ${plan} plan`,
     usageNote: (tool: string, plan: string) =>
       `Experimental · uses your ${tool} sign-in on this computer. Usage counts against ${plan} and its limits. For apps you share with others, use an API key.`,
+    // en:end
   },
   {
     title: 'Pengaturan',
@@ -347,5 +348,6 @@ export const settings = defineMessages(
     usageNotePlan: (plan) => `paket ${plan} kamu`,
     usageNote: (tool, plan) =>
       `Eksperimental · memakai login ${tool} kamu di komputer ini. Pemakaian dihitung dari ${plan} beserta batasnya. Untuk aplikasi yang dipakai bersama orang lain, pakai API key.`,
+    // id:end
   },
 )

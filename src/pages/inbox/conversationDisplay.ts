@@ -10,7 +10,7 @@ export type ConversationTone = 'amber' | 'brand' | 'grey'
 /** Hand-off reasons the builder guide suggests, as Inbox labels. Other reasons show "Waiting for you". */
 const handoffReasonLabels: Readonly<Record<string, string>> = localizedRecord(() => messages().inbox.handoff)
 
-const channelLabels: Readonly<Record<string, string>> = localizedRecord(() => ({ whatsapp: 'WhatsApp', telegram: 'Telegram', test: messages().inbox.testChat }))
+const channelLabels: Readonly<Record<string, string>> = localizedRecord(() => ({ whatsapp: 'WhatsApp', telegram: messages().inbox.telegram, test: messages().inbox.testChat }))
 
 export function isWaitingForYou(conversation: Pick<Conversation, 'status'>): boolean {
   return conversation.status === 'waiting_for_you'

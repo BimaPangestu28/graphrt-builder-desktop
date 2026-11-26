@@ -73,6 +73,9 @@ export const inbox = defineMessages(
     yourReply: 'Your reply',
     replyAsYourself: 'Reply as yourself',
     send: 'Send',
+    notDelivered: 'Not delivered:',
+    telegram: 'Telegram',
+    // en:end
   },
   {
     filters: { all: 'Semua', waiting: 'Menunggu kamu', botAnswering: 'Dijawab bot', fromOutreach: 'Dari outreach', closed: 'Selesai' },
@@ -143,5 +146,8 @@ export const inbox = defineMessages(
     yourReply: 'Balasan kamu',
     replyAsYourself: 'Balas sebagai diri sendiri',
     send: 'Kirim',
+    notDelivered: 'Tidak terkirim.',
+    telegram: 'Telegram',
+    // id:end
   },
 )

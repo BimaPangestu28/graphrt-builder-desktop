@@ -149,7 +149,7 @@ function SecretRow({ secret, onChanged }: SecretRowProps) {
           <Button
             variant={isMissing ? 'primary' : 'secondary'}
             size="sm"
-            aria-label={`${secret.configured ? 'Replace' : 'Add'} ${secret.name}`}
+            aria-label={secret.configured ? messages().lib.replaceSecret(secret.name) : messages().lib.addSecret(secret.name)}
             onClick={() => setIsEditing(true)}
           >
             {secret.configured ? messages().connections.replace : messages().connections.addValue}

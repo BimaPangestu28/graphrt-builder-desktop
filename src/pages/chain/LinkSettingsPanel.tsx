@@ -75,8 +75,8 @@ interface LinkSettingsPanelProps {
 
 /** Side panel for the selected link: which outputs feed the next agent, when it runs, and what happens if it fails. */
 export function LinkSettingsPanel({ step, linkNumber, targetAgent, previousAgent, hasUnsavedChanges, isSaving, onChange, onSave }: LinkSettingsPanelProps) {
-  const targetAgentName = targetAgent?.name ?? 'the next agent'
-  const previousAgentName = previousAgent?.name ?? 'the previous agent'
+  const targetAgentName = targetAgent?.name ?? messages().lib.theNextAgent
+  const previousAgentName = previousAgent?.name ?? messages().lib.thePreviousAgent
   const inputNames = listStepInputNames(step, targetAgent)
 
   return (

@@ -50,7 +50,7 @@ function SignedOutBanner({ connection, onReconnect }: { connection: Connection; 
       <Icon name="alert" size={18} className="shrink-0 text-danger" />
       <span className="min-w-0 flex-[1_1_280px] leading-normal">
         <b className="font-semibold">{connection.name} {messages().connections.needsYouToSignInAgain}</b>{' '}
-        <span className="text-danger-deep">{connection.connectedDescription.replace('Used by ', '')} {messages().connections.isPausedUntilThen}</span>
+        <span className="text-danger-deep">{connection.connectedDescription.replace(/^(Used by|Dipakai oleh) /, '')} {messages().connections.isPausedUntilThen}</span>
       </span>
       <Button size="sm" onClick={() => onReconnect(connection.id)} className="ml-auto">
         {messages().connections.reconnect}{' '}{connection.name}

@@ -62,7 +62,7 @@ export function useCanvasClipboard({ graph, positions, canEdit, onApplyEdit, onM
       onApplyEdit?.(() => result.graph, `${verb} ${describeNodeList(result.graph, result.pastedRootIds)}`)
       if (result.layouts.length > 0) onMoveNodes(result.layouts)
       onSelectionChange(result.pastedRootIds)
-      announce(`${verb === 'duplicated' ? 'Duplicated' : 'Pasted'} ${result.pastedRootIds.length === 1 ? '1 step' : `${result.pastedRootIds.length} steps`}`)
+      announce(messages().lib.pastedSteps(verb === 'duplicated', result.pastedRootIds.length))
     },
     [canEdit, onApplyEdit, onMoveNodes, onSelectionChange, announce],
   )

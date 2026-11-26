@@ -247,6 +247,13 @@ export const plugins = defineMessages(
     runtimeDownloadFailed: (reason: string) => `it is installed, but the plugin runtime (Node.js) could not be downloaded: ${reason}. Try again from the Plugins page`,
     catalogUnreachableWith: (reason: string) => `${reason}, so the last saved copy is shown`,
     catalogUnreachable: 'the catalog could not be reached, so the last saved copy is shown',
+    savedIn: 'Saved in',
+    neverShownAgain: ', never shown again',
+    couldNotCheckTheAgents: 'Could not check the agents:',
+    noAgentUses: 'No agent uses',
+    yet: 'yet',
+    tarGz: '.tar.gz',
+    // en:end
   },
   {
     title: 'Plugin',
@@ -487,5 +494,12 @@ export const plugins = defineMessages(
     runtimeDownloadFailed: (reason) => `plugin sudah terpasang, tapi runtime plugin (Node.js) gagal diunduh. ${reason}. Coba lagi dari halaman Plugin`,
     catalogUnreachableWith: (reason) => `${reason}, jadi salinan tersimpan terakhir yang ditampilkan`,
     catalogUnreachable: 'katalog tidak bisa dijangkau, jadi salinan tersimpan terakhir yang ditampilkan',
+    savedIn: 'Disimpan di',
+    neverShownAgain: ', tidak pernah ditampilkan lagi',
+    couldNotCheckTheAgents: 'Agent gagal dicek.',
+    noAgentUses: 'Belum ada agent yang memakai',
+    yet: '',
+    tarGz: '.tar.gz',
+    // id:end
   },
 )

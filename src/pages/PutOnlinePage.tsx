@@ -169,7 +169,7 @@ export function PutOnlinePage() {
     if (succeeded) setScreen('done')
   }
 
-  const agentName = agent?.name ?? 'This agent'
+  const agentName = agent?.name ?? messages().lib.thisAgent
   const selectedAccount = accounts?.find((account) => account.provider === provider)
 
   return (

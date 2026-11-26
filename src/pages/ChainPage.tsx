@@ -45,7 +45,7 @@ export function ChainPage() {
   const createFirstChain = async () => {
     setIsCreating(true)
     try {
-      await createChain({ name: 'New chain', steps: [] })
+      await createChain({ name: messages().lib.newChainName, steps: [] })
       await reload()
     } finally {
       setIsCreating(false)

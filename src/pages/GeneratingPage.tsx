@@ -195,7 +195,7 @@ function AgentBuildScreen({ buildRequest }: { buildRequest: BuildRequest }) {
   const sidebarStatus = buildError ? messages().newAgent.buildStopped : builtAgent ? messages().newAgent.ready : messages().newAgent.building
 
   return (
-    <AppShell agents={{ kind: 'draft', name: builtAgent?.name ?? 'New agent', status: sidebarStatus, agentId: builtAgent?.id }} runnerStatus={messages().newAgent.onlineOpenaiConnected} mainClassName={splitPaneMainClassName}>
+    <AppShell agents={{ kind: 'draft', name: builtAgent?.name ?? messages().lib.newAgentName, status: sidebarStatus, agentId: builtAgent?.id }} runnerStatus={messages().newAgent.onlineOpenaiConnected} mainClassName={splitPaneMainClassName}>
       <section aria-label={messages().newAgent.chat} className={`box-border flex min-w-0 flex-[1_1_380px] flex-col border-r border-line bg-surface ${splitPaneColumnClassName}`}>
         <PanelHeader>
           <span className="font-semibold">{messages().newAgent.buildWithChat}</span>

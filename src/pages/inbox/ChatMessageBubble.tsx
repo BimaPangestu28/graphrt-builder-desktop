@@ -68,7 +68,7 @@ export function ChatMessageBubble({ message }: { message: ConversationMessage })
       {message.text}
       {deliveryError && (
         <span lang="en" className="text-[11px] font-medium text-amber-strong">
-          Not delivered: {deliveryError}
+          {messages().inbox.notDelivered}{' '}{deliveryError}
         </span>
       )}
     </div>

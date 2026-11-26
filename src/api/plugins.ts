@@ -85,7 +85,7 @@ export async function pickLocalPluginPath(kind: LocalPluginPickKind): Promise<st
   const picked =
     kind === 'folder'
       ? await open({ title: messages().lib.chooseAPluginFolder, directory: true, multiple: false })
-      : await open({ title: messages().lib.chooseAPluginArchive, multiple: false, filters: [{ name: 'Plugin archive (.tar.gz)', extensions: ['gz', 'tgz'] }] })
+      : await open({ title: messages().lib.chooseAPluginArchive, multiple: false, filters: [{ name: messages().lib.pluginArchiveFilter, extensions: ['gz', 'tgz'] }] })
   return typeof picked === 'string' ? picked : null
 }
 

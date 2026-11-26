@@ -88,6 +88,7 @@ export const knowledge = defineMessages(
     testQuestionPlaceholder: 'What would a customer ask?',
     nothingAnswers: 'Nothing in this knowledge base answers that yet',
     dropHint: 'PDF, Word, Excel, CSV, Markdown, text and more',
+    // en:end
   },
   {
     newKnowledgeBase: 'Basis pengetahuan baru',
@@ -175,5 +176,6 @@ export const knowledge = defineMessages(
     testQuestionPlaceholder: 'Apa yang biasanya ditanyakan pelanggan?',
     nothingAnswers: 'Belum ada isi basis pengetahuan ini yang menjawab pertanyaan itu',
     dropHint: 'PDF, Word, Excel, CSV, Markdown, teks, dan lainnya',
+    // id:end
   },
 )

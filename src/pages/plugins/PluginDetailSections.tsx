@@ -12,7 +12,7 @@ import { pluginCategoryLabels } from './pluginCategories'
 import { describeMaturity, describeStepCount, type PluginListItem } from './pluginDisplay'
 import { buildPluginSetupSteps, PluginSetupChecklist } from './PluginSetupChecklist'
 import type { PluginUser } from './usePluginUsers'
-import { messages, useT } from '@/i18n'
+import { messages, useT, messages as currentMessages } from '@/i18n'
 import { localizedRecord } from '@/i18n/localized'
 
 /** A titled card on the plugin page; the title names the region for screen readers. */
@@ -222,9 +222,9 @@ function PluginUserRow({ user }: { user: PluginUser }) {
 /** "Used by agents": each agent's builder link with the steps that use the plugin. */
 export function PluginUsersSection({ pluginLabel, users, loadError }: { pluginLabel: string; users: PluginUser[] | null; loadError: Error | null }) {
   let body: ReactNode
-  if (loadError) body = <p className="m-0 text-[13px] text-muted">Could not check the agents: {describeError(loadError)}</p>
+  if (loadError) body = <p className="m-0 text-[13px] text-muted">{currentMessages().plugins.couldNotCheckTheAgents}{' '}{describeError(loadError)}</p>
   else if (!users) body = <p className="m-0 text-[13px] text-muted">{messages().plugins.checkingAgents}</p>
-  else if (users.length === 0) body = <p className="m-0 text-[13px] text-muted">No agent uses {pluginLabel} yet</p>
+  else if (users.length === 0) body = <p className="m-0 text-[13px] text-muted">{currentMessages().plugins.noAgentUses}{' '}{pluginLabel} {currentMessages().plugins.yet}</p>
   else
     body = (
       <ul aria-label={messages().plugins.agentsUsing(pluginLabel)} className="m-0 flex list-none flex-col gap-2 p-0">

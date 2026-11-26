@@ -107,7 +107,7 @@ function RunningServers() {
 export function OwnServerPage() {
   const agentId = useParams().agentId ?? sampleAgentId
   const { data: agent } = useAgent(agentId)
-  const agentName = agent?.name ?? 'This agent'
+  const agentName = agent?.name ?? messages().lib.thisAgent
   return (
     <AppShell agents={{ kind: 'list', activeAgentId: agentId }}>
       <PageFrame ariaLabel={messages().deploy.myOwnServer} className="gap-5">

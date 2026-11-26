@@ -55,7 +55,7 @@ export function describeRunMeta(run: Run | null, graph: AgentGraph, runState: Ru
   const isActive = run.status === 'running' || run.status === 'paused'
   const parts = [describeElapsed(run, now)]
   const currentItem = isActive ? describeCurrentItem(graph, runState) : null
-  if (runState.handledErrorCount > 0) parts.push(`${runState.handledErrorCount === 1 ? '1 handled error' : `${runState.handledErrorCount} handled errors`}${isActive ? ' so far' : ''}`)
+  if (runState.handledErrorCount > 0) parts.push(messages().lib.handledErrors(runState.handledErrorCount, isActive))
   else if (currentItem) parts.push(currentItem)
   else if (runState.totalCount > 0) parts.push(messages().nodes.donecountOfTotalcountStepsDone(runState.doneCount, runState.totalCount))
   return parts.join(' · ')

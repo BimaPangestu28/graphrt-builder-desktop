@@ -36,6 +36,7 @@ export const common = defineMessages(
     joinOr: (items: readonly string[]) => joinWords(items, 'or'),
     /** "a, b and c" */
     joinAnd: (items: readonly string[]) => joinWords(items, 'and'),
+    // en:end
   },
   {
     loading: 'Memuat',
@@ -69,6 +70,7 @@ export const common = defineMessages(
     and: 'dan',
     joinOr: (items) => joinWords(items, 'atau'),
     joinAnd: (items) => joinWords(items, 'dan'),
+    // id:end
   },
 )
 

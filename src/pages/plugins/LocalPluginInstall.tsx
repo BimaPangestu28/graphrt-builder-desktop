@@ -8,7 +8,7 @@ import { Button, buttonClassNames, Spinner } from '@/components/ui'
 import { describeError } from '@/lib/agentDisplay'
 import { pluginDetailPath } from '@/routes'
 import { useAppSettings } from '@/pages/settings/useAppSettings'
-import { useT } from '@/i18n'
+import { useT, messages } from '@/i18n'
 
 /** Where "Install from folder or archive…" is: closed, choosing, busy, asking to replace, or finished. */
 type LocalInstallStep =
@@ -136,7 +136,7 @@ function ChoosingStep({ onPick, onDropPath, onClose }: Pick<StepContentProps, 'o
   return (
     <>
       <p className="m-0 text-[13px] leading-normal text-body">
-        {t.localIntroBefore} <code className="font-mono text-[12px]">.tar.gz</code> {t.localIntroAfter}
+        {t.localIntroBefore} <code className="font-mono text-[12px]">{messages().plugins.tarGz}</code> {t.localIntroAfter}
       </p>
       <FileDropZone
         compact

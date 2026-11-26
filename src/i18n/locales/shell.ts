@@ -51,6 +51,7 @@ export const shell = defineMessages(
       andMore: (count: number) => ` and ${count} more`,
       leftOut: (names: string, accepted: string) => `Left out ${names}: drop ${accepted}`,
     },
+    // en:end
   },
   {
     nav: {
@@ -101,5 +102,6 @@ export const shell = defineMessages(
       andMore: (count) => ` dan ${count} lainnya`,
       leftOut: (names, accepted) => `${names} dilewati. Lepas ${accepted}`,
     },
+    // id:end
   },
 )

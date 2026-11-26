@@ -113,7 +113,7 @@ export function PluginConfigForm({ pluginLabel, fields, onSave, onClear }: Plugi
           onClear={() => onClear(field.variable)}
         />
       ))}
-      <span className="text-[12px] text-muted">Saved in {getCredentialStoreName()}, never shown again</span>
+      <span className="text-[12px] text-muted">{messages().plugins.savedIn}{' '}{getCredentialStoreName()}{messages().plugins.neverShownAgain}</span>
     </div>
   )
 }

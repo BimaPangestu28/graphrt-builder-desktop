@@ -123,6 +123,7 @@ export const welcome = defineMessages(
     switchTo: (provider: string) => `Switch to ${provider}`,
     looksGood: 'Looks good',
     savedInKeychain: (store: string) => `Saved in ${store} on this computer, never sent to graphrt`,
+    // en:end
   },
   {
     brand: 'Graphrt',
@@ -245,5 +246,6 @@ export const welcome = defineMessages(
     switchTo: (provider) => `Ganti ke ${provider}`,
     looksGood: 'Kelihatannya sudah benar',
     savedInKeychain: (store) => `Disimpan di ${store} di komputer ini, tidak pernah dikirim ke Graphrt`,
+    // id:end
   },
 )

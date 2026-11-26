@@ -44,7 +44,7 @@ async function createWorkerEngine(): Promise<LayoutEngine> {
     workerUrl: elkWorkerUrl,
     workerFactory: (url) => {
       const worker = new Worker(url ?? elkWorkerUrl)
-      worker.addEventListener('error', (event) => rejectWithWorkerError(new LayoutWorkerError(event.message || 'could not load it')))
+      worker.addEventListener('error', (event) => rejectWithWorkerError(new LayoutWorkerError(event.message || messages().lib.couldNotLoadIt)))
       return worker
     },
   })
