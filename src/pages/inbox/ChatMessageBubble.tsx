@@ -1,6 +1,7 @@
 import type { ConversationMessage } from '@/api/conversationTypes'
 import { joinClassNames } from '@/components/ui'
 import { formatClockTime } from './conversationDisplay'
+import { messages } from '@/i18n'
 
 interface BubbleStyle {
   bubbleClassNames: string
@@ -14,11 +15,25 @@ const sentBubbleBase = 'self-end rounded-[12px_12px_4px_12px]'
 const customerStyle: BubbleStyle = { bubbleClassNames: 'self-start rounded-[12px_12px_12px_4px] border border-line bg-surface' }
 const outreachStyle: BubbleStyle = {
   bubbleClassNames: joinClassNames(sentBubbleBase, 'bg-ink text-white'),
-  authorLabel: 'Outreach agent',
+  get authorLabel() {
+    return messages().inbox.outreachAgent
+  },
   authorLabelClassNames: 'text-faint',
 }
-const botStyle: BubbleStyle = { bubbleClassNames: joinClassNames(sentBubbleBase, 'bg-brand-soft'), authorLabel: 'Bot', authorLabelClassNames: 'text-brand-strong' }
-const operatorStyle: BubbleStyle = { bubbleClassNames: joinClassNames(sentBubbleBase, 'bg-ink text-white'), authorLabel: 'You', authorLabelClassNames: 'text-faint' }
+const botStyle: BubbleStyle = {
+  bubbleClassNames: joinClassNames(sentBubbleBase, 'bg-brand-soft'),
+  get authorLabel() {
+    return messages().inbox.bot
+  },
+  authorLabelClassNames: 'text-brand-strong',
+}
+const operatorStyle: BubbleStyle = {
+  bubbleClassNames: joinClassNames(sentBubbleBase, 'bg-ink text-white'),
+  get authorLabel() {
+    return messages().inbox.you
+  },
+  authorLabelClassNames: 'text-faint',
+}
 
 function getBubbleStyle(message: ConversationMessage): BubbleStyle {
   if (message.author === 'customer') return customerStyle

@@ -10,17 +10,19 @@ import { buildConversationPath } from './inbox/ConversationTable'
 import { CustomerPanel } from './inbox/CustomerPanel'
 import { formatTimeAgo, getChannelLabel, isOwnerReplying, previewLastMessage } from './inbox/conversationDisplay'
 import { ReplyComposer } from './inbox/ReplyComposer'
+import { messages as currentMessages, useT } from '@/i18n'
+import { localizedRecord } from '@/i18n/localized'
 
 const waitingFilter = { status: 'waiting_for_you' } as const
 
 function WaitingConversationList({ conversations, activeConversationId }: { conversations: Conversation[]; activeConversationId: string | null }) {
   return (
-    <nav aria-label="Conversations" className="box-border flex max-w-full min-w-0 flex-[1_1_260px] flex-col border-r border-line">
+    <nav aria-label={currentMessages().inbox.conversations} className="box-border flex max-w-full min-w-0 flex-[1_1_260px] flex-col border-r border-line">
       <div className="box-border flex h-16 items-center justify-between border-b border-line px-4">
-        <span className="font-semibold">Waiting for you</span>
+        <span className="font-semibold">{currentMessages().inbox.waitingForYou}</span>
         <span className="text-[12px] text-muted">{conversations.length}</span>
       </div>
-      {conversations.length === 0 && <span className="px-4 py-3.5 text-muted">Nothing is waiting for you</span>}
+      {conversations.length === 0 && <span className="px-4 py-3.5 text-muted">{currentMessages().inbox.nothingWaiting}</span>}
       {conversations.map((conversation) => {
         const isActive = conversation.id === activeConversationId
         return (
@@ -47,12 +49,7 @@ function WaitingConversationList({ conversations, activeConversationId }: { conv
   )
 }
 
-const statusPillTexts: Record<Conversation['status'], string> = {
-  bot_answering: 'Bot is answering',
-  waiting_for_you: 'Bot paused · waiting for you',
-  you_replying: 'Bot paused · you are replying',
-  closed: 'Chat closed',
-}
+const statusPillTexts: Readonly<Record<Conversation['status'], string>> = localizedRecord(() => currentMessages().inbox.statusPill)
 
 function ConversationStatusBadge({ conversation }: { conversation: Conversation }) {
   return (
@@ -85,7 +82,7 @@ function useConversationActions(conversationId: string) {
       await action()
       return true
     } catch (rawError) {
-      setActionError(rawError instanceof Error ? rawError.message : 'Something went wrong')
+      setActionError(rawError instanceof Error ? rawError.message : currentMessages().platform.genericError)
       return false
     } finally {
       setIsBusy(false)
@@ -116,7 +113,7 @@ function ConversationWorkspace({ detail }: { detail: ConversationDetail }) {
 
   return (
     <>
-      <section aria-label="Chat" className="flex min-w-0 flex-[3_1_420px] flex-col">
+      <section aria-label={currentMessages().inbox.chat} className="flex min-w-0 flex-[3_1_420px] flex-col">
         <header className="box-border flex h-16 items-center justify-between gap-3 border-b border-line px-5">
           <span className="flex flex-col">
             <b className="font-semibold">{conversation.customerName}</b>
@@ -141,7 +138,7 @@ function ConversationWorkspace({ detail }: { detail: ConversationDetail }) {
           onDraftChange={setDraft}
           onSend={() => void sendReply()}
           canReply={canReply}
-          disabledPlaceholder={conversation.status === 'closed' ? 'This chat is closed' : 'The bot is answering. Take over to reply yourself'}
+          disabledPlaceholder={conversation.status === 'closed' ? currentMessages().inbox.chatClosedPlaceholder : currentMessages().inbox.takeOverPlaceholder}
           suggestedReply={getSuggestedReply(detail)}
           isSending={actions.isBusy}
         />
@@ -161,9 +158,10 @@ function ConversationWorkspace({ detail }: { detail: ConversationDetail }) {
 
 function ConversationArea({ conversationId }: { conversationId: string | null }) {
   const { data: detail, error } = useConversationDetail(conversationId)
-  if (!conversationId) return <p className="m-0 flex-[3_1_420px] p-8 text-muted">Pick a chat to read it here</p>
-  if (error) return <p className="m-0 flex-[3_1_420px] p-8 text-muted">Could not open this chat. {error.message}</p>
-  if (!detail) return <p className="m-0 flex-[3_1_420px] p-8 text-muted">Loading chat…</p>
+  const t = useT().inbox
+  if (!conversationId) return <p className="m-0 flex-[3_1_420px] p-8 text-muted">{t.pickChat}</p>
+  if (error) return <p className="m-0 flex-[3_1_420px] p-8 text-muted">{t.couldNotOpenChat(error.message)}</p>
+  if (!detail) return <p className="m-0 flex-[3_1_420px] p-8 text-muted">{t.loadingChat}</p>
   return <ConversationWorkspace key={detail.conversation.id} detail={detail} />
 }
 

@@ -8,6 +8,7 @@ import { useAgents } from '@/hooks/useAgents'
 import { useAsyncData } from '@/hooks/useAsyncData'
 import { useConversationCounts, useConversationList } from '@/hooks/useConversations'
 import { ConversationTable } from './inbox/ConversationTable'
+import { messages, useT } from '@/i18n'
 
 type InboxFilterKey = 'all' | 'waiting' | 'bot-answering' | 'from-outreach' | 'closed'
 
@@ -21,11 +22,45 @@ interface InboxFilter {
 }
 
 const inboxFilters: InboxFilter[] = [
-  { key: 'all', label: 'All', filter: {}, readCount: (counts) => counts.all },
-  { key: 'waiting', label: 'Waiting for you', filter: { status: 'waiting_for_you' }, readCount: (counts) => counts.waitingForYou },
-  { key: 'bot-answering', label: 'Bot answering', filter: { status: 'bot_answering' }, readCount: (counts) => counts.botAnswering },
-  { key: 'from-outreach', label: 'From outreach', filter: { origin: outreachOrigin }, readCount: (counts) => counts.fromOutreach },
-  { key: 'closed', label: 'Closed', filter: { status: 'closed' } },
+  {
+    key: 'all',
+    get label() {
+      return messages().inbox.filters.all
+    },
+    filter: {},
+    readCount: (counts) => counts.all,
+  },
+  {
+    key: 'waiting',
+    get label() {
+      return messages().inbox.filters.waiting
+    },
+    filter: { status: 'waiting_for_you' },
+    readCount: (counts) => counts.waitingForYou,
+  },
+  {
+    key: 'bot-answering',
+    get label() {
+      return messages().inbox.filters.botAnswering
+    },
+    filter: { status: 'bot_answering' },
+    readCount: (counts) => counts.botAnswering,
+  },
+  {
+    key: 'from-outreach',
+    get label() {
+      return messages().inbox.filters.fromOutreach
+    },
+    filter: { origin: outreachOrigin },
+    readCount: (counts) => counts.fromOutreach,
+  },
+  {
+    key: 'closed',
+    get label() {
+      return messages().inbox.filters.closed
+    },
+    filter: { status: 'closed' },
+  },
 ]
 
 function BotAnsweringToggle({ chatbot }: { chatbot: Agent }) {
@@ -48,7 +83,7 @@ function BotAnsweringToggle({ chatbot }: { chatbot: Agent }) {
   return (
     <label className="box-border flex h-10 cursor-pointer items-center gap-2.5 rounded-[10px] border border-line-strong px-3.5">
       <StatusDot tone={isBotAnswering ? 'ok' : 'paused'} />
-      {isBotAnswering ? 'Bot is answering' : 'Bot is paused'}
+      {isBotAnswering ? messages().inbox.botIsAnswering : messages().inbox.botIsPaused}
       <input
         type="checkbox"
         checked={isBotAnswering}
@@ -71,7 +106,7 @@ function InboxStatTile({ label, value, isHighlighted = false }: { label: string;
 
 function InboxFilterChips({ activeFilterKey, counts, onSelect }: { activeFilterKey: InboxFilterKey; counts: ConversationCounts | null; onSelect: (filterKey: InboxFilterKey) => void }) {
   return (
-    <div role="group" aria-label="Filter chats" className="flex flex-wrap items-center gap-2">
+    <div role="group" aria-label={messages().inbox.filterChats} className="flex flex-wrap items-center gap-2">
       {inboxFilters.map((inboxFilter) => {
         const isActive = inboxFilter.key === activeFilterKey
         const count = counts && inboxFilter.readCount ? inboxFilter.readCount(counts) : undefined
@@ -96,8 +131,8 @@ function InboxFilterChips({ activeFilterKey, counts, onSelect }: { activeFilterK
 
 function InboxConversations({ filter }: { filter: ConversationFilter }) {
   const { data: conversations, error } = useConversationList(filter)
-  if (error) return <p className="m-0 text-muted">Could not load chats. {error.message}</p>
-  if (!conversations) return <p className="m-0 text-muted">Loading chats…</p>
+  if (error) return <p className="m-0 text-muted">{messages().inbox.couldNotLoadChats(error.message)}</p>
+  if (!conversations) return <p className="m-0 text-muted">{messages().inbox.loadingChats}</p>
   return <ConversationTable conversations={conversations} />
 }
 
@@ -108,6 +143,7 @@ function InboxConversations({ filter }: { filter: ConversationFilter }) {
  * opens the chat detail (16). The "Bot is answering" switch pauses or resumes the first chatbot.
  */
 export function InboxPage() {
+  const t = useT().inbox
   const [activeFilterKey, setActiveFilterKey] = useState<InboxFilterKey>('all')
   const activeFilter = inboxFilters.find((inboxFilter) => inboxFilter.key === activeFilterKey) ?? inboxFilters[0]
   const { data: counts } = useConversationCounts()
@@ -118,16 +154,16 @@ export function InboxPage() {
     <AppShell activeNav="inbox" agents={{ kind: 'list' }}>
       <PageFrame>
         <PageTitleBlock
-          title="Inbox"
-          subtitle={chatbot ? `${chatbot.name} · answering your customers` : 'Chats your chatbots hand to you show up here'}
+          title={t.title}
+          subtitle={chatbot ? t.answeringCustomers(chatbot.name) : t.emptySubtitle}
           actions={chatbot ? <BotAnsweringToggle chatbot={chatbot} /> : undefined}
         />
 
         <div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-2.5">
-          <InboxStatTile label="All chats" value={counts?.all} />
-          <InboxStatTile label="Bot answering" value={counts?.botAnswering} />
-          <InboxStatTile label="Waiting for you" value={counts?.waitingForYou} isHighlighted />
-          <InboxStatTile label="From outreach" value={counts?.fromOutreach} />
+          <InboxStatTile label={t.allChats} value={counts?.all} />
+          <InboxStatTile label={t.filters.botAnswering} value={counts?.botAnswering} />
+          <InboxStatTile label={t.waitingForYou} value={counts?.waitingForYou} isHighlighted />
+          <InboxStatTile label={t.filters.fromOutreach} value={counts?.fromOutreach} />
         </div>
 
         <InboxFilterChips activeFilterKey={activeFilterKey} counts={counts} onSelect={setActiveFilterKey} />

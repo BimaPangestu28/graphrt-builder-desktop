@@ -4,6 +4,7 @@ import { joinClassNames } from '@/components/ui'
 import { routePaths } from '@/routes'
 import { ConversationStatusPill } from './ConversationStatusPill'
 import { describeContact, formatTimeAgo, isWaitingForYou, previewLastMessage } from './conversationDisplay'
+import { useT } from '@/i18n'
 
 /**
  * Builds the chat detail path for one conversation.
@@ -47,16 +48,17 @@ function ConversationRow({ conversation, isLast }: { conversation: Conversation;
 }
 
 /** Table of chats on the inbox. Clicking a row (or the customer name) opens the chat detail. */
-export function ConversationTable({ conversations, emptyMessage = 'No chats here right now' }: { conversations: Conversation[]; emptyMessage?: string }) {
+export function ConversationTable({ conversations, emptyMessage }: { conversations: Conversation[]; emptyMessage?: string }) {
+  const t = useT().inbox
   return (
     <div className="overflow-x-auto rounded-[14px] border border-line">
       <table className="w-full border-collapse text-[13px]">
         <thead>
           <tr className="text-left text-muted">
-            <th className={headerCellClassNames}>Customer</th>
-            <th className={headerCellClassNames}>Last message</th>
-            <th className={headerCellClassNames}>Status</th>
-            <th className={headerCellClassNames}>Time</th>
+            <th className={headerCellClassNames}>{t.columnCustomer}</th>
+            <th className={headerCellClassNames}>{t.columnLastMessage}</th>
+            <th className={headerCellClassNames}>{t.columnStatus}</th>
+            <th className={headerCellClassNames}>{t.columnTime}</th>
           </tr>
         </thead>
         <tbody>
@@ -66,7 +68,7 @@ export function ConversationTable({ conversations, emptyMessage = 'No chats here
           {conversations.length === 0 && (
             <tr>
               <td colSpan={4} className="px-4 py-8 text-center text-muted">
-                {emptyMessage}
+                {emptyMessage ?? t.noChatsHere}
               </td>
             </tr>
           )}
