@@ -16,6 +16,7 @@ import { RunItemsTable, RunStatTiles } from '@/pages/agent-run/RunResultDetails'
 import { buildRunResultView } from '@/pages/agent-run/runResultSummary'
 import { BuildChatPanel, BuilderReply, RunPanel, RunTitleRow, RunWorkspace, UserChatBubble, runHeaderActionClassNames } from '@/pages/agent-run/RunWorkspace'
 import { StatusPill } from '@/pages/agent-run/StatusPill'
+import { RunFeedbackCard } from '@/pages/learning/RunFeedbackCard'
 import { buildRunSidebarAgents, useRunAgent } from '@/pages/agent-run/runAgentSidebar'
 import { summarizeRunInputs } from '@/pages/agent-run/runInputValues'
 import { toError } from '@/lib/errors'
@@ -174,6 +175,7 @@ export function RunResultPage() {
         <BuildChatPanel>
           {resultRun && <UserChatBubble>{inputsSummary ? messages().agentRun.testWith(inputsSummary) : messages().agentRun.testThisAgent}</UserChatBubble>}
           {view && <BuilderReply>{view.builderReply}</BuilderReply>}
+          {resultRun && finishedStatuses.has(resultRun.summary.status) && <RunFeedbackCard key={resultRun.summary.runId} agentId={agentId} runId={resultRun.summary.runId} />}
           {resultRun && <WhatNextCard agentId={agentId} runInputs={resultRun.inputs} />}
         </BuildChatPanel>
 

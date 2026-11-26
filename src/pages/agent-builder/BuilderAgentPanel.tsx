@@ -74,6 +74,9 @@ function BuilderHeaderActions({ agentId, onTestBlocked, showTest, isOnline }: { 
       <Link to={agentPath('versionHistory', agentId)} className={outlineHeaderLinkClassNames}>
         {messages().builder.history}
       </Link>
+      <Link to={agentPath('learned', agentId)} className={outlineHeaderLinkClassNames}>
+        {messages().learning.headerLink}
+      </Link>
       <Link to={agentPath('scheduleAgent', agentId)} className={outlineHeaderLinkClassNames}>
         {messages().builder.schedule}
       </Link>

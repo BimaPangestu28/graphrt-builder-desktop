@@ -14,6 +14,7 @@ import { runs } from './locales/runs'
 import { inbox } from './locales/inbox'
 import { plugins } from './locales/plugins'
 import { skills } from './locales/skills'
+import { learning } from './locales/learning'
 import { knowledge } from './locales/knowledge'
 import { home } from './locales/home'
 import { settings } from './locales/settings'
@@ -43,6 +44,7 @@ const english = {
   inbox: inbox.en,
   plugins: plugins.en,
   skills: skills.en,
+  learning: learning.en,
   knowledge: knowledge.en,
   home: home.en,
   settings: settings.en,
@@ -71,6 +73,7 @@ const indonesian: Messages = {
   inbox: inbox.id,
   plugins: plugins.id,
   skills: skills.id,
+  learning: learning.id,
   knowledge: knowledge.id,
   home: home.id,
   settings: settings.id,

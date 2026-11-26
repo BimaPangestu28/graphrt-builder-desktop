@@ -54,6 +54,7 @@ const SkillsPage = lazyScreen(() => import('./pages/SkillsPage'), 'SkillsPage')
 const SkillAddPage = lazyScreen(() => import('./pages/SkillAddPage'), 'SkillAddPage')
 const SkillCreatePage = lazyScreen(() => import('./pages/SkillCreatePage'), 'SkillCreatePage')
 const SkillDetailPage = lazyScreen(() => import('./pages/SkillDetailPage'), 'SkillDetailPage')
+const AgentLearnedPage = lazyScreen(() => import('./pages/AgentLearnedPage'), 'AgentLearnedPage')
 const PutOnlinePage = lazyScreen(() => import('./pages/PutOnlinePage'), 'PutOnlinePage')
 const OwnServerPage = lazyScreen(() => import('./pages/OwnServerPage'), 'OwnServerPage')
 
@@ -107,6 +108,7 @@ const screenRoutes = [
   { path: routePaths.skillCreate, element: <SkillCreatePage /> },
   { path: skillAddPattern, element: <SkillAddPage /> },
   { path: skillDetailPattern, element: <SkillDetailPage /> },
+  { path: agentRoutePatterns.learned, element: <AgentLearnedPage /> },
   { path: agentRoutePatterns.putOnline, element: <PutOnlinePage /> },
   { path: agentRoutePatterns.ownServer, element: <OwnServerPage /> },
 ]
