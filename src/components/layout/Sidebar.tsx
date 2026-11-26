@@ -10,7 +10,7 @@ import { getKindLabel, getProviderName, getStatusDotTone } from '@/lib/agentDisp
 import { agentPath, connectionsTabPath, routePaths } from '@/routes'
 import { messages, useT } from '@/i18n'
 
-export type MainNavKey = 'home' | 'inbox' | 'runs' | 'schedule' | 'knowledge' | 'plugins' | 'connections' | 'settings'
+export type MainNavKey = 'home' | 'inbox' | 'runs' | 'schedule' | 'knowledge' | 'skills' | 'plugins' | 'connections' | 'settings'
 
 /**
  * What the "Agents" section of the sidebar shows:
@@ -35,13 +35,14 @@ export interface SidebarProps {
   inboxCount?: number
 }
 
-const primaryNavItems: Array<{ key: 'home' | 'inbox' | 'runs' | 'schedule' | 'knowledge' | 'plugins'; path: string; icon: IconName }> = [
+const primaryNavItems: Array<{ key: 'home' | 'inbox' | 'runs' | 'schedule' | 'knowledge' | 'skills' | 'plugins'; path: string; icon: IconName }> = [
   { key: 'home', path: routePaths.home, icon: 'home' },
   { key: 'inbox', path: routePaths.inbox, icon: 'inbox' },
   { key: 'runs', path: routePaths.runs, icon: 'activity' },
   { key: 'schedule', path: routePaths.scheduler, icon: 'calendar' },
   { key: 'knowledge', path: routePaths.knowledge, icon: 'book' },
   { key: 'plugins', path: routePaths.plugins, icon: 'puzzle' },
+  { key: 'skills', path: routePaths.skills, icon: 'lightbulb' },
 ]
 
 const navLinkBase = 'group flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 no-underline'

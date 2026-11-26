@@ -114,6 +114,7 @@ const icons = {
   ),
   book: <path d="M12 7a4 4 0 00-4-3H3v15h5a4 4 0 014 2M12 7a4 4 0 014-3h5v15h-5a4 4 0 00-4 2M12 7v14" />,
   puzzle: <path d="M5 6h4a2.5 2.5 0 015 0h5v5a2.5 2.5 0 010 5v4H5z" />,
+  lightbulb: <path d="M9 18h6M10 21h4M12 3a6 6 0 00-4 10.5c.8.8 1 1.5 1 2.5h6c0-1 .2-1.7 1-2.5A6 6 0 0012 3z" />,
   plug: <path d="M9 2v5M15 2v5M6 7h12v4a6 6 0 01-12 0zM12 17v5" />,
   settings: (
     <>

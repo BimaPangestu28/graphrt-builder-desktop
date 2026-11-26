@@ -2,7 +2,7 @@ import { Suspense, lazy, useEffect, useState, type ComponentType, type LazyExoti
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { hasFinishedWelcome } from './lib/firstLaunch'
 import { prefetchWhenIdle, type ChunkLoader } from './lib/prefetchWhenIdle'
-import { agentRoutePatterns, connectionsTabPattern, knowledgeDetailPattern, pluginDetailPattern, routePaths } from './routes'
+import { agentRoutePatterns, connectionsTabPattern, knowledgeDetailPattern, pluginDetailPattern, routePaths, skillAddPattern, skillDetailPattern } from './routes'
 import { ScreenLoading } from './components/layout/ScreenLoading'
 
 /**
@@ -50,6 +50,10 @@ const VersionHistoryPage = lazyScreen(() => import('./pages/VersionHistoryPage')
 const MenuBarPage = lazyScreen(() => import('./pages/MenuBarPage'), 'MenuBarPage')
 const PluginsPage = lazyScreen(() => import('./pages/PluginsPage'), 'PluginsPage')
 const PluginDetailPage = lazyScreen(() => import('./pages/PluginDetailPage'), 'PluginDetailPage')
+const SkillsPage = lazyScreen(() => import('./pages/SkillsPage'), 'SkillsPage')
+const SkillAddPage = lazyScreen(() => import('./pages/SkillAddPage'), 'SkillAddPage')
+const SkillCreatePage = lazyScreen(() => import('./pages/SkillCreatePage'), 'SkillCreatePage')
+const SkillDetailPage = lazyScreen(() => import('./pages/SkillDetailPage'), 'SkillDetailPage')
 const PutOnlinePage = lazyScreen(() => import('./pages/PutOnlinePage'), 'PutOnlinePage')
 const OwnServerPage = lazyScreen(() => import('./pages/OwnServerPage'), 'OwnServerPage')
 
@@ -99,6 +103,10 @@ const screenRoutes = [
   { path: routePaths.menuBar, element: <MenuBarPage /> },
   { path: routePaths.plugins, element: <PluginsPage /> },
   { path: pluginDetailPattern, element: <PluginDetailPage /> },
+  { path: routePaths.skills, element: <SkillsPage /> },
+  { path: routePaths.skillCreate, element: <SkillCreatePage /> },
+  { path: skillAddPattern, element: <SkillAddPage /> },
+  { path: skillDetailPattern, element: <SkillDetailPage /> },
   { path: agentRoutePatterns.putOnline, element: <PutOnlinePage /> },
   { path: agentRoutePatterns.ownServer, element: <OwnServerPage /> },
 ]

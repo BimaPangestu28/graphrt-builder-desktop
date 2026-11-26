@@ -1,4 +1,4 @@
-import { agentPath, agentRoutePatterns, pluginDetailPath, routePaths, sampleAgentId } from './routes'
+import { agentPath, agentRoutePatterns, pluginDetailPath, routePaths, sampleAgentId, skillAddPath, skillDetailPath } from './routes'
 
 describe('agentPath', () => {
   it('fills in the agent id', () => {
@@ -24,5 +24,14 @@ describe('pluginDetailPath', () => {
   it('puts the plugin name under /plugins, escaped', () => {
     expect(pluginDetailPath('whatsapp-web')).toBe('/plugins/whatsapp-web')
     expect(pluginDetailPath('a/b')).toBe('/plugins/a%2Fb')
+  })
+})
+
+describe('skill paths', () => {
+  it('keeps the wizards and a skill page apart, escaped', () => {
+    expect(skillAddPath('refund-policy')).toBe('/skills/add/refund-policy')
+    expect(skillDetailPath('refund-policy')).toBe('/skills/view/refund-policy')
+    expect(skillDetailPath('a/b')).toBe('/skills/view/a%2Fb')
+    expect(routePaths.skillCreate).toBe('/skills/new')
   })
 })

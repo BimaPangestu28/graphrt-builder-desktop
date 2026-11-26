@@ -31,6 +31,8 @@ const screenList: Array<{ number: string; title: string; routeKey: RouteKey }> =
   { number: '24', title: 'Version history and undo', routeKey: 'versionHistory' },
   { number: '25', title: 'Menu bar or tray, and notifications', routeKey: 'menuBar' },
   { number: '26', title: 'Plugins', routeKey: 'plugins' },
+  { number: '68', title: 'Skills', routeKey: 'skills' },
+  { number: '69', title: 'Create a skill', routeKey: 'skillCreate' },
 ]
 
 export function ScreenIndexPage() {
