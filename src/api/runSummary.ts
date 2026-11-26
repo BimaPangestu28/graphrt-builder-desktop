@@ -30,3 +30,17 @@ export function listAgentRunStats(agentId?: string): Promise<AgentRunStats[]> {
   if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleRunSummaryBackend.listAgentRunStats(agentId)
   return callBackend('list_agent_run_stats', { agentId: agentId ?? null })
 }
+
+/**
+ * Opens the target of a card's Action.OpenUrl (or a link in card text) in the default browser.
+ *
+ * @param url - An https or mailto link (string)
+ * @throws BackendError - `invalid_input` for any other link
+ */
+export function openCardLink(url: string): Promise<void> {
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) {
+    console.info(`Sample backend: would open ${url}`)
+    return Promise.resolve()
+  }
+  return callBackend('open_card_link', { url })
+}

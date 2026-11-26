@@ -62,6 +62,7 @@ function approvalFor(nodeId: string, overrides: Partial<PendingApproval> = {}): 
     onTimeout: null,
     toolCall: null,
     container: null,
+    card: null,
     ...overrides,
   }
 }

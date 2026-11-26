@@ -136,3 +136,40 @@ describe('approval deadlines', () => {
     expect(describeDeadline(forever, now)).toBeNull()
   })
 })
+
+describe('approval steps with an Adaptive Card', () => {
+  const card = {
+    $ui: 'adaptive_card',
+    version: 1,
+    card: {
+      type: 'AdaptiveCard',
+      version: '1.5',
+      body: [
+        { type: 'TextBlock', text: 'Refund **Rp 250.000** to Sari?', wrap: true },
+        { type: 'Input.Text', id: 'note', label: 'Note to customer' },
+      ],
+      actions: [
+        { type: 'Action.Submit', id: 'approve', title: 'Approve refund' },
+        { type: 'Action.Submit', id: 'reject', title: 'Reject' },
+      ],
+    },
+  }
+  const cardRun = buildPausedRun([
+    { frame: '', node_id: 'ask', kind: 'human_input', data: { prompt: 'Approve the refund?', fields: [], actions: [{ id: 'approve', title: 'Approve' }, { id: 'reject', title: 'Reject' }], card } },
+  ])
+
+  it('reads the card of the pause and ignores anything that is not a block', () => {
+    expect(readFirstApproval(cardRun).card).toEqual(card)
+    const notABlock = buildPausedRun([{ frame: '', node_id: 'ask', kind: 'human_input', data: { card: { html: '<b>x</b>' } } }])
+    expect(readFirstApproval(notABlock).card).toBeNull()
+  })
+
+  it('answers with the card button and its inputs instead of the plain buttons', async () => {
+    const onAnswer = vi.fn()
+    render(<ApprovalCard approval={readFirstApproval(cardRun)} onAnswer={onAnswer} />)
+    fireEvent.change(await screen.findByLabelText('Note to customer'), { target: { value: 'Sorry' } })
+    expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Approve refund' }))
+    expect(onAnswer).toHaveBeenCalledWith({ action: 'approve', values: { note: 'Sorry' } })
+  })
+})

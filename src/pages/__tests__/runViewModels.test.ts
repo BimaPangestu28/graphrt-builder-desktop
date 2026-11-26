@@ -75,6 +75,7 @@ describe('run progress', () => {
         onTimeout: null,
         toolCall: null,
         container: { nodeId: 'each', nodeType: null, title: null, index: 2, total: null, finished: null, item: null },
+        card: null,
       },
     ])
     expect(readPendingApprovals({ ...run, status: 'running' })).toEqual([])

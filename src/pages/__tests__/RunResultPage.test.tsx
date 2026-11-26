@@ -47,6 +47,8 @@ function buildSummary(changes: Partial<RunSummary>): RunSummary {
     headline: null,
     items: [],
     counters: [],
+    visuals: [],
+    rejectedVisuals: [],
     errorMessage: null,
     ...changes,
   }

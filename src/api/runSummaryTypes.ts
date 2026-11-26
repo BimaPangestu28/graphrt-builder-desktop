@@ -1,3 +1,4 @@
+import type { UiBlock, UiBlockKind } from '@/components/visuals/uiBlockTypes'
 import type { RunStatus } from './types'
 
 /**
@@ -51,7 +52,28 @@ export interface RunSummary {
   /** The run's `items` output (objects only). */
   items: Array<Record<string, unknown>>
   counters: RunCounter[]
+  /** Cards, charts, tables and KPI tiles the run shows, validated by graphrt-ui (`src-tauri/src/ui_blocks.rs`). */
+  visuals: RunVisual[]
+  /** Blocks that failed validation: shown as notices, never rendered. */
+  rejectedVisuals: RejectedVisual[]
   errorMessage: string | null
+}
+
+/** A validated graphrt UI block (`$ui`: adaptive_card, chart, table or stats). */
+export interface RunVisual {
+  /** Stable within the run, for keys. */
+  id: string
+  /** The step that made it; null for the run's own outputs. */
+  nodeId: string | null
+  kind: UiBlockKind
+  block: UiBlock
+}
+
+/** A block graphrt-ui rejected. */
+export interface RejectedVisual {
+  nodeId: string | null
+  kind: string | null
+  reason: string
 }
 
 /** One agent's runs over the last 7 days, for its Home card. */

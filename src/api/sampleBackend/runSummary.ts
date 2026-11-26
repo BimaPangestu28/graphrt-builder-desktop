@@ -1,3 +1,4 @@
+import type { UiBlock } from '@/components/visuals/uiBlockTypes'
 import type { AgentRunStats, ApprovalCounts, RunCounter, RunSummary, StepCounts, TokenUsage } from '../runSummaryTypes'
 import type { GraphrtEvent, Run } from '../types'
 import { sampleAgentsBackend } from './agents'
@@ -116,6 +117,16 @@ function measureDurationMs(run: Run): number | null {
 }
 
 /**
+ * UI blocks among the run's outputs (top-level values, or arrays of them). The browser preview cannot run
+ * graphrt-ui, so it trusts its own fixtures; the desktop backend validates every block.
+ */
+function readSampleVisuals(outputs: Record<string, unknown> | null): Pick<RunSummary, 'visuals' | 'rejectedVisuals'> {
+  const values = Object.values(outputs ?? {}).flatMap((value) => (Array.isArray(value) ? value : [value]))
+  const blocks = values.filter((value): value is UiBlock => Boolean(value) && typeof value === 'object' && typeof (value as { $ui?: unknown }).$ui === 'string')
+  return { visuals: blocks.map((block, index) => ({ id: `output-${index}`, nodeId: null, kind: block.$ui, block })), rejectedVisuals: [] }
+}
+
+/**
  * Builds a run summary from a run and its events (pure; mirrors `summarize_run` in Rust).
  *
  * @param run - The stored run (Run)
@@ -137,6 +148,7 @@ export function summarizeSampleRun(run: Run, events: GraphrtEvent[]): RunSummary
     headline: readHeadline(run.outputs),
     items: readItems(run.outputs),
     counters: readCounters(run.outputs),
+    ...readSampleVisuals(run.outputs),
     errorMessage: run.errorMessage,
   }
 }

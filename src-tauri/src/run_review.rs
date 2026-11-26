@@ -141,6 +141,9 @@ pub struct PendingApproval {
     pub tool_call: Option<PendingToolCall>,
     /// Innermost container the node runs in; `None` at the top level.
     pub container: Option<ContainerPosition>,
+    /// A validated UI block shown with the question (`human-input` `card`), e.g. an
+    /// Adaptive Card whose submit actions answer it. `None` shows the plain form.
+    pub card: Option<Json>,
 }
 
 /// An answer already given in this run.
@@ -291,9 +294,19 @@ fn read_pending(reason: &Json, steps: &HashMap<String, FlowStep>, snapshot: Opti
         on_timeout: reason.get(ON_TIMEOUT_KEY).and_then(|choice| serde_json::from_value(choice.clone()).ok()),
         tool_call: None,
         container: read_container(&frame, steps, snapshot),
+        card: read_card(data, &node_id),
         node_id,
         frame,
     })
+}
+
+/// The pause's card when graphrt-ui accepts it; an invalid one is logged and the plain form shown.
+fn read_card(data: &Json, node_id: &str) -> Option<Json> {
+    let (card, rejected) = crate::ui_blocks::read_pause_card(data);
+    if let Some(reason) = rejected {
+        log::warn!("the approval card of step {node_id} is not a valid UI block, showing the plain form: {reason}");
+    }
+    card
 }
 
 /// One Allow / Decline question per call of a `tool_approval` pause (`data.calls[]`).
@@ -337,6 +350,7 @@ fn read_tool_call_questions(
                 on_timeout: None,
                 tool_call: Some(tool_call),
                 container: read_container(frame, steps, snapshot),
+                card: None,
             })
         })
         .collect()

@@ -137,7 +137,10 @@ impl PauseSettings {
             let node_id = text(reason, "node_id").unwrap_or_default().to_owned();
             let Some(fields) = reason.as_object_mut() else { continue };
             match fields.get("kind").and_then(Json::as_str) {
-                Some(HUMAN_INPUT_PAUSE_KIND) => self.add_deadline(fields, &node_id, carried.get(&key), now),
+                Some(HUMAN_INPUT_PAUSE_KIND) => {
+                    self.add_deadline(fields, &node_id, carried.get(&key), now);
+                    check_card(fields, &node_id);
+                }
                 Some(TOOL_APPROVAL_PAUSE_KIND) => self.describe_tool_calls(fields, &node_id),
                 _ => {}
             }
@@ -176,6 +179,17 @@ impl PauseSettings {
                 call.insert("tool".to_owned(), Json::String(reference.tool.clone()));
             }
         }
+    }
+}
+
+/// Replaces a `human-input` card that graphrt-ui rejects with `null`, so every screen that reads
+/// the stored pause reasons (the live test run reads them directly) only ever sees valid cards.
+fn check_card(fields: &mut Map<String, Json>, node_id: &str) {
+    let Some(data) = fields.get_mut("data").and_then(Json::as_object_mut) else { return };
+    let Some(card) = data.get("card").filter(|card| !card.is_null()) else { return };
+    if let Err(error) = graphrt_ui::validate(card) {
+        log::warn!("the approval card of step {node_id} is not a valid UI block, showing the plain form: {error}");
+        data.insert("card".to_owned(), Json::Null);
     }
 }
 
@@ -455,6 +469,22 @@ graph:
         assert_eq!(reasons[0][ON_TIMEOUT_KEY], json!({"kind": "answer", "action": "skip"}));
         assert!(reasons[1].get(EXPIRES_AT_KEY).is_none(), "no time limit, waits until answered");
         assert_eq!(reasons[2][ON_TIMEOUT_KEY], json!({"kind": "stop"}), "unknown button falls back to stop");
+    }
+
+    #[test]
+    fn invalid_approval_cards_are_dropped_and_valid_ones_kept() {
+        let settings = PauseSettings::from_flow(FLOW, &TrustedHosts::none());
+        let valid = json!({"$ui": "adaptive_card", "version": 1,
+                           "card": {"type": "AdaptiveCard", "version": "1.5", "body": [{"type": "TextBlock", "text": "Send?"}]}});
+        let script = json!({"$ui": "adaptive_card", "version": 1,
+                            "card": {"type": "AdaptiveCard", "version": "1.5", "body": [{"type": "Image", "url": "javascript:alert(1)"}]}});
+        let mut reasons = json!([
+            {"frame": "", "node_id": "ask", "kind": "human_input", "data": {"card": valid.clone()}},
+            {"frame": "", "node_id": "ask_forever", "kind": "human_input", "data": {"card": script}},
+        ]);
+        settings.enrich(&mut reasons, &HashMap::new(), now());
+        assert_eq!(reasons[0]["data"]["card"], valid);
+        assert_eq!(reasons[1]["data"]["card"], Json::Null);
     }
 
     #[test]

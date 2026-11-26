@@ -1,6 +1,7 @@
 import type { ApprovalAction, ApprovalField, ContainerPosition, PendingApproval, PendingToolCall, TimeoutAction } from './runReviewTypes'
 import { redactSecrets } from './secretRedaction'
 import type { Run } from './types'
+import type { UiBlock } from '@/components/visuals/uiBlockTypes'
 import { messages } from '@/i18n'
 
 /**
@@ -114,7 +115,20 @@ function readFormApproval(reason: JsonRecord, nodeId: string): PendingApproval {
     onTimeout: readTimeoutAction(reason.on_timeout),
     toolCall: null,
     container: readContainerFromFrame(frame),
+    card: readPauseCard(data),
   }
+}
+
+const uiBlockKinds = new Set(['adaptive_card', 'chart', 'table', 'stats'])
+
+/**
+ * The `card` of a `human-input` pause. The desktop backend already checked it with graphrt-ui when the run
+ * paused and stored `null` for an invalid one (`src-tauri/src/engine/approval_pauses.rs`); this only makes
+ * sure it is an object of a known kind.
+ */
+export function readPauseCard(data: JsonRecord | null): UiBlock | null {
+  const card = asRecord(data?.card)
+  return card && typeof card.$ui === 'string' && uiBlockKinds.has(card.$ui) && card.version === 1 ? (card as unknown as UiBlock) : null
 }
 
 function readToolCall(rawCall: unknown): PendingToolCall | null {
@@ -151,6 +165,7 @@ function readToolCallApprovals(reason: JsonRecord, nodeId: string): PendingAppro
     onTimeout: null,
     toolCall,
     container: readContainerFromFrame(frame),
+    card: null,
   }))
 }
 
