@@ -287,7 +287,7 @@ impl ConversationManager {
         let current = self.db.get_conversation(conversation_id)?;
         let conversation =
             if current.status == ConversationStatus::YouReplying { current } else { self.take_over(conversation_id)? };
-        self.deliver_and_store(&conversation, MessageAuthor::Operator, text).await
+        self.deliver_and_store(&conversation, MessageAuthor::Operator, text, json!({})).await
     }
 
     /// Closes the chat. A later customer message reopens it.
@@ -379,6 +379,7 @@ impl ConversationManager {
         )?;
         let on_draft = |draft: &str| self.emit_draft(conversation, draft);
         let mut turn = run_bot_turn(&engine, env, conversation, message_text, &prepared.sys_values, &on_draft).await?;
+        turn.citations = prepared.citations(&turn.retrieved_sources);
         if let (Some(rules), Some(handoff)) = (prepared.handoff_rules, turn.handoff.as_ref()) {
             if !rules.allows(handoff.reason.as_deref()) {
                 log::info!(
@@ -404,7 +405,8 @@ impl ConversationManager {
             return Ok(());
         }
         if !turn.reply_text.is_empty() {
-            self.deliver_and_store(&conversation, MessageAuthor::Bot, &turn.reply_text).await?;
+            let metadata = if turn.citations.is_empty() { json!({}) } else { json!({ "citations": turn.citations }) };
+            self.deliver_and_store(&conversation, MessageAuthor::Bot, &turn.reply_text, metadata).await?;
         }
         if let Some(handoff) = turn.handoff {
             let reason = handoff.reason.as_deref();
@@ -414,24 +416,29 @@ impl ConversationManager {
         Ok(())
     }
 
-    /// Sends a bot or owner message on the conversation's channel, then stores it.
-    /// A delivery failure is kept in the message metadata rather than lost.
+    /// Sends a bot or owner message on the conversation's channel, then stores it
+    /// with `metadata` (a JSON object). A delivery failure is kept in the
+    /// metadata rather than lost.
     async fn deliver_and_store(
         &self,
         conversation: &Conversation,
         author: MessageAuthor,
         text: &str,
+        mut metadata: serde_json::Value,
     ) -> AppResult<Message> {
-        let metadata = match self.channels.get(&conversation.channel) {
+        let delivery_error = match self.channels.get(&conversation.channel) {
             Ok(adapter) => match adapter.send(OutboundMessage { conversation, author, text }).await {
-                Ok(()) => json!({}),
+                Ok(()) => None,
                 Err(error) => {
                     log::warn!("could not deliver a message in conversation {}: {error}", conversation.id);
-                    json!({ "deliveryError": error.to_string() })
+                    Some(error.to_string())
                 }
             },
-            Err(error) => json!({ "deliveryError": error.to_string() }),
+            Err(error) => Some(error.to_string()),
         };
+        if let (Some(error), Some(fields)) = (delivery_error, metadata.as_object_mut()) {
+            fields.insert("deliveryError".into(), json!(error));
+        }
         let message = self.db.insert_conversation_message(&conversation.id, author, text, &metadata)?;
         self.emit(ConversationEventKind::MessageAdded, conversation, Some(message.clone()));
         Ok(message)
