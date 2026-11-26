@@ -2,6 +2,8 @@ import type { RunSummary } from '@/api/runSummaryTypes'
 import type { RunResultStat } from '@/pages/agent-run/testRunTypes'
 import type { StatusPillTone } from './StatusPill'
 import { formatCounterLabel, formatCounterValue } from './runCounters'
+import { messages } from '@/i18n'
+import { formatMonthShort, formatNumber } from '@/i18n'
 
 /**
  * What screen 07 shows for a run, built from its {@link RunSummary} (run output convention:
@@ -53,10 +55,11 @@ const failedStatusPattern = /^(failed|error|errored|rejected|bounced)$/
 /** "41s", "2m 05s" or "1h 07m" from milliseconds. */
 export function formatDurationMs(durationMs: number): string {
   const totalSeconds = Math.max(0, Math.round(durationMs / 1000))
-  if (totalSeconds < 60) return `${totalSeconds}s`
+  const t = messages().agentRun
+  if (totalSeconds < 60) return t.durationSeconds(totalSeconds)
   const minutes = Math.floor(totalSeconds / 60)
-  if (minutes < 60) return `${minutes}m ${String(totalSeconds % 60).padStart(2, '0')}s`
-  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`
+  if (minutes < 60) return t.durationMinutesSeconds(minutes, String(totalSeconds % 60).padStart(2, '0'))
+  return t.durationHoursMinutes(Math.floor(minutes / 60), String(minutes % 60).padStart(2, '0'))
 }
 
 /** "41s" or "2m 05s"; null while the run has not finished. */
@@ -85,9 +88,9 @@ export function formatRunDay(isoTimestamp: string, now: Date = new Date()): stri
   const instant = new Date(isoTimestamp)
   const yesterday = new Date(now)
   yesterday.setDate(now.getDate() - 1)
-  if (isSameLocalDay(instant, now)) return `Today ${formatClockTime(isoTimestamp)}`
-  if (isSameLocalDay(instant, yesterday)) return `Yesterday ${formatClockTime(isoTimestamp)}`
-  return `${instant.getDate()} ${instant.toLocaleString('en-GB', { month: 'short' })} ${formatClockTime(isoTimestamp)}`
+  if (isSameLocalDay(instant, now)) return messages().agentRun.today(formatClockTime(isoTimestamp))
+  if (isSameLocalDay(instant, yesterday)) return messages().agentRun.yesterday(formatClockTime(isoTimestamp))
+  return `${instant.getDate()} ${formatMonthShort(instant)} ${formatClockTime(isoTimestamp)}`
 }
 
 /** Tone of an item status: sent/done → ok, failed → danger, anything else neutral. */
@@ -114,7 +117,7 @@ function readItemName(item: Record<string, unknown>, index: number): string {
     const nameValue = readShortField(item, key) ?? (typeof item[key] === 'string' ? (item[key] as string) : null)
     if (nameValue) return nameValue
   }
-  return `Item ${index + 1}`
+  return messages().agentRun.itemNumber(index + 1)
 }
 
 /** Up to two keys whose values are short text or numbers in every item that has them. */
@@ -145,9 +148,9 @@ export function buildItemTable(items: Array<Record<string, unknown>>): RunResult
   })
   const hiddenItemCount = items.length - rows.length
   return {
-    columns: ['Name', ...extraKeys.map(formatCounterLabel), 'Status'],
+    columns: [messages().agentRun.name, ...extraKeys.map(formatCounterLabel), messages().agentRun.status],
     rows,
-    moreLabel: hiddenItemCount > 0 ? `${hiddenItemCount} more` : null,
+    moreLabel: hiddenItemCount > 0 ? messages().agentRun.moreCount(hiddenItemCount) : null,
   }
 }
 
@@ -155,19 +158,19 @@ function buildStats(summary: RunSummary): RunResultStat[] {
   const counterTiles = summary.counters
     .slice(0, maxCounterTiles)
     .map((counter) => ({ label: formatCounterLabel(counter.name), value: formatCounterValue(counter.name, counter.value) }))
-  const timeTiles = summary.durationMs === null ? [] : [{ label: 'Time', value: formatDurationMs(summary.durationMs) }]
-  const tokenTiles = summary.usage ? [{ label: 'AI tokens', value: summary.usage.totalTokens.toLocaleString('en-US') }] : []
+  const timeTiles = summary.durationMs === null ? [] : [{ label: messages().agentRun.time, value: formatDurationMs(summary.durationMs) }]
+  const tokenTiles = summary.usage ? [{ label: messages().agentRun.aiTokens, value: formatNumber(summary.usage.totalTokens) }] : []
   return [...counterTiles, ...timeTiles, ...tokenTiles].slice(0, maxStatTiles)
 }
 
 function buildActivity(summary: RunSummary): string | null {
   const { steps, approvals } = summary
   const parts = [
-    steps.succeeded > 0 ? `${steps.succeeded} ${steps.succeeded === 1 ? 'step' : 'steps'} done` : null,
-    steps.skipped > 0 ? `${steps.skipped} skipped` : null,
-    steps.failed > 0 ? `${steps.failed} failed` : null,
-    approvals.approved + approvals.skipped > 0 ? `You approved ${approvals.approved}, skipped ${approvals.skipped}` : null,
-    approvals.waiting > 0 ? `${approvals.waiting} waiting for you` : null,
+    steps.succeeded > 0 ? messages().agentRun.stepsDone(steps.succeeded) : null,
+    steps.skipped > 0 ? messages().agentRun.skippedCount(steps.skipped) : null,
+    steps.failed > 0 ? messages().agentRun.failedCount(steps.failed) : null,
+    approvals.approved + approvals.skipped > 0 ? messages().agentRun.approvedSkipped(approvals.approved, approvals.skipped) : null,
+    approvals.waiting > 0 ? messages().agentRun.waitingCount(approvals.waiting) : null,
   ].filter((part): part is string => part !== null)
   return parts.length > 0 ? parts.join(' · ') : null
 }
@@ -175,15 +178,15 @@ function buildActivity(summary: RunSummary): string | null {
 function describeStatus(summary: RunSummary): string {
   switch (summary.status) {
     case 'succeeded':
-      return 'The run finished'
+      return messages().agentRun.theRunFinished
     case 'failed':
-      return `The run did not finish: ${summary.errorMessage ?? 'something went wrong'}`
+      return messages().agentRun.runDidNotFinish(summary.errorMessage ?? null)
     case 'paused':
-      return 'The run is waiting for you'
+      return messages().agentRun.theRunIsWaitingForYou
     case 'aborted':
-      return 'The run was stopped'
+      return messages().agentRun.theRunWasStopped
     default:
-      return 'The run is still going'
+      return messages().agentRun.theRunIsStillGoing
   }
 }
 
@@ -200,7 +203,7 @@ export function buildRunResultView(summary: RunSummary): RunResultView {
     table: buildItemTable(summary.items),
     activity: buildActivity(summary),
     hasNoOutputs: summary.items.length === 0 && summary.counters.length === 0,
-    meta: `${formatRunDay(summary.startedAt)} · on this computer`,
+    meta: messages().agentRun.onThisComputer(formatRunDay(summary.startedAt)),
     builderReply,
   }
 }

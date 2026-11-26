@@ -3,6 +3,7 @@ import type { RunInputs } from '@/api/runReviewTypes'
 import type { FlowInput } from '@/api/types'
 import { RunFileInput } from './RunFileInput'
 import { controlForInput, initialRunInputValues, parseRunInputValues, type RunInputValue, type RunInputValues } from './runInputValues'
+import { messages } from '@/i18n'
 
 interface RunInputsFormProps {
   inputs: FlowInput[]
@@ -97,11 +98,11 @@ export function RunInputsForm({ inputs, lastInputs, isStarting, onStart }: RunIn
   }
 
   return (
-    <form aria-label="Test inputs" onSubmit={submitInputs} className="flex flex-col gap-3.5 rounded-2xl border border-line bg-surface p-5">
+    <form aria-label={messages().agentRun.testInputs} onSubmit={submitInputs} className="flex flex-col gap-3.5 rounded-2xl border border-line bg-surface p-5">
       <div className="flex flex-col gap-1">
-        <h2 className="m-0 text-[18px] font-semibold">What should the test use?</h2>
+        <h2 className="m-0 text-[18px] font-semibold">{messages().agentRun.whatShouldTheTestUse}</h2>
         <span className="text-[13px] text-body">
-          {inputs.length === 0 ? 'This agent needs no inputs' : lastInputs ? 'Filled in from the last run' : 'These go to the first step of the agent'}
+          {inputs.length === 0 ? messages().agentRun.thisAgentNeedsNoInputs : lastInputs ? messages().agentRun.filledInFromTheLastRun : messages().agentRun.theseGoToTheFirstStep}
         </span>
       </div>
       {inputs.map((input) => (
@@ -114,7 +115,7 @@ export function RunInputsForm({ inputs, lastInputs, isStarting, onStart }: RunIn
           disabled={problems.length > 0 || isStarting}
           className="h-10 cursor-pointer rounded-[9px] border-0 bg-ink px-[18px] text-[14px] font-semibold text-white hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {isStarting ? 'Starting…' : 'Start the test'}
+          {isStarting ? messages().agentRun.starting : messages().agentRun.startTheTest}
         </button>
       </div>
     </form>

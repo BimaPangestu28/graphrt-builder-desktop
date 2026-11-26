@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { joinClassNames } from '@/components/ui'
 import type { NarrationLine, NarrationTone } from './runNarration'
+import { messages } from '@/i18n'
 
 const toneClassNames: Record<NarrationTone, string> = {
   neutral: 'text-ink',
@@ -49,7 +50,7 @@ export function RunNarrationFeed({ lines, placeholder, onOpenApproval }: RunNarr
   }
 
   return (
-    <div ref={feedRef} role="log" aria-label="Run updates" onScroll={rememberScrollPosition} className="flex max-h-[60vh] flex-col gap-2.5 overflow-y-auto">
+    <div ref={feedRef} role="log" aria-label={messages().agentRun.runUpdates} onScroll={rememberScrollPosition} className="flex max-h-[60vh] flex-col gap-2.5 overflow-y-auto">
       {lines.length === 0 && <p className="m-0 leading-[1.6] text-body">{placeholder}</p>}
       {lines.map((line) => (
         <div key={line.key} className="flex flex-col gap-1">
@@ -58,7 +59,7 @@ export function RunNarrationFeed({ lines, placeholder, onOpenApproval }: RunNarr
           </p>
           {line.rawError && (
             <details className="text-[12px] text-body">
-              <summary className="cursor-pointer">Technical details</summary>
+              <summary className="cursor-pointer">{messages().agentRun.technicalDetails}</summary>
               <pre className="m-0 mt-1 whitespace-pre-wrap break-words font-mono">{line.rawError}</pre>
             </details>
           )}

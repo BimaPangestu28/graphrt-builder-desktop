@@ -1,5 +1,6 @@
 import { agentPath, builderAskParam } from '@/routes'
 import type { RunStepView } from './runSteps'
+import { messages } from '@/i18n'
 
 /** Longest error text quoted in the request, so the chat box stays readable. */
 export const fixStepErrorMaxLength = 500
@@ -37,8 +38,8 @@ function shortenError(errorMessage: string): string {
 export function describeFixStepRequest(step: Pick<RunStepView, 'id' | 'label' | 'errorMessage'>): string {
   const stepName = step.label && step.label !== step.id ? `"${step.label}" (${step.id})` : `"${step.id}"`
   const errorText = step.errorMessage ? shortenError(redactSecrets(step.errorMessage)) : ''
-  if (!errorText) return `The step ${stepName} failed. Please fix this step.`
-  return `The step ${stepName} failed with: ${errorText}. Please fix this step.`
+  if (!errorText) return messages().agentRun.fixStep(stepName)
+  return messages().agentRun.fixStepWithError(stepName, errorText)
 }
 
 /**

@@ -2,6 +2,7 @@ import { useEffect, useId, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { StrokeIcon } from '@/components/ui'
 import { keepTabFocusInside, useFocusOnOpenAndRestore } from '@/pages/onboarding/useDialogFocusTrap'
+import { messages } from '@/i18n'
 
 interface LiveBrowserLightboxProps {
   /** The live frame, still updating while the dialog is open. */
@@ -51,12 +52,12 @@ export function LiveBrowserLightbox({ src, aspectRatio, onClose }: LiveBrowserLi
       >
         <div className="flex items-center justify-between gap-3">
           <h2 id={titleId} className="m-0 text-[14px] font-semibold text-ink">
-            Live view of the browser
+            {messages().agentRun.liveViewOfTheBrowser}
           </h2>
           <button
             ref={closeButtonRef}
             type="button"
-            aria-label="Close the enlarged view"
+            aria-label={messages().agentRun.closeTheEnlargedView}
             onClick={onClose}
             className="flex size-8 cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent text-muted hover:bg-subtle focus-visible:outline-2 focus-visible:outline-brand"
           >
@@ -66,7 +67,7 @@ export function LiveBrowserLightbox({ src, aspectRatio, onClose }: LiveBrowserLi
           </button>
         </div>
         <div className="overflow-hidden rounded-lg border border-line bg-subtle" style={{ aspectRatio: String(aspectRatio) }}>
-          <img src={src} alt="What the browser shows right now, enlarged" className="block size-full object-contain" />
+          <img src={src} alt={messages().agentRun.whatTheBrowserShowsRightNow} className="block size-full object-contain" />
         </div>
       </div>
     </div>,

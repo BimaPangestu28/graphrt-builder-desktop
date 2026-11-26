@@ -4,6 +4,7 @@ import { useNow } from '@/hooks/useNow'
 import { ApprovalFieldInput } from './ApprovalFieldInput'
 import { describeDeadline, describeToolName, formatToolArguments } from './approvalDisplay'
 import { buildApprovalAnswer, findMissingRequiredFields, initialApprovalValues, splitApprovalPrompt, type ApprovalValues } from './approvalForm'
+import { messages } from '@/i18n'
 
 interface ApprovalCardProps {
   approval: PendingApproval
@@ -26,7 +27,7 @@ function ToolCallDetails({ toolCall }: { toolCall: PendingToolCall }) {
     <div className="flex flex-col gap-2">
       <span className="font-mono text-[13px] font-medium text-ink">{describeToolName(toolCall)}</span>
       {toolCall.reason && <p className="m-0 text-[13px] text-body">{toolCall.reason}</p>}
-      <pre aria-label="Tool arguments" className="m-0 max-h-64 overflow-auto rounded-[10px] border border-line bg-subtle px-3 py-2.5 font-mono text-[12px] leading-relaxed whitespace-pre-wrap text-ink-2">
+      <pre aria-label={messages().agentRun.toolArguments} className="m-0 max-h-64 overflow-auto rounded-[10px] border border-line bg-subtle px-3 py-2.5 font-mono text-[12px] leading-relaxed whitespace-pre-wrap text-ink-2">
         {formatToolArguments(toolCall.arguments)}
       </pre>
     </div>
@@ -68,7 +69,7 @@ export function ApprovalCard({ approval, onAnswer, isSubmitting = false }: Appro
           onChange={(fieldValue) => setValues((currentValues) => ({ ...currentValues, [field.name]: fieldValue }))}
         />
       ))}
-      {missingFields.length > 0 && <p className="m-0 text-[12px] text-amber-strong">Fill in {missingFields.join(', ')} to answer</p>}
+      {missingFields.length > 0 && <p className="m-0 text-[12px] text-amber-strong">{messages().agentRun.fillIn}{' '}{missingFields.join(', ')} {messages().agentRun.toAnswer}</p>}
       <div className="flex flex-wrap items-center gap-2">
         {approval.actions.map((action, index) => (
           <button
@@ -81,8 +82,8 @@ export function ApprovalCard({ approval, onAnswer, isSubmitting = false }: Appro
             {action.title}
           </button>
         ))}
-        {approval.actions.length === 0 && <span className="text-[13px] text-body">This step offers no answer to choose</span>}
-        <span className="ml-auto text-[12px] text-muted">Paused safely. You can close the app and come back</span>
+        {approval.actions.length === 0 && <span className="text-[13px] text-body">{messages().agentRun.thisStepOffersNoAnswerTo}</span>}
+        <span className="ml-auto text-[12px] text-muted">{messages().agentRun.pausedSafelyYouCanCloseThe}</span>
       </div>
     </section>
   )

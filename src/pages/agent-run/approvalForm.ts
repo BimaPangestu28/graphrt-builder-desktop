@@ -1,5 +1,6 @@
 import { allowActionId } from '@/api/pauseReasons'
 import type { ApprovalAnswer, ApprovalField, PendingApproval } from '@/api/runReviewTypes'
+import { messages } from '@/i18n'
 
 /**
  * Form state of a graphrt `human-input` question: values the user edits, which control each
@@ -93,9 +94,9 @@ export function collectAnswersByResumeKey(answers: Array<[PendingApproval, Appro
 
 /** Heading and description of a question: the prompt's first line and the rest, or the step title. */
 export function splitApprovalPrompt(approval: PendingApproval): { heading: string; description: string | null } {
-  if (approval.toolCall) return { heading: `Allow ${approval.toolCall.tool ?? approval.toolCall.name}?`, description: approval.stepTitle ? `${approval.stepTitle} wants to use this tool` : 'The agent wants to use this tool' }
+  if (approval.toolCall) return { heading: messages().agentRun.allowTool(approval.toolCall.tool ?? approval.toolCall.name), description: approval.stepTitle ? messages().agentRun.stepWantsTool(approval.stepTitle) : messages().agentRun.theAgentWantsToUseThis }
   const [firstLine, ...otherLines] = (approval.prompt ?? '').split('\n')
   const description = otherLines.join('\n').trim() || null
   if (firstLine.trim()) return { heading: firstLine.trim(), description }
-  return { heading: approval.stepTitle ?? 'The run is waiting for you', description }
+  return { heading: approval.stepTitle ?? messages().agentRun.theRunIsWaitingForYou, description }
 }

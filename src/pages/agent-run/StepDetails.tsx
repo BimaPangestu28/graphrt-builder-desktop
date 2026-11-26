@@ -3,6 +3,7 @@ import { buildFixStepPath } from './fixStepRequest'
 import { humanizeRunError } from './runErrorText'
 import type { RunStepView } from './runSteps'
 import { readFinalText, summarizeValues } from './stepValueSummary'
+import { messages } from '@/i18n'
 
 /**
  * What an expanded step row shows: streamed / final text of a model step, the step's inputs and
@@ -40,9 +41,9 @@ function ModelText({ step }: { step: RunStepView }) {
   if (!text && !isStreaming) return null
   return (
     <div className="flex flex-col gap-1.5">
-      <span className={sectionLabelClassNames}>{isStreaming ? 'Writing…' : 'Text'}</span>
-      <p aria-label={isStreaming ? 'Streaming text' : 'Final text'} className="m-0 whitespace-pre-wrap break-words rounded-lg bg-brand-tint px-3 py-2 leading-[1.6]">
-        {text || 'Waiting for the first words…'}
+      <span className={sectionLabelClassNames}>{isStreaming ? messages().agentRun.writing : messages().agentRun.text}</span>
+      <p aria-label={isStreaming ? messages().agentRun.streamingText : messages().agentRun.finalText} className="m-0 whitespace-pre-wrap break-words rounded-lg bg-brand-tint px-3 py-2 leading-[1.6]">
+        {text || messages().agentRun.waitingForTheFirstWords}
       </p>
     </div>
   )
@@ -55,12 +56,12 @@ export function ErrorExplanation({ rawError, stepDetail, fixStepPath }: { rawErr
     <div className="flex flex-col gap-1.5 rounded-lg border border-danger-line bg-danger-tint px-3 py-2">
       <span className="font-medium text-danger">{summary}</span>
       <details className="text-[12px] text-body">
-        <summary className="cursor-pointer">Technical details</summary>
+        <summary className="cursor-pointer">{messages().agentRun.technicalDetails}</summary>
         <pre className="m-0 mt-1 whitespace-pre-wrap break-words font-mono">{rawError}</pre>
       </details>
       {fixStepPath && (
         <Link to={fixStepPath} className="text-[13px] font-medium">
-          Ask the builder to fix this step
+          {messages().agentRun.askTheBuilderToFixThis}
         </Link>
       )}
     </div>
@@ -70,13 +71,13 @@ export function ErrorExplanation({ rawError, stepDetail, fixStepPath }: { rawErr
 function formatUsage(step: RunStepView): string | null {
   if (!step.usage) return null
   const { totalTokens, promptTokens, completionTokens } = step.usage
-  return `${totalTokens} tokens (${promptTokens} in · ${completionTokens} out)`
+  return messages().agentRun.tokensLine(totalTokens, promptTokens, completionTokens)
 }
 
 function describeEmptyState(step: RunStepView): string | null {
-  if (step.state === 'pending') return step.itemDescription ? 'Not started for this item yet' : 'Not started yet'
-  if (step.state === 'skipped') return 'Skipped: nothing led to this step this time'
-  if (step.state === 'waiting') return 'Waiting for your answer'
+  if (step.state === 'pending') return step.itemDescription ? messages().agentRun.notStartedForThisItemYet : messages().agentRun.notStartedYet
+  if (step.state === 'skipped') return messages().agentRun.skippedNothingLedToThisStep
+  if (step.state === 'waiting') return messages().agentRun.waitingForYourAnswer
   return null
 }
 
@@ -96,20 +97,20 @@ export function StepDetails({ step, id, fixAgentId }: StepDetailsProps) {
       {step.itemDescription && <span className="text-[13px] text-body">{step.itemDescription}</span>}
       {step.iteration?.currentNumber && (
         <span className="text-[13px] text-body">
-          {step.iteration.doneCount} {step.iteration.isLoop ? 'rounds' : 'items'} done
-          {step.iteration.total !== null && ` of ${step.iteration.total}`}
+          {step.iteration.doneCount} {step.iteration.isLoop ? 'rounds' : 'items'} {messages().agentRun.done}
+          {step.iteration.total !== null && messages().agentRun.ofTotal(step.iteration.total)}
         </span>
       )}
       {step.isModelStep && <ModelText step={step} />}
       {step.errorMessage && step.iteration === null && <ErrorExplanation rawError={step.errorMessage} stepDetail={step.stepDetail} fixStepPath={fixAgentId ? buildFixStepPath(fixAgentId, step) : null} />}
       {step.retryCount > 0 && (
         <span className="text-[13px] text-body">
-          Retried {step.retryCount === 1 ? 'once' : `${step.retryCount} times`}
+          {messages().agentRun.retried}{' '}{step.retryCount === 1 ? messages().agentRun.retriedOnce : messages().agentRun.retriedTimes(step.retryCount)}
           {step.lastRetryError && `: ${humanizeRunError(step.lastRetryError, step.stepDetail).summary}`}
         </span>
       )}
-      <ValueList title="Inputs" values={step.inputs} />
-      <ValueList title="Outputs" values={step.outputs} skippedKeys={step.isModelStep ? ['text'] : []} />
+      <ValueList title={messages().agentRun.inputs} values={step.inputs} />
+      <ValueList title={messages().agentRun.outputs} values={step.outputs} skippedKeys={step.isModelStep ? ['text'] : []} />
       {usageText && <span className="text-[12px] text-muted">{usageText}</span>}
       {emptyState && !hasValues &&<span className="text-[13px] text-muted">{emptyState}</span>}
     </div>

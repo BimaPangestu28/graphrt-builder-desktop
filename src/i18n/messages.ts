@@ -1,4 +1,5 @@
 import type { Locale, Translation } from './types'
+import { agentRun } from './locales/agentRun'
 import { runs } from './locales/runs'
 import { inbox } from './locales/inbox'
 import { plugins } from './locales/plugins'
@@ -15,6 +16,7 @@ import { platform } from './locales/platform'
  * and listing it in both objects below (the completeness test checks they match).
  */
 const english = {
+  agentRun: agentRun.en,
   runs: runs.en,
   inbox: inbox.en,
   plugins: plugins.en,
@@ -30,6 +32,7 @@ const english = {
 export type Messages = Translation<typeof english>
 
 const indonesian: Messages = {
+  agentRun: agentRun.id,
   runs: runs.id,
   inbox: inbox.id,
   plugins: plugins.id,

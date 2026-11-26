@@ -1,13 +1,14 @@
 import { readPendingApprovals } from '@/api/pauseReasons'
 import type { Run } from '@/api/types'
 import { describeTimeLeft } from './approvalDisplay'
+import { messages } from '@/i18n'
 
 /** "Wants to use send_message" / "Wants to use 3 tools" for a run waiting on tool approvals. */
 function describeToolApproval(run: Run): string | null {
   const toolCalls = readPendingApprovals(run).flatMap((approval) => (approval.toolCall ? [approval.toolCall] : []))
   if (toolCalls.length === 0) return null
-  if (toolCalls.length > 1) return `Wants to use ${toolCalls.length} tools`
-  return `Wants to use ${toolCalls[0].tool ?? toolCalls[0].name}`
+  if (toolCalls.length > 1) return messages().agentRun.wantsToolCount(toolCalls.length)
+  return messages().agentRun.wantsTool(toolCalls[0].tool ?? toolCalls[0].name)
 }
 
 /**

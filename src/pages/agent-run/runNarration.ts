@@ -5,6 +5,7 @@ import { collectNodeTracks } from './runNodeTracks'
 import { containerNodeKinds, formatDurationMs, modelNodeKinds, type RunStepTemplate } from './runProgress'
 import { chooseStepTemplate, describeIterationItem } from './runSteps'
 import { describeFoundCount } from './stepValueSummary'
+import { messages } from '@/i18n'
 
 /**
  * The plain-language feed in the chat column of the Test run screen (06), read from the run's
@@ -69,7 +70,7 @@ function closeItem(state: NarrationState, itemFrame: string | undefined): void {
   if (!itemFrame || state.closedItemFrames.has(itemFrame)) return
   state.closedItemFrames.add(itemFrame)
   const line = state.lines.get(`item:${itemFrame}`)
-  if (line && line.tone === 'neutral') setLine(state, line.key, `${itemTitleFor(state, itemFrame) ?? 'Item'} — done`)
+  if (line && line.tone === 'neutral') setLine(state, line.key, messages().agentRun.itemDone(itemTitleFor(state, itemFrame) ?? messages().agentRun.item))
 }
 
 function handleItemStart(state: NarrationState, record: RunEventRecord, step: StepInfo): void {
@@ -93,9 +94,9 @@ function handleItemStart(state: NarrationState, record: RunEventRecord, step: St
 function describeSuccess(step: StepInfo, event: GraphrtEvent): string {
   const outputs = event.outputs && typeof event.outputs === 'object' ? (event.outputs as Record<string, unknown>) : null
   const found = describeFoundCount(outputs)
-  if (found) return `${step.template.label}: ${found}`
+  if (found) return messages().agentRun.stepFound(step.template.label, found)
   const durationMs = readNumber(event, 'elapsed_ms') ?? readNumber(event, 'duration_ms')
-  return step.isModel && durationMs !== null ? `${step.template.label}: done in ${formatDurationMs(durationMs)}` : `${step.template.label}: done`
+  return step.isModel && durationMs !== null ? messages().agentRun.stepDoneIn(step.template.label, formatDurationMs(durationMs)) : messages().agentRun.stepDone(step.template.label)
 }
 
 function answerPause(state: NarrationState, nodeId: string, frame: string, event: GraphrtEvent): void {
@@ -103,11 +104,11 @@ function answerPause(state: NarrationState, nodeId: string, frame: string, event
   if (!state.lines.has(pauseKey)) return
   const outputs = event.outputs && typeof event.outputs === 'object' ? (event.outputs as Record<string, unknown>) : {}
   const action = typeof outputs.action === 'string' ? outputs.action : readString(event, 'branch')
-  setLine(state, pauseKey, action ? `You answered: ${action}` : 'You answered')
+  setLine(state, pauseKey, action ? messages().agentRun.youAnsweredWith(action) : messages().agentRun.youAnswered)
 }
 
 function recordFailure(state: NarrationState, step: StepInfo, event: GraphrtEvent, itemTitle: string | null) {
-  const humanized = humanizeRunError(readString(event, 'error') ?? 'This step failed', step.template.detail ?? null)
+  const humanized = humanizeRunError(readString(event, 'error') ?? messages().agentRun.thisStepFailed, step.template.detail ?? null)
   if (!state.firstFailure && event.handled !== true) state.firstFailure = { label: step.template.label, summary: humanized.summary, raw: humanized.raw, itemTitle }
   return humanized
 }
@@ -115,18 +116,18 @@ function recordFailure(state: NarrationState, step: StepInfo, event: GraphrtEven
 /** A step event inside an iteration item: updates that item's line. */
 function handleItemStepEvent(state: NarrationState, step: StepInfo, event: GraphrtEvent, frame: string): void {
   const itemKey = `item:${frame}`
-  const itemTitle = itemTitleFor(state, frame) ?? 'Item'
+  const itemTitle = itemTitleFor(state, frame) ?? messages().agentRun.item
   const label = step.template.label
   if (event.type === 'node_failed') {
     const humanized = recordFailure(state, step, event, itemTitle)
-    const text = event.handled === true ? `${itemTitle} — ${label} failed. ${humanized.summary}` : `${itemTitle} — ${label} failed`
+    const text = event.handled === true ? messages().agentRun.itemStepFailedWith(itemTitle, label, humanized.summary) : messages().agentRun.itemStepFailed(itemTitle, label)
     setLine(state, itemKey, text, { tone: 'danger', rawError: event.handled === true ? humanized.raw : null })
     return
   }
   if (state.lines.get(itemKey)?.tone === 'danger' || step.isContainer) return
-  if (event.type === 'node_paused') setLine(state, itemKey, `${itemTitle} — waiting for you`, { tone: 'amber' })
-  else if (event.type === 'node_succeeded') setLine(state, itemKey, `${itemTitle} — ${describeSuccess(step, event).replace(/^./, (first) => first.toLowerCase())}`)
-  else if (event.type !== 'node_skipped') setLine(state, itemKey, `${itemTitle} — ${label.charAt(0).toLowerCase()}${label.slice(1)}…`)
+  if (event.type === 'node_paused') setLine(state, itemKey, messages().agentRun.itemWaiting(itemTitle), { tone: 'amber' })
+  else if (event.type === 'node_succeeded') setLine(state, itemKey, messages().agentRun.itemProgress(itemTitle, describeSuccess(step, event).replace(/^./, (first) => first.toLowerCase())))
+  else if (event.type !== 'node_skipped') setLine(state, itemKey, messages().agentRun.itemProgress(itemTitle, `${label.charAt(0).toLowerCase()}${label.slice(1)}…`))
 }
 
 /** A top-level step event: updates that step's line. */
@@ -138,15 +139,15 @@ function handleTopLevelStepEvent(state: NarrationState, step: StepInfo, event: G
     state.currentItemByContainer.forEach((itemFrame, containerKey) => containerKey === `${frame}|${step.template.id}` && closeItem(state, itemFrame))
     const outputs = event.outputs && typeof event.outputs === 'object' ? (event.outputs as Record<string, unknown>) : {}
     const itemCount = Array.isArray(outputs.output) ? outputs.output.length : readNumber(outputs, 'loop_round')
-    setLine(state, stepKey, itemCount === null ? `${label}: done` : `${label}: all ${itemCount} done`, { tone: 'ok' })
+    setLine(state, stepKey, itemCount === null ? messages().agentRun.stepDone(label) : messages().agentRun.stepAllDone(label, itemCount), { tone: 'ok' })
     return
   }
   if (event.type === 'node_started' || event.type === 'node_chunk') setLine(state, stepKey, `${label}…`)
-  else if (event.type === 'node_retry') setLine(state, stepKey, `${label}: retrying after an error (try ${(readNumber(event, 'attempt') ?? 1) + 1})…`)
+  else if (event.type === 'node_retry') setLine(state, stepKey, messages().agentRun.stepRetrying(label, (readNumber(event, 'attempt') ?? 1) + 1))
   else if (event.type === 'node_succeeded') setLine(state, stepKey, describeSuccess(step, event))
   else if (event.type === 'node_failed') {
     const humanized = recordFailure(state, step, event, null)
-    if (event.handled === true) setLine(state, stepKey, `${label} failed: ${humanized.summary}`, { tone: 'danger', rawError: humanized.raw })
+    if (event.handled === true) setLine(state, stepKey, messages().agentRun.stepFailedWith(label, humanized.summary), { tone: 'danger', rawError: humanized.raw })
     else state.lines.delete(stepKey)
   }
 }
@@ -162,7 +163,7 @@ function handleNodeEvent(state: NarrationState, record: RunEventRecord, step: St
   if (event.type === 'node_paused') {
     const isApproval = step.template.nodeType === 'human-input' || event.kind === 'human_input' || event.kind === 'human-input'
     const pauseKind = event.reason && typeof event.reason === 'object' ? (event.reason as Record<string, unknown>).kind : event.kind
-    const text = pauseKind === 'tool_approval' ? 'Waiting for your OK to use a tool' : isApproval ? 'Waiting for your approval' : 'Waiting for you'
+    const text = pauseKind === 'tool_approval' ? messages().agentRun.waitingForYourOkToUse : isApproval ? messages().agentRun.waitingForYourApproval : messages().agentRun.waitingForYou2
     setLine(state, `pause:${nodeId}:${frame}`, text, { tone: 'amber', isApprovalLink: true })
   }
   if (event.type === 'node_succeeded') answerPause(state, nodeId, frame, event)
@@ -175,10 +176,10 @@ function describeRunFailure(state: NarrationState, event: GraphrtEvent): Pick<Na
   const failure = state.firstFailure
   if (failure) {
     const where = failure.itemTitle ? `${failure.label} (${failure.itemTitle})` : failure.label
-    return { text: `Failed at ${where}: ${failure.summary}`, rawError: failure.raw }
+    return { text: messages().agentRun.failedAt(where, failure.summary), rawError: failure.raw }
   }
-  const humanized = humanizeRunError(readString(event, 'error') ?? 'Something went wrong')
-  return { text: `The run failed: ${humanized.summary}`, rawError: humanized.raw }
+  const humanized = humanizeRunError(readString(event, 'error') ?? messages().agentRun.somethingWentWrong)
+  return { text: messages().agentRun.runFailedWith(humanized.summary), rawError: humanized.raw }
 }
 
 function measureRunMs(state: NarrationState, record: RunEventRecord): number | null {
@@ -193,14 +194,14 @@ function handleRunEvent(state: NarrationState, record: RunEventRecord): void {
   if (event.type === 'run_started' && !state.runStartedAt) state.runStartedAt = record.createdAt
   if (event.type === 'run_succeeded') {
     const runMs = measureRunMs(state, record)
-    setLine(state, 'run:end', runMs === null ? 'Finished' : `Finished in ${formatDurationMs(runMs)}`, { tone: 'ok' })
+    setLine(state, 'run:end', runMs === null ? messages().agentRun.finished : messages().agentRun.finishedIn(formatDurationMs(runMs)), { tone: 'ok' })
   } else if (event.type === 'run_failed') {
     const failure = describeRunFailure(state, event)
     setLine(state, 'run:end', failure.text, { tone: 'danger', rawError: failure.rawError })
   } else if (event.type === 'run_aborted') {
-    setLine(state, 'run:end', 'Stopped')
+    setLine(state, 'run:end', messages().agentRun.stopped)
   } else if (event.type === 'run_paused' && ![...state.lines.values()].some((line) => line.isApprovalLink)) {
-    setLine(state, `pause:run:${record.seq}`, 'Waiting for you', { tone: 'amber', isApprovalLink: true })
+    setLine(state, `pause:run:${record.seq}`, messages().agentRun.waitingForYou2, { tone: 'amber', isApprovalLink: true })
   }
 }
 
@@ -212,12 +213,12 @@ function handleApprovalTimeout(state: NarrationState, record: RunEventRecord): v
   const { event } = record
   const nodeId = readString(event, 'node_id') ?? ''
   const frame = readFrame(event)
-  const outcome = event.outcome === 'answer' ? (readString(event, 'action_title') ?? readString(event, 'action') ?? 'answered') : 'stopped the run'
+  const outcome = event.outcome === 'answer' ? (readString(event, 'action_title') ?? readString(event, 'action') ?? messages().agentRun.answered) : messages().agentRun.stoppedTheRun
   state.lines.delete(`pause:${nodeId}:${frame}`)
   const itemTitle = itemTitleFor(state, frame)
   const label = state.stepsById.get(nodeId)?.template.label
   const where = itemTitle ?? label
-  setLine(state, `timeout:${nodeId}:${frame}`, `${where ? `${where}: t` : 'T'}imed out → ${outcome}`, { tone: 'amber' })
+  setLine(state, `timeout:${nodeId}:${frame}`, messages().agentRun.timedOut(where ?? null, outcome), { tone: 'amber' })
 }
 
 /** Approval links stay links only while the run still waits on them. */
