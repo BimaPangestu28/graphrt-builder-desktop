@@ -9,10 +9,11 @@ on:
 permissions:
   contents: read
 
-# A new push to the same branch or PR cancels the run it supersedes (never on main).
+# A new push to the same PR cancels the run it supersedes. Runs on main (push or
+# workflow_dispatch) are never cancelled, so every main commit keeps a full result.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -24,8 +25,41 @@ env:
     libxdo-dev libssl-dev libdbus-1-dev
 
 jobs:
+  # Decides whether a pull request touches anything that can change the build. A PR
+  # that only edits docs skips the jobs gated on `code` (they still report, as skipped).
+  # Pushes to main and manual runs always set `code` to true: nothing is skipped there.
+  changes:
+    name: detect changes
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read # dorny/paths-filter lists the PR's files through the API
+    outputs:
+      code: ${{ github.event_name != 'pull_request' || steps.filter.outputs.code == 'true' }}
+    steps:
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          # `code` is true when at least one changed file is NOT docs-only. Markdown under
+          # src/ and src-tauri/ (agent guides, test fixtures) and the app icons are compiled
+          # in, so only top-level docs and GitHub templates count as docs here.
+          predicate-quantifier: every
+          filters: |
+            code:
+              - '**'
+              - '!*.md'
+              - '!docs/**'
+              - '!LICENSE'
+              - '!NOTICE'
+              - '!.github/ISSUE_TEMPLATE/**'
+              - '!.github/pull_request_template.md'
+              - '!.github/dependabot.yml'
+
   version:
     name: version consistency
+    timeout-minutes: 5
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,6 +70,9 @@ jobs:
 
   frontend:
     name: typecheck + test + build
+    timeout-minutes: 20
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -60,7 +97,9 @@ jobs:
 
   rust:
     name: fmt + clippy + test (${{ matrix.platform }})
-    needs: frontend
+    timeout-minutes: 40
+    needs: [changes, frontend]
+    if: needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -79,6 +118,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
+          # PRs restore main's cache but do not save their own: each run would otherwise
+          # upload ~0.5-1 GiB per OS and push main's caches out of the 10 GB repo quota.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       # tauri::generate_context! embeds the built frontend, so clippy needs dist/
       # (built once by the frontend job instead of installing Node here).
       - uses: actions/download-artifact@v4
@@ -97,7 +139,9 @@ jobs:
 
   bundle:
     name: desktop bundle (${{ matrix.platform }})
-    needs: frontend
+    timeout-minutes: 45
+    needs: [changes, frontend]
+    if: needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -121,6 +165,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
+          # PRs restore main's cache but do not save their own: each run would otherwise
+          # upload ~0.5-1 GiB per OS and push main's caches out of the 10 GB repo quota.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: pnpm install --frozen-lockfile
       # The Node.js archive checksums the app pins must match Node's GPG-signed SHASUMS256.txt.
       - name: Verify pinned Node.js checksums
