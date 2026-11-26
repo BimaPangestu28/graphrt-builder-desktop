@@ -46,6 +46,8 @@ pub(crate) struct PluginState {
     pub tools: Vec<String>,
     /// The tools as the manifest declares them (description, JSON Schema of the arguments).
     pub tool_specs: Vec<graphrt_core::tool::ToolSpec>,
+    /// Events the plugin can start agents on (see `crate::plugin_triggers`).
+    pub triggers: Vec<graphrt_plugin::TriggerDescriptor>,
     pub trusted: bool,
     /// Runs on Node (`"command": "node"`), so it needs the plugin runtime.
     pub needs_node: bool,
@@ -292,6 +294,7 @@ fn state_from_manifest(manifest: &LoadedManifest, trusted: &BTreeSet<String>) ->
         descriptors: plugin.nodes.clone(),
         tools: plugin.tools.iter().map(|tool| tool.name.clone()).collect(),
         tool_specs: plugin.tools.clone(),
+        triggers: plugin.triggers.clone(),
         trusted: trusted.contains(&plugin.name),
         needs_node: matches!(&plugin.runtime, Runtime::Process(process) if process.command == NODE_COMMAND),
         load_error: None,
@@ -340,6 +343,7 @@ fn failed_state(dir: &Path, message: String) -> PluginState {
         descriptors: Vec::new(),
         tools: Vec::new(),
         tool_specs: Vec::new(),
+        triggers: Vec::new(),
         trusted: false,
         // Unknown for a folder that does not load; every catalog plugin runs on Node.
         needs_node: true,

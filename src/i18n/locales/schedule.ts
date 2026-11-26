@@ -80,6 +80,9 @@ export const schedule = defineMessages(
     skipMissedRun: 'Skip the missed run',
     upTo: (count: number) => `Up to ${count}`,
     weekRange: (first: string, last: string) => `${first} to ${last}`,
+    alsoRunOnAnEvent: 'Also run on an event',
+    noEvent: 'No event',
+    eachEventStartsARun: 'Each event starts one run, with the event as its input',
     // en:end
   },
   {
@@ -160,6 +163,9 @@ export const schedule = defineMessages(
     skipMissedRun: 'Lewati run yang terlewat',
     upTo: (count) => `Maksimal ${count}`,
     weekRange: (first, last) => `${first} sampai ${last}`,
+    alsoRunOnAnEvent: 'Jalankan juga saat ada kejadian',
+    noEvent: 'Tidak ada',
+    eachEventStartsARun: 'Setiap kejadian memulai satu run, dengan kejadian itu sebagai input',
     // id:end
   },
 )

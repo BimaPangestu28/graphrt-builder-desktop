@@ -17,6 +17,7 @@ import { ScheduleBackdrop } from '@/pages/schedule-agent/ScheduleBackdrop'
 import { FrequencyRadioTiles, ScheduleFieldset, StackedField, WeekdayToggleGroup, scheduleControlClassNames } from '@/pages/schedule-agent/ScheduleFormFields'
 import { toError } from '@/lib/errors'
 import { messages } from '@/i18n'
+import { PluginTriggerField, usePluginTriggerChoice } from '@/pages/schedule-agent/PluginTriggerField'
 
 /** The dialog promises "A missed run starts when it wakes up": the run-once policy. */
 const dialogMissedRunPolicy = 'run_once'
@@ -99,6 +100,7 @@ export function ScheduleAgentPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<Error | null>(null)
   const isManualOnly = scheduleSettings.frequency === 'manual'
+  const pluginTrigger = usePluginTriggerChoice(agentId)
 
   const updateSetting = <Key extends keyof AgentScheduleSettings>(key: Key, value: AgentScheduleSettings[Key]) =>
     setScheduleSettings((previousSettings) => ({ ...previousSettings, [key]: value }))
@@ -117,6 +119,7 @@ export function ScheduleAgentPage() {
     setSaveError(null)
     try {
       const trigger = newTrigger ? await createTrigger(newTrigger) : null
+      await pluginTrigger.save()
       navigate(routePaths.home, { state: { activatedSchedule: scheduleSettings, triggerId: trigger?.id ?? null } })
     } catch (createFailure) {
       setSaveError(toError(createFailure))
@@ -183,6 +186,7 @@ export function ScheduleAgentPage() {
               </StackedField>
             </div>
             <NextRunsPreview settings={scheduleSettings} />
+            <PluginTriggerField choice={pluginTrigger} />
           </ScheduleFieldset>
 
           <ScheduleFieldset legend={messages().schedule.eachRun}>
