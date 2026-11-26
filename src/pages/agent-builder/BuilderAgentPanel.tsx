@@ -24,7 +24,7 @@ const builderTabs = withLocalizedLabels([{ key: 'steps' }, { key: 'nodes' }, { k
 
 export type BuilderTabKey = (typeof builderTabs)[number]['key']
 
-const headerLinkBaseClassNames = 'flex h-9 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-medium no-underline'
+const headerLinkBaseClassNames = 'flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 text-[13px] font-medium no-underline'
 const outlineHeaderLinkClassNames = `${headerLinkBaseClassNames} border border-line-strong bg-surface !text-ink hover:bg-subtle`
 
 /** Segmented Steps / Nodes / Runs / Source switcher. */
@@ -70,7 +70,7 @@ const testPlayIcon = (
 function BuilderHeaderActions({ agentId, onTestBlocked, showTest, isOnline }: { agentId: string; onTestBlocked?: () => void; showTest: boolean; isOnline: boolean }) {
   const testClassNames = `${headerLinkBaseClassNames} bg-ink !text-white hover:bg-ink-2`
   return (
-    <div className="flex gap-2">
+    <div className="flex flex-wrap justify-end gap-2">
       <Link to={agentPath('versionHistory', agentId)} className={outlineHeaderLinkClassNames}>
         {messages().builder.history}
       </Link>

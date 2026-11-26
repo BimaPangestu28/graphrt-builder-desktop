@@ -88,3 +88,14 @@ describe('formatting', () => {
     expect(toMissedRunPolicy('something else')).toBe('run_once')
   })
 })
+
+describe('schedules in Indonesian', () => {
+  it('keeps cron day names in English and shows Indonesian ones', async () => {
+    const { setLocale } = await import('@/i18n')
+    setLocale('id')
+    expect(buildCronExpression({ frequency: 'custom', time: '09:00', customWeekdays: [1, 3] })).toBe('0 0 9 * * Mon,Wed')
+    expect(describeCronExpression('0 0 9 * * Mon,Wed')).toBe('Sen, Rab 09:00')
+    expect(describeCronSchedule('0 0 9 * * Mon-Fri')).toBe('Hari kerja jam 09:00')
+    expect(listUpcomingFireTimes('0 0 9 * * Mon-Fri', 'Asia/Jakarta', 1, new Date('2026-11-18T03:00:00Z'))).toHaveLength(1)
+  })
+})

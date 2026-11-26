@@ -32,6 +32,9 @@ export interface CronBuildOptions {
 const allWeekdays = [0, 1, 2, 3, 4, 5, 6]
 const workWeekdays = [1, 2, 3, 4, 5]
 const weekendWeekdays = [0, 6]
+/** Cron's day names: the format reads and writes them in English whatever the UI language. */
+const cronWeekdayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+/** Day names as the UI shows them. */
 const shortWeekdayNames: readonly string[] = localizedArray(() => messages().schedule.shortWeekdays)
 const longWeekdayNames: readonly string[] = localizedArray(() => messages().schedule.longWeekdays)
 /** Monday-first display order. */
@@ -71,7 +74,7 @@ function formatCronWeekdays(weekdays: number[]): string {
   if (areSameWeekdays(weekdays, workWeekdays)) return 'Mon-Fri'
   return mondayFirstOrder
     .filter((weekday) => weekdays.includes(weekday))
-    .map((weekday) => shortWeekdayNames[weekday])
+    .map((weekday) => cronWeekdayNames[weekday])
     .join(',')
 }
 
@@ -99,7 +102,7 @@ export function buildCronExpression({ frequency, time, customWeekdays = [] }: Cr
 }
 
 function parseCronWeekday(token: string): number | null {
-  const nameIndex = shortWeekdayNames.findIndex((name) => name.toLowerCase() === token.toLowerCase())
+  const nameIndex = cronWeekdayNames.findIndex((name) => name.toLowerCase() === token.toLowerCase())
   if (nameIndex >= 0) return nameIndex
   if (!/^\d$/.test(token)) return null
   const weekday = Number(token)

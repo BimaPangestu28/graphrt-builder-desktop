@@ -42,7 +42,7 @@ function ConversationRow({ conversation, isLast }: { conversation: Conversation;
       <td className={cellClassNames}>
         <ConversationStatusPill conversation={conversation} />
       </td>
-      <td className={joinClassNames(cellClassNames, 'text-muted')}>{formatTimeAgo(conversation.updatedAt)}</td>
+      <td className={joinClassNames(cellClassNames, 'whitespace-nowrap text-muted')}>{formatTimeAgo(conversation.updatedAt)}</td>
     </tr>
   )
 }

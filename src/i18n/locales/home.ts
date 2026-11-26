@@ -285,7 +285,7 @@ export const home = defineMessages(
     runsThisWeek: () => 'run minggu ini',
     lastRun: (word, day) => `Run terakhir ${word} · ${day}`,
     moreWaiting: (count) => ` · ${count} lagi menunggu`,
-    pausedForReview: (day, deadline, moreWaiting) => `Run ${day} · dijeda untuk kamu periksa${deadline ? ` · ${deadline}` : ''}${moreWaiting}`,
+    pausedForReview: (day, deadline, moreWaiting) => `${day} · dijeda untuk kamu periksa${deadline ? ` · ${deadline}` : ''}${moreWaiting}`,
     waitingForYou: (agent) => `${agent} menunggu kamu`,
     review: 'Periksa',
     resultFailed: 'Gagal',

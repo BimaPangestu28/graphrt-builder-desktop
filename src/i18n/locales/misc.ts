@@ -190,7 +190,7 @@ export const misc = defineMessages(
     quit: 'Keluar',
     review: 'Periksa',
     in1Hour: 'Dalam 1 jam',
-    tryIt: 'Coba',
+    tryIt: 'Coba sekarang ·',
     step: 'Langkah',
     closeTour: 'Tutup tur',
     skipTour: 'Lewati tur',

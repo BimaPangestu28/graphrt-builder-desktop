@@ -154,7 +154,7 @@ export const builder = defineMessages(
     schedule: 'Jadwal',
     whereItRuns: 'Tempat berjalan',
     putItOnline: 'Jalankan online',
-    testWith1Place: 'Uji coba dengan 1 tempat',
+    testWith1Place: 'Uji coba 1 tempat',
     setUpThePluginsThisAgent: 'Siapkan dulu plugin yang dibutuhkan agent ini',
     couldNotReadTheSteps: 'Langkah gagal dibaca.',
     loadingSteps: 'Memuat langkah…',
