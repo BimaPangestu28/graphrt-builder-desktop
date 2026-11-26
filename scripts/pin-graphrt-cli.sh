@@ -4,7 +4,7 @@
 # Usage: scripts/pin-graphrt-cli.sh <version>      e.g. scripts/pin-graphrt-cli.sh 0.6.0
 #
 # The app downloads `graphrt-<target>.tar.gz` (`graphrt-x86_64-pc-windows-msvc.zip` on Windows)
-# from https://github.com/BimaPangestu28/graphrt/releases/download/v<version>/ and checks it
+# from https://github.com/Graphrt/graphrt/releases/download/v<version>/ and checks it
 # against the SHA-256 and size pinned in scripts/graphrt-cli-checksums.txt (compiled into the
 # app by src-tauri/build.rs, which refuses a pin that misses a target). This script:
 #
@@ -20,7 +20,7 @@
 # Trust: graphrt releases are not signed; SHA256SUMS comes from GitHub over HTTPS.
 #
 # Environment (tests): GRAPHRT_RELEASE_BASE_URL replaces
-# https://github.com/BimaPangestu28/graphrt/releases/download (the script appends /v<version>/),
+# https://github.com/Graphrt/graphrt/releases/download (the script appends /v<version>/),
 # GRAPHRT_PIN_OUTPUT_DIR replaces the scripts/ folder the two files are written to.
 set -euo pipefail
 
@@ -64,7 +64,7 @@ main() {
   local script_dir output_dir base_url
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   output_dir="${GRAPHRT_PIN_OUTPUT_DIR:-$script_dir}"
-  base_url="${GRAPHRT_RELEASE_BASE_URL:-https://github.com/BimaPangestu28/graphrt/releases/download}/v$version"
+  base_url="${GRAPHRT_RELEASE_BASE_URL:-https://github.com/Graphrt/graphrt/releases/download}/v$version"
   # Global: the EXIT trap runs after main returns.
   work_dir="$(mktemp -d)"
   trap 'rm -rf "$work_dir"' EXIT
@@ -95,7 +95,7 @@ main() {
     echo "# (src-tauri/build.rs compiles them into the app; see src-tauri/src/deploy/cli_release.rs)."
     echo "#"
     echo "# Written by \`scripts/pin-graphrt-cli.sh $version\` from the SHA256SUMS of"
-    echo "# https://github.com/BimaPangestu28/graphrt/releases/tag/v$version; do not edit by hand."
+    echo "# https://github.com/Graphrt/graphrt/releases/tag/v$version; do not edit by hand."
     echo "# One line per release target: \`<sha256>  <asset name>  <size in bytes>\`."
     printf '%s\n' "${lines[@]}"
   } >"$checksums_file.tmp"

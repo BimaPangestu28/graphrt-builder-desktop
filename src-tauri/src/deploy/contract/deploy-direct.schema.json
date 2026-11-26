@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/BimaPangestu28/graphrt/blob/main/docs/schemas/deploy-direct.schema.json",
+  "$id": "https://github.com/Graphrt/graphrt/blob/main/docs/schemas/deploy-direct.schema.json",
   "title": "graphrt deploy --direct --json output line",
   "description": "One line of the JSON Lines that `graphrt deploy --target fly --direct --json` and its subcommands (status, list-versions, rollback, pause, resume, remove) print on stdout: zero or more `step` lines, then exactly one `result` or `error` line. A deploy that fails after storing a new API key prints one `api_key` line right before its `error` line. See docs/deploy-direct.md.",
   "oneOf": [

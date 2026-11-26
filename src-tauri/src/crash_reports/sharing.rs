@@ -17,7 +17,7 @@ const KEY_OFFER_SHARING: &str = "app.offer_crash_report_sharing";
 const KEY_NOTICE_DISMISSED_THROUGH: &str = "app.crash_notice_dismissed_through";
 
 /// Where a prefilled issue is opened. Never changed by user input.
-pub const NEW_ISSUE_URL: &str = "https://github.com/BimaPangestu28/graphrt-builder-desktop/issues/new";
+pub const NEW_ISSUE_URL: &str = "https://github.com/Graphrt/graphrt-builder-desktop/issues/new";
 /// Longest percent-encoded issue body; keeps the whole URL under browsers' and GitHub's limits.
 const MAX_ENCODED_BODY_CHARS: usize = 6_000;
 const MAX_TITLE_MESSAGE_CHARS: usize = 80;

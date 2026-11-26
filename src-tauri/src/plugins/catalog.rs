@@ -14,8 +14,7 @@ use super::models::{CatalogIndex, CatalogPlugin, PluginCatalog, PluginCatalogEnt
 use crate::error::{AppError, AppResult};
 
 /// Where the published v1 catalog lives; v2 sits next to it (see [`v2_catalog_url`]).
-pub const DEFAULT_CATALOG_URL: &str =
-    "https://github.com/BimaPangestu28/graphrt-plugins/releases/download/catalog/index.json";
+pub const DEFAULT_CATALOG_URL: &str = "https://github.com/Graphrt/graphrt-plugins/releases/download/catalog/index.json";
 /// File name of the v1 catalog in its release; the v2 index replaces it with [`V2_INDEX_FILE_NAME`].
 const V1_INDEX_FILE_NAME: &str = "index.json";
 const V2_INDEX_FILE_NAME: &str = "index-v2.json";
@@ -572,7 +571,7 @@ mod parse_tests {
 mod asset_host_tests {
     use super::{parse_catalog_v2, release_asset_prefix, restrict_asset_urls, DEFAULT_CATALOG_URL};
 
-    const RELEASES: &str = "https://github.com/BimaPangestu28/graphrt-plugins/releases/download/";
+    const RELEASES: &str = "https://github.com/Graphrt/graphrt-plugins/releases/download/";
 
     #[test]
     fn the_prefix_is_the_catalog_repository_releases() {
@@ -612,7 +611,7 @@ mod asset_host_tests {
             entry("encoded", &format!("{RELEASES}%2e%2e/%2e%2e/%2e%2e/x/y.tar.gz"), &good("t.svg"), &good("t.json")),
             entry(
                 "userinfo",
-                "https://github.com@evil.test/BimaPangestu28/graphrt-plugins/releases/download/x.tar.gz",
+                "https://github.com@evil.test/Graphrt/graphrt-plugins/releases/download/x.tar.gz",
                 &good("u.svg"),
                 &good("u.json"),
             ),

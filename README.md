@@ -1,6 +1,6 @@
 # graphrt desktop
 
-[![CI](https://github.com/BimaPangestu28/graphrt-builder-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/BimaPangestu28/graphrt-builder-desktop/actions/workflows/ci.yml)
+[![CI](https://github.com/Graphrt/graphrt-builder-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/Graphrt/graphrt-builder-desktop/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 ## Overview
@@ -8,7 +8,7 @@ Desktop app for building, testing and running automation agents on your own comp
 
 The UI is implemented from the **graphrt Builder Mockup** design canvas (25 desktop screens, 01 Welcome to 25 Menu bar / tray). The three "Mobile (later)" boards are not implemented yet.
 
-> **Status: preview.** Every screen works with sample data, but the app is not yet connected to the [graphrt runtime](https://github.com/BimaPangestu28/graphrt), so no agent actually runs. See [CHANGELOG.md](CHANGELOG.md).
+> **Status: preview.** Every screen works with sample data, but the app is not yet connected to the [graphrt runtime](https://github.com/Graphrt/graphrt), so no agent actually runs. See [CHANGELOG.md](CHANGELOG.md).
 
 ## Features
 - Agent builder flow: new agent → building → review steps → connect WhatsApp → test run and approval → schedule
@@ -40,7 +40,7 @@ Building from source needs:
 ## Installation
 
 ### Download
-Prebuilt apps are attached to each [GitHub Release](https://github.com/BimaPangestu28/graphrt-builder-desktop/releases),
+Prebuilt apps are attached to each [GitHub Release](https://github.com/Graphrt/graphrt-builder-desktop/releases),
 with a `SHA256SUMS` file to verify them (`shasum -a 256 -c SHA256SUMS --ignore-missing`
 on macOS, `sha256sum -c SHA256SUMS --ignore-missing` on Linux,
 `Get-FileHash <file>` in PowerShell on Windows):

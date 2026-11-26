@@ -6,10 +6,10 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/BimaPangestu28/graphrt-builder-desktop"
+    "url": "https://github.com/Graphrt/graphrt-builder-desktop"
   },
-  "homepage": "https://github.com/BimaPangestu28/graphrt-builder-desktop#readme",
-  "bugs": "https://github.com/BimaPangestu28/graphrt-builder-desktop/issues",
+  "homepage": "https://github.com/Graphrt/graphrt-builder-desktop#readme",
+  "bugs": "https://github.com/Graphrt/graphrt-builder-desktop/issues",
   "engines": {
     "node": ">=22"
   },
