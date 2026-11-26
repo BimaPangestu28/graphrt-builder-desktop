@@ -28,9 +28,15 @@ pub fn load(db: &Database, agent_id: &str) -> AppResult<MeetingTrigger> {
     Ok(stored.and_then(|value| serde_json::from_value(value).ok()).unwrap_or_default())
 }
 
+/// Saves the trigger. Turning it on activates the agent, like saving a schedule does
+/// (`commands::triggers`): a meeting agent cannot be test-run without a real meeting, so
+/// it would otherwise stay a draft and never run.
 pub fn save(db: &Database, agent_id: &str, trigger: MeetingTrigger) -> AppResult<MeetingTrigger> {
-    db.get_agent(agent_id)?;
+    let agent = db.get_agent(agent_id)?;
     db.set_agent_setting(agent_id, TRIGGER_SETTING_KEY, &serde_json::to_value(trigger)?)?;
+    if trigger.enabled && matches!(agent.status, AgentStatus::Draft | AgentStatus::Tested | AgentStatus::Paused) {
+        db.set_agent_status(agent_id, AgentStatus::Active)?;
+    }
     Ok(trigger)
 }
 
@@ -102,18 +108,32 @@ mod tests {
     }
 
     #[test]
+    fn turning_the_trigger_on_activates_the_agent() {
+        let db = Database::open_in_memory().expect("db");
+        let draft = agent(&db, "Meeting notes");
+        save(&db, &draft.id, MeetingTrigger { enabled: true }).expect("save");
+        assert_eq!(db.get_agent(&draft.id).expect("agent").status, AgentStatus::Active);
+        assert_eq!(triggered_agents(&db).expect("list").len(), 1);
+
+        let other = agent(&db, "Off");
+        save(&db, &other.id, MeetingTrigger { enabled: false }).expect("save");
+        assert_eq!(db.get_agent(&other.id).expect("agent").status, AgentStatus::Draft);
+    }
+
+    #[test]
     fn only_tested_or_active_agents_with_the_trigger_run() {
         let db = Database::open_in_memory().expect("db");
         let draft = agent(&db, "Draft");
         let active = agent(&db, "Notes to Notion");
         let paused = agent(&db, "Paused");
         let without = agent(&db, "Without trigger");
-        db.set_agent_status(&active.id, AgentStatus::Active).expect("status");
-        db.set_agent_status(&paused.id, AgentStatus::Paused).expect("status");
         db.set_agent_status(&without.id, AgentStatus::Active).expect("status");
         for agent in [&draft, &active, &paused] {
             save(&db, &agent.id, MeetingTrigger { enabled: true }).expect("save");
         }
+        // Paused (by hand) or back to draft after the trigger was set: they do not run.
+        db.set_agent_status(&paused.id, AgentStatus::Paused).expect("status");
+        db.set_agent_status(&draft.id, AgentStatus::Draft).expect("status");
 
         let names: Vec<String> = triggered_agents(&db).expect("list").into_iter().map(|agent| agent.name).collect();
         assert_eq!(names, ["Notes to Notion"]);
