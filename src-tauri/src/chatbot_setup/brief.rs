@@ -6,11 +6,14 @@
 //! `{{#...#}}` reference.
 
 use super::{ChatbotSettings, HandoffRules};
+use crate::knowledge::retrieval::source_label;
 
 /// One passage handed to the bot when its flow has no retrieval step.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BriefPassage {
     pub source_name: String,
+    /// PDF pages of the passage, empty when unknown.
+    pub pages: Vec<u32>,
     pub text: String,
 }
 
@@ -70,7 +73,7 @@ fn knowledge_text(passages: &[BriefPassage]) -> String {
         .iter()
         .map(|passage| {
             let text: String = passage.text.chars().take(MAX_PASSAGE_CHARS).collect();
-            format!("[{}]\n{}", passage.source_name, text.trim())
+            format!("[{}]\n{}", source_label(&passage.source_name, &passage.pages), text.trim())
         })
         .collect();
     format!(

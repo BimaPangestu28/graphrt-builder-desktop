@@ -1,4 +1,4 @@
-import type { Conversation, ConversationChannel } from '@/api/conversationTypes'
+import type { Conversation, ConversationChannel, ConversationMessage } from '@/api/conversationTypes'
 import { outreachOrigin } from '@/api/conversationTypes'
 import { messages } from '@/i18n'
 import { localizedRecord } from '@/i18n/localized'
@@ -92,4 +92,10 @@ export function formatClockTime(timestamp: string): string {
 export function humanizeVariableName(name: string): string {
   const words = name.replace(/[_-]+/g, ' ').trim()
   return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
+/** Sources stored under a bot reply, e.g. `menu.pdf · p3, p12` (metadata `citations`). */
+export function readCitations(message: Pick<ConversationMessage, 'metadata'>): string[] {
+  const citations = message.metadata.citations
+  return Array.isArray(citations) ? citations.filter((citation): citation is string => typeof citation === 'string') : []
 }

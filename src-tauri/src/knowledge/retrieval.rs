@@ -133,16 +133,49 @@ pub fn knowledge_service_for_runs(
     build_knowledge_service(&knowledge_bases, &keys, true)
 }
 
+/// PDF pages a passage comes from (graphrt-rag `page` / `pages` metadata),
+/// ascending; empty for other files and passages indexed before page numbers.
+pub fn passage_pages(metadata: &serde_json::Map<String, serde_json::Value>) -> Vec<u32> {
+    let as_page = |value: &serde_json::Value| value.as_u64().and_then(|page| u32::try_from(page).ok());
+    let mut pages: Vec<u32> = match metadata.get(graphrt_rag::PAGES_KEY).and_then(serde_json::Value::as_array) {
+        Some(pages) => pages.iter().filter_map(as_page).collect(),
+        None => metadata.get(graphrt_rag::PAGE_KEY).and_then(as_page).into_iter().collect(),
+    };
+    pages.sort_unstable();
+    pages.dedup();
+    pages
+}
+
+/// A source as people read it: `menu.pdf · p3, p12`, or just the name without pages.
+pub fn source_label(source_name: &str, pages: &[u32]) -> String {
+    if pages.is_empty() {
+        return source_name.to_owned();
+    }
+    let pages: Vec<String> = pages.iter().map(|page| format!("p{page}")).collect();
+    format!("{source_name} · {}", pages.join(", "))
+}
+
 fn metadata_text(hit: &Hit, key: &str) -> Option<String> {
     hit.metadata.get(key).and_then(serde_json::Value::as_str).map(str::to_owned)
 }
 
-/// Section heading of the passage, or its position in the file.
+/// Where the passage is in its file: section heading and PDF pages
+/// (`Delivery · Page 3, 4`), either one alone, or its position when neither is known.
 fn passage_location(hit: &Hit) -> Option<String> {
-    if let Some(heading) = metadata_text(hit, "heading").filter(|heading| !heading.trim().is_empty()) {
-        return Some(heading);
+    let heading = metadata_text(hit, "heading").filter(|heading| !heading.trim().is_empty());
+    let pages = passage_pages(&hit.metadata);
+    let pages = (!pages.is_empty())
+        .then(|| format!("Page {}", pages.iter().map(u32::to_string).collect::<Vec<_>>().join(", ")));
+    match (heading, pages) {
+        (Some(heading), Some(pages)) => Some(format!("{heading} · {pages}")),
+        (Some(heading), None) => Some(heading),
+        (None, Some(pages)) => Some(pages),
+        (None, None) => hit
+            .metadata
+            .get("chunk_index")
+            .and_then(serde_json::Value::as_u64)
+            .map(|index| format!("Passage {}", index + 1)),
     }
-    hit.metadata.get("chunk_index").and_then(serde_json::Value::as_u64).map(|index| format!("Passage {}", index + 1))
 }
 
 /// Converts a graphrt hit into the UI's passage.

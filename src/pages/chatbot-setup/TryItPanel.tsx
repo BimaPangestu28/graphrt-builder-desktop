@@ -2,13 +2,9 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { sendCustomerMessage, startTestConversation } from '@/api/conversations'
 import type { ConversationMessage } from '@/api/conversationTypes'
 import { useConversationDetail, useReplyDraft } from '@/hooks/useConversations'
+import { readCitations } from '@/pages/inbox/conversationDisplay'
 import { toErrorMessage } from '@/lib/errors'
 import { messages } from '@/i18n'
-
-function readCitations(message: ConversationMessage): string[] {
-  const citations = message.metadata.citations
-  return Array.isArray(citations) ? citations.filter((citation): citation is string => typeof citation === 'string') : []
-}
 
 function TryItBubble({ message }: { message: ConversationMessage }) {
   if (message.author === 'customer') {

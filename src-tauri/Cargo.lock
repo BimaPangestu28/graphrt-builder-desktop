@@ -1088,7 +1088,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -1340,7 +1340,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e35d6e78f4cebb90e51d543db8fe41528851d6deeef6ef21ebd4bfdc1e784776"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -1916,7 +1916,7 @@ dependencies = [
 [[package]]
 name = "graphrt-bundle"
 version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=49663b5f11a18a128197ff3c7d676d2c4307667d#49663b5f11a18a128197ff3c7d676d2c4307667d"
+source = "git+https://github.com/Graphrt/graphrt?rev=5ee1f8997861c8b70be62af667580082ab5a2c21#5ee1f8997861c8b70be62af667580082ab5a2c21"
 dependencies = [
  "ed25519-dalek",
  "getrandom 0.3.4",
@@ -1933,7 +1933,7 @@ dependencies = [
 [[package]]
 name = "graphrt-core"
 version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=49663b5f11a18a128197ff3c7d676d2c4307667d#49663b5f11a18a128197ff3c7d676d2c4307667d"
+source = "git+https://github.com/Graphrt/graphrt?rev=5ee1f8997861c8b70be62af667580082ab5a2c21#5ee1f8997861c8b70be62af667580082ab5a2c21"
 dependencies = [
  "futures",
  "indexmap 2.14.2",
@@ -1948,7 +1948,7 @@ dependencies = [
 [[package]]
 name = "graphrt-doc"
 version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=49663b5f11a18a128197ff3c7d676d2c4307667d#49663b5f11a18a128197ff3c7d676d2c4307667d"
+source = "git+https://github.com/Graphrt/graphrt?rev=5ee1f8997861c8b70be62af667580082ab5a2c21#5ee1f8997861c8b70be62af667580082ab5a2c21"
 dependencies = [
  "calamine",
  "encoding_rs",
@@ -1968,7 +1968,7 @@ dependencies = [
 [[package]]
 name = "graphrt-http"
 version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=49663b5f11a18a128197ff3c7d676d2c4307667d#49663b5f11a18a128197ff3c7d676d2c4307667d"
+source = "git+https://github.com/Graphrt/graphrt?rev=5ee1f8997861c8b70be62af667580082ab5a2c21#5ee1f8997861c8b70be62af667580082ab5a2c21"
 dependencies = [
  "base64 0.22.1",
  "futures",
@@ -1986,7 +1986,7 @@ dependencies = [
 [[package]]
 name = "graphrt-learn"
 version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=49663b5f11a18a128197ff3c7d676d2c4307667d#49663b5f11a18a128197ff3c7d676d2c4307667d"
+source = "git+https://github.com/Graphrt/graphrt?rev=5ee1f8997861c8b70be62af667580082ab5a2c21#5ee1f8997861c8b70be62af667580082ab5a2c21"
 dependencies = [
  "futures",
  "graphrt-core",
@@ -2000,7 +2000,7 @@ dependencies = [
 [[package]]
 name = "graphrt-llm"
 version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=49663b5f11a18a128197ff3c7d676d2c4307667d#49663b5f11a18a128197ff3c7d676d2c4307667d"
+source = "git+https://github.com/Graphrt/graphrt?rev=5ee1f8997861c8b70be62af667580082ab5a2c21#5ee1f8997861c8b70be62af667580082ab5a2c21"
 dependencies = [
  "futures",
  "graphrt-core",
@@ -2016,7 +2016,7 @@ dependencies = [
 [[package]]
 name = "graphrt-mcp"
 version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=49663b5f11a18a128197ff3c7d676d2c4307667d#49663b5f11a18a128197ff3c7d676d2c4307667d"
+source = "git+https://github.com/Graphrt/graphrt?rev=5ee1f8997861c8b70be62af667580082ab5a2c21#5ee1f8997861c8b70be62af667580082ab5a2c21"
 dependencies = [
  "futures",
  "graphrt-core",
@@ -2035,7 +2035,7 @@ dependencies = [
 [[package]]
 name = "graphrt-plugin"
 version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=49663b5f11a18a128197ff3c7d676d2c4307667d#49663b5f11a18a128197ff3c7d676d2c4307667d"
+source = "git+https://github.com/Graphrt/graphrt?rev=5ee1f8997861c8b70be62af667580082ab5a2c21#5ee1f8997861c8b70be62af667580082ab5a2c21"
 dependencies = [
  "futures",
  "graphrt-core",
@@ -2053,7 +2053,7 @@ dependencies = [
 [[package]]
 name = "graphrt-rag"
 version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=49663b5f11a18a128197ff3c7d676d2c4307667d#49663b5f11a18a128197ff3c7d676d2c4307667d"
+source = "git+https://github.com/Graphrt/graphrt?rev=5ee1f8997861c8b70be62af667580082ab5a2c21#5ee1f8997861c8b70be62af667580082ab5a2c21"
 dependencies = [
  "futures",
  "graphrt-core",
@@ -2070,7 +2070,7 @@ dependencies = [
 [[package]]
 name = "graphrt-skill"
 version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=49663b5f11a18a128197ff3c7d676d2c4307667d#49663b5f11a18a128197ff3c7d676d2c4307667d"
+source = "git+https://github.com/Graphrt/graphrt?rev=5ee1f8997861c8b70be62af667580082ab5a2c21#5ee1f8997861c8b70be62af667580082ab5a2c21"
 dependencies = [
  "futures",
  "graphrt-core",
@@ -2084,7 +2084,7 @@ dependencies = [
 [[package]]
 name = "graphrt-ui"
 version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=49663b5f11a18a128197ff3c7d676d2c4307667d#49663b5f11a18a128197ff3c7d676d2c4307667d"
+source = "git+https://github.com/Graphrt/graphrt?rev=5ee1f8997861c8b70be62af667580082ab5a2c21#5ee1f8997861c8b70be62af667580082ab5a2c21"
 dependencies = [
  "graphrt-core",
  "serde",
@@ -3067,7 +3067,7 @@ dependencies = [
  "png",
  "serde",
  "thiserror 2.0.21",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -4268,7 +4268,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -4324,7 +4324,7 @@ dependencies = [
  "security-framework 3.7.0",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -4544,7 +4544,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "969cde0349344dbbf58b5f9badbfb8f806db13969364eb8007c057ef687007d9"
 dependencies = [
  "annotate-snippets",
- "base64 0.23.1",
+ "base64 0.21.7",
  "encoding_rs_io",
  "granit-parser",
  "nohash-hasher",
@@ -4820,7 +4820,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -5542,7 +5542,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -5895,7 +5895,7 @@ dependencies = [
  "png",
  "serde",
  "thiserror 2.0.21",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -5945,7 +5945,7 @@ checksum = "f2f6fb2847f6742cd76af783a2a2c49e9375d0a111c7bef6f71cd9e738c72d6e"
 dependencies = [
  "memoffset",
  "tempfile",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -6344,7 +6344,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -6365,7 +6365,7 @@ dependencies = [
  "objc2-foundation",
  "objc2-quartz-core",
  "raw-window-handle",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
  "windows-version",
 ]
 
@@ -6755,7 +6755,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d6f32a0ff4a9f6f01231eb2059cc85479330739333e0e58cadf03b6af2cca10"
 dependencies = [
  "cfg-if",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -7078,7 +7078,7 @@ dependencies = [
  "memchr",
  "nix",
  "typed-path",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
  "zeroize",
  "zopfli",
 ]
