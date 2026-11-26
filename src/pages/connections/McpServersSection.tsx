@@ -1,11 +1,12 @@
 import { useState, type FormEvent } from 'react'
-import type { McpServerDefinition, McpServerInput } from '@/api/connectionTypes'
+import type { McpAuthKind, McpServerDefinition, McpServerInput } from '@/api/connectionTypes'
 import { addMcpServer, removeMcpServer, testMcpServer } from '@/api/mcpServers'
-import { Button, Icon, StatusDot, joinClassNames, type StatusDotTone } from '@/components/ui'
+import { Badge, Button, Icon, StatusDot, joinClassNames, type StatusDotTone } from '@/components/ui'
 import type { AsyncDataState } from '@/hooks/useAsyncData'
 import { describeError } from '@/lib/agentDisplay'
 import { ConnectionsNotice, ConnectionsSection, connectionsCardClassNames, useOpensAddForm } from './ConnectionsSection'
 import { messages } from '@/i18n'
+import { McpSignInRow, McpToolApprovals } from './McpSignIn'
 
 const inputClassNames = 'box-border h-9 min-w-0 rounded-[9px] border border-line-strong bg-surface px-3 text-[14px] font-normal text-ink outline-none focus:border-ink'
 const fieldLabelClassNames = 'flex flex-col gap-1 text-[12px] font-medium text-muted'
@@ -58,11 +59,15 @@ function McpServerCard({ server, onChanged }: McpServerCardProps) {
   return (
     <article aria-label={server.name} className={`flex min-w-0 flex-col gap-2 p-4 ${connectionsCardClassNames}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <b className="min-w-0 text-[14px] font-semibold [overflow-wrap:anywhere]">{server.name}</b>
+        <span className="flex min-w-0 items-center gap-2">
+          <b className="min-w-0 text-[14px] font-semibold [overflow-wrap:anywhere]">{server.name}</b>
+          {server.plugin && <Badge tone="brand">{messages().connections.mcpAuth.fromPlugin(server.plugin)}</Badge>}
+        </span>
         <span className="flex gap-1">
           <Button variant="secondary" size="sm" aria-label={messages().connections.testName(server.name)} disabled={pendingAction !== null} onClick={() => void runAction('test')}>
             {pendingAction === 'test' ? messages().connections.testing : messages().connections.testConnection}
           </Button>
+{!server.plugin && (
           <Button
             variant="ghost"
             size="sm"
@@ -73,13 +78,16 @@ function McpServerCard({ server, onChanged }: McpServerCardProps) {
           >
             {pendingAction === 'remove' ? messages().connections.removing : messages().connections.remove}
           </Button>
+          )}
         </span>
       </div>
       <code className="block self-start rounded-lg bg-subtle px-2.5 py-1.5 font-mono text-[12px] text-body [overflow-wrap:anywhere]">{describeTransport(server)}</code>
+      {server.auth === 'oauth' && <McpSignInRow server={server} onChanged={onChanged} />}
       <span className="flex items-start gap-2">
         <StatusDot tone={checkTone} className="mt-[5px]" />
         <span className={joinClassNames('text-[13px] leading-normal', checkTextClassName)}>{describeCheck(server)}</span>
       </span>
+      <McpToolApprovals server={server} onChanged={onChanged} />
       {secretNames.length > 0 && <span className="text-[12px] text-muted [overflow-wrap:anywhere]">{messages().connections.secrets}{' '}{secretNames.join(', ')}</span>}
       {errorMessage && (
         <span role="alert" className="text-[13px] text-danger">
@@ -99,9 +107,15 @@ interface AddFormValues {
   argumentsText: string
   url: string
   secretsText: string
+  /** How a URL server is reached: a bearer token secret, a sign-in (OAuth) or nothing. */
+  urlAuth: McpAuthKind
 }
 
-const emptyFormValues: AddFormValues = { name: '', transportKind: 'stdio', command: '', argumentsText: '', url: '', secretsText: '' }
+const emptyFormValues: AddFormValues = { name: '', transportKind: 'stdio', command: '', argumentsText: '', url: '', secretsText: '', urlAuth: 'bearer' }
+
+function toUrlAuthKind(value: string): McpAuthKind {
+  return value === 'oauth' || value === 'none' ? value : 'bearer'
+}
 
 /** The backend input for the form (arguments split on spaces, secret names on commas). */
 export function buildServerInput(values: AddFormValues): McpServerInput {
@@ -114,7 +128,11 @@ export function buildServerInput(values: AddFormValues): McpServerInput {
       bearerTokenSecret: null,
     }
   }
-  return { name: values.name, transport: { kind: 'http', url: values.url }, secretEnv: [], bearerTokenSecret: secretNames[0] ?? null }
+  if (values.urlAuth === 'oauth') {
+    return { name: values.name, transport: { kind: 'http', url: values.url }, secretEnv: [], bearerTokenSecret: null, auth: 'oauth' }
+  }
+  const bearerTokenSecret = values.urlAuth === 'bearer' ? (secretNames[0] ?? null) : null
+  return { name: values.name, transport: { kind: 'http', url: values.url }, secretEnv: [], bearerTokenSecret, auth: bearerTokenSecret ? 'bearer' : 'none' }
 }
 
 function AddMcpServerForm({ onAdded, onClose }: { onAdded: () => Promise<void>; onClose: () => void }) {
@@ -178,16 +196,31 @@ function AddMcpServerForm({ onAdded, onClose }: { onAdded: () => Promise<void>; 
           </label>
         </div>
       ) : (
-        <label className={fieldLabelClassNames}>
-          {messages().connections.serverUrl}
-          <input type="url" value={formValues.url} placeholder={messages().connections.httpsMcpExampleComMcp} onChange={(event) => updateField('url', event.target.value)} className={inputClassNames} />
-        </label>
+        <div className="flex flex-wrap gap-3">
+          <label className={`${fieldLabelClassNames} flex-[3_1_260px]`}>
+            {messages().connections.serverUrl}
+            <input type="url" value={formValues.url} placeholder={messages().connections.httpsMcpExampleComMcp} onChange={(event) => updateField('url', event.target.value)} className={inputClassNames} />
+          </label>
+          <label className={`${fieldLabelClassNames} flex-[1_1_180px]`}>
+            {messages().connections.mcpAuth.howGraphrtSignsIn}
+            <select value={formValues.urlAuth} onChange={(event) => updateField('urlAuth', toUrlAuthKind(event.target.value))} className={inputClassNames}>
+              <option value="bearer">{messages().connections.mcpAuth.bearerSecret}</option>
+              <option value="oauth">{messages().connections.mcpAuth.oauth}</option>
+              <option value="none">{messages().connections.mcpAuth.none}</option>
+            </select>
+          </label>
+        </div>
       )}
-      <label className={fieldLabelClassNames}>
-        {isStdio ? messages().connections.secretsItNeedsNamesGivenAs : messages().connections.secretSentAsTheBearerToken}
-        <input value={formValues.secretsText} placeholder={isStdio ? 'GITHUB_TOKEN' : 'MCP_TOKEN'} onChange={(event) => updateField('secretsText', event.target.value)} className={inputClassNames} />
-      </label>
-      <span className="text-[12px] text-muted">{messages().connections.setTheSecretValuesUnderSecrets}</span>
+      {(isStdio || formValues.urlAuth === 'bearer') && (
+        <>
+          <label className={fieldLabelClassNames}>
+            {isStdio ? messages().connections.secretsItNeedsNamesGivenAs : messages().connections.secretSentAsTheBearerToken}
+            <input value={formValues.secretsText} placeholder={isStdio ? 'GITHUB_TOKEN' : 'MCP_TOKEN'} onChange={(event) => updateField('secretsText', event.target.value)} className={inputClassNames} />
+          </label>
+          <span className="text-[12px] text-muted">{messages().connections.setTheSecretValuesUnderSecrets}</span>
+        </>
+      )}
+      {!isStdio && formValues.urlAuth === 'oauth' && <span className="text-[12px] text-muted">{messages().connections.mcpAuth.signInAfterAdding}</span>}
       {errorMessage && (
         <span role="alert" className="text-[13px] text-danger">
           {errorMessage}

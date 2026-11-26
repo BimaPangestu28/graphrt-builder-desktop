@@ -253,6 +253,9 @@ export const plugins = defineMessages(
     noAgentUses: 'No agent uses',
     yet: 'yet',
     tarGz: '.tar.gz',
+    mcpServerAdds: (url: string) => `Adds the MCP server ${url} to Connections > MCP servers. No code runs on this computer`,
+    mcpSignInAfterInstall: 'After installing, sign in with your account under Connections > MCP servers',
+    mcpServerBadge: 'MCP server',
     // en:end
   },
   {
@@ -500,6 +503,9 @@ export const plugins = defineMessages(
     noAgentUses: 'Belum ada agent yang memakai',
     yet: '',
     tarGz: '.tar.gz',
+    mcpServerAdds: (url) => `Menambahkan server MCP ${url} ke Koneksi > Server MCP. Tidak ada kode yang jalan di komputer ini`,
+    mcpSignInAfterInstall: 'Setelah dipasang, login dengan akun kamu di Koneksi > Server MCP',
+    mcpServerBadge: 'Server MCP',
     // id:end
   },
 )

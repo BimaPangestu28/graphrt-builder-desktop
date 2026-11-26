@@ -15,6 +15,8 @@
 
 pub mod definitions;
 pub(crate) mod lazy_runtime;
+pub mod oauth;
+pub mod plugin_servers;
 pub mod prompt_guide;
 
 #[cfg(test)]
@@ -24,7 +26,10 @@ use std::sync::{Arc, RwLock};
 
 use graphrt_core::tool::ToolRegistry;
 
-pub use self::definitions::{McpConnectionCheck, McpServerDefinition, McpServerInput, McpServerTransport, McpToolInfo};
+pub use self::definitions::{
+    McpApprovalPolicy, McpAuthKind, McpConnectionCheck, McpServerDefinition, McpServerInput, McpServerTransport,
+    McpToolInfo,
+};
 use self::lazy_runtime::LazyMcpRuntime;
 use crate::credentials::CredentialStore;
 use crate::error::AppResult;
@@ -94,7 +99,7 @@ pub(crate) fn register_servers(
 /// A failed connection is not an error: it is recorded in `last_check`.
 pub async fn check_connection(
     db: &Database,
-    credentials: &CredentialStore,
+    credentials: &Arc<CredentialStore>,
     name: &str,
 ) -> AppResult<McpServerDefinition> {
     let definition = definitions::load_definitions(db)?
@@ -112,7 +117,7 @@ pub async fn check_connection(
 
 async fn list_server_tools(
     definition: &McpServerDefinition,
-    credentials: &CredentialStore,
+    credentials: &Arc<CredentialStore>,
 ) -> Result<Vec<McpToolInfo>, String> {
     let connection = lazy_runtime::connect(definition, credentials).await?;
     let listed = connection.refresh().await;
@@ -122,4 +127,46 @@ async fn list_server_tools(
         .into_iter()
         .map(|spec| McpToolInfo { name: spec.name, description: spec.description, input_schema: Some(spec.parameters) })
         .collect())
+}
+
+/// A server as the Connections page shows it: the definition plus, for OAuth
+/// servers, whether the user is signed in (read from the credential store).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpServerView {
+    #[serde(flatten)]
+    pub definition: McpServerDefinition,
+    pub sign_in: Option<oauth::McpSignInStatus>,
+    /// For each known tool, whether a run asks before calling it.
+    pub tool_approvals: Vec<McpToolApproval>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpToolApproval {
+    pub name: String,
+    pub asks_first: bool,
+}
+
+/// The view of `definition`.
+pub fn view(definition: McpServerDefinition, credentials: &CredentialStore) -> McpServerView {
+    let sign_in = (definition.auth == McpAuthKind::Oauth).then(|| oauth::sign_in_status(credentials, &definition.name));
+    let tool_approvals = definition
+        .known_tools
+        .iter()
+        .map(|tool| McpToolApproval { name: tool.name.clone(), asks_first: definition.approval.tool_sends(&tool.name) })
+        .collect();
+    McpServerView { definition, sign_in, tool_approvals }
+}
+
+/// Whether `tool` of the MCP server `provider` (`<name>` or `mcp:<name>`) sends,
+/// following that server's approval policy. `None` when no MCP server has that name.
+pub fn tool_sends(provider: &str, tool: &str) -> Option<bool> {
+    tool_sends_in(&current(), provider, tool)
+}
+
+/// [`tool_sends`] over `definitions`.
+pub(crate) fn tool_sends_in(definitions: &[McpServerDefinition], provider: &str, tool: &str) -> Option<bool> {
+    let name = provider.trim().strip_prefix(PROVIDER_PREFIX).unwrap_or(provider.trim());
+    definitions.iter().find(|definition| definition.name == name).map(|definition| definition.approval.tool_sends(tool))
 }

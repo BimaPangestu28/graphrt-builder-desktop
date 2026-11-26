@@ -21,6 +21,7 @@ fn stdio_input(name: &str, command: &str, args: &[&str]) -> McpServerInput {
         },
         secret_env: Vec::new(),
         bearer_token_secret: None,
+        auth: None,
     }
 }
 
@@ -30,6 +31,7 @@ fn http_input(name: &str, url: &str, bearer_token_secret: Option<&str>) -> McpSe
         transport: McpServerTransport::Http { url: url.into() },
         secret_env: Vec::new(),
         bearer_token_secret: bearer_token_secret.map(str::to_owned),
+        auth: None,
     }
 }
 
@@ -100,7 +102,7 @@ fn unreadable_stored_list_is_treated_as_empty() {
 
 #[test]
 fn runtime_config_reads_the_named_secrets() {
-    let credentials = CredentialStore::in_memory();
+    let credentials = Arc::new(CredentialStore::in_memory());
     let stdio = validate_input(McpServerInput {
         secret_env: vec!["GITHUB_TOKEN".into()],
         ..stdio_input("github", "npx", &["srv"])
@@ -152,7 +154,7 @@ fn a_bearer_token_needs_https_unless_the_server_is_on_this_computer() {
 
 #[test]
 fn a_stored_definition_never_sends_its_token_over_plain_http() {
-    let credentials = CredentialStore::in_memory();
+    let credentials = Arc::new(CredentialStore::in_memory());
     credentials.set_workflow_secret("REMOTE_TOKEN", "bearer-value").unwrap();
     let mut definition =
         validate_input(http_input("remote", "https://mcp.remote.test/mcp", Some("REMOTE_TOKEN"))).unwrap();
@@ -318,11 +320,233 @@ async fn checks_a_real_stdio_server_and_calls_its_tools_in_a_run_registry() {
 #[tokio::test]
 async fn a_failed_check_is_recorded_not_returned_as_an_error() {
     let db = Database::open_in_memory().unwrap();
-    let credentials = CredentialStore::in_memory();
+    let credentials = Arc::new(CredentialStore::in_memory());
     add_definition(&db, stdio_input("ghost", "graphrt-no-such-mcp-server-binary", &[])).unwrap();
     let checked = check_connection(&db, &credentials, "ghost").await.unwrap();
     let check = checked.last_check.unwrap();
     assert!(!check.connected);
     assert!(check.error.unwrap().contains("ghost"));
     assert!(matches!(check_connection(&db, &credentials, "missing").await, Err(AppError::NotFound(_))));
+}
+
+#[test]
+fn auth_kind_is_checked_against_the_transport_and_the_secret() {
+    let bearer = validate_input(http_input("remote", "https://mcp.example.com/mcp", Some("TOKEN"))).unwrap();
+    assert_eq!(bearer.auth, McpAuthKind::Bearer, "a named secret without `auth` means bearer");
+    let open = validate_input(http_input("open", "https://mcp.example.com/mcp", None)).unwrap();
+    assert_eq!(open.auth, McpAuthKind::None);
+    let oauth = validate_input(McpServerInput {
+        auth: Some(McpAuthKind::Oauth),
+        ..http_input("upwork", "https://mcp.upwork.com/mcp", None)
+    })
+    .unwrap();
+    assert_eq!(oauth.auth, McpAuthKind::Oauth);
+
+    let refused = [
+        McpServerInput { auth: Some(McpAuthKind::Oauth), ..stdio_input("fs", "srv", &[]) },
+        McpServerInput { auth: Some(McpAuthKind::Oauth), ..http_input("x", "http://mcp.remote.test/mcp", None) },
+        McpServerInput { auth: Some(McpAuthKind::Oauth), ..http_input("x", "https://x/mcp", Some("TOKEN")) },
+        McpServerInput { auth: Some(McpAuthKind::Bearer), ..http_input("x", "https://x/mcp", None) },
+        McpServerInput { auth: Some(McpAuthKind::None), ..http_input("x", "https://x/mcp", Some("TOKEN")) },
+    ];
+    for input in refused {
+        assert!(matches!(validate_input(input.clone()), Err(AppError::InvalidInput(_))), "{input:?}");
+    }
+}
+
+#[test]
+fn definitions_stored_before_auth_existed_keep_their_bearer_token() {
+    let db = Database::open_in_memory().unwrap();
+    let legacy = r#"[{"name":"remote","transport":{"kind":"http","url":"https://x/mcp"},"secretEnv":[],
+        "bearerTokenSecret":"TOKEN","knownTools":[],"lastCheck":null},
+        {"name":"fs","transport":{"kind":"stdio","command":"srv","args":[]}}]"#;
+    db.set_setting(definitions::SETTING_MCP_SERVERS, legacy).unwrap();
+    let loaded = load_definitions(&db).unwrap();
+    assert_eq!(loaded[0].auth, McpAuthKind::Bearer);
+    assert_eq!(loaded[1].auth, McpAuthKind::None);
+    assert_eq!(loaded[1].approval, McpApprovalPolicy::default());
+}
+
+#[test]
+fn an_oauth_server_needs_a_sign_in_before_a_run_connects() {
+    let credentials = Arc::new(CredentialStore::in_memory());
+    let definition = upwork_from_plugin();
+    match runtime_config(&definition, &credentials) {
+        Err(AppError::MissingCredentials(message)) => assert!(message.contains("Sign in"), "{message}"),
+        other => panic!("expected a missing sign-in, got {other:?}"),
+    }
+    credentials.set_mcp_oauth("upwork", crate::credentials::McpOAuthPart::RefreshToken, "refresh").unwrap();
+    let session = oauth::store::OAuthSession {
+        server_url: "https://mcp.upwork.com/mcp".into(),
+        resource: "https://mcp.upwork.com/mcp".into(),
+        issuer: "https://mcp.upwork.com".into(),
+        authorization_endpoint: "https://www.upwork.com/authorize".into(),
+        token_endpoint: "https://www.upwork.com/token".into(),
+        revocation_endpoint: None,
+        client_id: "client".into(),
+        client_kind: oauth::store::ClientKind::Dynamic,
+        redirect_uri: "http://127.0.0.1:1/callback".into(),
+        scope: None,
+        signed_in_at: None,
+        needs_sign_in: None,
+    };
+    oauth::store::save_session(&credentials, "upwork", &session).unwrap();
+    match runtime_config(&definition, &credentials).unwrap().transport {
+        McpTransport::Http(http) => {
+            assert!(http.token_source.is_some() && http.bearer_token.is_none(), "{http:?}");
+        }
+        other => panic!("unexpected {other:?}"),
+    }
+}
+
+#[test]
+fn a_tool_can_be_relaxed_and_made_to_ask_again() {
+    let db = Database::open_in_memory().unwrap();
+    let preset = upwork_from_plugin();
+    definitions::store_new_definition(&db, preset).unwrap();
+    assert!(load_definitions(&db).unwrap()[0].approval.tool_sends("send_message"));
+
+    let (relaxed, _) = definitions::set_tool_approval(&db, "upwork", " send_message ", false).unwrap();
+    assert_eq!(relaxed.approval.without_approval, ["send_message"]);
+    assert!(!load_definitions(&db).unwrap()[0].approval.tool_sends("send_message"));
+    let (again, _) = definitions::set_tool_approval(&db, "upwork", "send_message", true).unwrap();
+    assert!(again.approval.without_approval.is_empty());
+
+    assert!(definitions::set_tool_approval(&db, "upwork", "*", false).is_err(), "never all tools at once");
+    assert!(matches!(definitions::set_tool_approval(&db, "missing", "x", false), Err(AppError::NotFound(_))));
+}
+
+#[test]
+fn servers_without_a_policy_keep_the_name_rule() {
+    let policy = McpApprovalPolicy::default();
+    assert!(!policy.tool_sends("list_issues"));
+    assert!(policy.tool_sends("create_issue"));
+    assert!(policy.tool_sends("*"));
+    let relaxed = McpApprovalPolicy { without_approval: vec!["create_issue".into()], ..McpApprovalPolicy::default() };
+    assert!(!relaxed.tool_sends("create_issue"));
+}
+
+#[test]
+fn a_view_shows_the_sign_in_only_for_oauth_servers() {
+    let credentials = CredentialStore::in_memory();
+    let preset = upwork_from_plugin();
+    assert_eq!(view(preset, &credentials).sign_in, Some(oauth::McpSignInStatus::SignedOut));
+    let plain = validate_input(http_input("open", "https://x/mcp", None)).unwrap();
+    let shown = serde_json::to_value(view(plain, &credentials)).unwrap();
+    assert_eq!(shown["signIn"], serde_json::Value::Null);
+    assert_eq!(shown["auth"], "none");
+}
+
+#[test]
+fn approval_checks_use_the_server_policy_by_provider_name() {
+    let upwork = upwork_from_plugin();
+    let definitions = [upwork];
+    assert_eq!(tool_sends_in(&definitions, "upwork", "find_jobs"), Some(false));
+    assert_eq!(tool_sends_in(&definitions, "mcp:upwork", "confirm_preview"), Some(true));
+    // Upwork's strict rule: only find/get/list/search read.
+    assert_eq!(tool_sends_in(&definitions, "upwork", "respond_to_offer"), Some(true));
+    assert_eq!(tool_sends_in(&definitions, "github", "create_issue"), None, "not an MCP server: the caller decides");
+}
+
+/// The server the Upwork MCP preset plugin declares (graphrt-plugins `upwork/`).
+fn upwork_server() -> crate::plugins::host::PluginMcpServer {
+    crate::plugins::host::PluginMcpServer {
+        spec: serde_json::from_value(serde_json::json!({
+            "url": "https://mcp.upwork.com/mcp",
+            "auth": "oauth",
+            "approval": {"default": "ask", "read_only": ["find_*", "get_*", "list_*", "search_*"]},
+            "guide": "guide.md"
+        }))
+        .unwrap(),
+        guide: Some("- Use `{server}/list_accounts` first.".into()),
+    }
+}
+
+fn upwork_from_plugin() -> McpServerDefinition {
+    plugin_servers::definition_for("upwork", &upwork_server()).unwrap()
+}
+
+#[test]
+fn a_plugin_server_asks_before_every_tool_that_does_not_read() {
+    let upwork = upwork_from_plugin();
+    assert_eq!(upwork.auth, McpAuthKind::Oauth);
+    assert_eq!(upwork.plugin.as_deref(), Some("upwork"));
+    for reading in ["find_jobs", "get_job_posting", "list_accounts", "search_tools", "get_preview"] {
+        assert!(!upwork.approval.tool_sends(reading), "{reading} reads");
+    }
+    for sending in
+        ["confirm_preview", "post_job", "send_message", "manage_proposals", "respond_to_offer", "execute_tool", "*"]
+    {
+        assert!(upwork.approval.tool_sends(sending), "{sending} asks first");
+    }
+    // A reading prefix never loosens the name rule (review #4).
+    for disguised in ["get_and_send_report", "find_and_invite_freelancer", "list_then_submit", "get_upload_status"] {
+        assert!(upwork.approval.tool_sends(disguised), "{disguised} says it sends");
+    }
+    let mut relaxed = upwork.clone();
+    relaxed.approval.ask_first = vec!["find_secret*".into()];
+    assert!(relaxed.approval.tool_sends("find_secrets"), "ask_first wins over read_only");
+}
+
+#[test]
+fn installing_updating_and_removing_a_preset_plugin_syncs_its_server() {
+    let mut stored = vec![validate_input(http_input("github", "https://mcp.github.test/mcp", None)).unwrap()];
+    let presets = vec![("upwork".to_owned(), upwork_server())];
+    let added = plugin_servers::apply(&mut stored, &presets);
+    assert_eq!(added.added, ["upwork"]);
+    assert_eq!(stored.len(), 2);
+
+    // The user relaxed a tool and tested the server; an update keeps both.
+    stored[1].approval.without_approval = vec!["send_message".into()];
+    stored[1].known_tools =
+        vec![McpToolInfo { name: "find_jobs".into(), description: String::new(), input_schema: None }];
+    let mut updated_server = upwork_server();
+    updated_server.guide = Some("new guide".into());
+    let outcome = plugin_servers::apply(&mut stored, &[("upwork".to_owned(), updated_server)]);
+    assert!(outcome.added.is_empty() && outcome.removed.is_empty());
+    assert_eq!(stored[1].approval.without_approval, ["send_message"]);
+    assert_eq!(stored[1].known_tools.len(), 1);
+    assert_eq!(stored[1].guide.as_deref(), Some("new guide"));
+
+    let removed = plugin_servers::apply(&mut stored, &[]);
+    assert_eq!(removed.removed, ["upwork"]);
+    assert_eq!(stored.len(), 1, "a server added by hand stays");
+}
+
+#[test]
+fn a_preset_never_replaces_a_server_added_by_hand() {
+    let mut stored = vec![validate_input(http_input("upwork", "https://my.proxy.test/mcp", None)).unwrap()];
+    let outcome = plugin_servers::apply(&mut stored, &[("upwork".to_owned(), upwork_server())]);
+    assert_eq!(outcome.skipped.len(), 1);
+    assert!(outcome.skipped[0].1.contains("added by hand"), "{:?}", outcome.skipped);
+    assert_eq!(stored[0].transport, McpServerTransport::Http { url: "https://my.proxy.test/mcp".into() });
+    let too_long = "a".repeat(41);
+    let outcome = plugin_servers::apply(&mut stored, &[(too_long, upwork_server())]);
+    assert_eq!(outcome.skipped.len(), 1, "names the app cannot use are reported");
+}
+
+#[test]
+fn removing_a_preset_plugin_forgets_the_local_sign_in() {
+    let db = Database::open_in_memory().unwrap();
+    let credentials = CredentialStore::in_memory();
+    plugin_servers::sync(&db, &credentials, &[("upwork".to_owned(), upwork_server())]).unwrap();
+    credentials.set_mcp_oauth("upwork", crate::credentials::McpOAuthPart::RefreshToken, "refresh").unwrap();
+    let (outcome, all) = plugin_servers::sync(&db, &credentials, &[]).unwrap();
+    assert_eq!(outcome.removed, ["upwork"]);
+    assert!(all.is_empty());
+    assert_eq!(credentials.read_mcp_oauth("upwork", crate::credentials::McpOAuthPart::RefreshToken).unwrap(), None);
+}
+
+#[test]
+fn the_builder_gets_the_plugin_rules_and_guide() {
+    let mut upwork = upwork_from_plugin();
+    upwork.name = "work".into();
+    upwork.approval.without_approval = vec!["send_message".into()];
+    let guide = prompt_guide::plugin_guide(&upwork);
+    assert!(guide.contains("comes from the upwork plugin"), "{guide}");
+    assert!(guide.contains("`find_*`") && guide.contains("plus `send_message`"), "{guide}");
+    assert!(guide.contains("`require_approval`") && guide.contains("`work/find_jobs`"), "{guide}");
+    assert!(guide.contains("Use `work/list_accounts` first."), "{{server}} is replaced: {guide}");
+    let by_hand = validate_input(http_input("open", "https://x/mcp", None)).unwrap();
+    assert!(prompt_guide::plugin_guide(&by_hand).is_empty());
 }

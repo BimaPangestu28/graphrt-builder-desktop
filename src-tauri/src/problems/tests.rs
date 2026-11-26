@@ -146,6 +146,7 @@ fn installed_plugin(name: &str) -> InstalledPlugin {
         publisher: None,
         repository_url: None,
         local_path: None,
+        mcp_server: None,
     }
 }
 

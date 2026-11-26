@@ -31,7 +31,7 @@ mod details;
 pub(crate) mod display_name;
 pub mod download;
 pub mod events;
-mod host;
+pub(crate) mod host;
 mod icons;
 mod install;
 pub mod models;
@@ -61,8 +61,8 @@ use download::{require_https, Downloader, ProgressCallback};
 use events::PluginEventSink;
 use host::{build_snapshot, HostInputs, PluginSnapshot, SharedSnapshot};
 use models::{
-    InstallRecord, InstalledPlugin, PluginActionResult, PluginConfigStatus, PluginEvent, PluginInstallStage,
-    PluginPermissions,
+    InstallRecord, InstalledPlugin, McpServerSummary, PluginActionResult, PluginConfigStatus, PluginEvent,
+    PluginInstallStage, PluginPermissions, PluginTemplateInfo,
 };
 pub use prompt_guide::installed_plugins_guide;
 pub use sending::{is_sending_operation, is_sending_plugin_kind};
@@ -358,9 +358,54 @@ impl PluginService {
             Ok(mut slot) => *slot = snapshot.clone(),
             Err(poisoned) => *poisoned.into_inner() = snapshot.clone(),
         }
+        self.sync_mcp_servers(&snapshot);
         if self.publishes_globally.load(Ordering::SeqCst) {
             active::publish(Some(snapshot));
         }
+    }
+
+    /// Makes Connections > MCP servers match the installed MCP preset plugins.
+    fn sync_mcp_servers(&self, snapshot: &PluginSnapshot) {
+        let presets: Vec<(String, host::PluginMcpServer)> = snapshot
+            .plugins
+            .iter()
+            .filter(|plugin| plugin.load_error.is_none())
+            .filter_map(|plugin| plugin.mcp_server.clone().map(|server| (plugin.name.clone(), server)))
+            .collect();
+        match crate::mcp::plugin_servers::sync(&self.db, &self.credentials, &presets) {
+            Ok((outcome, definitions)) => {
+                for (plugin, reason) in &outcome.skipped {
+                    log::warn!("plugin {plugin}: its MCP server was not added: {reason}");
+                    self.events.send(PluginEvent::LoadError { name: plugin.clone(), message: reason.clone() });
+                }
+                if self.publishes_globally.load(Ordering::SeqCst) {
+                    crate::mcp::publish(definitions);
+                }
+            }
+            Err(error) => log::warn!("could not update the MCP servers of the installed plugins: {error}"),
+        }
+    }
+
+    /// The templates of the installed plugins, with the plugin's display name.
+    pub fn templates(&self) -> Vec<PluginTemplateInfo> {
+        let snapshot = self.snapshot();
+        let display_names = self.plugin_display_names();
+        snapshot
+            .plugins
+            .iter()
+            .filter(|plugin| plugin.load_error.is_none())
+            .flat_map(|plugin| {
+                let display_name = display_names.get(&plugin.name).cloned().unwrap_or_else(|| plugin.name.clone());
+                plugin.templates.iter().map(move |template| PluginTemplateInfo {
+                    plugin: plugin.name.clone(),
+                    plugin_display_name: display_name.clone(),
+                    id: template.id.clone(),
+                    title: template.title.clone(),
+                    description: template.description.clone(),
+                    prompt: template.prompt.clone(),
+                })
+            })
+            .collect()
     }
 
     /// Every installed plugin with trust, setting status and load errors.
@@ -416,6 +461,10 @@ impl PluginService {
                     publisher: record.publisher,
                     repository_url: record.repository_url,
                     local_path: record.local_path,
+                    mcp_server: plugin.mcp_server.as_ref().map(|server| McpServerSummary {
+                        url: server.spec.url.clone(),
+                        auth: auth_name(server.spec.auth).to_owned(),
+                    }),
                 })
             })
             .collect()
@@ -713,6 +762,8 @@ impl PluginService {
         validate_name(name)?;
         let requested_env =
             self.snapshot().plugin(name).map(|plugin| plugin.permissions.env.clone()).unwrap_or_default();
+        // An MCP preset's server is signed out (tokens revoked) while its record is still there.
+        crate::mcp::plugin_servers::sign_out_plugin_server(&self.db, &self.credentials, name).await;
         install::remove_plugin_dir(&self.plugins_dir, name)?;
         for variable in requested_env {
             if let Err(error) = self.credentials.delete_plugin_config(name, &variable) {
@@ -976,5 +1027,14 @@ fn validate_name(name: &str) -> AppResult<()> {
         Ok(())
     } else {
         Err(AppError::InvalidInput(format!("`{name}` is not a valid plugin name")))
+    }
+}
+
+/// How an MCP preset signs in, as the Plugins screen names it.
+fn auth_name(auth: graphrt_plugin::McpAuth) -> &'static str {
+    match auth {
+        graphrt_plugin::McpAuth::None => "none",
+        graphrt_plugin::McpAuth::Bearer => "bearer",
+        graphrt_plugin::McpAuth::Oauth => "oauth",
     }
 }

@@ -8,7 +8,7 @@
 
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use graphrt_mcp::config::DEFAULT_TIMEOUT_MS;
 use graphrt_mcp::{HttpConfig, McpServerConfig, McpTransport, StdioConfig};
@@ -70,6 +70,71 @@ pub struct McpConnectionCheck {
     pub checked_at: String,
 }
 
+/// How the app authenticates to an HTTP server.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum McpAuthKind {
+    /// No credentials (stdio servers, and open HTTP servers).
+    #[default]
+    None,
+    /// A workflow secret sent as `Authorization: Bearer` (`bearerTokenSecret`).
+    Bearer,
+    /// OAuth sign-in in the browser; tokens live in the OS credential store and are refreshed.
+    Oauth,
+}
+
+/// Which tools of a server run without the user approving each call.
+///
+/// A server added by hand uses the app's name rule: a tool counts as sending
+/// (so an agent step must list it in `require_approval`) unless its name reads
+/// (`get_…`, `list_…`, ...: see [`crate::plugins::is_sending_operation`]). A
+/// server from an MCP preset plugin brings the plugin's rule: `read_only`
+/// patterns, `ask_first` patterns and, with `default_asks`, every other tool
+/// asks. `without_approval` holds the tools the user chose to let run on their own.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpApprovalPolicy {
+    /// Tools that only read: names or `prefix*` patterns.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub read_only: Vec<String>,
+    /// Tools that always ask first (names or `prefix*`), whatever their name says.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ask_first: Vec<String>,
+    /// Tools no pattern matches ask first (instead of the name rule).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub default_asks: bool,
+    /// Tools the user lets run without asking.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub without_approval: Vec<String>,
+}
+
+impl McpApprovalPolicy {
+    /// Whether calling `tool` sends or changes something, so it needs an approval.
+    ///
+    /// A `read_only` match still asks when the name says it sends
+    /// (`get_and_send_report`): a preset's patterns never loosen the name rule.
+    pub fn tool_sends(&self, tool: &str) -> bool {
+        let tool = tool.trim();
+        if tool == "*" {
+            return true;
+        }
+        if self.without_approval.iter().any(|allowed| allowed == tool) {
+            return false;
+        }
+        let matches = |patterns: &[String]| {
+            patterns.iter().any(|pattern| graphrt_plugin::mcp_preset::matches_pattern(pattern, tool))
+        };
+        if matches(&self.ask_first) {
+            return true;
+        }
+        let name_says_it_sends = crate::plugins::is_sending_operation(tool);
+        if matches(&self.read_only) {
+            return name_says_it_sends;
+        }
+        self.default_asks || name_says_it_sends
+    }
+}
+
 /// What the user enters to add a server.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -83,6 +148,9 @@ pub struct McpServerInput {
     /// Workflow secret sent as the bearer token to an HTTP server.
     #[serde(default)]
     pub bearer_token_secret: Option<String>,
+    /// How to authenticate; absent means "bearer" when a bearer secret is named, else "none".
+    #[serde(default)]
+    pub auth: Option<McpAuthKind>,
 }
 
 /// A stored server: the user's input plus what the last check found.
@@ -95,6 +163,17 @@ pub struct McpServerDefinition {
     pub secret_env: Vec<String>,
     #[serde(default)]
     pub bearer_token_secret: Option<String>,
+    /// How the app authenticates (definitions stored before this field: see [`load_definitions`]).
+    #[serde(default)]
+    pub auth: McpAuthKind,
+    /// The MCP preset plugin that added the server (removed with the plugin), if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin: Option<String>,
+    /// The plugin's guidance for the agent builder (`{server}` stands for the name).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub guide: Option<String>,
+    #[serde(default)]
+    pub approval: McpApprovalPolicy,
     /// Tools found by the last successful check (listed in the builder prompt).
     #[serde(default)]
     pub known_tools: Vec<McpToolInfo>,
@@ -120,6 +199,23 @@ pub fn validate_input(input: McpServerInput) -> AppResult<McpServerDefinition> {
     let secret_env: Vec<String> = input.secret_env.iter().map(|secret| secret.trim().to_owned()).collect();
     let bearer_token_secret =
         input.bearer_token_secret.map(|secret| secret.trim().to_owned()).filter(|s| !s.is_empty());
+    let auth =
+        input.auth.unwrap_or(if bearer_token_secret.is_some() { McpAuthKind::Bearer } else { McpAuthKind::None });
+    match (auth, &transport) {
+        (McpAuthKind::Bearer, _) if bearer_token_secret.is_none() => {
+            return Err(invalid("name the secret sent as the bearer token"));
+        }
+        (McpAuthKind::None | McpAuthKind::Oauth, _) if bearer_token_secret.is_some() => {
+            return Err(invalid("a bearer token secret only applies to bearer authentication"));
+        }
+        (McpAuthKind::Oauth, McpServerTransport::Stdio { .. }) => {
+            return Err(invalid("signing in only applies to servers reached by URL"));
+        }
+        (McpAuthKind::Oauth, McpServerTransport::Http { url }) if !may_carry_a_token(url) => {
+            return Err(invalid(BEARER_OVER_HTTP_MESSAGE));
+        }
+        _ => {}
+    }
     match &transport {
         McpServerTransport::Stdio { .. } if bearer_token_secret.is_some() => {
             return Err(invalid("a bearer token only applies to servers reached by URL"));
@@ -140,6 +236,10 @@ pub fn validate_input(input: McpServerInput) -> AppResult<McpServerDefinition> {
         transport,
         secret_env,
         bearer_token_secret,
+        auth,
+        plugin: None,
+        guide: None,
+        approval: McpApprovalPolicy::default(),
         known_tools: Vec::new(),
         last_check: None,
     })
@@ -225,10 +325,17 @@ pub fn load_definitions(db: &Database) -> AppResult<Vec<McpServerDefinition>> {
     let Some(stored_json) = db.get_setting(SETTING_MCP_SERVERS)? else {
         return Ok(Vec::new());
     };
-    Ok(serde_json::from_str(&stored_json).unwrap_or_else(|error| {
+    let mut definitions: Vec<McpServerDefinition> = serde_json::from_str(&stored_json).unwrap_or_else(|error| {
         log::warn!("ignoring unreadable MCP server list: {error}");
         Vec::new()
-    }))
+    });
+    // Stored before `auth` existed: a named bearer secret meant bearer authentication.
+    for definition in &mut definitions {
+        if definition.auth == McpAuthKind::None && definition.bearer_token_secret.is_some() {
+            definition.auth = McpAuthKind::Bearer;
+        }
+    }
+    Ok(definitions)
 }
 
 fn save_definitions(db: &Database, definitions: &[McpServerDefinition]) -> AppResult<()> {
@@ -236,7 +343,7 @@ fn save_definitions(db: &Database, definitions: &[McpServerDefinition]) -> AppRe
 }
 
 /// Runs `change` on the stored list and saves the result, one writer at a time.
-fn modify_definitions<Output>(
+pub(crate) fn modify_definitions<Output>(
     db: &Database,
     change: impl FnOnce(&mut Vec<McpServerDefinition>) -> AppResult<Output>,
 ) -> AppResult<(Output, Vec<McpServerDefinition>)> {
@@ -256,7 +363,17 @@ pub fn add_definition(
     db: &Database,
     input: McpServerInput,
 ) -> AppResult<(McpServerDefinition, Vec<McpServerDefinition>)> {
-    let definition = validate_input(input)?;
+    store_new_definition(db, validate_input(input)?)
+}
+
+/// Stores an already validated definition (a plugin's) under a free name.
+///
+/// # Errors
+/// `InvalidInput` when the name is already in use.
+pub fn store_new_definition(
+    db: &Database,
+    definition: McpServerDefinition,
+) -> AppResult<(McpServerDefinition, Vec<McpServerDefinition>)> {
     modify_definitions(db, |definitions| {
         if definitions.iter().any(|existing| existing.name == definition.name) {
             return Err(AppError::InvalidInput(format!("an MCP server named `{}` is already added", definition.name)));
@@ -280,6 +397,35 @@ pub fn remove_definition(db: &Database, name: &str) -> AppResult<Vec<McpServerDe
         Ok(())
     })?;
     Ok(definitions)
+}
+
+/// Lets `tool` of server `name` run without asking (`ask: false`) or makes it ask again.
+///
+/// # Errors
+/// `NotFound` for an unknown server, `InvalidInput` for an empty tool name.
+pub fn set_tool_approval(
+    db: &Database,
+    name: &str,
+    tool: &str,
+    ask: bool,
+) -> AppResult<(McpServerDefinition, Vec<McpServerDefinition>)> {
+    let tool = tool.trim();
+    if tool.is_empty() || tool == "*" {
+        return Err(invalid("name one tool"));
+    }
+    modify_definitions(db, |definitions| {
+        let definition = definitions
+            .iter_mut()
+            .find(|definition| definition.name == name)
+            .ok_or_else(|| AppError::NotFound(format!("MCP server {name}")))?;
+        let allowed = &mut definition.approval.without_approval;
+        allowed.retain(|existing| existing != tool);
+        if !ask {
+            allowed.push(tool.to_owned());
+            allowed.sort();
+        }
+        Ok(definition.clone())
+    })
 }
 
 /// Stores the outcome of a connection check (and the tools on success).
@@ -313,7 +459,10 @@ pub fn record_check(
 ///
 /// # Errors
 /// `MissingCredentials` listing every secret that is not set.
-pub fn runtime_config(definition: &McpServerDefinition, credentials: &CredentialStore) -> AppResult<McpServerConfig> {
+pub fn runtime_config(
+    definition: &McpServerDefinition,
+    credentials: &Arc<CredentialStore>,
+) -> AppResult<McpServerConfig> {
     let mut missing_names = Vec::new();
     let mut read_secret = |secret_name: &str| -> AppResult<Option<String>> {
         let value = credentials.read_workflow_secret(secret_name)?;
@@ -342,13 +491,33 @@ pub fn runtime_config(definition: &McpServerDefinition, credentials: &Credential
             })
         }
         McpServerTransport::Http { url } => {
-            let bearer_token = match &definition.bearer_token_secret {
-                // A definition saved before this rule: never send the token in clear text.
-                Some(_) if !may_carry_a_token(url) => return Err(invalid(BEARER_OVER_HTTP_MESSAGE)),
-                Some(secret_name) => read_secret(secret_name)?,
-                None => None,
+            let carries_a_token = definition.auth != McpAuthKind::None;
+            if carries_a_token && !may_carry_a_token(url) {
+                // A definition saved before this rule: never send a token in clear text.
+                return Err(invalid(BEARER_OVER_HTTP_MESSAGE));
+            }
+            let (bearer_token, token_source) = match definition.auth {
+                McpAuthKind::None => (None, None),
+                McpAuthKind::Bearer => match &definition.bearer_token_secret {
+                    Some(secret_name) => (read_secret(secret_name)?, None),
+                    None => (None, None),
+                },
+                McpAuthKind::Oauth => {
+                    if !matches!(
+                        super::oauth::sign_in_status(credentials, &definition.name),
+                        super::oauth::McpSignInStatus::SignedIn { .. }
+                    ) {
+                        return Err(AppError::MissingCredentials(format!(
+                            "a sign-in to {} (press Sign in in Connections > MCP servers)",
+                            definition.name
+                        )));
+                    }
+                    let source = super::oauth::token_source(credentials.clone(), &definition.name)
+                        .map_err(|error| AppError::Internal(error.to_string()))?;
+                    (None, Some(source))
+                }
             };
-            McpTransport::Http(HttpConfig { url: url.clone(), headers: IndexMap::new(), bearer_token })
+            McpTransport::Http(HttpConfig { url: url.clone(), headers: IndexMap::new(), bearer_token, token_source })
         }
     };
     if !missing_names.is_empty() {

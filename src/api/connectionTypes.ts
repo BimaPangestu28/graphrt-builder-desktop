@@ -54,6 +54,9 @@ export interface McpConnectionCheck {
   checkedAt: string
 }
 
+/** How the app authenticates to a URL server: nothing, a bearer token secret, or OAuth sign-in in the browser. */
+export type McpAuthKind = 'none' | 'bearer' | 'oauth'
+
 /** What the user enters to add a server. */
 export interface McpServerInput {
   /** Provider id agents use: `<name>/<tool>`. Lowercase letters, digits, - and _. */
@@ -63,13 +66,46 @@ export interface McpServerInput {
   secretEnv: string[]
   /** Workflow secret sent as the bearer token to a URL server. */
   bearerTokenSecret: string | null
+  /** Omitted: `bearer` when a bearer secret is named, else `none`. */
+  auth?: McpAuthKind
 }
+
+/** Which tools run without the user approving each call. */
+export interface McpApprovalPolicy {
+  /** From an MCP preset plugin: tools (names or `prefix*`) that only read. */
+  readOnly?: string[]
+  /** From an MCP preset plugin: tools that always ask first. */
+  askFirst?: string[]
+  /** From an MCP preset plugin: every tool no pattern matches asks first. */
+  defaultAsks?: boolean
+  /** Tools the user lets run without asking. */
+  withoutApproval?: string[]
+}
+
+/** Sign-in state of an OAuth server. */
+export type McpSignInStatus =
+  | { state: 'signedOut' }
+  | { state: 'signedIn'; signedInAt: string | null }
+  | { state: 'expired'; reason: string }
 
 /** A stored server with what its last check found. */
 export interface McpServerDefinition extends McpServerInput {
+  /** The MCP preset plugin that added it (removed with the plugin). */
+  plugin?: string
+  approval?: McpApprovalPolicy
   knownTools: McpToolInfo[]
   lastCheck: McpConnectionCheck | null
+  /** Sign-in state, for `auth: 'oauth'` servers only. */
+  signIn?: McpSignInStatus | null
+  /** For each known tool, whether a run asks before calling it (the server's approval policy). */
+  toolApprovals?: McpToolApproval[]
 }
+
+export interface McpToolApproval {
+  name: string
+  asksFirst: boolean
+}
+
 
 /** App version and data folder (Settings > Privacy and data, About). */
 export interface AppInfo {

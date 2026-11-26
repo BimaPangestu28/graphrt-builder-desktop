@@ -15,6 +15,7 @@ import type {
   PluginPermissions,
   PluginRuntimeInfo,
   PluginSource,
+  PluginTemplateInfo,
 } from '../pluginTypes'
 import type { FlowStep } from '../types'
 import { readCurrentSteps } from './sampleAgentStore'
@@ -533,6 +534,8 @@ export const samplePluginsBackend = {
   listPluginCatalog: (refresh: boolean): Promise<PluginCatalog> => respondWith(() => readCatalog(refresh)),
   listPluginCatalogSteps: (name: string): Promise<PluginNodeInfo[]> => respondWith(() => listSampleCatalogSteps(name)),
   listInstalledPlugins: (): Promise<InstalledPlugin[]> => respondWith(() => [...pluginsState.installedByName.values()].map(toInstalledPlugin)),
+  /** The sample catalog has no plugin with templates. */
+  listPluginTemplates: (): Promise<PluginTemplateInfo[]> => respondWith(() => []),
   installPlugin: (name: string, approvedPermissions?: PluginPermissions): Promise<InstalledPlugin> => respondWith(() => installSamplePlugin(name, approvedPermissions)),
   updatePlugin: (name: string): Promise<InstalledPlugin> => respondWith(() => updateSamplePlugin(name)),
   updateAllPlugins: (): Promise<PluginBulkUpdateSummary> => respondWith(updateAllSamplePlugins),

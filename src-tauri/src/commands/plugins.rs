@@ -7,7 +7,9 @@ use tauri::State;
 use crate::error::AppResult;
 use crate::node_runtime::BrowserRuntimeStatus;
 use crate::plugins::auto_update::{PluginAutoUpdate, PluginBulkUpdateSummary};
-use crate::plugins::models::{InstalledPlugin, PluginActionResult, PluginCatalog, PluginNodeInfo, PluginPermissions};
+use crate::plugins::models::{
+    InstalledPlugin, PluginActionResult, PluginCatalog, PluginNodeInfo, PluginPermissions, PluginTemplateInfo,
+};
 use crate::plugins::requirements::PluginRequirement;
 use crate::plugins::session::SessionState;
 use crate::state::AppState;
@@ -27,6 +29,12 @@ pub async fn list_plugin_catalog_steps(state: State<'_, AppState>, name: String)
 #[tauri::command]
 pub fn list_installed_plugins(state: State<'_, AppState>) -> AppResult<Vec<InstalledPlugin>> {
     state.plugins.list_installed()
+}
+
+/// Starter prompts of the installed plugins, for the New agent screen.
+#[tauri::command]
+pub fn list_plugin_templates(state: State<'_, AppState>) -> Vec<PluginTemplateInfo> {
+    state.plugins.templates()
 }
 
 /// `permissions` is what the install card showed and the user approved; a downloaded

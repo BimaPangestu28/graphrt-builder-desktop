@@ -69,6 +69,16 @@ function installed(name: string): InstalledPlugin {
 }
 
 describe('buildPluginListItems', () => {
+  it('marks MCP preset plugins with the server they add', () => {
+    const catalog = catalogWith('upwork', 'alpha')
+    catalog.plugins[0].mcpServer = { url: 'https://mcp.upwork.com/mcp', auth: 'oauth' }
+    const items = buildPluginListItems(catalog, [])
+    expect(items.find((item) => item.name === 'upwork')?.mcpServer).toEqual({ url: 'https://mcp.upwork.com/mcp', auth: 'oauth' })
+    expect(items.find((item) => item.name === 'alpha')?.mcpServer).toBeNull()
+    const installedOnly = buildPluginListItems(null, [{ ...installed('linear'), mcpServer: { url: 'https://mcp.linear.app/mcp', auth: 'oauth' } }])
+    expect(installedOnly[0].mcpServer?.url).toBe('https://mcp.linear.app/mcp')
+  })
+
   it('carries the icon link from the catalog, else from the installed copy', () => {
     const catalog = catalogWith('alpha', 'beta')
     catalog.plugins[0].iconUrl = 'https://example.test/alpha.svg'

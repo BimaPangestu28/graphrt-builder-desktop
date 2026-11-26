@@ -3,7 +3,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { resetSampleAgents } from '@/api/sampleBackend/agents'
 import { resetSampleCredentials, sampleCredentialsBackend } from '@/api/sampleBackend/credentials'
-import { resetSampleMcpServers, sampleMcpServersBackend } from '@/api/sampleBackend/mcpServers'
+import { addSamplePluginMcpServer, resetSampleMcpServers, sampleMcpServersBackend } from '@/api/sampleBackend/mcpServers'
 import { resetSamplePlugins } from '@/api/sampleBackend/plugins'
 import { connectionsTabPattern, routePaths } from '@/routes'
 import { ConnectionsPage, ConnectionsTabPage } from '../ConnectionsPage'
@@ -514,5 +514,74 @@ describe('ConnectionsPage MCP servers', () => {
     const filesCard = await openMcpPanel()
     fireEvent.click(within(filesCard).getByRole('button', { name: 'Test files' }))
     expect(await within(screen.getByRole('article', { name: 'files' })).findByText('Could not connect: failed to start process')).toBeInTheDocument()
+  })
+
+  it('shows the Upwork plugin server, signs in and lets the user relax one tool', async () => {
+    addSamplePluginMcpServer('upwork', 'https://mcp.upwork.com/mcp')
+    renderConnectionsPage('/connections/mcp')
+
+    const upworkCard = await screen.findByRole('article', { name: 'upwork' })
+    expect(within(upworkCard).getByText('From the upwork plugin')).toBeInTheDocument()
+    expect(within(upworkCard).queryByRole('button', { name: 'Remove upwork' })).not.toBeInTheDocument()
+    expect(within(upworkCard).getByText('Not signed in')).toBeInTheDocument()
+    fireEvent.click(within(upworkCard).getByRole('button', { name: 'Sign in to upwork' }))
+
+    expect(await within(screen.getByRole('article', { name: 'upwork' })).findByText('Signed in')).toBeInTheDocument()
+    const signedInCard = screen.getByRole('article', { name: 'upwork' })
+    expect(within(signedInCard).getByText(/Approvals: 3 of 6 tools ask you first/)).toBeInTheDocument()
+    fireEvent.click(within(signedInCard).getByRole('button', { name: 'Let send_message run without asking' }))
+    expect(await within(screen.getByRole('article', { name: 'upwork' })).findByText('Runs on its own (you chose)')).toBeInTheDocument()
+    expect(within(screen.getByRole('article', { name: 'upwork' })).getByRole('button', { name: 'Make send_message ask first' })).toBeInTheDocument()
+    expect(within(screen.getByRole('article', { name: 'upwork' })).getByRole('button', { name: 'Sign out of upwork' })).toBeInTheDocument()
+  })
+
+  it('asks to sign in again when the stored sign-in was rejected', async () => {
+    vi.spyOn(sampleMcpServersBackend, 'listMcpServers').mockResolvedValue([
+      {
+        name: 'upwork',
+        transport: { kind: 'http', url: 'https://mcp.upwork.com/mcp' },
+        secretEnv: [],
+        bearerTokenSecret: null,
+        auth: 'oauth',
+        plugin: 'upwork',
+        approval: { readOnly: ['find_*', 'get_*', 'list_*', 'search_*'], defaultAsks: true },
+        knownTools: [],
+        lastCheck: null,
+        signIn: { state: 'expired', reason: 'the sign-in expired or was revoked (invalid_grant)' },
+      },
+    ])
+    renderConnectionsPage('/connections/mcp')
+    const upworkCard = await screen.findByRole('article', { name: 'upwork' })
+    expect(within(upworkCard).getByText('Sign in again: the sign-in expired or was revoked (invalid_grant)')).toBeInTheDocument()
+    expect(within(upworkCard).getByRole('button', { name: 'Sign in to upwork' })).toHaveTextContent('Sign in again')
+  })
+
+  it('shows why signing in failed', async () => {
+    vi.spyOn(sampleMcpServersBackend, 'signInMcpServer').mockRejectedValue(new BackendError('invalid_input', 'sign-in was not completed: access was denied'))
+    addSamplePluginMcpServer('upwork', 'https://mcp.upwork.com/mcp')
+    renderConnectionsPage('/connections/mcp')
+    fireEvent.click(await screen.findByRole('button', { name: 'Sign in to upwork' }))
+    expect(await screen.findByText('Could not sign in to upwork: sign-in was not completed: access was denied')).toBeInTheDocument()
+  })
+
+  it('cancels a sign-in that waits for the browser without showing an error', async () => {
+    let rejectSignIn: (error: Error) => void = () => undefined
+    vi.spyOn(sampleMcpServersBackend, 'signInMcpServer').mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectSignIn = reject
+        }),
+    )
+    const cancelSpy = vi.spyOn(sampleMcpServersBackend, 'cancelMcpSignIn').mockImplementation(async () => {
+      rejectSignIn(new BackendError('stopped', 'Stopped by you'))
+    })
+    addSamplePluginMcpServer('upwork', 'https://mcp.upwork.com/mcp')
+    renderConnectionsPage('/connections/mcp')
+    fireEvent.click(await screen.findByRole('button', { name: 'Sign in to upwork' }))
+    expect(await screen.findByText('Finish signing in in your browser…')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel signing in to upwork' }))
+    expect(await screen.findByRole('button', { name: 'Sign in to upwork' })).toBeInTheDocument()
+    expect(cancelSpy).toHaveBeenCalledWith('upwork')
+    expect(screen.queryByText(/Could not sign in/)).not.toBeInTheDocument()
   })
 })

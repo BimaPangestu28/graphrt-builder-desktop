@@ -45,6 +45,7 @@ export const newAgent = defineMessages(
     mapsLeadsJob: 'Find cafes in Bandar Lampung on Google Maps, get their name and phone number, then send each one a WhatsApp message offering our catering menu',
     forExample: (job: string) => `For example: ${job}`,
     checklist: { understanding: ['Understood the job', 'Read your description'], drafting: ['Picked the steps', 'Steps drafted'], repairing: ['Fixed problems', 'Nothing to fix'], checking: ['Checking it again', 'No problems found'], done: ['Check what it needs to connect', 'Ready to connect'] },
+    fromThePlugin: (plugin: string) => `From the ${plugin} plugin`,
     // en:end
   },
   {
@@ -90,6 +91,7 @@ export const newAgent = defineMessages(
     mapsLeadsJob: 'Cari kafe di Bandar Lampung lewat Google Maps, ambil nama dan nomor teleponnya, lalu kirimi tiap kafe pesan WhatsApp yang menawarkan menu katering kami',
     forExample: (job) => `Misalnya, ${job}`,
     checklist: { understanding: ['Memahami pekerjaannya', 'Membaca cerita kamu'], drafting: ['Memilih langkah', 'Langkah sudah disusun'], repairing: ['Memperbaiki masalah', 'Tidak ada yang perlu diperbaiki'], checking: ['Mengecek ulang', 'Tidak ada masalah'], done: ['Cek apa yang perlu dihubungkan', 'Siap dihubungkan'] },
+    fromThePlugin: (plugin) => `Dari plugin ${plugin}`,
     // id:end
   },
 )

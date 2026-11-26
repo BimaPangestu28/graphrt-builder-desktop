@@ -4,7 +4,7 @@ version = "0.1.8"
 description = "graphrt desktop: build, test and run automation agents on your computer (macOS, Windows, Linux)"
 edition = "2021"
 license = "Apache-2.0"
-repository = "https://github.com/Graphrt/graphrt-builder-desktop"
+repository = "https://github.com/BimaPangestu28/graphrt-builder-desktop"
 publish = false
 # Tauri 2.12 and its plugins need Rust 1.90 (graphrt itself needs 1.85)
 rust-version = "1.90"
@@ -27,17 +27,17 @@ tauri-plugin-dialog = "2.4"
 tauri-plugin-notification = "2.8.1"
 
 # graphrt runtime, pinned to a commit until the crates are published on crates.io
-graphrt-core = { git = "https://github.com/Graphrt/graphrt", rev = "e1e9aa89eea304bdd8110f2ce3c0a54b15f5b6f8" }
-graphrt-llm = { git = "https://github.com/Graphrt/graphrt", rev = "e1e9aa89eea304bdd8110f2ce3c0a54b15f5b6f8", default-features = false, features = ["openai", "anthropic", "gemini", "mock"] }
-graphrt-http = { git = "https://github.com/Graphrt/graphrt", rev = "e1e9aa89eea304bdd8110f2ce3c0a54b15f5b6f8" }
+graphrt-core = { git = "https://github.com/Graphrt/graphrt", rev = "c959df5e3c9c7b42f39d89a6b61a4096c2df880d" }
+graphrt-llm = { git = "https://github.com/Graphrt/graphrt", rev = "c959df5e3c9c7b42f39d89a6b61a4096c2df880d", default-features = false, features = ["openai", "anthropic", "gemini", "mock"] }
+graphrt-http = { git = "https://github.com/Graphrt/graphrt", rev = "c959df5e3c9c7b42f39d89a6b61a4096c2df880d" }
 # Knowledge bases: SQLite vector store, document extractors and OpenAI-compatible embeddings
-graphrt-rag = { git = "https://github.com/Graphrt/graphrt", rev = "e1e9aa89eea304bdd8110f2ce3c0a54b15f5b6f8", default-features = false, features = ["sqlite", "doc", "http"] }
+graphrt-rag = { git = "https://github.com/Graphrt/graphrt", rev = "c959df5e3c9c7b42f39d89a6b61a4096c2df880d", default-features = false, features = ["sqlite", "doc", "http"] }
 # Plugins: node kinds and tools from external processes (graphrt-plugins catalog)
-graphrt-plugin = { git = "https://github.com/Graphrt/graphrt", rev = "e1e9aa89eea304bdd8110f2ce3c0a54b15f5b6f8", default-features = false, features = ["process", "http", "yaml"] }
+graphrt-plugin = { git = "https://github.com/Graphrt/graphrt", rev = "c959df5e3c9c7b42f39d89a6b61a4096c2df880d", default-features = false, features = ["process", "http", "yaml", "mcp-presets"] }
 # MCP servers configured in Connections > Advanced: their tools for `tool` / `agent` nodes (stdio and Streamable HTTP)
-graphrt-mcp = { git = "https://github.com/Graphrt/graphrt", rev = "e1e9aa89eea304bdd8110f2ce3c0a54b15f5b6f8" }
+graphrt-mcp = { git = "https://github.com/Graphrt/graphrt", rev = "c959df5e3c9c7b42f39d89a6b61a4096c2df880d" }
 # "My own server": exporting an agent as a portable .grt bundle for `graphrt serve` (no WebAssembly plugins)
-graphrt-bundle = { git = "https://github.com/Graphrt/graphrt", rev = "e1e9aa89eea304bdd8110f2ce3c0a54b15f5b6f8", default-features = false }
+graphrt-bundle = { git = "https://github.com/Graphrt/graphrt", rev = "c959df5e3c9c7b42f39d89a6b61a4096c2df880d", default-features = false }
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "process", "io-util"] }
 futures = "0.3"
@@ -60,6 +60,10 @@ uuid = { version = "1", features = ["v4"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 sha2 = "0.10"
+# MCP OAuth sign-in: parsing and building authorization URLs and form bodies, and the PKCE
+# verifier / state (both already in the dependency tree through reqwest and uuid).
+url = "2"
+getrandom = "0.3"
 tar = { version = "0.4", default-features = false }
 flate2 = "1"
 # The Node.js runtime is downloaded on demand: `.tar.xz` on macOS/Linux, `.zip` on Windows

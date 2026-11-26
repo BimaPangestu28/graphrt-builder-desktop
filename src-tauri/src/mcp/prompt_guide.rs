@@ -47,7 +47,50 @@ pub(crate) fn servers_guide(definitions: &[McpServerDefinition]) -> String {
             section.push_str(&format!("\n  - and {hidden_count} more (use `{}/*`)", definition.name));
         }
     }
+    for definition in definitions {
+        let plugin_guide = plugin_guide(definition);
+        if !plugin_guide.is_empty() {
+            section.push('\n');
+            section.push_str(&plugin_guide);
+        }
+    }
     section
+}
+
+/// Longest plugin guide put into the builder prompt.
+const MAX_GUIDE_CHARS: usize = 12_000;
+
+/// The rules a server from an MCP preset plugin adds: its approval rule and
+/// the plugin's guide (`{server}` replaced by the server name). Empty for
+/// servers added by hand.
+pub(crate) fn plugin_guide(definition: &McpServerDefinition) -> String {
+    let Some(plugin) = &definition.plugin else { return String::new() };
+    let server = &definition.name;
+    let approval = &definition.approval;
+    let quoted = |names: &[String]| names.iter().map(|name| format!("`{name}`")).collect::<Vec<_>>().join(", ");
+    let mut rules = format!("- Server `{server}` comes from the {plugin} plugin.");
+    if !approval.read_only.is_empty() {
+        rules.push_str(&format!(" Only these tools read and run without asking: {}", quoted(&approval.read_only)));
+        if !approval.without_approval.is_empty() {
+            rules.push_str(&format!(
+                ", plus {} (the user let them run on their own)",
+                quoted(&approval.without_approval)
+            ));
+        }
+        rules.push('.');
+    }
+    if approval.default_asks {
+        rules.push_str(&format!(
+            " Every other `{server}` tool sends or changes something: list each one the agent may call in \
+             `require_approval`, and list the agent's tools one by one (`{server}/find_jobs`, ...) rather than `{server}/*`."
+        ));
+    }
+    if let Some(guide) = &definition.guide {
+        let text: String = guide.replace("{server}", server).chars().take(MAX_GUIDE_CHARS).collect();
+        rules.push('\n');
+        rules.push_str(text.trim_end());
+    }
+    rules
 }
 
 fn one_line(text: &str, max_chars: usize) -> String {

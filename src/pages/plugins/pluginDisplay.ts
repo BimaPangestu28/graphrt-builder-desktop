@@ -1,5 +1,5 @@
 import type { BadgeTone } from '@/components/ui'
-import type { InstalledPlugin, PluginCatalog, PluginMaturity, PluginNodeInfo, PluginPermissions, PluginSource, PluginTosRisk } from '@/api/pluginTypes'
+import type { InstalledPlugin, McpServerSummary, PluginCatalog, PluginMaturity, PluginNodeInfo, PluginPermissions, PluginSource, PluginTosRisk } from '@/api/pluginTypes'
 import type { PluginInstallProgress } from '@/hooks/usePlugins'
 import { pluginDisplayName } from '@/lib/pluginDisplayName'
 import { categorizePlugin, type PluginCategory } from './pluginCategories'
@@ -37,6 +37,8 @@ export interface PluginListItem {
   repositoryUrl: string | null
   /** For a `local` plugin: the folder or archive it was installed from. */
   localPath: string | null
+  /** An MCP preset plugin: the server it adds to Connections > MCP servers. */
+  mcpServer?: McpServerSummary | null
 }
 
 function fromInstalledPlugin(installedPlugin: InstalledPlugin): PluginListItem {
@@ -62,6 +64,7 @@ function fromInstalledPlugin(installedPlugin: InstalledPlugin): PluginListItem {
     publisher,
     repositoryUrl,
     localPath,
+    mcpServer: installedPlugin.mcpServer ?? null,
   }
 }
 
@@ -100,6 +103,7 @@ export function buildPluginListItems(catalog: PluginCatalog | null, installedPlu
     publisher: entry.publisher ?? installedByName.get(entry.name)?.publisher ?? null,
     repositoryUrl: entry.repositoryUrl ?? installedByName.get(entry.name)?.repositoryUrl ?? null,
     localPath: null,
+    mcpServer: entry.mcpServer ?? installedByName.get(entry.name)?.mcpServer ?? null,
   }))
   const catalogNames = new Set(catalogItems.map((item) => item.name))
   const installedOnlyItems = installedPlugins.filter((installedPlugin) => !catalogNames.has(installedPlugin.name)).map(fromInstalledPlugin)

@@ -94,6 +94,9 @@ pub struct CatalogPlugin {
     /// HTTPS link to the plugin's SVG icon (a `catalog` release asset; newer catalogs only).
     #[serde(default)]
     pub icon_url: Option<String>,
+    /// An MCP preset plugin's server (newer catalogs only; an unreadable value is dropped).
+    #[serde(default, deserialize_with = "lenient_mcp_server")]
+    pub mcp_server: Option<McpServerSummary>,
     /// Terms-of-service / ban warning from the plugin's README (e.g. whatsapp-web).
     #[serde(default)]
     pub warning: Option<String>,
@@ -305,6 +308,33 @@ pub struct PluginCatalogEntry {
     /// The update asks for more than the installed version (more settings or plaintext
     /// secrets): it is never installed automatically and drops trust when the user installs it.
     pub update_needs_approval: bool,
+    /// For an MCP preset plugin: the server it adds to Connections > MCP servers.
+    pub mcp_server: Option<McpServerSummary>,
+}
+
+/// The server of an MCP preset plugin, as the Plugins screen shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpServerSummary {
+    pub url: String,
+    /// `none`, `bearer` or `oauth`.
+    pub auth: String,
+}
+
+fn lenient_mcp_server<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<McpServerSummary>, D::Error> {
+    #[derive(Deserialize)]
+    struct Wire {
+        url: String,
+        #[serde(default)]
+        auth: Option<String>,
+    }
+    let value = serde_json::Value::deserialize(deserializer)?;
+    let summary = serde_json::from_value::<Wire>(value).ok().and_then(|wire| {
+        let auth = wire.auth.unwrap_or_else(|| "none".to_owned());
+        let known_auth = matches!(auth.as_str(), "none" | "bearer" | "oauth");
+        (wire.url.starts_with("https://") && known_auth).then_some(McpServerSummary { url: wire.url, auth })
+    });
+    Ok(summary)
 }
 
 /// What `list_plugin_catalog` returns.
@@ -365,6 +395,8 @@ pub struct InstalledPlugin {
     pub repository_url: Option<String>,
     /// For a `local` plugin: the folder or archive it was installed from, for display only.
     pub local_path: Option<String>,
+    /// For an MCP preset plugin: the server it added to Connections > MCP servers.
+    pub mcp_server: Option<McpServerSummary>,
 }
 
 /// The outputs of a one-off plugin action.
@@ -440,4 +472,16 @@ impl InstallRecord {
     pub fn is_local(&self) -> bool {
         self.source == PluginSource::Local
     }
+}
+
+/// A starter prompt from an installed plugin (New agent screen).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginTemplateInfo {
+    pub plugin: String,
+    pub plugin_display_name: String,
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    pub prompt: String,
 }

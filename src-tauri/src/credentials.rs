@@ -503,6 +503,100 @@ impl CredentialStore {
     }
 }
 
+/// MCP OAuth sign-ins (`mcp-oauth:<server>:<part>`): the sign-in session (endpoints and
+/// client id, no secret), the access token and the refresh token of each MCP server the user
+/// signed in to. Their own prefix keeps them apart from workflow secrets, so no workflow can
+/// read them; they are split in parts to stay under Windows' credential size limit.
+impl CredentialStore {
+    /// Saves or replaces one part of a server's sign-in. Rejects empty values.
+    pub fn set_mcp_oauth(&self, server: &str, part: McpOAuthPart, value: &str) -> AppResult<()> {
+        let account = mcp_oauth_account(server, part)?;
+        if value.trim().is_empty() {
+            return Err(AppError::InvalidInput("the value is empty".into()));
+        }
+        match &self.backend {
+            CredentialBackend::Keychain { service } => keychain_account_entry(service, &account, &account)?
+                .set_password(value)
+                .map_err(|error| secret_keychain_error("save", &account, &error)),
+            CredentialBackend::InMemory(_) => {
+                lock_secrets(&self.in_memory_workflow_secrets)?.insert(account, value.to_owned());
+                Ok(())
+            }
+        }
+    }
+
+    /// Removes one part of a server's sign-in; succeeds if none was stored.
+    pub fn delete_mcp_oauth(&self, server: &str, part: McpOAuthPart) -> AppResult<()> {
+        let account = mcp_oauth_account(server, part)?;
+        match &self.backend {
+            CredentialBackend::Keychain { service } => {
+                match keychain_account_entry(service, &account, &account)?.delete_credential() {
+                    Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+                    Err(error) => Err(secret_keychain_error("delete", &account, &error)),
+                }
+            }
+            CredentialBackend::InMemory(_) => {
+                lock_secrets(&self.in_memory_workflow_secrets)?.remove(&account);
+                Ok(())
+            }
+        }
+    }
+
+    /// Backend-only access to one part of a server's sign-in. Never expose through a command.
+    pub(crate) fn read_mcp_oauth(&self, server: &str, part: McpOAuthPart) -> AppResult<Option<String>> {
+        let account = mcp_oauth_account(server, part)?;
+        match &self.backend {
+            CredentialBackend::Keychain { service } => {
+                match keychain_account_entry(service, &account, &account)?.get_password() {
+                    Ok(value) => Ok(Some(value)),
+                    Err(keyring::Error::NoEntry) => Ok(None),
+                    Err(error) => Err(secret_keychain_error("read", &account, &error)),
+                }
+            }
+            CredentialBackend::InMemory(_) => {
+                Ok(lock_secrets(&self.in_memory_workflow_secrets)?.get(&account).cloned())
+            }
+        }
+    }
+}
+
+/// One stored part of an MCP server's OAuth sign-in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum McpOAuthPart {
+    /// Endpoints, client id and status (JSON, no secret).
+    Session,
+    /// Access token and its expiry (JSON).
+    AccessToken,
+    /// Refresh token.
+    RefreshToken,
+}
+
+impl McpOAuthPart {
+    pub const ALL: [McpOAuthPart; 3] = [McpOAuthPart::Session, McpOAuthPart::AccessToken, McpOAuthPart::RefreshToken];
+
+    fn suffix(self) -> &'static str {
+        match self {
+            McpOAuthPart::Session => "session",
+            McpOAuthPart::AccessToken => "access",
+            McpOAuthPart::RefreshToken => "refresh",
+        }
+    }
+}
+
+/// Keychain account prefix of MCP OAuth sign-ins.
+const MCP_OAUTH_ACCOUNT_PREFIX: &str = "mcp-oauth:";
+
+/// `mcp-oauth:<server>:<part>`; `server` is an MCP server name (lowercase letters, digits, `-`, `_`).
+fn mcp_oauth_account(server: &str, part: McpOAuthPart) -> AppResult<String> {
+    let valid = !server.is_empty()
+        && server.len() <= 40
+        && server.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || b"_-".contains(&byte));
+    if !valid {
+        return Err(AppError::InvalidInput(format!("`{server}` is not a valid MCP server name")));
+    }
+    Ok(format!("{MCP_OAUTH_ACCOUNT_PREFIX}{server}:{}", part.suffix()))
+}
+
 /// Keychain account prefix of "Put it online" credentials.
 const DEPLOY_SECRET_ACCOUNT_PREFIX: &str = "deploy:";
 

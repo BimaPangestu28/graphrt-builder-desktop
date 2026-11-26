@@ -48,6 +48,21 @@ export function PluginWarningBox({ item }: { item: PluginListItem }) {
   )
 }
 
+/** An MCP preset plugin: the server it adds, and where to sign in. */
+export function PluginMcpServerNote({ item }: { item: PluginListItem }) {
+  if (!item.mcpServer) return null
+  const t = messages().plugins
+  return (
+    <div role="note" aria-label={t.mcpServerBadge} className="flex gap-3 rounded-[14px] border border-line bg-subtle px-4 py-3">
+      <Icon name="plug" size={16} className="mt-px shrink-0 text-muted" />
+      <div className="flex min-w-0 flex-col gap-0.5 text-[13px] leading-normal">
+        <span className="[overflow-wrap:anywhere]">{t.mcpServerAdds(item.mcpServer.url)}</span>
+        {item.mcpServer.auth === 'oauth' && <span className="text-muted">{t.mcpSignInAfterInstall}</span>}
+      </div>
+    </div>
+  )
+}
+
 /** Why an installed plugin could not load, and graphrt's notes about it. */
 export function PluginLoadNotes({ installed }: { installed: InstalledPlugin }) {
   if (!installed.loadError && installed.warnings.length === 0) return null

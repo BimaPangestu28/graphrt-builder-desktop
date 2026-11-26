@@ -116,10 +116,23 @@ fn referenced_node_ids(text: &str) -> impl Iterator<Item = &str> {
 
 /// `provider/name` of the tools of an `agent` config that send without the step asking first.
 pub(super) fn agent_unapproved_sending_tools(config: &Map<String, Json>) -> Vec<String> {
+    unapproved_sending_tools_with(config, &crate::mcp::current())
+}
+
+/// [`agent_unapproved_sending_tools`] with the MCP servers `mcp_servers`.
+///
+/// `<server>/*` of an MCP server whose tools are known (from its last
+/// connection test) stands for each of those tools, so `require_approval` can
+/// list only the ones that send. Without known tools it stays one tool that sends.
+pub(crate) fn unapproved_sending_tools_with(
+    config: &Map<String, Json>,
+    mcp_servers: &[crate::mcp::McpServerDefinition],
+) -> Vec<String> {
     let approvals = approval_entries(config);
     read_tool_references(config)
         .into_iter()
-        .filter(|tool| tool_sends(&tool.provider, &tool.name))
+        .flat_map(|tool| expand_mcp_wildcard(tool, mcp_servers))
+        .filter(|tool| tool_sends_with(&tool.provider, &tool.name, mcp_servers))
         .filter(|tool| !tool.is_covered_by(&approvals))
         .map(|tool| format!("{}/{}", tool.provider, tool.name))
         .collect()
@@ -254,10 +267,34 @@ fn tool_node_sends(config: &Map<String, Json>) -> bool {
 }
 
 fn tool_sends(provider: &str, tool_name: &str) -> bool {
+    tool_sends_with(provider, tool_name, &crate::mcp::current())
+}
+
+fn tool_sends_with(provider: &str, tool_name: &str, mcp_servers: &[crate::mcp::McpServerDefinition]) -> bool {
     if provider.trim() == AGENT_TOOL_PROVIDER {
         return false;
     }
+    // An MCP server's own approval policy (a plugin's rule, tools the user relaxed).
+    if let Some(sends) = crate::mcp::tool_sends_in(mcp_servers, provider, tool_name) {
+        return sends;
+    }
     tool_name.trim() == ALL_TOOLS || crate::plugins::is_sending_operation(tool_name)
+}
+
+/// `<server>/*` of an MCP server with known tools becomes one reference per tool.
+fn expand_mcp_wildcard(tool: ToolReference, mcp_servers: &[crate::mcp::McpServerDefinition]) -> Vec<ToolReference> {
+    if tool.name != ALL_TOOLS {
+        return vec![tool];
+    }
+    let server_name = tool.provider.strip_prefix(crate::mcp::PROVIDER_PREFIX).unwrap_or(&tool.provider);
+    match mcp_servers.iter().find(|server| server.name == server_name) {
+        Some(server) if !server.known_tools.is_empty() => server
+            .known_tools
+            .iter()
+            .map(|known| ToolReference { provider: tool.provider.clone(), name: known.name.clone() })
+            .collect(),
+        _ => vec![tool],
+    }
 }
 
 /// A tool an `agent` step lists in `tools`.
@@ -524,5 +561,49 @@ mod tests {
             let expected_start = if check.runs_without_asking() { "Runs without asking" } else { "Asks you first" };
             assert!(explanation.starts_with(expected_start), "{explanation}");
         }
+    }
+
+    fn upwork_server(known_tools: &[&str]) -> crate::mcp::McpServerDefinition {
+        let server = crate::plugins::host::PluginMcpServer {
+            spec: serde_json::from_value(json!({
+                "url": "https://mcp.upwork.com/mcp", "auth": "oauth",
+                "approval": {"default": "ask", "read_only": ["find_*", "get_*", "list_*", "search_*"]}
+            }))
+            .unwrap(),
+            guide: None,
+        };
+        let mut definition = crate::mcp::plugin_servers::definition_for("upwork", &server).unwrap();
+        definition.known_tools = known_tools
+            .iter()
+            .map(|name| crate::mcp::McpToolInfo {
+                name: (*name).into(),
+                description: String::new(),
+                input_schema: None,
+            })
+            .collect();
+        definition
+    }
+
+    #[test]
+    fn a_server_wildcard_stands_for_its_known_tools() {
+        let servers = [upwork_server(&["list_accounts", "find_jobs", "confirm_preview", "send_message"])];
+        let approved = config(json!({
+            "tools": ["upwork/*"],
+            "require_approval": ["upwork/confirm_preview", "upwork/send_message"]
+        }));
+        assert!(unapproved_sending_tools_with(&approved, &servers).is_empty(), "every write tool is approved");
+        let missing = config(json!({ "tools": ["upwork/*"], "require_approval": ["upwork/confirm_preview"] }));
+        assert_eq!(unapproved_sending_tools_with(&missing, &servers), ["upwork/send_message"]);
+        let explicit = config(json!({ "tools": ["upwork/find_jobs", "upwork/list_accounts"] }));
+        assert!(unapproved_sending_tools_with(&explicit, &servers).is_empty(), "reading tools run on their own");
+        let alias = config(json!({ "tools": ["mcp:upwork/*"], "require_approval": ["*"] }));
+        assert!(unapproved_sending_tools_with(&alias, &servers).is_empty());
+    }
+
+    #[test]
+    fn a_server_wildcard_without_known_tools_still_sends() {
+        let servers = [upwork_server(&[])];
+        let wildcard = config(json!({ "tools": ["upwork/*"], "require_approval": ["upwork/confirm_preview"] }));
+        assert_eq!(unapproved_sending_tools_with(&wildcard, &servers), ["upwork/*"]);
     }
 }

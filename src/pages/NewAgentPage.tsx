@@ -15,6 +15,9 @@ import {
 import type { BuildRequestLocationState } from './agent-builder/buildRequestState'
 import { ModelPickerChip } from './new-agent/ModelPickerChip'
 import { messages } from '@/i18n'
+import { listPluginTemplates } from '@/api/plugins'
+import { useAsyncData } from '@/hooks/useAsyncData'
+import { pluginTemplateCards } from './new-agent/pluginTemplates'
 
 /** Pill radio group for choosing what kind of agent to make. */
 function AgentKindPicker({ selectedKind, onSelect }: { selectedKind: AgentKind; onSelect: (kind: AgentKind) => void }) {
@@ -96,6 +99,8 @@ export function NewAgentPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [initialTemplate] = useState(() => findAgentTemplate(searchParams.get('template')))
+  // Templates of installed plugins (e.g. the Upwork MCP preset); none when they cannot be read.
+  const pluginTemplates = useAsyncData(listPluginTemplates, [])
   const [selectedKind, setSelectedKind] = useState<AgentKind>(initialTemplate?.kind ?? 'task')
   const [jobDescription, setJobDescription] = useState(initialTemplate ? templatePromptText(initialTemplate) : '')
   const jobDescriptionRef = useRef<HTMLTextAreaElement>(null)
@@ -156,7 +161,7 @@ export function NewAgentPage() {
       <section aria-label={messages().newAgent.templates} className="flex w-full max-w-[960px] flex-col gap-3.5">
         <span className="font-semibold">{messages().newAgent.orStartFromATemplate}</span>
         <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
-          {agentTemplates.map((template) => (
+          {[...agentTemplates, ...pluginTemplateCards(pluginTemplates.data ?? [])].map((template) => (
             <TemplateCard key={template.id} template={template} onPick={handleTemplatePick} />
           ))}
         </div>

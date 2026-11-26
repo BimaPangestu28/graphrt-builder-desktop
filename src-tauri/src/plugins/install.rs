@@ -124,8 +124,14 @@ pub(super) fn finish_install(
 fn check_loads(dir: &Path, name: &str, base_registry: &graphrt_core::Registry) -> AppResult<()> {
     let rejected = |message: String| AppError::InvalidInput(format!("plugin {name} cannot be installed: {message}"));
     let manifest = read_plugin(dir).map_err(rejected)?;
-    if !matches!(manifest.manifest.runtime, graphrt_plugin::Runtime::Process(_)) {
-        return Err(rejected("only process plugins are supported".into()));
+    match &manifest.manifest.runtime {
+        graphrt_plugin::Runtime::Process(_) => {}
+        // An MCP preset has no code: it must make a server the app can add (name, address, sign-in).
+        graphrt_plugin::Runtime::Mcp(runtime) => {
+            let server = super::host::PluginMcpServer { spec: runtime.mcp.clone(), guide: None };
+            return crate::mcp::plugin_servers::definition_for(name, &server).map(|_| ()).map_err(rejected);
+        }
+        _ => return Err(rejected("only process plugins and MCP server presets are supported".into())),
     }
     let mut host = graphrt_plugin::PluginHost::new();
     host.add(manifest).map_err(|error| rejected(error.to_string()))?;
