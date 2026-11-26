@@ -870,6 +870,8 @@ pub(crate) struct PublishedSkill {
     pub files: Vec<(&'static str, String)>,
     /// The archive's top-level folder when it is not the skill's name (a bad archive).
     pub archive_folder: Option<&'static str>,
+    /// The catalog's curated name, when it gives one.
+    pub display_name: Option<&'static str>,
 }
 
 /// A plugin service over a throwaway app data folder whose signed catalog lists skills,
@@ -913,6 +915,7 @@ impl SkillCatalogFixture {
                 let archive = Self::archive(skill);
                 serde_json::json!({
                     "name": skill.name,
+                    "display_name": skill.display_name,
                     "version": skill.version,
                     "description": "From the test catalog",
                     "tarball_url": Self::archive_url(skill),
@@ -931,6 +934,15 @@ impl SkillCatalogFixture {
         for skill in skills {
             self.downloader.serve(&Self::archive_url(skill), Self::archive(skill));
         }
+    }
+
+    /// A second plugin service over the same app data (an app restart): it knows only what
+    /// was saved to disk.
+    pub(crate) fn restarted(&self) -> Arc<PluginService> {
+        let db = Arc::new(Database::open_in_memory().unwrap());
+        let credentials = Arc::new(CredentialStore::in_memory());
+        let events = Arc::new(RecordedEvents::default());
+        Arc::new(build_service(self.app_data.path(), &db, &credentials, &self.downloader, &events))
     }
 
     /// Serves `index` as the signed catalog.

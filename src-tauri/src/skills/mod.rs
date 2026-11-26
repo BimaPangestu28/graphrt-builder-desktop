@@ -290,8 +290,13 @@ impl SkillService {
 
     /// Curated names of the catalog's skills, when a catalog is known without fetching.
     fn known_catalog_display_names(&self) -> HashMap<String, String> {
-        let Some(index) = crate::plugins::active::current_catalog() else { return HashMap::new() };
-        index.skills.iter().filter_map(|skill| Some((skill.name.clone(), skill.display_name.clone()?))).collect()
+        // Asked from this app's plugin service, not from the process-wide published copy:
+        // that one is only there once start-up has published it.
+        self.plugins
+            .known_catalog_skills()
+            .into_iter()
+            .filter_map(|skill| Some((skill.name, skill.display_name?)))
+            .collect()
     }
 }
 

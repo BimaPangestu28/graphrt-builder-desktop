@@ -15,6 +15,7 @@ fn refunds(version: &'static str, tools: &[&str], body: &str) -> PublishedSkill 
         version,
         files: vec![("SKILL.md", skill_file(REFUNDS, tools, body))],
         archive_folder: None,
+        display_name: None,
     }
 }
 
@@ -385,4 +386,23 @@ async fn catalog_skills_with_unsafe_fields_are_left_out() {
     let names: Vec<&str> = listed.skills.iter().map(|skill| skill.name.as_str()).collect();
     assert_eq!(names, ["good"]);
     assert_eq!(world.skills.review_catalog_skill("other-host").await.unwrap_err().code(), "not_found");
+}
+
+#[tokio::test]
+async fn an_installed_catalog_skill_keeps_the_name_the_catalog_gives_it() {
+    let world = world();
+    let mut published = refunds("1.0.0", &[], "Look up the order first.");
+    published.display_name = Some("Kebijakan Refund dan Retur");
+    world.catalog.publish(&[published]);
+    assert_eq!(world.skills.catalog(false).await.unwrap().skills[0].display_name, "Kebijakan Refund dan Retur");
+    let review = world.skills.review_catalog_skill(REFUNDS).await.unwrap();
+    assert_eq!(review.display_name, "Kebijakan Refund dan Retur");
+
+    let installed = world.skills.install_catalog_skill(REFUNDS, &review.review_id, &[], false).await.unwrap();
+
+    assert_eq!(installed.display_name, "Kebijakan Refund dan Retur");
+    assert_eq!(world.skills.list_installed().unwrap()[0].display_name, "Kebijakan Refund dan Retur");
+    // After a restart the name comes from the saved copy of the catalog, without fetching.
+    let restarted = SkillService::new(world.catalog.app_data.path(), world.catalog.restarted());
+    assert_eq!(restarted.list_installed().unwrap()[0].display_name, "Kebijakan Refund dan Retur");
 }
