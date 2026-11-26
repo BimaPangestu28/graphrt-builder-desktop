@@ -1,0 +1,78 @@
+import { defineMessages } from '../types'
+
+/** Words used all over the app: buttons, states, list joining. */
+export const common = defineMessages(
+  {
+    loading: 'Loading',
+    loadingEllipsis: 'Loading…',
+    checking: 'Checking…',
+    save: 'Save',
+    saving: 'Saving…',
+    saved: 'Saved',
+    cancel: 'Cancel',
+    close: 'Close',
+    back: 'Back',
+    continue: 'Continue',
+    next: 'Next',
+    done: 'Done',
+    retry: 'Try again',
+    remove: 'Remove',
+    delete: 'Delete',
+    edit: 'Edit',
+    copy: 'Copy',
+    copied: 'Copied',
+    open: 'Open',
+    install: 'Install',
+    update: 'Update',
+    connect: 'Connect',
+    disconnect: 'Disconnect',
+    on: 'On',
+    off: 'Off',
+    yes: 'Yes',
+    no: 'No',
+    or: 'or',
+    and: 'and',
+    /** "a, b or c" */
+    joinOr: (items: readonly string[]) => joinWords(items, 'or'),
+    /** "a, b and c" */
+    joinAnd: (items: readonly string[]) => joinWords(items, 'and'),
+  },
+  {
+    loading: 'Memuat',
+    loadingEllipsis: 'Memuat…',
+    checking: 'Mengecek…',
+    save: 'Simpan',
+    saving: 'Menyimpan…',
+    saved: 'Tersimpan',
+    cancel: 'Batal',
+    close: 'Tutup',
+    back: 'Kembali',
+    continue: 'Lanjut',
+    next: 'Berikutnya',
+    done: 'Selesai',
+    retry: 'Coba lagi',
+    remove: 'Hapus',
+    delete: 'Hapus',
+    edit: 'Ubah',
+    copy: 'Salin',
+    copied: 'Tersalin',
+    open: 'Buka',
+    install: 'Pasang',
+    update: 'Perbarui',
+    connect: 'Hubungkan',
+    disconnect: 'Putuskan',
+    on: 'Aktif',
+    off: 'Nonaktif',
+    yes: 'Ya',
+    no: 'Tidak',
+    or: 'atau',
+    and: 'dan',
+    joinOr: (items) => joinWords(items, 'atau'),
+    joinAnd: (items) => joinWords(items, 'dan'),
+  },
+)
+
+function joinWords(items: readonly string[], lastWord: string): string {
+  if (items.length <= 1) return items.join('')
+  return `${items.slice(0, -1).join(', ')} ${lastWord} ${items[items.length - 1]}`
+}

@@ -1,6 +1,7 @@
 import type { LocalCliProvider, ProviderStatus, WelcomeChoice } from '@/api/types'
 import { localCliPlanNames, localCliProviders, primaryLocalCliProviders } from '@/lib/settings'
 import { apiKeyProviderOptions, type ApiKeyProvider } from './welcomeSetup'
+import { messages } from '@/i18n'
 
 /**
  * Step logic of the first-launch Welcome wizard, kept free of React so it can be tested on
@@ -14,12 +15,8 @@ export type WizardApproach = 'existing-account' | 'company-key' | 'private-model
 export type WizardStepId = 'welcome' | 'approach' | 'setup' | 'background' | 'done'
 
 /** Short names shown under the progress bar, in order. */
-export const wizardStepLabels: Record<WizardStepId, string> = {
-  welcome: 'Welcome',
-  approach: 'Thinking',
-  setup: 'Connect',
-  background: 'Background',
-  done: 'Done',
+export function wizardStepLabel(stepId: WizardStepId): string {
+  return messages().welcome.stepLabels[stepId]
 }
 
 /**
@@ -115,8 +112,9 @@ export function recommendApproach({ statuses, isOllamaRunning }: WizardDetection
  * signed in to several providers, so it gets its own wording.
  */
 export function describeAccount(provider: LocalCliProvider): string {
-  if (provider === 'opencode-cli') return 'your OpenCode AI accounts'
-  return `your ${localCliPlanNames[provider]} account`
+  const t = messages().welcome
+  if (provider === 'opencode-cli') return t.accountOpenCode
+  return t.account(localCliPlanNames[provider])
 }
 
 /** The account name as a title: "Your Claude account". */
@@ -184,16 +182,17 @@ function providerFromPrefix(apiKey: string): ApiKeyProvider | null {
  * checkApiKey('openai', 'sk-ant-…') // { status: 'warning', suggestedProvider: 'anthropic', … }
  */
 export function checkApiKey(provider: ApiKeyProvider, apiKey: string): ApiKeyCheck {
+  const t = messages().welcome
   const trimmedKey = apiKey.trim()
   if (trimmedKey.length === 0) return { status: 'empty' }
-  if (/\s/.test(trimmedKey)) return { status: 'invalid', message: 'A key has no spaces in it. Copy it again from your provider’s website' }
-  if (trimmedKey.length < minimumApiKeyLength) return { status: 'invalid', message: 'This key looks too short. Copy the whole key from your provider’s website' }
+  if (/\s/.test(trimmedKey)) return { status: 'invalid', message: t.keyHasSpaces }
+  if (trimmedKey.length < minimumApiKeyLength) return { status: 'invalid', message: t.keyTooShort }
   const prefixProvider = providerFromPrefix(trimmedKey)
   if (prefixProvider && prefixProvider !== provider) {
-    return { status: 'warning', message: `This key looks like it is from ${providerLabel(prefixProvider)}, not ${providerLabel(provider)}`, suggestedProvider: prefixProvider }
+    return { status: 'warning', message: t.keyFromOtherProvider(providerLabel(prefixProvider), providerLabel(provider)), suggestedProvider: prefixProvider }
   }
   if (!trimmedKey.startsWith(apiKeyPrefixes[provider])) {
-    return { status: 'warning', message: `${providerLabel(provider)} keys usually start with “${apiKeyPrefixes[provider]}”. Check you copied the right one`, suggestedProvider: null }
+    return { status: 'warning', message: t.keyPrefixHint(providerLabel(provider), apiKeyPrefixes[provider]), suggestedProvider: null }
   }
   return { status: 'ok' }
 }

@@ -32,9 +32,11 @@ impl ChatNotifyingSink {
     fn notification_for(&self, payload: &ConversationEventPayload) -> Option<(String, String)> {
         let is_handoff =
             payload.kind == ConversationEventKind::StatusChanged && payload.status == ConversationStatus::WaitingForYou;
-        if !is_handoff || !AppSettings::load_or_default(&self.db).notify_on_chat_handoff {
+        let settings = AppSettings::load_or_default(&self.db);
+        if !is_handoff || !settings.notify_on_chat_handoff {
             return None;
         }
+        let strings = settings.ui_strings();
         let conversation = match self.db.get_conversation(&payload.conversation_id) {
             Ok(conversation) => conversation,
             Err(error) => {
@@ -46,12 +48,12 @@ impl ChatNotifyingSink {
             return None;
         }
         let agent_name =
-            self.db.get_agent(&payload.agent_id).map(|agent| agent.name).unwrap_or_else(|_| "A chatbot".into());
+            self.db.get_agent(&payload.agent_id).map(|agent| agent.name).unwrap_or_else(|_| strings.unknown_chatbot().into());
         let body = match conversation.last_message_text.filter(|text| !text.trim().is_empty()) {
             Some(last_message) => format!("{}: {last_message}", conversation.customer_name),
-            None => format!("{} is waiting for your reply", conversation.customer_name),
+            None => strings.customer_waiting_body(&conversation.customer_name),
         };
-        Some((format!("{agent_name} needs you in a chat"), body))
+        Some((strings.chat_needs_you_title(&agent_name), body))
     }
 }
 

@@ -1,3 +1,5 @@
+import { messages } from '@/i18n'
+
 /**
  * What a drop zone accepts and how dropped items are checked before they reach a backend
  * command (the backend validates again; this only gives the user an early, clear message).
@@ -80,16 +82,18 @@ function isAccepted(item: DroppedItem, accept: FileDropAccept): boolean {
  * describeAccepted({ extensions: ['tar.gz', 'tgz'], folders: true }) // "a folder or a .tar.gz or .tgz file"
  */
 export function describeAccepted(accept: FileDropAccept): string {
+  const t = messages().shell.fileDrop
   const extensions = accept.extensions ?? []
   const fileText =
-    accept.files === false ? null : extensions.length === 0 ? 'a file' : `a ${joinWithOr(extensions.map((extension) => `.${extension}`))} file`
-  if (accept.folders && fileText) return `a folder or ${fileText}`
-  return accept.folders ? 'a folder' : (fileText ?? 'nothing')
+    accept.files === false ? null : extensions.length === 0 ? t.aFile : t.aFileOfType(joinWithOr(extensions.map((extension) => `.${extension}`)))
+  if (accept.folders && fileText) return t.aFolderOr(fileText)
+  return accept.folders ? t.aFolder : (fileText ?? t.nothing)
 }
 
 function joinWithOr(words: string[]): string {
-  if (words.length <= 2) return words.join(' or ')
-  return `${words.slice(0, 4).join(', ')}${words.length > 4 ? ' and similar' : ''}`
+  const t = messages().shell.fileDrop
+  if (words.length <= 2) return words.join(` ${t.orWord} `)
+  return `${words.slice(0, 4).join(', ')}${words.length > 4 ? t.andSimilar : ''}`
 }
 
 /**
@@ -110,13 +114,14 @@ function joinWithOr(words: string[]): string {
 export function checkDroppedItems(rawItems: RawDroppedItem[], accept: FileDropAccept, multiple: boolean): DropCheck {
   const nonEmptyItems = rawItems.filter((rawItem) => rawItem.path.trim() !== '')
   if (nonEmptyItems.length === 0) return { accepted: [], rejection: null }
-  if (!multiple && nonEmptyItems.length > 1) return { accepted: [], rejection: `Drop one item at a time: ${describeAccepted(accept)}` }
+  const t = messages().shell.fileDrop
+  if (!multiple && nonEmptyItems.length > 1) return { accepted: [], rejection: t.oneItemAtATime(describeAccepted(accept)) }
 
   const items = nonEmptyItems.map((rawItem) => ({ path: rawItem.path, kind: guessKind(rawItem, accept) }))
   const accepted = items.filter((item) => isAccepted(item, accept))
   const refusedNames = items.filter((item) => !isAccepted(item, accept)).map((item) => lastPathSegment(item.path))
   if (refusedNames.length === 0) return { accepted, rejection: null }
-  if (refusedNames.length === 1) return { accepted, rejection: `${refusedNames[0]} is not ${describeAccepted(accept)}` }
-  const namesText = `${refusedNames.slice(0, 3).join(', ')}${refusedNames.length > 3 ? ` and ${refusedNames.length - 3} more` : ''}`
-  return { accepted, rejection: `Left out ${namesText}: drop ${describeAccepted(accept)}` }
+  if (refusedNames.length === 1) return { accepted, rejection: t.isNot(refusedNames[0], describeAccepted(accept)) }
+  const namesText = `${refusedNames.slice(0, 3).join(', ')}${refusedNames.length > 3 ? t.andMore(refusedNames.length - 3) : ''}`
+  return { accepted, rejection: t.leftOut(namesText, describeAccepted(accept)) }
 }

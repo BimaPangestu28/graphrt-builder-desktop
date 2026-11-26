@@ -20,6 +20,7 @@ import {
   type WizardDetection,
   type WizardStepId,
 } from './welcomeWizard'
+import { messages } from '@/i18n'
 
 /** True once Ollama answered with a model list; null while asking. */
 function isOllamaRunning(catalog: ProviderModels[] | null, isLoading: boolean): boolean | null {
@@ -97,7 +98,7 @@ export function useWelcomeWizard() {
       await saveWelcomeSetup({ choice, apiKeyProvider, apiKey, keepRunningInBackground })
       navigate(pathAfterWelcome(choice))
     } catch (saveError) {
-      setSaveErrorMessage(`Could not save your setup: ${describeError(saveError)}`)
+      setSaveErrorMessage(messages().welcome.saveFailed(describeError(saveError)))
       setIsSaving(false)
     }
   }

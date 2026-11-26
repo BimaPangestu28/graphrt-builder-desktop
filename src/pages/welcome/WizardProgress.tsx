@@ -1,5 +1,6 @@
 import { joinClassNames } from '@/components/ui'
-import { wizardStepLabels, type WizardStepId } from './welcomeWizard'
+import { useT } from '@/i18n'
+import { wizardStepLabel, type WizardStepId } from './welcomeWizard'
 
 interface WizardProgressProps {
   steps: readonly WizardStepId[]
@@ -11,13 +12,14 @@ interface WizardProgressProps {
  * current one is marked `aria-current="step"`. Not clickable, so a step cannot be skipped.
  */
 export function WizardProgress({ steps, currentStepId }: WizardProgressProps) {
+  const t = useT().welcome
   const currentIndex = steps.indexOf(currentStepId)
   return (
     <div className="flex flex-col gap-2">
       <span className="text-[12px] font-semibold text-brand-strong">
-        Step {currentIndex + 1} of {steps.length}
+        {t.stepOf(currentIndex + 1, steps.length)}
       </span>
-      <ol aria-label="Setup progress" className="m-0 grid list-none gap-1.5 p-0" style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }}>
+      <ol aria-label={t.progressLabel} className="m-0 grid list-none gap-1.5 p-0" style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }}>
         {steps.map((stepId, stepIndex) => {
           const isCurrent = stepIndex === currentIndex
           const isDone = stepIndex < currentIndex
@@ -28,8 +30,8 @@ export function WizardProgress({ steps, currentStepId }: WizardProgressProps) {
                 className={joinClassNames('h-1.5 rounded-full transition-colors motion-reduce:transition-none', isCurrent ? 'bg-ink' : isDone ? 'bg-brand' : 'bg-line')}
               />
               <span className={joinClassNames('truncate text-[11px]', isCurrent ? 'font-semibold text-ink' : 'text-muted')}>
-                <span className="sr-only">{isDone ? 'Done: ' : isCurrent ? 'Current: ' : ''}</span>
-                {wizardStepLabels[stepId]}
+                <span className="sr-only">{isDone ? t.stepDonePrefix : isCurrent ? t.stepCurrentPrefix : ''}</span>
+                {wizardStepLabel(stepId)}
               </span>
             </li>
           )

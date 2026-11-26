@@ -1,4 +1,5 @@
 import { Spinner, VisuallyHidden, joinClassNames } from '@/components/ui'
+import { useT } from '@/i18n'
 
 /**
  * What shows while a lazily loaded screen or panel downloads its code: the app's
@@ -11,11 +12,12 @@ import { Spinner, VisuallyHidden, joinClassNames } from '@/components/ui'
  * @example
  * <Suspense fallback={<ScreenLoading />}><RunsPage /></Suspense>
  */
-export function ScreenLoading({ label = 'Loading', className }: { label?: string; className?: string }) {
+export function ScreenLoading({ label, className }: { label?: string; className?: string }) {
+  const t = useT()
   return (
     <div role="status" className={joinClassNames('flex min-h-screen flex-1 items-center justify-center bg-canvas', className)}>
       <Spinner />
-      <VisuallyHidden>{label}</VisuallyHidden>
+      <VisuallyHidden>{label ?? t.common.loading}</VisuallyHidden>
     </div>
   )
 }

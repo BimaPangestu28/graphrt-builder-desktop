@@ -4,6 +4,7 @@ import { getCredentialStoreName } from '@/lib/platform'
 import { LockIcon } from '../agent-builder/LockIcon'
 import { apiKeyProviderOptions, type ApiKeyProvider } from './welcomeSetup'
 import type { ApiKeyCheck } from './welcomeWizard'
+import { useT } from '@/i18n'
 
 export const ollamaDownloadUrl = 'https://ollama.com/download'
 
@@ -47,14 +48,15 @@ export function MissingLine({ text, link }: { text: string; link: ReactNode }) {
  * A closed "Technical details" disclosure: versions, Experimental notes and install
  * links stay out of the main path but one click away for whoever wants them.
  */
-export function TechnicalDetails({ summary = 'Technical details', children }: { summary?: string; children: ReactNode }) {
+export function TechnicalDetails({ summary, children }: { summary?: string; children: ReactNode }) {
+  const t = useT().welcome
   return (
     <details className="group rounded-[12px] border border-line bg-subtle">
       <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2.5 text-[13px] font-medium text-ink-2 [&::-webkit-details-marker]:hidden">
         <span className="text-muted transition-transform group-open:rotate-90" aria-hidden="true">
           <Icon name="chevronRight" size={14} />
         </span>
-        {summary}
+        {summary ?? t.technicalDetails}
       </summary>
       <div className="flex flex-col gap-2 px-4 pb-3 text-[12px] leading-normal text-body">{children}</div>
     </details>
@@ -73,14 +75,15 @@ interface ApiKeyFieldsProps {
 
 /** Provider picker, key field and the local check of the "company API key" step. */
 export function ApiKeyFields({ provider, apiKey, check, onProviderChange, onApiKeyChange }: ApiKeyFieldsProps) {
+  const t = useT().welcome
   const checkMessageId = useId()
   const suggestedProvider = check.status === 'warning' ? check.suggestedProvider : null
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
         <label className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-medium text-ink-2">Which company is the key from?</span>
-          <select aria-label="Provider" value={provider} onChange={(event) => onProviderChange(event.target.value as ApiKeyProvider)} className={`${fieldClassNames} px-2.5`}>
+          <span className="text-[13px] font-medium text-ink-2">{t.whichCompany}</span>
+          <select aria-label={t.providerLabel} value={provider} onChange={(event) => onProviderChange(event.target.value as ApiKeyProvider)} className={`${fieldClassNames} px-2.5`}>
             {apiKeyProviderOptions.map((option) => (
               <option key={option.provider} value={option.provider}>
                 {option.label}
@@ -89,14 +92,14 @@ export function ApiKeyFields({ provider, apiKey, check, onProviderChange, onApiK
           </select>
         </label>
         <label className="flex flex-col gap-1.5">
-          <span className="text-[13px] font-medium text-ink-2">API key</span>
+          <span className="text-[13px] font-medium text-ink-2">{t.apiKey}</span>
           <input
             type="password"
-            aria-label="API key"
+            aria-label={t.apiKey}
             aria-invalid={check.status === 'invalid'}
             aria-describedby={checkMessageId}
             value={apiKey}
-            placeholder="Paste your API key"
+            placeholder={t.pasteApiKey}
             autoComplete="off"
             spellCheck={false}
             onChange={(event) => onApiKeyChange(event.target.value)}
@@ -111,16 +114,16 @@ export function ApiKeyFields({ provider, apiKey, check, onProviderChange, onApiK
             {check.message}
             {suggestedProvider && (
               <button type="button" onClick={() => onProviderChange(suggestedProvider)} className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-ink underline">
-                Switch to {apiKeyProviderOptions.find((option) => option.provider === suggestedProvider)?.label}
+                {t.switchTo(apiKeyProviderOptions.find((option) => option.provider === suggestedProvider)?.label ?? suggestedProvider)}
               </button>
             )}
           </span>
         )}
-        {check.status === 'ok' && <FoundLine text="Looks good" />}
+        {check.status === 'ok' && <FoundLine text={t.looksGood} />}
       </span>
       <span className="flex items-center gap-1.5 text-[12px] text-ink-2">
         <LockIcon />
-        Saved in {getCredentialStoreName()} on this computer, never sent to graphrt
+        {t.savedInKeychain(getCredentialStoreName())}
       </span>
     </div>
   )

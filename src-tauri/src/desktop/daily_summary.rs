@@ -16,6 +16,7 @@ use chrono::{DateTime, TimeZone, Timelike, Utc};
 
 use super::app_settings::AppSettings;
 use super::notify::PlainNotifier;
+use super::ui_language::{DailyStatus, UiStrings};
 use crate::error::AppResult;
 use crate::storage::models::{Run, RunStatus, RunTrigger};
 use crate::storage::Database;
@@ -50,7 +51,8 @@ pub fn send_if_due<Zone: TimeZone>(
     notifier: &dyn PlainNotifier,
     now: DateTime<Zone>,
 ) -> AppResult<bool> {
-    if !AppSettings::load_or_default(db).notify_daily_summary || now.hour() < SUMMARY_HOUR {
+    let settings = AppSettings::load_or_default(db);
+    if !settings.notify_daily_summary || now.hour() < SUMMARY_HOUR {
         return Ok(false);
     }
     let today = now.date_naive().to_string();
@@ -61,33 +63,32 @@ pub fn send_if_due<Zone: TimeZone>(
     let runs: Vec<Run> =
         db.list_runs_started_since(&since, None)?.into_iter().filter(|run| run.trigger != RunTrigger::Test).collect();
     db.set_setting(KEY_LAST_SENT_DATE, &today)?;
-    let Some(body) = describe_runs(&runs) else {
+    let strings = settings.ui_strings();
+    let Some(body) = describe_runs(strings, &runs) else {
         return Ok(false);
     };
-    notifier.notify_plain("Your agents today".to_owned(), body);
+    notifier.notify_plain(strings.daily_summary_title().to_owned(), body);
     Ok(true)
 }
 
 /// "5 runs in the last 24 hours: 3 succeeded, 1 failed, 1 waiting for you", or
 /// `None` when nothing ran.
-fn describe_runs(runs: &[Run]) -> Option<String> {
+fn describe_runs(strings: UiStrings, runs: &[Run]) -> Option<String> {
     if runs.is_empty() {
         return None;
     }
     let count = |statuses: &[RunStatus]| runs.iter().filter(|run| statuses.contains(&run.status)).count();
-    let parts: Vec<String> = [
-        (count(&[RunStatus::Succeeded]), "succeeded"),
-        (count(&[RunStatus::Failed]), "failed"),
-        (count(&[RunStatus::Paused]), "waiting for you"),
-        (count(&[RunStatus::Running]), "still running"),
-        (count(&[RunStatus::Aborted]), "stopped"),
+    let parts: Vec<(usize, DailyStatus)> = [
+        (count(&[RunStatus::Succeeded]), DailyStatus::Succeeded),
+        (count(&[RunStatus::Failed]), DailyStatus::Failed),
+        (count(&[RunStatus::Paused]), DailyStatus::Waiting),
+        (count(&[RunStatus::Running]), DailyStatus::Running),
+        (count(&[RunStatus::Aborted]), DailyStatus::Stopped),
     ]
     .into_iter()
     .filter(|(status_count, _)| *status_count > 0)
-    .map(|(status_count, label)| format!("{status_count} {label}"))
     .collect();
-    let runs_text = if runs.len() == 1 { "1 run".to_owned() } else { format!("{} runs", runs.len()) };
-    Some(format!("{runs_text} in the last 24 hours: {}", parts.join(", ")))
+    Some(strings.daily_summary_body(runs.len(), &parts))
 }
 
 #[cfg(test)]
@@ -167,6 +168,6 @@ mod tests {
 
     #[test]
     fn nothing_ran_means_no_text() {
-        assert_eq!(describe_runs(&[]), None);
+        assert_eq!(describe_runs(UiStrings::new(crate::desktop::ui_language::UiLanguage::En), &[]), None);
     }
 }

@@ -8,6 +8,7 @@ import type { WelcomeWizard } from './useWelcomeWizard'
 import { choiceGridClassNames, WelcomeChoiceCard } from './WelcomeChoiceCard'
 import { FoundLine, ProblemLine, TechnicalDetails } from './WelcomeChoiceDetails'
 import { accountTitle, brokenTools, describeAccount, installedTools, type WizardAnswers, type WizardApproach } from './welcomeWizard'
+import { messages, useT } from '@/i18n'
 
 /**
  * Title and one-line explanation of a wizard step. The heading takes focus when the step
@@ -26,17 +27,15 @@ export function StepHeader({ title, description }: { title: string; description?
   )
 }
 
-const welcomePoints = [
-  { icon: 'edit', title: 'Describe it', text: 'Explain a routine task in your own words' },
-  { icon: 'play', title: 'Test it', text: 'graphrt turns it into an agent you can try out' },
-  { icon: 'clock', title: 'Schedule it', text: 'It runs on time, right here on your computer' },
-] as const
+const welcomePointIcons = ['edit', 'play', 'clock'] as const
 
 /** Step 1: what graphrt does, in one line, and how long setup takes. */
 export function WelcomeStep() {
+  const t = useT().welcome
+  const welcomePoints = t.points.map((point, pointIndex) => ({ ...point, icon: welcomePointIcons[pointIndex] ?? 'edit' }))
   return (
     <>
-      <StepHeader title="Welcome to graphrt" description="graphrt builds AI agents that take routine work off your plate. Setup takes about a minute." />
+      <StepHeader title={t.welcomeTitle} description={t.welcomeDescription} />
       <ul className={joinClassNames(choiceGridClassNames(welcomePoints.length), 'list-none')}>
         {welcomePoints.map((point) => (
           <li key={point.title} className="flex h-full flex-col gap-2 rounded-[14px] border border-line p-4">
@@ -55,48 +54,48 @@ export function WelcomeStep() {
 }
 
 function RecommendedBadge() {
-  return <Badge tone="brand">Recommended</Badge>
+  return <Badge tone="brand">{useT().welcome.recommended}</Badge>
 }
 
 /** "Found: your Claude account" for the "account I already have" card. */
 function describeFoundAccounts(statuses: readonly ProviderStatus[] | null): ReactNode {
-  if (!statuses) return <span className="text-muted">Looking on this computer…</span>
+  const { welcome: t, common } = messages()
+  if (!statuses) return <span className="text-muted">{t.lookingOnComputer}</span>
   const tools = installedTools(statuses)
   if (tools.length === 0) {
     const broken = brokenTools(statuses)
-    if (broken.length > 0) return <ProblemLine text={`Found ${broken.map((provider) => localCliShortNames[provider]).join(' and ')}, but it does not start on this computer yet`} />
-    return <span className="text-muted">None found on this computer</span>
+    if (broken.length > 0) return <ProblemLine text={t.foundButDoesNotStart(common.joinAnd(broken.map((provider) => localCliShortNames[provider])))} />
+    return <span className="text-muted">{t.noneFound}</span>
   }
   const accountNames = tools.map(describeAccount)
-  const shownNames = accountNames.length > 2 ? `${accountNames.slice(0, 2).join(', ')} and ${accountNames.length - 2} more` : accountNames.join(' and ')
-  return <FoundLine text={`Found ${shownNames}`} />
+  const shownNames = accountNames.length > 2 ? t.andMore(accountNames.slice(0, 2).join(', '), accountNames.length - 2) : common.joinAnd(accountNames)
+  return <FoundLine text={t.found(shownNames)} />
 }
 
 function describeOllama(isRunning: boolean | null): ReactNode {
-  if (isRunning === null) return <span className="text-muted">Looking on this computer…</span>
-  if (isRunning) return <FoundLine text="Already running on this computer" />
-  return <span className="text-muted">Needs the free Ollama app (we show you how)</span>
+  const t = messages().welcome
+  if (isRunning === null) return <span className="text-muted">{t.lookingOnComputer}</span>
+  if (isRunning) return <FoundLine text={t.ollamaRunning} />
+  return <span className="text-muted">{t.ollamaNeeded}</span>
 }
 
 /** Versions and install state of everything detected, for the curious; closed by default. */
 function DetectionDetails({ wizard }: { wizard: WelcomeWizard }) {
+  const t = useT().welcome
   const { statuses, isOllamaRunning } = wizard.detection
   return (
-    <TechnicalDetails summary="What graphrt found on this computer">
-      <p className="m-0">
-        “An AI account I already have” runs the AI tool you are signed in to (a command-line app such as Claude Code or Codex). This is Experimental: usage counts
-        against that tool’s own plan and limits.
-      </p>
+    <TechnicalDetails summary={t.detectionSummary}>
+      <p className="m-0">{t.detectionNote}</p>
       <ul className="m-0 flex list-none flex-col gap-1 p-0">
         {localCliProviders.map((provider) => {
           const localCli = statuses?.find((status) => status.provider === provider)?.localCli
           const state = !localCli
-            ? 'checking…'
+            ? t.stateChecking
             : !localCli.installed
-              ? 'not installed'
+              ? t.stateNotInstalled
               : localCli.problem
-                ? `found, does not start · ${localCli.problem}`
-                : `found${localCli.version ? ` · ${localCli.version}` : ''}`
+                ? t.stateBroken(localCli.problem)
+                : t.stateFound(localCli.version ?? null)
           return (
             <li key={provider} className="break-words">
               <span className="font-medium text-ink-2">{localCliShortNames[provider]}</span> — {state}
@@ -104,7 +103,7 @@ function DetectionDetails({ wizard }: { wizard: WelcomeWizard }) {
           )
         })}
         <li>
-          <span className="font-medium text-ink-2">Ollama</span> — {isOllamaRunning === null ? 'checking…' : isOllamaRunning ? 'running' : 'not running'}
+          <span className="font-medium text-ink-2">Ollama</span> — {isOllamaRunning === null ? t.stateChecking : isOllamaRunning ? t.stateRunning : t.stateNotRunning}
         </li>
       </ul>
     </TechnicalDetails>
@@ -113,24 +112,25 @@ function DetectionDetails({ wizard }: { wizard: WelcomeWizard }) {
 
 /** Step 2: the one big decision, with the recommended answer already picked. */
 export function ApproachStep({ wizard }: { wizard: WelcomeWizard }) {
+  const t = useT().welcome
   const { answers, detection, recommendedApproach } = wizard
   const hasTools = installedTools(detection.statuses).length > 0
   const cardProps = { groupName: 'welcome-approach', selectedValue: answers.approach, onSelect: wizard.setApproach }
   const badgeFor = (approach: WizardApproach) => (recommendedApproach === approach ? <RecommendedBadge /> : undefined)
   return (
     <>
-      <StepHeader title="How should your agents think?" description="Agents need an AI to understand your instructions. Pick what suits you; you can change it any time in Connections." />
+      <StepHeader title={t.approachTitle} description={t.approachDescription} />
       <fieldset className={choiceGridClassNames(4)}>
-        <legend className="sr-only">How your agents think</legend>
+        <legend className="sr-only">{t.approachLegend}</legend>
         <WelcomeChoiceCard
           {...cardProps}
           value="existing-account"
-          title="Use an AI account I already have"
+          title={t.existingAccountTitle}
           badges={badgeFor('existing-account')}
           isUnavailable={detection.statuses !== null && !hasTools}
           details={
             <>
-              <span>Uses the AI app you are already signed in to on this computer, such as Claude or ChatGPT. Nothing new to buy.</span>
+              <span>{t.existingAccountText}</span>
               {describeFoundAccounts(detection.statuses)}
             </>
           }
@@ -138,18 +138,18 @@ export function ApproachStep({ wizard }: { wizard: WelcomeWizard }) {
         <WelcomeChoiceCard
           {...cardProps}
           value="company-key"
-          title="Use my company’s API key"
+          title={t.companyKeyTitle}
           badges={badgeFor('company-key')}
-          details={<span>Paste a key from OpenAI, Anthropic, Google or DeepSeek. Best when other people will use your agents.</span>}
+          details={<span>{t.companyKeyText}</span>}
         />
         <WelcomeChoiceCard
           {...cardProps}
           value="private-model"
-          title="Free, private AI on this computer"
+          title={t.privateModelTitle}
           badges={badgeFor('private-model')}
           details={
             <>
-              <span>Runs on this computer with the free Ollama app, even offline. Nothing leaves your computer; answers are slower.</span>
+              <span>{t.privateModelText}</span>
               {describeOllama(detection.isOllamaRunning)}
             </>
           }
@@ -158,9 +158,9 @@ export function ApproachStep({ wizard }: { wizard: WelcomeWizard }) {
           {...cardProps}
           value="later"
           isQuiet
-          title="Decide later"
+          title={t.laterTitle}
           badges={badgeFor('later')}
-          details={<span>Look around first. graphrt asks again when you build your first agent.</span>}
+          details={<span>{t.laterText}</span>}
         />
       </fieldset>
       <DetectionDetails wizard={wizard} />
@@ -170,13 +170,11 @@ export function ApproachStep({ wizard }: { wizard: WelcomeWizard }) {
 
 /** Step 4: keep running from the menu bar / system tray, explained plainly. */
 export function BackgroundStep({ wizard }: { wizard: WelcomeWizard }) {
+  const t = useT().welcome
   const trayAreaName = getTrayAreaName()
   return (
     <>
-      <StepHeader
-        title="Keep agents working after you close the window?"
-        description={`Scheduled agents can only run while graphrt is open. With this on, closing the window tucks graphrt into the ${trayAreaName} instead of quitting it.`}
-      />
+      <StepHeader title={t.backgroundTitle} description={t.backgroundDescription(trayAreaName)} />
       <label className="flex max-w-[720px] cursor-pointer items-start gap-3 rounded-[14px] border border-line-strong p-4">
         <input
           type="checkbox"
@@ -185,42 +183,41 @@ export function BackgroundStep({ wizard }: { wizard: WelcomeWizard }) {
           className="mt-0.5 size-[18px] shrink-0 accent-brand"
         />
         <span className="flex flex-col gap-1">
-          <span className="text-[15px] font-semibold">Keep agents running from the {trayAreaName}</span>
-          <span className="text-[13px] leading-normal text-body">Recommended. Your agents run on time even when the window is closed. Open graphrt again from its icon in the {trayAreaName}.</span>
+          <span className="text-[15px] font-semibold">{t.backgroundToggle(trayAreaName)}</span>
+          <span className="text-[13px] leading-normal text-body">{t.backgroundToggleHint(trayAreaName)}</span>
         </span>
       </label>
-      <p className="m-0 text-[13px] text-muted">You can change this later in Settings.</p>
+      <p className="m-0 text-[13px] text-muted">{t.changeLaterInSettings}</p>
     </>
   )
 }
 
 /** Plain summary of the "thinking" answer for the last step. */
 function describeThinking(answers: WizardAnswers): string {
+  const t = messages().welcome
   switch (answers.approach) {
     case 'existing-account':
-      return answers.tool ? `${accountTitle(answers.tool)} (through ${localCliShortNames[answers.tool]})` : 'Your existing AI account'
+      return answers.tool ? t.thinkingThrough(accountTitle(answers.tool), localCliShortNames[answers.tool]) : t.thinkingExistingAccount
     case 'company-key':
-      return `Your company’s ${apiKeyProviderOptions.find((option) => option.provider === answers.apiKeyProvider)?.label} key`
+      return t.thinkingCompanyKey(apiKeyProviderOptions.find((option) => option.provider === answers.apiKeyProvider)?.label ?? answers.apiKeyProvider)
     case 'private-model':
-      return 'Free, private AI on this computer (Ollama)'
+      return t.thinkingPrivate
     default:
-      return 'Not decided yet: graphrt asks when you build your first agent'
+      return t.thinkingLater
   }
 }
 
 /** Step 5: a short summary, the first next action, and the save error if any. */
 export function DoneStep({ wizard }: { wizard: WelcomeWizard }) {
+  const t = useT().welcome
   const isDecidingLater = wizard.answers.approach === 'later'
   const summaryRows = [
-    { label: 'Agents think with', value: describeThinking(wizard.answers) },
-    { label: 'When the window closes', value: wizard.keepRunningInBackground ? `Agents keep running from the ${getTrayAreaName()}` : 'graphrt quits and agents stop' },
+    { label: t.summaryThinkWith, value: describeThinking(wizard.answers) },
+    { label: t.summaryWindowCloses, value: wizard.keepRunningInBackground ? t.summaryKeepRunning(getTrayAreaName()) : t.summaryQuits },
   ]
   return (
     <>
-      <StepHeader
-        title="You’re all set"
-        description={isDecidingLater ? 'Take a look around. Browse templates and see what agents can do.' : 'Next, describe your first agent in plain words and graphrt builds it.'}
-      />
+      <StepHeader title={t.doneTitle} description={isDecidingLater ? t.doneLaterDescription : t.doneDescription} />
       <dl className={joinClassNames(choiceGridClassNames(summaryRows.length), 'rounded-[14px] border border-line bg-subtle p-4')}>
         {summaryRows.map((row) => (
           <div key={row.label} className="flex flex-col gap-0.5">
@@ -229,7 +226,7 @@ export function DoneStep({ wizard }: { wizard: WelcomeWizard }) {
           </div>
         ))}
       </dl>
-      <p className="m-0 text-[13px] text-muted">You can change any of this later in Connections and Settings.</p>
+      <p className="m-0 text-[13px] text-muted">{t.changeLaterEverywhere}</p>
       {wizard.saveErrorMessage && (
         <p role="alert" className="m-0 leading-normal text-danger">
           {wizard.saveErrorMessage}
