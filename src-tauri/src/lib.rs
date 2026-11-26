@@ -20,6 +20,7 @@
 //! - [`knowledge`]: knowledge bases (graphrt-rag) agents can search
 //! - [`node_runtime`]: the Node.js plugins run on (downloaded on demand) and Playwright's browser
 //! - [`plugins`]: graphrt plugins from the catalog (node kinds and tools for every run)
+//! - [`plugin_triggers`]: plugin events ("When a meeting is recorded") that start agents
 //! - [`live_view`]: live frames of the headless browser a plugin step drives
 //! - [`problems`]: what went wrong (failed runs, missing keys, plugins, schedules) and retries
 //! - [`mcp`]: MCP servers the user adds; their tools for every run (graphrt-mcp)
@@ -52,6 +53,7 @@ pub mod local_cli;
 pub mod mcp;
 pub mod model_catalog;
 pub mod node_runtime;
+pub mod plugin_triggers;
 pub mod plugins;
 pub mod problems;
 pub mod run_review;
@@ -151,6 +153,9 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
     let scheduler = scheduler::spawn(db.clone(), runs.clone());
     desktop::daily_summary::spawn(db.clone(), notifier.clone());
     plugins::auto_update::spawn(plugins.clone());
+    let plugin_triggers =
+        Arc::new(plugin_triggers::PluginTriggerService::new(db.clone(), plugins.clone(), runs.clone()));
+    plugin_triggers.spawn();
     Ok(AppState {
         db,
         credentials,
@@ -163,6 +168,7 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         plugins,
         model_catalog: Arc::new(model_catalog::ModelCatalog::with_http()?),
         deploy,
+        plugin_triggers,
     })
 }
 
@@ -390,6 +396,9 @@ pub fn run() {
             commands::crash_reports::get_crash_report_sharing,
             commands::crash_reports::set_crash_report_sharing,
             commands::crash_reports::open_crash_report_issue,
+            commands::plugin_triggers::list_plugin_triggers,
+            commands::plugin_triggers::get_agent_plugin_trigger,
+            commands::plugin_triggers::set_agent_plugin_trigger,
         ])
         .build(tauri::generate_context!())
         .expect("failed to start the graphrt desktop app")

@@ -27,17 +27,18 @@ tauri-plugin-dialog = "2.4"
 tauri-plugin-notification = "2.8.1"
 
 # graphrt runtime, pinned to a commit until the crates are published on crates.io
-graphrt-core = { git = "https://github.com/Graphrt/graphrt", rev = "c959df5e3c9c7b42f39d89a6b61a4096c2df880d" }
-graphrt-llm = { git = "https://github.com/Graphrt/graphrt", rev = "c959df5e3c9c7b42f39d89a6b61a4096c2df880d", default-features = false, features = ["openai", "anthropic", "gemini", "mock"] }
-graphrt-http = { git = "https://github.com/Graphrt/graphrt", rev = "c959df5e3c9c7b42f39d89a6b61a4096c2df880d" }
+# (branch backport/plugin-triggers-mcp: backport/mcp-token-provider plus plugin manifest `triggers`, Graphrt/graphrt#74)
+graphrt-core = { git = "https://github.com/Graphrt/graphrt", rev = "c173f92e167ad1caf09a17f3b1aab4863acaa2a3" }
+graphrt-llm = { git = "https://github.com/Graphrt/graphrt", rev = "c173f92e167ad1caf09a17f3b1aab4863acaa2a3", default-features = false, features = ["openai", "anthropic", "gemini", "mock"] }
+graphrt-http = { git = "https://github.com/Graphrt/graphrt", rev = "c173f92e167ad1caf09a17f3b1aab4863acaa2a3" }
 # Knowledge bases: SQLite vector store, document extractors and OpenAI-compatible embeddings
-graphrt-rag = { git = "https://github.com/Graphrt/graphrt", rev = "c959df5e3c9c7b42f39d89a6b61a4096c2df880d", default-features = false, features = ["sqlite", "doc", "http"] }
+graphrt-rag = { git = "https://github.com/Graphrt/graphrt", rev = "c173f92e167ad1caf09a17f3b1aab4863acaa2a3", default-features = false, features = ["sqlite", "doc", "http"] }
 # Plugins: node kinds and tools from external processes (graphrt-plugins catalog)
-graphrt-plugin = { git = "https://github.com/Graphrt/graphrt", rev = "c959df5e3c9c7b42f39d89a6b61a4096c2df880d", default-features = false, features = ["process", "http", "yaml", "mcp-presets"] }
+graphrt-plugin = { git = "https://github.com/Graphrt/graphrt", rev = "c173f92e167ad1caf09a17f3b1aab4863acaa2a3", default-features = false, features = ["process", "http", "yaml", "mcp-presets"] }
 # MCP servers configured in Connections > Advanced: their tools for `tool` / `agent` nodes (stdio and Streamable HTTP)
-graphrt-mcp = { git = "https://github.com/Graphrt/graphrt", rev = "c959df5e3c9c7b42f39d89a6b61a4096c2df880d" }
+graphrt-mcp = { git = "https://github.com/Graphrt/graphrt", rev = "c173f92e167ad1caf09a17f3b1aab4863acaa2a3" }
 # "My own server": exporting an agent as a portable .grt bundle for `graphrt serve` (no WebAssembly plugins)
-graphrt-bundle = { git = "https://github.com/Graphrt/graphrt", rev = "c959df5e3c9c7b42f39d89a6b61a4096c2df880d", default-features = false }
+graphrt-bundle = { git = "https://github.com/Graphrt/graphrt", rev = "c173f92e167ad1caf09a17f3b1aab4863acaa2a3", default-features = false }
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "process", "io-util"] }
 futures = "0.3"

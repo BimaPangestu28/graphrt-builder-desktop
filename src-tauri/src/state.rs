@@ -28,4 +28,6 @@ pub struct AppState {
     pub model_catalog: Arc<crate::model_catalog::ModelCatalog>,
     /// Put it online: online accounts, deployments and the graphrt tools.
     pub deploy: Arc<crate::deploy::DeployService>,
+    /// Plugin events that start agents (watchers run in the background).
+    pub plugin_triggers: Arc<crate::plugin_triggers::PluginTriggerService>,
 }

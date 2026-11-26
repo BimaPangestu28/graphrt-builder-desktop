@@ -16,6 +16,7 @@ pub mod deploy;
 pub mod knowledge;
 pub mod mcp;
 pub mod node_runtime;
+pub mod plugin_triggers;
 pub mod plugins;
 pub mod problems;
 pub mod run_review;
