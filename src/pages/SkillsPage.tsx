@@ -99,6 +99,8 @@ export function SkillsPage() {
               className={pillTabClassNames(tab === candidate)}
             >
               {t.tabs[candidate]}
+              {/* Keeps the accessible name "Installed 2", not "Installed2". */}
+              {counts[candidate] !== null && ' '}
               {counts[candidate] !== null && <PillTabBadge isActive={tab === candidate}>{counts[candidate]}</PillTabBadge>}
             </button>
           ))}

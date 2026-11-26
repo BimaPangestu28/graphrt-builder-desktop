@@ -276,6 +276,8 @@ export function AgentLearnedPage() {
                   className={pillTabClassNames(tab === candidate)}
                 >
                   {t.tabs[candidate]}
+                  {/* Keeps the accessible name "In use 3", not "In use3". */}
+                  {counts[candidate] !== null && ' '}
                   {counts[candidate] !== null && (
                     <PillTabBadge isActive={tab === candidate} isWarning={candidate === 'waiting' && (counts.waiting ?? 0) > 0}>
                       {counts[candidate]}
