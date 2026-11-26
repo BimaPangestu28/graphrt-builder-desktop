@@ -56,7 +56,7 @@ jobs:
     outputs:
       release-id: ${{ steps.draft.outputs.release-id }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.RELEASE_TAG }}
       - uses: actions/setup-node@v7
@@ -134,7 +134,7 @@ jobs:
             args: --bundles appimage,deb,rpm
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.RELEASE_TAG }}
       - name: Install Linux dependencies
