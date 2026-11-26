@@ -1,4 +1,6 @@
 import { Spinner, StrokeIcon, VisuallyHidden, joinClassNames } from '@/components/ui'
+import { messages } from '@/i18n'
+import { localizedRecord } from '@/i18n/localized'
 
 type BuildItemState = 'done' | 'running' | 'pending'
 
@@ -8,7 +10,7 @@ function getBuildItemState(itemIndex: number, runningItemIndex: number): BuildIt
   return 'pending'
 }
 
-const stateLabels: Record<BuildItemState, string> = { done: 'Done', running: 'In progress', pending: 'Not started' }
+const stateLabels: Readonly<Record<BuildItemState, string>> = localizedRecord(() => messages().builder.buildItemStates)
 
 /** 20px circle on the left of each checklist line: green check, spinning ring, or empty ring. */
 function BuildItemIndicator({ state }: { state: BuildItemState }) {
@@ -46,7 +48,7 @@ interface BuildProgressChecklistProps {
 export function BuildProgressChecklist({ items, runningItemIndex }: BuildProgressChecklistProps) {
   return (
     <div className="flex box-content max-w-[92%] flex-col gap-3.5 rounded-[14px] border border-line p-[18px]">
-      <span className="font-semibold">{runningItemIndex >= items.length ? 'Your agent is ready' : 'Building your agent'}</span>
+      <span className="font-semibold">{runningItemIndex >= items.length ? messages().builder.yourAgentIsReady : messages().builder.buildingYourAgent}</span>
       <ol aria-live="polite" className="m-0 flex list-none flex-col gap-3 p-0">
         {items.map((item, itemIndex) => {
           const state = getBuildItemState(itemIndex, runningItemIndex)

@@ -18,6 +18,7 @@ import { NeedsYouSection } from '@/pages/home-dashboard/NeedsYouSection'
 import { RecentRunsTable } from '@/pages/home-dashboard/RecentRunsTable'
 import { UpdatesNotice } from '@/pages/home-dashboard/UpdatesNotice'
 import { useHomeData, type HomeData } from '@/pages/home-dashboard/useHomeData'
+import { useT } from '@/i18n'
 
 const recentRunLimit = 5
 
@@ -67,6 +68,7 @@ const dashboardGridClassName = 'grid grid-cols-1 items-start gap-8 @min-[920px]:
  * Below ~920px of width the rail stacks under the main column.
  */
 export function HomePage() {
+  const t = useT().home
   const greeting = getGreetingForHour(new Date().getHours())
   const agentName = useAgentNames()
   const homeData = useHomeData()
@@ -100,14 +102,14 @@ export function HomePage() {
             {gettingStarted}
             <div className="@container">
               <div className={dashboardGridClassName}>
-                <section aria-label="Overview" className="flex min-w-0 flex-col gap-8">
+                <section aria-label={t.overview} className="flex min-w-0 flex-col gap-8">
                   <UpdatesNotice />
                   {isNeedsYouFirst && needsYouSection}
                   <AgentSummaryCards agents={agents} loadError={agentsError} runs={runs} runStats={runStats} triggers={triggers} pluginRequirements={pluginRequirements} />
                   <RecentRunsTable runs={runs ? buildRecentRunRows(runs.slice(0, recentRunLimit), agentName) : null} loadError={runsError} />
                   {!isNeedsYouFirst && needsYouSection}
                 </section>
-                <aside aria-label="New agent and this month" className="flex min-w-0 flex-col gap-6">
+                <aside aria-label={t.asideLabel} className="flex min-w-0 flex-col gap-6">
                   <DescribeAgentCard />
                   <MonthlyUsageCard monthlyNumbers={buildThisMonth(homeData)} loadError={runsError ?? homeData.monthlyUsageError} />
                 </aside>

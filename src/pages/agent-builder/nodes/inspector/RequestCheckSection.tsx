@@ -5,6 +5,7 @@ import { joinClassNames } from '@/components/ui'
 import { toErrorMessage } from '@/lib/errors'
 import { hintClassName, InspectorSection } from './fields'
 import { useInspector } from './InspectorContext'
+import { messages } from '@/i18n'
 
 const trustButtonClassNames =
   'h-7 cursor-pointer self-start rounded-md border border-line-strong bg-surface px-2.5 text-[12px] font-medium text-ink hover:bg-subtle disabled:cursor-not-allowed disabled:opacity-50'
@@ -28,24 +29,24 @@ export function RequestCheckSection() {
       await addTrustedLookupHost(graph.agentId, host)
       setTrustError(null)
     } catch (rawError) {
-      setTrustError(`Could not trust ${host}: ${toErrorMessage(rawError)}`)
+      setTrustError(messages().nodes.couldNotTrustHostReason(host, toErrorMessage(rawError)))
     } finally {
       setIsTrusting(false)
     }
   }
 
   return (
-    <InspectorSection title="Asking first" sectionKey="asking-first">
+    <InspectorSection title={messages().nodes.askingFirst} sectionKey="asking-first">
       {check && (
         <p data-testid="request-check" className="m-0 flex flex-col gap-0.5 text-[12px] leading-normal">
-          <span className={joinClassNames('font-semibold', check.runsWithoutAsking ? 'text-ok-strong' : 'text-amber-strong')}>{check.runsWithoutAsking ? 'Runs without asking' : 'Asks you first'}</span>
+          <span className={joinClassNames('font-semibold', check.runsWithoutAsking ? 'text-ok-strong' : 'text-amber-strong')}>{check.runsWithoutAsking ? messages().nodes.runsWithoutAsking : messages().nodes.asksYouFirst}</span>
           <span className="text-body">{check.reason}</span>
         </p>
       )}
-      {controller.isDirty && <p className={hintClassName}>Checked again once your changes are saved</p>}
+      {controller.isDirty && <p className={hintClassName}>{messages().nodes.checkedAgainOnceYourChangesAre}</p>}
       {trustableHost && (
         <button type="button" disabled={isTrusting} onClick={() => void trustHost(trustableHost)} className={trustButtonClassNames}>
-          Trust {trustableHost} for lookups
+          {messages().nodes.trust}{' '}{trustableHost} {messages().nodes.forLookups}
         </button>
       )}
       {trustError && (

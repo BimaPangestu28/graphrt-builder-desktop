@@ -7,15 +7,10 @@ import { pickStepLiveViews } from './liveBrowserFrames'
 import { formatDurationMs, formatElapsedClock } from './runProgress'
 import type { RunStepView } from './runSteps'
 import { StepDetails } from './StepDetails'
+import { messages } from '@/i18n'
+import { localizedRecord } from '@/i18n/localized'
 
-const stepStateLabels: Record<TestRunStepState, string> = {
-  done: 'Done',
-  running: 'Running',
-  waiting: 'Waiting for you',
-  failed: 'Failed',
-  skipped: 'Skipped',
-  pending: 'Not started',
-}
+const stepStateLabels: Readonly<Record<TestRunStepState, string>> = localizedRecord(() => messages().agentRun.stepStates)
 
 function StepStateMarker({ state }: { state: TestRunStepState }) {
   if (state === 'done') {
@@ -54,18 +49,19 @@ function describeDuration(step: RunStepView, now: number): string | null {
 export function describeIterationMeta(step: RunStepView): string | null {
   const iteration = step.iteration
   if (!iteration || iteration.currentNumber === null) return null
-  if (step.state === 'done') return iteration.total === null ? `${iteration.doneCount} done` : `${iteration.total} of ${iteration.total}`
-  const position = iteration.total === null ? `${iteration.doneCount} done` : `${iteration.currentNumber} of ${iteration.total}`
+  const t = messages().agentRun
+  if (step.state === 'done') return iteration.total === null ? t.countDone(iteration.doneCount) : t.positionOf(iteration.total, iteration.total)
+  const position = iteration.total === null ? t.countDone(iteration.doneCount) : t.positionOf(iteration.currentNumber, iteration.total)
   return iteration.currentItemLabel ? `${position} · ${iteration.currentItemLabel}` : position
 }
 
 function describeStepMeta(step: RunStepView, now: number): string {
   const parts = [
     describeIterationMeta(step),
-    step.state === 'waiting' && !step.iteration ? 'waiting for you' : null,
+    step.state === 'waiting' && !step.iteration ? messages().agentRun.waitingForYou : null,
     step.detail ?? describeDuration(step, now),
-    step.itemsDoneCount ? `${step.itemsDoneCount} done` : null,
-    step.retryCount > 0 ? (step.retryCount === 1 ? '1 retry' : `${step.retryCount} retries`) : null,
+    step.itemsDoneCount ? messages().agentRun.countDone(step.itemsDoneCount) : null,
+    step.retryCount > 0 ? (step.retryCount === 1 ? messages().agentRun.n1Retry : messages().agentRun.retries(step.retryCount)) : null,
   ]
   return parts.filter((part): part is string => Boolean(part)).join(' · ')
 }
@@ -77,7 +73,7 @@ function IterationBar({ step }: { step: RunStepView }) {
   return (
     <div
       role="progressbar"
-      aria-label={`${step.label} progress`}
+      aria-label={messages().agentRun.stepProgress(step.label)}
       aria-valuemin={0}
       aria-valuemax={iteration.total}
       aria-valuenow={iteration.doneCount}
@@ -164,7 +160,7 @@ export function StepProgressList({ steps, now = Date.now(), fixAgentId }: StepPr
   const liveFrames = useLiveBrowserFrames(steps.some((step) => step.state === 'running'))
   const liveViews = pickStepLiveViews(steps, liveFrames)
   return (
-    <ol aria-label="Steps" className="m-0 flex list-none flex-col gap-2 rounded-xl border border-line bg-surface p-4">
+    <ol aria-label={messages().agentRun.steps} className="m-0 flex list-none flex-col gap-2 rounded-xl border border-line bg-surface p-4">
       {steps.map((step) => {
         const isExpanded = expandedByUser[step.id] ?? isOpenByDefault(step)
         return (

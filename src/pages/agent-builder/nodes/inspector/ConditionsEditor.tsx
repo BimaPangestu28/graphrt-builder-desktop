@@ -4,6 +4,7 @@ import { AddButton, RemoveButton, SegmentedChoice, SelectInput, TextInput, type 
 import { useInspector } from './InspectorContext'
 import { readSelector } from './references'
 import { SelectorChip } from './SelectorField'
+import { messages } from '@/i18n'
 
 /**
  * Condition rows shared by Check a condition (cases), Repeat (stop when), Filter a list
@@ -48,7 +49,7 @@ interface ConditionsEditorProps {
 }
 
 /** Editable condition rows. */
-export function ConditionsEditor({ conditions, onChange, subject, operators = valueOperators, label, addLabel = 'Add a condition' }: ConditionsEditorProps) {
+export function ConditionsEditor({ conditions, onChange, subject, operators = valueOperators, label, addLabel = messages().nodes.addACondition }: ConditionsEditorProps) {
   const { readOnly } = useInspector()
   const operatorOptions: ChoiceOption[] = operators.map((operator) => ({ value: operator, label: operator }))
   const updateRow = (index: number, changes: JsonObject, what: string) =>
@@ -66,33 +67,33 @@ export function ConditionsEditor({ conditions, onChange, subject, operators = va
             <div className="flex items-start gap-1.5">
               <div className="min-w-0 flex-1">
                 {subject === 'selector' && (
-                  <SelectorChip compact ariaLabel={`Condition ${index + 1} value`} path={readSelector(row.variable_selector)} onChange={(path) => updateRow(index, { variable_selector: path ?? [] }, 'changed a condition')} />
+                  <SelectorChip compact ariaLabel={messages().nodes.conditionValueValue(index + 1)} path={readSelector(row.variable_selector)} onChange={(path) => updateRow(index, { variable_selector: path ?? [] }, messages().nodes.changedACondition)} />
                 )}
                 {subject === 'key' && (
-                  <TextInput ariaLabel={`Condition ${index + 1} item key`} placeholder="Item key, e.g. rating (empty = the item)" value={conditionText(row.key)} disabled={readOnly} onCommit={(key) => updateRow(index, { key }, 'changed a filter')} />
+                  <TextInput ariaLabel={messages().nodes.conditionValueItemKey(index + 1)} placeholder={messages().nodes.itemKeyEGRatingEmpty} value={conditionText(row.key)} disabled={readOnly} onCommit={(key) => updateRow(index, { key }, messages().nodes.changedAFilter)} />
                 )}
                 {subject === 'metadata' && (
                   <SelectInput
-                    ariaLabel={`Condition ${index + 1} detail`}
+                    ariaLabel={messages().nodes.conditionValueDetail(index + 1)}
                     value={conditionText(row.name)}
                     disabled={readOnly}
                     options={knowledgeMetadataNames.map((name) => ({ value: name, label: name }))}
-                    onChange={(name) => updateRow(index, { name }, 'changed a metadata filter')}
+                    onChange={(name) => updateRow(index, { name }, messages().nodes.changedAMetadataFilter)}
                   />
                 )}
               </div>
-              <RemoveButton label={`Remove condition ${index + 1}`} disabled={readOnly} onClick={() => onChange(conditions.filter((_unused, rowIndex) => rowIndex !== index), 'removed a condition')} />
+              <RemoveButton label={messages().nodes.removeConditionValue(index + 1)} disabled={readOnly} onClick={() => onChange(conditions.filter((_unused, rowIndex) => rowIndex !== index), messages().nodes.removedACondition)} />
             </div>
             <div className="flex items-center gap-1.5">
-              <SelectInput ariaLabel={`Condition ${index + 1} operator`} className="w-[118px] shrink-0" value={operator} disabled={readOnly} options={operatorOptions} onChange={(nextOperator) => updateRow(index, { comparison_operator: nextOperator }, 'changed a condition')} />
+              <SelectInput ariaLabel={messages().nodes.conditionValueOperator(index + 1)} className="w-[118px] shrink-0" value={operator} disabled={readOnly} options={operatorOptions} onChange={(nextOperator) => updateRow(index, { comparison_operator: nextOperator }, messages().nodes.changedACondition)} />
               {!unaryOperators.has(operator) && (
-                <TextInput ariaLabel={`Condition ${index + 1} compare with`} placeholder="Value or {{#step.field#}}" value={conditionText(row.value)} disabled={readOnly} onCommit={(value) => updateRow(index, { value }, 'changed a condition')} />
+                <TextInput ariaLabel={messages().nodes.conditionValueCompareWith(index + 1)} placeholder={messages().nodes.valueOrStepField} value={conditionText(row.value)} disabled={readOnly} onCommit={(value) => updateRow(index, { value }, messages().nodes.changedACondition)} />
               )}
             </div>
           </div>
         )
       })}
-      <AddButton disabled={readOnly} onClick={() => onChange([...conditions, newCondition(subject, operators[0] === 'contains' ? 'contains' : operators[0])], 'added a condition')}>
+      <AddButton disabled={readOnly} onClick={() => onChange([...conditions, newCondition(subject, operators[0] === 'contains' ? 'contains' : operators[0])], messages().nodes.addedACondition)}>
         {addLabel}
       </AddButton>
     </div>
@@ -104,14 +105,14 @@ export function MatchChoice({ value, onChange }: { value: string; onChange: (val
   const { readOnly } = useInspector()
   return (
     <div className="flex items-center gap-2 text-[12px] text-ink-2">
-      Match
+      {messages().nodes.match}
       <SegmentedChoice
-        label="Match"
+        label={messages().nodes.match}
         value={value === 'or' ? 'or' : 'and'}
         disabled={readOnly}
         options={[
-          { value: 'and', label: 'all (and)' },
-          { value: 'or', label: 'any (or)' },
+          { value: 'and', label: messages().nodes.allAnd },
+          { value: 'or', label: messages().nodes.anyOr },
         ]}
         onChange={(choice) => onChange(choice === 'or' ? 'or' : 'and')}
       />

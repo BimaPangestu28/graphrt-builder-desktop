@@ -1,22 +1,20 @@
 import type { PluginCatalog } from '@/api/pluginTypes'
+import { intlTag, messages } from '@/i18n'
 
 const MINUTE_MS = 60 * 1000
 const HOUR_MS = 60 * MINUTE_MS
 
 function describeAge(ageMs: number): string {
-  if (ageMs < MINUTE_MS) return 'just now'
-  if (ageMs < HOUR_MS) {
-    const minutes = Math.floor(ageMs / MINUTE_MS)
-    return `${minutes} minute${minutes === 1 ? '' : 's'} ago`
-  }
-  const hours = Math.floor(ageMs / HOUR_MS)
-  return `${hours} hour${hours === 1 ? '' : 's'} ago`
+  const t = messages().plugins
+  if (ageMs < MINUTE_MS) return t.justNow
+  if (ageMs < HOUR_MS) return t.minutesAgo(Math.floor(ageMs / MINUTE_MS))
+  return t.hoursAgo(Math.floor(ageMs / HOUR_MS))
 }
 
 function formatPublishedDate(generatedAt: string): string | null {
   const publishedAtMs = Date.parse(generatedAt)
   if (!Number.isFinite(publishedAtMs)) return null
-  return new Date(publishedAtMs).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+  return new Date(publishedAtMs).toLocaleDateString(intlTag(), { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
 /**
@@ -33,8 +31,9 @@ function formatPublishedDate(generatedAt: string): string | null {
 export function describeCatalogFreshness(catalog: PluginCatalog, nowMs: number): string {
   const parts: string[] = []
   const fetchedAtMs = catalog.fetchedAt ? Date.parse(catalog.fetchedAt) : Number.NaN
-  if (Number.isFinite(fetchedAtMs)) parts.push(`Updated ${describeAge(Math.max(0, nowMs - fetchedAtMs))}`)
+  const t = messages().plugins
+  if (Number.isFinite(fetchedAtMs)) parts.push(t.updatedAgo(describeAge(Math.max(0, nowMs - fetchedAtMs))))
   const publishedDate = catalog.generatedAt ? formatPublishedDate(catalog.generatedAt) : null
-  if (publishedDate) parts.push(parts.length > 0 ? `catalog published ${publishedDate}` : `Catalog published ${publishedDate}`)
+  if (publishedDate) parts.push(t.catalogPublished(publishedDate, parts.length === 0))
   return parts.join(' · ')
 }

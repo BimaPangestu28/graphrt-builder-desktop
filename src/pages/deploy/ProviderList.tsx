@@ -3,15 +3,11 @@ import type { DeployAccount, DeployProvider } from '@/api/deployTypes'
 import { Badge, Button, joinClassNames } from '@/components/ui'
 import { ConnectProviderDialog } from './ConnectProviderDialog'
 import { ProviderLogo } from './ProviderLogo'
+import { messages } from '@/i18n'
+import { localizedRecord } from '@/i18n/localized'
 
 /** One plain line per provider, as people read it. */
-export const providerTaglines: Record<DeployProvider, string> = {
-  fly: 'Recommended, simplest. You pay Fly.io only for what your agents use.',
-  google_cloud: 'Connect with a key file from your Google Cloud account',
-  aws: 'Connect with an access key from your AWS account',
-  azure: 'Connect with an app registration from your Azure account',
-  kubernetes: 'Use a cluster your IT team already runs',
-}
+export const providerTaglines: Readonly<Record<DeployProvider, string>> = localizedRecord(() => messages().deploy.taglines)
 
 export const otherProviders: DeployProvider[] = ['google_cloud', 'aws', 'azure', 'kubernetes']
 
@@ -26,15 +22,15 @@ interface ProviderRowProps {
 
 export function ProviderRow({ account, selection, onConnect, connectedActions }: ProviderRowProps) {
   const isRecommended = account.provider === 'fly'
-  const tagline = account.connected && account.usedByAgents.length > 0 ? `Used by ${account.usedByAgents.join(' and ')}` : providerTaglines[account.provider]
+  const tagline = account.connected && account.usedByAgents.length > 0 ? messages().deploy.usedByAgents(messages().common.joinAnd(account.usedByAgents)) : providerTaglines[account.provider]
   const content = (
     <>
       <ProviderLogo provider={account.provider} />
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="flex flex-wrap items-center gap-2 font-semibold">
           {account.displayName}
-          {isRecommended && <Badge tone="brand">Recommended</Badge>}
-          {!account.canDeploy && <Badge>Coming soon</Badge>}
+          {isRecommended && <Badge tone="brand">{messages().deploy.recommended}</Badge>}
+          {!account.canDeploy && <Badge>{messages().deploy.comingSoon}</Badge>}
         </span>
         <span className="text-[13px] leading-normal text-body">{tagline}</span>
       </span>
@@ -57,12 +53,12 @@ export function ProviderRow({ account, selection, onConnect, connectedActions }:
       )}
       {account.connected ? (
         <span className="flex items-center gap-2">
-          <Badge tone="ok">Connected</Badge>
+          <Badge tone="ok">{messages().deploy.connected}</Badge>
           {connectedActions}
         </span>
       ) : (
-        <Button variant={isRecommended ? 'primary' : 'secondary'} size="sm" onClick={onConnect} aria-label={`Connect ${account.displayName}`}>
-          Connect
+        <Button variant={isRecommended ? 'primary' : 'secondary'} size="sm" onClick={onConnect} aria-label={messages().deploy.connectDisplayname(account.displayName)}>
+          {messages().deploy.connect}
         </Button>
       )}
     </li>
@@ -100,7 +96,7 @@ export function ProviderList({ accounts, selectedProvider, onSelect, onAccountsC
     <div className="flex flex-col gap-3">
       {fly && <ul className="m-0 flex list-none flex-col gap-2 p-0">{row(fly)}</ul>}
       <details open={opensOthers} className="flex flex-col gap-2">
-        <summary className="cursor-pointer py-1 text-[13px] font-semibold text-ink-2">Other providers — for teams that already use them</summary>
+        <summary className="cursor-pointer py-1 text-[13px] font-semibold text-ink-2">{messages().deploy.otherProvidersForTeamsThatAlready}</summary>
         <ul className="m-0 mt-2 flex list-none flex-col gap-2 p-0">{others.map(row)}</ul>
       </details>
       {connectingProvider && (

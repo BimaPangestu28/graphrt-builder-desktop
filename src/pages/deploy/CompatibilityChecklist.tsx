@@ -6,10 +6,12 @@ import { Button, Icon, joinClassNames } from '@/components/ui'
 import { agentPath, builderAskParam, connectionsTabPath } from '@/routes'
 import { DevelopersDetails } from './DeployDialog'
 import { plainErrorMessage } from './deployDisplay'
+import { messages } from '@/i18n'
 
 /** The builder request behind "Switch to WhatsApp Business" (the person still presses Send). */
-export const switchWhatsAppRequest =
-  'So this agent can run online: replace the WhatsApp Web steps with the WhatsApp Business plugin (whatsapp-api, the official WhatsApp Cloud API), keeping what each step does.'
+export function switchWhatsAppRequest(): string {
+  return messages().deploy.switchWhatsAppRequest
+}
 
 interface CompatibilityChecklistProps {
   agentId: string
@@ -36,7 +38,7 @@ function ChecklistRow({ item, agentId, onFixed, onKeepLocal }: { item: Compatibi
   async function applyFix() {
     if (!item.fix) return
     if (item.fix.kind === 'switch_whats_app_to_cloud') {
-      navigate(agentPath('builder', agentId, { [builderAskParam]: switchWhatsAppRequest }))
+      navigate(agentPath('builder', agentId, { [builderAskParam]: switchWhatsAppRequest() }))
       return
     }
     setIsFixing(true)
@@ -64,21 +66,21 @@ function ChecklistRow({ item, agentId, onFixed, onKeepLocal }: { item: Compatibi
         <div className="flex flex-wrap gap-2 pl-[30px]">
           {item.fix && item.fixLabel && (
             <Button size="sm" onClick={() => void applyFix()} disabled={isFixing}>
-              {isFixing ? 'Changing…' : item.fixLabel}
+              {isFixing ? messages().deploy.changing : item.fixLabel}
             </Button>
           )}
           {!item.fix && item.id.startsWith('model:') && (
             <Button size="sm" variant="secondary" onClick={() => navigate(connectionsTabPath('models'))}>
-              Connect an AI service
+              {messages().deploy.connectAnAiService}
             </Button>
           )}
           {!item.fix && item.id.startsWith('key:') && (
             <Button size="sm" variant="secondary" onClick={() => navigate(connectionsTabPath('secrets'))}>
-              Open Secrets
+              {messages().deploy.openSecrets}
             </Button>
           )}
           <Button size="sm" variant="ghost" onClick={onKeepLocal}>
-            Keep it on this computer
+            {messages().deploy.keepItOnThisComputer}
           </Button>
         </div>
       )}
@@ -107,10 +109,10 @@ export function CompatibilityChecklist({ agentId, agentName, report, onRecheck, 
     }
   }
   return (
-    <section aria-label="Before it can go online" className="flex flex-col gap-4">
+    <section aria-label={messages().deploy.beforeItCanGoOnline} className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
         <h2 className="m-0 text-[20px] font-semibold tracking-[-0.2px]">
-          {blockerCount === 0 ? 'Ready to go online' : `${blockerCount} thing${blockerCount === 1 ? '' : 's'} to change before this agent can run online`}
+          {blockerCount === 0 ? messages().deploy.readyToGoOnline : messages().deploy.blockercountThingValueToChangeBefore(blockerCount, blockerCount === 1 ? '' : 's')}
         </h2>
         <span className="text-body">{agentName}</span>
       </div>
@@ -119,20 +121,19 @@ export function CompatibilityChecklist({ agentId, agentName, report, onRecheck, 
           <ChecklistRow key={item.id} item={item} agentId={agentId} onFixed={recheck} onKeepLocal={onKeepLocal} />
         ))}
       </ul>
-      {blockerCount > 0 && <p className="m-0 text-[13px] text-muted">Each fix is a normal change to your agent. You can undo it from History.</p>}
+      {blockerCount > 0 && <p className="m-0 text-[13px] text-muted">{messages().deploy.eachFixIsANormalChange}</p>}
       <div className="flex flex-wrap items-center gap-2">
         <Button onClick={onContinue} disabled={blockerCount > 0}>
-          Continue
+          {messages().deploy.continue}
         </Button>
         <Button variant="secondary" onClick={() => void recheck()} disabled={isChecking}>
-          {isChecking ? 'Checking…' : 'Check again'}
+          {isChecking ? messages().deploy.checking : messages().deploy.checkAgain}
         </Button>
-        {blockerCount > 0 && <span className="text-[13px] text-muted">Continue unlocks when everything above is fixed</span>}
+        {blockerCount > 0 && <span className="text-[13px] text-muted">{messages().deploy.continueUnlocksWhenEverythingAboveIs}</span>}
       </div>
       <DevelopersDetails>
         <span>
-          The check compares the agent's steps, plugins, AI models and keys with what runs online. Blocked: local-only plugins (WhatsApp Web, browser plugins),
-          AI tools installed on this computer (Claude Code, Codex and others) and Ollama. Knowledge is copied with the agent.
+          {messages().deploy.theCheckComparesTheAgentsSteps}
         </span>
       </DevelopersDetails>
     </section>

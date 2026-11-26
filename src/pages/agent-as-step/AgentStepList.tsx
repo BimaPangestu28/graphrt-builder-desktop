@@ -1,6 +1,7 @@
 import { joinClassNames } from '@/components/ui'
 import type { AgentStepInfo } from '@/api/chainTypes'
 import type { FlowStep } from '@/api/types'
+import { messages } from '@/i18n'
 
 const monospaceChipClassNames = 'rounded-md bg-surface px-2 py-[3px] font-mono'
 const agentToolPrefix = 'agents/'
@@ -46,16 +47,16 @@ function AgentStepCard({ flowStep, calledAgent, isNew }: { flowStep: FlowStep; c
         <div className="flex flex-auto flex-col gap-0.5">
           <span className="font-semibold">{flowStep.title}</span>
           <span className="text-[13px] text-body">
-            Runs your agent {calledAgent.name} · v{calledAgent.currentVersion}
+            {messages().team.runsYourAgent}{' '}{calledAgent.name} · v{calledAgent.currentVersion}
           </span>
         </div>
-        <span className="rounded-full border border-brand-line-2 bg-surface px-2 py-[3px] text-[12px] font-semibold text-brand-strong">{isNew ? 'New' : 'Agent'}</span>
+        <span className="rounded-full border border-brand-line-2 bg-surface px-2 py-[3px] text-[12px] font-semibold text-brand-strong">{isNew ? messages().team.new : messages().team.agent}</span>
       </div>
       <div className="flex flex-wrap items-center gap-1.5 text-[12px]">
-        <FieldChips label="Sends" fields={calledAgent.inputs.map((input) => input.name)} />
-        <FieldChips label="Gets back" fields={calledAgent.outputs} className={calledAgent.inputs.length > 0 ? 'ml-2' : undefined} />
+        <FieldChips label={messages().team.sends} fields={calledAgent.inputs.map((input) => input.name)} />
+        <FieldChips label={messages().team.getsBack} fields={calledAgent.outputs} className={calledAgent.inputs.length > 0 ? 'ml-2' : undefined} />
       </div>
-      <span className="text-[12px] text-body">Always uses the newest version of {calledAgent.name}</span>
+      <span className="text-[12px] text-body">{messages().team.alwaysUsesTheNewestVersionOf}{' '}{calledAgent.name}</span>
     </li>
   )
 }
@@ -65,8 +66,8 @@ function PlainStepRow({ flowStep, number, isChanged }: { flowStep: FlowStep; num
     <li className={joinClassNames('flex items-center gap-3.5 border-b border-chip py-3.5 pr-4 last:border-b-0', flowStep.depth > 0 ? 'pl-[60px]' : 'pl-4')}>
       {flowStep.depth === 0 && <span className="w-[22px] text-center text-[12px] font-semibold text-muted">{number}</span>}
       <span className="flex-auto font-medium">{flowStep.title}</span>
-      {isChanged && <span className="text-[12px] text-muted">Changed</span>}
-      {flowStep.needsApproval && <span className="rounded-full bg-amber-soft px-2 py-[3px] text-[12px] font-medium text-amber-strong">Approval</span>}
+      {isChanged && <span className="text-[12px] text-muted">{messages().team.changed}</span>}
+      {flowStep.needsApproval && <span className="rounded-full bg-amber-soft px-2 py-[3px] text-[12px] font-medium text-amber-strong">{messages().team.approval}</span>}
     </li>
   )
 }
@@ -83,11 +84,11 @@ interface AgentStepListProps {
 /** Left side of screen 12: the target agent's steps, where to add the new one, and steps that run other agents. */
 export function AgentStepList({ agentName, steps, catalog, changedStepIds, placementStepId, onPlacementChange }: AgentStepListProps) {
   return (
-    <section aria-label="Steps" className="box-border flex min-w-0 flex-[2_1_480px] flex-col gap-5 px-8 py-7">
+    <section aria-label={messages().team.steps} className="box-border flex min-w-0 flex-[2_1_480px] flex-col gap-5 px-8 py-7">
       <div className="flex flex-col gap-2">
         <h1 className="m-0 text-[22px] font-semibold tracking-[-0.3px]">{agentName}</h1>
         <label className="flex flex-wrap items-center gap-2 text-body">
-          Add the step after
+          {messages().team.addTheStepAfter}
           <select
             value={placementStepId}
             onChange={(event) => onPlacementChange(event.target.value)}

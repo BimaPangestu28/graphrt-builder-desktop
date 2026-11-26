@@ -2,16 +2,17 @@ import { Link } from 'react-router-dom'
 import { joinClassNames } from '@/components/ui'
 import type { TeamMember } from '@/api/chainTypes'
 import { agentPath } from '@/routes'
+import { messages } from '@/i18n'
 
 export type TeamMemberState = 'done' | 'working' | 'needsYou' | 'failed' | 'waiting' | 'paused'
 
-const memberStateStyles: Record<TeamMemberState, { label: string; cardClassNames: string; labelClassNames: string }> = {
-  done: { label: 'Done', cardClassNames: 'border-line', labelClassNames: 'text-muted' },
-  working: { label: 'Working', cardClassNames: 'border-brand-line-2 bg-brand-tint', labelClassNames: 'font-semibold text-brand-strong' },
-  needsYou: { label: 'Needs you', cardClassNames: 'border-amber-line bg-amber-tint', labelClassNames: 'font-semibold text-amber-strong' },
-  failed: { label: 'Failed', cardClassNames: 'border-amber-line', labelClassNames: 'font-semibold text-amber-strong' },
-  waiting: { label: 'Waiting', cardClassNames: 'border-line', labelClassNames: 'text-muted' },
-  paused: { label: 'Paused', cardClassNames: 'border-line', labelClassNames: 'text-muted' },
+const memberStateStyles: Record<TeamMemberState, { readonly label: string; cardClassNames: string; labelClassNames: string }> = {
+  done: { get label() { return messages().team.memberStates.done }, cardClassNames: 'border-line', labelClassNames: 'text-muted' },
+  working: { get label() { return messages().team.memberStates.working }, cardClassNames: 'border-brand-line-2 bg-brand-tint', labelClassNames: 'font-semibold text-brand-strong' },
+  needsYou: { get label() { return messages().team.memberStates.needsYou }, cardClassNames: 'border-amber-line bg-amber-tint', labelClassNames: 'font-semibold text-amber-strong' },
+  failed: { get label() { return messages().team.memberStates.failed }, cardClassNames: 'border-amber-line', labelClassNames: 'font-semibold text-amber-strong' },
+  waiting: { get label() { return messages().team.memberStates.waiting }, cardClassNames: 'border-line', labelClassNames: 'text-muted' },
+  paused: { get label() { return messages().team.memberStates.paused }, cardClassNames: 'border-line', labelClassNames: 'text-muted' },
 }
 
 /**
@@ -50,10 +51,10 @@ export function TeamMemberCard({ member, isTeamPaused }: { member: TeamMember; i
         <span className="font-semibold">{member.name}</span>
         <span className={joinClassNames('text-[12px]', stateStyle.labelClassNames)}>{stateStyle.label}</span>
       </div>
-      <span className="text-[13px] text-body">Agent · v{member.currentVersion}</span>
+      <span className="text-[13px] text-body">{messages().team.agentV}{member.currentVersion}</span>
       {memberState === 'needsYou' && member.latestRun ? (
         <Link to={agentPath('testRun', member.agentId, { runId: member.latestRun.id })} className="text-[13px] font-medium">
-          {member.description || 'Answer its question'}
+          {member.description || messages().team.answerItsQuestion}
         </Link>
       ) : (
         <span className="text-[13px] leading-normal">{member.description}</span>

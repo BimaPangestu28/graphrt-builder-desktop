@@ -2,6 +2,7 @@ import type { RunCounter } from '@/api/runSummaryTypes'
 import type { Run } from '@/api/types'
 import type { UsageSummary } from '@/api/usageSummaryTypes'
 import { formatCounterLabel, formatCounterValue, isMoneyCounter, pickHeadlineCounter } from '@/pages/agent-run/runCounters'
+import { messages } from '@/i18n'
 
 /** "This month" card (Home, 09): the window start and the numbers shown. */
 
@@ -81,14 +82,15 @@ export function buildMonthlyNumbers(usageSummary: UsageSummary | null, runs: Run
   const succeededRuns = monthRuns.filter((run) => run.status === 'succeeded')
   const failedCount = monthRuns.filter((run) => run.status === 'failed').length
   const totalTokens = usageSummary?.usage.totalTokens ?? 0
+  const t = messages().home
   const rows: MonthlyUsageRow[] = [
-    { label: 'Runs succeeded', value: String(succeededRuns.length) },
-    { label: 'Runs failed', value: String(failedCount) },
+    { label: t.runsSucceeded, value: String(succeededRuns.length) },
+    { label: t.runsFailed, value: String(failedCount) },
     ...pickMonthCounters(sumRunCounters(succeededRuns)).map((counter) => ({
       label: formatCounterLabel(counter.name),
       value: formatCounterValue(counter.name, Math.round(counter.value)),
     })),
-    ...(usageSummary ? [{ label: 'AI tokens', value: formatTokenCount(totalTokens) }] : []),
+    ...(usageSummary ? [{ label: t.aiTokens, value: formatTokenCount(totalTokens) }] : []),
   ]
   const hasRuns = monthRuns.length > 0 || (usageSummary?.runCount ?? 0) > 0
   return { rows, isEmpty: !hasRuns && totalTokens === 0 }

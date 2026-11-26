@@ -8,6 +8,7 @@ import { StepDiffList } from './version-history/StepDiffList'
 import { toStepDiffRows } from './version-history/stepDiffRows'
 import { useVersionHistory, type ChangeNotice, type VersionEntry } from './version-history/useVersionHistory'
 import { VersionHistoryList } from './version-history/VersionHistoryList'
+import { messages } from '@/i18n'
 
 const headerButtonBaseClassNames = 'inline-flex h-9 cursor-pointer items-center rounded-lg px-3.5 font-sans text-[13px] font-medium no-underline'
 const secondaryHeaderButtonClassNames = `${headerButtonBaseClassNames} border border-line-strong bg-surface !text-ink hover:bg-subtle`
@@ -31,18 +32,18 @@ function VersionHeader({ agentId, agentName, selectedVersion, isViewingCurrent, 
           {agentName}
         </Link>
         <span className="rounded-full bg-selected px-2 py-[3px] text-[12px] font-medium text-ink-2">
-          Viewing v{selectedVersion.number}
-          {isViewingCurrent && ' · current'}
+          {messages().misc.viewingV}{selectedVersion.number}
+          {isViewingCurrent && messages().misc.current}
         </span>
       </div>
       <div className="flex gap-2">
         {isViewingCurrent ? (
           <Link to={builderPath} className={secondaryHeaderButtonClassNames}>
-            Back to steps
+            {messages().misc.backToSteps}
           </Link>
         ) : (
           <button type="button" onClick={onShowCurrent} className={secondaryHeaderButtonClassNames}>
-            Back to current
+            {messages().misc.backToCurrent}
           </button>
         )}
         <button
@@ -51,7 +52,7 @@ function VersionHeader({ agentId, agentName, selectedVersion, isViewingCurrent, 
           disabled={isViewingCurrent || isRestoring}
           className={`${headerButtonBaseClassNames} border-0 bg-ink text-white hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-40`}
         >
-          Restore v{selectedVersion.number}
+          {messages().misc.restoreV}{selectedVersion.number}
         </button>
       </div>
     </header>
@@ -61,7 +62,7 @@ function VersionHeader({ agentId, agentName, selectedVersion, isViewingCurrent, 
 /** Why a version's steps cannot be shown, e.g. its workflow no longer compiles. */
 function describeUnreadableVersion(versionSteps: VersionSteps): string | null {
   if (!versionSteps.error) return null
-  return `Could not read the steps of v${versionSteps.version}: ${versionSteps.error.message}`
+  return messages().misc.couldNotReadTheStepsOf(versionSteps.version, versionSteps.error.message)
 }
 
 interface StepComparisonProps {
@@ -72,8 +73,8 @@ interface StepComparisonProps {
 
 /** The step list, or why it is not there yet. */
 function StepComparison({ comparison, isComparing, comparisonError }: StepComparisonProps) {
-  if (comparisonError) return <p className="m-0 text-muted">{`Could not compare the versions: ${describeError(comparisonError)}`}</p>
-  if (isComparing || !comparison) return <p className="m-0 text-muted">Comparing versions…</p>
+  if (comparisonError) return <p className="m-0 text-muted">{messages().misc.couldNotCompareTheVersionsReason(describeError(comparisonError))}</p>
+  if (isComparing || !comparison) return <p className="m-0 text-muted">{messages().misc.comparingVersions}</p>
   const unreadableMessages = [comparison.to, comparison.from].map(describeUnreadableVersion).filter((message) => message !== null)
   if (unreadableMessages.length > 0) {
     return (
@@ -102,17 +103,17 @@ function RestorePreview({ currentVersion, selectedVersion, nextVersionNumber, co
     <section aria-labelledby="restore-preview-heading" className="box-border flex min-w-0 flex-[3_1_480px] flex-col gap-4 px-8 py-7">
       <div className="flex flex-col gap-1">
         <h1 id="restore-preview-heading" className="m-0 text-[18px] font-semibold">
-          {isViewingCurrent ? `v${currentVersion.number} is the current version` : `What changes if you restore v${selectedVersion.number}`}
+          {isViewingCurrent ? messages().misc.vNumberIsTheCurrentVersion(currentVersion.number) : messages().misc.whatChangesIfYouRestoreV(selectedVersion.number)}
         </h1>
         <span className="text-body">
           {isViewingCurrent
-            ? 'Pick an older version in History to compare it'
-            : `Compared with the current version, v${currentVersion.number}`}
+            ? messages().misc.pickAnOlderVersionInHistory
+            : messages().misc.comparedWithTheCurrentVersionV(currentVersion.number)}
         </span>
       </div>
       <StepComparison comparison={matchingComparison} isComparing={isComparing} comparisonError={comparisonError} />
       <p className="m-0 rounded-[10px] bg-subtle px-3.5 py-3 leading-normal text-body">
-        Runs already in progress keep the version they started with. Restoring creates v{nextVersionNumber}, so you can always come back
+        {messages().misc.runsAlreadyInProgressKeepThe}{nextVersionNumber}{messages().misc.soYouCanAlwaysComeBack}
       </p>
     </section>
   )
@@ -131,7 +132,7 @@ function ChangeToast({ changeNotice, onUndo }: { changeNotice: ChangeNotice; onU
           onClick={onUndo}
           className="h-8 cursor-pointer rounded-lg border-0 bg-surface px-3 font-sans text-[13px] font-semibold text-ink"
         >
-          Undo
+          {messages().misc.undo}
         </button>
       )}
     </div>
@@ -157,15 +158,15 @@ export function VersionHistoryPage() {
   const { currentVersion, selectedVersion, changeNotice } = versionHistory
 
   function renderContent() {
-    if (versionHistory.loadError) return <HistoryMessage>{`Could not load the history: ${describeError(versionHistory.loadError)}`}</HistoryMessage>
-    if (versionHistory.isLoading) return <HistoryMessage>Loading history…</HistoryMessage>
-    if (!currentVersion || !selectedVersion) return <HistoryMessage>No saved versions yet</HistoryMessage>
+    if (versionHistory.loadError) return <HistoryMessage>{messages().misc.couldNotLoadTheHistoryReason(describeError(versionHistory.loadError))}</HistoryMessage>
+    if (versionHistory.isLoading) return <HistoryMessage>{messages().misc.loadingHistory}</HistoryMessage>
+    if (!currentVersion || !selectedVersion) return <HistoryMessage>{messages().misc.noSavedVersionsYet}</HistoryMessage>
     const isViewingCurrent = selectedVersion.number === currentVersion.number
     return (
       <>
         <VersionHeader
           agentId={agentId}
-          agentName={agent?.name ?? 'Agent'}
+          agentName={agent?.name ?? messages().misc.agent}
           selectedVersion={selectedVersion}
           isViewingCurrent={isViewingCurrent}
           isRestoring={versionHistory.isRestoring}

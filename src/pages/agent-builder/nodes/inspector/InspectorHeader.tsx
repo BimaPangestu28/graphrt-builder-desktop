@@ -5,6 +5,7 @@ import { usePluginIcon } from '@/hooks/usePluginIcon'
 import { builderAskParam } from '@/routes'
 import { TextInput } from './fields'
 import { useInspector } from './InspectorContext'
+import { messages } from '@/i18n'
 
 /**
  * Top and bottom of the step inspector (spec B1): kind icon, "plugin · action" or the
@@ -59,21 +60,21 @@ export function InspectorHeader({ onClose }: { onClose: () => void }) {
           {describeKindLine(node, kindInfo)}
         </span>
         <TextInput
-          ariaLabel="Node title"
+          ariaLabel={messages().nodes.nodeTitle}
           value={node.title ?? node.displayTitle}
           disabled={readOnly}
           className="-ml-1.5 border-transparent px-1.5 text-[14px] font-semibold hover:border-line-strong"
           onCommit={(title) => {
             const trimmed = title.trim()
-            updateNode({ title: trimmed || null }, trimmed ? `renamed to “${trimmed}”` : 'removed the title')
+            updateNode({ title: trimmed || null }, trimmed ? messages().nodes.renamedToTrimmed(trimmed) : messages().nodes.removedTheTitle)
           }}
         />
         {kindInfo?.description && <span className="text-[12px] leading-snug text-muted">{kindInfo.description}</span>}
-        <span className="font-mono text-[11px] text-faint" title="Step id: references use it, so it never changes">
+        <span className="font-mono text-[11px] text-faint" title={messages().nodes.stepIdReferencesUseItSo}>
           {node.id}
         </span>
       </div>
-      <button type="button" onClick={onClose} aria-label="Close step settings" className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-[7px] border-0 bg-chip text-ink-2 hover:bg-selected">
+      <button type="button" onClick={onClose} aria-label={messages().nodes.closeStepSettings} className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-[7px] border-0 bg-chip text-ink-2 hover:bg-selected">
         <Icon name="close" size={14} />
       </button>
     </div>
@@ -82,7 +83,7 @@ export function InspectorHeader({ onClose }: { onClose: () => void }) {
 
 /** The chat request "Ask the builder about this node" prefills (never sent by itself). */
 export function describeAskAboutNode(node: GraphNode, kindLine: string): string {
-  return `About the step "${node.displayTitle}" (${node.id}, ${kindLine}): `
+  return messages().nodes.aboutTheStepDisplaytitleIdKindline(node.displayTitle, node.id, kindLine)
 }
 
 function AskBuilderThroughUrl({ text }: { text: string }) {
@@ -102,7 +103,7 @@ function AskBuilderThroughUrl({ text }: { text: string }) {
         )
       }
     >
-      Ask the builder about this node
+      {messages().nodes.askTheBuilderAboutThisNode}
     </Button>
   )
 }
@@ -123,17 +124,17 @@ export function InspectorFooter({ onDuplicate, onDelete, onAskBuilder }: Inspect
     <div className="mt-auto flex flex-col gap-2 border-t border-chip pt-3">
       {onAskBuilder ? (
         <Button variant="secondary" size="sm" onClick={() => onAskBuilder(askText)}>
-          Ask the builder about this node
+          {messages().nodes.askTheBuilderAboutThisNode}
         </Button>
       ) : (
         isInRouter && <AskBuilderThroughUrl text={askText} />
       )}
       <div className="flex gap-2">
         <Button variant="ghost" size="sm" disabled={readOnly || isEntry} onClick={onDuplicate}>
-          Duplicate
+          {messages().nodes.duplicate}
         </Button>
-        <Button variant="ghost" size="sm" className="text-danger" disabled={readOnly || isEntry} onClick={onDelete} title={isEntry ? 'Every agent starts here' : undefined}>
-          Delete
+        <Button variant="ghost" size="sm" className="text-danger" disabled={readOnly || isEntry} onClick={onDelete} title={isEntry ? messages().nodes.everyAgentStartsHere : undefined}>
+          {messages().nodes.delete}
         </Button>
       </div>
     </div>

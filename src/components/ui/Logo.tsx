@@ -1,3 +1,4 @@
+import { messages } from '@/i18n'
 /**
  * graphrt brand mark: an upward loop (automation that keeps going) with a teal agent core.
  * `variant="mono"` is the menu-bar version drawn in a single color.
@@ -33,7 +34,7 @@ export function LogoLockup({ markSize = 28, className }: { markSize?: number; cl
   return (
     <span className={`flex items-center gap-2.5 ${className ?? ''}`}>
       <LogoMark size={markSize} />
-      <span className="text-[18px] font-bold tracking-[-0.3px] text-ink">graphrt</span>
+      <span className="text-[18px] font-bold tracking-[-0.3px] text-ink">{messages().lib.graphrt}</span>
     </span>
   )
 }

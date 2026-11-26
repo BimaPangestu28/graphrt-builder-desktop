@@ -26,6 +26,7 @@ use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager};
 
 use super::app_settings::AppSettings;
+use super::ui_language::{UiLanguage, UiStrings};
 use crate::error::AppResult;
 use crate::scheduler::pause;
 use crate::state::AppState;
@@ -82,28 +83,24 @@ impl TrayStatus {
     }
 
     /// The three status lines, e.g. `["Runner online", "3 agents scheduled", "2 runs waiting for you"]`.
-    pub fn lines(&self) -> [String; 3] {
+    pub fn lines(&self, strings: UiStrings) -> [String; 3] {
         let runner_line = match self.paused_until {
-            Some(until) => format!("Paused until {}", until.with_timezone(&Local).format("%H:%M")),
-            None => "Runner online".to_owned(),
+            Some(until) => strings.paused_until(&until.with_timezone(&Local).format("%H:%M").to_string()),
+            None => strings.runner_online(),
         };
         [
             runner_line,
-            count_phrase(self.scheduled_agent_count, "agent scheduled", "agents scheduled"),
-            count_phrase(self.waiting_run_count, "run waiting for you", "runs waiting for you"),
+            strings.agents_scheduled(self.scheduled_agent_count),
+            strings.runs_waiting(self.waiting_run_count),
         ]
     }
-}
-
-fn count_phrase(count: usize, singular: &str, plural: &str) -> String {
-    format!("{count} {}", if count == 1 { singular } else { plural })
 }
 
 /// Creates the tray icon. Hidden right away when "Show in the menu bar / system tray" is off.
 ///
 /// @throws tauri::Error - when the icon or menu cannot be created
 pub fn create_tray(app_handle: &AppHandle, show_in_menu_bar: bool) -> tauri::Result<()> {
-    let menu = build_menu(app_handle, &current_status(app_handle))?;
+    let menu = build_menu(app_handle, &current_status(app_handle), current_strings(app_handle))?;
     let tray = TrayIconBuilder::with_id(TRAY_ID)
         .icon(Image::from_bytes(TRAY_ICON_PNG)?)
         .icon_as_template(cfg!(target_os = "macos"))
@@ -126,7 +123,8 @@ pub fn refresh_tray(app_handle: &AppHandle) {
         return;
     };
     let status = current_status(app_handle);
-    let updated = build_menu(app_handle, &status).and_then(|menu| tray.set_menu(Some(menu)));
+    let updated =
+        build_menu(app_handle, &status, current_strings(app_handle)).and_then(|menu| tray.set_menu(Some(menu)));
     if let Err(error) = updated {
         log::warn!("could not update the tray menu: {error}");
     }
@@ -148,21 +146,28 @@ fn current_status(app_handle: &AppHandle) -> TrayStatus {
     })
 }
 
-fn build_menu(app_handle: &AppHandle, status: &TrayStatus) -> tauri::Result<Menu<tauri::Wry>> {
+/// The menu strings in the stored language (English when the settings cannot be read).
+fn current_strings(app_handle: &AppHandle) -> UiStrings {
+    app_handle
+        .try_state::<AppState>()
+        .map_or_else(|| UiStrings::new(UiLanguage::En), |state| AppSettings::load_or_default(&state.db).ui_strings())
+}
+
+fn build_menu(app_handle: &AppHandle, status: &TrayStatus, strings: UiStrings) -> tauri::Result<Menu<tauri::Wry>> {
     let menu = Menu::new(app_handle)?;
-    for (line_index, line) in status.lines().into_iter().enumerate() {
+    for (line_index, line) in status.lines(strings).into_iter().enumerate() {
         let item = MenuItem::with_id(app_handle, format!("status-{line_index}"), line, false, None::<&str>)?;
         menu.append(&item)?;
     }
     menu.append(&PredefinedMenuItem::separator(app_handle)?)?;
-    menu.append(&MenuItem::with_id(app_handle, MENU_OPEN, "Open graphrt", true, None::<&str>)?)?;
+    menu.append(&MenuItem::with_id(app_handle, MENU_OPEN, strings.open_app(), true, None::<&str>)?)?;
     let pause_item = match status.paused_until {
-        Some(_) => MenuItem::with_id(app_handle, MENU_RESUME, "Resume agents", true, None::<&str>)?,
-        None => MenuItem::with_id(app_handle, MENU_PAUSE, "Pause all agents for 1 hour", true, None::<&str>)?,
+        Some(_) => MenuItem::with_id(app_handle, MENU_RESUME, strings.resume_agents(), true, None::<&str>)?,
+        None => MenuItem::with_id(app_handle, MENU_PAUSE, strings.pause_agents(), true, None::<&str>)?,
     };
     menu.append(&pause_item)?;
     menu.append(&PredefinedMenuItem::separator(app_handle)?)?;
-    menu.append(&MenuItem::with_id(app_handle, MENU_QUIT, "Quit graphrt", true, None::<&str>)?)?;
+    menu.append(&MenuItem::with_id(app_handle, MENU_QUIT, strings.quit_app(), true, None::<&str>)?)?;
     Ok(menu)
 }
 
@@ -272,7 +277,10 @@ mod tests {
         let status = TrayStatus::load(&db, Utc::now()).unwrap();
         assert_eq!(status.scheduled_agent_count, 2);
         assert_eq!(status.waiting_run_count, 1);
-        assert_eq!(status.lines(), ["Runner online", "2 agents scheduled", "1 run waiting for you"]);
+        assert_eq!(
+            status.lines(UiStrings::new(UiLanguage::En)),
+            ["Runner online", "2 agents scheduled", "1 run waiting for you"]
+        );
     }
 
     #[test]
@@ -281,7 +289,7 @@ mod tests {
         let now = Utc.with_ymd_and_hms(2026, 11, 19, 12, 0, 0).unwrap();
         pause::pause_scheduler(&db, now, Duration::hours(1)).unwrap();
         let status = TrayStatus::load(&db, now).unwrap();
-        assert!(status.lines()[0].starts_with("Paused until "));
-        assert_eq!(status.lines()[1], "0 agents scheduled");
+        assert!(status.lines(UiStrings::new(UiLanguage::En))[0].starts_with("Paused until "));
+        assert_eq!(status.lines(UiStrings::new(UiLanguage::En))[1], "0 agents scheduled");
     }
 }

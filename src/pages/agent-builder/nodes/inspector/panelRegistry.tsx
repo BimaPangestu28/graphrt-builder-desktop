@@ -11,6 +11,7 @@ import { HumanInputPanel, IfElsePanel, IterationPanel, LoopPanel } from './panel
 import { PluginActionPanel } from './panels/PluginActionPanel'
 import { StartPanel } from './panels/StartPanel'
 import { SchemaForm, SchemaPropertyField, schemaProperties } from './SchemaForm'
+import { messages } from '@/i18n'
 
 /**
  * Which settings panel a node gets: a dedicated one per builtin kind (spec B4–B17), the
@@ -48,12 +49,12 @@ export function GenericSettingsPanel() {
   const { node, kindInfo, setConfigValue } = useInspector()
   const hasSchema = schemaProperties(kindInfo?.configSchema).length > 0
   return (
-    <InspectorSection title="Settings">
+    <InspectorSection title={messages().nodes.settings}>
       {hasSchema || Object.keys(node.config).length === 0 ? (
-        <SchemaForm schema={kindInfo?.configSchema} config={node.config as JsonObject} onChange={(name, value) => setConfigValue([name], value, `set ${name}`)} />
+        <SchemaForm schema={kindInfo?.configSchema} config={node.config as JsonObject} onChange={(name, value) => setConfigValue([name], value, messages().nodes.setName(name))} />
       ) : (
         Object.entries(node.config).map(([name, value]) => (
-          <SchemaPropertyField key={name} name={name} property={typeof value === 'string' ? { type: 'string' } : isJsonObject(value) || Array.isArray(value) ? {} : { type: typeof value }} value={value} required={false} onChange={(next) => setConfigValue([name], next, `set ${name}`)} />
+          <SchemaPropertyField key={name} name={name} property={typeof value === 'string' ? { type: 'string' } : isJsonObject(value) || Array.isArray(value) ? {} : { type: typeof value }} value={value} required={false} onChange={(next) => setConfigValue([name], next, messages().nodes.setName(name))} />
         ))
       )}
     </InspectorSection>

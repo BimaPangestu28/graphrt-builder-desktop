@@ -27,20 +27,21 @@ import { buildRunStepViews } from '@/pages/agent-run/runSteps'
 import { buildRunHeaderMeta, buildSidebarRunStatus, isRunActive } from '@/pages/agent-run/testRunHeader'
 import { toRunStepTemplate, useAgentFlowSummary } from '@/pages/agent-run/useRunStepTemplate'
 import { toError } from '@/lib/errors'
+import { messages } from '@/i18n'
 
 function RunStatusPill({ run }: { run: Run | null }) {
-  if (run?.status === 'paused') return <StatusPill tone="amber" size="title">Waiting for you</StatusPill>
-  if (run?.status === 'failed') return <StatusPill tone="danger" size="title">Failed</StatusPill>
-  if (run?.status === 'aborted') return <StatusPill tone="neutral" size="title">Stopped</StatusPill>
-  if (run?.status === 'succeeded') return <StatusPill tone="ok" size="title">Succeeded</StatusPill>
-  return <StatusPill tone="neutral" size="title">Running</StatusPill>
+  if (run?.status === 'paused') return <StatusPill tone="amber" size="title">{messages().agentRun.waitingForYou2}</StatusPill>
+  if (run?.status === 'failed') return <StatusPill tone="danger" size="title">{messages().agentRun.failed}</StatusPill>
+  if (run?.status === 'aborted') return <StatusPill tone="neutral" size="title">{messages().agentRun.stopped}</StatusPill>
+  if (run?.status === 'succeeded') return <StatusPill tone="ok" size="title">{messages().agentRun.succeeded}</StatusPill>
+  return <StatusPill tone="neutral" size="title">{messages().agentRun.running}</StatusPill>
 }
 
 /** What the chat says before the first update arrives. */
 function buildNarrationPlaceholder(run: Run | null): string {
-  if (run?.status === 'failed') return `The test stopped: ${run.errorMessage ?? 'something went wrong'}`
-  if (run?.status === 'aborted') return 'You stopped this test'
-  return 'Starting the test…'
+  if (run?.status === 'failed') return messages().agentRun.testStopped(run.errorMessage ?? null)
+  if (run?.status === 'aborted') return messages().agentRun.youStoppedThisTest
+  return messages().agentRun.startingTest
 }
 
 /** Scrolls to the approval card and moves focus there. */
@@ -63,10 +64,10 @@ function FinishedRunActions({ agentId, runInputs }: FinishedRunActionsProps) {
     <div className="flex flex-wrap items-center gap-2">
       {startError && <span className="text-[13px] text-danger">{startError.message}</span>}
       <button type="button" disabled={isStarting} onClick={() => void startTest(runInputs ?? {})} className={joinClassNames(runHeaderActionClassNames, 'disabled:cursor-not-allowed disabled:opacity-50')}>
-        {isStarting ? 'Starting…' : 'Run again'}
+        {isStarting ? messages().agentRun.starting : messages().agentRun.runAgain}
       </button>
       <Link to={agentPath('builder', agentId)} className={runHeaderActionClassNames}>
-        Edit steps
+        {messages().agentRun.editSteps}
       </Link>
     </div>
   )
@@ -75,7 +76,7 @@ function FinishedRunActions({ agentId, runInputs }: FinishedRunActionsProps) {
 /** "Test with cafe · Bandar Lampung" from the run's inputs; a plain request without them. */
 function describeTestRequest(inputs: RunInputs | null): string {
   const inputsSummary = summarizeRunInputs(inputs)
-  return inputsSummary ? `Test with ${inputsSummary}` : 'Test this agent'
+  return inputsSummary ? messages().agentRun.testWith(inputsSummary) : messages().agentRun.testThisAgent
 }
 
 /** Answers the run's questions with `answerApprovals`, tracking errors. */
@@ -102,9 +103,9 @@ function useApprovalAnswer(runId: string) {
 function MoreQuestionsNotice({ runId, count }: { runId: string; count: number }) {
   return (
     <p className="m-0 text-[13px] text-body">
-      {count === 1 ? '1 more question waits' : `${count} more questions wait`} after this one.{' '}
+      {count === 1 ? messages().agentRun.n1MoreQuestionWaits : messages().agentRun.moreQuestionsWait(count)} {messages().agentRun.afterThisOne}{' '}
       <Link to={runReviewPath(runId)} className="font-medium">
-        Review them together
+        {messages().agentRun.reviewThemTogether}
       </Link>
     </p>
   )
@@ -165,7 +166,7 @@ function TestRunScreen({ agentId, agent, runId, flowSummary }: TestRunScreenProp
           headerAction={
             isActive ? (
               <button type="button" onClick={() => void stopTest()} className={runHeaderActionClassNames}>
-                Stop run
+                {messages().agentRun.stopRun}
               </button>
             ) : (
               <FinishedRunActions agentId={agentId} runInputs={runInputs} />
@@ -173,7 +174,7 @@ function TestRunScreen({ agentId, agent, runId, flowSummary }: TestRunScreenProp
           }
         >
           <RunTitleRow meta={buildRunHeaderMeta(run, steps, now)} status={<RunStatusPill run={run} />} />
-          {visibleError && <RunErrorNotice title="Something went wrong with this test" error={visibleError} />}
+          {visibleError && <RunErrorNotice title={messages().agentRun.somethingWentWrongWithThisTest} error={visibleError} />}
           <StepProgressList steps={steps} now={now} fixAgentId={agentId} />
           {firstApproval && (
             <div ref={approvalCardRef} id="approval-card" tabIndex={-1} className="rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-amber">
@@ -253,26 +254,26 @@ function TestSetupScreen({ agentId, agent, flowSummary, flowSummaryError, isFlow
     <AppShell agents={buildRunSidebarAgents(agentId, agent)} mainClassName={splitPaneMainClassName}>
       <RunWorkspace>
         <BuildChatPanel>
-          <BuilderReply>Fill in what the test should use on the right, then start it. Anything that sends something out asks you first</BuilderReply>
+          <BuilderReply>{messages().agentRun.fillInWhatTheTestShould}</BuilderReply>
           {isMissingPluginsError(startError) && <AgentPluginSetupMessage agentId={agentId} />}
         </BuildChatPanel>
 
         <RunPanel
           headerAction={
             <Link to={agentPath('builder', agentId)} className={runHeaderActionClassNames}>
-              Back to steps
+              {messages().agentRun.backToSteps}
             </Link>
           }
         >
-          <RunTitleRow meta="Not started" status={<StatusPill tone="neutral" size="title">Ready</StatusPill>} />
-          {flowSummaryError && <RunErrorNotice title="Could not read this agent's steps" error={flowSummaryError} />}
+          <RunTitleRow meta={messages().agentRun.notStarted} status={<StatusPill tone="neutral" size="title">{messages().agentRun.ready}</StatusPill>} />
+          {flowSummaryError && <RunErrorNotice title={messages().agentRun.couldNotReadThisAgentsSteps} error={flowSummaryError} />}
           {startError && (
-            <RunErrorNotice title={isMissingPluginsError(startError) ? 'Set up its plugins in the chat, then start again' : 'Could not start the test'} error={startError} />
+            <RunErrorNotice title={isMissingPluginsError(startError) ? messages().agentRun.setUpItsPluginsInThe : messages().agentRun.couldNotStartTheTest} error={startError} />
           )}
           {isReady ? (
             <RunInputsForm inputs={flowSummary.inputs} lastInputs={lastInputs.data} isStarting={isStarting} onStart={(inputs) => void startTest(inputs)} />
           ) : (
-            !flowSummaryError && <p className="m-0 text-body">Loading the agent's inputs…</p>
+            !flowSummaryError && <p className="m-0 text-body">{messages().agentRun.loadingTheAgentsInputs}</p>
           )}
           {stepTemplate.length > 0 && <StepProgressList steps={buildRunStepViews(stepTemplate, [])} />}
         </RunPanel>

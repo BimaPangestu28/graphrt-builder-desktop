@@ -1,4 +1,5 @@
 import type { PaletteAction } from './paletteCatalog'
+import { messages } from '@/i18n'
 
 /**
  * Palette search over built-in kinds and plugin actions: every word of the query must match
@@ -85,12 +86,12 @@ export function searchPaletteActions(actions: PaletteAction[], query: string): P
 
 /** "54 actions in 27 plugins · installed first", "3 steps", "No matches". */
 export function describeSearchSummary(results: PaletteSearchResult[]): string {
-  if (results.length === 0) return 'No matches'
+  if (results.length === 0) return messages().nodes.noMatches
   const pluginNames = new Set(results.flatMap((result) => (result.action.plugin ? [result.action.plugin.name] : [])))
   const builtinCount = results.length - results.filter((result) => result.action.plugin).length
   const parts: string[] = []
-  if (builtinCount > 0) parts.push(builtinCount === 1 ? '1 step' : `${builtinCount} steps`)
+  if (builtinCount > 0) parts.push(builtinCount === 1 ? messages().nodes.n1Step : messages().nodes.builtincountSteps(builtinCount))
   const actionCount = results.length - builtinCount
-  if (actionCount > 0) parts.push(`${actionCount === 1 ? '1 action' : `${actionCount} actions`} in ${pluginNames.size === 1 ? '1 plugin' : `${pluginNames.size} plugins`}`)
-  return `${parts.join(' and ')} · installed first`
+  if (actionCount > 0) parts.push(messages().nodes.actionsInPlugins(actionCount, pluginNames.size))
+  return messages().nodes.installedFirst(messages().common.joinAnd(parts))
 }

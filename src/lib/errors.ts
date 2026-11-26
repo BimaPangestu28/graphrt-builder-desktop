@@ -1,3 +1,4 @@
+import { messages } from '@/i18n'
 /**
  * Turning anything a promise rejects with into something a screen can show.
  *
@@ -31,7 +32,7 @@ function readMessage(rawError: unknown): string | null {
  */
 export function toError(rawError: unknown): Error {
   if (rawError instanceof Error) return rawError
-  return new Error(readMessage(rawError) ?? genericErrorMessage)
+  return new Error(readMessage(rawError) ?? messages().platform.genericError)
 }
 
 /**
@@ -45,5 +46,5 @@ export function toError(rawError: unknown): Error {
  * toErrorMessage({ code: 1 }) // 'Something went wrong'
  */
 export function toErrorMessage(rawError: unknown): string {
-  return readMessage(rawError) ?? genericErrorMessage
+  return readMessage(rawError) ?? messages().platform.genericError
 }

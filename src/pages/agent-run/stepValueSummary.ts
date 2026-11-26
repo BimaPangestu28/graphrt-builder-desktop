@@ -1,4 +1,5 @@
 import { describeItemShort, findArrays, isRecord, truncateText } from './runEventValues'
+import { messages } from '@/i18n'
 
 /**
  * Short, readable forms of step inputs and outputs for the expanded step rows and the narration:
@@ -29,9 +30,9 @@ export function describeValue(value: unknown): string {
   if (typeof value === 'string') return truncateText(value, maxTextLength)
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)
   if (Array.isArray(value)) {
-    const countLine = value.length === 1 ? '1 item' : `${value.length} items`
+    const countLine = value.length === 1 ? messages().agentRun.n1Item : messages().agentRun.itemsCount(value.length)
     const previewLines = value.slice(0, listPreviewCount).map((item) => `• ${describeListItem(item)}`)
-    const moreLine = value.length > listPreviewCount ? [`… and ${value.length - listPreviewCount} more`] : []
+    const moreLine = value.length > listPreviewCount ? [messages().agentRun.andMore(value.length - listPreviewCount)] : []
     return [countLine, ...previewLines, ...moreLine].join('\n')
   }
   return truncateText(JSON.stringify(value, null, 2) ?? String(value), maxJsonLength)
@@ -74,8 +75,8 @@ export function describeFoundCount(outputs: Record<string, unknown> | null): str
   if (!outputs) return null
   for (const [key, value] of Object.entries(outputs)) {
     const countMatch = /^(.+?)_(?:found|count)$/.exec(key)
-    if (countMatch && typeof value === 'number') return `found ${value} ${nounFor(countMatch[1], value)}`
+    if (countMatch && typeof value === 'number') return messages().agentRun.foundCount(value, nounFor(countMatch[1], value))
   }
   const firstList = findArrays(outputs, 2).find((found) => found.key !== 'errors')
-  return firstList ? `found ${firstList.items.length} ${nounFor(firstList.key, firstList.items.length)}` : null
+  return firstList ? messages().agentRun.foundCount(firstList.items.length, nounFor(firstList.key, firstList.items.length)) : null
 }

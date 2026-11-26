@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { joinClassNames } from '@/components/ui'
 import { scheduleFrequencyOptions, type ScheduleFrequency } from '@/pages/schedule-agent/scheduleOptions'
 import { weekdayChoices } from '@/lib/schedule'
+import { messages } from '@/i18n'
 
 /** Shared look for the dialog's text inputs and selects (40px, 10px radius). */
 export const scheduleControlClassNames =
@@ -62,7 +63,7 @@ export function WeekdayToggleGroup({ value, onChange }: { value: number[]; onCha
   const toggleWeekday = (weekday: number) =>
     onChange(value.includes(weekday) ? value.filter((selectedWeekday) => selectedWeekday !== weekday) : [...value, weekday])
   return (
-    <div role="group" aria-label="Days" className="flex flex-wrap gap-1.5">
+    <div role="group" aria-label={messages().schedule.days} className="flex flex-wrap gap-1.5">
       {weekdayChoices.map((choice) => {
         const isSelected = value.includes(choice.weekday)
         return (

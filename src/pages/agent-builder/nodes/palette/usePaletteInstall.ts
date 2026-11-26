@@ -4,6 +4,7 @@ import type { PluginPermissions } from '@/api/pluginTypes'
 import { describeError } from '@/lib/agentDisplay'
 import type { AddNodeAnchor } from '../contracts'
 import type { PaletteAction } from './paletteCatalog'
+import { messages } from '@/i18n'
 
 /** A catalog action waiting for the install OK, with where it will go. */
 export interface PendingInstall {
@@ -76,7 +77,7 @@ export function usePaletteInstall(onPluginInstalled?: (pluginName: string) => vo
       setPending(null)
       return pending
     } catch (installError) {
-      setErrorMessage(`Could not install ${plugin.displayName}: ${describeError(installError)}`)
+      setErrorMessage(messages().nodes.couldNotInstallDisplaynameReason(plugin.displayName, describeError(installError)))
       return null
     } finally {
       setIsInstalling(false)

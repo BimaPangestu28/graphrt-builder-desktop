@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { joinClassNames } from '@/components/ui'
 import type { ValueGroup } from './availableValues'
+import { messages } from '@/i18n'
 
 /**
  * The "Insert value" list (spec B6): search, one heading per source (loop item, earlier
@@ -28,7 +29,7 @@ export function parseTypedPath(typed: string): string[] | null {
   return segments.length >= 2 && segments.every((segment) => /^[\p{L}\p{N}_-]+$/u.test(segment)) ? segments : null
 }
 
-export function ValuePicker({ groups, onPick, onClose, selectedPath, label = 'Insert a value from an earlier step' }: ValuePickerProps) {
+export function ValuePicker({ groups, onPick, onClose, selectedPath, label = messages().nodes.insertAValueFromAnEarlier }: ValuePickerProps) {
   const [search, setSearch] = useState('')
   const [typedPath, setTypedPath] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
@@ -55,14 +56,14 @@ export function ValuePicker({ groups, onPick, onClose, selectedPath, label = 'In
       <input
         ref={searchRef}
         type="search"
-        aria-label="Search values"
-        placeholder="Search values"
+        aria-label={messages().nodes.searchValues}
+        placeholder={messages().nodes.searchValues}
         value={search}
         onChange={(event) => setSearch(event.target.value)}
         className="box-border h-[30px] rounded-[7px] border border-line-strong px-2 text-[12px] outline-none focus:border-ink"
       />
       <div role="listbox" aria-label={label} className="flex max-h-72 flex-col gap-1.5 overflow-y-auto">
-        {visibleGroups.length === 0 && <p className="m-0 px-1 text-[12px] text-muted">No values match.</p>}
+        {visibleGroups.length === 0 && <p className="m-0 px-1 text-[12px] text-muted">{messages().nodes.noValuesMatch}</p>}
         {visibleGroups.map((group) => (
           <div key={group.id} role="group" aria-label={group.title} className="flex flex-col">
             <span className="px-1 text-[11px] font-semibold tracking-[0.4px] text-muted uppercase">{group.title}</span>
@@ -100,17 +101,17 @@ export function ValuePicker({ groups, onPick, onClose, selectedPath, label = 'In
         }}
       >
         <input
-          aria-label="Type a value path"
-          placeholder="Or type a path, e.g. search_maps.results.0.name"
+          aria-label={messages().nodes.typeAValuePath}
+          placeholder={messages().nodes.orTypeAPathEG}
           value={typedPath}
           onChange={(event) => setTypedPath(event.target.value)}
           className="box-border h-7 min-w-0 flex-1 rounded-md border border-line-strong px-2 font-mono text-[11px] outline-none focus:border-ink"
         />
         <button type="submit" disabled={!typed} className="h-7 cursor-pointer rounded-md border border-line-strong bg-surface px-2 text-[12px] font-medium disabled:cursor-not-allowed disabled:opacity-50">
-          Use
+          {messages().nodes.use}
         </button>
         <button type="button" onClick={onClose} className="h-7 cursor-pointer rounded-md border-0 bg-transparent px-2 text-[12px] text-muted hover:bg-chip">
-          Close
+          {messages().nodes.close}
         </button>
       </form>
     </div>

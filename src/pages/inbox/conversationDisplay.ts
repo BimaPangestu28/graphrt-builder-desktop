@@ -1,20 +1,16 @@
 import type { Conversation, ConversationChannel } from '@/api/conversationTypes'
 import { outreachOrigin } from '@/api/conversationTypes'
+import { messages } from '@/i18n'
+import { localizedRecord } from '@/i18n/localized'
 
 /** How a conversation looks on the Inbox and chat detail: labels, tones and short times. */
 
 export type ConversationTone = 'amber' | 'brand' | 'grey'
 
 /** Hand-off reasons the builder guide suggests, as Inbox labels. Other reasons show "Waiting for you". */
-const handoffReasonLabels: Record<string, string> = {
-  order_to_confirm: 'Order to confirm',
-  asked_for_person: 'Asked for you',
-  not_sure: 'Bot not sure',
-  bot_error: 'Bot could not answer',
-  bot_paused: 'Bot paused',
-}
+const handoffReasonLabels: Readonly<Record<string, string>> = localizedRecord(() => messages().inbox.handoff)
 
-const channelLabels: Record<string, string> = { whatsapp: 'WhatsApp', telegram: 'Telegram', test: 'Test chat' }
+const channelLabels: Readonly<Record<string, string>> = localizedRecord(() => ({ whatsapp: 'WhatsApp', telegram: messages().inbox.telegram, test: messages().inbox.testChat }))
 
 export function isWaitingForYou(conversation: Pick<Conversation, 'status'>): boolean {
   return conversation.status === 'waiting_for_you'
@@ -33,13 +29,13 @@ export function isOwnerReplying(conversation: Pick<Conversation, 'status'>): boo
 export function getConversationStatusLabel(conversation: Pick<Conversation, 'status' | 'handoffReason'>): string {
   switch (conversation.status) {
     case 'waiting_for_you':
-      return (conversation.handoffReason && handoffReasonLabels[conversation.handoffReason]) || 'Waiting for you'
+      return (conversation.handoffReason && handoffReasonLabels[conversation.handoffReason]) || messages().inbox.waitingForYou
     case 'you_replying':
-      return 'You are replying'
+      return messages().inbox.youAreReplying
     case 'bot_answering':
-      return 'Bot answering'
+      return messages().inbox.filters.botAnswering
     case 'closed':
-      return 'Closed'
+      return messages().inbox.closed
   }
 }
 
@@ -62,13 +58,13 @@ export function getChannelLabel(channel: ConversationChannel): string {
 export function describeContact(conversation: Pick<Conversation, 'customerName' | 'customerHandle' | 'channel' | 'origin'>): string {
   const contact = conversation.customerName === conversation.customerHandle ? getChannelLabel(conversation.channel) : conversation.customerHandle
   const label = conversation.channel === 'test' ? getChannelLabel(conversation.channel) : contact
-  return conversation.origin === outreachOrigin ? `${label} · from outreach` : label
+  return conversation.origin === outreachOrigin ? messages().inbox.fromOutreachSuffix(label) : label
 }
 
 /** Last message for the Inbox row; bot messages start with "Bot: ". */
 export function previewLastMessage(conversation: Pick<Conversation, 'lastMessageText' | 'lastMessageAuthor'>): string {
-  if (!conversation.lastMessageText) return 'No messages yet'
-  return conversation.lastMessageAuthor === 'bot' ? `Bot: ${conversation.lastMessageText}` : conversation.lastMessageText
+  if (!conversation.lastMessageText) return messages().inbox.noMessagesYet
+  return conversation.lastMessageAuthor === 'bot' ? messages().inbox.botSaid(conversation.lastMessageText) : conversation.lastMessageText
 }
 
 /**
@@ -79,10 +75,11 @@ export function previewLastMessage(conversation: Pick<Conversation, 'lastMessage
  */
 export function formatTimeAgo(timestamp: string, now: number = Date.now()): string {
   const minutes = Math.max(0, Math.floor((now - Date.parse(timestamp)) / 60_000))
-  if (Number.isNaN(minutes) || minutes < 1) return 'now'
-  if (minutes < 60) return `${minutes}m`
-  if (minutes < 24 * 60) return `${Math.floor(minutes / 60)}h`
-  return `${Math.floor(minutes / (24 * 60))}d`
+  const t = messages().inbox
+  if (Number.isNaN(minutes) || minutes < 1) return t.now
+  if (minutes < 60) return t.minutesShort(minutes)
+  if (minutes < 24 * 60) return t.hoursShort(Math.floor(minutes / 60))
+  return t.daysShort(Math.floor(minutes / (24 * 60)))
 }
 
 /** "HH:MM" in local time. */

@@ -5,6 +5,7 @@ import { RestartControls } from '../updates/RestartControls'
 import { useAppUpdates, type AppUpdateControls, type UpdateStatus } from '../updates/updateContext'
 import { ActionRow, SettingsGroup, ToggleRow, settingsButtonClassNames } from './SettingRows'
 import type { UpdateAppSetting } from './useAppSettings'
+import { useT } from '@/i18n'
 
 interface UpdatesSectionProps {
   /** Null while the stored preferences load (the toggle waits for them). */
@@ -18,24 +19,25 @@ const busyStatusKinds: ReadonlyArray<UpdateStatus['kind']> = ['checking', 'downl
 
 /** One line saying where the update check is. */
 function UpdateStatusLine({ status }: { status: UpdateStatus }) {
+  const t = useT().settings
   switch (status.kind) {
     case 'unavailable':
     case 'idle':
       return null
     case 'checking':
-      return <StatusText>Checking for updates…</StatusText>
+      return <StatusText>{t.checkingUpdates}</StatusText>
     case 'upToDate':
-      return <StatusText>Up to date</StatusText>
+      return <StatusText>{t.upToDate}</StatusText>
     case 'available':
-      return <StatusText>Version {status.update.version} is available</StatusText>
+      return <StatusText>{t.versionAvailable(status.update.version)}</StatusText>
     case 'downloading':
       return <DownloadProgressLine update={status.update} percent={status.percent} />
     case 'ready':
-      return <StatusText>Version {status.update.version} is ready. Restart graphrt to update</StatusText>
+      return <StatusText>{t.versionReady(status.update.version)}</StatusText>
     case 'checkFailed':
       return (
         <p role="alert" className="m-0 text-[13px] text-danger">
-          Could not check for updates: {status.message}
+          {t.couldNotCheckUpdates(status.message)}
         </p>
       )
   }
@@ -50,20 +52,22 @@ function StatusText({ children }: { children: ReactNode }) {
 }
 
 function DownloadProgressLine({ update, percent }: { update: AvailableUpdate; percent: number | null }) {
-  const label = `Downloading version ${update.version}…${percent === null ? '' : ` ${percent}%`}`
+  const t = useT().settings
+  const label = t.downloadingVersion(update.version, percent === null ? '' : ` ${percent}%`)
   return (
     <div className="flex flex-col gap-1.5">
       <StatusText>{label}</StatusText>
-      <progress aria-label="Update download" max={100} value={percent ?? undefined} className="h-1.5 w-full accent-ink" />
+      <progress aria-label={t.updateDownload} max={100} value={percent ?? undefined} className="h-1.5 w-full accent-ink" />
     </div>
   )
 }
 
 function ReleaseNotes({ update }: { update: AvailableUpdate }) {
+  const t = useT().settings
   if (!update.releaseNotes) return null
   return (
     <details className="text-[13px] text-body">
-      <summary className="cursor-pointer font-medium text-ink">What's new in {update.version}</summary>
+      <summary className="cursor-pointer font-medium text-ink">{t.whatsNew(update.version)}</summary>
       <p className="m-0 mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap">{update.releaseNotes}</p>
     </details>
   )
@@ -71,6 +75,7 @@ function ReleaseNotes({ update }: { update: AvailableUpdate }) {
 
 /** Status, release notes and the action that fits it (download or restart). */
 function UpdateDetails({ updateControls }: { updateControls: AppUpdateControls }) {
+  const t = useT().settings
   const { status, downloadNow } = updateControls
   const hasUpdate = status.kind === 'available' || status.kind === 'downloading' || status.kind === 'ready'
   return (
@@ -78,13 +83,13 @@ function UpdateDetails({ updateControls }: { updateControls: AppUpdateControls }
       <UpdateStatusLine status={status} />
       {status.kind === 'available' && status.downloadError && (
         <p role="alert" className="m-0 text-[13px] text-danger">
-          Could not download the update: {status.downloadError}
+          {t.couldNotDownloadUpdate(status.downloadError)}
         </p>
       )}
       {hasUpdate && <ReleaseNotes update={status.update} />}
       {status.kind === 'available' && (
         <button type="button" onClick={() => void downloadNow()} className={`${settingsButtonClassNames} h-[34px] self-start`}>
-          Download version {status.update.version}
+          {t.downloadVersion(status.update.version)}
         </button>
       )}
       {status.kind === 'ready' && <RestartControls updateControls={updateControls} />}
@@ -94,11 +99,12 @@ function UpdateDetails({ updateControls }: { updateControls: AppUpdateControls }
 
 /** "Automatically update plugins" (also on the Plugins page); waits for the stored preferences. */
 function PluginAutoUpdateRow({ appSettings, updateAppSetting }: Pick<UpdatesSectionProps, 'appSettings' | 'updateAppSetting'>) {
+  const t = useT().settings
   if (!appSettings) return null
   return (
     <ToggleRow
-      title="Automatically update plugins"
-      description="New plugin versions install by themselves when no agent is running. Versions asking for new permissions, and community plugins, wait for your approval"
+      title={t.autoUpdatePlugins}
+      description={t.autoUpdatePluginsHint}
       isChecked={appSettings.autoUpdatePlugins}
       onToggle={(isChecked) => void updateAppSetting('autoUpdatePlugins', isChecked)}
       hasDivider={false}
@@ -112,36 +118,37 @@ function PluginAutoUpdateRow({ appSettings, updateAppSetting }: Pick<UpdatesSect
  * download updates". The browser preview cannot update, so it says where updates happen.
  */
 export function UpdatesSection({ appSettings, updateAppSetting, fallbackVersion }: UpdatesSectionProps) {
+  const t = useT().settings
   const updateControls = useAppUpdates()
   const version = updateControls?.currentVersion ?? fallbackVersion
-  const versionText = version ? `Version ${version}` : 'Loading…'
+  const versionText = version ? t.version(version) : t.loadingEllipsis
   if (!updateControls || updateControls.status.kind === 'unavailable') {
     return (
-      <SettingsGroup headingId="settings-updates-heading" title="Updates">
-        <ActionRow title="graphrt" description={versionText} action={null} />
-        <p className="m-0 py-3.5 text-[13px] text-body">Updates are available in the desktop app</p>
+      <SettingsGroup headingId="settings-updates-heading" title={t.updates}>
+        <ActionRow title={t.appName} description={versionText} action={null} />
+        <p className="m-0 py-3.5 text-[13px] text-body">{t.updatesInDesktopApp}</p>
         <PluginAutoUpdateRow appSettings={appSettings} updateAppSetting={updateAppSetting} />
       </SettingsGroup>
     )
   }
   const isBusy = busyStatusKinds.includes(updateControls.status.kind)
   return (
-    <SettingsGroup headingId="settings-updates-heading" title="Updates">
+    <SettingsGroup headingId="settings-updates-heading" title={t.updates}>
       <ActionRow
-        title="graphrt"
+        title={t.appName}
         description={versionText}
         hasDivider={false}
         action={
           <button type="button" disabled={isBusy} onClick={() => void updateControls.checkNow()} className={`${settingsButtonClassNames} h-[34px] disabled:cursor-not-allowed disabled:opacity-50`}>
-            Check for updates
+            {t.checkForUpdates}
           </button>
         }
       />
       <UpdateDetails updateControls={updateControls} />
       {appSettings && (
         <ToggleRow
-          title="Automatically download updates"
-          description="New versions download in the background and install when you restart"
+          title={t.autoDownloadUpdates}
+          description={t.autoDownloadUpdatesHint}
           isChecked={appSettings.autoDownloadUpdates}
           onToggle={(isChecked) => void updateAppSetting('autoDownloadUpdates', isChecked)}
           hasDivider={false}

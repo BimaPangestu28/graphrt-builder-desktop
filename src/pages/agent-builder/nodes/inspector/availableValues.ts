@@ -2,6 +2,7 @@ import type { AgentGraph, GraphNode, NodeKindInfo } from '@/api/agentGraphTypes'
 import { FAIL_BRANCH_HANDLE } from '@/lib/agentGraphRules'
 import { readConfigList, readConfigValue, isJsonObject } from './configPaths'
 import { describeReference, ENV_NAMESPACE, readSelector, SYSTEM_NAMESPACE } from './references'
+import { messages } from '@/i18n'
 
 /**
  * What the variable picker offers a step (spec board B6 "Variables"): Start inputs,
@@ -52,7 +53,7 @@ export function describeValueType(valueType: string | undefined): string {
     object: 'object',
     json: 'object',
     file: 'file',
-    'file-list': 'list of files',
+    'file-list': messages().nodes.listOfFiles,
     array: 'list',
     secret: 'secret',
     any: 'any',
@@ -90,14 +91,14 @@ export function listNodeOutputs(node: GraphNode, kindInfo: NodeKindInfo | undefi
     case 'variable-assigner': {
       if (readConfigValue(config, ['advanced_settings', 'group_enabled']) === true) {
         const groups = readConfigList(config, ['advanced_settings', 'groups'])
-        return groups.flatMap((group) => (isJsonObject(group) && typeof group.group_name === 'string' && group.group_name ? [option([node.id, group.group_name, 'output'], `${group.group_name} › output`, 'any')] : []))
+        return groups.flatMap((group) => (isJsonObject(group) && typeof group.group_name === 'string' && group.group_name ? [option([node.id, group.group_name, 'output'], messages().nodes.groupNameOutput(group.group_name), 'any')] : []))
       }
       return outputs.length > 0 ? outputs : [option([node.id, 'output'], 'output', 'any')]
     }
     case 'llm': {
       const properties = readConfigValue(config, ['structured_output', 'schema', 'properties'])
       const structuredFields = isJsonObject(properties)
-        ? Object.entries(properties).map(([name, schema]) => option([node.id, 'structured_output', name], `structured output › ${name}`, isJsonObject(schema) && typeof schema.type === 'string' ? schema.type : 'any'))
+        ? Object.entries(properties).map(([name, schema]) => option([node.id, 'structured_output', name], messages().nodes.structuredOutputName(name), isJsonObject(schema) && typeof schema.type === 'string' ? schema.type : 'any'))
         : []
       return [...outputs, ...structuredFields]
     }
@@ -152,13 +153,13 @@ function containerGroup(graph: AgentGraph, container: GraphNode, kindsByKind: Re
   if (container.kind === 'iteration') {
     return {
       id: `loop:${container.id}`,
-      title: `${container.displayTitle} · item`,
+      title: messages().nodes.displaytitleItem(container.displayTitle),
       options: [option([container.id, 'item'], 'item', iterationItemType(graph, container, kindsByKind)), option([container.id, 'index'], 'index', 'number')],
     }
   }
   if (container.kind === 'loop') {
     const variables = listNodeOutputs(container, kindsByKind[container.kind]).filter((valueOption) => valueOption.path[1] !== 'loop_round')
-    return variables.length > 0 ? { id: `loop:${container.id}`, title: `${container.displayTitle} · values kept between rounds`, options: variables } : null
+    return variables.length > 0 ? { id: `loop:${container.id}`, title: messages().nodes.displaytitleValuesKeptBetweenRounds(container.displayTitle), options: variables } : null
   }
   return null
 }
@@ -166,7 +167,7 @@ function containerGroup(graph: AgentGraph, container: GraphNode, kindsByKind: Re
 function nodeGroups(graph: AgentGraph, earlierIds: string[], kindsByKind: Record<string, NodeKindInfo>): ValueGroup[] {
   return graph.nodes
     .filter((node) => earlierIds.includes(node.id) && !node.hidden)
-    .map((node) => ({ id: node.id, title: node.kind === 'start' ? 'Start' : node.displayTitle, options: listNodeOutputs(node, kindsByKind[node.kind]) }))
+    .map((node) => ({ id: node.id, title: node.kind === 'start' ? messages().nodes.start : node.displayTitle, options: listNodeOutputs(node, kindsByKind[node.kind]) }))
     .filter((group) => group.options.length > 0)
 }
 
@@ -191,8 +192,8 @@ export function listAvailableValues(graph: AgentGraph, nodeId: string, kindsByKi
     for (const source of errorPathSources(graph, new Set([scopeNodeId, ...earlierIds]))) {
       errorGroups.push({
         id: `error:${source.id}`,
-        title: `On an error path · ${source.displayTitle}`,
-        note: 'Only in steps after an “On error” port',
+        title: messages().nodes.onAnErrorPathDisplaytitle(source.displayTitle),
+        note: messages().nodes.onlyInStepsAfterAnOn,
         options: [option([source.id, 'error_message'], 'error_message', 'string'), option([source.id, 'error_type'], 'error_type', 'string')],
       })
     }
@@ -208,9 +209,9 @@ export function listAvailableValues(graph: AgentGraph, nodeId: string, kindsByKi
   const otherStepGroups = stepGroups.filter((group) => nodesById.get(group.id)?.kind !== 'start')
   const secretGroup: ValueGroup[] =
     graph.env.length > 0
-      ? [{ id: 'env', title: 'Secrets', note: 'Names only. Values stay in Keychain', options: graph.env.map((envVar) => ({ path: [ENV_NAMESPACE, envVar.name], label: envVar.name, typeHint: envVar.isSecret ? 'secret · value never shown' : 'setting' })) }]
+      ? [{ id: 'env', title: messages().nodes.secrets, note: messages().nodes.namesOnlyValuesStayInKeychain, options: graph.env.map((envVar) => ({ path: [ENV_NAMESPACE, envVar.name], label: envVar.name, typeHint: envVar.isSecret ? messages().nodes.secretValueNeverShown : 'setting' })) }]
       : []
-  const runGroup: ValueGroup = { id: 'sys', title: 'This run', options: [option([SYSTEM_NAMESPACE, 'run_id'], 'run id', 'string')] }
+  const runGroup: ValueGroup = { id: 'sys', title: messages().nodes.thisRun, options: [option([SYSTEM_NAMESPACE, 'run_id'], messages().nodes.runId, 'string')] }
   return [...loopGroups, ...otherStepGroups, ...startGroups, ...errorGroups, ...secretGroup, runGroup]
 }
 
@@ -233,11 +234,11 @@ export function checkReference(path: string[], graph: AgentGraph, groups: ValueG
   const [namespace] = path
   if (namespace === SYSTEM_NAMESPACE || namespace === ENV_NAMESPACE) return { status: 'ok', message: null }
   if (!graph.nodes.some((node) => node.id === namespace)) {
-    return { status: 'unknown-step', message: `no step called ${namespace}. It may have been renamed or deleted` }
+    return { status: 'unknown-step', message: messages().nodes.noStepCalledNamespaceItMay(namespace) }
   }
   const offeredRoots = new Set(groups.flatMap((group) => group.options.map((valueOption) => valueOption.path[0])))
   if (offeredRoots.has(namespace)) return { status: 'ok', message: null }
-  return { status: 'out-of-scope', message: `${describeReference(path, graph)} is not before this step or sits inside another loop, so it resolves to empty` }
+  return { status: 'out-of-scope', message: messages().nodes.referenceIsNotBeforeThisStep(describeReference(path, graph)) }
 }
 
 /**

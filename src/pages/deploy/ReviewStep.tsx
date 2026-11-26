@@ -4,6 +4,7 @@ import { deployProviderNames, type CliInfo, type DeployMode, type DeployReview, 
 import { Badge, Button, Icon, joinClassNames } from '@/components/ui'
 import { DevelopersDetails } from './DeployDialog'
 import { deployModeLabels, describeCliNeed, plainErrorMessage, serverAreaLabels } from './deployDisplay'
+import { messages } from '@/i18n'
 
 /** What Review sends to the deploy: how and where it runs, and the Advanced image (null: graphrt's own). */
 export interface DeployChoice {
@@ -63,7 +64,7 @@ function CliDownload({ cli, onCliChanged }: { cli: CliInfo; onCliChanged: (cli: 
       <span className="min-w-0 flex-[1_1_280px] text-[13px] leading-normal text-ink-2">{describeCliNeed(cli)}</span>
       {cli.status !== 'not_available' && (
         <Button size="sm" variant="secondary" onClick={() => void install()} disabled={isInstalling}>
-          {isInstalling ? 'Downloading…' : 'Allow download'}
+          {isInstalling ? messages().deploy.downloading : messages().deploy.allowDownload}
         </Button>
       )}
       {errorMessage && (
@@ -91,30 +92,30 @@ export function ReviewStep({ agentName, review, isUpdate, onCliChanged, onBack, 
   const providerName = deployProviderNames[review.provider]
   const isFly = review.provider === 'fly'
   const blockedReason = !review.canDeploy
-    ? `Putting agents online with ${providerName} is coming soon. Your account is saved for when it's ready.`
+    ? messages().deploy.puttingAgentsOnlineWithProvidernameIs(providerName)
     : !review.providerConnected
-      ? `Connect ${providerName} first.`
+      ? messages().deploy.connectProvidernameFirst(providerName)
       : null
   const canConfirm = review.canDeploy && review.providerConnected && review.cli.status === 'installed' && acceptsBilling
 
   return (
-    <section aria-label="Review" className="flex flex-col gap-4">
+    <section aria-label={messages().deploy.review} className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
-        <h2 className="m-0 text-[20px] font-semibold tracking-[-0.2px]">Review</h2>
+        <h2 className="m-0 text-[20px] font-semibold tracking-[-0.2px]">{messages().deploy.review}</h2>
         <span className="text-body">
-          {agentName} on {providerName}
+          {agentName} {messages().deploy.on}{' '}{providerName}
         </span>
       </div>
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,340px),1fr))] gap-3">
-        <ReviewSection title="What will be created">
+        <ReviewSection title={messages().deploy.whatWillBeCreated}>
           <ul className="m-0 flex list-none flex-col gap-2.5 p-0">
-            <CreatedItem title={`An online copy of ${agentName}`} detail={`On ${providerName}, in your account`} />
-            <CreatedItem title="Its web address" detail={review.expectedAddress} />
-            <CreatedItem title="A small storage space" detail="Keeps its history and conversations waiting for you" />
+            <CreatedItem title={messages().deploy.anOnlineCopyOfAgentname(agentName)} detail={messages().deploy.onProvidernameInYourAccount(providerName)} />
+            <CreatedItem title={messages().deploy.itsWebAddress} detail={review.expectedAddress} />
+            <CreatedItem title={messages().deploy.aSmallStorageSpace} detail={messages().deploy.keepsItsHistoryAndConversationsWaiting} />
           </ul>
         </ReviewSection>
-        <ReviewSection title="How it runs">
-          <div role="radiogroup" aria-label="How it runs" className="flex flex-col gap-2">
+        <ReviewSection title={messages().deploy.howItRuns}>
+          <div role="radiogroup" aria-label={messages().deploy.howItRuns} className="flex flex-col gap-2">
             {modes.map((option) => (
               <label key={option} className={joinClassNames('flex cursor-pointer items-start gap-2.5 rounded-[10px] border px-3 py-2.5', mode === option ? 'border-ink' : 'border-line')}>
                 <input type="radio" name="deploy-mode" checked={mode === option} onChange={() => setMode(option)} className="mt-1 accent-[var(--color-ink)]" />
@@ -129,15 +130,15 @@ export function ReviewStep({ agentName, review, isUpdate, onCliChanged, onBack, 
             <label className="flex items-start gap-2 opacity-60">
               <input type="checkbox" disabled className="mt-0.5" />
               <span>
-                Use a wake-up service <Badge>Preview</Badge> — keeps conversations safe while the agent sleeps. Needs a separate always-on service; not available yet.
+                {messages().deploy.useAWakeUpService}{' '}<Badge>{messages().deploy.preview}</Badge> {messages().deploy.keepsConversationsSafeWhileTheAgent}
               </span>
             </label>
           </DevelopersDetails>
         </ReviewSection>
-        <ReviewSection title="Server location">
+        <ReviewSection title={messages().deploy.serverLocation}>
           <label className="flex flex-col gap-1.5 text-[13px] text-body">
-            Pick where most of your customers are
-            <select aria-label="Server location" value={area} onChange={(event) => setArea(event.target.value as ServerArea)} className="h-10 rounded-[9px] border border-line-strong bg-surface px-3 text-[14px] text-ink">
+            {messages().deploy.pickWhereMostOfYourCustomers}
+            <select aria-label={messages().deploy.serverLocation} value={area} onChange={(event) => setArea(event.target.value as ServerArea)} className="h-10 rounded-[9px] border border-line-strong bg-surface px-3 text-[14px] text-ink">
               {areas.map((option) => (
                 <option key={option} value={option}>
                   {serverAreaLabels[option]}
@@ -146,9 +147,9 @@ export function ReviewStep({ agentName, review, isUpdate, onCliChanged, onBack, 
             </select>
           </label>
         </ReviewSection>
-        <ReviewSection title="Keys that will be copied">
+        <ReviewSection title={messages().deploy.keysThatWillBeCopied}>
           {review.keys.length === 0 ? (
-            <span className="text-[13px] text-body">None: this agent uses no keys.</span>
+            <span className="text-[13px] text-body">{messages().deploy.noneThisAgentUsesNoKeys}</span>
           ) : (
             <ul className="m-0 flex list-none flex-col gap-2 p-0">
               {review.keys.map((key) => (
@@ -157,20 +158,20 @@ export function ReviewStep({ agentName, review, isUpdate, onCliChanged, onBack, 
                     <span className="font-medium">{key.friendlyName}</span>
                     <span className="text-[13px] text-body">{key.purpose}</span>
                   </span>
-                  <Badge tone={key.isSaved ? 'ok' : 'amber'}>{key.isSaved ? 'Copied safely' : 'Missing'}</Badge>
+                  <Badge tone={key.isSaved ? 'ok' : 'amber'}>{key.isSaved ? messages().deploy.copiedSafely : messages().deploy.missing}</Badge>
                 </li>
               ))}
             </ul>
           )}
-          <span className="text-[12px] text-muted">They go straight to {providerName}'s safe storage. Never shown or saved anywhere else.</span>
+          <span className="text-[12px] text-muted">{messages().deploy.theyGoStraightTo}{' '}{providerName}{messages().deploy.sSafeStorageNeverShownOr}</span>
         </ReviewSection>
       </div>
-      <ReviewSection title="Monthly cost">
+      <ReviewSection title={messages().deploy.monthlyCost}>
         <span className="text-[13px] leading-normal text-body">
-          Billed by {providerName} to your account — see their pricing. graphrt doesn't charge for this.{' '}
+          {messages().deploy.billedBy}{' '}{providerName} {messages().deploy.toYourAccountSeeTheirPricing}{' '}
           {isFly && (
             <button type="button" onClick={() => void openDeployLink('fly_pricing')} className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-brand hover:underline">
-              Fly.io pricing
+              {messages().deploy.flyIoPricing}
             </button>
           )}
         </span>
@@ -183,36 +184,35 @@ export function ReviewStep({ agentName, review, isUpdate, onCliChanged, onBack, 
       )}
       <label className="flex items-center gap-2.5">
         <input type="checkbox" checked={acceptsBilling} onChange={(event) => setAcceptsBilling(event.target.checked)} className="size-4 accent-[var(--color-ink)]" />
-        <span>I understand {providerName} bills me for this</span>
+        <span>{messages().deploy.iUnderstand}{' '}{providerName} {messages().deploy.billsMeForThis}</span>
       </label>
       <div className="flex flex-wrap gap-2">
         <Button onClick={() => onConfirm({ mode, area, image: image.trim() || null })} disabled={!canConfirm}>
-          {!review.canDeploy ? 'Coming soon' : isUpdate ? 'Update online version' : 'Put it online'}
+          {!review.canDeploy ? messages().deploy.comingSoon : isUpdate ? messages().deploy.updateOnlineVersion : messages().deploy.putItOnline}
         </Button>
         <Button variant="ghost" onClick={onBack}>
-          Back
+          {messages().deploy.back}
         </Button>
       </div>
       <DevelopersDetails>
         <span>
-          {isFly ? 'Fly app' : 'Deployment'} <code>{review.deploymentName}</code> · region <code>{{ asia: 'sin', europe: 'fra', us: 'iad' }[area]}</code> ·{' '}
-          {mode === 'scale_to_zero' ? 'autostop, min 0 machines' : 'min 1 machine'} · storage volume for runs · secrets{' '}
-          {review.keys.map((key) => key.envName).join(', ') || 'none'}, plus <code>GRAPHRT_API_KEY</code> on the first deploy. Runs <code>graphrt deploy --target fly --direct</code>; secrets go to
-          the tool as environment variables only.
+          {isFly ? messages().deploy.flyApp : messages().deploy.deployment} <code>{review.deploymentName}</code> {messages().deploy.region2}{' '}<code>{{ asia: 'sin', europe: 'fra', us: 'iad' }[area]}</code> ·{' '}
+          {mode === 'scale_to_zero' ? messages().deploy.autostopMin0Machines : messages().deploy.min1Machine} {messages().deploy.storageVolumeForRunsSecrets}{' '}
+          {review.keys.map((key) => key.envName).join(', ') || 'none'}{messages().deploy.plus}{' '}<code>{messages().deploy.graphrtApiKey}</code> {messages().deploy.onTheFirstDeployRuns}{' '}<code>{messages().deploy.graphrtDeployTargetFlyDirect}</code>{messages().deploy.secretsGoToTheToolAs}
         </span>
         <label className="flex flex-col gap-1.5">
-          <span className="font-medium text-ink-2">Server image (optional)</span>
+          <span className="font-medium text-ink-2">{messages().deploy.serverImageOptional}</span>
           <input
-            aria-label="Server image"
+            aria-label={messages().deploy.serverImage}
             value={image}
             onChange={(event) => setImage(event.target.value)}
-            placeholder="graphrt's own image"
+            placeholder={messages().deploy.graphrtsOwnImage}
             autoComplete="off"
             spellCheck={false}
             className="box-border h-9 w-full rounded-lg border border-line-strong bg-surface px-3 font-mono text-[12px] text-ink"
           />
           <span className="text-[12px] text-muted">
-            Leave empty to use <code>ghcr.io/bimapangestu28/graphrt</code> at the version of the graphrt tools. Another image must run <code>graphrt serve</code> (passed as <code>--image</code>).
+            {messages().deploy.leaveEmptyToUse}{' '}<code>{messages().deploy.ghcrIoBimapangestu28Graphrt}</code> {messages().deploy.atTheVersionOfTheGraphrt}{' '}<code>{messages().deploy.graphrtServe}</code> {messages().deploy.passedAs}{' '}<code>{messages().deploy.image}</code>).
           </span>
         </label>
       </DevelopersDetails>

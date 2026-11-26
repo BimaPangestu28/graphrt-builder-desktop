@@ -1,3 +1,5 @@
+import { messages } from '@/i18n'
+import { localizedArray, withLocalizedLabels } from '@/i18n/localized'
 /**
  * Screen 10 (Scheduler): the calendar's trigger and entry shapes, the rule choices, and helpers to
  * lay a week out on the calendar grid. Triggers and past runs come from the backend (`listTriggers`,
@@ -35,14 +37,13 @@ export interface PastRun {
 export const calendarFirstHour = 6
 export const calendarLastHour = 12
 
-export const ifMacAsleepOptions = ['Run once when it wakes up', 'Skip the missed run']
+export const ifMacAsleepOptions: readonly string[] = localizedArray(() => [messages().schedule.runOnceWhenWakes, messages().schedule.skipMissedRun])
 
 /** "Agents running at the same time" choices and the limit each one stores, in the design's order. */
-export const concurrencyOptions: Array<{ label: string; maxConcurrentRuns: number }> = [
-  { label: 'Up to 2', maxConcurrentRuns: 2 },
-  { label: '1', maxConcurrentRuns: 1 },
-  { label: 'Up to 4', maxConcurrentRuns: 4 },
-]
+export const concurrencyOptions: ReadonlyArray<{ readonly label: string; maxConcurrentRuns: number }> = withLocalizedLabels(
+  [{ maxConcurrentRuns: 2 }, { maxConcurrentRuns: 1 }, { maxConcurrentRuns: 4 }],
+  (option) => (option.maxConcurrentRuns === 1 ? '1' : messages().schedule.upTo(option.maxConcurrentRuns)),
+)
 
 export type CalendarEntryKind = RunOutcome | 'planned' | 'paused'
 
@@ -58,8 +59,8 @@ export interface CalendarEntry {
 }
 
 const dayInMilliseconds = 24 * 60 * 60 * 1000
-const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-const weekdayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const monthNames: readonly string[] = localizedArray(() => messages().schedule.shortMonths)
+const weekdayNames: readonly string[] = localizedArray(() => messages().schedule.shortWeekdays)
 
 function parseIsoDate(isoDate: string): Date {
   return new Date(`${isoDate}T00:00:00Z`)
@@ -101,7 +102,7 @@ export function formatWeekRange(weekDates: string[]): string {
   const firstMonth = monthNames[firstDate.getUTCMonth()]
   const lastMonth = monthNames[lastDate.getUTCMonth()]
   const firstLabel = firstMonth === lastMonth ? `${firstDate.getUTCDate()}` : `${firstDate.getUTCDate()} ${firstMonth}`
-  return `${firstLabel} to ${lastDate.getUTCDate()} ${lastMonth}`
+  return messages().schedule.weekRange(firstLabel, `${lastDate.getUTCDate()} ${lastMonth}`)
 }
 
 function formatHour(hour: number): string {
@@ -123,7 +124,7 @@ function buildEntryForDay(trigger: ScheduleTrigger, isoDate: string, todayIsoDat
   const base = { key: `${trigger.id}-${isoDate}`, date: isoDate, hour: recurrence.hour, title: trigger.shortName }
   const pastRun = runs.find((run) => run.triggerId === trigger.id && run.date === isoDate)
   if (pastRun) return { ...base, kind: pastRun.outcome, detail: pastRun.summary, runId: pastRun.runId }
-  if (!trigger.isEnabled) return { ...base, kind: 'paused', detail: 'Paused' }
+  if (!trigger.isEnabled) return { ...base, kind: 'paused', detail: messages().schedule.paused }
   if (isoDate > todayIsoDate) return { ...base, kind: 'planned', detail: formatHour(recurrence.hour) }
   return null
 }

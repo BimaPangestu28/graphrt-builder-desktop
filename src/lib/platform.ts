@@ -1,3 +1,4 @@
+import { messages } from '@/i18n'
 /**
  * Which desktop system the app runs on, and the few names that differ per system.
  *
@@ -53,28 +54,32 @@ function platformFromHint(hint: string | undefined): DesktopPlatform | undefined
 
 /** Where provider keys and secrets are saved: "macOS Keychain", "Windows Credential Manager" or "your system keyring". */
 export function getCredentialStoreName(platform: DesktopPlatform = detectDesktopPlatform()): string {
-  if (platform === 'macos') return 'macOS Keychain'
-  if (platform === 'windows') return 'Windows Credential Manager'
-  return 'your system keyring'
+  const t = messages().platform
+  if (platform === 'macos') return t.keychainMac
+  if (platform === 'windows') return t.keychainWindows
+  return t.keychainLinux
 }
 
 /** Short form for tight labels: "Keychain", "Credential Manager" or "keyring". */
 export function getCredentialStoreShortName(platform: DesktopPlatform = detectDesktopPlatform()): string {
-  if (platform === 'macos') return 'Keychain'
-  if (platform === 'windows') return 'Credential Manager'
-  return 'keyring'
+  const t = messages().platform
+  if (platform === 'macos') return t.keychainShortMac
+  if (platform === 'windows') return t.keychainShortWindows
+  return t.keychainShortLinux
 }
 
 /** Where the graphrt icon lives: "menu bar" on macOS, "system tray" elsewhere. */
 export function getTrayAreaName(platform: DesktopPlatform = detectDesktopPlatform()): string {
-  return platform === 'macos' ? 'menu bar' : 'system tray'
+  const t = messages().platform
+  return platform === 'macos' ? t.trayMac : t.trayOther
 }
 
 /** The file manager: "Finder", "File Explorer" or "your file manager". */
 export function getFileManagerName(platform: DesktopPlatform = detectDesktopPlatform()): string {
-  if (platform === 'macos') return 'Finder'
-  if (platform === 'windows') return 'File Explorer'
-  return 'your file manager'
+  const t = messages().platform
+  if (platform === 'macos') return t.fileManagerMac
+  if (platform === 'windows') return t.fileManagerWindows
+  return t.fileManagerLinux
 }
 
 /** A shortcut with the system's main modifier: "⌘+Enter" on macOS, "Ctrl+Enter" elsewhere. */

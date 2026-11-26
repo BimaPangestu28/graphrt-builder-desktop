@@ -3,6 +3,7 @@ import { formatClockTime } from '@/pages/agent-run/runResultSummary'
 import type { StatusPillTone } from '@/pages/agent-run/StatusPill'
 import { agentPath, routePaths } from '@/routes'
 import { failedRunPath } from './homeLinks'
+import { formatMonthShort, formatWeekdayShort, messages } from '@/i18n'
 
 /**
  * Where an agent stands on its Home card (09) and the one next step that moves it forward:
@@ -41,10 +42,11 @@ export function formatNextRunTime(isoTimestamp: string, now: Date = new Date()):
   const instant = new Date(isoTimestamp)
   const clockTime = formatClockTime(isoTimestamp)
   const tomorrow = new Date(now.getTime() + millisecondsPerDay)
-  if (isSameLocalDay(instant, now)) return `today ${clockTime}`
-  if (isSameLocalDay(instant, tomorrow)) return `tomorrow ${clockTime}`
-  if (instant.getTime() - now.getTime() < 7 * millisecondsPerDay) return `${instant.toLocaleString('en-GB', { weekday: 'short' })} ${clockTime}`
-  return `${instant.getDate()} ${instant.toLocaleString('en-GB', { month: 'short' })} ${clockTime}`
+  const t = messages().home
+  if (isSameLocalDay(instant, now)) return t.today(clockTime)
+  if (isSameLocalDay(instant, tomorrow)) return t.tomorrow(clockTime)
+  if (instant.getTime() - now.getTime() < 7 * millisecondsPerDay) return `${formatWeekdayShort(instant)} ${clockTime}`
+  return `${instant.getDate()} ${formatMonthShort(instant)} ${clockTime}`
 }
 
 function findNextFireAt(agentTriggers: Trigger[]): string | null {
@@ -73,14 +75,15 @@ export function deriveAgentCardStage(agent: Agent, agentTriggers: Trigger[], lat
 }
 
 function describeChip(stage: AgentCardStage, agent: Agent, agentTriggers: Trigger[], now: Date): { chipLabel: string; chipTone: StatusPillTone } {
-  if (stage === 'draft') return { chipLabel: 'Draft · not tested', chipTone: 'neutral' }
-  if (stage === 'test_failed') return { chipLabel: 'Test failed', chipTone: 'danger' }
-  if (stage === 'tested') return { chipLabel: 'Tested · not scheduled', chipTone: 'amber' }
-  if (stage === 'failing') return { chipLabel: 'Active · last run failed', chipTone: 'danger' }
-  if (stage === 'paused') return { chipLabel: 'Paused', chipTone: 'neutral' }
+  const t = messages().home.chip
+  if (stage === 'draft') return { chipLabel: t.draft, chipTone: 'neutral' }
+  if (stage === 'test_failed') return { chipLabel: t.testFailed, chipTone: 'danger' }
+  if (stage === 'tested') return { chipLabel: t.tested, chipTone: 'amber' }
+  if (stage === 'failing') return { chipLabel: t.failing, chipTone: 'danger' }
+  if (stage === 'paused') return { chipLabel: t.paused, chipTone: 'neutral' }
   const nextFireAt = findNextFireAt(agentTriggers)
-  if (nextFireAt) return { chipLabel: `Active · next run ${formatNextRunTime(nextFireAt, now)}`, chipTone: 'ok' }
-  return { chipLabel: agent.kind === 'chatbot' ? 'Active · answering chats' : 'Active', chipTone: 'ok' }
+  if (nextFireAt) return { chipLabel: t.activeNext(formatNextRunTime(nextFireAt, now)), chipTone: 'ok' }
+  return { chipLabel: agent.kind === 'chatbot' ? t.activeChats : t.active, chipTone: 'ok' }
 }
 
 function chatbotSetupPath(agentId: string): string {
@@ -89,11 +92,12 @@ function chatbotSetupPath(agentId: string): string {
 
 function choosePrimaryAction(stage: AgentCardStage, agent: Agent, latestRun: Run | undefined): AgentCardAction {
   const isChatbot = agent.kind === 'chatbot'
-  if ((stage === 'test_failed' || stage === 'failing') && latestRun) return { kind: 'link', label: 'See what went wrong', path: failedRunPath(latestRun.id) }
-  if (stage === 'draft') return isChatbot ? { kind: 'link', label: 'Try it', path: chatbotSetupPath(agent.id) } : { kind: 'link', label: 'Test it', path: agentPath('testRun', agent.id) }
-  if (stage === 'tested') return isChatbot ? { kind: 'link', label: 'Turn it on', path: chatbotSetupPath(agent.id) } : { kind: 'link', label: 'Schedule it', path: agentPath('scheduleAgent', agent.id) }
-  if (stage === 'paused') return { kind: 'link', label: 'Resume', path: isChatbot ? chatbotSetupPath(agent.id) : agentPath('scheduleAgent', agent.id) }
-  return isChatbot ? { kind: 'link', label: 'Open Inbox', path: routePaths.inbox } : { kind: 'run_now', label: 'Run now' }
+  const t = messages().home.action
+  if ((stage === 'test_failed' || stage === 'failing') && latestRun) return { kind: 'link', label: t.seeWhatWentWrong, path: failedRunPath(latestRun.id) }
+  if (stage === 'draft') return isChatbot ? { kind: 'link', label: t.tryIt, path: chatbotSetupPath(agent.id) } : { kind: 'link', label: t.testIt, path: agentPath('testRun', agent.id) }
+  if (stage === 'tested') return isChatbot ? { kind: 'link', label: t.turnOn, path: chatbotSetupPath(agent.id) } : { kind: 'link', label: t.scheduleIt, path: agentPath('scheduleAgent', agent.id) }
+  if (stage === 'paused') return { kind: 'link', label: t.resume, path: isChatbot ? chatbotSetupPath(agent.id) : agentPath('scheduleAgent', agent.id) }
+  return isChatbot ? { kind: 'link', label: t.openInbox, path: routePaths.inbox } : { kind: 'run_now', label: t.runNow }
 }
 
 /**
@@ -110,13 +114,14 @@ function choosePrimaryAction(stage: AgentCardStage, agent: Agent, latestRun: Run
  */
 export function describeAgentCardState(agent: Agent, agentTriggers: Trigger[], latestRun: Run | undefined, now: Date = new Date()): AgentCardState {
   const stage = deriveAgentCardStage(agent, agentTriggers, latestRun)
+  const t = messages().home.action
   return {
     stage,
     ...describeChip(stage, agent, agentTriggers, now),
     primaryAction: choosePrimaryAction(stage, agent, latestRun),
     secondaryLinks: [
-      { label: 'Edit steps', path: agentPath('builder', agent.id) },
-      { label: 'Runs', path: routePaths.runs },
+      { label: t.editSteps, path: agentPath('builder', agent.id) },
+      { label: t.runs, path: routePaths.runs },
     ],
   }
 }

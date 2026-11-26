@@ -7,6 +7,7 @@ import { joinClassNames } from '@/components/ui'
 import { routePaths } from '@/routes'
 import { getProblemActionPath } from './problemActions'
 import { toError } from '@/lib/errors'
+import { messages } from '@/i18n'
 
 export type ProblemActionStyle = 'primary' | 'secondary' | 'text'
 
@@ -24,14 +25,14 @@ async function runCommand(action: ProblemAction): Promise<CommandOutcome> {
   try {
     if (action.kind === 'retry_run' && action.runId) {
       await retryRun(action.runId)
-      return { kind: 'done', message: 'A new run started from the beginning', runsPath: routePaths.runs }
+      return { kind: 'done', message: messages().agentRun.aNewRunStartedFromThe, runsPath: routePaths.runs }
     }
     if (action.kind === 'install_plugin_runtime') {
       await installPluginRuntime()
-      return { kind: 'done', message: 'The plugin runtime is installed' }
+      return { kind: 'done', message: messages().agentRun.thePluginRuntimeIsInstalled }
     }
     await installBrowserRuntime()
-    return { kind: 'done', message: 'The browser is installed' }
+    return { kind: 'done', message: messages().agentRun.theBrowserIsInstalled }
   } catch (commandError) {
     return { kind: 'failed', message: toError(commandError).message }
   }
@@ -85,7 +86,7 @@ export function CommandOutcomeMessage({ outcome }: { outcome: CommandOutcome }) 
       {outcome.runsPath && (
         <>
           {' · '}
-          <Link to={outcome.runsPath}>Follow it in Runs</Link>
+          <Link to={outcome.runsPath}>{messages().agentRun.followItInRuns}</Link>
         </>
       )}
     </p>

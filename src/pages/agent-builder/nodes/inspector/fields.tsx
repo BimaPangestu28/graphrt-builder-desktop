@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Icon, joinClassNames } from '@/components/ui'
 import { fieldPathAttribute, findFieldControl, firstFocusable, isSectionKeyTarget, revealElement, sectionContentAttribute, useSectionRequest } from './sectionRequest'
+import { messages } from '@/i18n'
 
 /**
  * Form building blocks of the step inspector, styled like the spec's B-boards: small
@@ -133,7 +134,7 @@ export function Field({
       <label htmlFor={htmlFor} className={labelClassName}>
         {label}
         {required && (
-          <span className="text-danger" aria-label="required">
+          <span className="text-danger" aria-label={messages().nodes.required}>
             {' '}
             *
           </span>
@@ -293,7 +294,7 @@ export function SelectInput({ id, value, options, onChange, ariaLabel, disabled,
   const hasValue = options.some((choice) => choice.value === value)
   return (
     <select id={id} value={value} aria-label={ariaLabel} disabled={disabled} onChange={(event) => onChange(event.target.value)} className={joinClassNames(inputClassName, 'cursor-pointer', className)}>
-      {!hasValue && <option value={value}>{value || 'Choose…'}</option>}
+      {!hasValue && <option value={value}>{value || messages().nodes.choose}</option>}
       {options.map((choice) => (
         <option key={choice.value} value={choice.value}>
           {choice.label}
@@ -409,7 +410,7 @@ export function AddButton({ children, onClick, disabled }: { children: ReactNode
 export function SupportNote({ children }: { children: ReactNode }) {
   return (
     <p className="m-0 rounded-[10px] border border-amber-line-2 bg-amber-tint px-3 py-2 text-[12px] leading-normal text-amber-deep">
-      <b className="font-semibold">Needs app support:</b> {children}
+      <b className="font-semibold">{messages().nodes.needsAppSupport}</b> {children}
     </p>
   )
 }
@@ -418,7 +419,7 @@ export function SupportNote({ children }: { children: ReactNode }) {
 export function OutputsList({ outputs, footnote }: { outputs: Array<{ name: string; hint: string }>; footnote?: ReactNode }) {
   if (outputs.length === 0 && !footnote) return null
   return (
-    <InspectorSection title="Outputs" defaultOpen={false}>
+    <InspectorSection title={messages().nodes.outputs} defaultOpen={false}>
       <ul className="m-0 flex list-none flex-col gap-1 p-0">
         {outputs.map((output) => (
           <li key={output.name} className="flex items-baseline justify-between gap-2 text-[12px]">

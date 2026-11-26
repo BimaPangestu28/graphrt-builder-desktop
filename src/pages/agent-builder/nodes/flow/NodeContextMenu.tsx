@@ -1,5 +1,6 @@
 import { useEffect, useRef, type KeyboardEvent } from 'react'
 import { joinClassNames } from '@/components/ui'
+import { messages } from '@/i18n'
 
 /**
  * The right-click menus of the canvas (spec I1). On a node: Add node after, Change action
@@ -31,12 +32,12 @@ export function listNodeMenuItems(options: { isPluginNode: boolean; isMac: boole
   const command = options.isMac ? '⌘' : 'Ctrl+'
   const single = options.selectionSize <= 1
   return [
-    ...(single ? [{ action: 'add-after' as const, label: 'Add node after', shortcut: 'A', edits: true }] : []),
-    ...(single && options.isPluginNode ? [{ action: 'change-action' as const, label: 'Change action', edits: true }] : []),
-    { action: 'ask-builder', label: single ? 'Ask the builder about this' : 'Ask the builder about these', edits: false },
-    { action: 'duplicate', label: 'Duplicate', shortcut: `${command}D`, edits: true, separatorBefore: true },
-    { action: 'disconnect', label: 'Disconnect', edits: true },
-    { action: 'delete', label: 'Delete', shortcut: '⌫', isDanger: true, edits: true },
+    ...(single ? [{ action: 'add-after' as const, label: messages().nodes.addNodeAfter, shortcut: 'A', edits: true }] : []),
+    ...(single && options.isPluginNode ? [{ action: 'change-action' as const, label: messages().nodes.changeAction, edits: true }] : []),
+    { action: 'ask-builder', label: single ? messages().nodes.askTheBuilderAboutThis : messages().nodes.askTheBuilderAboutThese, edits: false },
+    { action: 'duplicate', label: messages().nodes.duplicate, shortcut: `${command}D`, edits: true, separatorBefore: true },
+    { action: 'disconnect', label: messages().nodes.disconnect, edits: true },
+    { action: 'delete', label: messages().nodes.delete, shortcut: '⌫', isDanger: true, edits: true },
   ]
 }
 
@@ -44,10 +45,10 @@ export function listNodeMenuItems(options: { isPluginNode: boolean; isMac: boole
 export function listPaneMenuItems(options: { isMac: boolean; canAddNode: boolean; canAddNote: boolean; canPaste: boolean }): CanvasMenuItem<PaneMenuAction>[] {
   const command = options.isMac ? '⌘' : 'Ctrl+'
   return [
-    ...(options.canAddNode ? [{ action: 'add-node-here' as const, label: 'Add node here', shortcut: 'A', edits: true }] : []),
-    ...(options.canAddNote ? [{ action: 'add-note-here' as const, label: 'Add note here', edits: true }] : []),
-    ...(options.canPaste ? [{ action: 'paste' as const, label: 'Paste', shortcut: `${command}V`, edits: true }] : []),
-    { action: 'fit', label: 'Fit the whole agent', shortcut: '⇧1', edits: false, separatorBefore: options.canAddNode || options.canAddNote || options.canPaste },
+    ...(options.canAddNode ? [{ action: 'add-node-here' as const, label: messages().nodes.addNodeHere, shortcut: 'A', edits: true }] : []),
+    ...(options.canAddNote ? [{ action: 'add-note-here' as const, label: messages().nodes.addNoteHere, edits: true }] : []),
+    ...(options.canPaste ? [{ action: 'paste' as const, label: messages().nodes.paste, shortcut: `${command}V`, edits: true }] : []),
+    { action: 'fit', label: messages().nodes.fitTheWholeAgent, shortcut: '⇧1', edits: false, separatorBefore: options.canAddNode || options.canAddNote || options.canPaste },
   ]
 }
 
@@ -97,7 +98,7 @@ export function NodeContextMenu<Action extends string>({ position, title, items,
     <div
       ref={menuRef}
       role="menu"
-      aria-label={`Actions for ${title}`}
+      aria-label={messages().nodes.actionsForTitle(title)}
       onKeyDown={moveFocus}
       onContextMenu={(event) => event.preventDefault()}
       className="nodrag nopan absolute z-30 box-border flex w-[236px] flex-col gap-px rounded-xl border border-line bg-surface p-1 shadow-lg"

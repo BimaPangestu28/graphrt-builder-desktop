@@ -1,13 +1,13 @@
+import { messages } from '@/i18n'
+import { withLocalizedLabels } from '@/i18n/localized'
 /** Options and defaults for screen 08, the "Run it on a schedule" dialog. */
 
 export type ScheduleFrequency = 'manual' | 'daily' | 'weekdays' | 'custom'
 
-export const scheduleFrequencyOptions: Array<{ value: ScheduleFrequency; label: string }> = [
-  { value: 'manual', label: 'By hand' },
-  { value: 'daily', label: 'Every day' },
-  { value: 'weekdays', label: 'Weekdays' },
-  { value: 'custom', label: 'Custom' },
-]
+export const scheduleFrequencyOptions: ReadonlyArray<{ value: ScheduleFrequency; readonly label: string }> = withLocalizedLabels(
+  [{ value: 'manual' as const }, { value: 'daily' as const }, { value: 'weekdays' as const }, { value: 'custom' as const }],
+  (option) => messages().schedule.frequencies[option.value],
+)
 
 export const scheduleTimeZoneOptions = [
   { value: 'Asia/Jakarta', label: 'Asia/Jakarta (WIB)' },
@@ -18,11 +18,10 @@ export const scheduleTimeZoneOptions = [
 
 export type ApprovalMode = 'once-per-run' | 'every-message' | 'never'
 
-export const approvalModeOptions: Array<{ value: ApprovalMode; label: string }> = [
-  { value: 'once-per-run', label: 'Ask me once per run, showing every message' },
-  { value: 'every-message', label: 'Ask me for every message' },
-  { value: 'never', label: 'Do not ask' },
-]
+export const approvalModeOptions: ReadonlyArray<{ value: ApprovalMode; readonly label: string }> = withLocalizedLabels(
+  [{ value: 'once-per-run' as const }, { value: 'every-message' as const }, { value: 'never' as const }],
+  (option) => messages().schedule.approvalModes[option.value],
+)
 
 export interface AgentScheduleSettings {
   frequency: ScheduleFrequency

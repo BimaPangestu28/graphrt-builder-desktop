@@ -4,6 +4,7 @@ import { splitPaneColumnClassName, splitPaneScrollClassName } from '@/components
 import { joinClassNames } from '@/components/ui'
 import { useFollowNewContent } from '@/hooks/useFollowNewContent'
 import { agentPath, routePaths } from '@/routes'
+import { messages } from '@/i18n'
 
 /**
  * Two-column workspace used while testing an agent (screens 06 and 07):
@@ -18,9 +19,9 @@ export function RunWorkspace({ children }: { children: ReactNode }) {
 export function BuildChatPanel({ children }: { children: ReactNode }) {
   const chatBodyRef = useFollowNewContent()
   return (
-    <section aria-label="Chat" className={`box-border flex min-w-0 flex-[1_1_380px] flex-col border-r border-line bg-surface ${splitPaneColumnClassName}`}>
+    <section aria-label={messages().agentRun.chat} className={`box-border flex min-w-0 flex-[1_1_380px] flex-col border-r border-line bg-surface ${splitPaneColumnClassName}`}>
       <header className="box-border flex h-16 items-center border-b border-line px-6">
-        <span className="font-semibold">Build with chat</span>
+        <span className="font-semibold">{messages().agentRun.buildWithChat}</span>
       </header>
       <div ref={chatBodyRef} className={`flex flex-col gap-5 p-6 ${splitPaneScrollClassName}`}>
         {children}
@@ -44,9 +45,9 @@ type RunViewTab = 'steps' | 'runs' | 'source'
 /** Tab targets for the agent in the route (`/agents/:agentId/...`); Home when there is none. */
 function buildRunViewTabs(agentId: string | undefined): Array<{ key: RunViewTab; label: string; path: string }> {
   return [
-    { key: 'steps', label: 'Steps', path: agentId ? agentPath('builder', agentId) : routePaths.home },
-    { key: 'runs', label: 'Runs', path: routePaths.runs },
-    { key: 'source', label: 'Source', path: agentId ? agentPath('versionHistory', agentId) : routePaths.home },
+    { key: 'steps', label: messages().agentRun.steps, path: agentId ? agentPath('builder', agentId) : routePaths.home },
+    { key: 'runs', label: messages().agentRun.runs, path: routePaths.runs },
+    { key: 'source', label: messages().agentRun.source, path: agentId ? agentPath('versionHistory', agentId) : routePaths.home },
   ]
 }
 
@@ -58,7 +59,7 @@ function RunViewTabs() {
   const navigate = useNavigate()
   const runViewTabs = buildRunViewTabs(useParams().agentId)
   return (
-    <div role="group" aria-label="Agent view" className="flex gap-1 rounded-[10px] bg-selected p-1">
+    <div role="group" aria-label={messages().agentRun.agentView} className="flex gap-1 rounded-[10px] bg-selected p-1">
       {runViewTabs.map((tab) => {
         const isCurrent = tab.key === 'runs'
         return (
@@ -83,7 +84,7 @@ function RunViewTabs() {
 /** Right column: view tabs and a page-specific action in the header, run details below. */
 export function RunPanel({ headerAction, children }: { headerAction: ReactNode; children: ReactNode }) {
   return (
-    <section aria-label="Run" className={`box-border flex min-w-0 flex-[1_1_440px] flex-col bg-subtle ${splitPaneColumnClassName}`}>
+    <section aria-label={messages().agentRun.run} className={`box-border flex min-w-0 flex-[1_1_440px] flex-col bg-subtle ${splitPaneColumnClassName}`}>
       <header className="box-border flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-line px-6 py-3">
         <RunViewTabs />
         {headerAction}
@@ -102,7 +103,7 @@ export function RunTitleRow({ meta, status }: { meta: string; status: ReactNode 
   return (
     <div className="flex items-center justify-between gap-3">
       <div className="flex flex-col gap-1">
-        <h1 className="m-0 text-[22px] font-semibold">Test run</h1>
+        <h1 className="m-0 text-[22px] font-semibold">{messages().agentRun.testRun}</h1>
         <span className="text-body">{meta}</span>
       </div>
       {status}

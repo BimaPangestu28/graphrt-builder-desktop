@@ -3,6 +3,7 @@ import { Button } from '@/components/ui'
 import { PluginRequirementCard } from './PluginRequirementCard'
 import { needsPluginApproval, summarizePluginRequirements } from './pluginRequirementDisplay'
 import { usePluginSetup, type PluginSetupState } from './usePluginSetup'
+import { messages } from '@/i18n'
 
 /** Element id of the setup message, so other parts of the screen can point at it. */
 export const pluginSetupMessageId = 'plugin-setup'
@@ -34,14 +35,14 @@ export const PluginRequirementsMessage = forwardRef<HTMLDivElement, PluginRequir
       tabIndex={-1}
       className="flex max-w-[92%] flex-col gap-3 rounded-[14px] outline-none focus-visible:ring-2 focus-visible:ring-brand"
     >
-      <p className="m-0 leading-[1.55]">Before it can run, these plugins need your OK. Everything happens here, nothing runs until you approve it.</p>
+      <p className="m-0 leading-[1.55]">{messages().builder.beforeItCanRunThesePlugins}</p>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span id={summaryId} className="font-semibold">
           {summarizePluginRequirements(requirements)}
         </span>
         {pendingApprovalCount > 0 && (
           <Button size="sm" variant="secondary" disabled={setup.isApprovingAll || setup.approvingNames.length > 0} onClick={() => void setup.approveAllPlugins()}>
-            {setup.isApprovingAll ? 'Setting up…' : 'Install all & trust'}
+            {setup.isApprovingAll ? messages().builder.settingUp : messages().builder.installAllTrust}
           </Button>
         )}
       </div>

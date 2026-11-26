@@ -9,6 +9,7 @@ import type {
   KnowledgeSource,
   KnowledgeSourceKind,
 } from './knowledgeTypes'
+import { messages } from '@/i18n'
 
 /**
  * Knowledge bases (screens 17 and 18). Indexing runs in the background: adding a
@@ -105,7 +106,7 @@ export async function pickKnowledgeFiles(title: string): Promise<string[]> {
   const picked = await open({
     title,
     multiple: true,
-    filters: [{ name: 'Documents', extensions: [...SUPPORTED_KNOWLEDGE_EXTENSIONS] }],
+    filters: [{ name: messages().lib.documentsFilter, extensions: [...SUPPORTED_KNOWLEDGE_EXTENSIONS] }],
   })
   if (!picked) return []
   return Array.isArray(picked) ? picked : [picked]

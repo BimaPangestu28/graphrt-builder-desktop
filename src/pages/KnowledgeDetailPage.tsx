@@ -23,16 +23,18 @@ import { formatClockTime, formatMegabytes, pluralize } from './knowledge/knowled
 import { knowledgeDropAccept, knowledgeDropHint } from './knowledge/knowledgeDrop'
 import { useSourcePicker } from './knowledge/useSourcePicker'
 import { toError } from '@/lib/errors'
+import { messages, useT } from '@/i18n'
 
 function agentLink(usage: KnowledgeUsage): string {
   return agentPath('builder', usage.agentId)
 }
 
 function UsedBySection({ usages }: { usages: KnowledgeUsage[] }) {
+  const t = useT().knowledge
   return (
     <section aria-labelledby="used-h" className="flex flex-col gap-2.5">
-      <SectionHeading id="used-h">Used by</SectionHeading>
-      {usages.length === 0 && <p className="m-0 text-[13px] text-muted">No agent uses this yet. Mention it when you build or change an agent</p>}
+      <SectionHeading id="used-h">{t.usedBy}</SectionHeading>
+      {usages.length === 0 && <p className="m-0 text-[13px] text-muted">{t.noAgentUsesThis}</p>}
       {usages.map((usage) => (
         <Link
           key={usage.agentId}
@@ -40,7 +42,7 @@ function UsedBySection({ usages }: { usages: KnowledgeUsage[] }) {
           className="flex justify-between rounded-[10px] border border-line bg-surface px-3 py-2.5 no-underline !text-ink hover:border-line-heavy"
         >
           <span className="font-medium">{usage.agentName}</span>
-          <span className="text-[12px] text-muted">Open</span>
+          <span className="text-[12px] text-muted">{t.open}</span>
         </Link>
       ))}
     </section>
@@ -101,7 +103,7 @@ function useKnowledgeBaseActions(knowledgeBaseId: string, live: ReturnType<typeo
       }),
     deleteBase: (name: string) =>
       runAction(async () => {
-        if (!window.confirm(`Delete "${name}"? Its passages are removed from this computer; your files stay where they are.`)) return
+        if (!window.confirm(messages().knowledge.confirmDelete(name))) return
         await deleteKnowledgeBase(knowledgeBaseId)
         navigate(routePaths.knowledge)
       }),
@@ -115,6 +117,7 @@ function useKnowledgeBaseActions(knowledgeBaseId: string, live: ReturnType<typeo
  * the agents whose workflow uses this knowledge base, and retrieval settings.
  */
 export function KnowledgeDetailPage() {
+  const t = useT().knowledge
   const { knowledgeBaseId = sampleKnowledgeBaseId } = useParams()
   const live = useKnowledgeBaseDetail(knowledgeBaseId)
   const { data: detail, error: loadError, isLoading, readingPercents } = live
@@ -123,7 +126,7 @@ export function KnowledgeDetailPage() {
   const { pickFiles, pickFolder, pickerInputs } = useSourcePicker(
     (picked) => void actions.addSources(picked.kind, picked.locations),
     (pickError) => actions.setActionError(toError(pickError).message),
-    { files: 'Choose files to add as sources', folder: 'Choose a folder to add as a source' },
+    { files: t.pickFilesAdd, folder: t.pickFolderAdd },
   )
   const knowledgeBase = detail?.knowledgeBase
   const currentThresholdText = thresholdText ?? String(knowledgeBase?.settings.minScore ?? 0)
@@ -133,17 +136,17 @@ export function KnowledgeDetailPage() {
       <header className="box-border flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-line px-8 py-3">
         <div className="flex items-center gap-2 text-muted">
           <Link to={routePaths.knowledge} className="no-underline !text-muted hover:!text-ink">
-            Knowledge
+            {t.title}
           </Link>
           <span aria-hidden="true">/</span>
-          <h1 className="m-0 text-[14px] font-semibold text-ink">{knowledgeBase?.name ?? (isLoading ? 'Loading…' : 'Knowledge base')}</h1>
+          <h1 className="m-0 text-[14px] font-semibold text-ink">{knowledgeBase?.name ?? (isLoading ? t.loadingEllipsis : t.knowledgeBase)}</h1>
         </div>
         <div className="flex gap-2">
           <button type="button" disabled={!knowledgeBase} onClick={() => void actions.syncNow()} className={compactButtonClassNames('secondary')}>
-            {knowledgeBase?.status === 'syncing' ? 'Syncing…' : 'Sync now'}
+            {knowledgeBase?.status === 'syncing' ? t.syncing : t.syncNow}
           </button>
           <button type="button" disabled={!knowledgeBase} onClick={pickFiles} className={compactButtonClassNames('primary')}>
-            Add source
+            {t.addSource}
           </button>
           {pickerInputs}
         </div>
@@ -151,7 +154,7 @@ export function KnowledgeDetailPage() {
 
       {loadError && (
         <p role="alert" className="m-0 px-8 py-7 text-[13px] text-danger">
-          Could not load this knowledge base: {loadError.message}
+          {t.couldNotLoadBase(loadError.message)}
         </p>
       )}
       {detail && knowledgeBase && (
@@ -163,24 +166,24 @@ export function KnowledgeDetailPage() {
               </p>
             )}
             <section aria-labelledby="src-h" className="flex flex-col gap-3">
-              <SectionHeading id="src-h">Sources</SectionHeading>
+              <SectionHeading id="src-h">{t.sources}</SectionHeading>
               <KnowledgeSourcesTable sources={detail.sources} readingPercents={readingPercents} onRemove={(source) => void actions.removeSource(source)} />
               <FileDropZone
                 compact
-                itemDescription="files or a folder"
+                itemDescription={t.filesOrFolder}
                 accept={knowledgeDropAccept}
                 multiple
                 onDrop={(droppedItems) => droppedItems.forEach((item) => void actions.addSources(item.kind, [item.path]))}
-                chooseLabel="Choose files…"
+                chooseLabel={t.chooseFiles}
                 onChoose={pickFiles}
                 secondaryActions={
                   <Button variant="secondary" size="sm" onClick={pickFolder}>
-                    Add a folder
+                    {t.addFolder}
                   </Button>
                 }
-                hint={knowledgeDropHint}
+                hint={knowledgeDropHint()}
               />
-              <AddLinkForm label="Website link to add" onAddLink={(url) => actions.addSources('url', [url])} />
+              <AddLinkForm label={t.websiteLinkToAdd} onAddLink={(url) => actions.addSources('url', [url])} />
             </section>
             <TestQuestionSection knowledgeBaseId={knowledgeBase.id} matchThreshold={parseMatchThreshold(currentThresholdText)} />
           </div>
@@ -196,7 +199,7 @@ export function KnowledgeDetailPage() {
               onDelete={() => void actions.deleteBase(knowledgeBase.name)}
             />
             <p className="m-0 text-[13px] leading-normal text-body">
-              {pluralize(knowledgeBase.passageCount, 'passage')} · {formatMegabytes(knowledgeBase.storageBytes)} on disk · last synced {formatClockTime(knowledgeBase.lastSyncedAt)}
+              {t.footer(pluralize(knowledgeBase.passageCount, 'passage'), formatMegabytes(knowledgeBase.storageBytes), formatClockTime(knowledgeBase.lastSyncedAt))}
             </p>
           </aside>
         </div>

@@ -1,5 +1,6 @@
 import type { AgentGraph, GraphEdge, GraphNode } from '@/api/agentGraphTypes'
 import { isEdgeUnused } from '@/lib/agentGraphRules'
+import { messages } from '@/i18n'
 
 /**
  * Three-way merge of the Nodes view's local edits onto a version the builder saved meanwhile
@@ -152,7 +153,7 @@ export function describeQueuedEdits(base: AgentGraph, mine: AgentGraph): string[
   }
   for (const node of base.nodes) if (!node.hidden && !mineNodes.has(node.id)) descriptions.push(`${node.displayTitle} (removed)`)
   const baseEdgeKeys = base.edges.map(edgeKey).sort().join('|')
-  if (baseEdgeKeys !== mine.edges.map(edgeKey).sort().join('|')) descriptions.push('the arrows')
+  if (baseEdgeKeys !== mine.edges.map(edgeKey).sort().join('|')) descriptions.push(messages().nodes.theArrows)
   return descriptions
 }
 
@@ -161,9 +162,9 @@ function describeChangedFields(before: GraphNode, after: GraphNode): string {
   if (before.title !== after.title) fields.push('title')
   if (before.kind !== after.kind) fields.push('action')
   if (JSON.stringify(before.config) !== JSON.stringify(after.config)) fields.push('settings')
-  if (JSON.stringify(before.onError) !== JSON.stringify(after.onError)) fields.push('error handling')
+  if (JSON.stringify(before.onError) !== JSON.stringify(after.onError)) fields.push(messages().nodes.errorHandling)
   if (JSON.stringify(before.retry) !== JSON.stringify(after.retry)) fields.push('retries')
-  if (before.timeoutMs !== after.timeoutMs) fields.push('time limit')
+  if (before.timeoutMs !== after.timeoutMs) fields.push(messages().nodes.timeLimit2)
   if (before.parent !== after.parent) fields.push('place')
   return fields.join(' and ') || 'settings'
 }

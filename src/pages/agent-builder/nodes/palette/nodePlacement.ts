@@ -3,6 +3,7 @@ import type { AddNodeAnchor, NodePlacement } from '../contracts'
 import { addGraphNode, createGraphNode, insertGraphNodeAfter, insertGraphNodeAfterNode, insertGraphNodeOnEdge, uniqueNodeId } from '../graphEdits'
 import type { AgentGraphActions } from '../useAgentGraph'
 import type { PaletteAction } from './paletteCatalog'
+import { messages } from '@/i18n'
 
 /**
  * Where a palette node goes: the graph edit for its anchor (after a node, on an arrow, at a
@@ -59,12 +60,12 @@ function titleOf(graph: AgentGraph, nodeId: string): string {
 
 /** "after Ask a model", "between Ask a model and Send", "on the canvas". */
 export function describeAnchor(graph: AgentGraph, anchor: AddNodeAnchor | null): string {
-  if (!anchor) return 'on the canvas'
-  if (anchor.type === 'after-node') return `after ${titleOf(graph, anchor.nodeId)}`
-  if (anchor.type === 'after-exit') return `after ${titleOf(graph, anchor.source)}`
-  if (anchor.type === 'at-position') return anchor.parentId ? `inside ${titleOf(graph, anchor.parentId)}` : 'where you dropped it'
+  if (!anchor) return messages().nodes.onTheCanvas
+  if (anchor.type === 'after-node') return messages().nodes.afterValue(titleOf(graph, anchor.nodeId))
+  if (anchor.type === 'after-exit') return messages().nodes.afterValue(titleOf(graph, anchor.source))
+  if (anchor.type === 'at-position') return anchor.parentId ? messages().nodes.insideValue(titleOf(graph, anchor.parentId)) : messages().nodes.whereYouDroppedIt
   const edge = graph.edges.find((candidate) => candidate.id === anchor.edgeId)
-  return edge ? `between ${titleOf(graph, edge.source)} and ${titleOf(graph, edge.target)}` : 'on the canvas'
+  return edge ? messages().nodes.betweenValueAndValue2(titleOf(graph, edge.source), titleOf(graph, edge.target)) : messages().nodes.onTheCanvas
 }
 
 /** Drops an anchor that points at a node or arrow that no longer exists. */
@@ -89,7 +90,7 @@ export function buildNodePlacement(graph: AgentGraph, action: Pick<PaletteAction
   const checkedAnchor = validAnchor(graph, anchor)
   const node = createPaletteNode(graph, action)
   const where = checkedAnchor ? ` ${describeAnchor(graph, checkedAnchor)}` : ''
-  return { node, anchor: checkedAnchor, layout: layoutForAnchor(graph, node.id, checkedAnchor, positions), description: `added ${action.displayName}${where}` }
+  return { node, anchor: checkedAnchor, layout: layoutForAnchor(graph, node.id, checkedAnchor, positions), description: messages().nodes.addedDisplaynameWhere(action.displayName, where) }
 }
 
 /**

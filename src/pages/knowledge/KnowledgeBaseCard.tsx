@@ -3,11 +3,13 @@ import { joinClassNames } from '@/components/ui'
 import type { KnowledgeBase } from '@/api/knowledgeTypes'
 import { knowledgeDetailPath } from '@/routes'
 import { knowledgeBaseFacts, syncPercent } from './knowledgeDisplay'
+import { useT } from '@/i18n'
 
 function KnowledgeBaseStatusPill({ knowledgeBase }: { knowledgeBase: KnowledgeBase }) {
+  const t = useT().knowledge
   const { status } = knowledgeBase
   const label =
-    status === 'up_to_date' ? 'Up to date' : status === 'syncing' ? `Syncing ${syncPercent(knowledgeBase)}%` : status === 'empty' ? 'Empty' : 'Needs attention'
+    status === 'up_to_date' ? t.statusUpToDate : status === 'syncing' ? t.statusSyncing(syncPercent(knowledgeBase)) : status === 'empty' ? t.statusEmpty : t.statusNeedsAttention
   const toneClassNames =
     status === 'up_to_date' ? 'bg-ok-soft text-ok-strong' : status === 'needs_attention' ? 'bg-amber-soft text-amber-strong' : status === 'empty' ? 'bg-canvas text-ink-2' : 'bg-brand-soft text-brand-strong'
   return <span className={joinClassNames('shrink-0 rounded-full px-2 py-[3px] text-[12px] font-medium whitespace-nowrap', toneClassNames)}>{label}</span>
@@ -24,6 +26,7 @@ interface KnowledgeBaseCardProps {
  * The whole card links to the knowledge detail (18).
  */
 export function KnowledgeBaseCard({ knowledgeBase, isRecentlyOpened = false }: KnowledgeBaseCardProps) {
+  const t = useT().knowledge
   const agentNames = knowledgeBase.usedBy.map((usage) => usage.agentName)
   return (
     <Link
@@ -44,7 +47,7 @@ export function KnowledgeBaseCard({ knowledgeBase, isRecentlyOpened = false }: K
           </span>
         ))}
       </div>
-      <span className="text-[13px] text-body">{agentNames.length > 0 ? `Used by ${agentNames.join(', ')}` : 'Not used by any agent yet'}</span>
+      <span className="text-[13px] text-body">{agentNames.length > 0 ? t.usedByList(agentNames.join(', ')) : t.notUsedYet}</span>
     </Link>
   )
 }

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Button, Icon, joinClassNames } from '@/components/ui'
 import { useOnboardingTour } from '@/pages/onboarding/onboardingTourContext'
 import { gettingStartedDismissedKey, isGettingStartedComplete, type GettingStartedStep } from './gettingStarted'
+import { messages, useT } from '@/i18n'
 
 function readDismissed(): boolean {
   try {
@@ -62,7 +63,7 @@ function StepTile({ step, stepNumber, isNext }: StepTileProps) {
         {step.isDone ? (
           <span title={step.label} className="line-clamp-2 text-[13px] text-muted">
             {step.label}
-            <span className="sr-only"> (done)</span>
+            <span className="sr-only">{messages().home.stepDoneSuffix}</span>
           </span>
         ) : (
           <Link
@@ -76,7 +77,7 @@ function StepTile({ step, stepNumber, isNext }: StepTileProps) {
             {step.label}
           </Link>
         )}
-        {isNext && <span className="text-[12px] font-medium text-amber-strong">Next</span>}
+        {isNext && <span className="text-[12px] font-medium text-amber-strong">{messages().home.next}</span>}
       </span>
     </li>
   )
@@ -84,12 +85,13 @@ function StepTile({ step, stepNumber, isNext }: StepTileProps) {
 
 /** "Take the tour" beside "Hide"; hidden outside the app's tour provider. */
 function TakeTheTourButton() {
+  const t = useT().home
   const onboardingTour = useOnboardingTour()
   if (!onboardingTour) return null
   return (
     <Button variant="ghost" size="sm" onClick={onboardingTour.openTour} className="!text-brand hover:!text-brand-strong">
       <Icon name="info" size={14} />
-      Take the tour
+      {t.takeTour}
     </Button>
   )
 }
@@ -114,6 +116,7 @@ const stepGridClassName = 'm-0 grid list-none grid-cols-1 gap-2 p-0 @min-[600px]
  * @param steps - From `deriveGettingStartedSteps`, or null while loading (GettingStartedStep[] | null)
  */
 export function GettingStartedCard({ steps }: { steps: GettingStartedStep[] | null }) {
+  const t = useT().home
   const [isDismissed, setIsDismissed] = useState(readDismissed)
   if (!steps || isDismissed || isGettingStartedComplete(steps)) return null
   const doneCount = steps.filter((step) => step.isDone).length
@@ -128,17 +131,17 @@ export function GettingStartedCard({ steps }: { steps: GettingStartedStep[] | nu
     <section aria-labelledby="home-getting-started" className="@container flex min-w-0 flex-col gap-3 rounded-[14px] border border-line bg-surface px-5 py-4">
       <div className="flex min-h-8 flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <h2 id="home-getting-started" className="m-0 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[16px] font-semibold">
-          Getting started
+          {t.gettingStarted}
           <ProgressBar doneCount={doneCount} totalCount={steps.length} />
           <span className="text-[13px] font-medium text-muted">
-            {doneCount} of {steps.length} done
+            {t.doneOf(doneCount, steps.length)}
           </span>
         </h2>
         <div className="flex items-center gap-1">
           <TakeTheTourButton />
-          <Button variant="ghost" size="sm" onClick={handleDismiss} aria-label="Hide getting started">
+          <Button variant="ghost" size="sm" onClick={handleDismiss} aria-label={t.hideGettingStarted}>
             <Icon name="close" size={14} />
-            Hide
+            {t.hide}
           </Button>
         </div>
       </div>

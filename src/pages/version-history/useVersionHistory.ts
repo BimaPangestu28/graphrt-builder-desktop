@@ -7,6 +7,7 @@ import { useAgentVersions } from '@/hooks/useAgentVersions'
 import { useAsyncData, type AsyncDataState } from '@/hooks/useAsyncData'
 import { describeError } from '@/lib/agentDisplay'
 import { formatSavedAt } from './formatSavedAt'
+import { messages } from '@/i18n'
 
 /** A saved version as screen 24 lists it. */
 export interface VersionEntry {
@@ -70,7 +71,7 @@ export function useVersionHistory(agentId: string) {
       setSelectedVersionNumber(restoredAgent.currentVersion)
       return restoredAgent.currentVersion
     } catch (restoreError) {
-      setRestoreErrorMessage(`Could not restore v${versionNumber}: ${describeError(restoreError)}`)
+      setRestoreErrorMessage(messages().misc.couldNotRestoreVVersionnumberReason(versionNumber, describeError(restoreError)))
       return null
     } finally {
       setIsRestoring(false)
@@ -83,10 +84,10 @@ export function useVersionHistory(agentId: string) {
     const newVersionNumber = await restoreVersion(selectedVersion.number)
     if (newVersionNumber === null) return
     if (newVersionNumber === previousVersionNumber) {
-      setChangeNotice({ message: `v${selectedVersion.number} already matches the current version`, previousVersionNumber: null })
+      setChangeNotice({ message: messages().misc.vNumberAlreadyMatchesTheCurrent(selectedVersion.number), previousVersionNumber: null })
       return
     }
-    setChangeNotice({ message: `Restored v${selectedVersion.number} as v${newVersionNumber}`, previousVersionNumber })
+    setChangeNotice({ message: messages().misc.restoredVNumberAsVNewversionnumber(selectedVersion.number, newVersionNumber), previousVersionNumber })
   }
 
   async function undoLastChange() {

@@ -5,6 +5,7 @@ import { useProviderStatuses } from '@/hooks/useProviderStatuses'
 import { describeError } from '@/lib/agentDisplay'
 import { buildModelOptionGroups, describeModelChoice } from '@/lib/modelChoices'
 import { ActionRow, SelectRow } from './SettingRows'
+import { useT } from '@/i18n'
 
 /**
  * "Default AI model for new agents", stored with `setDefaultModel` (the same default the
@@ -16,10 +17,11 @@ export function DefaultModelRow() {
   const availableModelsState = useAvailableModels()
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null)
   const providerSetup = providerSetupState.data
-  const title = 'Default AI model for new agents'
+  const t = useT().settings
+  const title = t.defaultModel
 
   if (!providerSetup) {
-    const status = providerSetupState.error ? `Could not load the AI models: ${describeError(providerSetupState.error)}` : 'Loading…'
+    const status = providerSetupState.error ? t.couldNotLoadModels(describeError(providerSetupState.error)) : t.loadingEllipsis
     return <ActionRow title={title} description={status} action={null} />
   }
 
@@ -36,7 +38,7 @@ export function DefaultModelRow() {
       await setDefaultModel(choice)
       await providerSetupState.reload()
     } catch (saveError) {
-      setSaveErrorMessage(`Could not change the default model: ${describeError(saveError)}`)
+      setSaveErrorMessage(t.couldNotChangeDefaultModel(describeError(saveError)))
     }
   }
 
@@ -44,7 +46,7 @@ export function DefaultModelRow() {
     <>
       <SelectRow
         title={title}
-        description="Each agent can still pick its own"
+        description={t.defaultModelHint}
         value={describeModelChoice(providerSetup.defaultModel)}
         options={labels}
         onSelect={(label) => void selectModel(label)}

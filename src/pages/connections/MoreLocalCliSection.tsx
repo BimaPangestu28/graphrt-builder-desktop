@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { Icon } from '@/components/ui'
 import { isLocalCliProvider, localCliShortNames } from '@/lib/settings'
 import type { ModelConnection } from './modelConnections'
+import { messages } from '@/i18n'
 
 interface MoreLocalCliSectionProps {
   /** The other local CLIs' connections (Gemini CLI, Cursor CLI, …), in the backend's order. */
@@ -31,12 +32,12 @@ export function MoreLocalCliSection({ connections, renderCard }: MoreLocalCliSec
     <div role="group" aria-labelledby="connections-more-local-cli-h" className="flex min-w-0 flex-col gap-3 pt-2">
       <div className="flex flex-col gap-0.5">
         <h3 id="connections-more-local-cli-h" className="m-0 text-[14px] font-semibold">
-          More AI tools on this computer
+          {messages().connections.moreAiToolsOnThisComputer}
         </h3>
         <p className="m-0 text-[13px] leading-normal text-muted">
           {detected.length > 0
-            ? 'Experimental, like the ones above: each runs with no tools, uses its own sign-in and stays off until you turn it on'
-            : 'None of these were found on this computer yet'}
+            ? messages().connections.experimentalLikeTheOnesAboveEach
+            : messages().connections.noneOfTheseWereFoundOn}
         </p>
       </div>
       {detected.length > 0 && <div className={cardGridClassNames}>{detected.map(renderCard)}</div>}
@@ -46,7 +47,7 @@ export function MoreLocalCliSection({ connections, renderCard }: MoreLocalCliSec
             <span className="text-muted transition-transform group-open:rotate-90" aria-hidden="true">
               <Icon name="chevronRight" size={14} />
             </span>
-            <span className="font-semibold">Other AI tools you can use</span>
+            <span className="font-semibold">{messages().connections.otherAiToolsYouCanUse}</span>
             <span className="text-muted">· {notInstalled.map(describeShortName).join(', ')}</span>
           </summary>
           <div className={`${cardGridClassNames} px-3 pb-3`}>{notInstalled.map(renderCard)}</div>

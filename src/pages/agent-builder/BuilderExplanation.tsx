@@ -1,5 +1,6 @@
 import { useTrustedLookupHosts } from '@/hooks/useTrustedLookupHosts'
 import { findTrustProposals } from '@/lib/trustProposals'
+import { messages } from '@/i18n'
 
 const trustButtonClassNames =
   'h-8 cursor-pointer self-start rounded-lg border border-line-strong bg-surface px-3 text-[13px] font-medium text-ink hover:bg-subtle disabled:cursor-not-allowed disabled:opacity-50'
@@ -13,11 +14,11 @@ function TrustProposalButtons({ agentId, proposedHosts }: { agentId: string; pro
       {proposedHosts.map((host) =>
         hosts.includes(host) ? (
           <span key={host} className="text-[13px] text-ok-strong">
-            {host} is trusted for lookups
+            {host} {messages().builder.isTrustedForLookups}
           </span>
         ) : (
           <button key={host} type="button" disabled={isChanging} onClick={() => void addHost(host)} className={trustButtonClassNames}>
-            Trust {host} for lookups
+            {messages().builder.trust}{' '}{host} {messages().builder.forLookups}
           </button>
         ),
       )}

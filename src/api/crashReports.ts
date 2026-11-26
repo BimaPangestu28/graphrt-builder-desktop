@@ -1,6 +1,7 @@
 import { callBackend, isDesktopApp } from './client'
 import type { CrashNotice, CrashReportExportSummary, CrashReportSummary, FrontendErrorReport } from './crashReportTypes'
 import { sampleCrashReportsBackend } from './sampleBackend/crashReports'
+import { messages } from '@/i18n'
 
 /** Local crash reports: list, view, export, delete, the next-launch notice and the sharing opt-in. */
 
@@ -73,7 +74,7 @@ export async function pickCrashReportExportPath(today: Date = new Date()): Promi
   if (__SAMPLE_BACKEND__ && !isDesktopApp()) return `~/Downloads/${fileName}`
   const [{ save }, { downloadDir, join }] = await Promise.all([import('@tauri-apps/plugin-dialog'), import('@tauri-apps/api/path')])
   const chosenPath = await save({
-    title: 'Export crash reports',
+    title: messages().lib.exportCrashReports,
     defaultPath: await join(await downloadDir(), fileName),
     filters: [{ name: 'JSON', extensions: ['json'] }],
   })

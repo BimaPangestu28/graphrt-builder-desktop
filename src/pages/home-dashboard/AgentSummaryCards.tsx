@@ -15,6 +15,7 @@ import { describePluginGap } from './needsYou'
 import { DeleteConfirmation, RenameForm } from '@/pages/agent-builder/AgentIdentityHeader'
 import { AgentCardMenu } from './AgentCardMenu'
 import { RunNowButton } from './RunNowButton'
+import { useT } from '@/i18n'
 
 interface AgentCardData {
   agent: Agent
@@ -35,19 +36,20 @@ function describeFacts({ agent, agentTriggers, runStats }: AgentCardData): strin
 
 /** One chip per plugin the agent uses, each opening that plugin's page. */
 function PluginChips({ requirements }: { requirements: PluginRequirement[] }) {
+  const t = useT().home
   if (requirements.length === 0) return null
   return (
-    <ul aria-label="Plugins" className="m-0 flex list-none flex-wrap gap-1.5 p-0">
+    <ul aria-label={t.plugins} className="m-0 flex list-none flex-wrap gap-1.5 p-0">
       {requirements.map((requirement) => (
         <li key={requirement.name}>
           <Link
             to={pluginDetailPath(requirement.name)}
-            title={requirement.ready ? `${requirement.displayName} is ready` : describePluginGap(requirement)}
+            title={requirement.ready ? t.pluginReady(requirement.displayName) : describePluginGap(requirement)}
             className="flex items-center gap-1.5 rounded-full bg-canvas px-2 py-0.5 text-[12px] no-underline !text-ink-2 hover:bg-selected"
           >
             <StatusDot tone={requirement.ready ? 'ok' : 'amber'} />
             {requirement.displayName}
-            <span className="sr-only">{requirement.ready ? ' (ready)' : ' (not ready)'}</span>
+            <span className="sr-only">{requirement.ready ? t.readySuffix : t.notReadySuffix}</span>
           </Link>
         </li>
       ))}
@@ -125,12 +127,13 @@ interface AgentSummaryCardsProps {
 }
 
 function AgentCardsBody({ agents, loadError, runs, runStats, triggers, pluginRequirements }: AgentSummaryCardsProps) {
-  if (loadError) return <p className="m-0 text-muted">Could not load your agents: {loadError.message}</p>
-  if (!agents) return <p className="m-0 text-muted">Loading agents…</p>
+  const t = useT().home
+  if (loadError) return <p className="m-0 text-muted">{t.couldNotLoadAgents(loadError.message)}</p>
+  if (!agents) return <p className="m-0 text-muted">{t.loadingAgents}</p>
   if (agents.length === 0) {
     return (
       <p className="m-0 text-muted">
-        No agents yet. <Link to={routePaths.newAgent}>Build one with New agent</Link>
+        {t.noAgentsYet} <Link to={routePaths.newAgent}>{t.buildWithNewAgent}</Link>
       </p>
     )
   }
@@ -156,9 +159,10 @@ function AgentCardsBody({ agents, loadError, runs, runStats, triggers, pluginReq
  * and the plugins it uses (ready or not).
  */
 export function AgentSummaryCards(props: AgentSummaryCardsProps) {
+  const t = useT().home
   return (
     <section aria-labelledby="home-agents" className="flex flex-col gap-3">
-      <HomeSectionHeader headingId="home-agents" heading="Agents" />
+      <HomeSectionHeader headingId="home-agents" heading={t.agents} />
       <AgentCardsBody {...props} />
     </section>
   )

@@ -1,6 +1,7 @@
 import type { InstalledPlugin } from '@/api/pluginTypes'
 import type { PluginsState } from '@/hooks/usePlugins'
 import { PluginConfigForm, type PluginConfigField } from './PluginConfigForm'
+import { messages } from '@/i18n'
 
 interface PluginSettingsProps {
   installed: InstalledPlugin
@@ -31,9 +32,9 @@ export function PluginSettings({ installed, plugins }: PluginSettingsProps) {
       <PluginSettingsForm installed={installed} plugins={plugins} fields={requiredFields} />
       {optionalFields.length > 0 && (
         <details className="text-[13px]">
-          <summary className="cursor-pointer font-medium text-ink-2 select-none">Optional settings ({optionalFields.length})</summary>
+          <summary className="cursor-pointer font-medium text-ink-2 select-none">{messages().plugins.optionalSettings(optionalFields.length)}</summary>
           <div className="mt-2 flex flex-col gap-2.5">
-            <span className="text-[12px] text-muted">Defaults work for most people</span>
+            <span className="text-[12px] text-muted">{messages().plugins.defaultsWork}</span>
             <PluginSettingsForm installed={installed} plugins={plugins} fields={optionalFields} />
           </div>
         </details>

@@ -23,5 +23,6 @@ export interface Connection {
   connectedDescription: string
   /** Second line and button label while not set up yet. */
   availableDescription: string
-  setupActionLabel: 'Connect' | 'Add key'
+  /** Shown on the setup button ("Connect", "Add key"), in the UI language. */
+  setupActionLabel: string
 }

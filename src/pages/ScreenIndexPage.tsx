@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { LogoLockup } from '@/components/ui'
 import { routePaths, type RouteKey } from '@/routes'
+import { messages } from '@/i18n'
 
 /** Every screen from the design canvas, for jumping around during review. Not part of the product flow. */
 const screenList: Array<{ number: string; title: string; routeKey: RouteKey }> = [
@@ -36,7 +37,7 @@ export function ScreenIndexPage() {
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-12">
       <LogoLockup />
-      <h1 className="m-0 text-[28px] font-semibold tracking-[-0.6px]">All screens</h1>
+      <h1 className="m-0 text-[28px] font-semibold tracking-[-0.6px]">{messages().misc.allScreens}</h1>
       <ol className="m-0 grid list-none grid-cols-1 gap-2 p-0 sm:grid-cols-2">
         {screenList.map((screen) => (
           <li key={screen.routeKey}>

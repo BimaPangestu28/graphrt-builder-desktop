@@ -7,6 +7,7 @@ import { Button } from '@/components/ui'
 import { describeError } from '@/lib/agentDisplay'
 import { agentPath } from '@/routes'
 import { chooseRunNowInputs } from './agentCardState'
+import { useT } from '@/i18n'
 
 type RunNowState = { kind: 'idle' } | { kind: 'starting' } | { kind: 'started' } | { kind: 'failed'; message: string }
 
@@ -30,6 +31,7 @@ interface RunNowButtonProps {
  * schedule's), or opens the test screen to ask for them when none are known.
  */
 export function RunNowButton({ agentId, agentTriggers, label }: RunNowButtonProps) {
+  const t = useT().home
   const navigate = useNavigate()
   const [runNowState, setRunNowState] = useState<RunNowState>({ kind: 'idle' })
 
@@ -51,16 +53,16 @@ export function RunNowButton({ agentId, agentTriggers, label }: RunNowButtonProp
   return (
     <span className="flex flex-wrap items-center gap-2">
       <Button size="sm" onClick={() => void handleRunNow()} disabled={runNowState.kind === 'starting'}>
-        {runNowState.kind === 'starting' ? 'Starting…' : label}
+        {runNowState.kind === 'starting' ? t.starting : label}
       </Button>
       {runNowState.kind === 'started' && (
         <span role="status" className="text-[13px] text-ok-strong">
-          Run started
+          {t.runStarted}
         </span>
       )}
       {runNowState.kind === 'failed' && (
         <span role="alert" className="text-[13px] text-danger">
-          Could not start: {runNowState.message}
+          {t.couldNotStart(runNowState.message)}
         </span>
       )}
     </span>

@@ -1,16 +1,30 @@
 import type { AgentStepInfo, ChainFailurePolicy, ChainInputMapping, ChainRunCondition, ChainStep } from '@/api/chainTypes'
+import { messages } from '@/i18n'
+import { withLocalizedLabels } from '@/i18n/localized'
 
 /** Labels and pure edits behind screen 11 (chain of agents). */
 
-export const runConditionOptions: Array<{ value: ChainRunCondition; label: (previousAgentName: string) => string; shortLabel: string }> = [
-  { value: 'on_success', label: (previousAgentName) => `Only if ${previousAgentName} succeeded`, shortLabel: 'If it succeeded' },
-  { value: 'always', label: () => 'Always, even if it failed', shortLabel: 'Always' },
+export const runConditionOptions: ReadonlyArray<{ value: ChainRunCondition; label: (previousAgentName: string) => string; readonly shortLabel: string }> = [
+  {
+    value: 'on_success',
+    label: (previousAgentName) => messages().team.onlyIfPreviousagentnameSucceeded(previousAgentName),
+    get shortLabel() {
+      return messages().team.ifSucceeded
+    },
+  },
+  {
+    value: 'always',
+    label: () => messages().team.alwaysEvenIfItFailed,
+    get shortLabel() {
+      return messages().team.always
+    },
+  },
 ]
 
-export const failurePolicyOptions: Array<{ value: ChainFailurePolicy; label: string }> = [
-  { value: 'stop', label: 'Stop the chain' },
-  { value: 'continue', label: 'Skip it and keep going' },
-]
+export const failurePolicyOptions: ReadonlyArray<{ value: ChainFailurePolicy; readonly label: string }> = withLocalizedLabels(
+  [{ value: 'stop' as const }, { value: 'continue' as const }],
+  (option) => messages().team.failurePolicies[option.value],
+)
 
 /**
  * The short label on a link, e.g. "If it succeeded · places → leads".

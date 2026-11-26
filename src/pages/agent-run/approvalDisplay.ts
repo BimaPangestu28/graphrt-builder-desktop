@@ -1,4 +1,5 @@
 import type { PendingApproval, PendingToolCall } from '@/api/runReviewTypes'
+import { messages } from '@/i18n'
 
 /**
  * Display text for approval cards and rows: an approval's deadline ("Expires in 2h"), what
@@ -12,14 +13,15 @@ const dayMs = 24 * hourMs
 const hoursShownWithMinutes = 10
 
 function describeDuration(durationMs: number): string {
-  if (durationMs >= dayMs) return `${Math.floor(durationMs / dayMs)}d`
+  const t = messages().agentRun
+  if (durationMs >= dayMs) return t.daysShort(Math.floor(durationMs / dayMs))
   if (durationMs >= hourMs) {
     const hours = Math.floor(durationMs / hourMs)
     const minutes = Math.floor((durationMs % hourMs) / minuteMs)
-    return minutes > 0 && hours < hoursShownWithMinutes ? `${hours}h ${minutes}m` : `${hours}h`
+    return minutes > 0 && hours < hoursShownWithMinutes ? t.hoursMinutesShort(hours, minutes) : t.hoursShort(hours)
   }
-  if (durationMs >= minuteMs) return `${Math.floor(durationMs / minuteMs)} min`
-  return 'less than a minute'
+  if (durationMs >= minuteMs) return t.minutesShort(Math.floor(durationMs / minuteMs))
+  return messages().agentRun.lessThanAMinute
 }
 
 /**
@@ -37,16 +39,16 @@ export function describeTimeLeft(expiresAt: string | null, now: number): string 
   const deadline = Date.parse(expiresAt)
   if (Number.isNaN(deadline)) return null
   const timeLeftMs = deadline - now
-  return timeLeftMs <= 0 ? 'Expiring now' : `Expires in ${describeDuration(timeLeftMs)}`
+  return timeLeftMs <= 0 ? messages().agentRun.expiringNow : messages().agentRun.expiresIn(describeDuration(timeLeftMs))
 }
 
 /** "then Skip" / "then the run stops"; null when the question never expires. */
 export function describeTimeoutOutcome(approval: PendingApproval): string | null {
   if (!approval.expiresAt) return null
   const onTimeout = approval.onTimeout ?? { kind: 'stop' }
-  if (onTimeout.kind === 'stop') return 'then the run stops'
+  if (onTimeout.kind === 'stop') return messages().agentRun.thenTheRunStops
   const title = approval.actions.find((action) => action.id === onTimeout.action)?.title ?? onTimeout.action
-  return `then ${title}`
+  return messages().agentRun.thenAction(title)
 }
 
 /** "Expires in 2h, then Skip": the deadline line of a card; null without a deadline. */

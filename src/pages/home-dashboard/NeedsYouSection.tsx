@@ -2,6 +2,7 @@ import { LinkButton, joinClassNames } from '@/components/ui'
 import type { AttentionItem } from '@/pages/home-dashboard/homeDashboardTypes'
 import { HomeSectionHeader } from './HomeSectionHeader'
 import { toPreviewText } from '@/lib/previewText'
+import { useT } from '@/i18n'
 
 interface NeedsYouSectionProps {
   /** Null while runs are loading. */
@@ -46,21 +47,23 @@ function NeedsYouList({ items }: { items: AttentionItem[] }) {
 }
 
 function NeedsYouBody({ items, loadError }: NeedsYouSectionProps) {
-  if (loadError) return <p className="m-0 text-muted">Could not check what needs you: {loadError.message}</p>
-  if (!items) return <p className="m-0 text-muted">Checking what needs you…</p>
-  if (items.length === 0) return <p className="m-0 text-muted">Nothing needs you right now</p>
+  const t = useT().home
+  if (loadError) return <p className="m-0 text-muted">{t.couldNotCheckNeedsYou(loadError.message)}</p>
+  if (!items) return <p className="m-0 text-muted">{t.checkingNeedsYou}</p>
+  if (items.length === 0) return <p className="m-0 text-muted">{t.nothingNeedsYouNow}</p>
   return <NeedsYouList items={items} />
 }
 
 /** Amber-bordered list of things waiting on the user (most urgent first), each with one action button. */
 export function NeedsYouSection({ items, loadError }: NeedsYouSectionProps) {
+  const t = useT().home
   return (
     <section aria-labelledby="home-needs-you" className="flex flex-col gap-3">
       <HomeSectionHeader
         headingId="home-needs-you"
         heading={
           <>
-            Needs you
+            {t.needsYou}
             {items && items.length > 0 && <span className="rounded-full bg-amber-soft px-2 py-0.5 text-[12px] text-amber-strong">{items.length}</span>}
           </>
         }

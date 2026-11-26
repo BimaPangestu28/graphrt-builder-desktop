@@ -43,7 +43,7 @@ describe('NewAgentPage', () => {
     expect(screen.getByRole('radio', { name: 'Do a task' })).toBeChecked()
     const prompt = screen.getByLabelText('Describe the job')
     expect(prompt).toHaveValue('')
-    expect(prompt).toHaveAttribute('placeholder', jobDescriptionPlaceholder)
+    expect(prompt).toHaveAttribute('placeholder', jobDescriptionPlaceholder())
     expect(screen.getByRole('button', { name: 'Build agent' })).toBeDisabled()
     expect(screen.getByRole('button', { name: /Customer chatbot/ })).toBeInTheDocument()
     expect(screen.getByText('Runs on this computer')).toBeInTheDocument()

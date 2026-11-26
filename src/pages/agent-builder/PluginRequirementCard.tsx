@@ -16,6 +16,7 @@ import {
   needsPluginRuntimeDownload,
 } from './pluginRequirementDisplay'
 import type { PluginSetupState } from './usePluginSetup'
+import { messages } from '@/i18n'
 
 interface PluginRequirementCardProps {
   requirement: PluginRequirement
@@ -25,8 +26,8 @@ interface PluginRequirementCardProps {
 /** The README's ToS / ban warning, prominent and readable before anything is installed. */
 function PluginWarning({ pluginLabel, warning }: { pluginLabel: string; warning: string }) {
   return (
-    <div role="note" aria-label={`Warning about ${pluginLabel}`} className="flex flex-col gap-1 rounded-lg border border-amber bg-amber-soft px-3 py-2.5 text-[13px] text-amber-deep">
-      <b className="font-semibold">Read before you install</b>
+    <div role="note" aria-label={messages().builder.warningAboutPluginlabel(pluginLabel)} className="flex flex-col gap-1 rounded-lg border border-amber bg-amber-soft px-3 py-2.5 text-[13px] text-amber-deep">
+      <b className="font-semibold">{messages().builder.readBeforeYouInstall}</b>
       <span className="leading-normal">{warning}</span>
     </div>
   )
@@ -55,10 +56,10 @@ function ApprovalAction({ requirement, setup }: PluginRequirementCardProps) {
   return (
     <div className="flex flex-wrap items-center gap-3">
       <Button size="sm" aria-label={`${actionLabel} ${requirement.displayName}`} disabled={isApproving || setup.isApprovingAll} onClick={() => void setup.approvePlugin(requirement.name)}>
-        {isApproving ? 'Setting up…' : actionLabel}
+        {isApproving ? messages().builder.settingUp : actionLabel}
       </Button>
       <span role="status" className="text-[13px] text-ink-2">
-        {isApproving ? (progressText ?? 'Starting the download…') : ''}
+        {isApproving ? (progressText ?? messages().builder.startingTheDownload) : ''}
       </span>
     </div>
   )
@@ -71,16 +72,16 @@ function BrowserDownloadAction({ setup }: { setup: PluginSetupState }) {
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-3">
         <Button size="sm" variant="secondary" disabled={isDownloading} onClick={() => void setup.downloadBrowser()}>
-          {isDownloading ? 'Downloading…' : 'Download browser'}
+          {isDownloading ? messages().builder.downloading : messages().builder.downloadBrowser}
         </Button>
-        <span className="text-[12px] text-muted">Chromium · {browserDownloadSizeNote}</span>
+        <span className="text-[12px] text-muted">{messages().builder.chromium}{' '}{browserDownloadSizeNote()}</span>
       </div>
       <span role="status" className="text-[13px] text-ink-2">
-        {isDownloading ? (progressText ?? 'Starting the download…') : ''}
+        {isDownloading ? (progressText ?? messages().builder.startingTheDownload) : ''}
       </span>
       {errorMessage && (
         <span role="alert" className="text-[13px] text-danger">
-          Could not download the browser: {errorMessage}
+          {messages().builder.couldNotDownloadTheBrowser}{' '}{errorMessage}
         </span>
       )}
     </div>
@@ -94,16 +95,16 @@ function PluginRuntimeDownloadAction({ setup }: { setup: PluginSetupState }) {
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-3">
         <Button size="sm" variant="secondary" disabled={isDownloading} onClick={() => void setup.downloadPluginRuntime()}>
-          {isDownloading ? 'Downloading…' : 'Install plugin runtime'}
+          {isDownloading ? messages().builder.downloading : messages().builder.installPluginRuntime}
         </Button>
-        <span className="text-[12px] text-muted">Node.js · {pluginRuntimeDownloadSizeNote}, once for all plugins</span>
+        <span className="text-[12px] text-muted">{messages().builder.nodeJs}{' '}{pluginRuntimeDownloadSizeNote()}{messages().builder.onceForAllPlugins}</span>
       </div>
       <span role="status" className="text-[13px] text-ink-2">
-        {isDownloading ? (progressText ?? 'Starting the download…') : ''}
+        {isDownloading ? (progressText ?? messages().builder.startingTheDownload) : ''}
       </span>
       {errorMessage && (
         <span role="alert" className="text-[13px] text-danger">
-          Could not install the plugin runtime: {errorMessage}
+          {messages().builder.couldNotInstallThePluginRuntime}{' '}{errorMessage}
         </span>
       )}
     </div>
@@ -118,7 +119,7 @@ function ReadyLine() {
           <path d="M5 12.5 10 17 19 7" />
         </StrokeIcon>
       </span>
-      Ready
+      {messages().builder.ready}
     </span>
   )
 }
@@ -158,15 +159,15 @@ export function PluginRequirementCard({ requirement, setup }: PluginRequirementC
   return (
     <article aria-label={requirement.displayName} className="flex flex-col gap-2.5 rounded-xl border border-line bg-surface p-3.5">
       <PluginCardHeader requirement={requirement} />
-      {requirement.usedBySteps.length > 0 && <span className="text-[12px] text-muted">Used by: {requirement.usedBySteps.join(', ')}</span>}
+      {requirement.usedBySteps.length > 0 && <span className="text-[12px] text-muted">{messages().builder.usedBy}{' '}{requirement.usedBySteps.join(', ')}</span>}
       {requirement.warning && <PluginWarning pluginLabel={requirement.displayName} warning={requirement.warning} />}
-      <ul aria-label={`What ${requirement.displayName} asks for`} className="m-0 flex list-disc flex-col gap-0.5 pl-5 text-[12px] text-body">
+      <ul aria-label={messages().builder.whatDisplaynameAsksFor(requirement.displayName)} className="m-0 flex list-disc flex-col gap-0.5 pl-5 text-[12px] text-body">
         {describeRequirementPermissions(requirement).map((line) => (
           <li key={line}>{line}</li>
         ))}
       </ul>
-      {needsPluginApproval(requirement) && needsPluginRuntimeDownload(requirement) && <p className="m-0 text-[12px] text-body">{pluginRuntimeInstallNote}</p>}
-      {!requirement.installed && <p className="m-0 text-[12px] font-medium text-ink-2">{pluginInstallTrustNote}</p>}
+      {needsPluginApproval(requirement) && needsPluginRuntimeDownload(requirement) && <p className="m-0 text-[12px] text-body">{pluginRuntimeInstallNote()}</p>}
+      {!requirement.installed && <p className="m-0 text-[12px] font-medium text-ink-2">{pluginInstallTrustNote()}</p>}
       <RequirementActions requirement={requirement} setup={setup} />
       {canLinkWhatsAppWeb(requirement) && <WhatsAppWebLinkPanel onSessionChange={setup.reload} />}
       {errorMessage && (

@@ -6,6 +6,7 @@ import { useInspector } from '../InspectorContext'
 import { readSelector } from '../references'
 import { SelectorChip, SelectorField } from '../SelectorField'
 import { TemplateField } from '../TemplateField'
+import { messages } from '@/i18n'
 
 /**
  * Remember a value (`assigner`), Filter a list (`list-operator`), Format text
@@ -37,7 +38,7 @@ export function AssignerPanel() {
   const write = (next: JsonObject[], what: string) => setConfigValue(['items'], next, what)
   const update = (index: number, changes: JsonObject, what: string) => write(items.map((item, itemIndex) => (itemIndex === index ? { ...item, ...changes } : item)), what)
   return (
-    <InspectorSection title="Changes">
+    <InspectorSection title={messages().nodes.changes}>
       {items.map((item, index) => {
         const operation = readConfigText(item, ['operation']) || 'over-write'
         const fromStep = readConfigText(item, ['input_type']) === 'variable'
@@ -47,39 +48,39 @@ export function AssignerPanel() {
           <div key={index} className="flex flex-col gap-1.5 rounded-[9px] border border-line p-2">
             <div className="flex items-start gap-1.5">
               <div className="min-w-0 flex-1">
-                <SelectorChip ariaLabel={`Change ${index + 1} value to change`} path={target} emptyLabel="Pick the value to change" onChange={(path) => update(index, { variable_selector: path ?? [] }, 'changed what to remember')} />
+                <SelectorChip ariaLabel={messages().nodes.changeValueValueToChange(index + 1)} path={target} emptyLabel={messages().nodes.pickTheValueToChange} onChange={(path) => update(index, { variable_selector: path ?? [] }, messages().nodes.changedWhatToRemember)} />
               </div>
-              <RemoveButton label={`Remove change ${index + 1}`} disabled={readOnly} onClick={() => write(items.filter((_unused, itemIndex) => itemIndex !== index), 'removed a change')} />
+              <RemoveButton label={messages().nodes.removeChangeValue(index + 1)} disabled={readOnly} onClick={() => write(items.filter((_unused, itemIndex) => itemIndex !== index), messages().nodes.removedAChange)} />
             </div>
-            {writesReserved && <p role="alert" className="m-0 text-[12px] text-danger">Run values (sys) and secrets (env) can’t be changed</p>}
+            {writesReserved && <p role="alert" className="m-0 text-[12px] text-danger">{messages().nodes.runValuesSysAndSecretsEnv}</p>}
             <div className="flex items-center gap-1.5">
-              <SelectInput ariaLabel={`Change ${index + 1} operation`} className="w-32 shrink-0" value={operation === 'overwrite' ? 'over-write' : operation} disabled={readOnly} options={assignOperations} onChange={(nextOperation) => update(index, { operation: nextOperation }, 'changed an operation')} />
+              <SelectInput ariaLabel={messages().nodes.changeValueOperation(index + 1)} className="w-32 shrink-0" value={operation === 'overwrite' ? 'over-write' : operation} disabled={readOnly} options={assignOperations} onChange={(nextOperation) => update(index, { operation: nextOperation }, messages().nodes.changedAnOperation)} />
               {!operationsWithoutValue.has(operation) && (
                 <SelectInput
-                  ariaLabel={`Change ${index + 1} with`}
+                  ariaLabel={messages().nodes.changeValueWith(index + 1)}
                   value={fromStep ? 'variable' : 'constant'}
                   disabled={readOnly}
                   options={[
-                    { value: 'constant', label: 'a fixed value' },
-                    { value: 'variable', label: 'a value from a step' },
+                    { value: 'constant', label: messages().nodes.aFixedValue },
+                    { value: 'variable', label: messages().nodes.aValueFromAStep },
                   ]}
-                  onChange={(inputType) => update(index, { input_type: inputType, value: inputType === 'variable' ? [] : '' }, 'changed where the value comes from')}
+                  onChange={(inputType) => update(index, { input_type: inputType, value: inputType === 'variable' ? [] : '' }, messages().nodes.changedWhereTheValueComesFrom)}
                 />
               )}
             </div>
             {!operationsWithoutValue.has(operation) &&
               (fromStep ? (
-                <SelectorChip compact ariaLabel={`Change ${index + 1} new value`} path={readSelector(item.value)} onChange={(path) => update(index, { value: path ?? [] }, 'set the new value')} />
+                <SelectorChip compact ariaLabel={messages().nodes.changeValueNewValue(index + 1)} path={readSelector(item.value)} onChange={(path) => update(index, { value: path ?? [] }, messages().nodes.setTheNewValue)} />
               ) : (
-                <TextInput ariaLabel={`Change ${index + 1} new value`} placeholder="Value" value={typeof item.value === 'string' ? item.value : item.value === undefined ? '' : JSON.stringify(item.value)} disabled={readOnly} onCommit={(value) => update(index, { value }, 'set the new value')} />
+                <TextInput ariaLabel={messages().nodes.changeValueNewValue(index + 1)} placeholder={messages().nodes.value} value={typeof item.value === 'string' ? item.value : item.value === undefined ? '' : JSON.stringify(item.value)} disabled={readOnly} onCommit={(value) => update(index, { value }, messages().nodes.setTheNewValue)} />
               ))}
           </div>
         )
       })}
-      <AddButton disabled={readOnly} onClick={() => write([...items, { variable_selector: [], operation: 'over-write', input_type: 'constant', value: '' }], 'added a change')}>
-        {items.length === 0 ? 'Add a change' : 'Change another value'}
+      <AddButton disabled={readOnly} onClick={() => write([...items, { variable_selector: [], operation: 'over-write', input_type: 'constant', value: '' }], messages().nodes.addedAChange)}>
+        {items.length === 0 ? messages().nodes.addAChange : messages().nodes.changeAnotherValue}
       </AddButton>
-      <p className={hintClassName}>All changes are checked before any is made. Run values (sys) and secrets (env) can’t be changed</p>
+      <p className={hintClassName}>{messages().nodes.allChangesAreCheckedBeforeAny}</p>
     </InspectorSection>
   )
 }
@@ -94,40 +95,40 @@ export function ListOperatorPanel() {
   const limitOn = readConfigFlag(config, ['limit', 'enabled'])
   return (
     <>
-      <InspectorSection title="List">
-        <SelectorField label="List" required path={readSelector(config.variable)} onChange={(path) => setConfigValue(['variable'], path ?? undefined, 'set the list')} />
+      <InspectorSection title={messages().nodes.list}>
+        <SelectorField label={messages().nodes.list} required path={readSelector(config.variable)} onChange={(path) => setConfigValue(['variable'], path ?? undefined, messages().nodes.setTheList)} />
       </InspectorSection>
-      <InspectorSection title="Keep items where">
-        <ToggleRow label="Filter" checked={filterOn} disabled={readOnly} onChange={(enabled) => setConfigValue(['filter_by', 'enabled'], enabled, enabled ? 'turned on the filter' : 'turned off the filter')} />
-        {filterOn && <ConditionsEditor label="Filter conditions" subject="key" conditions={readConfigList(config, ['filter_by', 'conditions'])} onChange={(conditions, what) => updateConfig((current) => writeConfigValue(current, ['filter_by', 'conditions'], conditions), what)} />}
+      <InspectorSection title={messages().nodes.keepItemsWhere}>
+        <ToggleRow label={messages().nodes.filter} checked={filterOn} disabled={readOnly} onChange={(enabled) => setConfigValue(['filter_by', 'enabled'], enabled, enabled ? messages().nodes.turnedOnTheFilter : messages().nodes.turnedOffTheFilter)} />
+        {filterOn && <ConditionsEditor label={messages().nodes.filterConditions} subject="key" conditions={readConfigList(config, ['filter_by', 'conditions'])} onChange={(conditions, what) => updateConfig((current) => writeConfigValue(current, ['filter_by', 'conditions'], conditions), what)} />}
       </InspectorSection>
-      <InspectorSection title="Sort, pick and limit">
-        <ToggleRow label="Sort" checked={sortOn} disabled={readOnly} onChange={(enabled) => setConfigValue(['order_by', 'enabled'], enabled, enabled ? 'turned on sorting' : 'turned off sorting')} />
+      <InspectorSection title={messages().nodes.sortPickAndLimit}>
+        <ToggleRow label={messages().nodes.sort} checked={sortOn} disabled={readOnly} onChange={(enabled) => setConfigValue(['order_by', 'enabled'], enabled, enabled ? messages().nodes.turnedOnSorting : messages().nodes.turnedOffSorting)} />
         {sortOn && (
           <div className="grid grid-cols-2 gap-1.5">
-            <TextInput ariaLabel="Sort by key" placeholder="Key, e.g. rating" value={readConfigText(config, ['order_by', 'key'])} disabled={readOnly} onCommit={(key) => setConfigValue(['order_by', 'key'], key, 'set the sort key')} />
+            <TextInput ariaLabel={messages().nodes.sortByKey} placeholder={messages().nodes.keyEGRating} value={readConfigText(config, ['order_by', 'key'])} disabled={readOnly} onCommit={(key) => setConfigValue(['order_by', 'key'], key, messages().nodes.setTheSortKey)} />
             <SelectInput
-              ariaLabel="Sort order"
+              ariaLabel={messages().nodes.sortOrder}
               value={readConfigText(config, ['order_by', 'value']) || 'asc'}
               disabled={readOnly}
               options={[
-                { value: 'desc', label: 'high to low' },
-                { value: 'asc', label: 'low to high' },
+                { value: 'desc', label: messages().nodes.highToLow },
+                { value: 'asc', label: messages().nodes.lowToHigh },
               ]}
-              onChange={(order) => setConfigValue(['order_by', 'value'], order, 'set the sort order')}
+              onChange={(order) => setConfigValue(['order_by', 'value'], order, messages().nodes.setTheSortOrder)}
             />
           </div>
         )}
-        <ToggleRow label="Pick one" checked={pickOn} disabled={readOnly} onChange={(enabled) => setConfigValue(['extract_by', 'enabled'], enabled, enabled ? 'picked one item' : 'stopped picking one item')} />
+        <ToggleRow label={messages().nodes.pickOne} checked={pickOn} disabled={readOnly} onChange={(enabled) => setConfigValue(['extract_by', 'enabled'], enabled, enabled ? messages().nodes.pickedOneItem : messages().nodes.stoppedPickingOneItem)} />
         {pickOn && (
-          <Field label="Take item number" hint="1 is the first">
-            <NumberInput ariaLabel="Take item number" value={readConfigNumber(config, ['extract_by', 'serial'])} min={1} step={1} disabled={readOnly} onCommit={(serial) => setConfigValue(['extract_by', 'serial'], serial === null ? undefined : Math.round(serial), 'set the item number')} />
+          <Field label={messages().nodes.takeItemNumber} hint={messages().nodes.n1IsTheFirst}>
+            <NumberInput ariaLabel={messages().nodes.takeItemNumber} value={readConfigNumber(config, ['extract_by', 'serial'])} min={1} step={1} disabled={readOnly} onCommit={(serial) => setConfigValue(['extract_by', 'serial'], serial === null ? undefined : Math.round(serial), messages().nodes.setTheItemNumber)} />
           </Field>
         )}
-        <ToggleRow label="Limit" checked={limitOn} disabled={readOnly} onChange={(enabled) => setConfigValue(['limit', 'enabled'], enabled, enabled ? 'turned on the limit' : 'turned off the limit')} />
+        <ToggleRow label={messages().nodes.limit} checked={limitOn} disabled={readOnly} onChange={(enabled) => setConfigValue(['limit', 'enabled'], enabled, enabled ? messages().nodes.turnedOnTheLimit : messages().nodes.turnedOffTheLimit)} />
         {limitOn && (
-          <Field label="Keep at most">
-            <NumberInput ariaLabel="Limit" value={readConfigNumber(config, ['limit', 'size'])} min={1} step={1} suffix="items" disabled={readOnly} onCommit={(size) => setConfigValue(['limit', 'size'], size === null ? undefined : Math.round(size), 'set the limit')} />
+          <Field label={messages().nodes.keepAtMost}>
+            <NumberInput ariaLabel={messages().nodes.limit} value={readConfigNumber(config, ['limit', 'size'])} min={1} step={1} suffix="items" disabled={readOnly} onCommit={(size) => setConfigValue(['limit', 'size'], size === null ? undefined : Math.round(size), messages().nodes.setTheLimit)} />
           </Field>
         )}
       </InspectorSection>
@@ -145,12 +146,12 @@ function BindingsEditor({ path, label, addLabel, nameLabel }: { path: string[]; 
     <div role="group" aria-label={label} className="flex flex-col gap-1.5">
       {bindings.map((binding, index) => (
         <div key={index} className="grid grid-cols-[96px_minmax(0,1fr)_24px] items-start gap-1.5">
-          <TextInput ariaLabel={`${nameLabel} ${index + 1}`} monospace value={readConfigText(binding, ['variable'])} disabled={readOnly} onCommit={(variable) => update(index, { variable: variable.trim() }, `renamed ${nameLabel.toLowerCase()}`)} />
-          <SelectorChip compact ariaLabel={`${nameLabel} ${index + 1} value`} path={readSelector(binding.value_selector)} onChange={(selector) => update(index, { value_selector: selector ?? [] }, `set ${nameLabel.toLowerCase()}`)} />
-          <RemoveButton label={`Remove ${nameLabel.toLowerCase()} ${index + 1}`} disabled={readOnly} onClick={() => write(bindings.filter((_unused, itemIndex) => itemIndex !== index), `removed ${nameLabel.toLowerCase()}`)} />
+          <TextInput ariaLabel={`${nameLabel} ${index + 1}`} monospace value={readConfigText(binding, ['variable'])} disabled={readOnly} onCommit={(variable) => update(index, { variable: variable.trim() }, messages().nodes.renamedLowercase(nameLabel.toLowerCase()))} />
+          <SelectorChip compact ariaLabel={messages().nodes.namelabelValueValue(nameLabel, index + 1)} path={readSelector(binding.value_selector)} onChange={(selector) => update(index, { value_selector: selector ?? [] }, messages().nodes.setLowercase(nameLabel.toLowerCase()))} />
+          <RemoveButton label={messages().nodes.removeLowercaseValue(nameLabel.toLowerCase(), index + 1)} disabled={readOnly} onClick={() => write(bindings.filter((_unused, itemIndex) => itemIndex !== index), messages().nodes.removedLowercase(nameLabel.toLowerCase()))} />
         </div>
       ))}
-      <AddButton disabled={readOnly} onClick={() => write([...bindings, { variable: `value_${bindings.length + 1}`, value_selector: [] }], `added ${nameLabel.toLowerCase()}`)}>
+      <AddButton disabled={readOnly} onClick={() => write([...bindings, { variable: `value_${bindings.length + 1}`, value_selector: [] }], messages().nodes.addedLowercase(nameLabel.toLowerCase()))}>
         {addLabel}
       </AddButton>
     </div>
@@ -164,12 +165,12 @@ export function TemplateTransformPanel() {
   const names = readConfigList(node.config, ['variables']).filter(isJsonObject).map((binding) => readConfigText(binding, ['variable']))
   return (
     <>
-      <InspectorSection title="Values">
-        <BindingsEditor path={['variables']} label="Values" addLabel="Add a value" nameLabel="Value" />
+      <InspectorSection title={messages().nodes.values}>
+        <BindingsEditor path={['variables']} label={messages().nodes.values} addLabel={messages().nodes.addAValue} nameLabel={messages().nodes.value} />
       </InspectorSection>
-      <InspectorSection title="Template">
-        <Field label="Template" required error={template.trim() ? null : 'Required'} hint={`Jinja template, run in a sandbox with time and size limits${names.length > 0 ? `. Use ${names.map((name) => `{{ ${name} }}`).join(', ')}` : ''}`}>
-          <TextArea ariaLabel="Template" monospace rows={6} value={template} disabled={readOnly} onCommit={(nextTemplate) => setConfigValue(['template'], nextTemplate, 'changed the template')} />
+      <InspectorSection title={messages().nodes.template}>
+        <Field label={messages().nodes.template} required error={template.trim() ? null : messages().nodes.required2} hint={messages().nodes.jinjaHint(names.map((name) => `{{ ${name} }}`).join(', '))}>
+          <TextArea ariaLabel={messages().nodes.template} monospace rows={6} value={template} disabled={readOnly} onCommit={(nextTemplate) => setConfigValue(['template'], nextTemplate, messages().nodes.changedTheTemplate)} />
         </Field>
       </InspectorSection>
     </>
@@ -187,22 +188,22 @@ export function AggregatorPanel() {
       {list.map((selector, index) => (
         <div key={index} className="flex items-start gap-1.5">
           <div className="min-w-0 flex-1">
-            <SelectorChip ariaLabel={`${label} ${index + 1}`} path={readSelector(selector)} onChange={(path) => onChange(list.map((item, itemIndex) => (itemIndex === index ? (path ?? []) : item)), 'changed a combined value')} />
+            <SelectorChip ariaLabel={`${label} ${index + 1}`} path={readSelector(selector)} onChange={(path) => onChange(list.map((item, itemIndex) => (itemIndex === index ? (path ?? []) : item)), messages().nodes.changedACombinedValue)} />
           </div>
-          <RemoveButton label={`Remove ${label.toLowerCase()} ${index + 1}`} disabled={readOnly} onClick={() => onChange(list.filter((_unused, itemIndex) => itemIndex !== index), 'removed a combined value')} />
+          <RemoveButton label={messages().nodes.removeLowercaseValue(label.toLowerCase(), index + 1)} disabled={readOnly} onClick={() => onChange(list.filter((_unused, itemIndex) => itemIndex !== index), messages().nodes.removedACombinedValue)} />
         </div>
       ))}
-      <AddButton disabled={readOnly} onClick={() => onChange([...list, []], 'added a combined value')}>
-        Add a value
+      <AddButton disabled={readOnly} onClick={() => onChange([...list, []], messages().nodes.addedACombinedValue)}>
+        {messages().nodes.addAValue}
       </AddButton>
     </div>
   )
   return (
     <>
-      <InspectorSection title="Mode">
+      <InspectorSection title={messages().nodes.mode}>
         <ToggleRow
-          label="Combine in groups"
-          description="Off: one output, the first value that is set. On: one output object per group"
+          label={messages().nodes.combineInGroups}
+          description={messages().nodes.offOneOutputTheFirstValue}
           checked={isGrouped}
           disabled={readOnly}
           onChange={(enabled) =>
@@ -211,30 +212,30 @@ export function AggregatorPanel() {
               return enabled && readConfigList(config, ['advanced_settings', 'groups']).length === 0
                 ? writeConfigValue(withFlag, ['advanced_settings', 'groups'], [{ group_name: 'output_group', variables: readConfigList(config, ['variables']) }])
                 : withFlag
-            }, enabled ? 'combined in groups' : 'combined into one value')
+            }, enabled ? messages().nodes.combinedInGroups : messages().nodes.combinedIntoOneValue)
           }
         />
       </InspectorSection>
       {isGrouped ? (
-        <InspectorSection title="Groups">
+        <InspectorSection title={messages().nodes.groups}>
           {groups.map((group, index) => (
             <div key={index} className="flex flex-col gap-1.5 rounded-[9px] border border-line p-2">
               <div className="flex items-center gap-1.5">
-                <TextInput ariaLabel={`Group ${index + 1} name`} monospace value={readConfigText(group, ['group_name'])} disabled={readOnly} onCommit={(name) => setConfigValue(['advanced_settings', 'groups', index, 'group_name'], name.trim(), 'renamed a group')} />
-                <RemoveButton label={`Remove group ${index + 1}`} disabled={readOnly} onClick={() => setConfigValue(['advanced_settings', 'groups'], groups.filter((_unused, itemIndex) => itemIndex !== index), 'removed a group')} />
+                <TextInput ariaLabel={messages().nodes.groupValueName(index + 1)} monospace value={readConfigText(group, ['group_name'])} disabled={readOnly} onCommit={(name) => setConfigValue(['advanced_settings', 'groups', index, 'group_name'], name.trim(), messages().nodes.renamedAGroup)} />
+                <RemoveButton label={messages().nodes.removeGroupValue(index + 1)} disabled={readOnly} onClick={() => setConfigValue(['advanced_settings', 'groups'], groups.filter((_unused, itemIndex) => itemIndex !== index), messages().nodes.removedAGroup)} />
               </div>
-              {selectorList(readConfigList(group, ['variables']), (next, what) => setConfigValue(['advanced_settings', 'groups', index, 'variables'], next, what), `Group ${index + 1} value`)}
+              {selectorList(readConfigList(group, ['variables']), (next, what) => setConfigValue(['advanced_settings', 'groups', index, 'variables'], next, what), messages().nodes.groupValueValue(index + 1))}
             </div>
           ))}
-          <AddButton disabled={readOnly} onClick={() => setConfigValue(['advanced_settings', 'groups'], [...groups, { group_name: `group_${groups.length + 1}`, variables: [] }], 'added a group')}>
-            Add a group
+          <AddButton disabled={readOnly} onClick={() => setConfigValue(['advanced_settings', 'groups'], [...groups, { group_name: `group_${groups.length + 1}`, variables: [] }], messages().nodes.addedAGroup)}>
+            {messages().nodes.addAGroup}
           </AddButton>
-          <p className={hintClassName}>Usually one value per branch: only the branch that ran has a value</p>
+          <p className={hintClassName}>{messages().nodes.usuallyOneValuePerBranchOnly}</p>
         </InspectorSection>
       ) : (
-        <InspectorSection title="Values">
-          {selectorList(variables, (next, what) => setConfigValue(['variables'], next, what), 'Value')}
-          <p className={hintClassName}>Takes the first value that is set, e.g. after a branch</p>
+        <InspectorSection title={messages().nodes.values}>
+          {selectorList(variables, (next, what) => setConfigValue(['variables'], next, what), messages().nodes.value)}
+          <p className={hintClassName}>{messages().nodes.takesTheFirstValueThatIs}</p>
         </InspectorSection>
       )}
     </>
@@ -245,8 +246,8 @@ export function AggregatorPanel() {
 export function AnswerPanel() {
   const { node, setConfigValue } = useInspector()
   return (
-    <InspectorSection title="Reply">
-      <TemplateField label="Reply" required multiline value={readConfigText(node.config, ['answer'])} onCommit={(answer) => setConfigValue(['answer'], answer, 'changed the reply')} hint="For chatbots. Values that stream (like a model answer) are sent as they arrive, in this order" />
+    <InspectorSection title={messages().nodes.reply}>
+      <TemplateField label={messages().nodes.reply} required multiline value={readConfigText(node.config, ['answer'])} onCommit={(answer) => setConfigValue(['answer'], answer, messages().nodes.changedTheReply)} hint={messages().nodes.forChatbotsValuesThatStreamLike} />
     </InspectorSection>
   )
 }
@@ -254,9 +255,9 @@ export function AnswerPanel() {
 /** Settings of End: the values a run shows. */
 export function EndPanel() {
   return (
-    <InspectorSection title="Results">
-      <BindingsEditor path={['outputs']} label="Results" addLabel="Add a result" nameLabel="Result" />
-      <p className={hintClassName}>The values the app shows after a run</p>
+    <InspectorSection title={messages().nodes.results2}>
+      <BindingsEditor path={['outputs']} label={messages().nodes.results2} addLabel={messages().nodes.addAResult} nameLabel={messages().nodes.result} />
+      <p className={hintClassName}>{messages().nodes.theValuesTheAppShowsAfter}</p>
     </InspectorSection>
   )
 }

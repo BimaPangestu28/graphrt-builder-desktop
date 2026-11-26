@@ -5,6 +5,7 @@ import { Button, Icon, StatusDot, joinClassNames, type StatusDotTone } from '@/c
 import type { AsyncDataState } from '@/hooks/useAsyncData'
 import { describeError } from '@/lib/agentDisplay'
 import { ConnectionsNotice, ConnectionsSection, connectionsCardClassNames, useOpensAddForm } from './ConnectionsSection'
+import { messages } from '@/i18n'
 
 const inputClassNames = 'box-border h-9 min-w-0 rounded-[9px] border border-line-strong bg-surface px-3 text-[14px] font-normal text-ink outline-none focus:border-ink'
 const fieldLabelClassNames = 'flex flex-col gap-1 text-[12px] font-medium text-muted'
@@ -17,11 +18,11 @@ export function describeTransport(server: McpServerDefinition): string {
 /** "Connected · 3 tools: a, b, c", "Could not connect: …" or "Not tested yet". */
 export function describeCheck(server: McpServerDefinition): string {
   const { lastCheck, knownTools } = server
-  if (!lastCheck) return 'Not tested yet'
-  if (!lastCheck.connected) return `Could not connect: ${lastCheck.error ?? 'unknown error'}`
-  const toolsText = knownTools.length === 1 ? '1 tool' : `${knownTools.length} tools`
+  if (!lastCheck) return messages().connections.notTestedYet
+  if (!lastCheck.connected) return messages().connections.couldNotConnect(lastCheck.error ?? null)
+  const toolsText = knownTools.length === 1 ? messages().connections.n1Tool : messages().connections.valueTools(knownTools.length)
   const toolNames = knownTools.map((tool) => tool.name).join(', ')
-  return knownTools.length > 0 ? `Connected · ${toolsText}: ${toolNames}` : 'Connected · no tools'
+  return knownTools.length > 0 ? messages().connections.connectedToolstextToolnames(toolsText, toolNames) : messages().connections.connectedNoTools
 }
 
 function splitNames(text: string, separator: RegExp): string[] {
@@ -46,7 +47,7 @@ function McpServerCard({ server, onChanged }: McpServerCardProps) {
       else await removeMcpServer(server.name)
       await onChanged()
     } catch (actionError) {
-      setErrorMessage(`Could not ${action === 'test' ? 'test' : 'remove'} ${server.name}: ${describeError(actionError)}`)
+      setErrorMessage(action === 'test' ? messages().connections.couldNotTestServer(server.name, describeError(actionError)) : messages().connections.couldNotRemoveServer(server.name, describeError(actionError)))
     } finally {
       setPendingAction(null)
     }
@@ -59,18 +60,18 @@ function McpServerCard({ server, onChanged }: McpServerCardProps) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <b className="min-w-0 text-[14px] font-semibold [overflow-wrap:anywhere]">{server.name}</b>
         <span className="flex gap-1">
-          <Button variant="secondary" size="sm" aria-label={`Test ${server.name}`} disabled={pendingAction !== null} onClick={() => void runAction('test')}>
-            {pendingAction === 'test' ? 'Testing…' : 'Test connection'}
+          <Button variant="secondary" size="sm" aria-label={messages().connections.testName(server.name)} disabled={pendingAction !== null} onClick={() => void runAction('test')}>
+            {pendingAction === 'test' ? messages().connections.testing : messages().connections.testConnection}
           </Button>
           <Button
             variant="ghost"
             size="sm"
-            aria-label={`Remove ${server.name}`}
+            aria-label={messages().connections.removeName(server.name)}
             disabled={pendingAction !== null}
             onClick={() => void runAction('remove')}
             className="!text-danger hover:!bg-danger-tint"
           >
-            {pendingAction === 'remove' ? 'Removing…' : 'Remove'}
+            {pendingAction === 'remove' ? messages().connections.removing : messages().connections.remove}
           </Button>
         </span>
       </div>
@@ -79,7 +80,7 @@ function McpServerCard({ server, onChanged }: McpServerCardProps) {
         <StatusDot tone={checkTone} className="mt-[5px]" />
         <span className={joinClassNames('text-[13px] leading-normal', checkTextClassName)}>{describeCheck(server)}</span>
       </span>
-      {secretNames.length > 0 && <span className="text-[12px] text-muted [overflow-wrap:anywhere]">Secrets: {secretNames.join(', ')}</span>}
+      {secretNames.length > 0 && <span className="text-[12px] text-muted [overflow-wrap:anywhere]">{messages().connections.secrets}{' '}{secretNames.join(', ')}</span>}
       {errorMessage && (
         <span role="alert" className="text-[13px] text-danger">
           {errorMessage}
@@ -138,55 +139,55 @@ function AddMcpServerForm({ onAdded, onClose }: { onAdded: () => Promise<void>; 
       setFormValues(emptyFormValues)
       await onAdded()
     } catch (addError) {
-      setErrorMessage(`Could not add the server: ${describeError(addError)}`)
+      setErrorMessage(messages().connections.couldNotAddTheServerReason(describeError(addError)))
     } finally {
       setIsSaving(false)
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} aria-label="Add an MCP server" className={`flex flex-col gap-3 p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] ${connectionsCardClassNames}`}>
+    <form onSubmit={handleSubmit} aria-label={messages().connections.addAnMcpServer} className={`flex flex-col gap-3 p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] ${connectionsCardClassNames}`}>
       <span className="flex flex-col gap-0.5">
-        <span className="text-[14px] font-semibold">Add an MCP server</span>
+        <span className="text-[14px] font-semibold">{messages().connections.addAnMcpServer}</span>
         <span className="text-[12px] leading-normal text-muted">
-          Agents use its tools as <code className="font-mono">name/tool</code>. graphrt starts or connects to it only while a run uses it
+          {messages().connections.agentsUseItsToolsAs}{' '}<code className="font-mono">{messages().connections.nameTool}</code>{messages().connections.graphrtStartsOrConnectsToIt}
         </span>
       </span>
       <div className="flex flex-wrap gap-3">
         <label className={`${fieldLabelClassNames} flex-[1_1_160px]`}>
-          Name
-          <input value={formValues.name} placeholder="github" onChange={(event) => updateField('name', event.target.value)} className={inputClassNames} />
+          {messages().connections.name}
+          <input value={formValues.name} placeholder={messages().connections.github} onChange={(event) => updateField('name', event.target.value)} className={inputClassNames} />
         </label>
         <label className={`${fieldLabelClassNames} flex-[1_1_160px]`}>
-          How graphrt reaches it
+          {messages().connections.howGraphrtReachesIt}
           <select value={formValues.transportKind} onChange={(event) => updateField('transportKind', event.target.value === 'http' ? 'http' : 'stdio')} className={inputClassNames}>
-            <option value="stdio">Start a command on this computer</option>
-            <option value="http">Connect to a URL</option>
+            <option value="stdio">{messages().connections.startACommandOnThisComputer}</option>
+            <option value="http">{messages().connections.connectToAUrl}</option>
           </select>
         </label>
       </div>
       {isStdio ? (
         <div className="flex flex-wrap gap-3">
           <label className={`${fieldLabelClassNames} flex-[1_1_140px]`}>
-            Command
-            <input value={formValues.command} placeholder="npx" onChange={(event) => updateField('command', event.target.value)} className={inputClassNames} />
+            {messages().connections.command}
+            <input value={formValues.command} placeholder={messages().connections.npx} onChange={(event) => updateField('command', event.target.value)} className={inputClassNames} />
           </label>
           <label className={`${fieldLabelClassNames} flex-[3_1_260px]`}>
-            Arguments
-            <input value={formValues.argumentsText} placeholder="-y @modelcontextprotocol/server-github" onChange={(event) => updateField('argumentsText', event.target.value)} className={inputClassNames} />
+            {messages().connections.arguments}
+            <input value={formValues.argumentsText} placeholder={messages().connections.yModelcontextprotocolServerGithub} onChange={(event) => updateField('argumentsText', event.target.value)} className={inputClassNames} />
           </label>
         </div>
       ) : (
         <label className={fieldLabelClassNames}>
-          Server URL
-          <input type="url" value={formValues.url} placeholder="https://mcp.example.com/mcp" onChange={(event) => updateField('url', event.target.value)} className={inputClassNames} />
+          {messages().connections.serverUrl}
+          <input type="url" value={formValues.url} placeholder={messages().connections.httpsMcpExampleComMcp} onChange={(event) => updateField('url', event.target.value)} className={inputClassNames} />
         </label>
       )}
       <label className={fieldLabelClassNames}>
-        {isStdio ? 'Secrets it needs (names, given as environment variables)' : 'Secret sent as the bearer token (name)'}
+        {isStdio ? messages().connections.secretsItNeedsNamesGivenAs : messages().connections.secretSentAsTheBearerToken}
         <input value={formValues.secretsText} placeholder={isStdio ? 'GITHUB_TOKEN' : 'MCP_TOKEN'} onChange={(event) => updateField('secretsText', event.target.value)} className={inputClassNames} />
       </label>
-      <span className="text-[12px] text-muted">Set the secret values under Secrets after adding the server</span>
+      <span className="text-[12px] text-muted">{messages().connections.setTheSecretValuesUnderSecrets}</span>
       {errorMessage && (
         <span role="alert" className="text-[13px] text-danger">
           {errorMessage}
@@ -194,10 +195,10 @@ function AddMcpServerForm({ onAdded, onClose }: { onAdded: () => Promise<void>; 
       )}
       <div className="flex justify-end gap-2 border-t border-chip pt-3">
         <Button variant="ghost" size="sm" onClick={onClose}>
-          Cancel
+          {messages().connections.cancel}
         </Button>
         <Button type="submit" size="sm" disabled={!canSave}>
-          {isSaving ? 'Adding…' : 'Add server'}
+          {isSaving ? messages().connections.adding : messages().connections.addServer}
         </Button>
       </div>
     </form>
@@ -227,21 +228,21 @@ export function McpServersSection({ servers, onServersChanged }: McpServersSecti
   return (
     <ConnectionsSection
       id="connections-mcp"
-      title="MCP servers"
-      description="Give agents tools from any MCP server, started on this computer or reached by URL"
+      title={messages().connections.mcpServers}
+      description={messages().connections.giveAgentsToolsFromAnyMcp}
       action={
         !isAdding && (
           <Button variant="secondary" size="sm" onClick={() => setIsAdding(true)}>
             <Icon name="plus" size={14} />
-            Add server
+            {messages().connections.addServer}
           </Button>
         )
       }
     >
       {isAdding && <AddMcpServerForm onAdded={handleChanged} onClose={() => setIsAdding(false)} />}
-      {servers.error && <ConnectionsNotice tone="danger">Could not load MCP servers: {describeError(servers.error)}</ConnectionsNotice>}
-      {!servers.error && !servers.data && <ConnectionsNotice>Loading MCP servers…</ConnectionsNotice>}
-      {servers.data?.length === 0 && <ConnectionsNotice>No MCP servers yet. Add one to give your agents its tools</ConnectionsNotice>}
+      {servers.error && <ConnectionsNotice tone="danger">{messages().connections.couldNotLoadMcpServers}{' '}{describeError(servers.error)}</ConnectionsNotice>}
+      {!servers.error && !servers.data && <ConnectionsNotice>{messages().connections.loadingMcpServers}</ConnectionsNotice>}
+      {servers.data?.length === 0 && <ConnectionsNotice>{messages().connections.noMcpServersYetAddOne}</ConnectionsNotice>}
       {servers.data && servers.data.length > 0 && (
         <div className="flex flex-col gap-3">
           {servers.data.map((server) => (

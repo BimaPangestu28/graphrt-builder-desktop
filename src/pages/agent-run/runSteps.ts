@@ -3,6 +3,7 @@ import type { TestRunStepState } from '@/pages/agent-run/testRunTypes'
 import { buildItemFrame, describeItemShort, findIterationItems, parseFrame, readIteratorPath, readNumber } from './runEventValues'
 import { collectActiveFrames, collectNodeTracks, type NodeExecution, type NodeTrack, type StepTokenUsage } from './runNodeTracks'
 import { containerNodeKinds, hiddenNodeKinds, humanizeNodeId, modelNodeKinds, type RunStepTemplate } from './runProgress'
+import { messages } from '@/i18n'
 
 /**
  * The step list of screens 06 and 20: the flow summary's steps in flow order, with what each
@@ -82,8 +83,8 @@ function countDoneItems(execution: NodeExecution, nodeId: string, startedIndexes
 
 /** "For each business" → "Business", used to name items ("Business 3 of 10"). */
 export function nameIterationItem(containerLabel: string, isLoop: boolean): string {
-  const match = /^for each (.+)$/i.exec(containerLabel.trim())
-  if (!match) return isLoop ? 'Round' : 'Item'
+  const match = /^(?:for each|untuk setiap|untuk tiap) (.+)$/i.exec(containerLabel.trim())
+  if (!match) return isLoop ? messages().agentRun.round : messages().agentRun.item
   const noun = match[1].trim()
   return noun.charAt(0).toUpperCase() + noun.slice(1)
 }
@@ -92,8 +93,8 @@ export function nameIterationItem(containerLabel: string, isLoop: boolean): stri
 export function describeIterationItem(containerLabel: string, progress: IterationProgress): string | null {
   if (progress.currentNumber === null) return null
   const itemName = nameIterationItem(containerLabel, progress.isLoop)
-  const position = progress.total === null ? `${itemName} ${progress.currentNumber}` : `${itemName} ${progress.currentNumber} of ${progress.total}`
-  return progress.currentItemLabel ? `${position}: ${progress.currentItemLabel}` : position
+  const position = messages().agentRun.itemPosition(itemName, progress.currentNumber, progress.total)
+  return progress.currentItemLabel ? messages().agentRun.itemWithLabel(position, progress.currentItemLabel) : position
 }
 
 interface IterationSources {

@@ -10,6 +10,7 @@ import { PluginRuntimeCard } from './PluginRuntimeCard'
 import { PluginSettings } from './PluginSettings'
 import { PluginTrustToggle } from './PluginTrustToggle'
 import { WhatsAppWebLinkSection } from './WhatsAppWebLinkSection'
+import { messages } from '@/i18n'
 
 /** One numbered step of the setup checklist. `isDone: null` means graphrt cannot tell. */
 export interface PluginSetupStep {
@@ -42,7 +43,7 @@ function StepMarker({ number, isDone }: { number: number; isDone: boolean | null
  */
 export function PluginSetupChecklist({ steps }: { steps: PluginSetupStep[] }) {
   return (
-    <ol aria-label="Setup steps" className="m-0 flex list-none flex-col p-0">
+    <ol aria-label={messages().plugins.setupSteps} className="m-0 flex list-none flex-col p-0">
       {steps.map((step, index) => {
         const isLast = index === steps.length - 1
         return (
@@ -53,7 +54,7 @@ export function PluginSetupChecklist({ steps }: { steps: PluginSetupStep[] }) {
               <div className="flex min-h-6 flex-wrap items-baseline gap-x-2 gap-y-0.5 pt-0.5">
                 <span className={joinClassNames('text-[14px] font-semibold', step.isDone ? 'text-ink-2' : 'text-ink')}>
                   {step.title}
-                  {step.isDone && <VisuallyHidden> (done)</VisuallyHidden>}
+                  {step.isDone && <VisuallyHidden>{messages().plugins.doneSuffix}</VisuallyHidden>}
                 </span>
                 {step.summary && <span className="text-[12px] text-muted">{step.summary}</span>}
               </div>
@@ -69,9 +70,10 @@ export function PluginSetupChecklist({ steps }: { steps: PluginSetupStep[] }) {
 function describeSettingsSummary(installed: InstalledPlugin): string {
   const required = installed.config.filter((setting) => !setting.optional)
   const optionalCount = installed.config.length - required.length
-  if (required.length === 0) return optionalCount === 1 ? '1 optional, the default works' : `${optionalCount} optional, the defaults work`
+  const t = messages().plugins
+  if (required.length === 0) return t.optionalDefaultWorks(optionalCount)
   const setCount = required.filter((setting) => setting.configured).length
-  return `${setCount} of ${required.length} required set`
+  return t.requiredSet(setCount, required.length)
 }
 
 interface BuildStepsInput {
@@ -90,12 +92,13 @@ interface BuildStepsInput {
  */
 export function buildPluginSetupSteps({ installed, plugins, browserRuntime, pluginRuntime }: BuildStepsInput): PluginSetupStep[] {
   const isBrowserReady = browserRuntime.status === 'installed'
+  const t = messages().plugins
   const steps: PluginSetupStep[] = [
-    { id: 'install', title: 'Install', summary: `v${installed.version} on this computer`, isDone: true },
+    { id: 'install', title: t.stepInstall, summary: t.onThisComputer(installed.version), isDone: true },
     {
       id: 'trust',
-      title: 'Trust it',
-      summary: installed.trusted ? 'Trusted' : 'Not trusted yet',
+      title: t.stepTrust,
+      summary: installed.trusted ? t.trusted : t.notTrustedYet,
       isDone: installed.trusted,
       content: (
         <PluginTrustToggle
@@ -108,20 +111,20 @@ export function buildPluginSetupSteps({ installed, plugins, browserRuntime, plug
     },
   ]
   if (installed.needsNodeRuntime && pluginRuntime.status !== 'installed') {
-    steps.push({ id: 'runtime', title: 'Plugin runtime', isDone: false, content: <PluginRuntimeCard runtime={pluginRuntime} isEmbedded /> })
+    steps.push({ id: 'runtime', title: t.pluginRuntime, isDone: false, content: <PluginRuntimeCard runtime={pluginRuntime} isEmbedded /> })
   }
   if (installed.needsBrowser) {
-    steps.push({ id: 'browser', title: 'Browser runtime', isDone: isBrowserReady, content: <BrowserRuntimeCard runtime={browserRuntime} isEmbedded /> })
+    steps.push({ id: 'browser', title: t.browserRuntime, isDone: isBrowserReady, content: <BrowserRuntimeCard runtime={browserRuntime} isEmbedded /> })
   }
   if (installed.name === whatsAppWebPluginName) {
-    steps.push({ id: 'link', title: 'Link your account', isDone: null, content: <WhatsAppWebLinkSection installed={installed} isBrowserReady={isBrowserReady} /> })
+    steps.push({ id: 'link', title: t.stepLink, isDone: null, content: <WhatsAppWebLinkSection installed={installed} isBrowserReady={isBrowserReady} /> })
   }
   if (installed.config.length > 0) {
     const isEveryRequiredSet = installed.config.every((setting) => setting.optional || setting.configured)
     const hasRequired = installed.config.some((setting) => !setting.optional)
     steps.push({
       id: 'settings',
-      title: 'Settings',
+      title: t.stepSettings,
       summary: describeSettingsSummary(installed),
       isDone: hasRequired ? isEveryRequiredSet : null,
       content: <PluginSettings installed={installed} plugins={plugins} />,

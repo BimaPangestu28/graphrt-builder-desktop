@@ -14,6 +14,7 @@
 //! - [`data_folder`]: where the data lives, and "Show in Finder / File Explorer".
 //! - [`chat_notify`]: a notification when a chatbot hands a conversation over.
 //! - [`daily_summary`]: one notification a day summarizing the runs.
+//! - [`ui_language`]: the UI language and the tray and notification strings.
 //! - [`onboarding_tour`]: whether the onboarding tour was completed or skipped.
 //! - [`updater`]: auto-update from GitHub Releases (signed bundles) and relaunch.
 //!
@@ -35,6 +36,7 @@ pub mod notify;
 pub mod onboarding_tour;
 pub mod run_limits;
 pub mod tray;
+pub mod ui_language;
 pub mod updater;
 pub mod window;
 

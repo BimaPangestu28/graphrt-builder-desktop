@@ -1,5 +1,8 @@
 import type { AgentKind, AgentStatus, ModelProvider } from '@/api/types'
 import type { StatusDotTone } from '@/components/ui'
+import { messages } from '@/i18n'
+import { localizedRecord } from '@/i18n/localized'
+import { modelProviderNames } from '@/lib/settings'
 
 /** How agents, statuses and providers from the backend are labelled across screens. */
 
@@ -11,27 +14,10 @@ const statusDotTones: Record<AgentStatus, StatusDotTone> = {
 }
 
 /** Kind tag shown next to an agent name; plain task agents have none. */
-const kindLabels: Record<AgentKind, string | undefined> = {
-  task: undefined,
-  chatbot: 'Chatbot',
-  chain: 'Chain',
-  team: 'Team',
-}
+const kindLabels: Readonly<Record<AgentKind, string | undefined>> = localizedRecord(() => ({ task: undefined, ...messages().lib.kindLabels }))
 
-const providerNames: Record<ModelProvider, string> = {
-  openai: 'OpenAI',
-  anthropic: 'Anthropic',
-  gemini: 'Google Gemini',
-  deepseek: 'DeepSeek',
-  ollama: 'Ollama',
-  'claude-code-cli': 'Claude Code (on this computer)',
-  'codex-cli': 'Codex (on this computer)',
-  'gemini-cli': 'Gemini CLI (on this computer)',
-  'cursor-cli': 'Cursor CLI (on this computer)',
-  'copilot-cli': 'GitHub Copilot CLI (on this computer)',
-  'opencode-cli': 'OpenCode (on this computer)',
-  'qwen-code-cli': 'Qwen Code (on this computer)',
-}
+/** The same names as Settings and Connections, local CLIs marked "(on this computer)". */
+const providerNames: Readonly<Record<ModelProvider, string>> = modelProviderNames
 
 /** Sidebar dot colour for an agent status (active → ok, paused → paused, draft/tested → brand). */
 export function getStatusDotTone(status: AgentStatus): StatusDotTone {

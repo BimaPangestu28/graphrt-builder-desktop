@@ -3,6 +3,8 @@ import type { InstalledPlugin, PluginCatalog, PluginMaturity, PluginNodeInfo, Pl
 import type { PluginInstallProgress } from '@/hooks/usePlugins'
 import { pluginDisplayName } from '@/lib/pluginDisplayName'
 import { categorizePlugin, type PluginCategory } from './pluginCategories'
+import { messages } from '@/i18n'
+import { localizedRecord } from '@/i18n/localized'
 
 /** One plugin on the Plugins page: catalog data merged with the installed copy. */
 export interface PluginListItem {
@@ -107,10 +109,11 @@ export function buildPluginListItems(catalog: PluginCatalog | null, installedPlu
 
 /** Plain-language lines for what a plugin asks for, shown before it is installed. */
 export function describePluginPermissions(permissions: PluginPermissions, needsBrowser: boolean): string[] {
-  const lines = [permissions.network ? 'Connects to the internet' : 'Works without the internet']
-  if (permissions.secrets) lines.push('Receives secret values in plain text (only once you trust it)')
-  if (permissions.env.length > 0) lines.push(`Reads these settings: ${permissions.env.join(', ')}`)
-  if (needsBrowser) lines.push('Needs the browser runtime (Chromium) on this computer')
+  const t = messages().plugins
+  const lines = [permissions.network ? t.connectsInternet : t.worksOffline]
+  if (permissions.secrets) lines.push(t.receivesSecrets)
+  if (permissions.env.length > 0) lines.push(t.readsSettingsList(permissions.env.join(', ')))
+  if (needsBrowser) lines.push(t.needsBrowser)
   return lines
 }
 
@@ -119,17 +122,18 @@ export function describePluginPermissions(permissions: PluginPermissions, needsB
  * The full plain-language list lives in the plugin's details.
  */
 export function describePermissionChips(permissions: PluginPermissions, needsBrowser: boolean): string[] {
+  const t = messages().plugins
   const chips: string[] = []
-  if (permissions.network) chips.push('Internet')
-  if (permissions.secrets) chips.push('Secrets')
-  if (permissions.env.length > 0) chips.push(permissions.env.length === 1 ? '1 setting' : `${permissions.env.length} settings`)
-  if (needsBrowser) chips.push('Browser')
+  if (permissions.network) chips.push(t.chipInternet)
+  if (permissions.secrets) chips.push(t.chipSecrets)
+  if (permissions.env.length > 0) chips.push(t.chipSettings(permissions.env.length))
+  if (needsBrowser) chips.push(t.chipBrowser)
   return chips
 }
 
 /** e.g. "Adds 1 step", "Adds 14 steps". */
 export function describeStepCount(stepCount: number): string {
-  return stepCount === 1 ? 'Adds 1 step' : `Adds ${stepCount} steps`
+  return messages().plugins.addsSteps(stepCount)
 }
 
 /**
@@ -178,11 +182,12 @@ export function countPluginsByTab(items: PluginListItem[]): Record<PluginFilter,
 /** The one status badge of a plugin card: what matters most first. */
 export function describePluginStatus(item: PluginListItem): { label: string; tone: BadgeTone } {
   const { installed } = item
-  if (!installed) return { label: 'Not installed', tone: 'neutral' }
-  if (installed.loadError) return { label: 'Failed to load', tone: 'danger' }
-  if (item.updateAvailable) return { label: 'Update available', tone: 'brand' }
-  if (pluginNeedsAttention(installed)) return { label: 'Needs setup', tone: 'amber' }
-  return { label: `Installed v${installed.version}`, tone: 'ok' }
+  const t = messages().plugins
+  if (!installed) return { label: t.statusNotInstalled, tone: 'neutral' }
+  if (installed.loadError) return { label: t.statusFailedToLoad, tone: 'danger' }
+  if (item.updateAvailable) return { label: t.statusUpdateAvailable, tone: 'brand' }
+  if (pluginNeedsAttention(installed)) return { label: t.statusNeedsSetup, tone: 'amber' }
+  return { label: t.statusInstalled(installed.version), tone: 'ok' }
 }
 
 /**
@@ -194,13 +199,15 @@ export function describePluginStatus(item: PluginListItem): { label: string; ton
  * @returns The badge label and tone, or null for none ({ label: string; tone: BadgeTone } | null)
  */
 export function describePluginSource(source: PluginSource): { label: string; tone: BadgeTone } | null {
-  if (source === 'community') return { label: 'Community', tone: 'brand' }
-  if (source === 'local') return { label: 'Local · not reviewed', tone: 'amber' }
+  if (source === 'community') return { label: messages().plugins.badgeCommunity, tone: 'brand' }
+  if (source === 'local') return { label: messages().plugins.badgeLocal, tone: 'amber' }
   return null
 }
 
 /** Shown wherever a plugin can be installed: installing runs third-party code on this computer. */
-export const pluginInstallTrustNote = 'Installing a plugin runs its code on this computer. Trust only plugins you know.'
+export function pluginInstallTrustNote(): string {
+  return messages().plugins.installTrustNote
+}
 
 /**
  * The sentence the install confirmation adds for a community plugin, or null for others.
@@ -208,11 +215,10 @@ export const pluginInstallTrustNote = 'Installing a plugin runs its code on this
  */
 export function describeCommunityInstallNote(item: Pick<PluginListItem, 'source' | 'publisher'>): string | null {
   if (item.source !== 'community') return null
-  const maintainer = item.publisher ?? 'a third party'
-  return `Reviewed by the graphrt maintainers, but maintained by ${maintainer}${maintainer.endsWith('.') ? '' : '.'}`
+  return messages().plugins.communityNote(item.publisher ?? messages().plugins.aThirdParty)
 }
 
-const maturityLabels: Record<PluginMaturity, string> = { stable: 'Stable', beta: 'Beta', experimental: 'Experimental' }
+const maturityLabels: Readonly<Record<PluginMaturity, string>> = localizedRecord(() => messages().plugins.maturityLabels)
 
 /** e.g. "Beta", or null for stable or unlabelled plugins (nothing worth pointing out). */
 export function describeMaturity(maturity: PluginMaturity | null): string | null {
@@ -226,14 +232,7 @@ export function pluginMonogram(name: string): string {
   return name.slice(0, 2).toUpperCase()
 }
 
-const installStageLabels: Record<PluginInstallProgress['stage'], string> = {
-  downloading: 'Downloading',
-  verifying: 'Checking the download',
-  extracting: 'Unpacking',
-  loading: 'Loading',
-  done: 'Installed',
-  failed: 'Install failed',
-}
+const installStageLabels: Readonly<Record<PluginInstallProgress['stage'], string>> = localizedRecord(() => messages().plugins.installStages)
 
 /** e.g. "Downloading · 40%" or the backend's message. */
 export function describeInstallProgress(progress: PluginInstallProgress): string {

@@ -18,12 +18,14 @@ mod needs;
 pub mod retry;
 #[cfg(test)]
 mod tests;
+mod texts;
 
 use std::collections::{BTreeMap, HashMap};
 
 pub use self::failed_run::failed_run_report;
 use self::models::{Problem, ProblemAction, ProblemActionKind, ProblemKind};
 use self::needs::{provider_display_name, read_flow_needs, FlowNeeds};
+use self::texts::ProblemTexts;
 use crate::credentials::CredentialStore;
 use crate::error::AppResult;
 use crate::node_runtime::{BrowserRuntimeStatus, PluginRuntimeStatus};
@@ -71,12 +73,13 @@ pub fn collect_problems(sources: &ProblemSources<'_>) -> AppResult<Vec<Problem>>
         sources.db.list_runs(&RunFilter { agent_id: None, status: None, limit: Some(RECENT_RUN_LIMIT) })?;
     let triggers = sources.db.list_triggers(None)?;
 
-    let mut problems = failed_run_problems(sources.db, &recent_runs, &agent_names)?;
-    problems.extend(credential_problems(sources, &agents)?);
-    problems.extend(plugin_problems(sources.plugins, &agents));
-    problems.extend(plugin_runtime_problems(sources, &agents));
-    problems.extend(browser_problems(sources, &agents));
-    problems.extend(schedule_problems(&triggers, &recent_runs, &agent_names));
+    let texts = ProblemTexts::for_database(sources.db);
+    let mut problems = failed_run_problems(sources.db, &recent_runs, &agent_names, texts)?;
+    problems.extend(credential_problems(sources, &agents, texts)?);
+    problems.extend(plugin_problems(sources.plugins, &agents, texts));
+    problems.extend(plugin_runtime_problems(sources, &agents, texts));
+    problems.extend(browser_problems(sources, &agents, texts));
+    problems.extend(schedule_problems(&triggers, &recent_runs, &agent_names, texts));
     Ok(problems)
 }
 
@@ -85,7 +88,12 @@ fn active_agents(agents: &[AgentContext]) -> impl Iterator<Item = &AgentContext>
 }
 
 /// The latest non-test run of each agent, when it failed. Newest first.
-fn failed_run_problems(db: &Database, runs: &[Run], agent_names: &HashMap<&str, &str>) -> AppResult<Vec<Problem>> {
+fn failed_run_problems(
+    db: &Database,
+    runs: &[Run],
+    agent_names: &HashMap<&str, &str>,
+    texts: ProblemTexts,
+) -> AppResult<Vec<Problem>> {
     let mut seen_agents = std::collections::HashSet::new();
     let mut problems = Vec::new();
     for run in runs.iter().filter(|run| run.trigger != RunTrigger::Test) {
@@ -93,12 +101,16 @@ fn failed_run_problems(db: &Database, runs: &[Run], agent_names: &HashMap<&str, 
             continue;
         }
         let report = failed_run_report(db, &run.id)?;
-        let mut actions =
-            vec![ProblemAction::for_run(ProblemActionKind::OpenRun, "See what happened", &run.agent_id, &run.id)];
+        let mut actions = vec![ProblemAction::for_run(
+            ProblemActionKind::OpenRun,
+            &texts.see_what_happened(),
+            &run.agent_id,
+            &run.id,
+        )];
         if report.retry.can_retry {
             actions.push(ProblemAction::for_run(
                 ProblemActionKind::RetryRun,
-                "Retry from the start",
+                &texts.retry_from_start(),
                 &run.agent_id,
                 &run.id,
             ));
@@ -120,11 +132,11 @@ fn failed_run_problems(db: &Database, runs: &[Run], agent_names: &HashMap<&str, 
 }
 
 /// "OpenAI key", or "Claude Code turned on" for a local CLI provider.
-fn missing_provider_label(provider: &str) -> String {
+fn missing_provider_label(provider: &str, texts: ProblemTexts) -> String {
     if crate::local_cli::LocalCli::from_provider_name(provider).is_some() {
-        format!("{} turned on in Connections", provider_display_name(provider))
+        texts.provider_turned_on(&provider_display_name(provider))
     } else {
-        format!("{} key", provider_display_name(provider))
+        texts.provider_key(&provider_display_name(provider))
     }
 }
 
@@ -134,7 +146,7 @@ struct MissingItems {
     only_plugin_settings: bool,
 }
 
-fn missing_items(sources: &ProblemSources<'_>, needs: &FlowNeeds) -> AppResult<MissingItems> {
+fn missing_items(sources: &ProblemSources<'_>, needs: &FlowNeeds, texts: ProblemTexts) -> AppResult<MissingItems> {
     let statuses = sources.credentials.provider_statuses(sources.db)?;
     let is_configured = |provider: &str| {
         statuses.iter().any(|status| {
@@ -147,7 +159,7 @@ fn missing_items(sources: &ProblemSources<'_>, needs: &FlowNeeds) -> AppResult<M
         .model_providers
         .iter()
         .filter(|provider| !is_configured(provider))
-        .map(|provider| missing_provider_label(provider))
+        .map(|provider| missing_provider_label(provider, texts))
         .collect();
     for env_need in needs.env.iter().filter(|env_need| env_need.required) {
         if !sources.credentials.has_workflow_secret(&env_need.name)? {
@@ -157,30 +169,34 @@ fn missing_items(sources: &ProblemSources<'_>, needs: &FlowNeeds) -> AppResult<M
     let other_count = labels.len();
     for plugin in sources.plugins.iter().filter(|plugin| needs.plugins.contains(&plugin.name)) {
         for setting in plugin.config.iter().filter(|setting| !setting.configured && !setting.optional) {
-            labels.push(format!("{} setting {}", plugin.display_name, setting.name));
+            labels.push(texts.plugin_setting(&plugin.display_name, &setting.name));
         }
     }
     Ok(MissingItems { only_plugin_settings: other_count == 0, labels })
 }
 
-fn credential_problems(sources: &ProblemSources<'_>, agents: &[AgentContext]) -> AppResult<Vec<Problem>> {
+fn credential_problems(
+    sources: &ProblemSources<'_>,
+    agents: &[AgentContext],
+    texts: ProblemTexts,
+) -> AppResult<Vec<Problem>> {
     let mut problems = Vec::new();
     for context in active_agents(agents) {
         let Some(needs) = &context.needs else { continue };
-        let missing = missing_items(sources, needs)?;
+        let missing = missing_items(sources, needs, texts)?;
         if missing.labels.is_empty() {
             continue;
         }
         let action = if missing.only_plugin_settings {
-            ProblemAction::new(ProblemActionKind::OpenPlugins, "Open plugin settings")
+            ProblemAction::new(ProblemActionKind::OpenPlugins, &texts.open_plugin_settings())
         } else {
-            ProblemAction::new(ProblemActionKind::OpenConnections, "Open Connections")
+            ProblemAction::new(ProblemActionKind::OpenConnections, &texts.open_connections())
         };
         problems.push(Problem {
             id: format!("missing_credentials:{}", context.agent.id),
             kind: ProblemKind::MissingCredentials,
-            title: format!("{} is missing a connection", context.agent.name),
-            detail: format!("It needs {}. Its runs cannot start until this is set", missing.labels.join(", ")),
+            title: texts.missing_connection_title(&context.agent.name),
+            detail: texts.missing_connection_detail(&missing.labels.join(", ")),
             needs_attention: true,
             agent_id: Some(context.agent.id.clone()),
             agent_name: Some(context.agent.name.clone()),
@@ -203,7 +219,7 @@ fn plugin_users(agents: &[AgentContext]) -> BTreeMap<String, Vec<String>> {
     users
 }
 
-fn plugin_problem(id: String, kind: ProblemKind, title: String, detail: String) -> Problem {
+fn plugin_problem(id: String, kind: ProblemKind, title: String, detail: String, texts: ProblemTexts) -> Problem {
     Problem {
         id,
         kind,
@@ -214,11 +230,11 @@ fn plugin_problem(id: String, kind: ProblemKind, title: String, detail: String) 
         agent_name: None,
         run_id: None,
         occurred_at: None,
-        actions: vec![ProblemAction::new(ProblemActionKind::OpenPlugins, "Open plugins")],
+        actions: vec![ProblemAction::new(ProblemActionKind::OpenPlugins, &texts.open_plugins())],
     }
 }
 
-fn plugin_problems(plugins: &[InstalledPlugin], agents: &[AgentContext]) -> Vec<Problem> {
+fn plugin_problems(plugins: &[InstalledPlugin], agents: &[AgentContext], texts: ProblemTexts) -> Vec<Problem> {
     let users = plugin_users(agents);
     let mut problems = Vec::new();
     for (plugin_name, agent_names) in &users {
@@ -226,27 +242,30 @@ fn plugin_problems(plugins: &[InstalledPlugin], agents: &[AgentContext]) -> Vec<
             problems.push(plugin_problem(
                 format!("plugin_missing:{plugin_name}"),
                 ProblemKind::PluginMissing,
-                format!("The {} plugin is not installed", humanize_plugin_name(plugin_name)),
-                format!("{} uses it. Install it from Connections, Plugins", agent_names.join(", ")),
+                texts.plugin_missing_title(&humanize_plugin_name(plugin_name)),
+                texts.plugin_missing_detail(&agent_names.join(", ")),
+                texts,
             ));
         }
     }
     for plugin in plugins {
         let used_by = users.get(&plugin.name);
         if let Some(load_error) = &plugin.load_error {
-            let users_text = used_by.map(|names| format!(" {} cannot run until it does.", names.join(", ")));
+            let users_text = used_by.map(|names| texts.cannot_run_until_it_does(&names.join(", ")));
             problems.push(plugin_problem(
                 format!("plugin_not_loaded:{}", plugin.name),
                 ProblemKind::PluginNotLoaded,
-                format!("The {} plugin could not start", plugin.display_name),
+                texts.plugin_not_loaded_title(&plugin.display_name),
                 format!("{load_error}.{}", users_text.unwrap_or_default()),
+                texts,
             ));
         } else if let Some(agent_names) = used_by.filter(|_| !plugin.trusted) {
             problems.push(plugin_problem(
                 format!("plugin_untrusted:{}", plugin.name),
                 ProblemKind::PluginUntrusted,
-                format!("The {} plugin is not trusted yet", plugin.display_name),
-                format!("{} uses it. Plugins only run after you trust them", agent_names.join(", ")),
+                texts.plugin_untrusted_title(&plugin.display_name),
+                texts.plugin_untrusted_detail(&agent_names.join(", ")),
+                texts,
             ));
         }
     }
@@ -255,7 +274,7 @@ fn plugin_problems(plugins: &[InstalledPlugin], agents: &[AgentContext]) -> Vec<
 
 /// Agents using an installed plugin that runs on Node while the plugin runtime is missing
 /// (for example after updating from 0.1.x, which bundled Node).
-fn plugin_runtime_problems(sources: &ProblemSources<'_>, agents: &[AgentContext]) -> Vec<Problem> {
+fn plugin_runtime_problems(sources: &ProblemSources<'_>, agents: &[AgentContext], texts: ProblemTexts) -> Vec<Problem> {
     if sources.plugin_runtime_status != PluginRuntimeStatus::NotInstalled {
         return Vec::new();
     }
@@ -276,24 +295,21 @@ fn plugin_runtime_problems(sources: &ProblemSources<'_>, agents: &[AgentContext]
     vec![Problem {
         id: "plugin_runtime_missing".into(),
         kind: ProblemKind::PluginRuntimeMissing,
-        title: "The plugin runtime is not installed".into(),
-        detail: format!(
-            "{} use plugins, which run on Node.js. It is a one-time download of about 30 MB",
-            agent_names.join(", ")
-        ),
+        title: texts.plugin_runtime_missing_title(),
+        detail: texts.plugin_runtime_missing_detail(&agent_names.join(", ")),
         needs_attention: true,
         agent_id: None,
         agent_name: None,
         run_id: None,
         occurred_at: None,
         actions: vec![
-            ProblemAction::new(ProblemActionKind::InstallPluginRuntime, "Install the plugin runtime"),
-            ProblemAction::new(ProblemActionKind::OpenPlugins, "Open plugins"),
+            ProblemAction::new(ProblemActionKind::InstallPluginRuntime, &texts.install_plugin_runtime()),
+            ProblemAction::new(ProblemActionKind::OpenPlugins, &texts.open_plugins()),
         ],
     }]
 }
 
-fn browser_problems(sources: &ProblemSources<'_>, agents: &[AgentContext]) -> Vec<Problem> {
+fn browser_problems(sources: &ProblemSources<'_>, agents: &[AgentContext], texts: ProblemTexts) -> Vec<Problem> {
     if sources.browser_status != BrowserRuntimeStatus::NotInstalled {
         return Vec::new();
     }
@@ -314,21 +330,28 @@ fn browser_problems(sources: &ProblemSources<'_>, agents: &[AgentContext]) -> Ve
     vec![Problem {
         id: "browser_missing".into(),
         kind: ProblemKind::BrowserMissing,
-        title: "The browser for web steps is not installed".into(),
-        detail: format!("{} open web pages and need it. It is a one-time download", agent_names.join(", ")),
+        title: texts.browser_missing_title(),
+        detail: texts.browser_missing_detail(&agent_names.join(", ")),
         needs_attention: true,
         agent_id: None,
         agent_name: None,
         run_id: None,
         occurred_at: None,
         actions: vec![
-            ProblemAction::new(ProblemActionKind::InstallBrowser, "Install the browser"),
-            ProblemAction::new(ProblemActionKind::OpenPlugins, "Open plugins"),
+            ProblemAction::new(ProblemActionKind::InstallBrowser, &texts.install_browser()),
+            ProblemAction::new(ProblemActionKind::OpenPlugins, &texts.open_plugins()),
         ],
     }]
 }
 
-fn schedule_problem(trigger: &Trigger, agent_name: &str, kind: ProblemKind, title: String, detail: String) -> Problem {
+fn schedule_problem(
+    trigger: &Trigger,
+    agent_name: &str,
+    kind: ProblemKind,
+    title: String,
+    detail: String,
+    texts: ProblemTexts,
+) -> Problem {
     Problem {
         id: format!(
             "{}:{}",
@@ -345,7 +368,7 @@ fn schedule_problem(trigger: &Trigger, agent_name: &str, kind: ProblemKind, titl
         occurred_at: None,
         actions: vec![ProblemAction::for_agent(
             ProblemActionKind::OpenSchedule,
-            "Change the schedule",
+            &texts.change_schedule(),
             &trigger.agent_id,
         )],
     }
@@ -361,28 +384,34 @@ fn keeps_failing(runs: &[Run], agent_id: &str) -> bool {
     latest.len() == FAILING_SCHEDULE_RUN_COUNT && latest.iter().all(|run| run.status == RunStatus::Failed)
 }
 
-fn schedule_problems(triggers: &[Trigger], runs: &[Run], agent_names: &HashMap<&str, &str>) -> Vec<Problem> {
+fn schedule_problems(
+    triggers: &[Trigger],
+    runs: &[Run],
+    agent_names: &HashMap<&str, &str>,
+    texts: ProblemTexts,
+) -> Vec<Problem> {
     let mut problems = Vec::new();
     let mut reported_failing_agents = std::collections::HashSet::new();
     for trigger in triggers.iter().filter(|trigger| trigger.enabled) {
-        let agent_name = agent_names.get(trigger.agent_id.as_str()).copied().unwrap_or("An agent");
+        let fallback_name = texts.an_agent();
+        let agent_name = agent_names.get(trigger.agent_id.as_str()).copied().unwrap_or(fallback_name.as_str());
         if let Err(error) = ZonedSchedule::parse(&trigger.cron_expression, &trigger.timezone) {
             problems.push(schedule_problem(
                 trigger,
                 agent_name,
                 ProblemKind::ScheduleInvalid,
-                format!("The schedule of {agent_name} cannot be read"),
-                format!("It will not run until the schedule is fixed. {error}"),
+                texts.schedule_invalid_title(agent_name),
+                texts.schedule_invalid_detail(&error.to_string()),
+                texts,
             ));
         } else if keeps_failing(runs, &trigger.agent_id) && reported_failing_agents.insert(trigger.agent_id.as_str()) {
             problems.push(schedule_problem(
                 trigger,
                 agent_name,
                 ProblemKind::ScheduleFailing,
-                format!("{agent_name} keeps failing on schedule"),
-                format!(
-                    "Its last {FAILING_SCHEDULE_RUN_COUNT} scheduled runs failed. Fix the cause, or turn the schedule off for now"
-                ),
+                texts.schedule_failing_title(agent_name),
+                texts.schedule_failing_detail(FAILING_SCHEDULE_RUN_COUNT),
+                texts,
             ));
         }
     }

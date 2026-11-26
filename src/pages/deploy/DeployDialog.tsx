@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react'
 import { Icon } from '@/components/ui'
 import { keepTabFocusInside, useFocusOnOpenAndRestore } from '@/pages/onboarding/useDialogFocusTrap'
+import { messages } from '@/i18n'
 
 interface DeployDialogProps {
   title: string
@@ -53,7 +54,7 @@ export function DeployDialog({ title, leading, onClose, children, footer }: Depl
             ref={closeButtonRef}
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={messages().deploy.close}
             className="flex size-8 cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent text-muted hover:bg-chip hover:text-ink"
           >
             <Icon name="close" size={16} />
@@ -81,7 +82,7 @@ export function GuideSteps({ steps }: { steps: ReactNode[] }) {
 }
 
 /** "Advanced (for developers)": closed by default, technical words only inside. */
-export function DevelopersDetails({ children, summary = 'Advanced (for developers)' }: { children: ReactNode; summary?: string }) {
+export function DevelopersDetails({ children, summary = messages().deploy.advancedForDevelopers }: { children: ReactNode; summary?: string }) {
   return (
     <details className="rounded-xl border border-line bg-surface px-4 py-3 text-[13px] text-body">
       <summary className="cursor-pointer font-medium text-ink-2">{summary}</summary>

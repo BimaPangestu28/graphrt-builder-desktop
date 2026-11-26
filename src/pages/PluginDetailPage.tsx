@@ -25,6 +25,7 @@ import { buildPluginListItems, describeCommunityInstallNote, pluginInstallTrustN
 import { PluginIcon } from './plugins/PluginIcon'
 import { pluginRuntimeInstallNote } from './plugins/PluginRuntimeCard'
 import { usePluginUsers } from './plugins/usePluginUsers'
+import { messages } from '@/i18n'
 
 /** The back link returns to the Plugins page with the filters it was opened from. */
 function BackLink() {
@@ -34,7 +35,7 @@ function BackLink() {
   return (
     <Link to={backPath} className="inline-flex items-center gap-1.5 self-start text-[13px] font-medium no-underline !text-ink-2 hover:!text-ink">
       <Icon name="arrowLeft" size={14} />
-      All plugins
+      {messages().plugins.allPlugins}
     </Link>
   )
 }
@@ -47,10 +48,10 @@ function HeaderActions({ item, plugins, pluginRuntime }: { item: PluginListItem;
       <div className="ml-auto flex max-w-[260px] flex-col items-end gap-1.5">
         <PluginInstallButton item={item} plugins={plugins} size="md" withPluginRuntime={needsPluginRuntime} />
         <span className="text-right text-[12px] leading-normal text-muted">
-          {communityNote && `${communityNote} `}Runs its code on this computer. It starts untrusted, without settings or secrets.
+          {messages().plugins.runsCodeShort(communityNote ? `${communityNote} ` : '')}
         </span>
-        {needsPluginRuntime && <span className="text-right text-[12px] leading-normal text-muted">{pluginRuntimeInstallNote}</span>}
-        <span className="text-right text-[12px] font-medium leading-normal text-ink-2">{pluginInstallTrustNote}</span>
+        {needsPluginRuntime && <span className="text-right text-[12px] leading-normal text-muted">{pluginRuntimeInstallNote()}</span>}
+        <span className="text-right text-[12px] font-medium leading-normal text-ink-2">{pluginInstallTrustNote()}</span>
       </div>
     )
   }
@@ -62,7 +63,7 @@ function HeaderActions({ item, plugins, pluginRuntime }: { item: PluginListItem;
       </div>
       {item.updateAvailable && item.updateNeedsApproval && (
         <span className="text-right text-[12px] leading-normal text-amber-strong">
-          Needs your approval: v{item.version} asks for more than the installed version, so it does not update by itself. After updating, trust it again
+          {messages().plugins.updateNeedsApproval(item.version)}
         </span>
       )}
     </div>
@@ -86,13 +87,13 @@ function PluginHeader({ item, plugins, pluginRuntime }: { item: PluginListItem; 
           {sourceBadge && <Badge tone={sourceBadge.tone}>{sourceBadge.label}</Badge>}
           {maturityLabel && item.maturity && <Badge tone={maturityBadgeTones[item.maturity]}>{maturityLabel}</Badge>}
           <span className="text-[13px] text-muted">
-            <code aria-label="Plugin name" className="font-mono text-[12px]">
+            <code aria-label={messages().plugins.pluginName} className="font-mono text-[12px]">
               {item.name}
             </code>
             {' · '}
             {pluginCategoryLabels[item.category]} · v{item.version}
           </span>
-          {item.publisher && <span className="text-[13px] text-muted">by {item.publisher}</span>}
+          {item.publisher && <span className="text-[13px] text-muted">{messages().plugins.byPublisher(item.publisher)}</span>}
         </div>
         <p className="m-0 max-w-[640px] leading-normal text-body">{item.description}</p>
       </div>
@@ -130,7 +131,7 @@ function PluginDetailBody({ item, plugins }: { item: PluginListItem; plugins: Pl
           {installed && <PluginSetupSection installed={installed} plugins={plugins} browserRuntime={browserRuntime} pluginRuntime={pluginRuntime} />}
           <PluginStepsSection pluginLabel={item.displayName} nodes={steps} />
         </div>
-        <aside aria-label={`About ${item.displayName}`} className="grid min-w-0 grid-cols-1 items-start gap-5 max-lg:@2xl:grid-cols-2">
+        <aside aria-label={messages().plugins.aboutPlugin(item.displayName)} className="grid min-w-0 grid-cols-1 items-start gap-5 max-lg:@2xl:grid-cols-2">
           <PluginAsksForSection item={item} />
           <PluginUsersSection pluginLabel={item.displayName} users={users.data} loadError={users.error} />
           <PluginAboutSection item={item} />
@@ -146,15 +147,16 @@ function PluginDetailContent({ pluginName }: { pluginName: string }) {
   if (plugins.error) {
     return (
       <p role="alert" className="m-0 text-[13px] text-danger">
-        Could not load plugins: {describeError(plugins.error)}
+        {messages().plugins.couldNotLoadPlugins(describeError(plugins.error))}
       </p>
     )
   }
-  if (!inventory) return <p className="m-0 text-muted">Loading {humanizePluginName(pluginName)}…</p>
+  if (!inventory) return <p className="m-0 text-muted">{messages().plugins.loadingPlugin(humanizePluginName(pluginName))}</p>
   const item = buildPluginListItems(inventory.catalog, inventory.installed).find((candidate) => candidate.name === pluginName)
   if (!item) {
-    const reason = inventory.catalogError ? `the catalog could not be loaded (${describeError(inventory.catalogError)}) and it is not installed` : 'the catalog does not list it'
-    return <p className="m-0 text-muted">No plugin named “{pluginName}”: {reason}</p>
+    const t = messages().plugins
+    const reason = inventory.catalogError ? t.catalogNotLoaded(describeError(inventory.catalogError)) : t.catalogDoesNotList
+    return <p className="m-0 text-muted">{t.noPluginNamed(pluginName, reason)}</p>
   }
   return <PluginDetailBody item={item} plugins={plugins} />
 }

@@ -1,9 +1,12 @@
 import type { ProviderModels } from '@/api/modelCatalogTypes'
 import type { ModelChoice, ModelProvider, ProviderStatus } from '@/api/types'
 import { isLocalCliProvider, localCliDefaultModelName, localCliShortNames, modelProviderNames, recommendedModels } from '@/lib/settings'
+import { messages } from '@/i18n'
 
 /** Label of the local CLIs' `default` model id: the CLI picks its own model. */
-export const localCliDefaultModelLabel = 'CLI default'
+export function localCliDefaultModelLabel(): string {
+  return messages().connections.cliDefault
+}
 
 /**
  * The model's name as pickers show it: the id, except a local CLI's `default` which reads "CLI default".
@@ -12,7 +15,7 @@ export const localCliDefaultModelLabel = 'CLI default'
  * @returns E.g. "gpt-4o-mini", "sonnet" or "CLI default" (string)
  */
 export function describeModelName(choice: ModelChoice): string {
-  if (isLocalCliProvider(choice.provider) && choice.name === localCliDefaultModelName) return localCliDefaultModelLabel
+  if (isLocalCliProvider(choice.provider) && choice.name === localCliDefaultModelName) return localCliDefaultModelLabel()
   return choice.name
 }
 
@@ -105,7 +108,7 @@ export function buildModelOptionGroups(
   return providers.map((provider) => {
     const list = catalog?.find((candidate) => candidate.provider === provider)
     const listedChoices = putCliDefaultFirst((list?.models ?? []).map((model) => ({ provider, name: model.id })))
-    const fallbackNote = !catalog ? null : list?.error ? `showing the recommended model: ${list.error}` : null
+    const fallbackNote = !catalog ? null : list?.error ? messages().connections.showingTheRecommendedModelError(list.error) : null
     const choices = listedChoices.length > 0 ? listedChoices : [recommendedModelFor(provider)]
     const withDefault =
       provider === defaultModel.provider && !choices.some((choice) => choice.name === defaultModel.name) ? [defaultModel, ...choices] : choices

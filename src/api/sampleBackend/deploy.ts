@@ -220,7 +220,7 @@ const regionForArea = { asia: 'sin', europe: 'fra', us: 'iad' } as const
 
 async function deploy(agentId: string, options: DeployOptions): Promise<DeployOutcome> {
   if (options.provider !== 'fly') invalid(`Putting agents online with ${deployProviderNames[options.provider]} is coming soon`)
-  if (state.cli.status === 'not_available') invalid(onlineDeployNotAvailableMessage)
+  if (state.cli.status === 'not_available') invalid(onlineDeployNotAvailableMessage())
   if (state.cli.status !== 'installed') invalid('Download the graphrt tools first (Review › Allow download)')
   const image = options.image?.trim() || null
   if (image && (image.startsWith('-') || !/^[A-Za-z0-9./:_@-]+$/.test(image))) invalid(`\`${image}\` is not an image name such as ghcr.io/you/graphrt:0.6.0 (leave it empty for graphrt's own image)`)
@@ -304,7 +304,7 @@ function applyFix(agentId: string, fix: CompatibilityFix): Agent {
 export const sampleDeployBackend = {
   graphrtCliInfo: () => respondWith(() => state.cli),
   installGraphrtCli: async (): Promise<CliInfo> => {
-    if (state.cli.status === 'not_available') invalid(onlineDeployNotAvailableMessage)
+    if (state.cli.status === 'not_available') invalid(onlineDeployNotAvailableMessage())
     state.cli = { ...state.cli, status: 'installing' }
     await waitFor(1200)
     state.cli = { ...state.cli, status: 'installed' }

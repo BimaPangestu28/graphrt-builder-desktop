@@ -16,25 +16,23 @@ import { PluginCategoryChips, PluginSearchBox, PluginTabs } from './plugins/Plug
 import { PluginRuntimeBanner } from './plugins/PluginRuntimeCard'
 import { buildPluginListItems, countPluginsByTab, type PluginFilter, type PluginListItem } from './plugins/pluginDisplay'
 import { applyTabAndSearch, countPluginCategories, readPluginListFilters, writePluginListFilters, type PluginListFilters } from './plugins/pluginListFilters'
+import { messages, useT } from '@/i18n'
+import { localizedRecord } from '@/i18n/localized'
 
-const emptyTabMessages: Record<PluginFilter, string> = {
-  all: 'The plugin catalog is empty',
-  installed: 'No plugins installed yet. Pick one under All',
-  updates: 'Every installed plugin is up to date',
-  attention: 'Nothing needs attention: every installed plugin is ready',
-}
+const emptyTabMessages: Readonly<Record<PluginFilter, string>> = localizedRecord(() => messages().plugins.emptyTab)
 
 /** Why a saved copy of the catalog is shown: offline, or the online one was refused (e.g. its signature). */
 export function describeSavedCatalogReason(fetchError: string | null): string {
-  if (fetchError && fetchError.includes('signature')) return `The online catalog was refused (${fetchError}): showing the last saved catalog`
-  return 'Offline: showing the last saved catalog'
+  const t = messages().plugins
+  if (fetchError && fetchError.includes('signature')) return t.catalogRefused(fetchError)
+  return t.offlineCatalog
 }
 
 function CatalogNotes({ plugins }: { plugins: PluginsState }) {
   const inventory = plugins.data
   if (!inventory) return null
   if (inventory.catalogError) {
-    return <p className="m-0 text-[13px] text-muted">Could not load the plugin catalog: {describeError(inventory.catalogError)}. Installed plugins still work</p>
+    return <p className="m-0 text-[13px] text-muted">{messages().plugins.couldNotLoadCatalog(describeError(inventory.catalogError))}</p>
   }
   if (inventory.catalog?.fromCache) return <p className="m-0 text-[13px] text-muted">{describeSavedCatalogReason(inventory.catalog.fetchError)}</p>
   if (inventory.catalog) return <p className="m-0 text-[13px] text-muted">{describeCatalogFreshness(inventory.catalog, Date.now())}</p>
@@ -43,6 +41,7 @@ function CatalogNotes({ plugins }: { plugins: PluginsState }) {
 
 /** "Check for updates" with the catalog's freshness (or why it is missing) and the last refresh error. */
 function CatalogStatus({ plugins, catalogRefresh }: { plugins: PluginsState; catalogRefresh: PluginCatalogRefreshState }) {
+  const t = useT().plugins
   if (!plugins.data) return null
   const { isRefreshing, refreshError, refresh } = catalogRefresh
   return (
@@ -53,17 +52,17 @@ function CatalogStatus({ plugins, catalogRefresh }: { plugins: PluginsState; cat
           {isRefreshing && (
             <span className="inline-flex items-center gap-1.5 text-[13px] text-muted">
               <Spinner />
-              Checking for updates…
+              {t.checkingForUpdates}
             </span>
           )}
         </div>
         <Button variant="secondary" size="sm" onClick={() => void refresh()} disabled={isRefreshing}>
-          Check for updates
+          {t.checkForUpdates}
         </Button>
       </div>
       {refreshError && (
         <p role="alert" className="m-0 text-[13px] text-danger">
-          Could not check for updates: {refreshError}
+          {t.couldNotCheckUpdates(refreshError)}
         </p>
       )}
     </div>
@@ -71,22 +70,20 @@ function CatalogStatus({ plugins, catalogRefresh }: { plugins: PluginsState; cat
 }
 
 function PluginsHeader() {
-  return (
-    <PageTitleBlock
-      title="Plugins"
-      subtitle="Plugins add steps your agents can use, like sending WhatsApp messages or reading a spreadsheet. Nothing installs without your OK, and a plugin gets its settings and secrets only once you trust it."
-    />
-  )
+  const t = useT().plugins
+  return <PageTitleBlock title={t.title} subtitle={t.subtitle} />
 }
 
 /** The quiet line under the last card once every plugin is on screen. */
 export function describeAllShown(count: number): string {
-  return count === 1 ? 'That is the only plugin here' : `All ${count} plugins shown`
+  const t = messages().plugins
+  return count === 1 ? t.onlyPlugin : t.allShown(count)
 }
 
 function EmptyResults({ filters }: { filters: PluginListFilters }) {
   const trimmedSearch = filters.searchText.trim()
-  const message = trimmedSearch ? `No plugins match “${trimmedSearch}”` : filters.category ? 'No plugins in this category here' : emptyTabMessages[filters.tab]
+  const t = messages().plugins
+  const message = trimmedSearch ? t.noMatch(trimmedSearch) : filters.category ? t.noneInCategory : emptyTabMessages[filters.tab]
   return <p className="m-0 rounded-[14px] border border-dashed border-line-strong px-4 py-8 text-center text-muted">{message}</p>
 }
 
@@ -148,10 +145,11 @@ interface PluginCardGridProps {
  */
 function PluginCardGrid({ items, plugins, listSearch, resetKey }: PluginCardGridProps) {
   const { visibleCount, hasMore, revealMore, sentinelRef } = useIncrementalReveal(items.length, resetKey)
+  const t = useT().plugins
   const revealsOnScroll = typeof IntersectionObserver !== 'undefined'
   return (
     <div className="flex flex-col gap-3">
-      <div aria-label="Plugin catalog" role="list" className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+      <div aria-label={t.catalogLabel} role="list" className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
         {items.slice(0, visibleCount).map((item) => (
           <div key={item.name} role="listitem" className="min-w-0">
             <PluginCatalogCard item={item} plugins={plugins} listSearch={listSearch} />
@@ -163,11 +161,11 @@ function PluginCardGrid({ items, plugins, listSearch, resetKey }: PluginCardGrid
           {revealsOnScroll ? (
             <span role="status" className="inline-flex items-center gap-2">
               <Spinner className="size-4" />
-              Loading more plugins…
+              {t.loadingMore}
             </span>
           ) : (
             <Button variant="secondary" size="sm" onClick={revealMore}>
-              Show more plugins
+              {t.showMore}
             </Button>
           )}
         </div>
@@ -191,6 +189,7 @@ function PluginCardGrid({ items, plugins, listSearch, resetKey }: PluginCardGrid
  * About › Developer mode on, "Install from folder or archive…" sideloads a plugin.
  */
 export function PluginsPage() {
+  const t = useT().plugins
   const plugins = usePlugins()
   const catalogRefresh = usePluginCatalogRefresh(plugins)
   const browserRuntime = useBrowserRuntime()
@@ -206,10 +205,10 @@ export function PluginsPage() {
         <PluginsHeader />
         {plugins.error && (
           <p role="alert" className="m-0 text-[13px] text-danger">
-            Could not load plugins: {describeError(plugins.error)}
+            {t.couldNotLoadPlugins(describeError(plugins.error))}
           </p>
         )}
-        {!plugins.error && !inventory && <p className="m-0 text-muted">Loading plugins…</p>}
+        {!plugins.error && !inventory && <p className="m-0 text-muted">{t.loadingPlugins}</p>}
         <CatalogStatus plugins={plugins} catalogRefresh={catalogRefresh} />
         {inventory && <LocalPluginInstall onInstalled={plugins.reload} />}
         {runtimePluginLabels.length > 0 && <PluginRuntimeBanner runtime={pluginRuntime} pluginLabels={runtimePluginLabels} />}

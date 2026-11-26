@@ -1,8 +1,12 @@
 import { Badge, Button, type BadgeTone } from '@/components/ui'
 import { qrLoginTimeoutSeconds, useWhatsAppWebSession, type WhatsAppWebStatus } from './useWhatsAppActions'
+import { messages } from '@/i18n'
+import { localizedRecord } from '@/i18n/localized'
 
 /** The button label users look for: linking is a QR scan, nothing to type. */
-export const linkWhatsAppButtonLabel = 'Link WhatsApp (scan QR code)'
+export function linkWhatsAppButtonLabel(): string {
+  return messages().chatbot.linkButton
+}
 
 type LinkState = 'checking' | 'linked' | 'not_linked' | 'starting' | 'unknown'
 
@@ -15,19 +19,13 @@ function readLinkState(pendingAction: string | null, sessionStatus: WhatsAppWebS
   return 'unknown'
 }
 
-const linkStateLabels: Record<LinkState, string> = {
-  checking: 'Checking…',
-  linked: 'Linked',
-  not_linked: 'Not linked',
-  starting: 'Starting, refresh in a moment',
-  unknown: 'Unknown',
-}
+const linkStateLabels: Readonly<Record<LinkState, string>> = localizedRecord(() => messages().chatbot.linkStates)
 
 const linkStateTones: Record<LinkState, BadgeTone> = { checking: 'neutral', linked: 'ok', not_linked: 'amber', starting: 'neutral', unknown: 'neutral' }
 
 function describeSessionDetails(sessionStatus: WhatsAppWebStatus | null): string | null {
   if (!sessionStatus) return null
-  const details = [sessionStatus.message, sessionStatus.sendsToday !== null ? `${sessionStatus.sendsToday} sent today` : null].filter(Boolean)
+  const details = [sessionStatus.message, sessionStatus.sendsToday !== null ? messages().chatbot.sendstodaySentToday(sessionStatus.sendsToday) : null].filter(Boolean)
   return details.length > 0 ? details.join(' · ') : null
 }
 
@@ -46,22 +44,22 @@ export function WhatsAppWebLinkPanel({ onSessionChange }: { onSessionChange?: ()
   const sessionDetails = describeSessionDetails(session.sessionStatus)
 
   return (
-    <section aria-label="Link WhatsApp" className="flex flex-col gap-2 rounded-lg border border-line px-3 py-2.5">
+    <section aria-label={messages().chatbot.linkWhatsapp} className="flex flex-col gap-2 rounded-lg border border-line px-3 py-2.5">
       <span role="status" className="flex flex-wrap items-center gap-2 text-[13px] text-ink-2">
         {'WhatsApp: '}
         <Badge tone={linkStateTones[linkState]}>{linkStateLabels[linkState]}</Badge>
         {sessionDetails && <span className="text-[12px] text-muted">{` · ${sessionDetails}`}</span>}
       </span>
       <span className="text-[13px] leading-normal text-body">
-        A window with a QR code opens. On your phone: WhatsApp → <b className="font-semibold">Settings</b> → <b className="font-semibold">Linked devices</b> →{' '}
-        <b className="font-semibold">Link a device</b>, then scan it within {qrLoginTimeoutSeconds / 60} minutes.
+        {messages().chatbot.aWindowWithAQrCode}{' '}<b className="font-semibold">{messages().chatbot.settings}</b> → <b className="font-semibold">{messages().chatbot.linkedDevices}</b> →{' '}
+        <b className="font-semibold">{messages().chatbot.linkADevice}</b>{messages().chatbot.thenScanItWithin}{' '}{qrLoginTimeoutSeconds / 60} {messages().chatbot.minutes}
       </span>
       <span className="flex flex-wrap gap-2">
         <Button size="sm" disabled={isBusy} onClick={() => void session.showQrCode()}>
-          {session.pendingAction === 'linking' ? 'Waiting for scan…' : linkWhatsAppButtonLabel}
+          {session.pendingAction === 'linking' ? messages().chatbot.waitingForScan : linkWhatsAppButtonLabel()}
         </Button>
         <Button variant="secondary" size="sm" disabled={isBusy} onClick={() => void session.refreshStatus()}>
-          {session.pendingAction === 'checking' ? 'Checking…' : 'Refresh status'}
+          {session.pendingAction === 'checking' ? messages().chatbot.checking : messages().chatbot.refreshStatus}
         </Button>
       </span>
       {session.errorMessage && (
@@ -69,7 +67,7 @@ export function WhatsAppWebLinkPanel({ onSessionChange }: { onSessionChange?: ()
           {session.errorMessage}
         </p>
       )}
-      <span className="text-[12px] text-muted">The session stays on this computer. It is never uploaded</span>
+      <span className="text-[12px] text-muted">{messages().chatbot.theSessionStaysOnThisComputer}</span>
     </section>
   )
 }

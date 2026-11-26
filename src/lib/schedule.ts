@@ -1,4 +1,6 @@
 import type { MissedRunPolicy } from '@/api/types'
+import { messages } from '@/i18n'
+import { localizedArray, localizedRecord, withLocalizedLabels } from '@/i18n/localized'
 
 /**
  * Schedule helpers shared by the schedule dialog (08), the scheduler (10) and the sample backend.
@@ -30,13 +32,19 @@ export interface CronBuildOptions {
 const allWeekdays = [0, 1, 2, 3, 4, 5, 6]
 const workWeekdays = [1, 2, 3, 4, 5]
 const weekendWeekdays = [0, 6]
-const shortWeekdayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-const longWeekdayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+/** Cron's day names: the format reads and writes them in English whatever the UI language. */
+const cronWeekdayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+/** Day names as the UI shows them. */
+const shortWeekdayNames: readonly string[] = localizedArray(() => messages().schedule.shortWeekdays)
+const longWeekdayNames: readonly string[] = localizedArray(() => messages().schedule.longWeekdays)
 /** Monday-first display order. */
 const mondayFirstOrder = [1, 2, 3, 4, 5, 6, 0]
 
 /** Weekday choices for the "Custom" frequency, Monday first. */
-export const weekdayChoices = mondayFirstOrder.map((weekday) => ({ weekday, label: shortWeekdayNames[weekday] }))
+export const weekdayChoices = withLocalizedLabels(
+  mondayFirstOrder.map((weekday) => ({ weekday })),
+  (choice) => shortWeekdayNames[choice.weekday],
+)
 
 function areSameWeekdays(first: number[], second: number[]): boolean {
   return first.length === second.length && first.every((weekday, index) => weekday === second[index])
@@ -66,7 +74,7 @@ function formatCronWeekdays(weekdays: number[]): string {
   if (areSameWeekdays(weekdays, workWeekdays)) return 'Mon-Fri'
   return mondayFirstOrder
     .filter((weekday) => weekdays.includes(weekday))
-    .map((weekday) => shortWeekdayNames[weekday])
+    .map((weekday) => cronWeekdayNames[weekday])
     .join(',')
 }
 
@@ -94,7 +102,7 @@ export function buildCronExpression({ frequency, time, customWeekdays = [] }: Cr
 }
 
 function parseCronWeekday(token: string): number | null {
-  const nameIndex = shortWeekdayNames.findIndex((name) => name.toLowerCase() === token.toLowerCase())
+  const nameIndex = cronWeekdayNames.findIndex((name) => name.toLowerCase() === token.toLowerCase())
   if (nameIndex >= 0) return nameIndex
   if (!/^\d$/.test(token)) return null
   const weekday = Number(token)
@@ -156,10 +164,10 @@ export function parseCronExpression(cronExpression: string): DailyRecurrence | n
 /** "Every day", "Weekdays", "Weekends", "Mondays" or "Mon, Wed, Fri". */
 export function describeWeekdays(weekdays: number[]): string {
   const normalizedWeekdays = normalizeWeekdays(weekdays)
-  if (areSameWeekdays(normalizedWeekdays, allWeekdays)) return 'Every day'
-  if (areSameWeekdays(normalizedWeekdays, workWeekdays)) return 'Weekdays'
-  if (areSameWeekdays(normalizedWeekdays, weekendWeekdays)) return 'Weekends'
-  if (normalizedWeekdays.length === 1) return `${longWeekdayNames[normalizedWeekdays[0]]}s`
+  if (areSameWeekdays(normalizedWeekdays, allWeekdays)) return messages().schedule.everyDay
+  if (areSameWeekdays(normalizedWeekdays, workWeekdays)) return messages().schedule.weekdays
+  if (areSameWeekdays(normalizedWeekdays, weekendWeekdays)) return messages().schedule.weekends
+  if (normalizedWeekdays.length === 1) return messages().schedule.everyWeekday(longWeekdayNames[normalizedWeekdays[0]])
   return mondayFirstOrder
     .filter((weekday) => normalizedWeekdays.includes(weekday))
     .map((weekday) => shortWeekdayNames[weekday])
@@ -179,8 +187,8 @@ export function describeCronExpression(cronExpression: string): string {
 /** Sentence form used in the trigger list, e.g. "Weekdays at 09:00". */
 export function describeCronSchedule(cronExpression: string): string {
   const recurrence = parseCronExpression(cronExpression)
-  if (!recurrence) return `Cron ${cronExpression}`
-  return `${describeWeekdays(recurrence.weekdays)} at ${formatTimeOfDay(recurrence.hour, recurrence.minute)}`
+  if (!recurrence) return messages().schedule.cron(cronExpression)
+  return messages().schedule.weekdaysAt(describeWeekdays(recurrence.weekdays), formatTimeOfDay(recurrence.hour, recurrence.minute))
 }
 
 /** True when `timezone` is an IANA zone this runtime knows. */
@@ -252,8 +260,8 @@ function toRfc3339(instant: Date): string {
  */
 export function listUpcomingFireTimes(cronExpression: string, timezone: string, count: number, after: Date = new Date()): string[] {
   const recurrence = parseCronExpression(cronExpression)
-  if (!recurrence) throw new Error(`Unsupported schedule "${cronExpression}"`)
-  if (!isKnownTimeZone(timezone)) throw new Error(`Unknown time zone "${timezone}"`)
+  if (!recurrence) throw new Error(messages().schedule.unsupportedSchedule(cronExpression))
+  if (!isKnownTimeZone(timezone)) throw new Error(messages().schedule.unknownTimeZone(timezone))
   const today = getZonedDateTimeParts(after, timezone)
   const fireTimes: string[] = []
   for (let dayOffset = 0; fireTimes.length < count && dayOffset < count * 7 + 8; dayOffset += 1) {
@@ -273,7 +281,7 @@ export function formatFireTime(isoTimestamp: string, timezone: string): string {
   if (Number.isNaN(instant.getTime())) return isoTimestamp
   const zoned = getZonedDateTimeParts(instant, timezone)
   const wallDate = new Date(Date.UTC(zoned.year, zoned.month - 1, zoned.day))
-  const monthName = wallDate.toLocaleString('en-GB', { month: 'short', timeZone: 'UTC' })
+  const monthName = messages().schedule.shortMonths[wallDate.getUTCMonth()]
   return `${shortWeekdayNames[wallDate.getUTCDay()]} ${zoned.day} ${monthName} ${formatTimeOfDay(zoned.hour, zoned.minute)}`
 }
 
@@ -284,10 +292,10 @@ export function formatZonedIsoDate(instant: Date, timezone: string): string {
 }
 
 /** The scheduler's "If the computer was asleep" choices and the backend policy each one means. */
-export const missedRunPolicyByOption: Record<string, MissedRunPolicy> = {
-  'Run once when it wakes up': 'run_once',
-  'Skip the missed run': 'skip',
-}
+export const missedRunPolicyByOption: Readonly<Record<string, MissedRunPolicy>> = localizedRecord(() => ({
+  [messages().schedule.runOnceWhenWakes]: 'run_once' as const,
+  [messages().schedule.skipMissedRun]: 'skip' as const,
+}))
 
 /** Maps a missed-run choice to the backend policy; unknown choices run once, the safe default. */
 export function toMissedRunPolicy(option: string): MissedRunPolicy {
