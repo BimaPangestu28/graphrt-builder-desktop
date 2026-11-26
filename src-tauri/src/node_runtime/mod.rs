@@ -907,18 +907,44 @@ fn hide_console_window(command: &mut Command) {
     let _ = command;
 }
 
+/// How often [`read_node_version`] retries a just-written executable that is still busy.
+const EXECUTABLE_BUSY_RETRIES: u32 = 20;
+/// Pause between those retries (the whole wait stays under a second).
+const EXECUTABLE_BUSY_PAUSE: std::time::Duration = std::time::Duration::from_millis(40);
+
+/// Runs `node --version`. Called from blocking threads only (it may sleep briefly).
 fn read_node_version(node_executable: &Path) -> AppResult<String> {
-    let mut command = Command::new(node_executable);
-    crate::child_env::apply(&mut command);
-    command.arg("--version").stdin(Stdio::null());
-    hide_console_window(&mut command);
-    let output = command
-        .output()
+    let output = run_node_version(node_executable)
         .map_err(|error| AppError::Internal(format!("cannot run {}: {error}", node_executable.display())))?;
     if !output.status.success() {
         return Err(AppError::Internal(format!("{} --version failed: {}", node_executable.display(), output.status)));
     }
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// Spawns `node --version`, retrying while Linux reports the executable busy (ETXTBSY).
+///
+/// The runtime was just extracted. If another thread forked a child process while the
+/// archive's `node` was still open for writing, that child holds the write handle until
+/// it calls exec, and running `node` meanwhile fails with "Text file busy". The handle
+/// goes away within milliseconds, so waiting briefly is enough.
+fn run_node_version(node_executable: &Path) -> std::io::Result<std::process::Output> {
+    let mut attempt = 0;
+    loop {
+        let mut command = Command::new(node_executable);
+        crate::child_env::apply(&mut command);
+        command.arg("--version").stdin(Stdio::null());
+        hide_console_window(&mut command);
+        match command.output() {
+            Err(error)
+                if error.kind() == std::io::ErrorKind::ExecutableFileBusy && attempt < EXECUTABLE_BUSY_RETRIES =>
+            {
+                attempt += 1;
+                std::thread::sleep(EXECUTABLE_BUSY_PAUSE);
+            }
+            result => return result,
+        }
+    }
 }
 
 fn canonical_dir(dir: &Path) -> AppResult<PathBuf> {

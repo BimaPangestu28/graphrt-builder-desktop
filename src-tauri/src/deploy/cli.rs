@@ -490,10 +490,8 @@ mod tests {
     /// A fake `graphrt` that records its arguments and environment and prints the contract's events.
     #[cfg(unix)]
     fn fake_cli(folder: &Path, script_body: &str) -> PathBuf {
-        use std::os::unix::fs::PermissionsExt;
         let path = folder.join("graphrt");
-        std::fs::write(&path, format!("#!/bin/sh\n{script_body}\n")).unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        crate::test_support::write_executable_script(&path, script_body);
         path
     }
 

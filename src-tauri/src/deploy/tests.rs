@@ -92,10 +92,8 @@ fn fly_options() -> DeployOptions {
 
 #[cfg(unix)]
 fn fake_cli(folder: &std::path::Path, body: &str) -> PathBuf {
-    use std::os::unix::fs::PermissionsExt;
     let path = folder.join("fake-graphrt");
-    std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    crate::test_support::write_executable_script(&path, body);
     path
 }
 
