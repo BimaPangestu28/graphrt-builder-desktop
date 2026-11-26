@@ -96,7 +96,7 @@ jobs:
           retention-days: 1
 
   rust:
-    name: fmt + clippy + test (${{ matrix.platform }})
+    name: fmt + clippy + test (${{ matrix.platform == 'macos-latest' && github.event_name == 'pull_request' && 'macos-26-intel' || matrix.platform }})
     timeout-minutes: 40
     needs: [changes, frontend]
     if: needs.changes.outputs.code == 'true'
@@ -104,7 +104,11 @@ jobs:
       fail-fast: false
       matrix:
         platform: [macos-latest, windows-latest, ubuntu-22.04]
-    runs-on: ${{ matrix.platform }}
+    # macOS on pull requests runs on Intel (macos-26-intel): GitHub's arm64 macOS pool is
+    # often out of capacity and PR jobs waited for hours. main, tags and manual runs keep
+    # arm64 (macos-latest), the architecture most users have. Caches are keyed per
+    # architecture and only main saves them, so Intel PR jobs build without a Rust cache.
+    runs-on: ${{ matrix.platform == 'macos-latest' && github.event_name == 'pull_request' && 'macos-26-intel' || matrix.platform }}
     steps:
       - uses: actions/checkout@v4
       - name: Install Linux dependencies
@@ -138,7 +142,7 @@ jobs:
       - run: cargo test --manifest-path src-tauri/Cargo.toml
 
   bundle:
-    name: desktop bundle (${{ matrix.platform }})
+    name: desktop bundle (${{ matrix.platform == 'macos-latest' && github.event_name == 'pull_request' && 'macos-26-intel' || matrix.platform }})
     timeout-minutes: 45
     needs: [changes, frontend]
     if: needs.changes.outputs.code == 'true'
@@ -146,7 +150,11 @@ jobs:
       fail-fast: false
       matrix:
         platform: [macos-latest, windows-latest, ubuntu-22.04]
-    runs-on: ${{ matrix.platform }}
+    # macOS on pull requests runs on Intel (macos-26-intel): GitHub's arm64 macOS pool is
+    # often out of capacity and PR jobs waited for hours. main, tags and manual runs keep
+    # arm64 (macos-latest), the architecture most users have. Caches are keyed per
+    # architecture and only main saves them, so Intel PR jobs build without a Rust cache.
+    runs-on: ${{ matrix.platform == 'macos-latest' && github.event_name == 'pull_request' && 'macos-26-intel' || matrix.platform }}
     steps:
       - uses: actions/checkout@v4
       - name: Install Linux dependencies
