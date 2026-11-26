@@ -76,7 +76,8 @@ export interface ConversationCounts {
   fromOutreach: number
 }
 
-export type ConversationEventKind = 'created' | 'message_added' | 'status_changed'
+/** `reply_draft` carries the bot's reply while it is written; the finished reply follows as `message_added`. */
+export type ConversationEventKind = 'created' | 'message_added' | 'status_changed' | 'reply_draft'
 
 /** Payload of the `conversation-event` Tauri event. */
 export interface ConversationEventPayload {
@@ -85,6 +86,8 @@ export interface ConversationEventPayload {
   agentId: string
   status: ConversationStatus
   message: ConversationMessage | null
+  /** The bot's reply so far, for `reply_draft`. */
+  draft?: string
 }
 
 /** Origin of conversations an outreach agent started. */

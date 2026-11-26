@@ -72,6 +72,9 @@ pub enum ConversationEventKind {
     Created,
     MessageAdded,
     StatusChanged,
+    /// The bot's reply while it is being written (`draft`); the finished reply
+    /// follows as `message_added`.
+    ReplyDraft,
 }
 
 /// Sent to the frontend whenever a conversation gets a message or changes status.
@@ -84,6 +87,9 @@ pub struct ConversationEventPayload {
     pub status: ConversationStatus,
     /// The new message, for `message_added`.
     pub message: Option<Message>,
+    /// The bot's reply so far, for `reply_draft`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub draft: Option<String>,
 }
 
 /// Delivers conversation events to the UI. The app uses a Tauri emitter; tests collect them.
@@ -371,7 +377,8 @@ impl ConversationManager {
             &*self.model_source,
             tools,
         )?;
-        let mut turn = run_bot_turn(&engine, env, conversation, message_text, &prepared.sys_values).await?;
+        let on_draft = |draft: &str| self.emit_draft(conversation, draft);
+        let mut turn = run_bot_turn(&engine, env, conversation, message_text, &prepared.sys_values, &on_draft).await?;
         if let (Some(rules), Some(handoff)) = (prepared.handoff_rules, turn.handoff.as_ref()) {
             if !rules.allows(handoff.reason.as_deref()) {
                 log::info!(
@@ -458,6 +465,17 @@ impl ConversationManager {
         Ok(message)
     }
 
+    fn emit_draft(&self, conversation: &Conversation, draft: &str) {
+        self.sink.send(ConversationEventPayload {
+            kind: ConversationEventKind::ReplyDraft,
+            conversation_id: conversation.id.clone(),
+            agent_id: conversation.agent_id.clone(),
+            status: conversation.status,
+            message: None,
+            draft: Some(draft.to_owned()),
+        });
+    }
+
     fn emit(&self, kind: ConversationEventKind, conversation: &Conversation, message: Option<Message>) {
         self.sink.send(ConversationEventPayload {
             kind,
@@ -465,6 +483,7 @@ impl ConversationManager {
             agent_id: conversation.agent_id.clone(),
             status: conversation.status,
             message,
+            draft: None,
         });
     }
 }
