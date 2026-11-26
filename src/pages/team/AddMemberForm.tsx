@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import type { AgentStepInfo } from '@/api/chainTypes'
+import { messages } from '@/i18n'
 
 interface AddMemberFormProps {
   candidates: AgentStepInfo[]
@@ -16,12 +17,12 @@ export function AddMemberForm({ candidates, isAdding, onAdd, onCancel }: AddMemb
     if (chosenAgentId) onAdd(chosenAgentId)
   }
   if (candidates.length === 0) {
-    return <p className="m-0 text-[13px] text-muted">Every agent that can run as a step is already in the team</p>
+    return <p className="m-0 text-[13px] text-muted">{messages().team.everyAgentThatCanRunAs}</p>
   }
   return (
     <form onSubmit={submit} className="flex flex-wrap items-center gap-2 rounded-xl border border-line p-3">
       <label className="flex flex-auto flex-wrap items-center gap-2 text-[13px] text-ink-2">
-        New member
+        {messages().team.newMember}
         <select
           value={chosenAgentId}
           onChange={(event) => setChosenAgentId(event.target.value)}
@@ -35,10 +36,10 @@ export function AddMemberForm({ candidates, isAdding, onAdd, onCancel }: AddMemb
         </select>
       </label>
       <button type="submit" disabled={isAdding} className="h-9 cursor-pointer rounded-lg border-0 bg-ink px-3.5 text-[13px] font-medium text-white hover:bg-ink-2">
-        {isAdding ? 'Adding…' : 'Add to team'}
+        {isAdding ? messages().team.adding : messages().team.addToTeam}
       </button>
       <button type="button" onClick={onCancel} className="h-9 cursor-pointer rounded-lg border border-line-strong bg-surface px-3.5 text-[13px] font-medium text-ink hover:bg-subtle">
-        Cancel
+        {messages().team.cancel}
       </button>
     </form>
   )

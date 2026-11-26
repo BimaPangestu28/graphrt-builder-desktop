@@ -10,6 +10,7 @@ import { useAsyncData } from '@/hooks/useAsyncData'
 import { sampleAgentId } from '@/routes'
 import { AddStepPanel, filterAgentCatalog } from './agent-as-step/AddStepPanel'
 import { AgentStepList } from './agent-as-step/AgentStepList'
+import { messages } from '@/i18n'
 
 interface AgentAsStepData {
   agent: Agent
@@ -49,7 +50,7 @@ export function AgentAsStepPage() {
     return (
       <AppShell agents={{ kind: 'list' }} mainClassName="p-8">
         <p role="alert" className="m-0 text-amber-strong">
-          Could not load the agent: {error.message}
+          {messages().team.couldNotLoadTheAgent}{' '}{error.message}
         </p>
       </AppShell>
     )
@@ -57,7 +58,7 @@ export function AgentAsStepPage() {
   if (!data) {
     return (
       <AppShell agents={{ kind: 'list' }} mainClassName="p-8">
-        <p className="m-0 text-muted">Loading the steps…</p>
+        <p className="m-0 text-muted">{messages().team.loadingTheSteps}</p>
       </AppShell>
     )
   }
@@ -74,7 +75,7 @@ export function AgentAsStepPage() {
       setAddOutcome({ kind: 'added', agentId: stepAgentId, summary: revision.summary, changedStepIds: revision.changedStepIds })
       await reload()
     } catch (rawError) {
-      setAddOutcome({ kind: 'error', message: rawError instanceof Error ? rawError.message : 'Could not add the step' })
+      setAddOutcome({ kind: 'error', message: rawError instanceof Error ? rawError.message : messages().team.couldNotAddTheStep })
     } finally {
       setIsAdding(false)
     }

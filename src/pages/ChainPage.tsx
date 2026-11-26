@@ -5,6 +5,7 @@ import { createChain, listAgentSteps, listChains } from '@/api/chains'
 import type { AgentStepInfo, Chain } from '@/api/chainTypes'
 import { useAsyncData } from '@/hooks/useAsyncData'
 import { ChainEditor } from './chain/ChainEditor'
+import { messages } from '@/i18n'
 
 interface ChainScreenData {
   chains: Chain[]
@@ -19,10 +20,10 @@ async function loadChainScreen(): Promise<ChainScreenData> {
 function EmptyChains({ onCreate, isCreating }: { onCreate: () => void; isCreating: boolean }) {
   return (
     <div className="flex flex-col items-start gap-3 p-8">
-      <h1 className="m-0 text-[22px] font-semibold">Chains</h1>
-      <p className="m-0 max-w-[460px] leading-normal text-body">A chain starts the next agent when one finishes and passes its results along.</p>
+      <h1 className="m-0 text-[22px] font-semibold">{messages().team.chains}</h1>
+      <p className="m-0 max-w-[460px] leading-normal text-body">{messages().team.aChainStartsTheNextAgent}</p>
       <button type="button" disabled={isCreating} onClick={onCreate} className="h-10 cursor-pointer rounded-[10px] border-0 bg-ink px-4 font-medium text-white hover:bg-ink-2">
-        New chain
+        {messages().team.newChain}
       </button>
     </div>
   )
@@ -53,10 +54,10 @@ export function ChainPage() {
 
   return (
     <AppShell agents={{ kind: 'list', activeAgentId: 'leads-recap' }} mainClassName="flex flex-col">
-      {isLoading && !data && <p className="m-0 p-8 text-muted">Loading the chain…</p>}
+      {isLoading && !data && <p className="m-0 p-8 text-muted">{messages().team.loadingTheChain}</p>}
       {error && (
         <p role="alert" className="m-0 p-8 text-amber-strong">
-          Could not load the chain: {error.message}
+          {messages().team.couldNotLoadTheChain}{' '}{error.message}
         </p>
       )}
       {data && !chain && <EmptyChains onCreate={() => void createFirstChain()} isCreating={isCreating} />}

@@ -9,6 +9,7 @@ import { ChainFlow } from './ChainFlow'
 import { LinkSettingsPanel } from './LinkSettingsPanel'
 import { buildAppendedStep, removeChainStep } from './chainEditing'
 import { toErrorMessage as describeError } from '@/lib/errors'
+import { messages } from '@/i18n'
 
 const headerButtonClassNames = 'flex h-9 cursor-pointer items-center rounded-lg px-3.5 text-[13px] font-medium'
 
@@ -26,20 +27,20 @@ function ChainHeader({ chain, isBusy, onTest, onToggleActive }: ChainHeaderProps
     <header className="box-border flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-line px-6 py-3">
       <div className="flex items-center gap-2 text-muted">
         <Link to={routePaths.home} className="no-underline !text-muted hover:!text-ink">
-          Chains
+          {messages().team.chains}
         </Link>
         <span aria-hidden="true">/</span>
         <h1 className="m-0 text-[14px] font-semibold text-ink">{chain.name}</h1>
         <span className={joinClassNames('rounded-full px-2 py-[3px] text-[12px] font-medium', isActive ? 'bg-ok-soft text-ok-strong' : 'bg-selected text-ink-2')}>
-          {isActive ? 'Active' : 'Paused'}
+          {isActive ? messages().team.active : messages().team.paused}
         </span>
       </div>
       <div className="flex gap-2">
         <button type="button" disabled={isBusy || chain.steps.length === 0} onClick={onTest} className={`${headerButtonClassNames} border border-line-strong bg-surface text-ink hover:bg-subtle disabled:cursor-default disabled:text-muted`}>
-          Test chain
+          {messages().team.testChain}
         </button>
         <button type="button" disabled={isBusy} onClick={onToggleActive} className={`${headerButtonClassNames} border-0 bg-ink text-white hover:bg-ink-2`}>
-          {isActive ? 'Pause' : 'Activate'}
+          {isActive ? messages().team.pause : messages().team.activate}
         </button>
       </div>
     </header>
@@ -59,8 +60,8 @@ function ChainNoticeBar({ notice }: { notice: ChainNotice }) {
   }
   return (
     <p role="status" className="m-0 border-b border-line bg-subtle px-6 py-2.5 text-[13px]">
-      Started {notice.agentName}; the next agents follow when it finishes.{' '}
-      <Link to={agentPath('testRun', notice.run.agentId, { runId: notice.run.id })}>Open the run</Link>
+      {messages().team.started}{' '}{notice.agentName}{messages().team.theNextAgentsFollowWhenIt}{' '}
+      <Link to={agentPath('testRun', notice.run.agentId, { runId: notice.run.id })}>{messages().team.openTheRun}</Link>
     </p>
   )
 }
@@ -127,7 +128,7 @@ export function ChainEditor({ initialChain, agents }: ChainEditorProps) {
   const startTest = () =>
     runAction(async () => {
       const run = await testChain(chain.id)
-      setNotice({ kind: 'started', run, agentName: findAgent(run.agentId)?.name ?? 'the first agent' })
+      setNotice({ kind: 'started', run, agentName: findAgent(run.agentId)?.name ?? messages().team.theFirstAgent })
     })
 
   return (
@@ -156,8 +157,8 @@ export function ChainEditor({ initialChain, agents }: ChainEditorProps) {
           />
         ) : (
           <aside className="box-border flex min-w-0 flex-[1_1_340px] flex-col gap-2 border-l border-line p-6 text-body">
-            <h2 className="m-0 text-[18px] font-semibold text-ink">Links</h2>
-            <p className="m-0 leading-normal">Add at least two agents. Each link says when the next one runs and which outputs it gets.</p>
+            <h2 className="m-0 text-[18px] font-semibold text-ink">{messages().team.links}</h2>
+            <p className="m-0 leading-normal">{messages().team.addAtLeastTwoAgentsEach}</p>
           </aside>
         )}
       </div>

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Icon, joinClassNames } from '@/components/ui'
 import type { AgentStepInfo, ChainStep } from '@/api/chainTypes'
 import { describeChainLink } from './chainEditing'
+import { messages } from '@/i18n'
 
 const monospaceChipClassNames = 'rounded-md bg-canvas px-2 py-[3px] font-mono'
 
@@ -23,10 +24,10 @@ function ChainAgentCard({ agent, agentId, position, onRemove }: ChainAgentCardPr
       <div className="flex items-center gap-2.5">
         <span className="text-[12px] font-semibold text-muted">{position}</span>
         <span className="flex-auto font-semibold">{agentName}</span>
-        {agent && <span className="text-[12px] text-muted">{agent.stepCount} steps</span>}
+        {agent && <span className="text-[12px] text-muted">{agent.stepCount} {messages().team.steps2}</span>}
         <button
           type="button"
-          aria-label={`Remove ${agentName}`}
+          aria-label={messages().team.removeAgentname(agentName)}
           onClick={onRemove}
           className="flex size-7 cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent text-muted hover:bg-subtle hover:text-ink"
         >
@@ -36,7 +37,7 @@ function ChainAgentCard({ agent, agentId, position, onRemove }: ChainAgentCardPr
       {agent?.description && <span className="text-body">{agent.description}</span>}
       {agent && agent.outputs.length > 0 && (
         <div className="flex flex-wrap gap-1.5 text-[12px]">
-          <span className="py-[3px] text-muted">Gives</span>
+          <span className="py-[3px] text-muted">{messages().team.gives}</span>
           {agent.outputs.map((output) => (
             <span key={output} className={monospaceChipClassNames}>
               {output}
@@ -85,11 +86,11 @@ function AddAgentControl({ agents, lastAgentId, onAddAgent }: AddAgentControlPro
   const candidates = agents.filter((agent) => agent.agentId !== lastAgentId)
   const [chosenAgentId, setChosenAgentId] = useState('')
   const selectedAgentId = candidates.some((agent) => agent.agentId === chosenAgentId) ? chosenAgentId : (candidates[0]?.agentId ?? '')
-  if (candidates.length === 0) return <p className="m-0 self-center text-[13px] text-muted">Build another agent to add it here</p>
+  if (candidates.length === 0) return <p className="m-0 self-center text-[13px] text-muted">{messages().team.buildAnotherAgentToAddIt}</p>
   return (
     <div className="flex flex-wrap items-center gap-2 self-center">
       <select
-        aria-label="Agent to add"
+        aria-label={messages().team.agentToAdd}
         value={selectedAgentId}
         onChange={(event) => setChosenAgentId(event.target.value)}
         className="h-10 max-w-[260px] rounded-[10px] border border-line-strong bg-surface px-2.5 text-[14px] text-ink"
@@ -106,7 +107,7 @@ function AddAgentControl({ agents, lastAgentId, onAddAgent }: AddAgentControlPro
         className="flex h-10 cursor-pointer items-center gap-2 rounded-[10px] border border-dashed border-line-heavy bg-surface px-4 font-medium text-ink-2 hover:bg-subtle"
       >
         <Icon name="plus" size={15} />
-        Add agent
+        {messages().team.addAgent}
       </button>
     </div>
   )
@@ -126,11 +127,11 @@ export function ChainFlow({ steps, agents, selectedPosition, onSelectLink, onAdd
   const findAgent = (agentId: string) => agents.find((agent) => agent.agentId === agentId)
   const firstAgentName = steps[0] ? (findAgent(steps[0].agentId)?.name ?? steps[0].agentId) : null
   return (
-    <section aria-label="Chain" className="box-border flex min-w-0 flex-[2_1_480px] flex-col items-center bg-subtle p-8">
+    <section aria-label={messages().team.chain} className="box-border flex min-w-0 flex-[2_1_480px] flex-col items-center bg-subtle p-8">
       <div className="flex w-full max-w-[520px] flex-col items-stretch">
         <div className="flex h-9 items-center gap-2 self-center rounded-full border border-line bg-surface px-3.5 font-medium">
           <Icon name="clock" size={15} />
-          {firstAgentName ? `Starts when ${firstAgentName} runs` : 'Add the agent that starts the chain'}
+          {firstAgentName ? messages().team.startsWhenFirstagentnameRuns(firstAgentName) : messages().team.addTheAgentThatStartsThe}
         </div>
         <VerticalConnector heightClassName="h-6" />
         {steps.map((step, position) => (
