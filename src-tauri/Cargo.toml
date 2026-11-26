@@ -72,7 +72,7 @@ flate2 = "1"
 lzma-rust2 = { version = "0.25", default-features = false, features = ["std", "xz"] }
 zip = { version = "9", default-features = false, features = ["deflate"] }
 # Live view frames are sent to the UI as JPEG data URLs.
-base64 = "0.22"
+base64 = "0.23"
 # Crash reports: redacting tokens, keys and emails before a report is written.
 regex = "1"
 # Local CLI providers (Claude Code, Codex) run in a throwaway working directory.
