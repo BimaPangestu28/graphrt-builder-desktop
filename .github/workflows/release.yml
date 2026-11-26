@@ -209,7 +209,7 @@ jobs:
             echo "::error::Repository secret TAURI_SIGNING_PRIVATE_KEY is not set: updater bundles cannot be signed (CONTRIBUTING.md > Releasing)."
             exit 1
           fi
-      - uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ github.token }}
           # Signs the updater bundles (.app.tar.gz, NSIS / MSI, AppImage, deb, rpm) -> .sig
@@ -221,7 +221,8 @@ jobs:
           args: ${{ matrix.args }}
           # Each job adds its platforms to the release's latest.json (the universal
           # macOS build is listed for both darwin-aarch64 and darwin-x86_64).
-          includeUpdaterJson: true
+          # tauri-action v1 renamed this input from `includeUpdaterJson`.
+          uploadUpdaterJson: true
           # Windows updates install through the NSIS installer (same as a fresh install).
           updaterJsonPreferNsis: true
 
