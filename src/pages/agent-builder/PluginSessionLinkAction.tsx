@@ -1,6 +1,7 @@
 import { Badge, Button } from '@/components/ui'
 import { useWhatsAppWebSession } from '../connect-whatsapp/useWhatsAppActions'
 import { linkWhatsAppButtonLabel } from '../connect-whatsapp/WhatsAppWebLinkPanel'
+import { messages } from '@/i18n'
 
 interface PluginSessionLinkActionProps {
   /** The "Needs" row label, used to name the button for screen readers. */
@@ -19,9 +20,9 @@ export function PluginSessionLinkAction({ label, onSessionChange }: PluginSessio
   return (
     <span className="flex flex-col items-end gap-1.5">
       <span className="flex flex-wrap items-center justify-end gap-2">
-        <Badge tone="amber">Not linked</Badge>
-        <Button size="sm" aria-label={`${linkWhatsAppButtonLabel} for ${label}`} disabled={session.pendingAction !== null} onClick={() => void session.showQrCode()}>
-          {isLinking ? 'Waiting for scan…' : linkWhatsAppButtonLabel}
+        <Badge tone="amber">{messages().builder.notLinked}</Badge>
+        <Button size="sm" aria-label={messages().builder.linkwhatsappbuttonlabelForLabel(linkWhatsAppButtonLabel, label)} disabled={session.pendingAction !== null} onClick={() => void session.showQrCode()}>
+          {isLinking ? messages().builder.waitingForScan : linkWhatsAppButtonLabel}
         </Button>
       </span>
       {session.errorMessage && (

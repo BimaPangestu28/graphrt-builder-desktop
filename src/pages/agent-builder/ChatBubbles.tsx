@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react'
 import { joinClassNames } from '@/components/ui'
+import { messages } from '@/i18n'
 
 /** Column of one builder reply in the build chat. */
 export const assistantBlockClassNames = 'flex max-w-[92%] flex-col'
 
 /** Prefix of a failed change in the build chat, live or saved. */
 export function describeFailedChange(errorMessage: string): string {
-  return `Could not change the agent: ${errorMessage}`
+  return messages().builder.couldNotChangeTheAgentReason(errorMessage)
 }
 
 /** Right-aligned grey bubble for what the user typed in the build chat (screens 03 and 04). */

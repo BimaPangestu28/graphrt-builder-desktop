@@ -2,8 +2,7 @@ import type { RunSummary } from '@/api/runSummaryTypes'
 import type { RunResultStat } from '@/pages/agent-run/testRunTypes'
 import type { StatusPillTone } from './StatusPill'
 import { formatCounterLabel, formatCounterValue } from './runCounters'
-import { messages } from '@/i18n'
-import { formatMonthShort, formatNumber } from '@/i18n'
+import { formatMonthShort, formatNumber, messages } from '@/i18n'
 
 /**
  * What screen 07 shows for a run, built from its {@link RunSummary} (run output convention:

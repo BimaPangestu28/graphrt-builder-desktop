@@ -6,6 +6,7 @@ import { stoppedReplyText, type BuildProgress, type BuildStage, type DraftPrevie
 import { useIsMountedRef } from '@/hooks/useIsMountedRef'
 import { describeError } from '@/lib/agentDisplay'
 import { describeFailedChange } from './ChatBubbles'
+import { messages } from '@/i18n'
 
 /** One change request typed in the builder chat and what came of it. */
 export interface ChatExchange {
@@ -90,7 +91,7 @@ export function useAgentRevisions({ agentId, currentVersion, onAgentChanged }: U
   async function sendChangeRequest(request: string) {
     if (isBusy || currentVersion === null) return
     const exchangeId = exchanges.length + 1
-    const pendingExchange: ChatExchange = { id: exchangeId, request, status: 'pending', reply: 'Working on it…', changedStepIds: [], explanation: '', draft: null, writingStage: null }
+    const pendingExchange: ChatExchange = { id: exchangeId, request, status: 'pending', reply: messages().builder.workingOnIt, changedStepIds: [], explanation: '', draft: null, writingStage: null }
     setExchanges((previousExchanges) => [...previousExchanges, pendingExchange])
     setIsBusy(true)
     try {
@@ -143,7 +144,7 @@ export function useAgentRevisions({ agentId, currentVersion, onAgentChanged }: U
       await onAgentChanged(null)
       if (isMountedRef.current) setLatestRevision({ ...latestRevision, isUndone: !latestRevision.isUndone })
     } catch (undoError) {
-      if (isMountedRef.current) setUndoErrorMessage(`Could not restore v${restoredVersion}: ${describeError(undoError)}`)
+      if (isMountedRef.current) setUndoErrorMessage(messages().builder.couldNotRestoreVRestoredversionReason(restoredVersion, describeError(undoError)))
     } finally {
       if (isMountedRef.current) setIsBusy(false)
     }

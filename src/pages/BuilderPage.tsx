@@ -19,11 +19,10 @@ import { useBuilderHistory } from './agent-builder/useBuilderHistory'
 import { usePluginSetup } from './agent-builder/usePluginSetup'
 import { usePluginSetupPlacement } from './agent-builder/usePluginSetupPlacement'
 import { useChatRailPreference } from './agent-builder/useChatRailPreference'
+import { messages } from '@/i18n'
+import { localizedRecord } from '@/i18n/localized'
 
-const draftStatusLabels: Partial<Record<Agent['status'], string>> = {
-  draft: 'Draft · not tested yet',
-  tested: 'Tested · not scheduled yet',
-}
+const draftStatusLabels: Readonly<Partial<Record<Agent['status'], string>>> = localizedRecord(() => messages().builder.draftStatus)
 
 /** Drafts and tested agents are highlighted on their own; active and paused ones show in the full list. */
 function getSidebarAgents(agentId: string, agent: Agent | null): SidebarProps['agents'] {
@@ -35,7 +34,7 @@ function getSidebarAgents(agentId: string, agent: Agent | null): SidebarProps['a
 /** Shown in the agent column while the agent loads or when it cannot be read. */
 function AgentPanelMessage({ children }: { children: string }) {
   return (
-    <section aria-label="Agent" className="box-border flex min-w-0 flex-[1_1_440px] flex-col gap-2 bg-subtle p-6">
+    <section aria-label={messages().builder.agent} className="box-border flex min-w-0 flex-[1_1_440px] flex-col gap-2 bg-subtle p-6">
       <p className="m-0 text-muted">{children}</p>
     </section>
   )
@@ -120,7 +119,7 @@ export function BuilderPage() {
   ]
 
   return (
-    <AppShell agents={getSidebarAgents(agentId, agent)} runnerStatus="Online · OpenAI connected" mainClassName={splitPaneMainClassName}>
+    <AppShell agents={getSidebarAgents(agentId, agent)} runnerStatus={messages().builder.onlineOpenaiConnected} mainClassName={splitPaneMainClassName}>
       <BuilderChatPanel
         agent={agent}
         steps={flowSummary?.steps ?? []}
@@ -162,7 +161,7 @@ export function BuilderPage() {
           onActiveTabChange={setActiveTab}
         />
       ) : (
-        <AgentPanelMessage>{agentState.error ? `Could not load this agent: ${describeError(agentState.error)}` : 'Loading agent…'}</AgentPanelMessage>
+        <AgentPanelMessage>{agentState.error ? messages().builder.couldNotLoadThisAgentReason(describeError(agentState.error)) : messages().builder.loadingAgent}</AgentPanelMessage>
       )}
     </AppShell>
   )

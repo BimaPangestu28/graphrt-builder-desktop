@@ -11,6 +11,8 @@ import { useAgentDeployment } from '@/pages/deploy/useAgentDeployment'
 import { AgentIdentityHeader } from './AgentIdentityHeader'
 import { AgentRequirementsList, type BuilderRequirement } from './AgentRequirementsList'
 import { BuilderStepCard } from './BuilderStepCard'
+import { messages } from '@/i18n'
+import { withLocalizedLabels } from '@/i18n/localized'
 
 /**
  * The Nodes tab, loaded when it first opens: it brings React Flow and the whole
@@ -18,12 +20,7 @@ import { BuilderStepCard } from './BuilderStepCard'
  */
 const NodesView = lazy(async () => ({ default: (await import('./nodes/NodesView')).NodesView }))
 
-const builderTabs = [
-  { key: 'steps', label: 'Steps' },
-  { key: 'nodes', label: 'Nodes' },
-  { key: 'runs', label: 'Runs' },
-  { key: 'source', label: 'Source' },
-] as const
+const builderTabs = withLocalizedLabels([{ key: 'steps' }, { key: 'nodes' }, { key: 'runs' }, { key: 'source' }] as const, (tab) => messages().builder.tabs[tab.key])
 
 export type BuilderTabKey = (typeof builderTabs)[number]['key']
 
@@ -33,7 +30,7 @@ const outlineHeaderLinkClassNames = `${headerLinkBaseClassNames} border border-l
 /** Segmented Steps / Nodes / Runs / Source switcher. */
 function BuilderTabList({ activeTab, onSelect }: { activeTab: BuilderTabKey; onSelect: (tab: BuilderTabKey) => void }) {
   return (
-    <div role="tablist" aria-label="Agent views" className="flex gap-1 rounded-[10px] bg-selected p-1">
+    <div role="tablist" aria-label={messages().builder.agentViews} className="flex gap-1 rounded-[10px] bg-selected p-1">
       {builderTabs.map((tab) => {
         const isActive = tab.key === activeTab
         return (
@@ -75,28 +72,28 @@ function BuilderHeaderActions({ agentId, onTestBlocked, showTest, isOnline }: { 
   return (
     <div className="flex gap-2">
       <Link to={agentPath('versionHistory', agentId)} className={outlineHeaderLinkClassNames}>
-        History
+        {messages().builder.history}
       </Link>
       <Link to={agentPath('scheduleAgent', agentId)} className={outlineHeaderLinkClassNames}>
-        Schedule
+        {messages().builder.schedule}
       </Link>
       <Link to={agentPath('putOnline', agentId)} className={outlineHeaderLinkClassNames}>
-        {isOnline ? 'Where it runs' : 'Put it online'}
+        {isOnline ? messages().builder.whereItRuns : messages().builder.putItOnline}
       </Link>
       {!showTest ? null : onTestBlocked ? (
         <>
           <button type="button" aria-describedby="test-needs-plugins" onClick={onTestBlocked} className={joinClassNames(testClassNames, 'cursor-pointer border-0')}>
             {testPlayIcon}
-            Test with 1 place
+            {messages().builder.testWith1Place}
           </button>
           <span id="test-needs-plugins" className="sr-only">
-            Set up the plugins this agent needs first
+            {messages().builder.setUpThePluginsThisAgent}
           </span>
         </>
       ) : (
         <Link to={agentPath('testRun', agentId)} className={testClassNames}>
           {testPlayIcon}
-          Test with 1 place
+          {messages().builder.testWith1Place}
         </Link>
       )}
     </div>
@@ -114,8 +111,8 @@ interface StepsTabContentProps {
 }
 
 function StepsTabContent({ flowSummary, flowSummaryError, highlightedStepIds, requirements, onSaveSecret, onShowPluginSetup, onPluginSessionChange }: StepsTabContentProps) {
-  if (flowSummaryError) return <p className="m-0 text-muted">Could not read the steps: {flowSummaryError.message}</p>
-  if (!flowSummary) return <p className="m-0 text-muted">Loading steps…</p>
+  if (flowSummaryError) return <p className="m-0 text-muted">{messages().builder.couldNotReadTheSteps}{' '}{flowSummaryError.message}</p>
+  if (!flowSummary) return <p className="m-0 text-muted">{messages().builder.loadingSteps}</p>
   return (
     <>
       <ol className="m-0 flex list-none flex-col gap-2 p-0">
@@ -131,10 +128,10 @@ function StepsTabContent({ flowSummary, flowSummaryError, highlightedStepIds, re
 function RunsTabContent({ agentId }: { agentId: string }) {
   return (
     <div className="flex flex-col items-start gap-3 rounded-xl border border-dashed border-line-strong bg-surface p-6">
-      <span className="font-semibold">No runs yet</span>
-      <span className="text-body">Test it with one place first. Every run shows up here with what each step did</span>
+      <span className="font-semibold">{messages().builder.noRunsYet}</span>
+      <span className="text-body">{messages().builder.testItWithOnePlaceFirst}</span>
       <Link to={agentPath('testRun', agentId)} className="font-medium">
-        Test with 1 place
+        {messages().builder.testWith1Place}
       </Link>
     </div>
   )
@@ -235,7 +232,7 @@ export function BuilderAgentPanel({
   const onlineView = deployment.view
 
   return (
-    <section aria-label="Agent" className={`box-border flex min-w-0 flex-[1_1_440px] flex-col bg-subtle ${splitPaneColumnClassName}`}>
+    <section aria-label={messages().builder.agent} className={`box-border flex min-w-0 flex-[1_1_440px] flex-col bg-subtle ${splitPaneColumnClassName}`}>
       <header className={joinClassNames('box-border flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-line py-3', activeTab === 'nodes' ? 'px-4' : 'px-6')}>
         <BuilderTabList activeTab={activeTab} onSelect={setActiveTab} />
         <BuilderHeaderActions agentId={agent.id} onTestBlocked={arePluginsReady === false ? onShowPluginSetup : undefined} showTest={activeTab !== 'nodes'} isOnline={onlineView !== null && onlineView.deployment.status !== 'failed'} />
@@ -243,7 +240,7 @@ export function BuilderAgentPanel({
 
       {activeTab === 'nodes' ? (
         <div role="tabpanel" id="builder-panel-nodes" aria-labelledby="builder-tab-nodes" className="flex min-h-0 flex-1 flex-col">
-          <Suspense fallback={<ScreenLoading label="Loading the nodes" className="min-h-0" />}>
+          <Suspense fallback={<ScreenLoading label={messages().builder.loadingTheNodes} className="min-h-0" />}>
             <NodesView agent={agent} onGraphSaved={onGraphSaved} pluginRequirements={requirements} onAskBuilder={onAskBuilder ?? askBuilder} arePluginsReady={arePluginsReady !== false} onShowPluginSetup={onShowPluginSetup} onFoldChat={onFoldChat} />
           </Suspense>
         </div>
@@ -253,7 +250,7 @@ export function BuilderAgentPanel({
             <AgentIdentityHeader agent={agent} onRenamed={onAgentRenamed ?? (() => undefined)} />
             <span className="flex flex-wrap items-center gap-2 text-body">
               <RunPlaceBadge view={onlineView} />
-              {onlineView && onlineView.deployment.status !== 'failed' ? `on ${onlineView.providerName}` : 'started by hand'}
+              {onlineView && onlineView.deployment.status !== 'failed' ? `on ${onlineView.providerName}` : messages().builder.startedByHand}
             </span>
           </div>
           {activeTab === 'steps' && onlineView && <AgentOnlinePanel agentId={agent.id} agentName={agent.name} view={onlineView} onViewChange={deployment.setView} />}

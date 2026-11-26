@@ -6,6 +6,7 @@ import { getProviderName } from '@/lib/agentDisplay'
 import { agentPath, connectionsTabPath, pluginDetailPath } from '@/routes'
 import type { BuilderRequirement } from './AgentRequirementsList'
 import { describeRequirementState, needsOnlySessionLink } from './pluginRequirementDisplay'
+import { messages } from '@/i18n'
 
 /**
  * Lists what an agent needs on screen 04: connected apps first, then the model keys its
@@ -59,7 +60,7 @@ export function listBuilderRequirements(
  */
 export function listPluginSetupRequirements(pluginRequirements: PluginRequirement[] | null): BuilderRequirement[] {
   return (pluginRequirements ?? []).map((requirement) => ({
-    label: `${requirement.displayName} plugin`,
+    label: messages().builder.displaynamePlugin(requirement.displayName),
     pluginName: requirement.name,
     connectPath: pluginDetailPath(requirement.name),
     isConnected: requirement.ready,

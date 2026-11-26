@@ -2,6 +2,7 @@ import type { FlowStep } from '@/api/types'
 import { joinClassNames } from '@/components/ui'
 import type { BuilderStepTone } from './StepNumberBadge'
 import { StepNumberBadge } from './StepNumberBadge'
+import { messages } from '@/i18n'
 
 interface BuilderStepCardProps {
   flowStep: FlowStep
@@ -31,9 +32,9 @@ export function BuilderStepCard({ flowStep, number, isChanged }: BuilderStepCard
       <div className="flex flex-auto flex-col gap-1">
         <span className="font-semibold">{flowStep.title}</span>
         {flowStep.detail && <span className="text-[13px] text-body">{flowStep.detail}</span>}
-        {isChanged && <span className="text-[12px] font-medium text-brand-strong">Changed just now</span>}
+        {isChanged && <span className="text-[12px] font-medium text-brand-strong">{messages().builder.changedJustNow}</span>}
       </div>
-      {flowStep.needsApproval && <span className="rounded-full bg-amber-soft px-2 py-[3px] text-[12px] font-medium text-amber-strong">Approval</span>}
+      {flowStep.needsApproval && <span className="rounded-full bg-amber-soft px-2 py-[3px] text-[12px] font-medium text-amber-strong">{messages().builder.approval}</span>}
     </li>
   )
 }

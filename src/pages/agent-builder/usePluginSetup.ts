@@ -9,6 +9,7 @@ import { toInstallProgress } from '@/hooks/usePlugins'
 import { describeError } from '@/lib/agentDisplay'
 import { describeInstallProgress } from '../plugins/pluginDisplay'
 import { arePluginRequirementsReady, needsOnlySessionLink, needsPluginApproval, needsPluginRuntimeDownload } from './pluginRequirementDisplay'
+import { messages } from '@/i18n'
 
 /** Browser runtime download as the setup card shows it. */
 export interface BrowserDownloadState {
@@ -152,7 +153,7 @@ function usePluginApprovals(requirements: PluginRequirement[] | null, reload: ()
       try {
         await installAndTrust(requirement)
       } catch (approvalError) {
-        setErrorByName((previous) => ({ ...previous, [requirement.name]: `Could not set up ${requirement.displayName}: ${describeError(approvalError)}` }))
+        setErrorByName((previous) => ({ ...previous, [requirement.name]: messages().builder.couldNotSetUpDisplaynameReason(requirement.displayName, describeError(approvalError)) }))
       } finally {
         setApprovingNames((previous) => previous.filter((name) => name !== requirement.name))
         clearProgress(requirement.name)

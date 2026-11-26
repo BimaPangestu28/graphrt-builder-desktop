@@ -1,4 +1,5 @@
 import type { Locale, Translation } from './types'
+import { builder } from './locales/builder'
 import { deploy } from './locales/deploy'
 import { connections } from './locales/connections'
 import { schedule } from './locales/schedule'
@@ -19,6 +20,7 @@ import { platform } from './locales/platform'
  * and listing it in both objects below (the completeness test checks they match).
  */
 const english = {
+  builder: builder.en,
   deploy: deploy.en,
   connections: connections.en,
   schedule: schedule.en,
@@ -38,6 +40,7 @@ const english = {
 export type Messages = Translation<typeof english>
 
 const indonesian: Messages = {
+  builder: builder.id,
   deploy: deploy.id,
   connections: connections.id,
   schedule: schedule.id,

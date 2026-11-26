@@ -13,6 +13,7 @@ import { NodesEditNotice } from './nodes/sync/NodesEditNotice'
 import { SavedChatMessages } from './SavedChatMessages'
 import type { ChatExchange, LatestRevision } from './useAgentRevisions'
 import type { PluginSetupAnchor } from './usePluginSetupPlacement'
+import { messages } from '@/i18n'
 
 const outlineButtonClassNames =
   'h-8 cursor-pointer rounded-lg border border-line-strong bg-surface px-3 text-[13px] font-medium text-ink hover:bg-subtle disabled:cursor-not-allowed disabled:opacity-50'
@@ -37,12 +38,12 @@ function AgentSummaryReply({ agentId, agentName, steps, openingExplanation }: Ag
     <div className={`${assistantBlockClassNames} gap-3`}>
       {openingExplanation && <BuilderExplanation text={openingExplanation} agentId={agentId} />}
       <p className="m-0 leading-[1.55]">
-        Your agent has {stepCountLabel}.{approvalCount > 0 ? ' It asks you before anything that needs your approval' : ' It runs without stopping for approval'}
+        {messages().builder.yourAgentHas}{' '}{stepCountLabel}.{approvalCount > 0 ? messages().builder.itAsksYouBeforeAnythingThat : messages().builder.itRunsWithoutStoppingForApproval}
       </p>
       <div className="flex flex-col gap-2.5 rounded-xl border border-line px-4 py-3.5">
         <div className="flex items-center justify-between gap-3">
           <span className="font-semibold">{agentName}</span>
-          <span className="rounded-full bg-brand-soft px-2 py-[3px] text-[12px] font-medium text-brand-strong">Checked</span>
+          <span className="rounded-full bg-brand-soft px-2 py-[3px] text-[12px] font-medium text-brand-strong">{messages().builder.checked}</span>
         </div>
         <span className="text-[13px] text-body">
           {stepCountLabel} · {pluralize(approvalCount, 'approval', 'approvals')}
@@ -78,7 +79,7 @@ function LiveChangeReply({ exchange, onStop, isStopping }: { exchange: ChatExcha
   const activity = exchange.writingStage && exchange.draft ? describeDraftActivity(exchange.writingStage, exchange.draft.outputTokens) : null
   const stopButton = onStop && (
     <button type="button" onClick={onStop} disabled={isStopping} className={`${outlineButtonClassNames} h-7 shrink-0 px-2.5 text-[12px]`}>
-      {isStopping ? 'Stopping…' : 'Stop'}
+      {isStopping ? messages().builder.stopping : messages().builder.stop}
     </button>
   )
   return (
@@ -110,7 +111,7 @@ function LiveChangeReply({ exchange, onStop, isStopping }: { exchange: ChatExcha
 }
 
 function describeUndone(undoableRevision: LatestRevision): string {
-  return `Undone. Back to v${undoableRevision.versionBefore}`
+  return messages().builder.undoneBackToVVersionbefore(undoableRevision.versionBefore)
 }
 
 /** Reply to a change request: progress, the explanation and summary with changed steps, and Undo/Redo. */
@@ -142,7 +143,7 @@ function ChangeReply({ agentId, exchange, steps, undoableRevision, isBusy, onTog
       {undoableRevision && (
         <div className="flex gap-2">
           <button type="button" onClick={onToggleUndo} disabled={isBusy} className={outlineButtonClassNames}>
-            {isUndone ? 'Redo' : 'Undo'}
+            {isUndone ? messages().builder.redo : messages().builder.undo}
           </button>
         </div>
       )}
@@ -179,7 +180,7 @@ function ChangeRequestForm({ isBusy, onSubmitRequest, askDraft }: ChangeRequestF
   return (
     <form onSubmit={handleSubmit} className="px-6 pt-4 pb-6">
       <label htmlFor="prompt" className="sr-only">
-        Describe a change
+        {messages().builder.describeAChange}
       </label>
       <div className="flex items-end gap-3 rounded-[14px] border border-line-strong py-3 pr-3 pl-4">
         <textarea
@@ -188,12 +189,12 @@ function ChangeRequestForm({ isBusy, onSubmitRequest, askDraft }: ChangeRequestF
           rows={2}
           value={draftRequest}
           onChange={(event) => setDraftRequest(event.target.value)}
-          placeholder="Describe a change, like “skip places with fewer than 50 reviews”"
+          placeholder={messages().builder.describeAChangeLikeSkipPlaces}
           className="flex-auto resize-none border-0 bg-transparent text-[14px] text-ink outline-none"
         />
         <button
           type="submit"
-          aria-label="Send"
+          aria-label={messages().builder.send}
           disabled={!draftRequest.trim() || isBusy}
           className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-[9px] border-0 bg-ink text-white hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-50"
         >
@@ -253,12 +254,12 @@ const railButtonClassNames = 'flex size-9 cursor-pointer items-center justify-ce
 function ChatRail({ onExpand, onWrite }: { onExpand: () => void; onWrite: () => void }) {
   return (
     <div className="flex flex-col items-center gap-1 py-3.5">
-      <button type="button" aria-label="Show the chat" title="Show the chat" aria-expanded="false" onClick={onExpand} className={railButtonClassNames}>
+      <button type="button" aria-label={messages().builder.showTheChat} title={messages().builder.showTheChat} aria-expanded="false" onClick={onExpand} className={railButtonClassNames}>
         <StrokeIcon size={16}>
           <path d="M9 6l6 6-6 6" />
         </StrokeIcon>
       </button>
-      <button type="button" aria-label="Describe a change" title="Describe a change" onClick={onWrite} className={railButtonClassNames}>
+      <button type="button" aria-label={messages().builder.describeAChange} title={messages().builder.describeAChange} onClick={onWrite} className={railButtonClassNames}>
         <StrokeIcon size={16}>
           <path d="M4 5h16v11H9l-5 4z" />
         </StrokeIcon>
@@ -282,7 +283,7 @@ export function BuilderChatPanel(props: BuilderChatPanelProps) {
   return (
     <section
       ref={sectionRef}
-      aria-label="Chat"
+      aria-label={messages().builder.chat}
       data-layout={layout}
       className={joinClassNames('box-border flex min-w-0 flex-col border-r border-line bg-surface transition-[flex-basis] duration-200 motion-reduce:transition-none', chatColumnWidthClassNames[layout], splitPaneColumnClassName)}
     >
@@ -290,15 +291,15 @@ export function BuilderChatPanel(props: BuilderChatPanelProps) {
       <PanelHeader className={joinClassNames('justify-between gap-2', layout === 'narrow' && 'px-5', isRail && 'hidden')}>
         <span className="flex min-w-0 items-center gap-1.5">
           {onToggleCollapsed && (
-            <button type="button" aria-label="Hide the chat" title="Hide the chat" aria-expanded="true" onClick={onToggleCollapsed} className={joinClassNames(railButtonClassNames, '-ml-2 size-8')}>
+            <button type="button" aria-label={messages().builder.hideTheChat} title={messages().builder.hideTheChat} aria-expanded="true" onClick={onToggleCollapsed} className={joinClassNames(railButtonClassNames, '-ml-2 size-8')}>
               <StrokeIcon size={16}>
                 <path d="M15 6l-6 6 6 6" />
               </StrokeIcon>
             </button>
           )}
-          <span className="truncate font-semibold">Build with chat</span>
+          <span className="truncate font-semibold">{messages().builder.buildWithChat}</span>
         </span>
-        <ModelPickerChip label="Model the builder uses" />
+        <ModelPickerChip label={messages().builder.modelTheBuilderUses} />
       </PanelHeader>
       <div ref={chatBodyRef} aria-live="polite" className={joinClassNames('flex flex-auto flex-col gap-5', layout === 'narrow' ? 'p-5' : 'p-6', splitPaneScrollClassName, isRail && 'hidden')}>
         {agent && (

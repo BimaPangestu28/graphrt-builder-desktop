@@ -4,6 +4,7 @@ import { joinClassNames } from '@/components/ui'
 import { whatsAppWebPluginName } from '../connect-whatsapp/useWhatsAppActions'
 import { PluginSessionLinkAction } from './PluginSessionLinkAction'
 import { SecretRequirementForm } from './SecretRequirementForm'
+import { messages } from '@/i18n'
 
 /** One thing the agent needs before it can run, with where to go to connect it. */
 export interface BuilderRequirement {
@@ -47,7 +48,7 @@ interface RequirementActionProps {
 /** Right side of a "Needs" row: status, or the action that fixes it. */
 function RequirementAction({ requirement, isSecretFormOpen, onOpenSecretForm, onShowPluginSetup, onPluginSessionChange }: RequirementActionProps) {
   if (requirement.isConnected) {
-    return <span className="text-[13px] text-ok-strong">{requirement.pluginState === 'ready' ? 'Ready' : 'Connected'}</span>
+    return <span className="text-[13px] text-ok-strong">{requirement.pluginState === 'ready' ? messages().builder.ready : messages().builder.connected}</span>
   }
   if (requirement.pluginState === 'not_linked' && requirement.pluginName === whatsAppWebPluginName) {
     return <PluginSessionLinkAction label={requirement.label} onSessionChange={onPluginSessionChange} />
@@ -55,19 +56,19 @@ function RequirementAction({ requirement, isSecretFormOpen, onOpenSecretForm, on
   if (requirement.secretName !== undefined) {
     if (isSecretFormOpen) return null
     return (
-      <button type="button" aria-label={`Add ${requirement.label}`} className={joinClassNames(actionClassNames, 'cursor-pointer border-0')} onClick={onOpenSecretForm}>
-        Add
+      <button type="button" aria-label={messages().builder.addLabel(requirement.label)} className={joinClassNames(actionClassNames, 'cursor-pointer border-0')} onClick={onOpenSecretForm}>
+        {messages().builder.add}
       </button>
     )
   }
   if (requirement.pluginState && onShowPluginSetup) {
     return (
-      <button type="button" aria-label={`Set up ${requirement.label} in chat`} className={joinClassNames(actionClassNames, 'cursor-pointer border-0')} onClick={onShowPluginSetup}>
-        Set up in chat
+      <button type="button" aria-label={messages().builder.setUpLabelInChat(requirement.label)} className={joinClassNames(actionClassNames, 'cursor-pointer border-0')} onClick={onShowPluginSetup}>
+        {messages().builder.setUpInChat}
       </button>
     )
   }
-  const linkLabel = requirement.pluginState ? (requirement.pluginState === 'not_installed' ? 'Install' : 'Set up') : 'Connect'
+  const linkLabel = requirement.pluginState ? (requirement.pluginState === 'not_installed' ? messages().builder.install : messages().builder.setUp) : messages().builder.connect
   return (
     <Link to={requirement.connectPath} aria-label={`${linkLabel} ${requirement.label}`} className={actionClassNames}>
       {linkLabel}
@@ -87,7 +88,7 @@ export function AgentRequirementsList({ requirements, onSaveSecret, onShowPlugin
 
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-[12px] font-medium text-muted">Needs</span>
+      <span className="text-[12px] font-medium text-muted">{messages().builder.needs}</span>
       <ul className="m-0 list-none rounded-xl border border-line bg-surface p-0">
         {requirements.map((requirement, requirementIndex) => {
           const { secretName } = requirement
