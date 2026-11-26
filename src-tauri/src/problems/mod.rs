@@ -16,9 +16,9 @@ mod failed_run;
 pub mod models;
 mod needs;
 pub mod retry;
-mod texts;
 #[cfg(test)]
 mod tests;
+mod texts;
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -101,8 +101,12 @@ fn failed_run_problems(
             continue;
         }
         let report = failed_run_report(db, &run.id)?;
-        let mut actions =
-            vec![ProblemAction::for_run(ProblemActionKind::OpenRun, &texts.see_what_happened(), &run.agent_id, &run.id)];
+        let mut actions = vec![ProblemAction::for_run(
+            ProblemActionKind::OpenRun,
+            &texts.see_what_happened(),
+            &run.agent_id,
+            &run.id,
+        )];
         if report.retry.can_retry {
             actions.push(ProblemAction::for_run(
                 ProblemActionKind::RetryRun,
@@ -171,7 +175,11 @@ fn missing_items(sources: &ProblemSources<'_>, needs: &FlowNeeds, texts: Problem
     Ok(MissingItems { only_plugin_settings: other_count == 0, labels })
 }
 
-fn credential_problems(sources: &ProblemSources<'_>, agents: &[AgentContext], texts: ProblemTexts) -> AppResult<Vec<Problem>> {
+fn credential_problems(
+    sources: &ProblemSources<'_>,
+    agents: &[AgentContext],
+    texts: ProblemTexts,
+) -> AppResult<Vec<Problem>> {
     let mut problems = Vec::new();
     for context in active_agents(agents) {
         let Some(needs) = &context.needs else { continue };

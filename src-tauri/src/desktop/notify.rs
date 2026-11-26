@@ -91,8 +91,11 @@ impl NotifyingSink {
             return None;
         }
         let strings = settings.ui_strings();
-        let agent_name =
-            self.db.get_agent(&payload.agent_id).map(|agent| agent.name).unwrap_or_else(|_| strings.unknown_agent().into());
+        let agent_name = self
+            .db
+            .get_agent(&payload.agent_id)
+            .map(|agent| agent.name)
+            .unwrap_or_else(|_| strings.unknown_agent().into());
         Some(describe_run(strings, &agent_name, &run, payload.status))
     }
 }

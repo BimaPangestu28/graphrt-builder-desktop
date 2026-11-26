@@ -88,7 +88,11 @@ impl TrayStatus {
             Some(until) => strings.paused_until(&until.with_timezone(&Local).format("%H:%M").to_string()),
             None => strings.runner_online(),
         };
-        [runner_line, strings.agents_scheduled(self.scheduled_agent_count), strings.runs_waiting(self.waiting_run_count)]
+        [
+            runner_line,
+            strings.agents_scheduled(self.scheduled_agent_count),
+            strings.runs_waiting(self.waiting_run_count),
+        ]
     }
 }
 
@@ -119,7 +123,8 @@ pub fn refresh_tray(app_handle: &AppHandle) {
         return;
     };
     let status = current_status(app_handle);
-    let updated = build_menu(app_handle, &status, current_strings(app_handle)).and_then(|menu| tray.set_menu(Some(menu)));
+    let updated =
+        build_menu(app_handle, &status, current_strings(app_handle)).and_then(|menu| tray.set_menu(Some(menu)));
     if let Err(error) = updated {
         log::warn!("could not update the tray menu: {error}");
     }
@@ -272,7 +277,10 @@ mod tests {
         let status = TrayStatus::load(&db, Utc::now()).unwrap();
         assert_eq!(status.scheduled_agent_count, 2);
         assert_eq!(status.waiting_run_count, 1);
-        assert_eq!(status.lines(UiStrings::new(UiLanguage::En)), ["Runner online", "2 agents scheduled", "1 run waiting for you"]);
+        assert_eq!(
+            status.lines(UiStrings::new(UiLanguage::En)),
+            ["Runner online", "2 agents scheduled", "1 run waiting for you"]
+        );
     }
 
     #[test]

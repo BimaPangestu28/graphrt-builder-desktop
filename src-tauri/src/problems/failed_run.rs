@@ -159,12 +159,7 @@ fn contains_any(text: &str, markers: &[&str]) -> bool {
 }
 
 /// Turns graphrt's error into a title, an explanation and fix steps.
-pub(super) fn explain_failure(run: &Run, facts: &FailureFacts) -> FailureExplanation {
-    explain_failure_in(ProblemTexts::new(crate::desktop::ui_language::UiLanguage::En), run, facts)
-}
-
-/// [`explain_failure`] in the given language.
-pub(super) fn explain_failure_in(texts: ProblemTexts, run: &Run, facts: &FailureFacts) -> FailureExplanation {
+pub(super) fn explain_failure(texts: ProblemTexts, run: &Run, facts: &FailureFacts) -> FailureExplanation {
     let error = facts.step_error.clone().or_else(|| run.error_message.clone()).unwrap_or_default();
     let lowered = error.to_lowercase();
     let error_type = facts.error_type.as_deref().unwrap_or_default();
@@ -186,7 +181,10 @@ pub(super) fn explain_failure_in(texts: ProblemTexts, run: &Run, facts: &Failure
             title: texts.plugin_runtime_missing_title(),
             explanation: texts.runtime_missing_detail(&step, nothing_after),
             fix_steps: vec![texts.install_plugin_runtime(), retry_step],
-            fix_action: Some(ProblemAction::new(ProblemActionKind::InstallPluginRuntime, &texts.install_plugin_runtime())),
+            fix_action: Some(ProblemAction::new(
+                ProblemActionKind::InstallPluginRuntime,
+                &texts.install_plugin_runtime(),
+            )),
         };
     }
     if contains_any(&lowered, SIGNED_OUT_MARKERS) {
@@ -202,7 +200,11 @@ pub(super) fn explain_failure_in(texts: ProblemTexts, run: &Run, facts: &Failure
             title: texts.timeout_title(),
             explanation: texts.timeout_detail(&step, nothing_after),
             fix_steps: vec![texts.timeout_fix(), retry_step],
-            fix_action: Some(ProblemAction::for_agent(ProblemActionKind::OpenBuilder, &texts.open_step(), &run.agent_id)),
+            fix_action: Some(ProblemAction::for_agent(
+                ProblemActionKind::OpenBuilder,
+                &texts.open_step(),
+                &run.agent_id,
+            )),
         };
     }
     let (title, fix_step, fix_action) = match error_type {
@@ -316,7 +318,7 @@ pub fn failed_run_report(db: &Database, run_id: &str) -> AppResult<FailedRunRepo
     let events: Vec<Json> = db.list_run_events(run_id)?.into_iter().map(|record| record.event).collect();
     let facts = FailureFacts::from_events(&events);
     let texts = ProblemTexts::for_database(db);
-    let explanation = explain_failure_in(texts, &run, &facts);
+    let explanation = explain_failure(texts, &run, &facts);
     let flow_yaml = flow_of_run(db, &agent, &run)?;
     let retry = match retry::inputs_for_retry(db, &run) {
         Ok(_) => RetryAvailability { can_retry: true, reason: None },

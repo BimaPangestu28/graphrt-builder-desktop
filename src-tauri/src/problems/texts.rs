@@ -99,7 +99,10 @@ impl ProblemTexts {
         )
     }
     pub(super) fn cannot_run_until_it_does(self, agents: &str) -> String {
-        self.pick(format!(" {agents} cannot run until it does."), format!(" {agents} tidak bisa jalan sampai plugin ini bisa dimulai."))
+        self.pick(
+            format!(" {agents} cannot run until it does."),
+            format!(" {agents} tidak bisa jalan sampai plugin ini bisa dimulai."),
+        )
     }
     pub(super) fn plugin_not_loaded_title(self, plugin: &str) -> String {
         self.pick(format!("The {plugin} plugin could not start"), format!("Plugin {plugin} gagal dimulai"))
@@ -195,7 +198,10 @@ impl ProblemTexts {
         self.word("A step kept timing out", "Sebuah langkah terus kehabisan waktu")
     }
     pub(super) fn timeout_detail(self, step: &str, nothing_after: &str) -> String {
-        self.pick(format!("{step} took too long to answer. {nothing_after}"), format!("{step} terlalu lama menjawab. {nothing_after}"))
+        self.pick(
+            format!("{step} took too long to answer. {nothing_after}"),
+            format!("{step} terlalu lama menjawab. {nothing_after}"),
+        )
     }
     pub(super) fn timeout_fix(self) -> String {
         self.word(
@@ -234,7 +240,10 @@ impl ProblemTexts {
         self.pick(format!("{step} failed"), format!("{step} gagal"))
     }
     pub(super) fn step_failed_fix(self) -> String {
-        self.word("Open the step in the builder and ask chat to fix it", "Buka langkahnya di builder dan minta chat memperbaikinya")
+        self.word(
+            "Open the step in the builder and ask chat to fix it",
+            "Buka langkahnya di builder dan minta chat memperbaikinya",
+        )
     }
     pub(super) fn graphrt_said(self, error: &str) -> String {
         self.pick(format!(" graphrt said: {error}."), format!(" Pesan dari Graphrt, {error}."))

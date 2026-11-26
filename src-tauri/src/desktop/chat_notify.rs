@@ -47,8 +47,11 @@ impl ChatNotifyingSink {
         if conversation.channel == TEST_CHANNEL {
             return None;
         }
-        let agent_name =
-            self.db.get_agent(&payload.agent_id).map(|agent| agent.name).unwrap_or_else(|_| strings.unknown_chatbot().into());
+        let agent_name = self
+            .db
+            .get_agent(&payload.agent_id)
+            .map(|agent| agent.name)
+            .unwrap_or_else(|_| strings.unknown_chatbot().into());
         let body = match conversation.last_message_text.filter(|text| !text.trim().is_empty()) {
             Some(last_message) => format!("{}: {last_message}", conversation.customer_name),
             None => strings.customer_waiting_body(&conversation.customer_name),

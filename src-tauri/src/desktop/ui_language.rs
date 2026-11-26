@@ -75,7 +75,9 @@ impl UiStrings {
 
     pub fn runs_waiting(self, count: usize) -> String {
         match self.language {
-            UiLanguage::En => format!("{count} {}", if count == 1 { "run waiting for you" } else { "runs waiting for you" }),
+            UiLanguage::En => {
+                format!("{count} {}", if count == 1 { "run waiting for you" } else { "runs waiting for you" })
+            }
             UiLanguage::Id => format!("{count} run menunggu kamu"),
         }
     }
