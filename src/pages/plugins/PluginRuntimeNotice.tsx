@@ -6,6 +6,7 @@ import { Button } from '@/components/ui'
 import { useAsyncData } from '@/hooks/useAsyncData'
 import { usePluginRuntime } from '@/hooks/usePluginRuntime'
 import { routePaths } from '@/routes'
+import { messages } from '@/i18n'
 
 /** Where "Later" is remembered (the pinned Node version), so the notice shows once per runtime version. */
 const DISMISSED_RUNTIME_VERSION_KEY = 'graphrt.pluginRuntimeNotice.dismissedVersion'
@@ -28,8 +29,9 @@ function rememberDismissedRuntimeVersion(version: string): void {
 
 /** "WhatsApp Web and 2 more" for the notice text. */
 export function describeWaitingPlugins(pluginLabels: string[]): string {
-  if (pluginLabels.length <= 2) return pluginLabels.join(' and ')
-  return `${pluginLabels[0]} and ${pluginLabels.length - 1} more`
+  const t = messages().plugins
+  if (pluginLabels.length <= 2) return pluginLabels.length === 2 ? t.twoPlugins(pluginLabels[0], pluginLabels[1]) : pluginLabels.join('')
+  return t.pluginAndMore(pluginLabels[0], pluginLabels.length - 1)
 }
 
 /**
@@ -59,34 +61,34 @@ export function PluginRuntimeNotice() {
 
   return (
     <section
-      aria-label="Plugin runtime needed"
+      aria-label={messages().plugins.runtimeNeeded}
       className="fixed top-4 right-4 z-40 box-border flex w-[min(380px,calc(100vw-32px))] flex-col gap-2.5 rounded-[14px] border border-line bg-surface p-4 text-[14px] text-ink shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
     >
-      <b className="font-semibold">Your plugins need a one-time download</b>
+      <b className="font-semibold">{messages().plugins.oneTimeDownload}</b>
       <p className="m-0 text-[13px] leading-normal text-body">
-        graphrt no longer ships Node.js inside the app, so it is much smaller. {describeWaitingPlugins(waitingPluginLabels)} {waitingPluginLabels.length === 1 ? 'needs' : 'need'} the plugin runtime (Node.js v{pinnedVersion}, {pluginRuntimeDownloadSizeNote()} from nodejs.org) before {waitingPluginLabels.length === 1 ? 'it runs' : 'they run'} again.
+        {messages().plugins.noticeText(describeWaitingPlugins(waitingPluginLabels), waitingPluginLabels.length === 1, String(pinnedVersion), pluginRuntimeDownloadSizeNote())}
       </p>
       {runtime.isInstalling && (
         <p role="status" className="m-0 text-[13px] text-ink-2">
-          {runtime.progressText ?? 'Starting the download…'}
+          {runtime.progressText ?? messages().plugins.startingDownload}
         </p>
       )}
       {runtime.installError && (
         <p role="alert" className="m-0 text-[13px] text-danger">
-          Could not download it: {runtime.installError}
+          {messages().plugins.couldNotDownload(runtime.installError)}
         </p>
       )}
       <div className="flex flex-wrap items-center justify-end gap-2">
         <Link to={routePaths.plugins} className="mr-auto text-[13px] font-medium">
-          Open plugins
+          {messages().plugins.openPlugins}
         </Link>
         {!runtime.isInstalling && (
           <Button variant="ghost" size="sm" onClick={handleLater}>
-            Later
+            {messages().plugins.later}
           </Button>
         )}
         <Button size="sm" disabled={runtime.isInstalling} onClick={() => void runtime.install()}>
-          {runtime.isInstalling ? 'Downloading…' : runtime.installError ? 'Try again' : 'Download now'}
+          {runtime.isInstalling ? messages().plugins.downloading : runtime.installError ? messages().plugins.tryAgain : messages().plugins.downloadNow}
         </Button>
       </div>
     </section>

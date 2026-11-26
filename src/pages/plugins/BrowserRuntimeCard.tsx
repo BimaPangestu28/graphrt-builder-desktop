@@ -1,6 +1,7 @@
 import { Badge, Button, joinClassNames, type BadgeTone } from '@/components/ui'
 import type { BrowserRuntimeState } from '@/hooks/useBrowserRuntime'
 import { describeError } from '@/lib/agentDisplay'
+import { messages } from '@/i18n'
 
 interface BrowserRuntimeCardProps {
   runtime: BrowserRuntimeState
@@ -9,11 +10,12 @@ interface BrowserRuntimeCardProps {
 }
 
 function describeRuntimeStatus(runtime: BrowserRuntimeState): string {
-  if (runtime.loadError) return `Could not check the browser runtime: ${describeError(runtime.loadError)}`
-  if (runtime.status === null) return 'Checking the browser runtime…'
-  if (runtime.status === 'installed') return 'Installed'
-  if (runtime.status === 'installing') return runtime.progressText ?? 'Installing…'
-  return 'Not installed'
+  const t = messages().plugins
+  if (runtime.loadError) return t.couldNotCheckBrowser(describeError(runtime.loadError))
+  if (runtime.status === null) return t.checkingBrowser
+  if (runtime.status === 'installed') return t.installed
+  if (runtime.status === 'installing') return runtime.progressText ?? t.installing
+  return t.notInstalled
 }
 
 function pickRuntimeStatusTone(runtime: BrowserRuntimeState): BadgeTone {
@@ -39,23 +41,23 @@ export function BrowserRuntimeCard({ runtime, isEmbedded = false }: BrowserRunti
     >
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          {!isEmbedded && <b className="font-semibold text-ink">Browser runtime</b>}
+          {!isEmbedded && <b className="font-semibold text-ink">{messages().plugins.browserRuntime}</b>}
           <span role="status">
             <Badge tone={pickRuntimeStatusTone(runtime)} className="whitespace-normal">
               {describeRuntimeStatus(runtime)}
             </Badge>
           </span>
         </div>
-        <p className="m-0 text-[13px] text-body">Chromium for plugins that open web pages · about 150 MB</p>
+        <p className="m-0 text-[13px] text-body">{messages().plugins.chromiumGeneric}</p>
         {runtime.installError && (
           <p role="alert" className="m-0 text-[13px] text-danger">
-            Could not install the browser runtime: {runtime.installError}
+            {messages().plugins.couldNotInstallBrowser(runtime.installError)}
           </p>
         )}
       </div>
       {(canInstall || runtime.isInstalling) && (
         <Button size="sm" className="ml-auto" disabled={!canInstall} onClick={() => void runtime.install()}>
-          {runtime.isInstalling ? 'Installing…' : 'Install browser runtime'}
+          {runtime.isInstalling ? messages().plugins.installing : messages().plugins.installBrowserRuntime}
         </Button>
       )}
     </div>

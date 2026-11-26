@@ -61,3 +61,16 @@ describe('dictionaries', () => {
     expect(lowercaseBrand).toEqual([])
   })
 })
+
+describe('localizedRecord', () => {
+  it('reads the current language on every access', async () => {
+    const { localizedRecord } = await import('../localized')
+    const { setLocale, messages } = await import('../index')
+    const labels = localizedRecord(() => messages().plugins.tabs)
+    expect(labels.all).toBe('All')
+    expect(Object.values(labels)).toContain('Needs attention')
+    setLocale('id')
+    expect(labels.all).toBe('Semua')
+    expect(Object.keys(labels)).toEqual(['all', 'installed', 'updates', 'attention'])
+  })
+})

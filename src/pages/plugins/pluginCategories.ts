@@ -1,3 +1,5 @@
+import { messages } from '@/i18n'
+import { localizedRecord } from '@/i18n/localized'
 /**
  * Simple groups for the Plugins page. The graphrt-plugins catalog has no category field,
  * so each plugin is placed by keywords in its name and description; the first rule that
@@ -6,18 +8,7 @@
 
 export type PluginCategory = 'messaging' | 'ai' | 'data' | 'files' | 'commerce' | 'marketing' | 'productivity' | 'web' | 'developer' | 'other'
 
-export const pluginCategoryLabels: Record<PluginCategory, string> = {
-  messaging: 'Messaging',
-  ai: 'AI',
-  data: 'Data',
-  files: 'Files & media',
-  commerce: 'Payments & shops',
-  marketing: 'Marketing & CRM',
-  productivity: 'Productivity',
-  web: 'Web & search',
-  developer: 'Developer',
-  other: 'Other',
-}
+export const pluginCategoryLabels: Readonly<Record<PluginCategory, string>> = localizedRecord(() => messages().plugins.categories)
 
 /** Display order of the category chips. */
 export const pluginCategoryOrder: PluginCategory[] = ['messaging', 'ai', 'data', 'files', 'commerce', 'marketing', 'productivity', 'web', 'developer', 'other']

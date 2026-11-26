@@ -165,8 +165,8 @@ export function PluginRequirementCard({ requirement, setup }: PluginRequirementC
           <li key={line}>{line}</li>
         ))}
       </ul>
-      {needsPluginApproval(requirement) && needsPluginRuntimeDownload(requirement) && <p className="m-0 text-[12px] text-body">{pluginRuntimeInstallNote}</p>}
-      {!requirement.installed && <p className="m-0 text-[12px] font-medium text-ink-2">{pluginInstallTrustNote}</p>}
+      {needsPluginApproval(requirement) && needsPluginRuntimeDownload(requirement) && <p className="m-0 text-[12px] text-body">{pluginRuntimeInstallNote()}</p>}
+      {!requirement.installed && <p className="m-0 text-[12px] font-medium text-ink-2">{pluginInstallTrustNote()}</p>}
       <RequirementActions requirement={requirement} setup={setup} />
       {canLinkWhatsAppWeb(requirement) && <WhatsAppWebLinkPanel onSessionChange={setup.reload} />}
       {errorMessage && (

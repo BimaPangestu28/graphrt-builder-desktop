@@ -39,7 +39,7 @@ export function PluginInstallStepBody({ plugins, pluginName }: { plugins: Plugin
     <>
       <span className="text-[13px] text-body">{catalogEntry.description}. It asks for:</span>
       <PluginPermissionList pluginLabel={pluginLabel} permissions={catalogEntry.permissions} needsBrowser={catalogEntry.needsBrowser} />
-      {needsPluginRuntime && <span className="text-[13px] text-body">{pluginRuntimeInstallNote}</span>}
+      {needsPluginRuntime && <span className="text-[13px] text-body">{pluginRuntimeInstallNote()}</span>}
       <div className="flex flex-wrap items-center gap-3">
         <Button
           size="sm"

@@ -12,6 +12,8 @@ import { pluginCategoryLabels } from './pluginCategories'
 import { describeMaturity, describeStepCount, type PluginListItem } from './pluginDisplay'
 import { buildPluginSetupSteps, PluginSetupChecklist } from './PluginSetupChecklist'
 import type { PluginUser } from './usePluginUsers'
+import { messages, useT } from '@/i18n'
+import { localizedRecord } from '@/i18n/localized'
 
 /** A titled card on the plugin page; the title names the region for screen readers. */
 export function DetailSection({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
@@ -29,17 +31,17 @@ export function DetailSection({ title, hint, children }: { title: string; hint?:
   )
 }
 
-const tosRiskLabels: Record<PluginTosRisk, string> = { none: 'None', low: 'Low', medium: 'Medium', high: 'High' }
+const tosRiskLabels: Readonly<Record<PluginTosRisk, string>> = localizedRecord(() => messages().plugins.tosRisk)
 
 /** The README's terms-of-service / ban warning, in amber above everything else. */
 export function PluginWarningBox({ item }: { item: PluginListItem }) {
   if (!item.warning) return null
   const showsRisk = item.tosRisk === 'medium' || item.tosRisk === 'high'
   return (
-    <div role="note" aria-label={`Warning about ${item.displayName}`} className="flex gap-3 rounded-[14px] border border-amber-line-2 bg-amber-tint px-4 py-3">
+    <div role="note" aria-label={messages().plugins.warningAbout(item.displayName)} className="flex gap-3 rounded-[14px] border border-amber-line-2 bg-amber-tint px-4 py-3">
       <Icon name="alert" size={16} className="mt-px shrink-0 text-amber" />
       <div className="flex min-w-0 flex-col gap-0.5">
-        <b className="text-[13px] font-semibold text-amber-deep">{showsRisk && item.tosRisk ? `Read before using · ${tosRiskLabels[item.tosRisk]} terms-of-service risk` : 'Read before using'}</b>
+        <b className="text-[13px] font-semibold text-amber-deep">{showsRisk && item.tosRisk ? messages().plugins.readBeforeRisk(tosRiskLabels[item.tosRisk]) : messages().plugins.readBefore}</b>
         <p className="m-0 text-[13px] leading-normal text-amber-deep">{item.warning}</p>
       </div>
     </div>
@@ -53,11 +55,11 @@ export function PluginLoadNotes({ installed }: { installed: InstalledPlugin }) {
     <div className="flex flex-col gap-1">
       {installed.loadError && (
         <p role="alert" className="m-0 rounded-xl border border-danger-line bg-danger-tint px-4 py-3 text-[13px] text-danger">
-          Could not load {installed.displayName}: {installed.loadError}
+          {messages().plugins.couldNotLoadPlugin(installed.displayName, installed.loadError)}
         </p>
       )}
       {installed.warnings.length > 0 && (
-        <ul aria-label={`Warnings for ${installed.displayName}`} className="m-0 flex list-none flex-col gap-0.5 p-0 text-[13px] text-amber-deep">
+        <ul aria-label={messages().plugins.warningsFor(installed.displayName)} className="m-0 flex list-none flex-col gap-0.5 p-0 text-[13px] text-amber-deep">
           {installed.warnings.map((warning) => (
             <li key={warning}>{warning}</li>
           ))}
@@ -70,11 +72,11 @@ export function PluginLoadNotes({ installed }: { installed: InstalledPlugin }) {
 /** The node kinds (steps) the plugin adds: title and description, with the kind agents use. */
 export function PluginStepsSection({ pluginLabel, nodes }: { pluginLabel: string; nodes: PluginNodeInfo[] }) {
   return (
-    <DetailSection title="What it adds" hint={nodes.length > 0 ? `${describeStepCount(nodes.length)} your agents can use` : undefined}>
+    <DetailSection title={messages().plugins.whatItAdds} hint={nodes.length > 0 ? messages().plugins.stepsAgentsCanUse(describeStepCount(nodes.length)) : undefined}>
       {nodes.length === 0 ? (
-        <p className="m-0 text-[13px] text-muted">The catalog does not list its steps</p>
+        <p className="m-0 text-[13px] text-muted">{messages().plugins.catalogListsNoSteps}</p>
       ) : (
-        <ul aria-label={`Steps ${pluginLabel} adds`} className="m-0 flex list-none flex-col overflow-hidden rounded-[10px] border border-line p-0">
+        <ul aria-label={messages().plugins.stepsPluginAdds(pluginLabel)} className="m-0 flex list-none flex-col overflow-hidden rounded-[10px] border border-line p-0">
           {nodes.map((node) => (
             <li key={node.kind} className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-chip px-3.5 py-3 last:border-b-0">
               <span className="flex min-w-0 flex-[1_1_220px] flex-col gap-0.5">
@@ -155,14 +157,15 @@ function AsksForRow({ icon, children }: { icon: keyof typeof asksForIconPaths; c
  */
 export function PluginAsksForSection({ item }: { item: PluginListItem }) {
   const { permissions, needsBrowser } = item
+  const t = useT().plugins
   return (
-    <DetailSection title="What it asks for">
-      <ul aria-label={`What ${item.displayName} asks for`} className="m-0 flex list-none flex-col gap-3 p-0">
-        <AsksForRow icon={permissions.network ? 'network' : 'offline'}>{permissions.network ? 'Connects to the internet' : 'Works without the internet'}</AsksForRow>
-        {permissions.secrets && <AsksForRow icon="secrets">Receives secret values in plain text (only once you trust it)</AsksForRow>}
+    <DetailSection title={t.whatItAsksFor}>
+      <ul aria-label={t.whatPluginAsksFor(item.displayName)} className="m-0 flex list-none flex-col gap-3 p-0">
+        <AsksForRow icon={permissions.network ? 'network' : 'offline'}>{permissions.network ? t.connectsInternet : t.worksOffline}</AsksForRow>
+        {permissions.secrets && <AsksForRow icon="secrets">{t.receivesSecrets}</AsksForRow>}
         {permissions.env.length > 0 && (
           <AsksForRow icon="settings">
-            Reads these settings:
+            {t.readsSettings}
             <span className="flex flex-wrap gap-1">
               {permissions.env.map((settingName) => (
                 <code key={settingName} className="max-w-full rounded-md bg-chip px-1.5 py-0.5 font-mono text-[11px] text-ink-2 [overflow-wrap:anywhere]">
@@ -172,7 +175,7 @@ export function PluginAsksForSection({ item }: { item: PluginListItem }) {
             </span>
           </AsksForRow>
         )}
-        {needsBrowser && <AsksForRow icon="browser">Needs the browser runtime (Chromium) on this computer</AsksForRow>}
+        {needsBrowser && <AsksForRow icon="browser">{t.needsBrowser}</AsksForRow>}
       </ul>
     </DetailSection>
   )
@@ -193,7 +196,7 @@ export function PluginSetupSection({ installed, plugins, browserRuntime, pluginR
   const steps = buildPluginSetupSteps({ installed, plugins, browserRuntime, pluginRuntime })
   const doneCount = steps.filter((step) => step.isDone).length
   return (
-    <DetailSection title="Set up" hint={`${doneCount} of ${steps.length} steps done`}>
+    <DetailSection title={messages().plugins.setUpSection} hint={messages().plugins.stepsDone(doneCount, steps.length)}>
       <PluginSetupChecklist steps={steps} />
     </DetailSection>
   )
@@ -208,8 +211,8 @@ function PluginUserRow({ user }: { user: PluginUser }) {
           {user.agentName}
         </Link>
         <span className="text-[12px] text-muted">
-          {user.usedBySteps.length > 0 ? user.usedBySteps.join(', ') : 'Uses it'}
-          {user.isReady ? '' : ' · not ready yet'}
+          {user.usedBySteps.length > 0 ? user.usedBySteps.join(', ') : messages().plugins.usesIt}
+          {user.isReady ? '' : messages().plugins.notReadyYet}
         </span>
       </span>
     </li>
@@ -220,17 +223,17 @@ function PluginUserRow({ user }: { user: PluginUser }) {
 export function PluginUsersSection({ pluginLabel, users, loadError }: { pluginLabel: string; users: PluginUser[] | null; loadError: Error | null }) {
   let body: ReactNode
   if (loadError) body = <p className="m-0 text-[13px] text-muted">Could not check the agents: {describeError(loadError)}</p>
-  else if (!users) body = <p className="m-0 text-[13px] text-muted">Checking your agents…</p>
+  else if (!users) body = <p className="m-0 text-[13px] text-muted">{messages().plugins.checkingAgents}</p>
   else if (users.length === 0) body = <p className="m-0 text-[13px] text-muted">No agent uses {pluginLabel} yet</p>
   else
     body = (
-      <ul aria-label={`Agents using ${pluginLabel}`} className="m-0 flex list-none flex-col gap-2 p-0">
+      <ul aria-label={messages().plugins.agentsUsing(pluginLabel)} className="m-0 flex list-none flex-col gap-2 p-0">
         {users.map((user) => (
           <PluginUserRow key={user.agentId} user={user} />
         ))}
       </ul>
     )
-  return <DetailSection title="Used by agents">{body}</DetailSection>
+  return <DetailSection title={messages().plugins.usedByAgents}>{body}</DetailSection>
 }
 
 interface ExternalLinkButtonProps {
@@ -248,7 +251,7 @@ function ExternalLinkButton({ label, target, openLink }: ExternalLinkButtonProps
     try {
       await openLink()
     } catch (openError) {
-      setErrorMessage(`Could not open ${target}: ${describeError(openError)}`)
+      setErrorMessage(messages().plugins.couldNotOpen(target, describeError(openError)))
     }
   }
   return (
@@ -275,34 +278,31 @@ function AboutRow({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
-const sourceLabels: Record<PluginSource, string> = {
-  official: 'Official (graphrt)',
-  community: 'Community (reviewed by graphrt)',
-  local: 'Local · not reviewed',
-}
+const sourceLabels: Readonly<Record<PluginSource, string>> = localizedRecord(() => messages().plugins.sourceLabels)
 
 /** Category, source and publisher, versions, maturity, and the README and repository links. */
 export function PluginAboutSection({ item }: { item: PluginListItem }) {
   const isLocal = item.source === 'local'
+  const t = useT().plugins
   return (
-    <DetailSection title="About">
+    <DetailSection title={t.about}>
       <dl className="m-0 flex flex-col">
-        <AboutRow label="Category">{pluginCategoryLabels[item.category]}</AboutRow>
-        <AboutRow label="Source">{sourceLabels[item.source]}</AboutRow>
-        {item.publisher && <AboutRow label="Maintained by">{item.publisher}</AboutRow>}
+        <AboutRow label={t.category}>{pluginCategoryLabels[item.category]}</AboutRow>
+        <AboutRow label={t.source}>{sourceLabels[item.source]}</AboutRow>
+        {item.publisher && <AboutRow label={t.maintainedBy}>{item.publisher}</AboutRow>}
         {isLocal && item.localPath && (
-          <AboutRow label="Installed from">
+          <AboutRow label={t.installedFrom}>
             <code className="font-mono text-[12px] [overflow-wrap:anywhere]">{item.localPath}</code>
           </AboutRow>
         )}
-        {!isLocal && <AboutRow label="Catalog version">v{item.version}</AboutRow>}
-        {item.installed && <AboutRow label="Installed">v{item.installed.version}</AboutRow>}
-        {!isLocal && <AboutRow label="Maturity">{describeMaturity(item.maturity) ?? (item.maturity === 'stable' ? 'Stable' : 'Not labelled')}</AboutRow>}
-        {item.tosRisk && <AboutRow label="Terms-of-service risk">{tosRiskLabels[item.tosRisk]}</AboutRow>}
+        {!isLocal && <AboutRow label={t.catalogVersion}>v{item.version}</AboutRow>}
+        {item.installed && <AboutRow label={t.installedVersion}>v{item.installed.version}</AboutRow>}
+        {!isLocal && <AboutRow label={t.maturity}>{describeMaturity(item.maturity) ?? (item.maturity === 'stable' ? t.stable : t.notLabelled)}</AboutRow>}
+        {item.tosRisk && <AboutRow label={t.tosRiskLabel}>{tosRiskLabels[item.tosRisk]}</AboutRow>}
       </dl>
-      {isLocal && <p className="m-0 text-[12px] leading-normal text-muted">Installed from this computer: graphrt has not reviewed it and never updates it. Install it again to pick up changes</p>}
-      {item.readmeUrl && <ExternalLinkButton label="Read the README" target="the README" openLink={() => openPluginReadme(item.name)} />}
-      {item.repositoryUrl && <ExternalLinkButton label="View the source code" target="the repository" openLink={() => openPluginRepository(item.name)} />}
+      {isLocal && <p className="m-0 text-[12px] leading-normal text-muted">{t.localNotReviewedNote}</p>}
+      {item.readmeUrl && <ExternalLinkButton label={t.readReadme} target={t.theReadme} openLink={() => openPluginReadme(item.name)} />}
+      {item.repositoryUrl && <ExternalLinkButton label={t.viewSource} target={t.theRepository} openLink={() => openPluginRepository(item.name)} />}
     </DetailSection>
   )
 }

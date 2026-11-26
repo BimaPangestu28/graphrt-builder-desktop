@@ -70,8 +70,8 @@ export function PluginInstallPrompt({ pending, placementText, catalogEntry, isIn
         {communityNote && `${communityNote} `}
         {describeInstallAsks(catalogEntry)}
       </p>
-      {needsPluginRuntime && <p className="m-0 text-[12px] leading-normal text-body">{pluginRuntimeInstallNote}</p>}
-      <p className="m-0 text-[12px] font-medium leading-normal text-ink-2">{pluginInstallTrustNote}</p>
+      {needsPluginRuntime && <p className="m-0 text-[12px] leading-normal text-body">{pluginRuntimeInstallNote()}</p>}
+      <p className="m-0 text-[12px] font-medium leading-normal text-ink-2">{pluginInstallTrustNote()}</p>
       {isInstalling && progress && (
         <span role="status" className="text-[12px] text-ink-2">
           {describeInstallProgress(progress)}

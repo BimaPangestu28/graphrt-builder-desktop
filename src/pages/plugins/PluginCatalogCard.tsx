@@ -10,6 +10,7 @@ import { describeCommunityInstallNote, describeMaturity, pluginInstallTrustNote,
 import { PluginIcon } from './PluginIcon'
 import { PluginPermissionChips } from './PluginPermissionList'
 import { pluginRuntimeInstallNote } from './PluginRuntimeCard'
+import { messages, useT } from '@/i18n'
 
 interface PluginCatalogCardProps {
   item: PluginListItem
@@ -33,20 +34,19 @@ function InstallApproval({ item, plugins, onCancel }: { item: PluginListItem; pl
   const isInstalling = plugins.operationByName[item.name] === 'installing'
   const communityNote = describeCommunityInstallNote(item)
   const needsPluginRuntime = isPluginRuntimeMissing(usePluginRuntime())
+  const t = useT().plugins
   return (
-    <div role="group" aria-label={`Install ${item.displayName}?`} className="flex flex-col gap-2 rounded-lg bg-subtle p-2.5">
-      <p className="m-0 text-[12px] leading-normal text-body">
-        {communityNote && `${communityNote} `}Runs its code on this computer{asksFor.length > 0 ? ` and asks for: ${asksFor.join(', ')}` : ''}. It starts untrusted, without settings or secrets.
-      </p>
-      {needsPluginRuntime && <p className="m-0 text-[12px] leading-normal text-body">{pluginRuntimeInstallNote}</p>}
-      <p className="m-0 text-[12px] font-medium leading-normal text-ink-2">{pluginInstallTrustNote}</p>
+    <div role="group" aria-label={t.installQuestion(item.displayName)} className="flex flex-col gap-2 rounded-lg bg-subtle p-2.5">
+      <p className="m-0 text-[12px] leading-normal text-body">{t.runsCode(communityNote ? `${communityNote} ` : '', asksFor.length > 0 ? asksFor.join(', ') : null)}</p>
+      {needsPluginRuntime && <p className="m-0 text-[12px] leading-normal text-body">{pluginRuntimeInstallNote()}</p>}
+      <p className="m-0 text-[12px] font-medium leading-normal text-ink-2">{pluginInstallTrustNote()}</p>
       <div className="flex justify-end gap-2">
         {!isInstalling && (
           <Button variant="ghost" size="sm" onClick={onCancel}>
-            Cancel
+            {t.cancel}
           </Button>
         )}
-        <PluginInstallButton item={item} plugins={plugins} ariaLabel={`Confirm install ${item.displayName}`} withPluginRuntime={needsPluginRuntime} />
+        <PluginInstallButton item={item} plugins={plugins} ariaLabel={t.confirmInstall(item.displayName)} withPluginRuntime={needsPluginRuntime} />
       </div>
     </div>
   )
@@ -66,29 +66,30 @@ function OpenLink({ item, listSearch, label, isPrimary }: { item: PluginListItem
 }
 
 function CardActions({ item, plugins, listSearch, onStartInstall }: PluginCatalogCardProps & { onStartInstall: () => void }) {
+  const t = useT().plugins
   if (!item.installed) {
     return (
       <>
-        <OpenLink item={item} listSearch={listSearch} label="Details" isPrimary={false} />
-        <Button size="sm" aria-label={`Install ${item.displayName}`} onClick={onStartInstall}>
-          Install
+        <OpenLink item={item} listSearch={listSearch} label={t.details} isPrimary={false} />
+        <Button size="sm" aria-label={t.installPlugin(item.displayName)} onClick={onStartInstall}>
+          {t.install}
         </Button>
       </>
     )
   }
   if (item.updateAvailable && item.updateNeedsApproval) {
-    return <OpenLink item={item} listSearch={listSearch} label="Review update" isPrimary />
+    return <OpenLink item={item} listSearch={listSearch} label={t.reviewUpdate} isPrimary />
   }
   if (item.updateAvailable) {
     return (
       <>
-        <OpenLink item={item} listSearch={listSearch} label="Open" isPrimary={false} />
+        <OpenLink item={item} listSearch={listSearch} label={t.open} isPrimary={false} />
         <PluginUpdateButton item={item} plugins={plugins} />
       </>
     )
   }
   const needsSetup = itemNeedsAttention(item)
-  return <OpenLink item={item} listSearch={listSearch} label={needsSetup ? 'Set up' : 'Open'} isPrimary={needsSetup} />
+  return <OpenLink item={item} listSearch={listSearch} label={needsSetup ? t.setUp : t.open} isPrimary={needsSetup} />
 }
 
 /**
@@ -136,7 +137,7 @@ export function PluginCatalogCard({ item, plugins, listSearch }: PluginCatalogCa
           <InstallApproval item={item} plugins={plugins} onCancel={() => setIsApproving(false)} />
         ) : (
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[12px] text-muted">{item.nodes.length > 0 ? describeStepCount(item.nodes.length) : 'No steps listed'}</span>
+            <span className="text-[12px] text-muted">{item.nodes.length > 0 ? describeStepCount(item.nodes.length) : messages().plugins.noStepsListed}</span>
             <div className="flex items-center gap-2">
               <CardActions item={item} plugins={plugins} listSearch={listSearch} onStartInstall={() => setIsApproving(true)} />
             </div>
