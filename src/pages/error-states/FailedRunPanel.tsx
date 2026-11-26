@@ -7,6 +7,7 @@ import { useLoadedData } from '@/hooks/useRunData'
 import { formatRunDay } from '@/pages/agent-run/runResultSummary'
 import { routePaths } from '@/routes'
 import { CommandOutcomeMessage, ProblemActionControl, type CommandOutcome } from './ProblemActionControl'
+import { messages } from '@/i18n'
 
 function StepMarker({ state }: { state: FailedRunStepState }) {
   if (state === 'done') {
@@ -30,7 +31,7 @@ function StepMarker({ state }: { state: FailedRunStepState }) {
 
 function RunStepList({ steps }: { steps: FailedRunStep[] }) {
   return (
-    <ol aria-label="Run steps" className="m-0 flex list-none flex-col gap-0.5 p-0">
+    <ol aria-label={messages().agentRun.runSteps} className="m-0 flex list-none flex-col gap-0.5 p-0">
       {steps.map((step) => (
         <li
           key={step.id}
@@ -50,7 +51,7 @@ function RunStepList({ steps }: { steps: FailedRunStep[] }) {
 }
 
 function retryAction(report: FailedRunReport): ProblemAction {
-  return { kind: 'retry_run', label: 'Retry from the start', agentId: report.agentId, runId: report.runId }
+  return { kind: 'retry_run', label: messages().agentRun.retryFromTheStart, agentId: report.agentId, runId: report.runId }
 }
 
 /** The "Fix it" box: what to do, the button that fixes the cause, and a retry from the start. */
@@ -58,7 +59,7 @@ function FixItBox({ report }: { report: FailedRunReport }) {
   const [commandOutcome, setCommandOutcome] = useState<CommandOutcome | null>(null)
   return (
     <div className="flex flex-col gap-3 rounded-[14px] border border-line p-[18px]">
-      <span className="font-semibold">Fix it</span>
+      <span className="font-semibold">{messages().agentRun.fixIt}</span>
       <ol className="m-0 flex flex-col gap-2.5 pl-5 leading-normal">
         {report.fixSteps.map((fixStep) => (
           <li key={fixStep}>{fixStep}</li>
@@ -70,7 +71,7 @@ function FixItBox({ report }: { report: FailedRunReport }) {
           <ProblemActionControl action={retryAction(report)} style="secondary" onCommandFinished={setCommandOutcome} />
         )}
       </div>
-      {!report.retry.canRetry && report.retry.reason && <p className="m-0 text-[13px] text-body">Retry is not available: {report.retry.reason}</p>}
+      {!report.retry.canRetry && report.retry.reason && <p className="m-0 text-[13px] text-body">{messages().agentRun.retryIsNotAvailable}{' '}{report.retry.reason}</p>}
       {commandOutcome && <CommandOutcomeMessage outcome={commandOutcome} />}
     </div>
   )
@@ -105,7 +106,7 @@ function FailedRunReportView({ report }: { report: FailedRunReport }) {
       <FixItBox key={report.runId} report={report} />
       <RunStepList steps={report.steps} />
       <details className="rounded-xl border border-line px-4 py-3">
-        <summary className="cursor-pointer font-medium">Technical details</summary>
+        <summary className="cursor-pointer font-medium">{messages().agentRun.technicalDetails}</summary>
         <pre className="m-0 mt-3 whitespace-pre-wrap font-mono text-[12px] leading-[1.6] text-ink-2">{report.technicalDetails}</pre>
       </details>
     </>
@@ -116,10 +117,10 @@ function NoFailedRun({ message }: { message: string }) {
   return (
     <div className="flex flex-col gap-2">
       <h1 id="failed-run-heading" className="m-0 text-[22px] font-semibold tracking-[-0.3px]">
-        No failed runs
+        {messages().agentRun.noFailedRuns}
       </h1>
       <p className="m-0 leading-[1.6] text-ink-2">{message}</p>
-      <Link to={routePaths.runs}>See every run</Link>
+      <Link to={routePaths.runs}>{messages().agentRun.seeEveryRun}</Link>
     </div>
   )
 }
@@ -129,9 +130,9 @@ export function FailedRunPanel({ runId }: { runId: string | null }) {
   const { data: report, error, isLoading } = useLoadedData(() => (runId ? getFailedRunReport(runId) : Promise.resolve(null)), [runId])
   return (
     <section aria-labelledby="failed-run-heading" className="box-border flex min-w-0 flex-[3_1_520px] flex-col gap-[22px] p-8">
-      {!runId && <NoFailedRun message="The latest run of every agent finished without an error." />}
-      {runId && error && <NoFailedRun message={`Could not load this run: ${error.message}`} />}
-      {runId && !error && isLoading && !report && <p className="m-0 text-body">Loading the run…</p>}
+      {!runId && <NoFailedRun message={messages().agentRun.theLatestRunOfEveryAgent} />}
+      {runId && error && <NoFailedRun message={messages().agentRun.couldNotLoadRun(error.message)} />}
+      {runId && !error && isLoading && !report && <p className="m-0 text-body">{messages().agentRun.loadingTheRun}</p>}
       {runId && report && <FailedRunReportView report={report} />}
     </section>
   )
