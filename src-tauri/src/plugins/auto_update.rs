@@ -150,12 +150,17 @@ pub(super) fn hold_back_community(plan: UpdatePlan, community: &HashSet<String>)
 
 /// Splits the installed plugins with a newer catalog version (the same rule as the
 /// catalog's `update_available`) into updates that ask for nothing more and updates
-/// that need the user's approval. Plugins the catalog does not list are left alone.
-pub(super) fn plan_updates(index: &CatalogIndex, installed: &[PluginState]) -> UpdatePlan {
+/// that need the user's approval. Plugins the catalog does not list are left alone, and so
+/// are updates that need a newer app than `app_version`: the installed version keeps working.
+pub(super) fn plan_updates(index: &CatalogIndex, installed: &[PluginState], app_version: &str) -> UpdatePlan {
     let mut plan = UpdatePlan::default();
     for state in installed {
         let Some(entry) = index.plugins.iter().find(|plugin| plugin.name == state.name) else { continue };
         if !super::catalog::is_newer_version(&entry.version, &state.version) {
+            continue;
+        }
+        if super::app_requirement::newer_app_needed(entry.min_app_version.as_deref(), app_version).is_some() {
+            log::info!("plugin {} {} needs a newer app; the update waits for an app update", state.name, entry.version);
             continue;
         }
         if update_asks_for_more(entry, state) {
@@ -185,7 +190,7 @@ impl PluginService {
             Some(index) => index,
             None => Arc::new(self.fetch_catalog().await?.0),
         };
-        let plan = plan_updates(&index, &self.catalog_matched_plugins());
+        let plan = plan_updates(&index, &self.catalog_matched_plugins(), &self.app_version);
         Ok(self.apply_plan(plan, false).await.0)
     }
 
@@ -201,7 +206,7 @@ impl PluginService {
             Ok((index, _)) => index,
             Err(error) => return AutoUpdateOutcome::CatalogUnavailable(error.to_string()),
         };
-        let plan = plan_updates(&index, &self.catalog_matched_plugins());
+        let plan = plan_updates(&index, &self.catalog_matched_plugins(), &self.app_version);
         let plan = hold_back_community(plan, &self.community_plugin_names(&index));
         let (summary, stopped_for_runs) = self.apply_plan(plan, true).await;
         if let Err(error) = record_auto_updates(&self.db, &summary.updated, &crate::storage::now_rfc3339()) {

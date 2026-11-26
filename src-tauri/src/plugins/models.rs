@@ -4,6 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
+pub use super::app_requirement::NewerAppNeeded;
 pub use super::source::PluginSource;
 
 /// What a plugin asks for: network access (informational), plaintext secrets
@@ -131,6 +132,25 @@ pub struct CatalogPlugin {
     /// HTTPS link to the plugin's source repository (dropped when not https).
     #[serde(default, deserialize_with = "string_or_none")]
     pub repository_url: Option<String>,
+    /// The oldest app version that can use the plugin, e.g. `0.2.0` (newer catalogs only;
+    /// missing means every version). Kept as written: `app_requirement::newer_app_needed`
+    /// reads it, and a value it cannot read counts as "needs a newer app".
+    #[serde(default, deserialize_with = "text_of_any_value")]
+    pub min_app_version: Option<String>,
+}
+
+/// Reads an optional field as text whatever JSON value it holds: `null` is `None`, a string
+/// is itself and anything else is its JSON text, so the reader can tell "not there" from
+/// "there, in a form this app does not know".
+fn text_of_any_value<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(match serde_json::Value::deserialize(deserializer)? {
+        serde_json::Value::Null => None,
+        serde_json::Value::String(text) => Some(text),
+        other => Some(other.to_string()),
+    })
 }
 
 /// A v2 index's short form of a node: enough for lists and "which plugin owns this kind".
@@ -356,6 +376,9 @@ pub struct PluginCatalogEntry {
     pub update_needs_approval: bool,
     /// For an MCP preset plugin: the server it adds to Connections > MCP servers.
     pub mcp_server: Option<McpServerSummary>,
+    /// This app is too old for the catalog's version of the plugin: it cannot be installed
+    /// (or updated to that version) until the app is updated. `None` when the app is new enough.
+    pub needs_newer_app: Option<NewerAppNeeded>,
 }
 
 /// The server of an MCP preset plugin, as the Plugins screen shows it.

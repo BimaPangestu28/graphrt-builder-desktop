@@ -123,7 +123,12 @@ pub(super) fn finish_install(
 /// checksums, then a graphrt host registering it next to the built-in nodes.
 fn check_loads(dir: &Path, name: &str, base_registry: &graphrt_core::Registry) -> AppResult<()> {
     let rejected = |message: String| AppError::InvalidInput(format!("plugin {name} cannot be installed: {message}"));
-    let manifest = read_plugin(dir).map_err(rejected)?;
+    // A manifest using something this app does not know was made for a newer app: say that, not "unknown field".
+    let manifest = read_plugin(dir).map_err(|refusal| {
+        super::app_requirement::manifest_refusal(refusal, |message| {
+            format!("plugin {name} cannot be installed: {message}")
+        })
+    })?;
     match &manifest.manifest.runtime {
         graphrt_plugin::Runtime::Process(_) => {}
         // An MCP preset has no code: it must make a server the app can add (name, address, sign-in).

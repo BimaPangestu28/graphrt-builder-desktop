@@ -1,3 +1,4 @@
+import { messages } from '@/i18n'
 import { genericErrorMessage } from '@/lib/errors'
 import type { GraphProblem } from './agentGraphTypes'
 import type { BackendErrorCode } from './types'
@@ -28,11 +29,20 @@ export interface InvalidGraphDetails {
   problems: GraphProblem[]
 }
 
+/** `needs_newer_app`: the plugin needs a newer version of the app; nothing was installed. */
+export interface NeedsNewerAppDetails {
+  /** The oldest app version that can use the plugin, or null when only "a newer one" is known. */
+  minVersion: string | null
+  /** The version of the app that refused. */
+  appVersion: string | null
+}
+
 /** Structured data per error code; codes not listed carry none. */
 export interface BackendErrorDetailsByCode {
   version_conflict: VersionConflictDetails
   invalid_graph: InvalidGraphDetails
   builder_busy: null
+  needs_newer_app: NeedsNewerAppDetails
 }
 
 /** The details a code carries: its entry in {@link BackendErrorDetailsByCode}, else null. */
@@ -83,13 +93,30 @@ export function parseBackendErrorDetails(code: BackendErrorCode, rawDetails: unk
   if (code === 'invalid_graph') {
     return Array.isArray(rawDetails.problems) ? { problems: rawDetails.problems as GraphProblem[] } : null
   }
+  if (code === 'needs_newer_app') {
+    const { minVersion, appVersion } = rawDetails
+    return { minVersion: typeof minVersion === 'string' ? minVersion : null, appVersion: typeof appVersion === 'string' ? appVersion : null }
+  }
   return null
 }
 
-function toBackendError(rawError: unknown): BackendError {
+/**
+ * What a backend error says on screen. The backend writes English; an error people can act
+ * on without reading a technical reason is said in the app's language instead.
+ */
+function localizedBackendMessage(code: BackendErrorCode, backendMessage: string, details: BackendErrorDetails): string {
+  if (code !== 'needs_newer_app') return backendMessage
+  const { minVersion = null, appVersion = null } = (details as NeedsNewerAppDetails | null) ?? {}
+  if (appVersion === null) return backendMessage
+  const t = messages().plugins
+  return minVersion === null ? t.errorNeedsNewerApp(appVersion) : t.errorNeedsAppVersion(minVersion, appVersion)
+}
+
+export function toBackendError(rawError: unknown): BackendError {
   if (isRecord(rawError) && typeof rawError.code === 'string' && typeof rawError.message === 'string') {
     const code = rawError.code as BackendErrorCode
-    return new BackendError(code, rawError.message, parseBackendErrorDetails(code, rawError.details))
+    const details = parseBackendErrorDetails(code, rawError.details)
+    return new BackendError(code, localizedBackendMessage(code, rawError.message, details), details)
   }
   return new BackendError('internal', typeof rawError === 'string' ? rawError : genericErrorMessage)
 }
