@@ -10,9 +10,11 @@ permissions:
   contents: read
 
 # A new push to the same PR cancels the run it supersedes. Runs on main (push or
-# workflow_dispatch) are never cancelled, so every main commit keeps a full result.
+# workflow_dispatch) are never cancelled, so every main commit keeps a full result:
+# each gets its own group (the run id), because a group holds at most one pending
+# run and a newer one cancels it even with cancel-in-progress off.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
