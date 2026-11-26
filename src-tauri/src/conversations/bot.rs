@@ -21,6 +21,7 @@ use serde_json::{Map, Value as Json};
 
 use super::models::Conversation;
 use crate::error::{AppError, AppResult};
+use crate::knowledge::retrieval::KNOWLEDGE_RETRIEVAL_KIND;
 
 /// Start input carrying the customer's message.
 pub const MESSAGE_INPUT: &str = "message";
@@ -52,6 +53,33 @@ pub struct BotTurn {
     pub variables: Json,
     pub summary: Option<String>,
     pub suggested_reply: Option<String>,
+    /// Passages the flow's own knowledge-retrieval steps found, in order.
+    pub retrieved_sources: Vec<RetrievedSource>,
+    /// Source names shown under the reply (filled by the host from the setup).
+    pub citations: Vec<String>,
+}
+
+/// Where one passage the bot was given comes from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RetrievedSource {
+    pub knowledge_base_id: String,
+    /// File or page name, e.g. `menu.pdf`.
+    pub source_name: String,
+}
+
+impl RetrievedSource {
+    /// Reads one hit of a `knowledge-retrieval` step's `result` output.
+    fn from_result_item(item: &Json) -> Option<Self> {
+        let knowledge_base_id = item.get("dataset_id")?.as_str()?.to_owned();
+        let source_name = item
+            .get("metadata")
+            .and_then(|metadata| metadata.get("source_name"))
+            .and_then(Json::as_str)
+            .or_else(|| item.get("title").and_then(Json::as_str))
+            .filter(|name| !name.trim().is_empty())?
+            .to_owned();
+        Some(Self { knowledge_base_id, source_name })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,6 +116,14 @@ pub async fn run_bot_turn(
     for (name, value) in extra_sys_values {
         run_input = run_input.sys(name.as_str(), value.as_str());
     }
+    let retrieval_steps: Vec<&str> = engine
+        .graph()
+        .nodes()
+        .iter()
+        .filter(|node| node.parent.is_none() && node.kind == KNOWLEDGE_RETRIEVAL_KIND)
+        .map(|node| &*node.id)
+        .collect();
+    let mut retrieved_sources = Vec::new();
     let mut stream = engine.run(run_input);
 
     let mut assembled_reply = String::new();
@@ -110,6 +146,13 @@ pub async fn run_bot_turn(
             Event::VariableUpdated { selector, value, .. } if selector.namespace() == "conversation" => {
                 apply_variable_update(&mut variables, &selector, value.to_json());
             }
+            Event::NodeSucceeded { node_id, outputs: step_outputs, .. }
+                if retrieval_steps.contains(&node_id.as_str()) =>
+            {
+                if let Some(Json::Array(items)) = step_outputs.get("result").map(Value::to_json) {
+                    retrieved_sources.extend(items.iter().filter_map(RetrievedSource::from_result_item));
+                }
+            }
             Event::RunSucceeded { outputs: run_outputs, .. } => outputs = Some(run_outputs),
             Event::RunFailed { error, .. } => return Err(AppError::Workflow(error)),
             Event::RunAborted { reason, .. } => {
@@ -127,7 +170,9 @@ pub async fn run_bot_turn(
         assembled_reply.push_str(&chunk.text);
     }
     let outputs = outputs.ok_or_else(|| AppError::Workflow("the bot stopped without an answer".into()))?;
-    Ok(collect_turn(assembled_reply, &outputs, Json::Object(variables)))
+    let mut turn = collect_turn(assembled_reply, &outputs, Json::Object(variables));
+    turn.retrieved_sources = retrieved_sources;
+    Ok(turn)
 }
 
 fn build_run_input(
@@ -163,6 +208,8 @@ fn collect_turn(assembled_reply: String, outputs: &IndexMap<String, Value>, vari
         variables,
         summary: non_empty_text(outputs.get(SUMMARY_OUTPUT)),
         suggested_reply: non_empty_text(outputs.get(SUGGESTED_REPLY_OUTPUT)),
+        retrieved_sources: Vec::new(),
+        citations: Vec::new(),
     }
 }
 

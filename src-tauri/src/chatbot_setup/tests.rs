@@ -287,7 +287,7 @@ fn rules_allow_only_enabled_reasons_and_unknown_ones() {
 
 #[tokio::test]
 async fn attached_knowledge_reaches_a_flow_without_retrieval_steps() {
-    let harness = harness(&["Ongkir sesuai jarak."]);
+    let harness = harness(&["Ongkir sesuai jarak.", "Ongkir sesuai jarak."]);
     let knowledge_base_id = knowledge_base_with_faq(&harness, "Catering menu and prices").await;
     let agent = create_chatbot(&harness.db, REPLY_FLOW);
     assert!(get_chatbot_setup(&harness.db, &agent.id, &nothing_connected)
@@ -302,12 +302,27 @@ async fn attached_knowledge_reaches_a_flow_without_retrieval_steps() {
     let used_by = &harness.knowledge.list_knowledge_bases().unwrap()[0].used_by;
     assert_eq!(used_by.iter().map(|usage| usage.agent_id.as_str()).collect::<Vec<_>>(), [agent.id.as_str()]);
     let conversation = harness.conversations.start_test_conversation(&agent.id).unwrap().conversation;
-    harness.conversations.send_customer_message(&conversation.id, "delivery fee for small orders").await.unwrap();
+    let detail =
+        harness.conversations.send_customer_message(&conversation.id, "delivery fee for small orders").await.unwrap();
 
     let prompt = system_prompt(&harness.model, 0);
     assert!(prompt.contains("Facts from the owner's knowledge"), "{prompt}");
     assert!(prompt.contains("delivery fee based on distance"), "{prompt}");
     assert!(prompt.contains("[catering-faq.md]"), "{prompt}");
+    assert!(prompt.matches("[catering-faq.md]").count() > 1, "default: up to 4 passages: {prompt}");
+    // "Always show the source in answers" is on by default: the reply names its file.
+    assert_eq!(detail.messages.last().unwrap().metadata, serde_json::json!({ "citations": ["catering-faq.md"] }));
+
+    // One passage per answer, sources hidden.
+    let mut settings = harness.knowledge.get_knowledge_base(&knowledge_base_id).unwrap().knowledge_base.settings;
+    settings.passages_per_answer = 1;
+    settings.show_sources = false;
+    harness.knowledge.update_settings(&knowledge_base_id, settings).await.unwrap();
+    let detail =
+        harness.conversations.send_customer_message(&conversation.id, "delivery fee for small orders").await.unwrap();
+    let prompt = system_prompt(&harness.model, 1);
+    assert_eq!(prompt.matches("[catering-faq.md]").count(), 1, "{prompt}");
+    assert_eq!(detail.messages.last().unwrap().metadata, serde_json::json!({}));
 }
 
 #[tokio::test]
@@ -322,8 +337,11 @@ async fn retrieval_steps_search_exactly_the_attached_knowledge() {
 
     attach_knowledge_base(&harness.db, &agent.id, &knowledge_base_id, &nothing_connected).unwrap();
     let conversation = harness.conversations.start_test_conversation(&agent.id).unwrap().conversation;
-    harness.conversations.send_customer_message(&conversation.id, "minimum order for packages").await.unwrap();
+    let detail =
+        harness.conversations.send_customer_message(&conversation.id, "minimum order for packages").await.unwrap();
     assert!(format!("{:?}", harness.model.requests()[0]).contains("minimum order of 20 boxes"));
+    // Sources of the passages the flow's own retrieval step found.
+    assert_eq!(detail.messages.last().unwrap().metadata, serde_json::json!({ "citations": ["catering-faq.md"] }));
 
     let setup = detach_knowledge_base(&harness.db, &agent.id, &knowledge_base_id, &nothing_connected).unwrap();
     assert!(setup.settings.knowledge_base_ids.is_empty());
