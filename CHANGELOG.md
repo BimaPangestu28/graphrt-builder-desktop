@@ -19,6 +19,7 @@ Agents can now start on their own when something happens, the app speaks Bahasa 
 - **Plugins that add an online service**: installing a plugin such as Upwork adds its MCP server to Connections > MCP servers with safe approval rules (for Upwork, only tools that look things up run without asking, never one that sends). Removing the plugin signs out and removes the server.
 - **Choose which MCP tools ask first**: every MCP server card lists its tools and lets you change, per tool, whether it asks before it runs.
 - **Chatbot replies appear while they are written**: in Try it and in the chat view the bot's answer grows word by word instead of showing up only when it is finished.
+- **Charts, tables, cards and KPI tiles in run results**: when an agent returns them (for example from the new UI Render plugin), the Run result screen shows them instead of plain text, with "Show as table" for charts. An "ask me first" step can be a card whose buttons and fields give the answer.
 
 ### Changed
 
@@ -31,6 +32,7 @@ Agents can now start on their own when something happens, the app speaks Bahasa 
 
 - The Connect step of the first-run setup no longer shows a stray amber dot before its warnings.
 - Windows builds and tests pass again (line endings, Windows-only checks).
+- On Linux, downloading Node.js for plugins no longer fails now and then with "Text file busy" when another program starts at the same moment.
 
 ## [0.1.8] - 2026-11-24
 
