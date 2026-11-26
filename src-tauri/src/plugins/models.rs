@@ -271,6 +271,52 @@ pub struct CatalogIndex {
     pub generated_at: Option<String>,
     #[serde(default)]
     pub plugins: Vec<CatalogPlugin>,
+    /// Agent skills the catalog offers (newer catalogs only). Part of the signed index, so a
+    /// skill is covered by the same signature as a plugin; an unreadable entry is dropped.
+    #[serde(default, deserialize_with = "lenient_skills")]
+    pub skills: Vec<CatalogSkill>,
+}
+
+/// One agent skill of the catalog: a `SKILL.md` package in a `.tar.gz` whose single
+/// top-level folder is the skill's name (snake_case on the wire).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct CatalogSkill {
+    pub name: String,
+    /// Curated name people see, e.g. "Refund policy"; checked like a plugin's.
+    #[serde(default, deserialize_with = "string_or_none")]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub version: String,
+    #[serde(default)]
+    pub description: String,
+    pub tarball_url: String,
+    pub sha256: String,
+    #[serde(default)]
+    pub size_bytes: u64,
+    /// Who maintains the skill, e.g. "graphrt" (at most 60 characters).
+    #[serde(default, deserialize_with = "string_or_none")]
+    pub publisher: Option<String>,
+}
+
+/// The `skills` list of an index; anything that is not a list of readable entries is left
+/// out (logged), so a malformed skills section never hides the plugins.
+fn lenient_skills<'de, D>(deserializer: D) -> Result<Vec<CatalogSkill>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let serde_json::Value::Array(entries) = serde_json::Value::deserialize(deserializer)? else {
+        return Ok(Vec::new());
+    };
+    Ok(entries
+        .into_iter()
+        .filter_map(|entry| match serde_json::from_value::<CatalogSkill>(entry) {
+            Ok(skill) => Some(skill),
+            Err(error) => {
+                log::warn!("skipping a catalog skill that cannot be read: {error}");
+                None
+            }
+        })
+        .collect())
 }
 
 /// A catalog plugin with its install state, for the Plugins screen.

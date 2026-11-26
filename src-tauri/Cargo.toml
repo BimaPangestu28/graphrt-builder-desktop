@@ -27,20 +27,22 @@ tauri-plugin-dialog = "2.4"
 tauri-plugin-notification = "2.8.1"
 
 # graphrt runtime, pinned to a commit until the crates are published on crates.io
-# (branch backport/ui-blocks: backport/plugin-triggers-mcp plus UI blocks, Graphrt/graphrt#99)
-graphrt-core = { git = "https://github.com/Graphrt/graphrt", rev = "2d04cbe9a2f29ce22a73f31a17e35012b85d7872" }
-graphrt-llm = { git = "https://github.com/Graphrt/graphrt", rev = "2d04cbe9a2f29ce22a73f31a17e35012b85d7872", default-features = false, features = ["openai", "anthropic", "gemini", "mock"] }
-graphrt-http = { git = "https://github.com/Graphrt/graphrt", rev = "2d04cbe9a2f29ce22a73f31a17e35012b85d7872" }
+# (branch backport/agent-skills: backport/ui-blocks plus agent skills, Graphrt/graphrt#101)
+graphrt-core = { git = "https://github.com/Graphrt/graphrt", rev = "18424ba4ccceabd9dcfdb652753ded7c6596bc45" }
+graphrt-llm = { git = "https://github.com/Graphrt/graphrt", rev = "18424ba4ccceabd9dcfdb652753ded7c6596bc45", default-features = false, features = ["openai", "anthropic", "gemini", "mock", "skills"] }
+graphrt-http = { git = "https://github.com/Graphrt/graphrt", rev = "18424ba4ccceabd9dcfdb652753ded7c6596bc45" }
 # Knowledge bases: SQLite vector store, document extractors and OpenAI-compatible embeddings
-graphrt-rag = { git = "https://github.com/Graphrt/graphrt", rev = "2d04cbe9a2f29ce22a73f31a17e35012b85d7872", default-features = false, features = ["sqlite", "doc", "http"] }
+graphrt-rag = { git = "https://github.com/Graphrt/graphrt", rev = "18424ba4ccceabd9dcfdb652753ded7c6596bc45", default-features = false, features = ["sqlite", "doc", "http"] }
 # Plugins: node kinds and tools from external processes (graphrt-plugins catalog)
-graphrt-plugin = { git = "https://github.com/Graphrt/graphrt", rev = "2d04cbe9a2f29ce22a73f31a17e35012b85d7872", default-features = false, features = ["process", "http", "yaml", "mcp-presets"] }
+graphrt-plugin = { git = "https://github.com/Graphrt/graphrt", rev = "18424ba4ccceabd9dcfdb652753ded7c6596bc45", default-features = false, features = ["process", "http", "yaml", "mcp-presets"] }
 # MCP servers configured in Connections > Advanced: their tools for `tool` / `agent` nodes (stdio and Streamable HTTP)
-graphrt-mcp = { git = "https://github.com/Graphrt/graphrt", rev = "2d04cbe9a2f29ce22a73f31a17e35012b85d7872" }
+graphrt-mcp = { git = "https://github.com/Graphrt/graphrt", rev = "18424ba4ccceabd9dcfdb652753ded7c6596bc45" }
 # "My own server": exporting an agent as a portable .grt bundle for `graphrt serve` (no WebAssembly plugins)
-graphrt-bundle = { git = "https://github.com/Graphrt/graphrt", rev = "2d04cbe9a2f29ce22a73f31a17e35012b85d7872", default-features = false }
+graphrt-bundle = { git = "https://github.com/Graphrt/graphrt", rev = "18424ba4ccceabd9dcfdb652753ded7c6596bc45", default-features = false }
 # UI blocks (cards, charts, tables, KPI tiles): validation before the Run result screen renders them
-graphrt-ui = { git = "https://github.com/Graphrt/graphrt", rev = "2d04cbe9a2f29ce22a73f31a17e35012b85d7872" }
+graphrt-ui = { git = "https://github.com/Graphrt/graphrt", rev = "18424ba4ccceabd9dcfdb652753ded7c6596bc45" }
+# Agent skills: SKILL.md packages pinned and checked at install, loaded by `agent` nodes on demand
+graphrt-skill = { git = "https://github.com/Graphrt/graphrt", rev = "18424ba4ccceabd9dcfdb652753ded7c6596bc45" }
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "process", "io-util"] }
 futures = "0.3"

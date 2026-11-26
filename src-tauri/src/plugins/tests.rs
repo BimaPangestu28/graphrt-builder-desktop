@@ -862,3 +862,95 @@ async fn removing_all_plugins_when_none_are_installed_is_a_no_op() {
     let fixture = Fixture::new();
     assert_eq!(fixture.service.remove_all(true).await, 0);
 }
+
+/// A catalog skill the skill tests publish: its files go into `<name>/` of the archive.
+pub(crate) struct PublishedSkill {
+    pub name: &'static str,
+    pub version: &'static str,
+    pub files: Vec<(&'static str, String)>,
+    /// The archive's top-level folder when it is not the skill's name (a bad archive).
+    pub archive_folder: Option<&'static str>,
+}
+
+/// A plugin service over a throwaway app data folder whose signed catalog lists skills,
+/// for the tests of `crate::skills`.
+pub(crate) struct SkillCatalogFixture {
+    pub app_data: tempfile::TempDir,
+    pub service: Arc<PluginService>,
+    downloader: Arc<FakeDownloader>,
+}
+
+impl SkillCatalogFixture {
+    pub(crate) fn new() -> Self {
+        let fixture = Fixture::new();
+        let Fixture { app_data, service, downloader, .. } = fixture;
+        Self { app_data, service: Arc::new(service), downloader }
+    }
+
+    pub(crate) fn archive_url(skill: &PublishedSkill) -> String {
+        format!("https://plugins.example.test/skills/{}-{}.tar.gz", skill.name, skill.version)
+    }
+
+    /// A `.tar.gz` whose single top-level folder is the skill's name.
+    pub(crate) fn archive(skill: &PublishedSkill) -> Vec<u8> {
+        let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        let mut builder = tar::Builder::new(encoder);
+        for (path, contents) in &skill.files {
+            let mut header = tar::Header::new_gnu();
+            header.set_mode(0o644);
+            header.set_size(contents.len() as u64);
+            let folder = skill.archive_folder.unwrap_or(skill.name);
+            builder.append_data(&mut header, format!("{folder}/{path}"), contents.as_bytes()).unwrap();
+        }
+        builder.into_inner().unwrap().finish().unwrap()
+    }
+
+    /// The index listing `skills` (no plugins), each with the real checksum of its archive.
+    pub(crate) fn index_json(skills: &[PublishedSkill]) -> Vec<u8> {
+        let entries: Vec<serde_json::Value> = skills
+            .iter()
+            .map(|skill| {
+                let archive = Self::archive(skill);
+                serde_json::json!({
+                    "name": skill.name,
+                    "version": skill.version,
+                    "description": "From the test catalog",
+                    "tarball_url": Self::archive_url(skill),
+                    "sha256": super::archive::sha256_hex(&archive),
+                    "size_bytes": archive.len(),
+                    "publisher": "graphrt",
+                })
+            })
+            .collect();
+        serde_json::to_vec(&serde_json::json!({ "schema": 1, "plugins": [], "skills": entries })).unwrap()
+    }
+
+    /// Serves a signed catalog listing `skills`, and their archives.
+    pub(crate) fn publish(&self, skills: &[PublishedSkill]) {
+        self.downloader.serve(CATALOG_URL, Self::index_json(skills));
+        for skill in skills {
+            self.downloader.serve(&Self::archive_url(skill), Self::archive(skill));
+        }
+    }
+
+    /// Serves `index` as the signed catalog.
+    pub(crate) fn publish_index(&self, index: Vec<u8>) {
+        self.downloader.serve(CATALOG_URL, index);
+    }
+
+    /// Serves `bytes` at `url` as they are (a swapped archive, an index nobody signed).
+    pub(crate) fn serve_raw(&self, url: &str, bytes: Vec<u8>) {
+        self.downloader.serve_raw(url, bytes);
+    }
+
+    /// Serves `index` signed with a key the app does not trust.
+    pub(crate) fn publish_signed_by_a_stranger(&self, index: Vec<u8>) {
+        let stranger = minisign::KeyPair::generate_unencrypted_keypair().unwrap();
+        self.downloader.serve_raw(&format!("{CATALOG_URL}.minisig"), minisign_signature(&stranger, &index));
+        self.downloader.serve_raw(CATALOG_URL, index);
+    }
+
+    pub(crate) fn catalog_url() -> &'static str {
+        CATALOG_URL
+    }
+}

@@ -10,7 +10,7 @@ use super::catalog_signature::{signature_location, CatalogKeys, REQUIRE_CATALOG_
 use super::display_name::{resolve_display_name, validate_display_name, MAX_DISPLAY_NAME_CHARS};
 use super::download::require_https;
 use super::host::PluginState;
-use super::models::{CatalogIndex, CatalogPlugin, PluginCatalog, PluginCatalogEntry, PluginPermissions};
+use super::models::{CatalogIndex, CatalogPlugin, CatalogSkill, PluginCatalog, PluginCatalogEntry, PluginPermissions};
 use crate::error::{AppError, AppResult};
 
 /// Where the published v1 catalog lives; v2 sits next to it (see [`v2_catalog_url`]).
@@ -77,6 +77,13 @@ pub(super) fn restrict_asset_urls(index: &mut CatalogIndex, prefix: Option<&str>
         let allowed = is_under_prefix(&plugin.tarball_url, prefix);
         if !allowed {
             log::warn!("skipping catalog entry `{}`: its tarball is not under {prefix}", plugin.name);
+        }
+        allowed
+    });
+    index.skills.retain(|skill| {
+        let allowed = is_under_prefix(&skill.tarball_url, prefix);
+        if !allowed {
+            log::warn!("skipping catalog skill `{}`: its archive is not under {prefix}", skill.name);
         }
         allowed
     });
@@ -147,7 +154,37 @@ pub(super) fn parse_catalog_as(bytes: &[u8], expected_schema: u32) -> AppResult<
         }
     });
     drop_duplicate_names(&mut index.plugins);
+    clean_skills(&mut index.skills);
     Ok(index)
+}
+
+/// Drops skills with an invalid name or version, a non-https archive link or a malformed
+/// checksum (logged), keeps the first entry per name, and clears invalid optional fields.
+fn clean_skills(skills: &mut Vec<CatalogSkill>) {
+    let mut seen_names = std::collections::HashSet::new();
+    skills.retain(|skill| {
+        let problem = if !graphrt_skill::is_valid_name(&skill.name) {
+            Some("invalid skill name")
+        } else if !skill.version.is_empty() && !is_safe_version(&skill.version) {
+            Some("invalid version")
+        } else if require_https(&skill.tarball_url).is_err() {
+            Some("its archive link is not https")
+        } else if !is_sha256_hex(&skill.sha256) {
+            Some("sha256 is not 64 hex characters")
+        } else if !seen_names.insert(skill.name.clone()) {
+            Some("duplicate name")
+        } else {
+            None
+        };
+        if let Some(problem) = problem {
+            log::warn!("skipping catalog skill `{}`: {problem}", skill.name);
+        }
+        problem.is_none()
+    });
+    for skill in skills {
+        skill.display_name = skill.display_name.as_deref().and_then(super::display_name::validate_display_name);
+        skill.publisher = skill.publisher.as_deref().and_then(super::source::validate_publisher);
+    }
 }
 
 /// Keeps one entry per plugin name: the first official one, else the first one (logged),
