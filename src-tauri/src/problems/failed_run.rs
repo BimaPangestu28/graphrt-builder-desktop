@@ -13,6 +13,7 @@ use super::models::{
     FailedRunReport, FailedRunStep, FailedRunStepState, ProblemAction, ProblemActionKind, RetryAvailability,
 };
 use super::retry;
+use super::texts::ProblemTexts;
 use crate::error::{AppError, AppResult};
 use crate::flow;
 use crate::storage::models::{Agent, Run};
@@ -159,82 +160,83 @@ fn contains_any(text: &str, markers: &[&str]) -> bool {
 
 /// Turns graphrt's error into a title, an explanation and fix steps.
 pub(super) fn explain_failure(run: &Run, facts: &FailureFacts) -> FailureExplanation {
+    explain_failure_in(ProblemTexts::new(crate::desktop::ui_language::UiLanguage::En), run, facts)
+}
+
+/// [`explain_failure`] in the given language.
+pub(super) fn explain_failure_in(texts: ProblemTexts, run: &Run, facts: &FailureFacts) -> FailureExplanation {
     let error = facts.step_error.clone().or_else(|| run.error_message.clone()).unwrap_or_default();
     let lowered = error.to_lowercase();
     let error_type = facts.error_type.as_deref().unwrap_or_default();
-    let step = facts.failed_node_title.clone().unwrap_or_else(|| "A step".to_owned());
-    let nothing_after = "Steps after it did not run.";
-    let retry_step = "Retry from the start once it is fixed".to_owned();
+    let step = facts.failed_node_title.clone().unwrap_or_else(|| texts.a_step());
+    let nothing_after = texts.nothing_after();
+    let nothing_after = nothing_after.as_str();
+    let retry_step = texts.retry_once_fixed();
 
     if run.error_message.as_deref() == Some(INTERRUPTED_RUN_MESSAGE) {
         return FailureExplanation {
-            title: "The app closed during this run".into(),
-            explanation: format!(
-                "graphrt was closed or the computer restarted while {} was running. {nothing_after}",
-                step.to_lowercase()
-            ),
-            fix_steps: vec!["Retry from the start".into()],
+            title: texts.app_closed_title(),
+            explanation: texts.app_closed_detail(&step.to_lowercase(), nothing_after),
+            fix_steps: vec![texts.retry_from_start()],
             fix_action: None,
         };
     }
     if is_missing_plugin_runtime(&lowered) {
         return FailureExplanation {
-            title: "The plugin runtime is not installed".into(),
-            explanation: format!(
-                "{step} uses a plugin, and plugins run on Node.js, which graphrt downloads once (about 30 MB). {nothing_after}"
-            ),
-            fix_steps: vec!["Install the plugin runtime".into(), retry_step],
-            fix_action: Some(ProblemAction::new(ProblemActionKind::InstallPluginRuntime, "Install the plugin runtime")),
+            title: texts.plugin_runtime_missing_title(),
+            explanation: texts.runtime_missing_detail(&step, nothing_after),
+            fix_steps: vec![texts.install_plugin_runtime(), retry_step],
+            fix_action: Some(ProblemAction::new(ProblemActionKind::InstallPluginRuntime, &texts.install_plugin_runtime())),
         };
     }
     if contains_any(&lowered, SIGNED_OUT_MARKERS) {
         return FailureExplanation {
-            title: "A connected account was signed out".into(),
-            explanation: format!("{step} was refused because a sign-in or key is no longer valid. {nothing_after}"),
-            fix_steps: vec!["Sign in again or update the key in Connections".into(), retry_step],
-            fix_action: Some(ProblemAction::new(ProblemActionKind::OpenConnections, "Reconnect")),
+            title: texts.signed_out_title(),
+            explanation: texts.signed_out_detail(&step, nothing_after),
+            fix_steps: vec![texts.signed_out_fix(), retry_step],
+            fix_action: Some(ProblemAction::new(ProblemActionKind::OpenConnections, &texts.reconnect())),
         };
     }
     if error_type == "timeout" || contains_any(&lowered, TIMEOUT_MARKERS) {
         return FailureExplanation {
-            title: "A step kept timing out".into(),
-            explanation: format!("{step} took too long to answer. {nothing_after}"),
-            fix_steps: vec!["Try again later, or ask chat in the builder to change this step".into(), retry_step],
-            fix_action: Some(ProblemAction::for_agent(ProblemActionKind::OpenBuilder, "Open the step", &run.agent_id)),
+            title: texts.timeout_title(),
+            explanation: texts.timeout_detail(&step, nothing_after),
+            fix_steps: vec![texts.timeout_fix(), retry_step],
+            fix_action: Some(ProblemAction::for_agent(ProblemActionKind::OpenBuilder, &texts.open_step(), &run.agent_id)),
         };
     }
     let (title, fix_step, fix_action) = match error_type {
         "model" => (
-            "The AI model did not answer".to_owned(),
-            "Check the model's key and credit in Connections",
-            Some(ProblemAction::new(ProblemActionKind::OpenConnections, "Open Connections")),
+            texts.model_title(),
+            texts.model_fix(),
+            Some(ProblemAction::new(ProblemActionKind::OpenConnections, &texts.open_connections())),
         ),
         "http" => (
-            "A website or service did not answer".to_owned(),
-            "Check that the service is up, then try again",
-            Some(ProblemAction::for_agent(ProblemActionKind::OpenBuilder, "Open the step", &run.agent_id)),
+            texts.http_title(),
+            texts.http_fix(),
+            Some(ProblemAction::for_agent(ProblemActionKind::OpenBuilder, &texts.open_step(), &run.agent_id)),
         ),
         "limit_exceeded" => (
-            "The run took too long".to_owned(),
-            "Ask chat in the builder to make the agent do less per run",
-            Some(ProblemAction::for_agent(ProblemActionKind::OpenBuilder, "Open the builder", &run.agent_id)),
+            texts.limit_title(),
+            texts.limit_fix(),
+            Some(ProblemAction::for_agent(ProblemActionKind::OpenBuilder, &texts.open_builder(), &run.agent_id)),
         ),
         "invalid_input" => (
-            "The run started with missing or wrong details".to_owned(),
-            "Check the details the agent asks for before it starts",
-            Some(ProblemAction::for_agent(ProblemActionKind::OpenBuilder, "Open the builder", &run.agent_id)),
+            texts.invalid_input_title(),
+            texts.invalid_input_fix(),
+            Some(ProblemAction::for_agent(ProblemActionKind::OpenBuilder, &texts.open_builder(), &run.agent_id)),
         ),
         _ => (
-            format!("{step} failed"),
-            "Open the step in the builder and ask chat to fix it",
-            Some(ProblemAction::for_agent(ProblemActionKind::OpenBuilder, "Open the step", &run.agent_id)),
+            texts.step_failed_title(&step),
+            texts.step_failed_fix(),
+            Some(ProblemAction::for_agent(ProblemActionKind::OpenBuilder, &texts.open_step(), &run.agent_id)),
         ),
     };
-    let reason = if error.is_empty() { String::new() } else { format!(" graphrt said: {error}.") };
+    let reason = if error.is_empty() { String::new() } else { texts.graphrt_said(&error) };
     FailureExplanation {
         title,
-        explanation: format!("The run stopped at {}.{reason} {nothing_after}", step.to_lowercase()),
-        fix_steps: vec![fix_step.to_owned(), retry_step],
+        explanation: texts.stopped_at(&step.to_lowercase(), &reason, nothing_after),
+        fix_steps: vec![fix_step, retry_step],
         fix_action,
     }
 }
@@ -251,17 +253,17 @@ fn flow_of_run(db: &Database, agent: &Agent, run: &Run) -> AppResult<Option<Stri
         .map(|version| version.flow_yaml))
 }
 
-fn failure_note(facts: &FailureFacts) -> String {
+fn failure_note(facts: &FailureFacts, texts: ProblemTexts) -> String {
     if facts.retry_count > 0 {
-        format!("Failed after {} tries", facts.retry_count + 1)
+        texts.failed_after_tries(facts.retry_count + 1)
     } else {
-        "Failed".to_owned()
+        texts.failed()
     }
 }
 
 /// Steps in workflow order with their outcome. Falls back to the steps that
 /// started when the flow no longer compiles (for example a removed plugin).
-fn build_steps(flow_yaml: Option<&str>, facts: &FailureFacts) -> Vec<FailedRunStep> {
+fn build_steps(flow_yaml: Option<&str>, facts: &FailureFacts, texts: ProblemTexts) -> Vec<FailedRunStep> {
     let ordered: Vec<(String, String)> = match flow_yaml.map(flow::summarize_flow) {
         Some(Ok(summary)) => summary.steps.into_iter().map(|step| (step.id, step.title)).collect(),
         _ => facts.started_nodes.clone(),
@@ -270,7 +272,7 @@ fn build_steps(flow_yaml: Option<&str>, facts: &FailureFacts) -> Vec<FailedRunSt
         .into_iter()
         .map(|(id, name)| {
             let state = facts.node_states.get(&id).copied().unwrap_or(FailedRunStepState::Pending);
-            let note = (state == FailedRunStepState::Failed).then(|| failure_note(facts));
+            let note = (state == FailedRunStepState::Failed).then(|| failure_note(facts, texts));
             FailedRunStep { id, name, state, note }
         })
         .collect();
@@ -278,7 +280,7 @@ fn build_steps(flow_yaml: Option<&str>, facts: &FailureFacts) -> Vec<FailedRunSt
     if let Some(failed_id) = &facts.failed_node_id {
         if !steps.iter().any(|step| &step.id == failed_id) {
             let name = facts.failed_node_title.clone().unwrap_or_else(|| failed_id.clone());
-            let note = Some(failure_note(facts));
+            let note = Some(failure_note(facts, texts));
             steps.insert(0, FailedRunStep { id: failed_id.clone(), name, state: FailedRunStepState::Failed, note });
         }
     }
@@ -313,7 +315,8 @@ pub fn failed_run_report(db: &Database, run_id: &str) -> AppResult<FailedRunRepo
     let agent = db.get_agent(&run.agent_id)?;
     let events: Vec<Json> = db.list_run_events(run_id)?.into_iter().map(|record| record.event).collect();
     let facts = FailureFacts::from_events(&events);
-    let explanation = explain_failure(&run, &facts);
+    let texts = ProblemTexts::for_database(db);
+    let explanation = explain_failure_in(texts, &run, &facts);
     let flow_yaml = flow_of_run(db, &agent, &run)?;
     let retry = match retry::inputs_for_retry(db, &run) {
         Ok(_) => RetryAvailability { can_retry: true, reason: None },
@@ -330,7 +333,7 @@ pub fn failed_run_report(db: &Database, run_id: &str) -> AppResult<FailedRunRepo
         explanation: explanation.explanation,
         fix_steps: explanation.fix_steps,
         fix_action: explanation.fix_action,
-        steps: build_steps(flow_yaml.as_deref(), &facts),
+        steps: build_steps(flow_yaml.as_deref(), &facts, texts),
         failed_step_id: facts.failed_node_id.clone(),
         technical_details: technical_details(&run, &facts),
         retry,
