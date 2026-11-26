@@ -19,6 +19,7 @@ import {
   PluginSetupSection,
   PluginStepsSection,
   PluginUsersSection,
+  PluginMcpServerNote,
   PluginWarningBox,
 } from './plugins/PluginDetailSections'
 import { buildPluginListItems, describeCommunityInstallNote, pluginInstallTrustNote, describeMaturity, describePluginSource, describePluginStatus, type PluginListItem } from './plugins/pluginDisplay'
@@ -125,6 +126,7 @@ function PluginDetailBody({ item, plugins }: { item: PluginListItem; plugins: Pl
       <PluginHeader item={item} plugins={plugins} pluginRuntime={pluginRuntime} />
       <PluginOperationFeedback pluginName={item.name} plugins={plugins} />
       <PluginWarningBox item={item} />
+      <PluginMcpServerNote item={item} />
       {installed && <PluginLoadNotes installed={installed} />}
       <div className="@container grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="flex min-w-0 flex-col gap-5">

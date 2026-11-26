@@ -129,6 +129,7 @@ pub fn delete_all_data(
     secret_names.extend(mcp_secret_names(db));
     secret_names.sort();
     secret_names.dedup();
+    let signed_in_servers = mcp_oauth_server_names(db);
     db.delete_all_data()?;
     let mut summary = DeletionSummary { deleted_agent_count: agents.len(), removed_keychain_item_count: 0 };
     if !remove_keychain_items {
@@ -146,7 +147,24 @@ pub fn delete_all_data(
             Err(error) => log::warn!("could not remove a workflow secret: {error}"),
         }
     }
+    // MCP sign-ins are removed on this computer only (no revocation request while deleting).
+    for server in signed_in_servers {
+        match crate::mcp::oauth::store::delete_all(credentials, &server) {
+            Ok(()) => summary.removed_keychain_item_count += 1,
+            Err(error) => log::warn!("could not remove the sign-in of an MCP server: {error}"),
+        }
+    }
     Ok(summary)
+}
+
+/// MCP servers that sign in with OAuth (their tokens are keychain items).
+fn mcp_oauth_server_names(db: &Database) -> Vec<String> {
+    crate::mcp::definitions::load_definitions(db)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|definition| definition.auth == crate::mcp::definitions::McpAuthKind::Oauth)
+        .map(|definition| definition.name)
+        .collect()
 }
 
 /// Secrets the configured MCP servers need (their list is a setting, deleted with the rest).
@@ -277,6 +295,7 @@ mod tests {
             transport: crate::mcp::McpServerTransport::Stdio { command: "github-mcp".into(), args: vec![] },
             secret_env: vec!["GITHUB_TOKEN".into()],
             bearer_token_secret: None,
+            auth: None,
         };
         crate::mcp::definitions::add_definition(&db, input).unwrap();
 

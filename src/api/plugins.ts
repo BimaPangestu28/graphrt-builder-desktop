@@ -13,6 +13,7 @@ import {
   type PluginNodeInfo,
   type PluginPermissions,
   type PluginRuntimeInfo,
+  type PluginTemplateInfo,
 } from './pluginTypes'
 import type { PluginRequirement, PluginSessionState } from './pluginRequirementTypes'
 import { samplePluginsBackend, subscribeToSampleBrowserRuntimeEvents, subscribeToSamplePluginEvents } from './sampleBackend/plugins'
@@ -52,6 +53,12 @@ export function listPluginCatalogSteps(name: string): Promise<PluginNodeInfo[]> 
 export function listInstalledPlugins(): Promise<InstalledPlugin[]> {
   if (__SAMPLE_BACKEND__ && !isDesktopApp()) return samplePluginsBackend.listInstalledPlugins()
   return callBackend('list_installed_plugins')
+}
+
+/** Starter prompts of the installed plugins (New agent screen). */
+export function listPluginTemplates(): Promise<PluginTemplateInfo[]> {
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return samplePluginsBackend.listPluginTemplates()
+  return callBackend('list_plugin_templates')
 }
 
 /**

@@ -95,6 +95,10 @@ mod tests {
             transport: McpServerTransport::Http { url: "https://mcp.example.com".into() },
             secret_env: Vec::new(),
             bearer_token_secret: None,
+            auth: Default::default(),
+            plugin: None,
+            guide: None,
+            approval: Default::default(),
             known_tools: tools,
             last_check: None,
         }

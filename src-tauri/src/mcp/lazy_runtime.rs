@@ -56,7 +56,7 @@ impl LazyMcpRuntime {
 /// Reads the secrets and completes the MCP handshake.
 pub(crate) async fn connect(
     definition: &McpServerDefinition,
-    credentials: &CredentialStore,
+    credentials: &Arc<CredentialStore>,
 ) -> Result<McpToolRuntime, String> {
     let config = runtime_config(definition, credentials).map_err(|error| {
         format!("MCP server `{}` is not ready: {error}. Set it in Connections > Advanced", definition.name)

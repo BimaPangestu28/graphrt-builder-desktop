@@ -491,6 +491,7 @@ pub(super) fn catalog_view(index: &CatalogIndex, installed: &[PluginState], orig
                 source: super::source::catalog_entry_source(plugin),
                 publisher: plugin.publisher.clone(),
                 repository_url: plugin.repository_url.clone(),
+                mcp_server: plugin.mcp_server.clone(),
             }
         })
         .collect();

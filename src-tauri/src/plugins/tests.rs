@@ -22,6 +22,7 @@ mod auto_update;
 mod catalog_plugins;
 mod catalog_signature;
 mod catalog_v2;
+mod mcp_presets;
 mod plugin_display_names;
 mod plugin_icons;
 mod sideload;
@@ -817,6 +818,11 @@ async fn live_catalog_installs_every_plugin() {
             .await
             .unwrap_or_else(|error| panic!("{}: {error}", entry.name));
         assert_eq!(installed.load_error, None, "{}", entry.name);
+        if entry.mcp_server.is_some() {
+            // An MCP preset has no steps: it adds a server to Connections > MCP servers.
+            assert_eq!(installed.mcp_server, entry.mcp_server, "{}", entry.name);
+            continue;
+        }
         assert!(service.node_registry().contains(&entry.nodes[0].kind), "{}", entry.name);
     }
     if node_is_available() {

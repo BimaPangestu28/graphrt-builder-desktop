@@ -30,7 +30,7 @@ function describeCardMeta(item: PluginListItem): string {
  * While the plugin runtime (Node.js) is missing it says the same click downloads it too.
  */
 function InstallApproval({ item, plugins, onCancel }: { item: PluginListItem; plugins: PluginsState; onCancel: () => void }) {
-  const asksFor = describePermissionChips(item.permissions, item.needsBrowser)
+  const asksFor = [...(item.mcpServer ? [messages().plugins.mcpServerBadge] : []), ...describePermissionChips(item.permissions, item.needsBrowser)]
   const isInstalling = plugins.operationByName[item.name] === 'installing'
   const communityNote = describeCommunityInstallNote(item)
   const needsPluginRuntime = isPluginRuntimeMissing(usePluginRuntime())

@@ -51,6 +51,18 @@ pub(crate) struct PluginState {
     pub needs_node: bool,
     pub load_error: Option<String>,
     pub warnings: Vec<String>,
+    /// `runtime: mcp`: the MCP server the plugin declares, with its builder guide.
+    pub mcp_server: Option<PluginMcpServer>,
+    /// Starter prompts for the New agent screen.
+    pub templates: Vec<graphrt_plugin::PluginTemplate>,
+}
+
+/// The MCP server of an MCP preset plugin (registered in Connections > MCP servers).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PluginMcpServer {
+    pub spec: graphrt_plugin::McpServerSpec,
+    /// The `guide` file's text (at most `MAX_GUIDE_BYTES`), when the plugin has one.
+    pub guide: Option<String>,
 }
 
 impl PluginState {
@@ -181,7 +193,8 @@ fn try_build(
 ) -> Result<(PluginHost, ToolRegistry), (String, String)> {
     let mut host = PluginHost::new().with_trusted(inputs.trusted.iter().cloned());
     for (manifest, state) in loadable {
-        if excluded.contains_key(&state.name) {
+        // An MCP preset has no code: its server goes to Connections > MCP servers instead.
+        if excluded.contains_key(&state.name) || state.mcp_server.is_some() {
             continue;
         }
         let prepared = prepare_for_host(manifest.clone(), state.trusted, inputs)
@@ -251,8 +264,20 @@ pub(crate) fn check_manifest(manifest: &LoadedManifest, expected_name: &str) -> 
     if name == AGENT_TOOL_PROVIDER {
         return Err(format!("`{name}` is reserved for the app's own agent tools"));
     }
-    if manifest.manifest.checksums.is_empty() {
-        return Err(format!("plugin `{name}` does not pin its files with checksums"));
+    match &manifest.manifest.runtime {
+        // An MCP preset has no code; its guide (what the builder is told) is pinned.
+        Runtime::Mcp(runtime) => {
+            let guide = runtime.mcp.guide.as_deref().map(|guide| guide.trim_start_matches("./"));
+            if let Some(guide) = guide {
+                if !manifest.manifest.checksums.keys().any(|path| path.trim_start_matches("./") == guide) {
+                    return Err(format!("plugin `{name}` does not pin its guide `{guide}` with a checksum"));
+                }
+            }
+        }
+        _ if manifest.manifest.checksums.is_empty() => {
+            return Err(format!("plugin `{name}` does not pin its files with checksums"));
+        }
+        _ => {}
     }
     Ok(())
 }
@@ -271,6 +296,38 @@ fn state_from_manifest(manifest: &LoadedManifest, trusted: &BTreeSet<String>) ->
         needs_node: matches!(&plugin.runtime, Runtime::Process(process) if process.command == NODE_COMMAND),
         load_error: None,
         warnings: Vec::new(),
+        mcp_server: match &plugin.runtime {
+            Runtime::Mcp(runtime) => {
+                Some(PluginMcpServer { spec: runtime.mcp.clone(), guide: read_guide(manifest, &runtime.mcp) })
+            }
+            _ => None,
+        },
+        templates: plugin.templates.clone(),
+    }
+}
+
+/// The MCP preset's guide text; a missing, unreadable or oversized file is logged and left out.
+fn read_guide(manifest: &LoadedManifest, spec: &graphrt_plugin::McpServerSpec) -> Option<String> {
+    let relative = spec.guide.as_deref()?;
+    let path = manifest.resolve(relative);
+    let limit = graphrt_plugin::mcp_preset::MAX_GUIDE_BYTES;
+    match std::fs::metadata(&path) {
+        Ok(metadata) if metadata.len() > limit => {
+            log::warn!("plugin {}: guide {relative} is larger than {limit} bytes, ignored", manifest.manifest.name);
+            return None;
+        }
+        Err(error) => {
+            log::warn!("plugin {}: could not read guide {relative}: {error}", manifest.manifest.name);
+            return None;
+        }
+        Ok(_) => {}
+    }
+    match std::fs::read_to_string(&path) {
+        Ok(text) => Some(text),
+        Err(error) => {
+            log::warn!("plugin {}: could not read guide {relative}: {error}", manifest.manifest.name);
+            None
+        }
     }
 }
 
@@ -288,6 +345,8 @@ fn failed_state(dir: &Path, message: String) -> PluginState {
         needs_node: true,
         load_error: Some(message),
         warnings: Vec::new(),
+        mcp_server: None,
+        templates: Vec::new(),
     }
 }
 

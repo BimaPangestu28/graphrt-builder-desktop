@@ -7,6 +7,12 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ## [Unreleased]
 
+### Added
+
+- **Sign in to MCP servers with OAuth**: a server reached by URL can now use "Sign in with my account (OAuth)" next to a bearer token secret or no sign-in (`auth: none | bearer | oauth`). **Sign in** finds the server's sign-in settings from its 401 answer (protected resource metadata, then the authorization server's metadata), registers graphrt as a public client (Dynamic Client Registration, or the graphrt Client ID Metadata Document when the server has no registration), opens the browser with PKCE (S256) and receives the code on `http://127.0.0.1:<port>/callback`. Tokens are kept in the OS keychain (`mcp-oauth:<server>:…`), refreshed before they expire and once more when the server rejects one mid-run (graphrt-mcp token provider); a rejected refresh shows **Sign in again** with the reason. **Sign out** (and removing the server) revokes the tokens when the server supports it. Tokens never reach the page, logs or error messages.
+- **MCP preset plugins**: a catalog plugin with `runtime: mcp` (no code, e.g. the Upwork plugin of graphrt-plugins) adds its remote MCP server to Connections > MCP servers when it is installed: address, sign-in kind, the plugin's approval rule (for Upwork only `find_…`, `get_…`, `list_…` and `search_…` tools run on their own, and never one whose name says it sends) and the plugin's guide for the builder. Updating the plugin refreshes them and keeps the tools you relaxed; removing it signs out (tokens revoked) and removes the server. The Plugins page marks such plugins "MCP server", and the plugin's templates show on the New agent screen.
+- **Per-tool approvals for every MCP server**: the server card lists which tools ask first and lets you change that per tool.
+
 ## [0.1.8] - 2026-11-24
 
 ### Changed

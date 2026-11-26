@@ -174,6 +174,10 @@ mod tests {
             transport: McpServerTransport::Stdio { command: "github-mcp".into(), args: vec![] },
             secret_env: vec!["GITHUB_TOKEN".into()],
             bearer_token_secret: None,
+            auth: Default::default(),
+            plugin: None,
+            guide: None,
+            approval: Default::default(),
             known_tools: vec![],
             last_check: None,
         };

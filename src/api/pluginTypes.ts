@@ -74,6 +74,25 @@ export interface PluginCatalogEntry {
    * it never installs automatically, and installing it means trusting the plugin again.
    */
   updateNeedsApproval: boolean
+  /** An MCP preset plugin: the server it adds to Connections > MCP servers (newer catalogs only). */
+  mcpServer?: McpServerSummary | null
+}
+
+/** The remote MCP server an MCP preset plugin adds (no code runs on this computer). */
+export interface McpServerSummary {
+  url: string
+  /** How the app signs in to it. */
+  auth: 'none' | 'bearer' | 'oauth'
+}
+
+/** A starter prompt from an installed plugin, shown on the New agent screen. */
+export interface PluginTemplateInfo {
+  plugin: string
+  pluginDisplayName: string
+  id: string
+  title: string
+  description: string
+  prompt: string
 }
 
 /** One plugin moved between versions. */
@@ -151,6 +170,8 @@ export interface InstalledPlugin {
   repositoryUrl: string | null
   /** For a `local` plugin: the folder or archive it was installed from (display only). */
   localPath: string | null
+  /** An MCP preset plugin: the server it added to Connections > MCP servers. */
+  mcpServer?: McpServerSummary | null
 }
 
 export type BrowserRuntimeStatus = 'not_installed' | 'installing' | 'installed'
