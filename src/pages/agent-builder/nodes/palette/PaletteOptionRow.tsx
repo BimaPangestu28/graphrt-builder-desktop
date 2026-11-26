@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { Fragment, type ReactNode } from 'react'
 import type { NodeKindGroup } from '@/api/agentGraphTypes'
 import { joinClassNames, StrokeIcon } from '@/components/ui'
 import { PluginIcon } from '@/pages/plugins/PluginIcon'
@@ -48,7 +48,9 @@ function HighlightedName({ name, highlights }: { name: string; highlights: Array
             {part.text}
           </mark>
         ) : (
-          <span key={partIndex}>{part.text}</span>
+          // A bare text node, not a <span>: accessible-name tools trim each inline element,
+          // which would turn "Send Telegram message" into "SendTelegrammessage".
+          <Fragment key={partIndex}>{part.text}</Fragment>
         ),
       )}
     </>
@@ -129,7 +131,8 @@ export function PaletteOptionRow({ action, isActive, variant, showTile = true, h
       <span className="flex min-w-0 flex-1 flex-col">
         {variant === 'result' ? (
           <span className="truncate text-[13px] text-ink">
-            {action.plugin && <span className="text-muted">{action.plugin.displayName} › </span>}
+            {action.plugin && <span className="text-muted">{action.plugin.displayName} ›</span>}
+            {action.plugin && ' '}
             <HighlightedName name={action.displayName} highlights={highlights} />
           </span>
         ) : (
