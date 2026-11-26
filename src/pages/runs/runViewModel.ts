@@ -5,6 +5,8 @@ import { humanizeRunError } from '@/pages/agent-run/runErrorText'
 import { readPauseDeadline, readPauseQuestion } from '@/pages/agent-run/runPauseQuestion'
 import { buildRunStepViews } from '@/pages/agent-run/runSteps'
 import { formatAiCost, formatClockTime, formatRunDay, formatRunDuration } from '@/pages/agent-run/runResultSummary'
+import { messages } from '@/i18n'
+import { localizedRecord } from '@/i18n/localized'
 
 /**
  * Maps backend runs and their events onto the Runs screen's (20) `RunRecord`, so the table and
@@ -29,19 +31,9 @@ const screenStatusByBackendStatus: Record<BackendRunStatus, RunsScreenStatus> = 
   aborted: 'stopped',
 }
 
-const startedByLabels: Record<RunTrigger, string> = {
-  test: 'You',
-  manual: 'You',
-  schedule: 'Schedule',
-}
+const startedByLabels: Readonly<Record<RunTrigger, string>> = localizedRecord(() => messages().runs.startedBy)
 
-const fallbackResultByStatus: Record<BackendRunStatus, string> = {
-  running: 'Running',
-  paused: 'Waiting for you',
-  succeeded: 'Done',
-  failed: 'Failed',
-  aborted: 'Stopped',
-}
+const fallbackResultByStatus: Readonly<Record<BackendRunStatus, string>> = localizedRecord(() => messages().runs.fallbackResult)
 
 /** Value of the agent select meaning "every agent". */
 export const allAgentsFilterValue = 'all'
@@ -72,20 +64,22 @@ function readOutputText(run: Run, key: string): string | null {
 
 function buildTiming(run: Run, now: Date): string {
   const dayLabel = formatRunDay(run.startedAt, now)
-  if (run.status === 'running') return `${dayLabel} · ${formatRunDuration(run.startedAt, now.toISOString())} so far`
-  if (run.status === 'paused') return `${dayLabel} · waiting for you`
+  const t = messages().runs
+  if (run.status === 'running') return t.soFar(dayLabel, formatRunDuration(run.startedAt, now.toISOString()) ?? '')
+  if (run.status === 'paused') return t.waitingForYou(dayLabel)
   const duration = formatRunDuration(run.startedAt, run.finishedAt)
   const aiCostUsd = run.outputs?.aiCostUsd
-  const costPart = typeof aiCostUsd === 'number' ? ` · ${formatAiCost(aiCostUsd)} AI cost` : ''
+  const costPart = typeof aiCostUsd === 'number' ? t.aiCost(formatAiCost(aiCostUsd)) : ''
   return `${dayLabel}${duration ? ` · ${duration}` : ''}${costPart}`
 }
 
 function buildFollowUp(run: Run): RunRecord['followUp'] {
-  if (run.status === 'failed') return { label: 'See what went wrong', path: `${routePaths.errorStates}?${new URLSearchParams({ runId: run.id })}` }
-  if (run.status === 'paused' && run.trigger === 'test') return { label: 'Continue the test', path: agentPath('testRun', run.agentId, { runId: run.id }) }
-  if (run.status === 'paused' && run.trigger === 'schedule') return { label: 'Review', path: runReviewPath(run.id) }
-  if (run.status === 'paused') return { label: 'Open in Inbox', path: routePaths.chatDetail }
-  if (run.status === 'succeeded' && run.trigger === 'test') return { label: 'Open test result', path: agentPath('runResult', run.agentId, { runId: run.id }) }
+  const t = messages().runs
+  if (run.status === 'failed') return { label: t.seeWhatWentWrong, path: `${routePaths.errorStates}?${new URLSearchParams({ runId: run.id })}` }
+  if (run.status === 'paused' && run.trigger === 'test') return { label: t.continueTest, path: agentPath('testRun', run.agentId, { runId: run.id }) }
+  if (run.status === 'paused' && run.trigger === 'schedule') return { label: t.review, path: runReviewPath(run.id) }
+  if (run.status === 'paused') return { label: t.openInInbox, path: routePaths.chatDetail }
+  if (run.status === 'succeeded' && run.trigger === 'test') return { label: t.openTestResult, path: agentPath('runResult', run.agentId, { runId: run.id }) }
   return undefined
 }
 
@@ -158,7 +152,7 @@ export function buildRawLog(events: RunEventRecord[]): string[] {
 export function buildRunSteps(events: RunEventRecord[]): RunStep[] {
   return buildRunStepViews([], events).map((step) => ({
     label: step.label,
-    detail: step.detail ?? (step.state === 'running' ? 'running' : ''),
+    detail: step.detail ?? (step.state === 'running' ? messages().runs.running : ''),
     isDone: step.state === 'done' || step.state === 'skipped',
   }))
 }

@@ -19,13 +19,9 @@ import { RunsTable } from './runs/RunsTable'
 import { mergeRunsByPlace, placeFilterOptions, toOnlineRunRecord, toPlaceFilter, type RunsPlaceFilter } from './runs/onlineRuns'
 import type { RunRecord } from './runs/runRecordTypes'
 import { allAgentsFilterValue, countRunsForFilter, toRunFilter, toRunRecord, withRunEvents, type RunsStatusFilter } from './runs/runViewModel'
+import { useT } from '@/i18n'
 
-const statusFilterOptions: Array<{ key: RunsStatusFilter; label: string }> = [
-  { key: 'all', label: 'All' },
-  { key: 'needsYou', label: 'Needs you' },
-  { key: 'running', label: 'Running' },
-  { key: 'failed', label: 'Failed' },
-]
+const statusFilterKeys: readonly RunsStatusFilter[] = ['all', 'needsYou', 'running', 'failed']
 
 /** Agent ids in the order they first appear in the run list. */
 function listAgentIds(runs: Run[]): string[] {
@@ -42,23 +38,24 @@ interface RunsFilterBarProps {
 }
 
 function RunsFilterBar({ agentFilter, statusFilter, allRuns, getAgentName, onAgentFilterChange, onStatusFilterChange }: RunsFilterBarProps) {
+  const t = useT().runs
   const agentRuns = agentFilter === allAgentsFilterValue ? allRuns : allRuns.filter((run) => run.agentId === agentFilter)
   return (
     <div className="flex flex-wrap items-center gap-2">
       <select
-        aria-label="Agent"
+        aria-label={t.agent}
         value={agentFilter}
         onChange={(event) => onAgentFilterChange(event.target.value)}
         className="h-[34px] rounded-full border border-line-strong bg-surface px-3 text-[13px] font-medium text-ink"
       >
-        <option value={allAgentsFilterValue}>All agents</option>
+        <option value={allAgentsFilterValue}>{t.allAgents}</option>
         {listAgentIds(allRuns).map((agentId) => (
           <option key={agentId} value={agentId}>
             {getAgentName(agentId)}
           </option>
         ))}
       </select>
-      {statusFilterOptions.map((option) => {
+      {statusFilterKeys.map((key) => ({ key, label: t.statusFilters[key] })).map((option) => {
         const isActive = option.key === statusFilter
         const runCount = countRunsForFilter(agentRuns, option.key)
         return (
@@ -83,8 +80,9 @@ function RunsFilterBar({ agentFilter, statusFilter, allRuns, getAgentName, onAge
 
 /** All · On this computer · Online. */
 function PlaceFilterBar({ placeFilter, onChange }: { placeFilter: RunsPlaceFilter; onChange: (filter: RunsPlaceFilter) => void }) {
+  const t = useT().runs
   return (
-    <div role="group" aria-label="Where it ran" className="flex flex-wrap gap-1 rounded-[10px] bg-selected p-1 self-start">
+    <div role="group" aria-label={t.whereItRan} className="flex flex-wrap gap-1 rounded-[10px] bg-selected p-1 self-start">
       {placeFilterOptions.map((option) => (
         <button
           key={option.key}
@@ -126,6 +124,7 @@ function SelectedRunPanel({ run, getAgentName, onClose }: { run: Run; getAgentNa
  * The list refreshes when runs start or change status.
  */
 export function RunsPage() {
+  const t = useT().runs
   const [agentFilter, setAgentFilter] = useState(allAgentsFilterValue)
   const [statusFilter, setStatusFilter] = useState<RunsStatusFilter>('all')
   // `?runId=` (from Home's recent runs and other links) selects that run; otherwise the default.
@@ -152,8 +151,8 @@ export function RunsPage() {
 
   return (
     <AppShell activeNav="runs" mainClassName="flex flex-wrap">
-      <PageFrame ariaLabel="All runs" className="flex-[3_1_560px]">
-        <PageTitleBlock title="Runs" subtitle="Everything your agents did, on this computer and online, newest first" />
+      <PageFrame ariaLabel={t.allRuns} className="flex-[3_1_560px]">
+        <PageTitleBlock title={t.title} subtitle={t.subtitle} />
         <PlaceFilterBar placeFilter={placeFilter} onChange={setPlaceFilter} />
         <RunsFilterBar
           agentFilter={agentFilter}
@@ -163,15 +162,15 @@ export function RunsPage() {
           onAgentFilterChange={setAgentFilter}
           onStatusFilterChange={setStatusFilter}
         />
-        {loadError && <RunErrorNotice title="Could not load runs" error={loadError} />}
+        {loadError && <RunErrorNotice title={t.couldNotLoad} error={loadError} />}
         {placeFilter !== 'local' && (onlineRunsState.data?.problems.length ?? 0) > 0 && (
-          <p role="status" className="m-0 text-[13px] text-amber-strong">Some online runs could not be read: {onlineRunsState.data?.problems.join(' · ')}</p>
+          <p role="status" className="m-0 text-[13px] text-amber-strong">{t.onlineProblems(onlineRunsState.data?.problems.join(' · ') ?? '')}</p>
         )}
         <RunsTable
           runs={visibleRecords}
           selectedRunId={selectedRunId}
           onSelectRun={setSelectedRunId}
-          emptyMessage={isFirstLoad ? 'Loading runs…' : placeFilter === 'online' ? 'No online runs yet. Put an agent online from its page' : 'No runs match these filters'}
+          emptyMessage={isFirstLoad ? t.loading : placeFilter === 'online' ? t.noOnlineRuns : t.noMatch}
         />
       </PageFrame>
       {selectedOnlineRecord && <OnlineRunPanel record={selectedOnlineRecord} onClose={() => setSelectedRunId(null)} />}

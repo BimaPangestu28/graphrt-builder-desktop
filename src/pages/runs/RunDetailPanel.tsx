@@ -4,6 +4,7 @@ import type { RunRecord } from '@/pages/runs/runRecordTypes'
 import { StepProgressList } from '@/pages/agent-run/StepProgressList'
 import type { RunStepView } from '@/pages/agent-run/runSteps'
 import { agentPath, routePaths } from '@/routes'
+import { useT } from '@/i18n'
 
 interface RunDetailPanelProps {
   run: RunRecord
@@ -28,6 +29,7 @@ function buildRunCsvHref(run: RunRecord): string {
  * and actions to run it again, export it, or read the raw runner log.
  */
 export function RunDetailPanel({ run, stepViews, now, onClose }: RunDetailPanelProps) {
+  const t = useT().runs
   const [isRawLogVisible, setIsRawLogVisible] = useState(false)
 
   return (
@@ -39,7 +41,7 @@ export function RunDetailPanel({ run, stepViews, now, onClose }: RunDetailPanelP
           </h2>
           <span className="text-body">{run.timing}</span>
         </div>
-        <button type="button" aria-label="Close" onClick={onClose} className="size-8 cursor-pointer rounded-lg border-0 bg-transparent text-[18px] text-ink-2 hover:bg-chip">
+        <button type="button" aria-label={t.close} onClick={onClose} className="size-8 cursor-pointer rounded-lg border-0 bg-transparent text-[18px] text-ink-2 hover:bg-chip">
           ×
         </button>
       </div>
@@ -47,7 +49,7 @@ export function RunDetailPanel({ run, stepViews, now, onClose }: RunDetailPanelP
       {stepViews.length > 0 && <StepProgressList steps={stepViews} now={now} fixAgentId={run.agentId} />}
 
       <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface p-3.5">
-        <span className="text-[12px] font-medium text-muted">Output</span>
+        <span className="text-[12px] font-medium text-muted">{t.output}</span>
         <span>{run.output}</span>
       </div>
 
@@ -58,10 +60,10 @@ export function RunDetailPanel({ run, stepViews, now, onClose }: RunDetailPanelP
           </Link>
         )}
         <Link to={run.agentId ? agentPath('testRun', run.agentId) : routePaths.runs} className={outlineActionClassNames}>
-          Run again
+          {t.runAgain}
         </Link>
         <a href={buildRunCsvHref(run)} download={`${run.id}.csv`} className={outlineActionClassNames}>
-          Export CSV
+          {t.exportCsv}
         </a>
         <button
           type="button"
@@ -69,12 +71,12 @@ export function RunDetailPanel({ run, stepViews, now, onClose }: RunDetailPanelP
           onClick={() => setIsRawLogVisible((isVisible) => !isVisible)}
           className="h-9 cursor-pointer rounded-[9px] border-0 bg-transparent px-3.5 text-[13px] font-medium text-brand-strong hover:bg-chip"
         >
-          {isRawLogVisible ? 'Hide raw log' : 'Show raw log'}
+          {isRawLogVisible ? t.hideRawLog : t.showRawLog}
         </button>
       </div>
 
       {isRawLogVisible && (
-        <pre aria-label="Raw log" className="m-0 overflow-x-auto rounded-xl border border-line bg-surface p-3.5 font-mono text-[12px] leading-relaxed text-ink-2">
+        <pre aria-label={t.rawLog} className="m-0 overflow-x-auto rounded-xl border border-line bg-surface p-3.5 font-mono text-[12px] leading-relaxed text-ink-2">
           {run.rawLog.join('\n')}
         </pre>
       )}
