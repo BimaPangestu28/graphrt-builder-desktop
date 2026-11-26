@@ -142,7 +142,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ${{ env.LINUX_BUILD_PACKAGES }}
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10
       - uses: actions/setup-node@v4
