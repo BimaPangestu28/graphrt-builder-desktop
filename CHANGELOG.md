@@ -30,6 +30,8 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ### Fixed
 
+- **A customer message during a take-over is answered after the hand back**: when a customer wrote while you held the chat and you then gave it back to the bot, that message stayed unanswered. The bot now answers the latest such message as soon as you hand back.
+- **Telegram says "Connected" at once**: after **Connect bot** the status stayed on "Connecting to Telegram…" for about 25 seconds, until the first wait for messages ended.
 - **The answer you chose is named in words**: after you answer an "Ask me before continuing" step, the run feed, the step's details in the run history and the review of many questions now say which button you pressed as the button says it ("You chose “Buat invoice”"), not its internal id (`create`). The id appears only when the button has no title.
 
 - **Files with smaller AI models**: an AI model that wrote a number or a yes/no as text when it used a file tool (for example a size of "400") was refused and gave up; the app now reads it as intended. The model is also told plainly where an attached file is, so it no longer asks the customer for the file's location.

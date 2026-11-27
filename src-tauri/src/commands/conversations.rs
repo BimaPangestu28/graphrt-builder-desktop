@@ -57,9 +57,18 @@ pub fn take_over(state: State<'_, AppState>, conversation_id: String) -> AppResu
     state.conversations.take_over(&conversation_id)
 }
 
+/// Gives the chat back to the bot. A customer message that came in while the owner held the
+/// chat is answered in the background (the reply arrives as a `conversation-event`).
 #[tauri::command]
 pub fn hand_back(state: State<'_, AppState>, conversation_id: String) -> AppResult<Conversation> {
-    state.conversations.hand_back(&conversation_id)
+    let conversation = state.conversations.hand_back(&conversation_id)?;
+    let conversations = state.conversations.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(error) = conversations.answer_after_hand_back(&conversation_id).await {
+            log::warn!("could not answer conversation {conversation_id} after the hand back: {error}");
+        }
+    });
+    Ok(conversation)
 }
 
 #[tauri::command]
