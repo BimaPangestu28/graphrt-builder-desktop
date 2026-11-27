@@ -10,6 +10,10 @@ import { HomePage } from '@/pages/HomePage'
 import { agentPath, connectionsTabPath, routePaths } from '@/routes'
 import type { CommandHandlers } from '@/test/desktopBackend'
 
+// Pinned before the fixtures below are built: they are timestamps relative to now.
+vi.hoisted(() => vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 10, 20, 13, 41, 4) }))
+afterAll(() => vi.useRealTimers())
+
 const fakeBackend = vi.hoisted(() => ({ handlers: {} as CommandHandlers }))
 vi.mock('@/api/client', async (importOriginal) => {
   const { createDesktopClient } = await import('@/test/desktopBackend')
