@@ -62,6 +62,8 @@ struct Scenario {
     /// A change asked for in the builder chat before the run, and the words the output
     /// must then also contain one of.
     change: Option<(&'static str, &'static [&'static str])>,
+    /// The kind the person picked on the New agent screen; `None` lets the builder infer it.
+    kind: Option<AgentKind>,
 }
 
 const NO_NEEDS: Needs = Needs { asks_first: false, plugin_step: None, paused_schedule: false };
@@ -74,6 +76,7 @@ const SCENARIOS: &[Scenario] = &[
         expected_words: &["jakarta"],
         needs: NO_NEEDS,
         change: None,
+        kind: None,
     },
     Scenario {
         job: "writing",
@@ -82,6 +85,7 @@ const SCENARIOS: &[Scenario] = &[
         expected_words: &["apolog", "sorry", "maaf", "regret"],
         needs: NO_NEEDS,
         change: None,
+        kind: None,
     },
     Scenario {
         job: "writing",
@@ -90,6 +94,7 @@ const SCENARIOS: &[Scenario] = &[
         expected_words: &["pesanan", "kami", "pelanggan", "terlambat"],
         needs: NO_NEEDS,
         change: None,
+        kind: None,
     },
     Scenario {
         job: "writing",
@@ -98,6 +103,7 @@ const SCENARIOS: &[Scenario] = &[
         expected_words: &["rina", "budi"],
         needs: NO_NEEDS,
         change: None,
+        kind: None,
     },
     Scenario {
         job: "writing",
@@ -106,6 +112,7 @@ const SCENARIOS: &[Scenario] = &[
         expected_words: &["wallet", "leather", "dompet"],
         needs: NO_NEEDS,
         change: None,
+        kind: None,
     },
     Scenario {
         job: "lookup (web page)",
@@ -114,6 +121,7 @@ const SCENARIOS: &[Scenario] = &[
         expected_words: &["rice", "nasi"],
         needs: NO_NEEDS,
         change: None,
+        kind: None,
     },
     Scenario {
         job: "send (email plugin)",
@@ -122,6 +130,7 @@ const SCENARIOS: &[Scenario] = &[
         expected_words: &["thank"],
         needs: Needs { plugin_step: Some("email.send_email"), ..NO_NEEDS },
         change: None,
+        kind: None,
     },
     Scenario {
         job: "send (email plugin)",
@@ -131,6 +140,7 @@ const SCENARIOS: &[Scenario] = &[
         expected_words: &["rina", "budi"],
         needs: Needs { plugin_step: Some("email.send_email"), ..NO_NEEDS },
         change: None,
+        kind: None,
     },
     Scenario {
         job: "approval",
@@ -139,6 +149,7 @@ const SCENARIOS: &[Scenario] = &[
         expected_words: &["apolog", "sorry", "maaf", "regret"],
         needs: Needs { asks_first: true, ..NO_NEEDS },
         change: None,
+        kind: None,
     },
     Scenario {
         job: "schedule",
@@ -148,6 +159,7 @@ const SCENARIOS: &[Scenario] = &[
         expected_words: &["jakarta"],
         needs: Needs { paused_schedule: true, ..NO_NEEDS },
         change: None,
+        kind: None,
     },
     Scenario {
         job: "plugin that reads",
@@ -156,6 +168,7 @@ const SCENARIOS: &[Scenario] = &[
         expected_words: &["rupiah", "idr"],
         needs: Needs { plugin_step: Some("currency-rates."), ..NO_NEEDS },
         change: None,
+        kind: None,
     },
     Scenario {
         job: "change in the chat",
@@ -167,6 +180,7 @@ const SCENARIOS: &[Scenario] = &[
             "Write the reply in Indonesian and offer a 10% discount on the next order",
             &["10%", "10 %", "diskon"],
         )),
+        kind: None,
     },
     Scenario {
         job: "change in the chat",
@@ -175,6 +189,25 @@ const SCENARIOS: &[Scenario] = &[
         expected_words: &["jakarta"],
         needs: Needs { asks_first: true, ..NO_NEEDS },
         change: Some(("Ask me to approve the summary before finishing", &["jakarta"])),
+        kind: None,
+    },
+    Scenario {
+        job: "chain",
+        description: "First summarize the meeting notes I paste, then translate the summary into Indonesian",
+        sample_text: NOTES,
+        expected_words: &["pesanan", "terlambat", "pelanggan", "biaya"],
+        needs: NO_NEEDS,
+        change: None,
+        kind: Some(AgentKind::Chain),
+    },
+    Scenario {
+        job: "chain",
+        description: "Draft a reply to a customer complaint I paste, then review the draft for a kind tone and give the final reply",
+        sample_text: NOTES,
+        expected_words: &["apolog", "sorry", "maaf", "regret"],
+        needs: NO_NEEDS,
+        change: None,
+        kind: Some(AgentKind::Chain),
     },
 ];
 
@@ -494,11 +527,7 @@ async fn live_eval() {
     let full_document_only = env_or("GRAPHRT_EVAL_FULL_DOCUMENT", "0") == "1";
     // `GRAPHRT_EVAL_PATH=guided|full` forces the path the app would choose (both fall back
     // to the full path when no plan is usable, as the app does).
-    match env_or("GRAPHRT_EVAL_PATH", "auto").as_str() {
-        "guided" => guided::eval_path::force(Some(guided::eval_path::Forced::Guided)),
-        "full" => guided::eval_path::force(Some(guided::eval_path::Forced::Full)),
-        _ => guided::eval_path::force(None),
-    }
+    force_path_from_env();
     let (plugins, _plugin_dir) = install_plugins(credentials.clone()).await;
     let (mut total, mut built, mut worked) = (0, 0, 0);
     for index in chosen {
@@ -510,7 +539,7 @@ async fn live_eval() {
             // Runs read the Ollama address from the app's settings.
             db.set_setting(crate::credentials::SETTING_OLLAMA_BASE_URL, &ollama_base_url).unwrap();
             let started = Instant::now();
-            let request = BuildRequest { description: scenario.description.into(), kind: None };
+            let request = BuildRequest { description: scenario.description.into(), kind: scenario.kind };
             let mut build_result = if full_document_only {
                 full_document_build(&db, &builder, request).await
             } else {
@@ -638,6 +667,7 @@ impl crate::conversations::ConversationEventSink for QuietConversationSink {
 #[ignore = "needs a real model (Ollama or OPENAI_API_KEY)"]
 async fn live_eval_chatbots() {
     let _ = log::set_logger(&PrintLogger).map(|()| log::set_max_level(log::LevelFilter::Info));
+    force_path_from_env();
     let model_name = env_or("GRAPHRT_EVAL_MODEL", "llama3.2");
     let attempts: usize = env_or("GRAPHRT_EVAL_ATTEMPTS", "2").parse().unwrap();
     let EvalSetup { builder, credentials, ollama_base_url } = eval_setup(&model_name);
@@ -703,4 +733,125 @@ async fn live_eval_chatbots() {
     println!(
         "[{model_name}] CHATBOTS built {built}/{total}, first try {first_try}/{total}, answered {answered}/{total}"
     );
+}
+
+/// `GRAPHRT_EVAL_PATH=guided|full` forces the path the app would choose (both fall back to
+/// the full path when no plan is usable, as the app does).
+fn force_path_from_env() {
+    match env_or("GRAPHRT_EVAL_PATH", "auto").as_str() {
+        "guided" => guided::eval_path::force(Some(guided::eval_path::Forced::Guided)),
+        "full" => guided::eval_path::force(Some(guided::eval_path::Forced::Full)),
+        _ => guided::eval_path::force(None),
+    }
+}
+
+/// An `agent` step that answers with a plugin's tools, no builder involved: measures the
+/// runtime's tool calls with a real model (`GRAPHRT_EVAL_ATTEMPTS` runs, default 2).
+///
+/// ```sh
+/// GRAPHRT_EVAL_OLLAMA=http://127.0.0.1:11500 GRAPHRT_EVAL_MODEL=llama3.2 GRAPHRT_EVAL_ATTEMPTS=5 \
+///   cargo test --manifest-path src-tauri/Cargo.toml live_eval_agent_plugin_tool -- --ignored --nocapture
+/// ```
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a real model (Ollama or OPENAI_API_KEY), the network and Node.js"]
+async fn live_eval_agent_plugin_tool() {
+    let _ = log::set_logger(&PrintLogger).map(|()| log::set_max_level(log::LevelFilter::Info));
+    let model_name = env_or("GRAPHRT_EVAL_MODEL", "llama3.2");
+    let attempts: usize = env_or("GRAPHRT_EVAL_ATTEMPTS", "2").parse().unwrap();
+    let EvalSetup { builder, credentials, ollama_base_url } = eval_setup(&model_name);
+    let (_plugins, _plugin_dir) = install_plugins(credentials.clone()).await;
+    let provider = provider_name(builder.choice.provider);
+    let flow_yaml = format!(
+        r#"version: "1"
+name: rate-agent
+graph:
+  nodes:
+    - id: start
+      type: start
+      variables:
+        - {{ variable: question, type: paragraph, required: true, label: Question }}
+    - id: answer
+      type: agent
+      title: Answer with the rates
+      model: {{ provider: {provider}, name: "{model_name}" }}
+      instruction: "Answer the question with today's rates. Use the currency tools to look them up."
+      query: "{{{{#start.question#}}}}"
+      max_iterations: 4
+      tools: ["currency-rates/*"]
+    - id: end
+      type: end
+      outputs:
+        - {{ variable: result, value_selector: [answer, text] }}
+  edges:
+    - {{ source: start, target: answer }}
+    - {{ source: answer, target: end }}
+"#
+    );
+    let mut worked = 0;
+    for attempt in 1..=attempts {
+        let db = Arc::new(Database::open_in_memory().unwrap());
+        db.set_setting(crate::credentials::SETTING_OLLAMA_BASE_URL, &ollama_base_url).unwrap();
+        let agent = db
+            .create_agent(NewAgent {
+                name: "Rates".into(),
+                kind: AgentKind::Task,
+                description: "Rates".into(),
+                flow_yaml: flow_yaml.clone(),
+            })
+            .unwrap();
+        let runs = RunManager::new(db.clone(), credentials.clone(), Arc::new(QuietSink));
+        let inputs = json!({"question": "What is the latest US dollar to Indonesian rupiah exchange rate?"});
+        let run = runs.start_run(&agent.id, RunTrigger::Test, inputs).await.unwrap();
+        let started = Instant::now();
+        let finished = loop {
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            let current = db.get_run(&run.id).unwrap();
+            if current.status != RunStatus::Running || started.elapsed() > RUN_TIMEOUT {
+                break current;
+            }
+        };
+        // The agent step's `tool_calls` output, from the stored run events.
+        let calls: Vec<serde_json::Value> = db
+            .list_run_events(&run.id)
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|record| find_tool_calls(&record.event))
+            .next_back()
+            .unwrap_or_default();
+        let good_calls = calls.iter().filter(|call| call["is_error"] != json!(true)).count();
+        let text = finished.outputs.clone().unwrap_or_default().to_string().to_lowercase();
+        let has_rate = text.chars().any(|character| character.is_ascii_digit())
+            && ["idr", "rupiah"].iter().any(|word| text.contains(word));
+        let outcome = if finished.status != RunStatus::Succeeded {
+            format!("RUN-FAIL {:?} {}", finished.status, first_line(&finished.error_message.unwrap_or_default()))
+        } else if good_calls == 0 {
+            format!("NO-TOOL ({} calls, all errors): {}", calls.len(), first_line(&text))
+        } else if !has_rate {
+            format!("NO-RATE: {}", first_line(&text))
+        } else {
+            worked += 1;
+            format!("WORKED {good_calls} good of {} calls: {}", calls.len(), first_line(&text))
+        };
+        let errors: Vec<String> = calls
+            .iter()
+            .filter(|call| call["is_error"] == json!(true))
+            .map(|call| first_line(&call["result"].to_string()))
+            .collect();
+        println!("[{model_name}] agent-tool a{attempt} {outcome} | errors: {errors:?}");
+    }
+    println!("[{model_name}] agent-tool worked {worked}/{attempts}");
+}
+
+/// The first `tool_calls` list anywhere in a stored run event.
+fn find_tool_calls(value: &serde_json::Value) -> Option<Vec<serde_json::Value>> {
+    match value {
+        serde_json::Value::Object(fields) => {
+            if let Some(serde_json::Value::Array(calls)) = fields.get("tool_calls") {
+                return Some(calls.clone());
+            }
+            fields.values().find_map(find_tool_calls)
+        }
+        serde_json::Value::Array(items) => items.iter().find_map(find_tool_calls),
+        _ => None,
+    }
 }

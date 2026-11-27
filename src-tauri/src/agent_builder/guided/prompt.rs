@@ -47,6 +47,15 @@ const SCHEDULE: &str = "\
 - \"schedule\": when the agent runs by itself. \"repeat\" is \"never\" unless the job says how often (\"hourly\", \
 \"daily\", \"weekdays\" or \"weekly\"); \"hour\" is the hour of the day, 0 to 23.";
 
+const JOB_WORDS: &str = "\
+- \"job_words\": words copied exactly from the job, or empty: \"send\" (the words that say to send, post or \
+save something), \"when\" (the words that say when it runs by itself), \"for_each\" (the words that say it \
+repeats for each item of a list), \"files\" (the words that say it works on files), \"given\" (the words that \
+say the person gives the text to work on), \"hand_over\" (the words that say when the owner takes a chat \
+over). Example: for the job \"Summarize the notes I paste and email the \
+summary to the address I give every Monday\" they are {\"send\": \"email the summary to the address I give\", \
+\"when\": \"every Monday\", \"for_each\": \"\", \"files\": \"\", \"given\": \"the notes I paste\", \"hand_over\": \"\"}.";
+
 const CLOSING: &str = "\
 Use as few steps as the job needs: most jobs are ONE \"write\" step. Do not add steps for checking, formatting or \
 polishing. Write the summary, name, labels and titles in the language of the job description.";
@@ -58,7 +67,7 @@ pub(super) fn system_prompt(rules: &PlanRules<'_>) -> String {
     if !rules.operations.is_empty() {
         prompt.push_str(" A \"use\" step also has \"operation\"; other steps leave it empty.");
     }
-    prompt.push_str(&format!("\n{SCHEDULE}\n\nStep kinds:\n{WRITE}\n{LOOKUP}"));
+    prompt.push_str(&format!("\n{SCHEDULE}\n{JOB_WORDS}\n\nStep kinds:\n{WRITE}\n{LOOKUP}"));
     if rules.link_given {
         prompt.push_str(LOOKUP_GIVEN_LINK);
     }
@@ -78,7 +87,8 @@ fn use_step_guide(operations: &[OfferedOperation]) -> String {
                      gives (notes, a message, a complaint) is worked on by \"write\" steps alone. \"operation\" is one \
                      of the operations below, copied exactly; \"instruction\" says what to send or fetch and to whom. The app asks the person before \
                      anything is sent, so do not add an \"approve\" step for that. To send a text, first write it in a \
-                     \"write\" step. Operations:"
+                     \"write\" step. When an operation below gives the facts the job needs, use it instead of a \
+                     \"lookup\". Operations:"
         .to_owned();
     for operation in operations {
         let note = if operation.installed { "" } else { " (the app will offer to install it)" };
@@ -114,13 +124,15 @@ pub(super) fn fields_system_prompt() -> &'static str {
 }
 
 /// The request to fill in the fields of the plugin step at `step_index` of `plan`.
-pub(super) fn fields_request(operation: &OfferedOperation, plan: &Plan, step_index: usize) -> String {
+/// `job` is what the person asked for, so values the job names ("US dollar", "rupiah") reach
+/// the fields instead of a default the field's description mentions.
+pub(super) fn fields_request(operation: &OfferedOperation, plan: &Plan, step_index: usize, job: &str) -> String {
     let (title, instruction) = match plan.steps.get(step_index) {
         Some(PlanStep::Use { title, instruction, .. }) => (title.as_str(), instruction.as_str()),
         _ => ("", ""),
     };
     let mut request = format!(
-        "The step: {title}. What it should do: {instruction}\nIt uses \"{}\": {}\n\nFields:",
+        "The job: <<<{job}>>>\nThe step: {title}. What it should do: {instruction}\nIt uses \"{}\": {}\n\nFields:",
         operation.title, operation.description
     );
     for field in &operation.fields {
@@ -214,8 +226,10 @@ mod tests {
                 },
             ],
             schedule: None,
+            job_words: Default::default(),
+            job: String::new(),
         };
-        let request = fields_request(&operation, &plan, 1);
+        let request = fields_request(&operation, &plan, 1, "Email the note to the address I give");
         assert!(request.contains("\"to\" (required): Recipients"), "{request}");
         assert!(request.contains("{address}: Email address"), "{request}");
         assert!(request.contains("{step_1}: the result of step 1 \"Write the note\""), "{request}");

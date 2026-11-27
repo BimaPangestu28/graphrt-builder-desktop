@@ -41,6 +41,10 @@ pub struct FlowStep {
     pub needs_approval: bool,
     /// Nesting depth: steps inside an iteration or loop are 1.
     pub depth: u32,
+    /// A hash of the step's whole configuration (its prompt, fields, address), so a change
+    /// the title and detail do not show still counts; 0 when unknown. Not sent to the app.
+    #[serde(skip)]
+    pub config_fingerprint: u64,
 }
 
 /// A workflow input the user fills before a run (from the `start` node).

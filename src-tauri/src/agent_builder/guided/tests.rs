@@ -102,6 +102,13 @@ async fn a_local_model_fills_in_a_plan_and_the_app_writes_the_document() {
     assert_eq!(summary.model_providers, ["ollama"]);
     assert_eq!(summary.inputs[0].name, "complaint");
     assert!(agent.flow_yaml.contains("name: llama3.2"), "{}", agent.flow_yaml);
+    assert!(
+        agent
+            .flow_yaml
+            .contains("The whole job, as the person asked for it: Write a polite reply to a complaint I paste"),
+        "the writing step reads the job: {}",
+        agent.flow_yaml
+    );
     let requests = mock.requests();
     assert_eq!(requests.len(), 1, "one short call, no full-document draft");
     assert!(
@@ -157,20 +164,46 @@ async fn without_a_usable_plan_the_full_document_is_drafted() {
     assert_eq!(flow::summarize_flow(&agent.flow_yaml).unwrap().model_providers, ["ollama"]);
 }
 
+/// A plan whose own (checked) words say why the job needs the full format.
+fn plan_quoting(field: &str, words: &str) -> String {
+    reply_plan().replace(NO_SCHEDULE, &format!(r#"{NO_SCHEDULE}, "job_words": {{"{field}": "{words}"}}"#))
+}
+
 #[tokio::test]
 async fn jobs_out_of_a_plans_reach_and_teams_are_drafted_in_full() {
-    for build in [
+    for (description, field, words) in [
         // Repeats over a list.
-        BuildRequest { description: "Send each customer in my list a reminder".into(), kind: None },
-        // Acts outside the app, and no plugin operation matches.
-        BuildRequest { description: "Send the answer to my customer by WhatsApp".into(), kind: None },
-        BuildRequest { description: "Answer my question".into(), kind: Some(AgentKind::Team) },
+        ("Send each customer in my list a reminder", "for_each", "each customer in my list"),
+        // Works on files.
+        ("Summarize the PDF I attach", "files", "the PDF I attach"),
+        // Sends, and no plugin operation is offered to send with.
+        ("Kirim jawabannya ke pelanggan lewat WhatsApp", "send", "Kirim jawabannya ke pelanggan lewat WhatsApp"),
     ] {
         let db = Database::open_in_memory().unwrap();
-        let (mock, builder) = local_builder(&[&full_reply()]);
-        build_agent_with_model(&db, &builder, build, &|_| {}).await.unwrap();
-        assert!(mock.requests()[0].response_format.is_none());
+        let (mock, builder) = local_builder(&[&plan_quoting(field, words), &full_reply()]);
+        build_agent_with_model(&db, &builder, request(description), &|_| {}).await.unwrap();
+        let requests = mock.requests();
+        assert_eq!(requests.len(), 2, "{description}: one plan, then the full document at once");
+        assert!(requests[1].response_format.is_none(), "{description}");
     }
+    // A team is never planned.
+    let db = Database::open_in_memory().unwrap();
+    let (mock, builder) = local_builder(&[&full_reply()]);
+    let team = BuildRequest { description: "Answer my question".into(), kind: Some(AgentKind::Team) };
+    build_agent_with_model(&db, &builder, team, &|_| {}).await.unwrap();
+    assert!(mock.requests()[0].response_format.is_none());
+}
+
+#[tokio::test]
+async fn words_the_job_does_not_hold_are_no_evidence() {
+    // The model claims the job repeats for each item; the job says nothing of the kind.
+    let db = Database::open_in_memory().unwrap();
+    let (mock, builder) = local_builder(&[&plan_quoting("for_each", "for each customer")]);
+    let agent = build_agent_with_model(&db, &builder, request("Write a polite reply to a complaint I paste"), &|_| {})
+        .await
+        .unwrap();
+    assert_eq!(mock.requests().len(), 1);
+    assert!(agent.flow_yaml.contains("type: llm"));
 }
 
 #[tokio::test]
@@ -232,7 +265,8 @@ async fn a_plan_that_forgets_to_send_gets_the_offered_sending_step() {
     let only_writes = format!(
         r#"{{"looks_up_the_web": false, "summary": "Writes a note.", "name": "Note",
             "inputs": [{{"name": "address", "label": "Email address", "long_text": false, "value": ""}}],
-            "steps": [{{"kind": "write", "title": "Write the note", "instruction": "Write a short note.", "url": ""}}], {NO_SCHEDULE}}}"#
+            "steps": [{{"kind": "write", "title": "Write the note", "instruction": "Write a short note.", "url": ""}}], {NO_SCHEDULE},
+            "job_words": {{"send": "send it by mail"}}}}"#
     );
     let fields = r#"{"to": "someone@example.com", "body": "Hello"}"#;
     let (mock, builder) = local_builder(&[&only_writes, fields]);
@@ -253,7 +287,10 @@ async fn a_schedule_the_job_asks_for_is_saved_turned_off() {
     let db = Database::open_in_memory().unwrap();
     // A summary without a full stop, as small models write it.
     let plan = wikipedia_plan()
-        .replace(NO_SCHEDULE, r#""schedule": {"repeat": "weekdays", "hour": 7}"#)
+        .replace(
+            NO_SCHEDULE,
+            r#""schedule": {"repeat": "weekdays", "hour": 7}, "job_words": {"when": "On weekdays at 7"}"#,
+        )
         .replace("Summarizes a Wikipedia page.", "Summarizes a Wikipedia page");
     let (_mock, builder) = local_builder(&[&plan]);
 
@@ -277,9 +314,11 @@ async fn a_schedule_the_job_asks_for_is_saved_turned_off() {
 }
 
 #[tokio::test]
-async fn every_morning_in_the_job_is_a_schedule_even_when_the_plan_forgot_it() {
+async fn words_that_say_when_are_a_schedule_even_when_the_plan_forgot_it() {
     let db = Database::open_in_memory().unwrap();
-    let (_mock, builder) = local_builder(&[&wikipedia_plan()]);
+    let plan =
+        wikipedia_plan().replace(NO_SCHEDULE, &format!(r#"{NO_SCHEDULE}, "job_words": {{"when": "Every morning"}}"#));
+    let (_mock, builder) = local_builder(&[&plan]);
 
     let agent = build_agent_with_model(
         &db,
@@ -292,6 +331,17 @@ async fn every_morning_in_the_job_is_a_schedule_even_when_the_plan_forgot_it() {
 
     let triggers = db.list_triggers(Some(&agent.id)).unwrap();
     assert_eq!(triggers.iter().map(|trigger| trigger.cron_expression.as_str()).collect::<Vec<_>>(), ["0 0 8 * * *"]);
+}
+
+#[tokio::test]
+async fn a_schedule_the_job_never_asked_for_is_dropped() {
+    let db = Database::open_in_memory().unwrap();
+    let plan = reply_plan().replace(NO_SCHEDULE, r#""schedule": {"repeat": "daily", "hour": 10}"#);
+    let (_mock, builder) = local_builder(&[&plan]);
+    let agent = build_agent_with_model(&db, &builder, request("Turn my meeting notes into action items"), &|_| {})
+        .await
+        .unwrap();
+    assert!(db.list_triggers(Some(&agent.id)).unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -312,6 +362,14 @@ async fn a_change_in_the_chat_changes_the_plan_not_the_yaml() {
         revision.agent.flow_yaml
     );
     assert_eq!(revision.agent.current_version, agent.current_version + 1);
+    // A new instruction is a changed step, though its title and model stayed the same.
+    assert_eq!(revision.summary, "Changed 1 step: Write the reply");
+    assert_eq!(revision.changed_step_ids, ["write_1"]);
+    assert!(
+        revision.explanation.contains("Step 1 (Write the reply) now: Write a polite reply in Indonesian."),
+        "{}",
+        revision.explanation
+    );
     let requests = mock.requests();
     assert_eq!(requests.len(), 1);
     assert!(matches!(requests[0].response_format, Some(ResponseFormat::JsonSchema { .. })));
@@ -398,4 +456,106 @@ async fn an_openai_model_plans_a_job_within_reach_and_the_steps_run_on_it() {
         "the plan is asked for with a strict schema"
     );
     assert!(agent.flow_yaml.contains("provider: openai") && agent.flow_yaml.contains("name: gpt-4o-mini"));
+}
+
+#[tokio::test]
+async fn a_lookup_on_a_site_the_job_does_not_name_reads_with_the_offered_plugin() {
+    let _catalog = PublishedCatalog::publish().await;
+    let db = Database::open_in_memory().unwrap();
+    // As llama3.2 planned the exchange-rate job: a guessed API instead of the offered plugin.
+    let guessed = format!(
+        r#"{{"looks_up_the_web": true, "summary": "Lists the newest mail in the inbox.", "name": "Inbox",
+            "inputs": [],
+            "steps": [{{"kind": "lookup", "title": "Get the inbox", "instruction": "", "url": "https://api.mailcheck.example/inbox"}},
+                      {{"kind": "write", "title": "Sum it up", "instruction": "Sum up the mail.", "url": ""}}], {NO_SCHEDULE}}}"#
+    );
+    let (mock, builder) = local_builder(&[&guessed, r#"{"limit": 5}"#]);
+
+    let agent =
+        build_agent_with_model(&db, &builder, request("Check my mail inbox and sum it up"), &|_| {}).await.unwrap();
+
+    assert!(agent.flow_yaml.contains("type: fixture-mail.list_inbox"), "{}", agent.flow_yaml);
+    assert!(!agent.flow_yaml.contains("mailcheck"), "{}", agent.flow_yaml);
+    let fields_request = mock.requests()[1].messages[1].text();
+    assert!(fields_request.contains("The job: <<<Check my mail inbox and sum it up>>>"), "{fields_request}");
+    // A site the job names stays a lookup.
+    let named = wikipedia_plan();
+    let (_mock, builder) = local_builder(&[&named]);
+    let wiki = build_agent_with_model(&db, &builder, request("Look up Jakarta on Wikipedia and sum it up"), &|_| {})
+        .await
+        .unwrap();
+    assert!(wiki.flow_yaml.contains("type: http-request"), "{}", wiki.flow_yaml);
+}
+
+#[tokio::test]
+async fn a_model_call_cut_off_once_is_asked_again() {
+    let db = Database::open_in_memory().unwrap();
+    let (mock, builder) = local_builder(&[]);
+    mock.push_error(graphrt_llm::LlmError::Network("error decoding response body".into()));
+    mock.push(MockModel::text(&reply_plan()));
+
+    let agent = build_agent_with_model(&db, &builder, request("Write a polite reply to a complaint I paste"), &|_| {})
+        .await
+        .unwrap();
+
+    assert_eq!(mock.requests().len(), 2);
+    assert_eq!(agent.name, "Complaint Reply");
+    // Twice in a row is reported.
+    let (mock, builder) = local_builder(&[]);
+    mock.push_error(graphrt_llm::LlmError::Network("reset".into()));
+    mock.push_error(graphrt_llm::LlmError::Network("reset".into()));
+    let failed = build_agent_with_model(&db, &builder, request("Write a reply"), &|_| {}).await;
+    assert!(matches!(failed, Err(AppError::Model(_))), "{failed:?}");
+    assert_eq!(mock.requests().len(), 2);
+}
+
+#[tokio::test]
+async fn a_chatbot_whose_job_says_when_the_owner_takes_over_hands_over() {
+    let db = Database::open_in_memory().unwrap();
+    let plan = reply_plan().replace(
+        NO_SCHEDULE,
+        &format!(r#"{NO_SCHEDULE}, "job_words": {{"hand_over": "Hand over to me for custom orders"}}"#),
+    );
+    let (_mock, builder) = local_builder(&[&plan]);
+    let build = BuildRequest {
+        description: "Answer questions about my bakery's prices. Hand over to me for custom orders.".into(),
+        kind: Some(AgentKind::Chatbot),
+    };
+
+    let agent = build_agent_with_model(&db, &builder, build, &|_| {}).await.unwrap();
+
+    let yaml = &agent.flow_yaml;
+    assert!(yaml.contains("id: decide_handoff"), "{yaml}");
+    assert!(yaml.contains("The owner takes over when: Hand over to me for custom orders"), "{yaml}");
+    assert!(yaml.contains("variable: handoff\n") && yaml.contains("variable: handoff_reason"), "{yaml}");
+    assert!(yaml.contains("Write your reply in the same language as the customer's message"), "{yaml}");
+    // Without such words the bot never hands over on its own.
+    let (_mock, builder) = local_builder(&[&reply_plan()]);
+    let plain = BuildRequest {
+        description: "Answer questions about my bakery's prices.".into(),
+        kind: Some(AgentKind::Chatbot),
+    };
+    let agent = build_agent_with_model(&db, &builder, plain, &|_| {}).await.unwrap();
+    assert!(!agent.flow_yaml.contains("decide_handoff"));
+}
+
+#[tokio::test]
+async fn a_chatbot_does_not_look_up_a_site_its_job_never_names() {
+    let db = Database::open_in_memory().unwrap();
+    // As llama3.2 planned a catering bot reached over WhatsApp: a guessed chat API.
+    let guessed = format!(
+        r#"{{"looks_up_the_web": true, "summary": "Answers menu questions.", "name": "Menu bot", "inputs": [],
+            "steps": [{{"kind": "lookup", "title": "Get the chat", "instruction": "", "url": "https://api.sendbird.com/v3/messages"}},
+                      {{"kind": "write", "title": "Answer", "instruction": "Answer with the menu prices.", "url": ""}}], {NO_SCHEDULE}}}"#
+    );
+    let (_mock, builder) = local_builder(&[&guessed]);
+    let build = BuildRequest {
+        description: "Answer WhatsApp questions about our catering menu (nasi box 25k)".into(),
+        kind: Some(AgentKind::Chatbot),
+    };
+
+    let agent = build_agent_with_model(&db, &builder, build, &|_| {}).await.unwrap();
+
+    assert!(!agent.flow_yaml.contains("sendbird"), "{}", agent.flow_yaml);
+    assert!(!agent.flow_yaml.contains("type: http-request"), "{}", agent.flow_yaml);
 }

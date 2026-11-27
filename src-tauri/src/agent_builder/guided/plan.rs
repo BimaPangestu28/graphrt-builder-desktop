@@ -43,6 +43,41 @@ pub(super) struct RawPlan {
     steps: Vec<RawStep>,
     #[serde(default)]
     schedule: RawSchedule,
+    #[serde(default)]
+    job_words: JobWords,
+}
+
+/// Words the model copied from the job as the reason for a decision, or empty: what tells
+/// the app that the job sends something, runs on a schedule, repeats for each item of a
+/// list, or works on files. The app keeps a quote only when the job holds it
+/// ([`super::coverage::verify_job_words`]), so any language works and nothing is invented.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub(super) struct JobWords {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub send: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub when: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub for_each: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub files: String,
+    /// The words that say the person gives the text to work on ("the notes I paste").
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub given: String,
+    /// The words that say when the owner takes a chat over ("hand over to me for custom orders").
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub hand_over: String,
+}
+
+impl JobWords {
+    pub(super) fn is_empty(&self) -> bool {
+        self.send.is_empty()
+            && self.when.is_empty()
+            && self.for_each.is_empty()
+            && self.files.is_empty()
+            && self.given.is_empty()
+            && self.hand_over.is_empty()
+    }
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -92,6 +127,13 @@ pub(super) struct Plan {
     /// When the agent should run by itself, if the job says so.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub schedule: Option<Schedule>,
+    /// The job's own words behind the plan's decisions (checked against the job).
+    #[serde(default, skip_serializing_if = "JobWords::is_empty")]
+    pub job_words: JobWords,
+    /// The job as the person wrote it (references defused): every writing step reads it, so a
+    /// small model writes about the rupiah when the job asked for it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub job: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -296,9 +338,22 @@ pub(super) fn schema(rules: &PlanRules<'_>) -> serde_json::Value {
                 },
                 "required": ["repeat", "hour"],
                 "additionalProperties": false
+            },
+            "job_words": {
+                "type": "object",
+                "properties": {
+                    "send": { "type": "string" },
+                    "when": { "type": "string" },
+                    "for_each": { "type": "string" },
+                    "files": { "type": "string" },
+                    "given": { "type": "string" },
+                    "hand_over": { "type": "string" }
+                },
+                "required": ["send", "when", "for_each", "files", "given", "hand_over"],
+                "additionalProperties": false
             }
         },
-        "required": ["looks_up_the_web", "summary", "name", "inputs", "steps", "schedule"],
+        "required": ["looks_up_the_web", "summary", "name", "inputs", "steps", "schedule", "job_words"],
         "additionalProperties": false
     })
 }
@@ -377,6 +432,24 @@ pub(super) fn normalize(raw: RawPlan, rules: &PlanRules<'_>) -> Result<Plan, Str
                 });
                 continue;
             }
+            // `https://currency-rates.get_latest_rates?base=USD`: an offered operation written
+            // as an address (llama3.2) is that operation.
+            if let Some(operation) = operation_in_address(&raw_step.url, rules) {
+                let title = if title.is_empty() { operation.title.clone() } else { title };
+                let instruction = if instruction.is_empty() || instruction.contains("://") {
+                    plain_text(&raw.summary)
+                } else {
+                    instruction
+                };
+                let instruction = if instruction.is_empty() { title.clone() } else { instruction };
+                steps.push(PlanStep::Use {
+                    title,
+                    instruction,
+                    operation: operation.kind.clone(),
+                    fields: BTreeMap::new(),
+                });
+                continue;
+            }
             let url = lookup_url(&raw_step.url, &mut inputs, inputs_are_fixed)?;
             let title = match (title.is_empty(), url.host()) {
                 (false, _) => title,
@@ -429,6 +502,24 @@ pub(super) fn normalize(raw: RawPlan, rules: &PlanRules<'_>) -> Result<Plan, Str
         let title = if title.is_empty() { "Write the result".to_owned() } else { title };
         steps.push(PlanStep::Write { title, instruction });
     }
+    // The model says the job needs facts from outside and planned no step that gets them
+    // (it would write them from memory): the best offered operation that reads gets them.
+    let gets_facts = steps.iter().any(|step| matches!(step, PlanStep::Lookup { .. } | PlanStep::Use { .. }));
+    if raw.looks_up_the_web && !gets_facts {
+        if let Some(operation) = rules.operations.iter().find(|operation| !operation.sends) {
+            let instruction = plain_text(&raw.summary);
+            let instruction = if instruction.is_empty() { operation.title.clone() } else { instruction };
+            steps.insert(
+                0,
+                PlanStep::Use {
+                    title: operation.title.clone(),
+                    instruction,
+                    operation: operation.kind.clone(),
+                    fields: BTreeMap::new(),
+                },
+            );
+        }
+    }
     while matches!(steps.last(), Some(PlanStep::Approve { .. }))
         && steps.len() > 1
         && !steps.iter().any(PlanStep::has_result)
@@ -447,7 +538,23 @@ pub(super) fn normalize(raw: RawPlan, rules: &PlanRules<'_>) -> Result<Plan, Str
         };
         steps.push(PlanStep::Write { title: "Write the result".to_owned(), instruction });
     }
-    Ok(Plan { summary, name: plain_text(&raw.name), inputs, steps, schedule: schedule(&raw.schedule) })
+    let job_words = JobWords {
+        send: plain_text(&raw.job_words.send),
+        when: plain_text(&raw.job_words.when),
+        for_each: plain_text(&raw.job_words.for_each),
+        files: plain_text(&raw.job_words.files),
+        given: plain_text(&raw.job_words.given),
+        hand_over: plain_text(&raw.job_words.hand_over),
+    };
+    Ok(Plan {
+        summary,
+        name: plain_text(&raw.name),
+        inputs,
+        steps,
+        schedule: schedule(&raw.schedule),
+        job_words,
+        job: String::new(),
+    })
 }
 
 /// Whether the plan must end on a writing step it does not have: when what it found last
@@ -510,6 +617,7 @@ pub(super) fn normalize_fields(
     let mut fields = BTreeMap::new();
     for field in &operation.fields {
         let value = given.get(&field.name).and_then(|value| typed_value(value, field.field_type, plan, step_index));
+        let value = value.map(|value| without_copied_description(value, &field.description));
         let value = if operation.sends { guarded_sending_value(field, value, plan, step_index) } else { value };
         match value {
             Some(value) => {
@@ -545,9 +653,45 @@ fn drop_repeated_recipients(operation: &OfferedOperation, fields: &mut BTreeMap<
             fields.remove(&field.name);
         }
     }
-    // The same written text as `html` too would send plain text as a web page.
-    if fields.contains_key("html") && fields.get("html") == fields.get("text") {
+    // The same written text as `html` too would send plain text as a web page, and a fixed
+    // `html` body (gpt-4o-mini wrote one into a change) would replace the written note.
+    let html_reads_a_result =
+        fields.get("html").and_then(serde_json::Value::as_str).is_some_and(|html| html.contains("{step_"));
+    if fields.contains_key("html") && (fields.get("html") == fields.get("text") || !html_reads_a_result) {
         fields.remove("html");
+    }
+}
+
+/// `value` without a part in brackets that the field's own description holds: llama3.2
+/// filled `base` with "USD (DEFAULT: EUR)" from "Base currency, e.g. USD (default EUR)".
+fn without_copied_description(value: serde_json::Value, description: &str) -> serde_json::Value {
+    let serde_json::Value::String(text) = &value else { return value };
+    let words_of = |text: &str| -> String {
+        text.to_lowercase()
+            .split(|character: char| !character.is_alphanumeric())
+            .filter(|word| !word.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    let description = words_of(description);
+    let mut kept = String::new();
+    let mut rest = text.as_str();
+    while let Some(open) = rest.find('(') {
+        let Some(close) = rest[open..].find(')') else { break };
+        let bracketed = &rest[open..=open + close];
+        kept.push_str(&rest[..open]);
+        let inside = words_of(bracketed);
+        if inside.is_empty() || !description.contains(&inside) {
+            kept.push_str(bracketed);
+        }
+        rest = &rest[open + close + 1..];
+    }
+    kept.push_str(rest);
+    let kept = kept.trim();
+    if kept.is_empty() {
+        value
+    } else {
+        json!(kept)
     }
 }
 
@@ -600,9 +744,8 @@ fn guarded_sending_value(
         let names_only_inputs = !parts.is_empty()
             && parts.iter().all(|part| match part {
                 FieldPart::Input(_) => true,
-                FieldPart::Text(words) => {
-                    !words.contains('@') && words.chars().filter(char::is_ascii_digit).count() < 6
-                }
+                // Only separators between inputs: "Sari W <{address}" is a made-up name around one.
+                FieldPart::Text(words) => words.chars().all(|character| matches!(character, ',' | ';' | ' ')),
                 FieldPart::StepResult(_) => false,
             })
             && parts.iter().any(|part| matches!(part, FieldPart::Input(_)));
@@ -612,7 +755,13 @@ fn guarded_sending_value(
         return address_input(plan).map(|name| json!(format!("{{{name}}}")));
     }
     if SINGLE_LINE_FIELDS.contains(&field.name.as_str()) {
-        // A subject is one line; a model's step result or its own text may hold several.
+        // A subject is one line. A step's result may hold several, so a subject that reads
+        // one becomes the plan's own one-line summary.
+        let reads_a_result = field_parts(text, plan).iter().any(|part| matches!(part, FieldPart::StepResult(_)));
+        if reads_a_result {
+            let summary = plan.summary.trim();
+            return (!summary.is_empty()).then(|| json!(summary));
+        }
         return value.map(|value| match value {
             serde_json::Value::String(text) => json!(text.split_whitespace().collect::<Vec<_>>().join(" ")),
             other => other,
@@ -886,6 +1035,23 @@ fn reads_what_an_input_holds(operation: &OfferedOperation, inputs: &[PlanInput])
                 input_words.iter().any(|input_word| input_word.trim_end_matches('s') == word.trim_end_matches('s'))
             })
         })
+}
+
+/// The offered operation a lookup address names (`currency-rates.get_latest_rates`, or its
+/// operation part `get_latest_rates`), if any.
+fn operation_in_address<'a>(raw_url: &str, rules: &'a PlanRules<'_>) -> Option<&'a OfferedOperation> {
+    let address = raw_url.to_ascii_lowercase();
+    rules.operations.iter().find(|operation| {
+        let kind = operation.kind.to_ascii_lowercase();
+        let name = kind.split_once('.').map_or(kind.as_str(), |(_, name)| name);
+        address.contains(&kind) || (name.contains('_') && address.contains(name))
+    })
+}
+
+/// `written` as plain text a step may quote: references and markup a model could break
+/// out with are defused.
+pub(super) fn quotable(written: &str) -> String {
+    plain_text(written)
 }
 
 /// The input name a lookup address consists of, when it is one placeholder and nothing
@@ -1249,6 +1415,23 @@ mod tests {
     }
 
     #[test]
+    fn an_operation_written_as_an_address_is_that_operation() {
+        let operations = [list_messages_operation()];
+        let rules = task_rules(&operations);
+        let raw = parse(
+            r#"{"looks_up_the_web": true, "summary": "Lists new mail.", "inputs": [],
+                "steps": [{"kind": "lookup", "title": "", "instruction": "https://email.list_messages", "url": "https://email.list_messages?limit=5"}]}"#,
+        )
+        .unwrap();
+
+        let plan = normalize(raw, &rules).unwrap();
+
+        let PlanStep::Use { operation, instruction, .. } = &plan.steps[0] else { panic!("use expected: {plan:?}") };
+        assert_eq!(operation, "email.list_messages");
+        assert_eq!(instruction, "Lists new mail.");
+    }
+
+    #[test]
     fn a_lookup_of_a_name_becomes_the_offered_plugin_step_that_reads_it() {
         let operations = [send_email_operation(), list_messages_operation()];
         let rules = task_rules(&operations);
@@ -1438,6 +1621,8 @@ mod tests {
                 },
             ],
             schedule: None,
+            job_words: Default::default(),
+            job: String::new(),
         }
     }
 
@@ -1531,6 +1716,14 @@ mod tests {
         )
         .unwrap();
         assert!(!both.contains_key("html"), "{both:?}");
+        let fixed_html = normalize_fields(
+            &with_html,
+            r#"{"subject": "S", "to": "{address}", "text": "{step_1}", "html": "<p>Terima kasih</p>"}"#,
+            &sending_plan(),
+            2,
+        )
+        .unwrap();
+        assert!(!fixed_html.contains_key("html"), "{fixed_html:?}");
 
         let fixed_words = normalize_fields(
             &send_email_operation(),
@@ -1548,6 +1741,17 @@ mod tests {
         )
         .unwrap();
         assert_eq!(two_lines["subject"], json!("Ringkasan rapat"));
+        let mut plan = sending_plan();
+        plan.summary = "Sends the meeting summary.".into();
+        let read_subject = normalize_fields(
+            &send_email_operation(),
+            r#"{"subject": "{step_1}", "to": "Sari W <{address}>"}"#,
+            &plan,
+            2,
+        )
+        .unwrap();
+        assert_eq!(read_subject["subject"], json!("Sends the meeting summary."));
+        assert_eq!(read_subject["to"], json!("{address}"), "a made-up name around the address goes");
 
         let mut no_address_input = sending_plan();
         no_address_input.inputs = vec![input("notes", "Meeting notes")];
@@ -1555,6 +1759,33 @@ mod tests {
             normalize_fields(&send_email_operation(), r#"{"subject": "S", "to": "a@b.test"}"#, &no_address_input, 2)
                 .unwrap_err();
         assert!(problem.contains("\"to\" is required"), "{problem}");
+    }
+
+    #[test]
+    fn text_copied_from_a_fields_description_is_left_out() {
+        assert_eq!(
+            without_copied_description(json!("USD (DEFAULT: EUR)"), "Base currency, e.g. USD (default: EUR)"),
+            json!("USD")
+        );
+        assert_eq!(without_copied_description(json!("Rapat (Senin)"), "Subject line"), json!("Rapat (Senin)"));
+        assert_eq!(without_copied_description(json!(5), "Limit (default 10)"), json!(5));
+    }
+
+    #[test]
+    fn a_plan_that_says_it_reads_the_web_but_reads_nothing_gets_the_offered_reading_step() {
+        let operations = [send_email_operation(), list_messages_operation()];
+        let rules = task_rules(&operations);
+        let raw = parse(
+            r#"{"looks_up_the_web": true, "summary": "Sums up the newest mail.", "inputs": [],
+                "steps": [{"kind": "write", "title": "Sum up", "instruction": "Sum up the newest mail.", "url": ""}]}"#,
+        )
+        .unwrap();
+        let plan = normalize(raw, &rules).unwrap();
+        assert!(
+            matches!(&plan.steps[0], PlanStep::Use { operation, .. } if operation == "email.list_messages"),
+            "{plan:?}"
+        );
+        assert_eq!(plan.steps.len(), 2);
     }
 
     #[test]

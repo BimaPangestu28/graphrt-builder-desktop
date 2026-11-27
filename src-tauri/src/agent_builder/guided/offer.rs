@@ -96,6 +96,10 @@ const COMMON_WORDS: &[&str] = &[
     "draft",
     "reply",
     "ask",
+    "latest",
+    "current",
+    "today",
+    "now",
 ];
 
 /// Words that do not tell operations of one plugin apart.

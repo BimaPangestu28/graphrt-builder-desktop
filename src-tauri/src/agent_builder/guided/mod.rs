@@ -18,6 +18,7 @@
 //! When no usable plan comes out, the caller falls back to the full path, so this path
 //! can only add working builds.
 
+mod changes;
 mod compose;
 mod coverage;
 mod offer;
@@ -84,6 +85,8 @@ struct Planning<'a> {
     /// The job in the person's words, to check a new plan against; `None` for a change,
     /// which only says what to change.
     description: Option<&'a str>,
+    /// What the person wrote: the job, or the change. The plan's quotes must come from it.
+    request: &'a str,
     /// The plan being changed: its plugin steps keep their fields where nothing before them moved.
     previous: Option<&'a Plan>,
     /// The person gives the agent a link to read (see [`PlanRules::link_given`]).
@@ -105,10 +108,10 @@ pub(super) async fn draft(
     on_progress: ProgressSink<'_>,
 ) -> AppResult<Option<GuidedDraft>> {
     let operations = offered_for(description, kind);
-    if coverage::is_out_of_reach(description, !operations.is_empty()) {
-        log::info!("the job needs the full workflow format; not planning it");
-        return Ok(None);
-    }
+    log::info!(
+        "operations offered for the plan: {}",
+        operations.iter().map(|operation| operation.kind.as_str()).collect::<Vec<_>>().join(", ")
+    );
     let no_trusted_hosts = TrustedHosts::none();
     let planning = Planning {
         builder,
@@ -117,6 +120,7 @@ pub(super) async fn draft(
         operations,
         trusted_hosts: &no_trusted_hosts,
         description: Some(description),
+        request: description,
         previous: None,
         link_given: coverage::gives_a_link(description),
         on_progress,
@@ -171,9 +175,6 @@ pub(super) async fn revise(
             None => return Ok(None),
         }
     }
-    if coverage::is_out_of_reach(instruction, !operations.is_empty()) {
-        return Ok(None);
-    }
     let planning = Planning {
         builder,
         step_model,
@@ -181,6 +182,7 @@ pub(super) async fn revise(
         operations,
         trusted_hosts,
         description: None,
+        request: instruction,
         previous: Some(&current_plan),
         link_given: coverage::gives_a_link(&format!("{}\n{instruction}", agent.description))
             || current_plan
@@ -201,7 +203,15 @@ pub(super) async fn revise(
         Message::system(prompt::system_prompt(&rules)),
         Message::user(prompt::revision_request(&current_plan_json, instruction)),
     ];
-    Ok(planning.plan_until_valid(messages, "Updating the steps").await?.map(|(_, draft)| draft))
+    let Some((new_plan, mut draft)) = planning.plan_until_valid(messages, "Updating the steps").await? else {
+        return Ok(None);
+    };
+    // What each changed step does now, and what the change asked for that is not there.
+    let sentences = changes::describe_changes(&current_plan, &new_plan, instruction);
+    if !sentences.is_empty() {
+        draft.explanation = format!("{}\n- {}", draft.explanation, sentences.join("\n- ")).trim().to_owned();
+    }
+    Ok(Some(draft))
 }
 
 /// The schedule the description's own words ask for ("every morning"), for an agent drafted
@@ -284,6 +294,7 @@ fn plan_for_the_model(plan: &Plan) -> serde_json::Value {
         })).collect::<Vec<_>>(),
         "steps": steps,
         "schedule": {"repeat": repeat, "hour": hour},
+        "job_words": {"send": "", "when": "", "for_each": "", "files": "", "given": "", "hand_over": ""},
     })
 }
 
@@ -322,7 +333,11 @@ impl Planning<'_> {
                 Ok(plan) => {
                     self.with_fields(plan, stage, stage_message).await?.and_then(|plan| self.checked_draft(plan))
                 }
-                Err(problem) => Err(problem),
+                Err(PlanProblem::OutOfReach(reason)) => {
+                    log::info!("{reason}; drafting the full document instead");
+                    return Ok(None);
+                }
+                Err(PlanProblem::Repair(problem)) => Err(problem),
             };
             let problem = match checked {
                 Ok((plan, valid_draft)) => {
@@ -347,19 +362,34 @@ impl Planning<'_> {
         Ok(None)
     }
 
-    /// Reply → plan, checked against the rules and the job. `Err` is a sentence for the model.
-    fn checked_plan(&self, reply: &str, rules: &PlanRules<'_>) -> Result<Plan, String> {
+    /// Reply → plan, checked against the rules and the job.
+    fn checked_plan(&self, reply: &str, rules: &PlanRules<'_>) -> Result<Plan, PlanProblem> {
         let mut plan = plan::normalize(plan::parse(reply)?, rules)?;
-        if let Some(description) = self.description {
-            if let Some(problem) = coverage::missing_action(description, &plan) {
+        coverage::verify_job_words(&mut plan.job_words, self.request);
+        prefer_offered_reading(&mut plan, &self.operations, self.request, self.kind == AgentKind::Chatbot);
+        // The fixed message of a chatbot is its given text already.
+        if rules.fixed_input.is_none() {
+            if let Some(input) = coverage::input_for_given_text(&plan) {
+                plan.inputs.push(input);
+            }
+        }
+        if let Some(reason) = coverage::out_of_reach(&plan.job_words, !self.operations.is_empty()) {
+            return Err(PlanProblem::OutOfReach(reason));
+        }
+        plan.job = match (self.description, self.previous) {
+            (Some(description), _) => plan::quotable(description),
+            (None, Some(previous)) => previous.job.clone(),
+            (None, None) => String::new(),
+        };
+        if self.description.is_some() {
+            if let Some(problem) = coverage::missing_action(&plan) {
                 // A small model rarely adds the step when asked again; the app adds the
                 // sending operation offered for the job (best match first) itself.
                 if !self.add_offered_sending_step(&mut plan, rules) {
-                    return Err(problem);
+                    return Err(PlanProblem::Repair(problem));
                 }
             }
-            // "Every morning" in the job is a schedule even when the plan forgot it.
-            plan.schedule = plan.schedule.or_else(|| coverage::schedule_in_words(description));
+            plan.schedule = coverage::checked_schedule(&plan);
         }
         Ok(plan)
     }
@@ -441,7 +471,7 @@ impl Planning<'_> {
         let schema = plan::fields_schema(operation);
         let mut messages = vec![
             Message::system(prompt::fields_system_prompt()),
-            Message::user(prompt::fields_request(operation, plan, step_index)),
+            Message::user(prompt::fields_request(operation, plan, step_index, self.request)),
         ];
         let mut last_problem = String::new();
         for _ in 0..MAX_FIELDS_ATTEMPTS {
@@ -501,28 +531,122 @@ impl Planning<'_> {
         stage: BuildStage,
         stage_message: &str,
     ) -> AppResult<String> {
-        let request = ChatRequest::new(self.builder.choice.name.clone(), messages.to_vec())
-            .with_max_tokens(MAX_PLAN_TOKENS)
-            .with_temperature(PLAN_TEMPERATURE)
-            .with_response_format(ResponseFormat::JsonSchema { name: schema_name.to_owned(), schema, strict });
-        let stream = self.builder.model.chat(request).await.map_err(|error| model_error(&error))?;
-        let mut written_bytes = 0;
-        let mut last_sent: Option<Instant> = None;
-        let response = graphrt_llm::collect(stream, |delta| {
-            let ChatDelta::Text(text) = &delta else { return };
-            written_bytes += text.len();
-            let now = Instant::now();
-            if last_sent.is_some_and(|sent| now.duration_since(sent) < MIN_PREVIEW_INTERVAL) {
-                return;
+        let mut retried = false;
+        let response = loop {
+            let request = ChatRequest::new(self.builder.choice.name.clone(), messages.to_vec())
+                .with_max_tokens(MAX_PLAN_TOKENS)
+                .with_temperature(PLAN_TEMPERATURE)
+                .with_response_format(ResponseFormat::JsonSchema {
+                    name: schema_name.to_owned(),
+                    schema: schema.clone(),
+                    strict,
+                });
+            let mut written_bytes = 0;
+            let mut last_sent: Option<Instant> = None;
+            let answer = match self.builder.model.chat(request).await {
+                Ok(stream) => {
+                    graphrt_llm::collect(stream, |delta| {
+                        let ChatDelta::Text(text) = &delta else { return };
+                        written_bytes += text.len();
+                        let now = Instant::now();
+                        if last_sent.is_some_and(|sent| now.duration_since(sent) < MIN_PREVIEW_INTERVAL) {
+                            return;
+                        }
+                        last_sent = Some(now);
+                        let draft =
+                            DraftPreview { output_tokens: estimate_tokens(written_bytes), ..DraftPreview::default() };
+                        (self.on_progress)(BuildProgress {
+                            stage,
+                            message: stage_message.to_owned(),
+                            draft: Some(draft),
+                        });
+                    })
+                    .await
+                }
+                Err(error) => Err(error),
+            };
+            match answer {
+                Ok(response) => break response,
+                Err(error) if !retried && super::is_dropped_connection(&error) => {
+                    log::info!("the model call was cut off ({error}); asking once more");
+                    retried = true;
+                }
+                Err(error) => return Err(model_error(&error)),
             }
-            last_sent = Some(now);
-            let draft = DraftPreview { output_tokens: estimate_tokens(written_bytes), ..DraftPreview::default() };
-            (self.on_progress)(BuildProgress { stage, message: stage_message.to_owned(), draft: Some(draft) });
-        })
-        .await
-        .map_err(|error| model_error(&error))?;
+        };
         log::debug!("builder model {schema_name} ({} chars):\n{}", response.text.len(), response.text);
         Ok(response.text)
+    }
+}
+
+/// Replaces each lookup on a site the job does not name with the best offered operation that
+/// only reads: the job matched that plugin, and a small model otherwise copies an example
+/// address (a Wikipedia summary for an exchange rate) or guesses an API.
+fn prefer_offered_reading(plan: &mut Plan, operations: &[OfferedOperation], job: &str, is_chatbot: bool) {
+    let job_words: Vec<String> = job
+        .to_lowercase()
+        .split(|character: char| !character.is_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .map(str::to_owned)
+        .collect();
+    // Services the catalog has a plugin for: a raw lookup on their API (`api.whatsapp.com`)
+    // needs the account the plugin holds, so it never works as a lookup.
+    let plugin_names: std::collections::BTreeSet<String> =
+        crate::plugins::operations::offered_operations().into_iter().map(|operation| operation.plugin).collect();
+    let reading = operations.iter().find(|operation| !operation.sends);
+    let summary = plan.summary.clone();
+    let has_other_result = |steps: &[PlanStep], index: usize| {
+        steps.iter().enumerate().any(|(other, step)| other != index && step.has_result())
+    };
+    let mut index = 0;
+    while index < plan.steps.len() {
+        let PlanStep::Lookup { title, url } = &plan.steps[index] else {
+            index += 1;
+            continue;
+        };
+        let Some(host) = url.host().map(str::to_owned) else {
+            index += 1;
+            continue;
+        };
+        let labels: Vec<&str> = host
+            .split(['.', '-'])
+            .filter(|label| label.len() >= 4 && !matches!(*label, "www" | "api" | "apis"))
+            .collect();
+        let named = labels.iter().any(|label| job_words.iter().any(|word| word == label));
+        // `whatsapp` for the `whatsapp-api` plugin as well as for one named `whatsapp`.
+        let plugin_service = labels
+            .iter()
+            .any(|label| plugin_names.iter().any(|plugin| plugin == label || plugin.starts_with(&format!("{label}-"))));
+        if let Some(operation) = reading.filter(|_| !is_chatbot && (!named || plugin_service)) {
+            log::info!("the lookup on {host} becomes the offered operation {}", operation.kind);
+            let instruction = if summary.is_empty() { title.clone() } else { summary.clone() };
+            plan.steps[index] = PlanStep::Use {
+                title: title.clone(),
+                instruction,
+                operation: operation.kind.clone(),
+                fields: std::collections::BTreeMap::new(),
+            };
+        } else if (plugin_service || (is_chatbot && !named)) && has_other_result(&plan.steps, index) {
+            // A chatbot answers from what the job says; a guessed API only fails the chat.
+            log::info!("the lookup on {host} is left out: nothing the job names lives there");
+            plan.steps.remove(index);
+            continue;
+        }
+        index += 1;
+    }
+}
+
+/// Why a plan is not used.
+enum PlanProblem {
+    /// A sentence for the model; it is asked again.
+    Repair(String),
+    /// The job needs the full workflow format; asking again would not help.
+    OutOfReach(&'static str),
+}
+
+impl From<String> for PlanProblem {
+    fn from(problem: String) -> Self {
+        Self::Repair(problem)
     }
 }
 

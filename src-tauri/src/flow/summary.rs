@@ -120,7 +120,16 @@ fn build_step(node: &GraphNode, depth: u32) -> FlowStep {
         detail: step_detail(&node.kind, config),
         needs_approval: step_needs_approval(&node.kind, config),
         depth,
+        config_fingerprint: fingerprint(config),
     }
+}
+
+/// A hash of a step's configuration as JSON (never 0, which means "unknown").
+fn fingerprint(config: &impl serde::Serialize) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    serde_json::to_string(config).unwrap_or_default().hash(&mut hasher);
+    hasher.finish().max(1)
 }
 
 /// Readable label for a node type without a title.
