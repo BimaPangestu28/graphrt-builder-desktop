@@ -1,6 +1,6 @@
 {
   "name": "graphrt-builder-desktop",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "graphrt desktop app: build, test and run automation agents on your computer (macOS, Windows, Linux)",
   "license": "Apache-2.0",
