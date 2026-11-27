@@ -7,7 +7,9 @@ use crate::agent_graph::skills::{self as agent_skills, AgentSkills};
 use crate::agent_graph::{self, GraphContext};
 use crate::error::{AppError, AppResult};
 use crate::flow;
-use crate::skills::models::{AuthoredSkillInput, InstalledSkill, SkillCatalog, SkillReview, ToolPermission};
+use crate::skills::models::{
+    AuthoredSkillInput, InstalledSkill, SkillCatalog, SkillDraftSource, SkillDraftView, SkillReview, ToolPermission,
+};
 use crate::state::AppState;
 
 #[tauri::command]
@@ -41,13 +43,19 @@ pub async fn install_catalog_skill(
     state.skills.install_catalog_skill(name.trim(), &review_id, &permissions, accept_findings.unwrap_or(false)).await
 }
 
-/// Drafts a skill from the "Create a skill" form for the confirmation screens.
+/// Asks the person's model to draft a skill from plain words or an example conversation.
+#[tauri::command]
+pub async fn draft_skill(state: State<'_, AppState>, source: SkillDraftSource) -> AppResult<SkillDraftView> {
+    state.skills.draft_skill(&source).await
+}
+
+/// Checks the draft as the person left it, for the confirmation screens.
 #[tauri::command]
 pub fn review_authored_skill(state: State<'_, AppState>, input: AuthoredSkillInput) -> AppResult<SkillReview> {
     state.skills.review_authored_skill(&input)
 }
 
-/// Installs the skill drafted from the form, as reviewed.
+/// Installs the draft, as reviewed.
 #[tauri::command]
 pub fn install_authored_skill(
     state: State<'_, AppState>,
