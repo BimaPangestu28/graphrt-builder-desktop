@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { BackendError } from '@/api/client'
 import { resetSampleAgents } from '@/api/sampleBackend/agents'
 import { resetSampleSkills, sampleSkillsBackend, setSampleDraftModelConnected } from '@/api/sampleBackend/skills'
 import { routePaths, skillAddPath, skillAddPattern, skillDetailPattern } from '@/routes'
@@ -262,6 +263,16 @@ describe('creating a skill', () => {
     await userEvent.type(screen.getByLabelText('What should it do?'), 'Apologise first')
     await next()
     expect(await screen.findByText('What will be saved')).toBeInTheDocument()
+  })
+
+  it('explains a model key that cannot be read without the technical error', async () => {
+    vi.spyOn(sampleSkillsBackend, 'draftSkill').mockRejectedValueOnce(new BackendError('credentials', 'credential store error: DBus error: no reply'))
+    renderWizard(routePaths.skillCreate)
+    await userEvent.type(screen.getByLabelText('What should the agent do, and when?'), 'Anything')
+    await userEvent.click(screen.getByRole('button', { name: 'Write the draft' }))
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('could not be read from this computer’s password store')
+    expect(alert).not.toHaveTextContent('DBus')
   })
 
   it('says why a draft could not be written', async () => {

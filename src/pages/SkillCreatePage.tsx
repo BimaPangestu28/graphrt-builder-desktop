@@ -37,7 +37,9 @@ export function SkillCreatePage() {
       setIsManual(false)
     } catch (draftError) {
       const needsModel = isBackendErrorWithCode(draftError, 'missing_credentials')
-      setError({ message: needsModel ? t.describe.noModel : t.describe.couldNotDraft(describeError(draftError)), needsModel })
+      const keyUnreadable = isBackendErrorWithCode(draftError, 'credentials')
+      const message = needsModel ? t.describe.noModel : keyUnreadable ? t.describe.keyUnreadable : t.describe.couldNotDraft(describeError(draftError))
+      setError({ message, needsModel })
     } finally {
       setIsWorking(false)
     }
