@@ -18,7 +18,7 @@ function buildTrigger(id: string, agentId: string): Trigger {
 }
 
 function buildRun(id: string, agentId: string, startedAt: string, status: Run['status'], outputs: Run['outputs'] = null): Run {
-  return { id, agentId, agentVersion: 1, trigger: 'schedule', status, startedAt, finishedAt: null, outputs, errorMessage: null, pauseReasons: null }
+  return { id, agentId, agentVersion: 1, trigger: 'schedule', status, startedAt, finishedAt: null, outputs, errorMessage: null, errorType: null, pauseReasons: null }
 }
 
 describe('toPastRuns', () => {

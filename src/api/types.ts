@@ -41,6 +41,8 @@ export interface Run {
   finishedAt: string | null
   outputs: Record<string, unknown> | null
   errorMessage: string | null
+  /** The error kind a failed run stopped with (`setup_required`, `timeout`…), null otherwise. */
+  errorType: string | null
   /** graphrt PauseReason[] when paused: { frame, node_id, kind, data } */
   pauseReasons: GraphrtPauseReason[] | null
 }

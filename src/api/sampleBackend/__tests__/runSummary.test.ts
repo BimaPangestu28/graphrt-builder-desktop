@@ -17,6 +17,7 @@ function buildRun(changes: Partial<Run>): Run {
     finishedAt: '2026-11-18T09:01:30.500Z',
     outputs: null,
     errorMessage: null,
+    errorType: null,
     pauseReasons: null,
     ...changes,
   }

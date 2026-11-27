@@ -127,6 +127,7 @@ function buildRetriedRun(runId: string): Run {
     finishedAt: null,
     outputs: null,
     errorMessage: null,
+    errorType: null,
     pauseReasons: null,
   }
 }

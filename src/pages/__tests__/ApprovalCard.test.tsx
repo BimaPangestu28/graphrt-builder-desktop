@@ -20,6 +20,7 @@ function buildPausedRun(pauseReasons: Run['pauseReasons']): Run {
     finishedAt: null,
     outputs: null,
     errorMessage: null,
+    errorType: null,
     pauseReasons,
   }
 }

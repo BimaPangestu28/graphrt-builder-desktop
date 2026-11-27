@@ -251,6 +251,16 @@ describe('run error text', () => {
     expect(humanizeRunError('http: server returned status 503', 'POST api.example.com').summary).toBe('api.example.com had a problem on its side (503). Try again later')
     expect(humanizeRunError('model: the prompt is too long').summary).toBe('The prompt is too long')
   })
+
+  it('explains a plugin error by its kind, while a known network problem still names the host', () => {
+    const lockError = humanizeRunError('Could not lock the numbering file: EEXIST', null, 'plugin_error')
+    expect(lockError).toMatchObject({ summary: 'The plugin ran into a problem', raw: 'Could not lock the numbering file: EEXIST' })
+    expect(lockError.help?.remedy).toBe('pluginPage')
+    expect(humanizeRunError('dns error: failed to lookup address information', 'GET api.example.com', 'network_error').summary).toBe(
+      "Could not reach api.example.com: that address doesn't exist",
+    )
+    expect(humanizeRunError('something new', null, 'brand_new_kind')).toMatchObject({ summary: 'Something new', help: null })
+  })
 })
 
 describe('run header and value summaries', () => {
@@ -264,6 +274,7 @@ describe('run header and value summaries', () => {
     finishedAt: null,
     outputs: null,
     errorMessage: null,
+    errorType: null,
     pauseReasons: null,
   }
 

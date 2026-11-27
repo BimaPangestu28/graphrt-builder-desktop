@@ -51,6 +51,7 @@ function buildPausedRun(pauseData: unknown): Run {
     finishedAt: null,
     outputs: null,
     errorMessage: null,
+    errorType: null,
     pauseReasons: [{ frame: '', node_id: 'check_order', kind: 'human_input', data: pauseData }],
   }
 }

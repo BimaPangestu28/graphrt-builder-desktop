@@ -123,6 +123,7 @@ function reviewAsRun(review: RunReview): Run {
     finishedAt: review.status === 'succeeded' ? new Date().toISOString() : null,
     outputs: null,
     errorMessage: null,
+    errorType: null,
     pauseReasons: null,
   }
 }

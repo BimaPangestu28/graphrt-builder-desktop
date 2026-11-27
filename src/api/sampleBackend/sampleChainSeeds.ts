@@ -137,6 +137,7 @@ export function buildSampleMemberRun(member: TeamMemberSample): Run | null {
     finishedAt: isFinished ? sampleTimestamp(0, 12, 31) : null,
     outputs: isFinished ? {} : null,
     errorMessage: null,
+    errorType: null,
     pauseReasons: null,
   }
 }

@@ -94,7 +94,7 @@ export function buildPausedRunItems(pausedRuns: Run[], agentName: AgentNameLooku
 export function describeRunResult(run: Run): string {
   const summary = run.outputs?.summary
   const t = messages().home
-  if (run.status === 'failed') return run.errorMessage ? humanizeRunError(run.errorMessage).summary : t.resultFailed
+  if (run.status === 'failed') return run.errorMessage ? humanizeRunError(run.errorMessage, null, run.errorType).summary : t.resultFailed
   if (typeof summary === 'string' && summary.trim().length > 0) return summary.trim()
   if (run.status === 'paused') return readPauseQuestion(run) ?? t.resultWaiting
   if (run.status === 'running') return t.resultRunning
