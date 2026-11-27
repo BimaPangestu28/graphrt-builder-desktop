@@ -551,7 +551,12 @@ mod tests {
 
     fn plan_with(json_text: &str, operations: &[OfferedOperation], chatbot: bool) -> Plan {
         let message = chatbot_message_input();
-        let rules = PlanRules { fixed_input: chatbot.then_some(&message), operations, allows_approvals: !chatbot };
+        let rules = PlanRules {
+            fixed_input: chatbot.then_some(&message),
+            operations,
+            allows_approvals: !chatbot,
+            link_given: false,
+        };
         normalize(parse(json_text).unwrap(), &rules).unwrap()
     }
 

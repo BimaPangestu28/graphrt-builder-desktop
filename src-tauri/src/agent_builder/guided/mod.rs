@@ -84,6 +84,8 @@ struct Planning<'a> {
     description: Option<&'a str>,
     /// The plan being changed: its plugin steps keep their fields where nothing before them moved.
     previous: Option<&'a Plan>,
+    /// The person gives the agent a link to read (see [`PlanRules::link_given`]).
+    link_given: bool,
     on_progress: ProgressSink<'a>,
 }
 
@@ -114,6 +116,7 @@ pub(super) async fn draft(
         trusted_hosts: &no_trusted_hosts,
         description: Some(description),
         previous: None,
+        link_given: coverage::gives_a_link(description),
         on_progress,
     };
     let rules = planning.rules();
@@ -177,6 +180,11 @@ pub(super) async fn revise(
         trusted_hosts,
         description: None,
         previous: Some(&current_plan),
+        link_given: coverage::gives_a_link(&format!("{}\n{instruction}", agent.description))
+            || current_plan
+                .steps
+                .iter()
+                .any(|step| matches!(step, PlanStep::Lookup { url, .. } if url.host().is_none())),
         on_progress,
     };
     let rules = planning.rules();
@@ -275,6 +283,7 @@ impl Planning<'_> {
             fixed_input: is_chatbot.then_some(&*MESSAGE_INPUT),
             operations: &self.operations,
             allows_approvals: !is_chatbot,
+            link_given: self.link_given,
         }
     }
 

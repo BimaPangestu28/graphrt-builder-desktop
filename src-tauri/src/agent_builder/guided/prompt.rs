@@ -33,8 +33,11 @@ the results of the earlier steps, so do not repeat them.";
 
 const LOOKUP: &str = "\
 - \"lookup\": read a public web address to get facts. Only when \"looks_up_the_web\" is true. \"url\" is the full \
-https address and may use an input as {name}, e.g. https://en.wikipedia.org/api/rest_v1/page/summary/{topic}; for a \
-link the person gives, \"url\" is just that input, e.g. {link}. Use a real address that needs no key or account.";
+https address and may use an input as {name}, e.g. https://en.wikipedia.org/api/rest_v1/page/summary/{topic}. Use a \
+real address that needs no key or account.";
+
+/// Added to [`LOOKUP`] when the job says the person gives a link.
+const LOOKUP_GIVEN_LINK: &str = " For the link the person gives, \"url\" is just that input, e.g. {link}.";
 
 const APPROVE: &str = "\
 - \"approve\": stop and ask the person before going on. Only when the job says to ask, confirm or check with them \
@@ -56,6 +59,9 @@ pub(super) fn system_prompt(rules: &PlanRules<'_>) -> String {
         prompt.push_str(" A \"use\" step also has \"operation\"; other steps leave it empty.");
     }
     prompt.push_str(&format!("\n{SCHEDULE}\n\nStep kinds:\n{WRITE}\n{LOOKUP}"));
+    if rules.link_given {
+        prompt.push_str(LOOKUP_GIVEN_LINK);
+    }
     if rules.allows_approvals {
         prompt.push_str(&format!("\n{APPROVE}"));
     }
@@ -149,7 +155,7 @@ mod tests {
     use crate::plugins::operations::tests::send_email_operation;
 
     fn task_rules(operations: &[OfferedOperation]) -> PlanRules<'_> {
-        PlanRules { fixed_input: None, operations, allows_approvals: true }
+        PlanRules { fixed_input: None, operations, allows_approvals: true, link_given: false }
     }
 
     /// A local Ollama model reads about 4,000 tokens; the prompt must leave most of that free.
@@ -168,8 +174,12 @@ mod tests {
     #[test]
     fn a_chatbot_is_not_told_about_approvals() {
         let message = chatbot_message_input();
-        let prompt =
-            system_prompt(&PlanRules { fixed_input: Some(&message), operations: &[], allows_approvals: false });
+        let prompt = system_prompt(&PlanRules {
+            fixed_input: Some(&message),
+            operations: &[],
+            allows_approvals: false,
+            link_given: false,
+        });
         assert!(prompt.contains("chatbot"));
         assert!(!prompt.contains("\"approve\""));
         assert!(!system_prompt(&task_rules(&[])).contains("chatbot"));

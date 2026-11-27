@@ -211,6 +211,19 @@ pub(super) fn schedule_in_words(description: &str) -> Option<Schedule> {
     Some(Schedule { repeat, hour })
 }
 
+/// Words that say the person hands the agent a web address.
+const LINK_WORDS: &[&str] = &["link", "links", "url", "urls", "tautan", "website", "webpage"];
+
+/// Whether the description says the person gives the agent a link to read ("the web page
+/// at a link I give", "tautan yang saya kirim").
+///
+/// @example `gives_a_link("Summarize the page at a link I give") == true`
+/// @example `gives_a_link("Look up the Wikipedia summary for Jakarta") == false`
+pub(super) fn gives_a_link(description: &str) -> bool {
+    let words = words(description);
+    words.iter().any(|word| LINK_WORDS.contains(&word.as_str())) || has_phrase(&words, &[&["web", "page"]])
+}
+
 fn acts_outside(words: &[String]) -> bool {
     words.iter().any(|word| ACTING_WORDS.contains(&word.as_str())) || has_phrase(words, ACTING_PHRASES)
 }
@@ -302,6 +315,15 @@ mod tests {
             },
         ]);
         assert_eq!(missing_action("Write a note and send it by email", &sends), None);
+    }
+
+    #[test]
+    fn a_link_the_person_gives_is_told_apart_from_a_site_the_job_names() {
+        assert!(gives_a_link("Read the web page at a link I give and summarize it in three bullet points"));
+        assert!(gives_a_link("Ringkas halaman dari tautan yang saya kirim"));
+        assert!(gives_a_link("Summarize the URL I paste"));
+        assert!(!gives_a_link("Look up the Wikipedia page summary for Jakarta and write a two sentence summary of it"));
+        assert!(!gives_a_link("Write a polite reply to a customer complaint that I paste in"));
     }
 
     #[test]

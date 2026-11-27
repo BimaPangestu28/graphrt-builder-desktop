@@ -229,6 +229,10 @@ pub(super) struct PlanRules<'a> {
     pub operations: &'a [OfferedOperation],
     /// Whether the agent may stop and ask the person (a chatbot cannot).
     pub allows_approvals: bool,
+    /// Whether the person gives the agent a link to read; only then is the prompt told
+    /// that a lookup's address may be just an input (a small model otherwise writes
+    /// `{topic}` as the address of a Wikipedia lookup).
+    pub link_given: bool,
 }
 
 /// The JSON schema the model's answer must follow. `operations` are the plugin operations
@@ -756,7 +760,7 @@ mod tests {
     const NO_OPERATIONS: &[OfferedOperation] = &[];
 
     fn task_rules(operations: &[OfferedOperation]) -> PlanRules<'_> {
-        PlanRules { fixed_input: None, operations, allows_approvals: true }
+        PlanRules { fixed_input: None, operations, allows_approvals: true, link_given: false }
     }
 
     fn normalized(json_text: &str) -> Result<Plan, String> {
@@ -928,7 +932,12 @@ mod tests {
     #[test]
     fn a_chatbot_reads_only_the_message_and_never_asks() {
         let message = PlanInput { long_text: true, ..input("message", "Customer message") };
-        let rules = PlanRules { fixed_input: Some(&message), operations: NO_OPERATIONS, allows_approvals: false };
+        let rules = PlanRules {
+            fixed_input: Some(&message),
+            operations: NO_OPERATIONS,
+            allows_approvals: false,
+            link_given: false,
+        };
         let raw = parse(
             r#"{"looks_up_the_web": true, "inputs": [{"name": "question", "label": "Q", "long_text": false}],
                 "steps": [{"kind": "lookup", "title": "L", "instruction": "", "url": "https://wttr.in/{city}"},
@@ -943,7 +952,8 @@ mod tests {
         assert_eq!(url.to_graphrt_template(), "https://wttr.in/{{#start.message#}}");
 
         let sends = [send_email_operation()];
-        let rules = PlanRules { fixed_input: Some(&message), operations: &sends, allows_approvals: false };
+        let rules =
+            PlanRules { fixed_input: Some(&message), operations: &sends, allows_approvals: false, link_given: false };
         let raw = parse(r#"{"steps": [{"kind": "use", "title": "Send", "instruction": "Send it", "operation": "email.send_email"}]}"#).unwrap();
         assert!(normalize(raw, &rules).unwrap_err().contains("cannot ask the person first"));
     }
