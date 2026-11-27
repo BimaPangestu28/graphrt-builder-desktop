@@ -424,7 +424,7 @@ export const agentRun = defineMessages(
     fillInField: (label) => `Isi ${label}`,
     mustBeNumber: (label) => `${label} harus berupa angka`,
     notValidJson: (label) => `${label} bukan JSON yang valid`,
-    rowMustBeNumber: (label, row, column) => `${label}, baris ${row}: ${column} harus berupa angka`,
+    rowMustBeNumber: (label, row, column) => `${column} di baris ${row} pada ${label} harus berupa angka`,
     addAtLeastOneRow: (label) => `Tambahkan minimal satu baris ke ${label}`,
     addRow: 'Tambah baris',
     removeRow: (row) => `Hapus baris ${row}`,
