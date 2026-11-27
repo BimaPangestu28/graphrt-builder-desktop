@@ -1,10 +1,12 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { setDefaultModel } from '@/api/credentials'
 import { useAvailableModels } from '@/hooks/useAvailableModels'
 import { useProviderStatuses } from '@/hooks/useProviderStatuses'
 import { describeError } from '@/lib/agentDisplay'
 import { buildModelOptionGroups, describeModelChoice } from '@/lib/modelChoices'
-import { ActionRow, SelectRow } from './SettingRows'
+import { connectionsTabPath } from '@/routes'
+import { ActionRow, SelectRow, settingsButtonClassNames } from './SettingRows'
 import { useT } from '@/i18n'
 
 /**
@@ -25,7 +27,22 @@ export function DefaultModelRow() {
     return <ActionRow title={title} description={status} action={null} />
   }
 
-  const choices = buildModelOptionGroups(providerSetup.defaultModel, providerSetup.statuses, availableModelsState.data).flatMap(
+  if (!providerSetup.defaultModel) {
+    return (
+      <ActionRow
+        title={title}
+        description={t.noModelConnectedYet}
+        action={
+          <Link to={connectionsTabPath('models')} className={`${settingsButtonClassNames} inline-flex h-[34px] items-center rounded-lg px-3 no-underline !text-ink`}>
+            {t.connectAModel}
+          </Link>
+        }
+      />
+    )
+  }
+  const defaultModel = providerSetup.defaultModel
+
+  const choices = buildModelOptionGroups(defaultModel, providerSetup.statuses, availableModelsState.data).flatMap(
     (group) => group.choices,
   )
   const labels = choices.map(describeModelChoice)
@@ -47,7 +64,7 @@ export function DefaultModelRow() {
       <SelectRow
         title={title}
         description={t.defaultModelHint}
-        value={describeModelChoice(providerSetup.defaultModel)}
+        value={describeModelChoice(defaultModel)}
         options={labels}
         onSelect={(label) => void selectModel(label)}
       />

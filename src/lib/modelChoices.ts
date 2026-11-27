@@ -96,22 +96,24 @@ function putCliDefaultFirst(choices: ModelChoice[]): ModelChoice[] {
  * @returns Groups in display order (ModelOptionGroup[])
  */
 export function buildModelOptionGroups(
-  defaultModel: ModelChoice,
+  defaultModel: ModelChoice | null,
   statuses: ProviderStatus[],
   catalog: ProviderModels[] | null,
 ): ModelOptionGroup[] {
   const connectedProviders = statuses
     .filter((status) => status.configured)
     .map((status) => status.provider)
-    .filter((provider) => provider !== 'ollama' || provider === defaultModel.provider || catalog?.some((list) => list.provider === 'ollama'))
-  const providers = [defaultModel.provider, ...connectedProviders.filter((provider) => provider !== defaultModel.provider)]
+    .filter((provider) => provider !== 'ollama' || provider === defaultModel?.provider || catalog?.some((list) => list.provider === 'ollama'))
+  const providers = defaultModel
+    ? [defaultModel.provider, ...connectedProviders.filter((provider) => provider !== defaultModel.provider)]
+    : connectedProviders
   return providers.map((provider) => {
     const list = catalog?.find((candidate) => candidate.provider === provider)
     const listedChoices = putCliDefaultFirst((list?.models ?? []).map((model) => ({ provider, name: model.id })))
     const fallbackNote = !catalog ? null : list?.error ? messages().connections.showingTheRecommendedModelError(list.error) : null
     const choices = listedChoices.length > 0 ? listedChoices : [recommendedModelFor(provider)]
     const withDefault =
-      provider === defaultModel.provider && !choices.some((choice) => choice.name === defaultModel.name) ? [defaultModel, ...choices] : choices
+      defaultModel && provider === defaultModel.provider && !choices.some((choice) => choice.name === defaultModel.name) ? [defaultModel, ...choices] : choices
     return { provider, label: modelProviderNames[provider], choices: withDefault, note: listedChoices.length > 0 ? null : fallbackNote }
   })
 }

@@ -24,9 +24,9 @@ function isModelProvider(connectionId: string): connectionId is ModelProvider {
  * What the app really knows about a connected provider: the default model's name, or
  * where the key, local server or CLI is. No usage or cost (there is no pricing data).
  */
-function describeConnectedProvider(status: ProviderStatus, defaultModel: ModelChoice, isDefault: boolean): string {
+function describeConnectedProvider(status: ProviderStatus, defaultModel: ModelChoice | null, isDefault: boolean): string {
   const location = describeProviderLocation(status)
-  return isDefault ? messages().connections.locationDefaultModelModelname(location, describeModelName(defaultModel)) : location
+  return isDefault && defaultModel ? messages().connections.locationDefaultModelModelname(location, describeModelName(defaultModel)) : location
 }
 
 function describeProviderLocation(status: ProviderStatus): string {
@@ -52,13 +52,13 @@ function describeConnectedLabel(provider: ModelProvider, isDefault: boolean): st
  */
 export function buildModelConnections(
   statuses: ProviderStatus[],
-  defaultModel: ModelChoice,
+  defaultModel: ModelChoice | null,
   { useDesignText = !isDesktopApp() }: { useDesignText?: boolean } = {},
 ): ModelConnection[] {
   return listModelCardTemplates().flatMap((template) => {
     const status = statuses.find((candidate) => candidate.provider === template.id)
     if (!status || !isModelProvider(template.id)) return []
-    const state: Connection['state'] = !status.configured ? 'available' : status.provider === defaultModel.provider ? 'default' : 'connected'
+    const state: Connection['state'] = !status.configured ? 'available' : status.provider === defaultModel?.provider ? 'default' : 'connected'
     const isDefault = state === 'default'
     const usesDesignText = useDesignText && !isLocalCliProvider(status.provider)
     return [

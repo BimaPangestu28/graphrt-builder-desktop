@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { BackendError } from '@/api/client'
 import type { McpServerDefinition, WorkflowSecretOverview } from '@/api/connectionTypes'
 import { connectionsTabPattern } from '@/routes'
 import { ConnectionsTabPage } from '../ConnectionsPage'
@@ -11,6 +12,8 @@ import { ConnectionsTabPage } from '../ConnectionsPage'
 
 let workflowSecrets: WorkflowSecretOverview[] = []
 let mcpServers: McpServerDefinition[] = []
+/** No model connected yet: every provider unconfigured and no default model. */
+let noModelYet = false
 
 function answerBackend(command: string): unknown {
   switch (command) {
@@ -19,8 +22,11 @@ function answerBackend(command: string): unknown {
     case 'list_mcp_servers':
       return mcpServers
     case 'list_provider_statuses':
-      return [{ provider: 'ollama', configured: true, baseUrl: 'http://localhost:11434' }]
+      return noModelYet
+        ? [{ provider: 'openai', configured: false }, { provider: 'ollama', configured: false, baseUrl: null }]
+        : [{ provider: 'ollama', configured: true, baseUrl: 'http://localhost:11434' }]
     case 'get_default_model':
+      if (noModelYet) throw new BackendError('missing_credentials', 'not set up yet: an AI model')
       return { provider: 'ollama', name: 'llama3.2' }
     case 'list_installed_plugins':
     case 'list_plugin_catalog':
@@ -65,6 +71,17 @@ describe('ConnectionsPage in the desktop app', () => {
   beforeEach(() => {
     workflowSecrets = []
     mcpServers = []
+    noModelYet = false
+  })
+
+  it('explains how to connect a model instead of showing an error when none is connected yet', async () => {
+    noModelYet = true
+    renderConnectionsPage('/connections/models')
+    expect(await screen.findByRole('heading', { name: 'Connect an AI model to get started' })).toBeInTheDocument()
+    expect(screen.queryByText(/Could not load AI models/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/not set up yet/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Connect a model' })).toBeInTheDocument()
+    expect(await screen.findByText('OpenAI')).toBeInTheDocument()
   })
 
   it('shows no sample apps, no Apps tab and honest empty states', async () => {

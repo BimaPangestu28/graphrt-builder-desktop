@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import type { AppSettings } from '@/api/appSettingsTypes'
+import { BackendError } from '@/api/client'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { LocaleRoot } from '@/i18n/LocaleRoot'
 
@@ -8,6 +9,9 @@ import { LocaleRoot } from '@/i18n/LocaleRoot'
  * The Settings screen inside the desktop app: every visible control is stored by the
  * backend, and the design's controls without a backend are hidden.
  */
+
+/** No model connected yet: `get_default_model` answers `missing_credentials`. */
+let noModelYet = false
 
 const backendCalls: Array<{ command: string; commandArguments?: Record<string, unknown> }> = []
 let storedSettings: AppSettings
@@ -48,6 +52,7 @@ function answerBackend(command: string, commandArguments?: Record<string, unknow
         { provider: 'ollama', configured: true, baseUrl: 'http://localhost:11434' },
       ]
     case 'get_default_model':
+      if (noModelYet) throw new BackendError('missing_credentials', 'not set up yet: an AI model')
       return { provider: 'openai', name: 'gpt-4o-mini' }
     case 'list_crash_reports':
       return []
@@ -83,6 +88,7 @@ describe('SettingsPage in the desktop app', () => {
   beforeEach(() => {
     storedSettings = createStoredSettings()
     backendCalls.length = 0
+    noModelYet = false
   })
 
   it('hides the controls that have no backend', async () => {
@@ -145,5 +151,13 @@ describe('SettingsPage in the desktop app', () => {
     renderSettingsPage()
     const modelSelect = await screen.findByRole('combobox', { name: /Default AI model for new agents/ })
     expect(Array.from((modelSelect as HTMLSelectElement).options, (option) => option.value)).toEqual(['OpenAI gpt-4o-mini'])
+  })
+
+  it('points to Connections instead of an error while no model is connected', async () => {
+    noModelYet = true
+    renderSettingsPage()
+    expect(await screen.findByText('No AI model connected yet. Connect one and it becomes the default')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Connect a model' })).toHaveAttribute('href', '/connections/models')
+    expect(screen.queryByText(/Could not load the AI models/)).not.toBeInTheDocument()
   })
 })
