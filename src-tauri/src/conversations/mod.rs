@@ -37,6 +37,8 @@ pub mod file_cleanup;
 #[cfg(test)]
 mod file_tests;
 pub mod models;
+#[cfg(test)]
+mod real_model_tests;
 mod store;
 pub mod tauri_sink;
 #[cfg(test)]

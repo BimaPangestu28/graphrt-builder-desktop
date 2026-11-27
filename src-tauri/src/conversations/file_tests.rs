@@ -468,3 +468,59 @@ async fn taking_a_file_off_a_message_never_removes_one_that_was_sent() {
     assert!(harness.conversations.discard_attachment(&other_chat.id, &sent.reference).await.is_err());
     assert!(harness.conversations.discard_attachment("no-such-chat", &sent.reference).await.is_err());
 }
+
+/// A chatbot whose one `llm` step looks at pictures and has no tools at all.
+const VISION_ONLY_FLOW: &str = r#"
+version: "1"
+name: vision-chatbot
+graph:
+  nodes:
+    - id: start
+      type: start
+      variables:
+        - { variable: message, type: paragraph, required: true }
+    - id: look
+      type: llm
+      model: { provider: openai, name: gpt-4o-mini }
+      prompt_template:
+        - { role: user, text: "{{#start.message#}}" }
+      vision: { enabled: true }
+    - id: reply
+      type: answer
+      answer: "{{#look.text#}}"
+    - id: end
+      type: end
+      outputs: []
+  edges:
+    - { source: start, target: look }
+    - { source: look, target: reply }
+    - { source: reply, target: end }
+"#;
+
+/// Found with a real model: a chatbot that only looks at pictures could not read the picture
+/// a customer attached ("image has no URL"), because nothing resolved the workspace for it.
+#[tokio::test]
+async fn a_chatbot_that_only_looks_at_pictures_sees_an_attached_picture() {
+    let harness = Harness::new(VISION_ONLY_FLOW);
+    let conversation = harness.start_chat();
+    let pictures_only = FileAbilities { reads_files: false, sees_pictures: true, makes_files: false };
+    assert_eq!(crate::agent_files::abilities::FlowFileUse::of(VISION_ONLY_FLOW).abilities(), pictures_only);
+    let photo = harness.attach(&conversation, "venue.jpg", PHOTO_WITH_GPS).await;
+    harness.model.push(MockModel::text("Itu foto lokasi acara."));
+
+    let detail = harness
+        .conversations
+        .send_customer_message_with_files(&conversation.id, "Ini foto apa?", std::slice::from_ref(&photo.reference))
+        .await
+        .unwrap();
+    assert_eq!(
+        (detail.messages[1].author, detail.messages[1].text.as_str()),
+        (MessageAuthor::Bot, "Itu foto lokasi acara."),
+        "{:?}",
+        detail.messages
+    );
+    let images = images_sent_to_the_model(&harness.model);
+    assert_eq!(images.len(), 1, "the attached picture reached the model");
+    assert!(!contains(&images[0], EXIF_SECRET) && !contains(&images[0], b"Exif"));
+    assert!(harness.model.requests()[0].tools.is_empty(), "looking at pictures offers no tools");
+}
