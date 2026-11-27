@@ -10,6 +10,10 @@
 //! - text that is JSON, for an `array` or `object`;
 //! - a whole number written as `400.0`, for an `integer`.
 //!
+//! Argument names get the same care, because llama3.2 asked `image/resize` for `width` where
+//! the tool calls it `max_width`: a name the tool does not know is trimmed, and when exactly
+//! one of the tool's own names ends in `_<name>` (and was not given) the value goes there.
+//!
 //! Nothing else changes: a value that does not fit is passed on as it was and the tool
 //! refuses it with its own message. Paths and other text are never touched.
 //!
@@ -125,13 +129,33 @@ pub(super) fn fit_to_schema(value: Json, schema: &Json) -> Json {
 
 fn fit_fields(fields: Map<String, Json>, properties: Option<&Map<String, Json>>) -> Map<String, Json> {
     let Some(properties) = properties else { return fields };
+    let given: Vec<String> = fields.keys().map(|name| name.trim().to_owned()).collect();
     fields
         .into_iter()
-        .map(|(name, value)| match properties.get(&name) {
-            Some(schema) => (name, fit_to_schema(value, schema)),
-            None => (name, value),
+        .map(|(name, value)| {
+            let name = known_name(&name, properties, &given);
+            match properties.get(&name) {
+                Some(schema) => (name, fit_to_schema(value, schema)),
+                None => (name, value),
+            }
         })
         .collect()
+}
+
+/// The tool's own name for an argument a model called `name`: `name` itself when the tool
+/// knows it (also after trimming spaces), or the one name of the tool that ends in `_<name>`
+/// and was not given as well (`width` for `max_width`). Anything else stays as it was written.
+fn known_name(name: &str, properties: &Map<String, Json>, given: &[String]) -> String {
+    let trimmed = name.trim();
+    if properties.contains_key(trimmed) {
+        return trimmed.to_owned();
+    }
+    let suffix = format!("_{trimmed}");
+    let mut longer = properties.keys().filter(|known| known.ends_with(&suffix) && !given.contains(known));
+    match (longer.next(), longer.next()) {
+        (Some(only), None) if !trimmed.is_empty() => only.clone(),
+        _ => name.to_owned(),
+    }
 }
 
 /// `number` as a JSON integer when it has no fraction and fits one.
@@ -187,5 +211,30 @@ mod tests {
         assert_eq!(fit_to_schema(json!({ "size": 400.5 }), &schema()), json!({ "size": 400.5 }));
         assert_eq!(fit_to_schema(json!("400"), &json!({})), json!("400"));
         assert_eq!(fit_to_schema(json!({ "size": "400" }), &json!({ "type": "object" })), json!({ "size": "400" }));
+    }
+
+    #[test]
+    fn an_argument_name_the_tool_calls_differently_finds_its_place() {
+        let resize = json!({
+            "type": "object",
+            "properties": {
+                "path": { "type": "string" },
+                "max_width": { "type": "integer" },
+                "max_height": { "type": "integer" },
+                "overwrite": { "type": "boolean" }
+            }
+        });
+        // What llama3.2 sent to `image/resize`.
+        let sent = json!({ "path": "uploads/poster.png", "width": "400", " overwrite": "false" });
+        assert_eq!(
+            fit_to_schema(sent, &resize),
+            json!({ "path": "uploads/poster.png", "max_width": 400, "overwrite": false })
+        );
+        // The tool's own name wins when both are given, and a name that fits two is left alone.
+        let both = json!({ "width": 300, "max_width": 400 });
+        assert_eq!(fit_to_schema(both.clone(), &resize), both);
+        let two_fit = json!({ "type": "object", "properties": { "min_size": { "type": "integer" }, "max_size": { "type": "integer" } } });
+        assert_eq!(fit_to_schema(json!({ "size": "4" }), &two_fit), json!({ "size": "4" }));
+        assert_eq!(fit_to_schema(json!({ "colour": "red" }), &resize), json!({ "colour": "red" }));
     }
 }
