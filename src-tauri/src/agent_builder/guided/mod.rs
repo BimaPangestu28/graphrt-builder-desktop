@@ -352,12 +352,33 @@ impl Planning<'_> {
         let mut plan = plan::normalize(plan::parse(reply)?, rules)?;
         if let Some(description) = self.description {
             if let Some(problem) = coverage::missing_action(description, &plan) {
-                return Err(problem);
+                // A small model rarely adds the step when asked again; the app adds the
+                // sending operation offered for the job (best match first) itself.
+                if !self.add_offered_sending_step(&mut plan, rules) {
+                    return Err(problem);
+                }
             }
             // "Every morning" in the job is a schedule even when the plan forgot it.
             plan.schedule = plan.schedule.or_else(|| coverage::schedule_in_words(description));
         }
         Ok(plan)
+    }
+
+    /// Appends a step with the best offered sending operation to a plan that writes
+    /// something but sends nothing; `false` when there is none to add.
+    fn add_offered_sending_step(&self, plan: &mut Plan, rules: &PlanRules<'_>) -> bool {
+        let Some(operation) = self.operations.iter().find(|operation| operation.sends) else { return false };
+        if !rules.allows_approvals || !plan.steps.iter().any(|step| matches!(step, PlanStep::Write { .. })) {
+            return false;
+        }
+        log::info!("the plan sends nothing; adding the offered step {}", operation.kind);
+        plan.steps.push(PlanStep::Use {
+            title: operation.title.clone(),
+            instruction: format!("{}: send what was written", operation.title),
+            operation: operation.kind.clone(),
+            fields: std::collections::BTreeMap::new(),
+        });
+        true
     }
 
     /// Fills in the fields of every plugin step. `Ok(Err(problem))` is a sentence for the

@@ -226,18 +226,26 @@ async fn a_job_that_sends_uses_an_offered_operation_and_asks_first() {
 }
 
 #[tokio::test]
-async fn a_plan_that_forgets_to_send_is_sent_back_once_then_drafted_in_full() {
+async fn a_plan_that_forgets_to_send_gets_the_offered_sending_step() {
     let _catalog = PublishedCatalog::publish().await;
     let db = Database::open_in_memory().unwrap();
-    let only_writes = reply_plan();
-    let (mock, builder) = local_builder(&[&only_writes, &only_writes, &only_writes, &full_reply()]);
+    let only_writes = format!(
+        r#"{{"looks_up_the_web": false, "summary": "Writes a note.", "name": "Note",
+            "inputs": [{{"name": "address", "label": "Email address", "long_text": false, "value": ""}}],
+            "steps": [{{"kind": "write", "title": "Write the note", "instruction": "Write a short note.", "url": ""}}], {NO_SCHEDULE}}}"#
+    );
+    let fields = r#"{"to": "someone@example.com", "body": "Hello"}"#;
+    let (mock, builder) = local_builder(&[&only_writes, fields]);
 
-    build_agent_with_model(&db, &builder, request("Write a note and send it by mail"), &|_| {}).await.unwrap();
+    let agent =
+        build_agent_with_model(&db, &builder, request("Write a note and send it by mail"), &|_| {}).await.unwrap();
 
-    let requests = mock.requests();
-    assert_eq!(requests.len(), 4);
-    assert!(requests[1].messages.last().unwrap().text().contains("no step does it"));
-    assert!(requests[3].response_format.is_none(), "an agent that only writes is not passed off as one that sends");
+    assert_eq!(mock.requests().len(), 2, "no round is spent asking the model again");
+    let yaml = &agent.flow_yaml;
+    assert!(yaml.contains("type: fixture-mail.send_mail"), "{yaml}");
+    assert!(yaml.contains("type: human-input"), "asked before sending: {yaml}");
+    assert!(yaml.contains("{{#start.address#}}") && !yaml.contains("someone@example.com"), "{yaml}");
+    assert!(yaml.contains("{{#write_1.text#}}"), "the written note is what is sent: {yaml}");
 }
 
 #[tokio::test]
