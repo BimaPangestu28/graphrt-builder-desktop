@@ -11,7 +11,7 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 - **Skills**: teach your agents how you do things, like your refund rules or your tone of voice. The new **Skills** page shows your skills and the ones in the catalog. A skill is only instructions: it never runs code, and it may use a tool only if you allow it.
 - **Add a skill from the catalog**: a short wizard shows what the skill is for, lets you tick which tools it may use (nothing is ticked for you, and a ticked tool asks you first every time unless you choose otherwise), shows what the safety check found, and then lets you pick the agents that use it. An update shows what changed and asks again what it may use.
-- **Create your own skill**: give it a name, say when the agent should use it and list the steps. It goes through the same checks as a catalog skill.
+- **Create your own skill**: say what the agent should do in your own words, or paste a conversation that went the way you want. Your AI model writes a draft, you read and change it, and it then goes through the same checks as a catalog skill. Without a model you can write it yourself.
 - **What this agent learned**: every agent has a **Learned** page with the short notes it picked up. After a run you can say it was not what you wanted and what should be different; that becomes a note waiting for you. A note is used only after you approve it. Notes that nobody verified and notes that are high risk (sending, money, approvals) are marked and say why. You can change, stop using or delete a note, add your own, apply one person's note to everyone, and forget a person. Passwords and keys are hidden before anything is saved. "Learn automatically" is off unless you turn it on.
 
 ## [0.2.0] - 2026-11-26
