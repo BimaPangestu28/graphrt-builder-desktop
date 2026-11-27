@@ -1,6 +1,7 @@
 //! Measures how often the builder makes a working agent with a real local model.
 //!
-//! Not part of the normal test run (`#[ignore]`): it needs Ollama with the model pulled.
+//! Not part of the normal test run (`#[ignore]`): it needs Ollama with the model pulled, or
+//! with `GRAPHRT_EVAL_PROVIDER=openai` an `OPENAI_API_KEY`.
 //!
 //! ```sh
 //! GRAPHRT_EVAL_OLLAMA=http://127.0.0.1:11434 GRAPHRT_EVAL_MODEL=llama3.2 GRAPHRT_EVAL_ATTEMPTS=10 \
@@ -51,14 +52,39 @@ fn ollama_base_url() -> String {
     std::env::var("GRAPHRT_EVAL_OLLAMA").expect("set GRAPHRT_EVAL_OLLAMA, e.g. http://127.0.0.1:11500")
 }
 
-fn ollama_builder(model_name: &str) -> BuilderModel {
+/// Nothing listens here: with a cloud model, no step may reach a local Ollama.
+const NO_OLLAMA: &str = "http://127.0.0.1:9";
+
+/// The model to measure: a local Ollama model, or with `GRAPHRT_EVAL_PROVIDER=openai` an
+/// OpenAI model whose key is read from `OPENAI_API_KEY` (kept in memory only).
+struct EvalSetup {
+    builder: BuilderModel,
+    credentials: Arc<CredentialStore>,
+    ollama_base_url: String,
+}
+
+fn eval_setup(model_name: &str) -> EvalSetup {
+    let credentials = Arc::new(CredentialStore::in_memory());
+    if env_or("GRAPHRT_EVAL_PROVIDER", "ollama") == "openai" {
+        let api_key = std::env::var("OPENAI_API_KEY").expect("set OPENAI_API_KEY for GRAPHRT_EVAL_PROVIDER=openai");
+        credentials.set_api_key(ModelProvider::Openai, api_key.trim()).unwrap();
+        let registry =
+            crate::credentials::build_model_registry(&credentials, &Database::open_in_memory().unwrap()).unwrap();
+        let builder = BuilderModel {
+            model: registry.get("openai").unwrap(),
+            choice: ModelChoice { provider: ModelProvider::Openai, name: model_name.to_owned() },
+            available_providers: vec!["openai".into()],
+        };
+        return EvalSetup { builder, credentials, ollama_base_url: NO_OLLAMA.to_owned() };
+    }
     let base_url = ollama_base_url();
     let model = OpenAiModel::new(OpenAiConfig::new(format!("{base_url}/v1"), None)).unwrap();
-    BuilderModel {
+    let builder = BuilderModel {
         model: Arc::new(model),
         choice: ModelChoice { provider: ModelProvider::Ollama, name: model_name.to_owned() },
         available_providers: vec!["ollama".into()],
-    }
+    };
+    EvalSetup { builder, credentials, ollama_base_url: base_url }
 }
 
 /// A plausible value for each start input, by its type.
@@ -145,7 +171,7 @@ async fn live_eval() {
         Ok(list) => list.split(',').map(|index| index.trim().parse().unwrap()).collect(),
         Err(_) => (0..REQUESTS.len()).collect(),
     };
-    let builder = ollama_builder(&model_name);
+    let EvalSetup { builder, credentials, ollama_base_url } = eval_setup(&model_name);
     let (mut total, mut built, mut worked) = (0, 0, 0);
     for index in chosen {
         let description = REQUESTS[index];
@@ -154,8 +180,7 @@ async fn live_eval() {
             total += 1;
             let db = Arc::new(Database::open_in_memory().unwrap());
             // Runs read the Ollama address from the app's settings.
-            db.set_setting(crate::credentials::SETTING_OLLAMA_BASE_URL, &ollama_base_url()).unwrap();
-            let credentials = Arc::new(CredentialStore::in_memory());
+            db.set_setting(crate::credentials::SETTING_OLLAMA_BASE_URL, &ollama_base_url).unwrap();
             let started = Instant::now();
             let request = BuildRequest { description: description.into(), kind: None };
             let agent = match build_agent_with_model(&db, &builder, request, &|_| {}).await {
@@ -184,7 +209,7 @@ async fn live_eval() {
             for host in lookups.iter().filter_map(|step| step.trustable_host.as_ref()) {
                 db.add_trusted_lookup_host(&agent.id, host).unwrap();
             }
-            let runs = RunManager::new(db.clone(), credentials, Arc::new(QuietSink));
+            let runs = RunManager::new(db.clone(), credentials.clone(), Arc::new(QuietSink));
             match run_to_end(&db, &runs, &agent).await {
                 Ok(outputs) => {
                     worked += 1;
