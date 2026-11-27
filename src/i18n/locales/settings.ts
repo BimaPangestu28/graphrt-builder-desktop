@@ -115,6 +115,8 @@ export const settings = defineMessages(
     couldNotLoadModels: (reason: string) => `Could not load the AI models: ${reason}`,
     couldNotChangeDefaultModel: (reason: string) => `Could not change the default model: ${reason}`,
     defaultModelHint: 'Each agent can still pick its own',
+    noModelConnectedYet: 'No AI model connected yet. Connect one and it becomes the default',
+    connectAModel: 'Connect a model',
     runtimeSources: {
       downloaded: 'downloaded from nodejs.org',
       development: 'development copy (src-tauri/binaries)',
@@ -287,6 +289,8 @@ export const settings = defineMessages(
     couldNotLoadModels: (reason) => `Model AI gagal dimuat. ${reason}`,
     couldNotChangeDefaultModel: (reason) => `Model bawaan gagal diganti. ${reason}`,
     defaultModelHint: 'Setiap agent tetap bisa memilih modelnya sendiri',
+    noModelConnectedYet: 'Belum ada model AI yang terhubung. Hubungkan satu, nanti itu jadi bawaannya',
+    connectAModel: 'Hubungkan model',
     runtimeSources: {
       downloaded: 'diunduh dari nodejs.org',
       development: 'salinan development (src-tauri/binaries)',

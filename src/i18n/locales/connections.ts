@@ -77,6 +77,10 @@ export const connections = defineMessages(
     replaceKey: 'Replace key',
     couldNotLoadAiModels: 'Could not load AI models:',
     loadingAiModels: 'Loading AI models…',
+    noModelYetTitle: 'Connect an AI model to get started',
+    noModelYetBody:
+      'Your agents need an AI model to understand what you ask them. Pick one below: an AI app you are already signed in to on this computer, your company’s API key, or a free model that runs on this computer.',
+    connectAModel: 'Connect a model',
     alreadySignedInOnThisComputer: 'Already signed in on this computer',
     experimentalGraphrtCanThinkWithYour: 'Experimental: graphrt can think with your own Claude Code or Codex. Each stays off until you turn it on',
     moreAiToolsOnThisComputer: 'More AI tools on this computer',
@@ -306,6 +310,10 @@ export const connections = defineMessages(
     replaceKey: 'Ganti key',
     couldNotLoadAiModels: 'Model AI gagal dimuat.',
     loadingAiModels: 'Memuat model AI…',
+    noModelYetTitle: 'Hubungkan model AI untuk mulai',
+    noModelYetBody:
+      'Agent butuh model AI untuk memahami permintaanmu. Pilih salah satu di bawah, misalnya aplikasi AI yang sudah kamu pakai di komputer ini, API key perusahaanmu, atau model gratis yang jalan di komputer ini.',
+    connectAModel: 'Hubungkan model',
     alreadySignedInOnThisComputer: 'Sudah login di komputer ini',
     experimentalGraphrtCanThinkWithYour: 'Eksperimental. Graphrt bisa berpikir memakai Claude Code atau Codex milik kamu. Masing-masing tetap nonaktif sampai kamu aktifkan',
     moreAiToolsOnThisComputer: 'Tool AI lain di komputer ini',

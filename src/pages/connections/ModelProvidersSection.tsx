@@ -56,9 +56,30 @@ function KeyActions({ connection, isRemoving, isMakingDefault, onReplace, onRemo
   )
 }
 
+/** Where "Connect a model" takes you: an AI app already on this computer first, else the key cards. */
+const recommendedTargetIds = { localCli: 'connections-local-cli', keyedCards: 'connections-model-cards' } as const
+
+/** Shown instead of an error while no model is connected: what a model is for and where to connect one. */
+function NoModelYet({ hasLocalCli }: { hasLocalCli: boolean }) {
+  const showChoices = () => {
+    const target = document.getElementById(hasLocalCli ? recommendedTargetIds.localCli : recommendedTargetIds.keyedCards)
+    target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    target?.querySelector<HTMLElement>('button, a')?.focus({ preventScroll: true })
+  }
+  return (
+    <div role="region" aria-labelledby="connections-no-model-h" className="flex flex-col items-start gap-3 rounded-xl border border-line bg-surface p-5">
+      <h3 id="connections-no-model-h" className="m-0 text-[15px] font-semibold">
+        {messages().connections.noModelYetTitle}
+      </h3>
+      <p className="m-0 max-w-[640px] text-[13px] leading-normal text-muted">{messages().connections.noModelYetBody}</p>
+      <Button onClick={showChoices}>{messages().connections.connectAModel}</Button>
+    </div>
+  )
+}
+
 interface ModelProvidersSectionProps {
   connections: ModelConnection[] | null
-  /** The stored default model, null while loading. */
+  /** The stored default model; null while loading and while no model is connected yet. */
   defaultModel: ModelChoice | null
   loadError: Error | null
   /** Reloads provider statuses after a key changed. */
@@ -146,7 +167,7 @@ export function ModelProvidersSection({ connections, defaultModel, loadError, on
   }
 
   function renderLocalCliCard(connection: ModelConnection) {
-    if (!isLocalCliProvider(connection.provider) || !connection.localCli || !defaultModel) return null
+    if (!isLocalCliProvider(connection.provider) || !connection.localCli) return null
     const providerModels = availableModelsState.data?.find((list) => list.provider === connection.provider)?.models ?? null
     return (
       <LocalCliCard
@@ -174,9 +195,14 @@ export function ModelProvidersSection({ connections, defaultModel, loadError, on
     >
       {loadError && <ConnectionsNotice tone="danger">{messages().connections.couldNotLoadAiModels}{' '}{describeError(loadError)}</ConnectionsNotice>}
       {!loadError && !connections && <ConnectionsNotice>{messages().connections.loadingAiModels}</ConnectionsNotice>}
-      {connections && <div className={connectionCardGridClassNames}>{keyedConnections.map(renderCard)}</div>}
+      {connections && !defaultModel && <NoModelYet hasLocalCli={localCliConnections.some((connection) => connection.localCli?.installed)} />}
+      {connections && (
+        <div id={recommendedTargetIds.keyedCards} className={connectionCardGridClassNames}>
+          {keyedConnections.map(renderCard)}
+        </div>
+      )}
       {localCliConnections.length > 0 && (
-        <div role="group" aria-labelledby="connections-local-cli-h" className="flex min-w-0 flex-col gap-3 pt-2">
+        <div id={recommendedTargetIds.localCli} role="group" aria-labelledby="connections-local-cli-h" className="flex min-w-0 flex-col gap-3 pt-2">
           <div className="flex flex-col gap-0.5">
             <h3 id="connections-local-cli-h" className="m-0 text-[14px] font-semibold">
               {messages().connections.alreadySignedInOnThisComputer}
