@@ -22,11 +22,30 @@ const COMMON_WORDS: &[&str] = &[
 
 /// Verbs of a job description, in the words operation names use (`kirim` → `send`).
 const VERB_MEANINGS: &[(&str, &str)] = &[
-    ("kirim", "send"), ("kirimkan", "send"), ("mengirim", "send"), ("send", "send"), ("sends", "send"),
-    ("post", "post"), ("posting", "post"), ("baca", "read"), ("read", "read"), ("cari", "search"),
-    ("search", "search"), ("find", "search"), ("daftar", "list"), ("list", "list"), ("simpan", "save"),
-    ("save", "save"), ("tambah", "add"), ("add", "add"), ("buat", "create"), ("create", "create"),
-    ("convert", "convert"), ("konversi", "convert"), ("ubah", "update"), ("update", "update"),
+    ("kirim", "send"),
+    ("kirimkan", "send"),
+    ("mengirim", "send"),
+    ("send", "send"),
+    ("sends", "send"),
+    ("post", "post"),
+    ("posting", "post"),
+    ("baca", "read"),
+    ("read", "read"),
+    ("cari", "search"),
+    ("search", "search"),
+    ("find", "search"),
+    ("daftar", "list"),
+    ("list", "list"),
+    ("simpan", "save"),
+    ("save", "save"),
+    ("tambah", "add"),
+    ("add", "add"),
+    ("buat", "create"),
+    ("create", "create"),
+    ("convert", "convert"),
+    ("konversi", "convert"),
+    ("ubah", "update"),
+    ("update", "update"),
 ];
 
 /// The operations worth showing for `description`, best match first, at most [`MAX_OFFERED`].
@@ -43,9 +62,12 @@ pub(super) fn relevant_operations(operations: Vec<OfferedOperation>, description
         .into_iter()
         .filter_map(|operation| {
             let plugin_words = words(&operation.plugin);
-            let own_words = words(&format!("{} {}", operation.kind.split_once('.').map_or("", |(_, name)| name), operation.title));
-            let names_plugin = plugin_words.iter().filter(|word| is_telling(word)).any(|word| has_word(&description_words, word));
-            let names_operation = own_words.iter().filter(|word| is_telling(word)).any(|word| has_word(&description_words, word));
+            let own_words =
+                words(&format!("{} {}", operation.kind.split_once('.').map_or("", |(_, name)| name), operation.title));
+            let names_plugin =
+                plugin_words.iter().filter(|word| is_telling(word)).any(|word| has_word(&description_words, word));
+            let names_operation =
+                own_words.iter().filter(|word| is_telling(word)).any(|word| has_word(&description_words, word));
             if !(names_plugin || names_operation) {
                 return None;
             }
@@ -73,7 +95,11 @@ fn has_word(words: &[String], word: &str) -> bool {
 
 /// Lowercase words of a description or of a name such as `google-sheets` or `send_email`.
 fn words(text: &str) -> Vec<String> {
-    text.to_lowercase().split(|character: char| !character.is_alphanumeric()).filter(|word| !word.is_empty()).map(str::to_owned).collect()
+    text.to_lowercase()
+        .split(|character: char| !character.is_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .map(str::to_owned)
+        .collect()
 }
 
 #[cfg(test)]

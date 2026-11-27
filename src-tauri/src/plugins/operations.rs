@@ -76,8 +76,25 @@ impl FieldType {
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Operations a test offers in place of the published plugins' (see [`offer_in_this_test`]).
+    static TEST_OPERATIONS: std::cell::RefCell<Option<Vec<OfferedOperation>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Makes [`offered_operations`] return `operations` on this thread, so a test does not
+/// depend on the process-wide plugin snapshot other tests publish.
+#[cfg(test)]
+pub(crate) fn offer_in_this_test(operations: Vec<OfferedOperation>) {
+    TEST_OPERATIONS.with(|slot| *slot.borrow_mut() = Some(operations));
+}
+
 /// The operations of the published plugins and catalog (see [`operations_of`]).
 pub(crate) fn offered_operations() -> Vec<OfferedOperation> {
+    #[cfg(test)]
+    if let Some(operations) = TEST_OPERATIONS.with(|slot| slot.borrow().clone()) {
+        return operations;
+    }
     let catalog = super::active::current_catalog();
     match super::active::current() {
         Some(snapshot) => operations_of(&snapshot.plugins, catalog.as_deref()),
@@ -211,22 +228,36 @@ pub(crate) mod tests {
         offered(&descriptor("email.send_email", "Send email", schema), "email", &[], false).unwrap()
     }
 
+    /// A reading operation with typed optional fields.
+    pub(crate) fn list_messages_operation() -> OfferedOperation {
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "limit": { "type": "integer", "description": "Messages per page" },
+                "unseen_only": { "type": "boolean", "description": "Only unread messages" }
+            }
+        });
+        offered(&descriptor("email.list_messages", "List email messages", schema), "email", &[], false).unwrap()
+    }
+
     #[test]
     fn an_operation_keeps_its_simple_fields_required_first_without_the_apps_own() {
         let operation = send_email_operation();
         assert_eq!(operation.kind, "email.send_email");
         assert!(operation.sends);
         assert!(!operation.installed);
-        let fields: Vec<(&str, bool)> = operation.fields.iter().map(|field| (field.name.as_str(), field.required)).collect();
-        assert_eq!(fields, [("subject", true), ("to", true), ("text", false)]);
-        assert_eq!(operation.fields[1].description, "Recipients, separated by commas");
+        let fields: Vec<(&str, bool)> =
+            operation.fields.iter().map(|field| (field.name.as_str(), field.required)).collect();
+        assert_eq!(fields, [("to", true), ("subject", true), ("text", false)]);
+        assert_eq!(operation.fields[0].description, "Recipients, separated by commas");
     }
 
     #[test]
     fn fields_named_like_a_plugin_setting_are_the_apps() {
         let schema = json!({"type": "object", "properties": {"phone_number_id": {"type": "string"}, "body": {"type": "string"}}});
         let env = ["WHATSAPP_PHONE_NUMBER_ID".to_owned()];
-        let operation = offered(&descriptor("whatsapp.send_text", "Send text", schema), "whatsapp", &env, true).unwrap();
+        let operation =
+            offered(&descriptor("whatsapp.send_text", "Send text", schema), "whatsapp", &env, true).unwrap();
         assert_eq!(operation.fields.iter().map(|field| field.name.as_str()).collect::<Vec<_>>(), ["body"]);
     }
 
@@ -243,8 +274,7 @@ pub(crate) mod tests {
 
     #[test]
     fn reading_operations_do_not_count_as_sending() {
-        let schema = json!({"type": "object", "properties": {"limit": {"type": "integer"}, "unseen_only": {"type": "boolean"}}});
-        let operation = offered(&descriptor("email.list_messages", "List messages", schema), "email", &[], true).unwrap();
+        let operation = list_messages_operation();
         assert!(!operation.sends);
         let types: Vec<FieldType> = operation.fields.iter().map(|field| field.field_type).collect();
         assert_eq!(types, [FieldType::Integer, FieldType::Boolean]);

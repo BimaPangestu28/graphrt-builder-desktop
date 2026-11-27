@@ -128,9 +128,10 @@ pub(super) enum PlanStep {
 impl PlanStep {
     pub(super) fn title(&self) -> &str {
         match self {
-            Self::Write { title, .. } | Self::Lookup { title, .. } | Self::Approve { title, .. } | Self::Use { title, .. } => {
-                title
-            }
+            Self::Write { title, .. }
+            | Self::Lookup { title, .. }
+            | Self::Approve { title, .. }
+            | Self::Use { title, .. } => title,
         }
     }
 
@@ -373,7 +374,12 @@ pub(super) fn normalize(raw: RawPlan, rules: &PlanRules<'_>) -> Result<Plan, Str
             }
             let title = if title.is_empty() { operation.title.clone() } else { title };
             let instruction = if instruction.is_empty() { operation.title.clone() } else { instruction };
-            steps.push(PlanStep::Use { title, instruction, operation: operation.kind.clone(), fields: BTreeMap::new() });
+            steps.push(PlanStep::Use {
+                title,
+                instruction,
+                operation: operation.kind.clone(),
+                fields: BTreeMap::new(),
+            });
             continue;
         }
         // A step that names no offered operation (or no address) is a writing step if it says what to write.
@@ -384,7 +390,10 @@ pub(super) fn normalize(raw: RawPlan, rules: &PlanRules<'_>) -> Result<Plan, Str
         let title = if title.is_empty() { "Write the result".to_owned() } else { title };
         steps.push(PlanStep::Write { title, instruction });
     }
-    while matches!(steps.last(), Some(PlanStep::Approve { .. })) && steps.len() > 1 && !steps.iter().any(PlanStep::has_result) {
+    while matches!(steps.last(), Some(PlanStep::Approve { .. }))
+        && steps.len() > 1
+        && !steps.iter().any(PlanStep::has_result)
+    {
         steps.pop();
     }
     if !steps.iter().any(PlanStep::has_result) {
@@ -467,7 +476,8 @@ pub(super) fn normalize_fields(
                 fields.insert(field.name.clone(), value);
             }
             None if field.required => {
-                let hint = if field.description.is_empty() { String::new() } else { format!(" ({})", field.description) };
+                let hint =
+                    if field.description.is_empty() { String::new() } else { format!(" ({})", field.description) };
                 return Err(format!("the field \"{}\" is required{hint}; give it a value", field.name));
             }
             None => {}
@@ -477,7 +487,12 @@ pub(super) fn normalize_fields(
 }
 
 /// `value` as the field's type, or `None` when it is empty or not that type.
-fn typed_value(value: &serde_json::Value, field_type: FieldType, plan: &Plan, step_index: usize) -> Option<serde_json::Value> {
+fn typed_value(
+    value: &serde_json::Value,
+    field_type: FieldType,
+    plan: &Plan,
+    step_index: usize,
+) -> Option<serde_json::Value> {
     match field_type {
         FieldType::Text => {
             let text = match value {
@@ -576,7 +591,8 @@ fn lookup_url(raw_url: &str, inputs: &mut Vec<PlanInput>, inputs_are_fixed: bool
     // `{{topic}}` and `{{#start.topic#}}` mean `{topic}`.
     let single_braces = trimmed.replace("{{#start.", "{").replace("#}}", "}").replace("{{", "{").replace("}}", "}");
     let without_scheme = single_braces.strip_prefix("https://").or_else(|| single_braces.strip_prefix("http://"));
-    if let [UrlPart::Placeholder(written_name)] = placeholder_parts(without_scheme.unwrap_or(&single_braces)).as_slice() {
+    if let [UrlPart::Placeholder(written_name)] = placeholder_parts(without_scheme.unwrap_or(&single_braces)).as_slice()
+    {
         let name = resolve_placeholder(written_name, inputs, inputs_are_fixed)?;
         return Ok(LookupUrl { template: format!("{{{name}}}"), host: None });
     }
@@ -624,7 +640,11 @@ fn lookup_url(raw_url: &str, inputs: &mut Vec<PlanInput>, inputs_are_fixed: bool
     Ok(LookupUrl { template, host: Some(host) })
 }
 
-fn resolve_placeholder(written_name: &str, inputs: &mut Vec<PlanInput>, inputs_are_fixed: bool) -> Result<String, String> {
+fn resolve_placeholder(
+    written_name: &str,
+    inputs: &mut Vec<PlanInput>,
+    inputs_are_fixed: bool,
+) -> Result<String, String> {
     let wanted = input_name(written_name);
     if let Some(known) = wanted.as_ref().and_then(|name| inputs.iter().find(|input| &input.name == name)) {
         return Ok(known.name.clone());
@@ -635,7 +655,12 @@ fn resolve_placeholder(written_name: &str, inputs: &mut Vec<PlanInput>, inputs_a
     let Some(name) = wanted else {
         return Err(format!("the lookup address uses `{{{written_name}}}`, which is not the name of an input"));
     };
-    inputs.push(PlanInput { label: label_from_name(&name), name: name.clone(), long_text: false, value: String::new() });
+    inputs.push(PlanInput {
+        label: label_from_name(&name),
+        name: name.clone(),
+        long_text: false,
+        value: String::new(),
+    });
     Ok(name)
 }
 
@@ -702,3 +727,366 @@ fn plain_text(written: &str) -> String {
     single_braces.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plugins::operations::tests::{list_messages_operation, send_email_operation};
+
+    const NO_OPERATIONS: &[OfferedOperation] = &[];
+
+    fn task_rules(operations: &[OfferedOperation]) -> PlanRules<'_> {
+        PlanRules { fixed_input: None, operations, allows_approvals: true }
+    }
+
+    fn normalized(json_text: &str) -> Result<Plan, String> {
+        normalize(parse(json_text)?, &task_rules(NO_OPERATIONS))
+    }
+
+    fn write_step(title: &str, instruction: &str) -> PlanStep {
+        PlanStep::Write { title: title.into(), instruction: instruction.into() }
+    }
+
+    fn input(name: &str, label: &str) -> PlanInput {
+        PlanInput { name: name.into(), label: label.into(), long_text: false, value: String::new() }
+    }
+
+    #[test]
+    fn a_tidy_plan_is_kept_as_written() {
+        let plan = normalized(
+            r#"{"looks_up_the_web": false, "summary": "Writes a polite reply.", "name": "Complaint Reply",
+                "inputs": [{"name": "complaint", "label": "The complaint", "long_text": true, "value": ""}],
+                "steps": [{"kind": "write", "title": "Write the reply", "instruction": "Write a polite reply.", "url": ""}],
+                "schedule": {"repeat": "never", "hour": 0}}"#,
+        )
+        .unwrap();
+        assert_eq!(plan.name, "Complaint Reply");
+        assert_eq!(plan.summary, "Writes a polite reply.");
+        assert_eq!(plan.inputs, [PlanInput { long_text: true, ..input("complaint", "The complaint") }]);
+        assert_eq!(plan.steps, [write_step("Write the reply", "Write a polite reply.")]);
+        assert_eq!(plan.schedule, None);
+    }
+
+    #[test]
+    fn text_around_the_json_is_ignored() {
+        let reply = "Here is the plan:\n```json\n{\"steps\": [{\"kind\": \"write\", \"instruction\": \"Do it\"}]}\n```";
+        assert_eq!(normalized(reply).unwrap().steps, [write_step("Write the result", "Do it")]);
+        assert!(parse("no plan here").is_err());
+        assert!(parse("{ broken").is_err());
+    }
+
+    #[test]
+    fn input_names_become_variable_names_and_stay_unique() {
+        let plan = normalized(
+            r#"{"inputs": [{"name": "Product Description", "label": "", "long_text": false},
+                           {"name": "product-description", "label": "Again", "long_text": false},
+                           {"name": "2nd", "label": "Second", "long_text": false},
+                           {"name": "start", "label": "Reserved", "long_text": false, "value": " Jakarta "},
+                           {"name": "???", "label": "", "long_text": false}],
+                "steps": [{"kind": "write", "title": "T", "instruction": "I"}]}"#,
+        )
+        .unwrap();
+        let names: Vec<&str> = plan.inputs.iter().map(|input| input.name.as_str()).collect();
+        assert_eq!(names, ["product_description", "input_2nd", "start_text"]);
+        assert_eq!(plan.inputs[0].label, "Product description");
+        assert_eq!(plan.inputs[2].value, "Jakarta");
+    }
+
+    #[test]
+    fn references_written_by_the_model_are_defused() {
+        let plan = normalized(
+            r#"{"steps": [{"kind": "write", "title": "Use {{#start.topic#}}", "instruction": "Summarize {{topic}}\nin two   lines"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(plan.steps, [write_step("Use {start.topic}", "Summarize {topic} in two lines")]);
+    }
+
+    #[test]
+    fn lookup_placeholders_are_matched_to_inputs() {
+        let plan = normalized(
+            r#"{"looks_up_the_web": true, "inputs": [{"name": "topic", "label": "Topic", "long_text": false}],
+                "steps": [{"kind": "lookup", "title": "Get the page", "instruction": "x",
+                           "url": "http://en.wikipedia.org/api/rest_v1/page/summary/{{Topic}}"},
+                          {"kind": "write", "title": "Summarize", "instruction": "Two sentences."}]}"#,
+        )
+        .unwrap();
+        let PlanStep::Lookup { url, .. } = &plan.steps[0] else { panic!("lookup expected: {:?}", plan.steps) };
+        assert_eq!(url.host(), Some("en.wikipedia.org"));
+        assert_eq!(url.to_graphrt_template(), "https://en.wikipedia.org/api/rest_v1/page/summary/{{#start.topic#}}");
+    }
+
+    #[test]
+    fn an_unknown_placeholder_uses_the_only_input_or_becomes_a_new_one() {
+        let one_input = normalized(
+            r#"{"looks_up_the_web": true, "inputs": [{"name": "city", "label": "City", "long_text": false}],
+                "steps": [{"kind": "lookup", "title": "", "instruction": "", "url": "https://wttr.in/{place}?format=3"}]}"#,
+        )
+        .unwrap();
+        let PlanStep::Lookup { url, title } = &one_input.steps[0] else { panic!("lookup expected") };
+        assert_eq!(url.to_graphrt_template(), "https://wttr.in/{{#start.city#}}?format=3");
+        assert_eq!(title, "Look up on wttr.in");
+
+        let no_input = normalized(
+            r#"{"looks_up_the_web": true, "inputs": [],
+                "steps": [{"kind": "lookup", "title": "L", "instruction": "", "url": "wttr.in/{place}"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(no_input.inputs, [input("place", "Place")]);
+    }
+
+    #[test]
+    fn an_address_that_is_only_an_input_is_a_link_the_person_gives() {
+        for written in ["{link}", "{{link}}", "https://{link}"] {
+            let plan = normalized(&format!(
+                r#"{{"looks_up_the_web": true, "inputs": [{{"name": "link", "label": "Link", "long_text": false}}],
+                    "steps": [{{"kind": "lookup", "title": "", "instruction": "", "url": "{written}"}}]}}"#
+            ))
+            .unwrap();
+            let PlanStep::Lookup { url, title } = &plan.steps[0] else { panic!("lookup expected") };
+            assert_eq!((url.host(), url.to_graphrt_template().as_str()), (None, "{{#start.link#}}"), "{written}");
+            assert_eq!(title, "Read the page");
+        }
+    }
+
+    #[test]
+    fn a_plan_that_ends_on_a_lookup_gets_a_writing_step() {
+        let plan = normalized(
+            r#"{"looks_up_the_web": true, "summary": "Tells the weather.",
+                "steps": [{"kind": "lookup", "title": "L", "instruction": "", "url": "https://wttr.in/Jakarta"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(plan.steps.len(), 2);
+        assert_eq!(plan.steps[1], write_step("Write the result", "Using what was found, do this: Tells the weather."));
+    }
+
+    #[test]
+    fn lookups_are_dropped_when_the_job_does_not_read_the_web() {
+        let plan = normalized(
+            r#"{"looks_up_the_web": false,
+                "steps": [{"kind": "write", "title": "Write", "instruction": "Write it."},
+                          {"kind": "lookup", "title": "Check grammar", "instruction": "x", "url": "https://www.example.com/g"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(plan.steps, [write_step("Write", "Write it.")]);
+    }
+
+    #[test]
+    fn addresses_without_an_obvious_fix_are_reported_in_plain_words() {
+        let with_url = |url: &str| {
+            normalized(&format!(
+                r#"{{"looks_up_the_web": true, "steps": [{{"kind": "lookup", "title": "L", "instruction": "", "url": "{url}"}}]}}"#
+            ))
+        };
+        assert!(with_url("https://{site}/page").unwrap_err().contains("real site"));
+        assert!(with_url("ftp://files.example.org/a").unwrap_err().contains("https address"));
+        assert!(with_url("https://api.weather.com/v1?appid=YOUR_API_KEY").unwrap_err().contains("needs a key"));
+        assert!(with_url("https://a.org/x y").unwrap_err().contains("spaces"));
+    }
+
+    #[test]
+    fn a_plan_without_usable_steps_is_reported() {
+        assert!(normalized(r#"{"steps": []}"#).unwrap_err().contains("no step"));
+        assert!(normalized(r#"{"steps": [{"kind": "write", "title": "", "instruction": " "}]}"#).is_err());
+        assert!(normalized(r#"{"steps": [{"kind": "approve", "title": "Ask", "instruction": "OK?"}]}"#).is_err());
+    }
+
+    #[test]
+    fn a_chatbot_reads_only_the_message_and_never_asks() {
+        let message = PlanInput { long_text: true, ..input("message", "Customer message") };
+        let rules = PlanRules { fixed_input: Some(&message), operations: NO_OPERATIONS, allows_approvals: false };
+        let raw = parse(
+            r#"{"looks_up_the_web": true, "inputs": [{"name": "question", "label": "Q", "long_text": false}],
+                "steps": [{"kind": "lookup", "title": "L", "instruction": "", "url": "https://wttr.in/{city}"},
+                          {"kind": "approve", "title": "Ask", "instruction": "Send?"},
+                          {"kind": "write", "title": "Reply", "instruction": "Answer."}]}"#,
+        )
+        .unwrap();
+        let plan = normalize(raw, &rules).unwrap();
+        assert_eq!(plan.inputs, [message.clone()]);
+        assert_eq!(plan.steps.len(), 2, "the approval is left out: {:?}", plan.steps);
+        let PlanStep::Lookup { url, .. } = &plan.steps[0] else { panic!("lookup expected") };
+        assert_eq!(url.to_graphrt_template(), "https://wttr.in/{{#start.message#}}");
+
+        let sends = [send_email_operation()];
+        let rules = PlanRules { fixed_input: Some(&message), operations: &sends, allows_approvals: false };
+        let raw = parse(r#"{"steps": [{"kind": "use", "title": "Send", "instruction": "Send it", "operation": "email.send_email"}]}"#).unwrap();
+        assert!(normalize(raw, &rules).unwrap_err().contains("cannot ask the person first"));
+    }
+
+    #[test]
+    fn approvals_are_kept_once_and_get_a_question() {
+        let plan = normalized(
+            r#"{"steps": [{"kind": "write", "title": "Draft", "instruction": "Draft it."},
+                          {"kind": "approve", "title": "", "instruction": ""},
+                          {"kind": "approve", "title": "Again", "instruction": "Sure?"},
+                          {"kind": "write", "title": "Finish", "instruction": "Finish it."}]}"#,
+        )
+        .unwrap();
+        assert_eq!(plan.steps.len(), 3);
+        assert_eq!(
+            plan.steps[1],
+            PlanStep::Approve { title: "Ask before continuing".into(), question: "Continue?".into() }
+        );
+    }
+
+    #[test]
+    fn a_plugin_step_must_name_an_offered_operation() {
+        let operations = [send_email_operation()];
+        let plan = normalize(
+            parse(
+                r#"{"steps": [{"kind": "write", "title": "Write the note", "instruction": "Write it."},
+                              {"kind": "use", "title": "", "instruction": "Send the note", "operation": "EMAIL.send_email"},
+                              {"kind": "use", "title": "Post it", "instruction": "Post the note", "operation": "slack.post_message"}]}"#,
+            )
+            .unwrap(),
+            &task_rules(&operations),
+        )
+        .unwrap();
+        assert_eq!(
+            plan.steps[1],
+            PlanStep::Use {
+                title: "Send email".into(),
+                instruction: "Send the note".into(),
+                operation: "email.send_email".into(),
+                fields: BTreeMap::new()
+            }
+        );
+        // An operation nobody offered is not invented: what is left is a writing step.
+        assert_eq!(plan.steps[2], write_step("Post it", "Post the note"));
+    }
+
+    #[test]
+    fn data_a_plugin_read_is_written_up_for_the_person() {
+        let operations = [list_messages_operation()];
+        let plan = normalize(
+            parse(r#"{"summary": "Lists new mail.", "steps": [{"kind": "use", "title": "Get mail", "instruction": "List unread mail", "operation": "email.list_messages"}]}"#).unwrap(),
+            &task_rules(&operations),
+        )
+        .unwrap();
+        assert_eq!(plan.steps.len(), 2);
+        assert!(
+            matches!(&plan.steps[1], PlanStep::Write { instruction, .. } if instruction.contains("Lists new mail."))
+        );
+    }
+
+    #[test]
+    fn schedules_are_read_and_kept_sane() {
+        let with_schedule = |schedule: &str| {
+            normalized(&format!(
+                r#"{{"steps": [{{"kind": "write", "title": "T", "instruction": "I"}}], "schedule": {schedule}}}"#
+            ))
+            .unwrap()
+            .schedule
+        };
+        assert_eq!(with_schedule(r#"{"repeat": "never", "hour": 9}"#), None);
+        assert_eq!(
+            with_schedule(r#"{"repeat": "daily", "hour": 7}"#),
+            Some(Schedule { repeat: Repeat::Daily, hour: 7 })
+        );
+        assert_eq!(
+            with_schedule(r#"{"repeat": "Weekdays", "hour": 99}"#),
+            Some(Schedule { repeat: Repeat::Weekdays, hour: 8 })
+        );
+        assert_eq!(with_schedule(r#"{"repeat": "sometimes", "hour": 9}"#), None);
+        assert_eq!(Schedule { repeat: Repeat::Weekdays, hour: 7 }.cron_expression(), "0 0 7 * * Mon-Fri");
+        assert_eq!(Schedule { repeat: Repeat::Hourly, hour: 7 }.cron_expression(), "0 0 * * * *");
+        assert_eq!(Schedule { repeat: Repeat::Weekly, hour: 9 }.in_words(), "every Monday at 09:00");
+        for repeat in [Repeat::Hourly, Repeat::Daily, Repeat::Weekdays, Repeat::Weekly] {
+            let cron = Schedule { repeat, hour: 8 }.cron_expression();
+            crate::scheduler::next_fire_after(&cron, "Asia/Jakarta", chrono::Utc::now())
+                .unwrap_or_else(|error| panic!("{cron}: {error}"));
+        }
+    }
+
+    fn sending_plan() -> Plan {
+        Plan {
+            summary: String::new(),
+            name: String::new(),
+            inputs: vec![input("address", "Email address")],
+            steps: vec![
+                write_step("Write the note", "Write it."),
+                PlanStep::Approve { title: "Ask".into(), question: "OK?".into() },
+                PlanStep::Use {
+                    title: "Send".into(),
+                    instruction: "Send it".into(),
+                    operation: "email.send_email".into(),
+                    fields: BTreeMap::new(),
+                },
+            ],
+            schedule: None,
+        }
+    }
+
+    #[test]
+    fn plugin_fields_keep_their_types_and_only_the_operations_own_fields() {
+        let fields = normalize_fields(
+            &send_email_operation(),
+            r#"{"to": "{{address}}", "subject": " Thank you ", "text": "Hello,\n{step_1}", "bcc": "boss@example.com", "html": ""}"#,
+            &sending_plan(),
+            2,
+        )
+        .unwrap();
+        assert_eq!(fields.keys().map(String::as_str).collect::<Vec<_>>(), ["subject", "text", "to"]);
+        assert_eq!(fields["to"], json!("{address}"));
+        assert_eq!(fields["subject"], json!("Thank you"));
+        assert_eq!(fields["text"], json!("Hello,\n{step_1}"));
+
+        let typed = normalize_fields(
+            &list_messages_operation(),
+            r#"{"limit": "5", "unseen_only": "true"}"#,
+            &sending_plan(),
+            0,
+        )
+        .unwrap();
+        assert_eq!((&typed["limit"], &typed["unseen_only"]), (&json!(5), &json!(true)));
+        let untyped =
+            normalize_fields(&list_messages_operation(), r#"{"limit": "many", "unseen_only": 1}"#, &sending_plan(), 0)
+                .unwrap();
+        assert!(untyped.is_empty(), "values of the wrong type are left out: {untyped:?}");
+    }
+
+    #[test]
+    fn placeholders_in_fields_name_an_input_or_an_earlier_result() {
+        let text_of = |written: &str| {
+            let reply = serde_json::to_string(&json!({"to": "{address}", "subject": "S", "text": written})).unwrap();
+            normalize_fields(&send_email_operation(), &reply, &sending_plan(), 2).unwrap()["text"].clone()
+        };
+        // The approval at step 2 has no result, a later step is not there yet: the one earlier result is meant.
+        assert_eq!(text_of("{result}"), json!("{step_1}"));
+        assert_eq!(text_of("{step_2} and {step 3} and {step1}"), json!("{step_1} and {step_1} and {step_1}"));
+        assert_eq!(text_of("{{#start.Address#}}: {note}"), json!("{address}: {step_1}"));
+
+        let plan = sending_plan();
+        let parts = field_parts("Hi {address}, {step_1} {step_9}", &plan);
+        assert_eq!(
+            parts,
+            [
+                FieldPart::Text("Hi "),
+                FieldPart::Input("address"),
+                FieldPart::Text(", "),
+                FieldPart::StepResult(0),
+                FieldPart::Text(" "),
+                FieldPart::Text("step_9")
+            ]
+        );
+    }
+
+    #[test]
+    fn a_missing_required_field_is_reported_with_its_description() {
+        let problem = normalize_fields(&send_email_operation(), r#"{"subject": "Hi", "to": " "}"#, &sending_plan(), 2)
+            .unwrap_err();
+        assert!(problem.contains("\"to\" is required") && problem.contains("Recipients"), "{problem}");
+        assert!(normalize_fields(&send_email_operation(), "not json", &sending_plan(), 2).is_err());
+    }
+
+    #[test]
+    fn a_plan_survives_being_saved_and_read_back() {
+        let mut plan = sending_plan();
+        plan.schedule = Some(Schedule::daily());
+        plan.inputs[0].value = "team@example.com".into();
+        if let PlanStep::Use { fields, .. } = &mut plan.steps[2] {
+            fields.insert("to".into(), json!("{address}"));
+        }
+        let saved = serde_json::to_string(&plan).unwrap();
+        assert_eq!(serde_json::from_str::<Plan>(&saved).unwrap(), plan);
+    }
+}

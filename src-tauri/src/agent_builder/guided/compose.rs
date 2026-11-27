@@ -39,7 +39,12 @@ Reply with only the message to send to the customer, in the customer's language.
 
 /// The input every chatbot has: the customer's message.
 pub(super) fn chatbot_message_input() -> PlanInput {
-    PlanInput { name: "message".to_owned(), label: "Customer message".to_owned(), long_text: true, value: String::new() }
+    PlanInput {
+        name: "message".to_owned(),
+        label: "Customer message".to_owned(),
+        long_text: true,
+        value: String::new(),
+    }
 }
 
 #[derive(Serialize)]
@@ -166,10 +171,24 @@ impl StepResults {
     }
 }
 
+/// The model every writing step of a document runs on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct StepModel {
+    /// graphrt `model.provider`, e.g. `ollama`.
+    pub provider: String,
+    pub name: String,
+}
+
+impl From<&ModelChoice> for StepModel {
+    fn from(choice: &ModelChoice) -> Self {
+        Self { provider: choice.provider.registry_name().to_owned(), name: choice.name.clone() }
+    }
+}
+
 /// Builds the node list of a plan, one step at a time.
 struct Builder<'a> {
     plan: &'a Plan,
-    model: &'a ModelChoice,
+    model: &'a StepModel,
     is_chatbot: bool,
     sending_operations: Vec<&'a str>,
     nodes: Vec<Node>,
@@ -187,7 +206,7 @@ struct Builder<'a> {
 /// # Errors
 /// `Err` with the serializer's message when the document cannot be written as YAML
 /// (not expected for a checked plan).
-pub(super) fn workflow_yaml(plan: &Plan, model: &ModelChoice, kind: AgentKind) -> Result<String, String> {
+pub(super) fn workflow_yaml(plan: &Plan, model: &StepModel, kind: AgentKind) -> Result<String, String> {
     let sending_operations: Vec<&str> = plan
         .steps
         .iter()
@@ -210,7 +229,10 @@ pub(super) fn workflow_yaml(plan: &Plan, model: &ModelChoice, kind: AgentKind) -
         materials: plan
             .inputs
             .iter()
-            .map(|input| Material { heading: input.label.clone(), reference: format!("{{{{#start.{}#}}}}", input.name) })
+            .map(|input| Material {
+                heading: input.label.clone(),
+                reference: format!("{{{{#start.{}#}}}}", input.name),
+            })
             .collect(),
         results: StepResults::default(),
         last_write_id: None,
@@ -248,7 +270,12 @@ impl Builder<'_> {
                     },
                 });
                 // `text` is the page without markup; the first part of it has to be enough.
-                self.shorten(&shorten_id, "Keep the first part of what was found", "page", [lookup_id, "text".to_owned()]);
+                self.shorten(
+                    &shorten_id,
+                    "Keep the first part of what was found",
+                    "page",
+                    [lookup_id, "text".to_owned()],
+                );
                 let heading = match url.host() {
                     Some(host) => format!("{title} (found on {host})"),
                     None => title.clone(),
@@ -265,7 +292,7 @@ impl Builder<'_> {
                     title: Some(title.clone()),
                     config: NodeConfig::Write {
                         model: Model {
-                            provider: self.model.provider.registry_name().to_owned(),
+                            provider: self.model.provider.clone(),
                             name: self.model.name.clone(),
                             completion_params: CompletionParams { temperature: 0.3 },
                         },
@@ -275,7 +302,8 @@ impl Builder<'_> {
                         ],
                     },
                 });
-                self.materials.push(Material { heading: title.clone(), reference: format!("{{{{#{write_id}.text#}}}}") });
+                self.materials
+                    .push(Material { heading: title.clone(), reference: format!("{{{{#{write_id}.text#}}}}") });
                 self.last_write_id = Some(write_id.clone());
                 result = Some([write_id, "text".to_owned()]);
             }
@@ -291,9 +319,16 @@ impl Builder<'_> {
                 let rendered: BTreeMap<String, serde_json::Value> =
                     fields.iter().map(|(name, value)| (name.clone(), self.render_field(value))).collect();
                 let sends = self.sending_operations.contains(&operation.as_str());
-                let was_just_asked = matches!(index.checked_sub(1).map(|before| &self.plan.steps[before]), Some(PlanStep::Approve { .. }));
+                let was_just_asked = matches!(
+                    index.checked_sub(1).map(|before| &self.plan.steps[before]),
+                    Some(PlanStep::Approve { .. })
+                );
                 if sends && !was_just_asked {
-                    self.ask(format!("confirm_{number}"), format!("Ask before: {title}"), sending_question(title, &rendered));
+                    self.ask(
+                        format!("confirm_{number}"),
+                        format!("Ask before: {title}"),
+                        sending_question(title, &rendered),
+                    );
                 }
                 self.nodes.push(Node {
                     id: use_id.clone(),
@@ -306,7 +341,8 @@ impl Builder<'_> {
                 } else {
                     let shorten_id = format!("shorten_{number}");
                     self.shorten_data(&shorten_id, [use_id, "data".to_owned()]);
-                    self.materials.push(Material { heading: title.clone(), reference: format!("{{{{#{shorten_id}.output#}}}}") });
+                    self.materials
+                        .push(Material { heading: title.clone(), reference: format!("{{{{#{shorten_id}.output#}}}}") });
                     result = Some([shorten_id, "output".to_owned()]);
                 }
             }
@@ -322,7 +358,10 @@ impl Builder<'_> {
             title: Some(title),
             config: NodeConfig::Ask {
                 prompt,
-                actions: vec![AskAction { id: APPROVE_ACTION, title: "Approve" }, AskAction { id: "skip", title: "Skip" }],
+                actions: vec![
+                    AskAction { id: APPROVE_ACTION, title: "Approve" },
+                    AskAction { id: "skip", title: "Skip" },
+                ],
             },
         });
     }
@@ -384,8 +423,14 @@ impl Builder<'_> {
             Some(write_id) => Some([write_id.clone(), "text".to_owned()]),
             None => self.results.selectors.iter().rev().flatten().next().cloned(),
         };
-        let outputs = result.into_iter().map(|value_selector| EndOutput { variable: "result", value_selector }).collect();
-        self.nodes.push(Node { id: "end".to_owned(), node_type: "end".to_owned(), title: None, config: NodeConfig::End { outputs } });
+        let outputs =
+            result.into_iter().map(|value_selector| EndOutput { variable: "result", value_selector }).collect();
+        self.nodes.push(Node {
+            id: "end".to_owned(),
+            node_type: "end".to_owned(),
+            title: None,
+            config: NodeConfig::End { outputs },
+        });
         let edges = self
             .nodes
             .windows(2)
@@ -404,15 +449,31 @@ impl Builder<'_> {
     }
 }
 
-/// The plan a guided document was written from, when the document still is that plan's:
-/// the comment is there, readable, and composing it again gives the same document. A
-/// document changed by hand (in the Nodes view) no longer matches and gives `None`, so
-/// those changes are never overwritten from an old plan.
-pub(super) fn plan_of_document(flow_yaml: &str, model: &ModelChoice, kind: AgentKind) -> Option<Plan> {
+/// The plan a guided document was written from and the model its steps run on, when the
+/// document still is that plan's: the comment is there, readable, and composing it again
+/// gives the same document. A document changed by hand (in the Nodes view) no longer
+/// matches and gives `None`, so those changes are never overwritten from an old plan.
+///
+/// The model is read from the document, not from the app's current default: a change in
+/// the chat keeps the steps on the model they already use.
+pub(super) fn plan_of_document(flow_yaml: &str, kind: AgentKind) -> Option<(Plan, StepModel)> {
     let first_line = flow_yaml.lines().next()?;
     let plan: Plan = serde_json::from_str(first_line.strip_prefix(PLAN_COMMENT_PREFIX)?).ok()?;
-    let recomposed = workflow_yaml(&plan, model, kind).ok()?;
-    (recomposed.trim_end() == flow_yaml.trim_end()).then_some(plan)
+    let model = model_of_document(flow_yaml)?;
+    let recomposed = workflow_yaml(&plan, &model, kind).ok()?;
+    (recomposed.trim_end() == flow_yaml.trim_end()).then_some((plan, model))
+}
+
+/// The `model` of the document's first step that has one.
+fn model_of_document(flow_yaml: &str) -> Option<StepModel> {
+    let document: serde_json::Value = serde_saphyr::from_str(flow_yaml).ok()?;
+    document.pointer("/graph/nodes")?.as_array()?.iter().find_map(|node| {
+        let model = node.get("model")?;
+        Some(StepModel {
+            provider: model.get("provider")?.as_str()?.to_owned(),
+            name: model.get("name")?.as_str()?.to_owned(),
+        })
+    })
 }
 
 fn start_variable(input: &PlanInput) -> StartVariable {
@@ -472,5 +533,228 @@ fn document_name(display_name: &str) -> String {
         "agent".to_owned()
     } else {
         name.to_owned()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::plan::{normalize, normalize_fields, parse, PlanRules};
+    use super::*;
+    use crate::credentials::ModelProvider;
+    use crate::flow::{self, TrustedHosts};
+    use crate::plugins::operations::tests::{list_messages_operation, send_email_operation};
+    use crate::plugins::operations::OfferedOperation;
+
+    fn local_model() -> StepModel {
+        StepModel::from(&ModelChoice { provider: ModelProvider::Ollama, name: "llama3.2".into() })
+    }
+
+    fn plan_with(json_text: &str, operations: &[OfferedOperation], chatbot: bool) -> Plan {
+        let message = chatbot_message_input();
+        let rules = PlanRules { fixed_input: chatbot.then_some(&message), operations, allows_approvals: !chatbot };
+        normalize(parse(json_text).unwrap(), &rules).unwrap()
+    }
+
+    fn plan_from(json_text: &str, chatbot: bool) -> Plan {
+        plan_with(json_text, &[], chatbot)
+    }
+
+    /// Node types of the document's steps, without `start` and `end`.
+    fn step_types(yaml: &str) -> Vec<String> {
+        let summary = flow::summarize_flow(yaml).unwrap_or_else(|error| panic!("{error}\n{yaml}"));
+        summary
+            .steps
+            .into_iter()
+            .map(|step| step.node_type)
+            .filter(|node_type| !matches!(node_type.as_str(), "start" | "end"))
+            .collect()
+    }
+
+    const LOOKUP_PLAN: &str = r#"{"looks_up_the_web": true, "summary": "Summarizes a Wikipedia page: \"quoted\" # not a comment",
+        "name": "Wikipedia Summary", "inputs": [{"name": "topic", "label": "Topic: to look up", "long_text": false, "value": "Jakarta"}],
+        "steps": [{"kind": "lookup", "title": "Get the page", "instruction": "", "url": "https://en.wikipedia.org/api/rest_v1/page/summary/{topic}"},
+                  {"kind": "write", "title": "Write: a summary", "instruction": "Write two sentences - plain words, no \"jargon\"."}]}"#;
+
+    #[test]
+    fn a_lookup_plan_compiles_and_runs_on_the_users_model() {
+        let yaml = workflow_yaml(&plan_from(LOOKUP_PLAN, false), &local_model(), AgentKind::Task).unwrap();
+        assert_eq!(step_types(&yaml), ["http-request", "template-transform", "llm"], "{yaml}");
+        let summary = flow::summarize_flow(&yaml).unwrap();
+        assert_eq!(summary.model_providers, ["ollama"]);
+        assert_eq!((summary.inputs[0].name.as_str(), summary.inputs[0].label.as_str()), ("topic", "Topic: to look up"));
+        assert_eq!(
+            summary.inputs[0].default_value,
+            Some(serde_json::json!("Jakarta")),
+            "the value the job names is the default"
+        );
+        assert!(yaml.contains("https://en.wikipedia.org/api/rest_v1/page/summary/{{#start.topic#}}"), "{yaml}");
+        assert!(yaml.contains("- lookup_1\n      - text"), "the readable text of the page is what is kept: {yaml}");
+        assert!(yaml.contains("{{#shorten_1.output#}}"), "the writer reads the shortened page: {yaml}");
+        assert!(yaml.contains("name: wikipedia-summary"), "{yaml}");
+        // Still a read-only lookup: with its host trusted it needs no approval.
+        let trusted = TrustedHosts::from_entries(["en.wikipedia.org"]);
+        assert!(flow::find_unapproved_steps(&yaml, &trusted).unwrap().is_empty(), "{yaml}");
+        assert_eq!(flow::find_unapproved_steps(&yaml, &TrustedHosts::none()).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_link_the_person_gives_is_asked_about_before_it_is_read() {
+        let plan = plan_from(
+            r#"{"looks_up_the_web": true, "inputs": [{"name": "link", "label": "Link", "long_text": false}],
+                "steps": [{"kind": "lookup", "title": "Read the article", "instruction": "", "url": "{link}"},
+                          {"kind": "write", "title": "Summarize", "instruction": "Three points."}]}"#,
+            false,
+        );
+        let yaml = workflow_yaml(&plan, &local_model(), AgentKind::Task).unwrap();
+        assert_eq!(step_types(&yaml), ["human-input", "http-request", "template-transform", "llm"], "{yaml}");
+        assert!(flow::find_unapproved_steps(&yaml, &TrustedHosts::none()).unwrap().is_empty(), "{yaml}");
+        assert!(yaml.contains("handle: approve"), "only approving leads to the lookup: {yaml}");
+    }
+
+    #[test]
+    fn later_steps_read_the_inputs_and_every_earlier_result() {
+        let plan = plan_from(
+            r#"{"inputs": [{"name": "notes", "label": "Meeting notes", "long_text": true}],
+                "steps": [{"kind": "write", "title": "List the actions", "instruction": "List them."},
+                          {"kind": "write", "title": "Add owners", "instruction": "Add an owner to each."}]}"#,
+            false,
+        );
+        let yaml = workflow_yaml(&plan, &local_model(), AgentKind::Task).unwrap();
+        assert_eq!(step_types(&yaml), ["llm", "llm"]);
+        let second_step = yaml.split("id: write_2").nth(1).unwrap();
+        assert!(second_step.contains("{{#start.notes#}}") && second_step.contains("{{#write_1.text#}}"), "{yaml}");
+        assert!(yaml.contains("type: paragraph"), "{yaml}");
+    }
+
+    #[test]
+    fn an_approval_shows_the_latest_result_and_only_approving_continues() {
+        let plan = plan_from(
+            r#"{"steps": [{"kind": "write", "title": "Draft the reply", "instruction": "Draft it."},
+                          {"kind": "approve", "title": "Check the reply", "instruction": "Is this reply good?"},
+                          {"kind": "write", "title": "Polish", "instruction": "Make it shorter."}]}"#,
+            false,
+        );
+        let yaml = workflow_yaml(&plan, &local_model(), AgentKind::Task).unwrap();
+        assert_eq!(step_types(&yaml), ["llm", "human-input", "llm"], "{yaml}");
+        assert!(yaml.contains("Is this reply good?") && yaml.contains("{{#write_1.text#}}"), "{yaml}");
+        let approve_edges: Vec<&str> = yaml.lines().filter(|line| line.contains("handle: approve")).collect();
+        assert_eq!(approve_edges.len(), 1, "{yaml}");
+    }
+
+    /// A plan that writes a note and emails it, with the fields a model would give.
+    fn email_plan(asks_first: bool) -> Plan {
+        let operations = [send_email_operation()];
+        let approval = if asks_first {
+            r#"{"kind": "approve", "title": "Check the note", "instruction": "Send this note?"},"#
+        } else {
+            ""
+        };
+        let mut plan = plan_with(
+            &format!(
+                r#"{{"name": "Thank You Email", "inputs": [{{"name": "address", "label": "Email address", "long_text": false}}],
+                    "steps": [{{"kind": "write", "title": "Write the note", "instruction": "Write a thank-you note."}}, {approval}
+                              {{"kind": "use", "title": "Send the note", "instruction": "Email the note", "operation": "email.send_email"}}]}}"#
+            ),
+            &operations,
+            false,
+        );
+        let send_index = plan.steps.len() - 1;
+        let fields = normalize_fields(
+            &operations[0],
+            r#"{"to": "{address}", "subject": "Thank you: \"really\"", "text": "{step_1}"}"#,
+            &plan,
+            send_index,
+        )
+        .unwrap();
+        if let PlanStep::Use { fields: step_fields, .. } = &mut plan.steps[send_index] {
+            *step_fields = fields;
+        }
+        plan
+    }
+
+    #[test]
+    fn the_person_is_asked_before_a_plugin_step_sends() {
+        let yaml = workflow_yaml(&email_plan(false), &local_model(), AgentKind::Task).unwrap();
+        assert!(yaml.contains("type: human-input") && yaml.contains("type: email.send_email"), "{yaml}");
+        let ask_at = yaml.find("id: confirm_2").expect("the app adds the question");
+        let send_at = yaml.find("id: use_2").unwrap();
+        assert!(ask_at < send_at, "{yaml}");
+        let question = &yaml[ask_at..send_at];
+        assert!(
+            question.contains("Send the note?")
+                && question.contains("{{#start.address#}}")
+                && question.contains("{{#write_1.text#}}"),
+            "{yaml}"
+        );
+        let send_step = &yaml[send_at..];
+        assert!(
+            send_step.contains("to: '{{#start.address#}}'") || send_step.contains("to: \"{{#start.address#}}\""),
+            "{yaml}"
+        );
+        assert!(send_step.contains("{{#write_1.text#}}"), "{yaml}");
+        assert!(yaml.contains("- write_1\n      - text"), "the run shows what was written: {yaml}");
+    }
+
+    #[test]
+    fn an_approval_the_plan_already_has_is_not_asked_twice() {
+        let yaml = workflow_yaml(&email_plan(true), &local_model(), AgentKind::Task).unwrap();
+        assert_eq!(yaml.matches("type: human-input").count(), 1, "{yaml}");
+        assert!(yaml.contains("id: approve_2") && !yaml.contains("id: confirm_3"), "{yaml}");
+    }
+
+    #[test]
+    fn what_a_plugin_read_is_cut_to_size_for_the_writer() {
+        let operations = [list_messages_operation()];
+        let mut plan = plan_with(
+            r#"{"summary": "Sums up new mail.", "steps": [{"kind": "use", "title": "Get new mail", "instruction": "List unread mail", "operation": "email.list_messages"}]}"#,
+            &operations,
+            false,
+        );
+        if let PlanStep::Use { fields, .. } = &mut plan.steps[0] {
+            fields.insert("limit".into(), serde_json::json!(5));
+        }
+        let yaml = workflow_yaml(&plan, &local_model(), AgentKind::Task).unwrap();
+        assert!(!yaml.contains("type: human-input"), "reading needs no approval: {yaml}");
+        assert!(yaml.contains("limit: 5"), "{yaml}");
+        assert!(yaml.contains("(data | tojson)[:6000]") && yaml.contains("{{#shorten_1.output#}}"), "{yaml}");
+    }
+
+    #[test]
+    fn a_chatbot_reads_the_message_and_replies_with_an_answer_step() {
+        let plan =
+            plan_from(r#"{"steps": [{"kind": "write", "title": "Reply", "instruction": "Answer kindly."}]}"#, true);
+        let yaml = workflow_yaml(&plan, &local_model(), AgentKind::Chatbot).unwrap();
+        let summary = flow::summarize_flow(&yaml).unwrap_or_else(|error| panic!("{error}\n{yaml}"));
+        assert_eq!(summary.inputs[0].name, "message");
+        assert_eq!(step_types(&yaml), ["llm", "answer"], "{yaml}");
+        assert!(yaml.contains("{{#write_1.text#}}"), "{yaml}");
+    }
+
+    #[test]
+    fn a_plan_without_inputs_or_name_still_compiles() {
+        let plan = plan_from(r#"{"steps": [{"kind": "write", "title": "", "instruction": "Write a joke."}]}"#, false);
+        let yaml = workflow_yaml(&plan, &local_model(), AgentKind::Task).unwrap();
+        assert_eq!(step_types(&yaml), ["llm"]);
+        assert!(yaml.contains("name: agent"), "{yaml}");
+    }
+
+    #[test]
+    fn the_plan_is_read_back_from_its_document_until_the_document_is_changed_by_hand() {
+        let plan = email_plan(true);
+        let yaml = workflow_yaml(&plan, &local_model(), AgentKind::Task).unwrap();
+        assert!(yaml.starts_with("# guided-plan: {"), "{yaml}");
+        assert_eq!(plan_of_document(&yaml, AgentKind::Task), Some((plan.clone(), local_model())));
+
+        // The comment still says the old instruction, the steps say a new one: the steps win.
+        let steps_edited = yaml.replacen("Task: Write a thank-you note.", "Task: Write a short thank-you note.", 1);
+        assert_ne!(steps_edited, yaml);
+        assert_eq!(plan_of_document(&steps_edited, AgentKind::Task), None);
+        assert_eq!(plan_of_document("version: \"1\"\nname: x\n", AgentKind::Task), None);
+        assert_eq!(plan_of_document("# guided-plan: not json\nversion: \"1\"\n", AgentKind::Task), None);
+
+        // Steps on another model are still this plan's document: the model is the document's.
+        let other_model = StepModel { provider: "ollama".into(), name: "qwen2.5:14b".into() };
+        let on_other_model = workflow_yaml(&plan, &other_model, AgentKind::Task).unwrap();
+        assert_eq!(plan_of_document(&on_other_model, AgentKind::Task), Some((plan, other_model)));
     }
 }

@@ -15,19 +15,79 @@ use crate::storage::models::AgentKind;
 
 /// Words that mean the agent itself must act outside the app.
 const ACTING_WORDS: &[&str] = &[
-    "send", "sends", "sending", "forward", "forwards", "publish", "publishes", "upload", "uploads", "notify", "notifies",
-    "kirim", "kirimkan", "mengirim", "mengirimkan", "terbitkan", "unggah", "beritahu", "save", "saves", "store", "stores",
-    "export", "exports", "simpan", "menyimpan", "ekspor", "pay", "pays", "buy", "bayar", "beli", "whatsapp", "telegram",
-    "slack", "gmail", "outlook", "sms", "spreadsheet", "spreadsheets", "sheet", "sheets", "excel", "calendar",
-    "kalender", "notion", "crm", "database", "inbox",
+    "send",
+    "sends",
+    "sending",
+    "forward",
+    "forwards",
+    "publish",
+    "publishes",
+    "upload",
+    "uploads",
+    "notify",
+    "notifies",
+    "kirim",
+    "kirimkan",
+    "mengirim",
+    "mengirimkan",
+    "terbitkan",
+    "unggah",
+    "beritahu",
+    "save",
+    "saves",
+    "store",
+    "stores",
+    "export",
+    "exports",
+    "simpan",
+    "menyimpan",
+    "ekspor",
+    "pay",
+    "pays",
+    "buy",
+    "bayar",
+    "beli",
+    "whatsapp",
+    "telegram",
+    "slack",
+    "gmail",
+    "outlook",
+    "sms",
+    "spreadsheet",
+    "spreadsheets",
+    "sheet",
+    "sheets",
+    "excel",
+    "calendar",
+    "kalender",
+    "notion",
+    "crm",
+    "database",
+    "inbox",
 ];
 
 /// Phrases with the same meaning, matched as whole words in order.
 const ACTING_PHRASES: &[&[&str]] = &[
-    &["email", "me"], &["email", "it"], &["email", "them"], &["email", "to"], &["emails", "me"], &["mail", "it"],
-    &["by", "email"], &["via", "email"], &["lewat", "email"], &["melalui", "email"], &["post", "to"], &["post", "on"],
-    &["post", "it"], &["posts", "to"], &["posts", "on"], &["google", "maps"], &["google", "drive"], &["my", "email"],
-    &["my", "emails"], &["email", "saya"],
+    &["email", "me"],
+    &["email", "it"],
+    &["email", "them"],
+    &["email", "to"],
+    &["emails", "me"],
+    &["mail", "it"],
+    &["by", "email"],
+    &["via", "email"],
+    &["lewat", "email"],
+    &["melalui", "email"],
+    &["post", "to"],
+    &["post", "on"],
+    &["post", "it"],
+    &["posts", "to"],
+    &["posts", "on"],
+    &["google", "maps"],
+    &["google", "drive"],
+    &["my", "email"],
+    &["my", "emails"],
+    &["email", "saya"],
 ];
 
 /// Words for working on files, which a plan has no step for.
@@ -40,14 +100,50 @@ const EACH_WORDS: &[&str] = &["each", "every", "setiap", "tiap"];
 const REPEATING_PHRASES: &[&[&str]] = &[&["one", "by", "one"], &["satu", "per", "satu"], &["masing", "masing"]];
 
 const TIME_WORDS: &[&str] = &[
-    "day", "morning", "afternoon", "evening", "night", "week", "month", "hour", "weekday", "monday", "tuesday",
-    "wednesday", "thursday", "friday", "saturday", "sunday", "hari", "pagi", "siang", "sore", "malam", "minggu",
-    "bulan", "jam", "senin", "selasa", "rabu", "kamis", "jumat", "sabtu",
+    "day",
+    "morning",
+    "afternoon",
+    "evening",
+    "night",
+    "week",
+    "month",
+    "hour",
+    "weekday",
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+    "hari",
+    "pagi",
+    "siang",
+    "sore",
+    "malam",
+    "minggu",
+    "bulan",
+    "jam",
+    "senin",
+    "selasa",
+    "rabu",
+    "kamis",
+    "jumat",
+    "sabtu",
 ];
 
 /// Words that by themselves say the agent runs on a schedule.
 const SCHEDULE_WORDS: &[&str] = &[
-    "daily", "weekly", "hourly", "schedule", "schedules", "scheduled", "jadwal", "jadwalkan", "terjadwal", "harian",
+    "daily",
+    "weekly",
+    "hourly",
+    "schedule",
+    "schedules",
+    "scheduled",
+    "jadwal",
+    "jadwalkan",
+    "terjadwal",
+    "harian",
     "mingguan",
 ];
 
@@ -132,11 +228,17 @@ fn repeats_over_a_list(words: &[String]) -> bool {
 }
 
 fn has_phrase(words: &[String], phrases: &[&[&str]]) -> bool {
-    phrases.iter().any(|phrase| words.windows(phrase.len()).any(|window| window.iter().map(String::as_str).eq(phrase.iter().copied())))
+    phrases.iter().any(|phrase| {
+        words.windows(phrase.len()).any(|window| window.iter().map(String::as_str).eq(phrase.iter().copied()))
+    })
 }
 
 fn words(text: &str) -> Vec<String> {
-    text.to_lowercase().split(|character: char| !character.is_alphanumeric()).filter(|word| !word.is_empty()).map(str::to_owned).collect()
+    text.to_lowercase()
+        .split(|character: char| !character.is_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .map(str::to_owned)
+        .collect()
 }
 
 #[cfg(test)]
@@ -192,7 +294,12 @@ mod tests {
         assert_eq!(missing_action("Write a note for me to read", &only_writes), None);
         let sends = plan_with(vec![
             write_step(),
-            PlanStep::Use { title: "Send".into(), instruction: "Send it".into(), operation: "email.send_email".into(), fields: BTreeMap::new() },
+            PlanStep::Use {
+                title: "Send".into(),
+                instruction: "Send it".into(),
+                operation: "email.send_email".into(),
+                fields: BTreeMap::new(),
+            },
         ]);
         assert_eq!(missing_action("Write a note and send it by email", &sends), None);
     }
@@ -202,7 +309,10 @@ mod tests {
         let daily = Schedule::daily();
         assert_eq!(schedule_in_words("Every morning tell me the weather"), Some(daily));
         assert_eq!(schedule_in_words("Setiap pagi ringkas berita"), Some(daily));
-        assert_eq!(schedule_in_words("Send a daily report in the evening"), Some(Schedule { repeat: Repeat::Daily, hour: 17 }));
+        assert_eq!(
+            schedule_in_words("Send a daily report in the evening"),
+            Some(Schedule { repeat: Repeat::Daily, hour: 17 })
+        );
         assert_eq!(schedule_in_words("Check prices every hour"), Some(Schedule { repeat: Repeat::Hourly, hour: 8 }));
         assert_eq!(schedule_in_words("Laporan mingguan penjualan"), Some(Schedule { repeat: Repeat::Weekly, hour: 8 }));
         assert_eq!(schedule_in_words("Write a reply to every complaint I paste"), None);

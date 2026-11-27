@@ -33,7 +33,9 @@ use graphrt_llm::{ChatDelta, ChatRequest, Message, ResponseFormat};
 use self::plan::{Plan, PlanRules, PlanStep};
 use super::live::{DraftPreview, MIN_PREVIEW_INTERVAL};
 use super::prompt::AGENT_NAME_PREFIX;
-use super::{model_error, report, validate_draft, BuildProgress, BuildStage, BuilderModel, DraftTrust, ProgressSink, ValidDraft};
+use super::{
+    model_error, report, validate_draft, BuildProgress, BuildStage, BuilderModel, DraftTrust, ProgressSink, ValidDraft,
+};
 use crate::error::AppResult;
 use crate::flow::TrustedHosts;
 use crate::plugins::operations::OfferedOperation;
@@ -72,6 +74,8 @@ pub(super) struct ScheduledRun {
 /// What one planning round works with.
 struct Planning<'a> {
     builder: &'a BuilderModel,
+    /// The model the document's writing steps run on.
+    step_model: compose::StepModel,
     kind: AgentKind,
     operations: Vec<OfferedOperation>,
     trusted_hosts: &'a TrustedHosts,
@@ -104,6 +108,7 @@ pub(super) async fn draft(
     let no_trusted_hosts = TrustedHosts::none();
     let planning = Planning {
         builder,
+        step_model: compose::StepModel::from(&builder.choice),
         kind,
         operations,
         trusted_hosts: &no_trusted_hosts,
@@ -112,7 +117,8 @@ pub(super) async fn draft(
         on_progress,
     };
     let rules = planning.rules();
-    let messages = vec![Message::system(prompt::system_prompt(&rules)), Message::user(prompt::plan_request(description))];
+    let messages =
+        vec![Message::system(prompt::system_prompt(&rules)), Message::user(prompt::plan_request(description))];
     let Some((plan, draft)) = planning.plan_until_valid(messages, "Drafting the steps").await? else { return Ok(None) };
     let schedule = plan.schedule.map(|schedule| ScheduledRun {
         cron_expression: schedule.cron_expression(),
@@ -143,7 +149,7 @@ pub(super) async fn revise(
     trusted_hosts: &TrustedHosts,
     on_progress: ProgressSink<'_>,
 ) -> AppResult<Option<ValidDraft>> {
-    let Some(current_plan) = compose::plan_of_document(&agent.flow_yaml, &builder.choice, agent.kind) else {
+    let Some((current_plan, step_model)) = compose::plan_of_document(&agent.flow_yaml, agent.kind) else {
         return Ok(None);
     };
     // The operations the change may add, and the ones the plan already uses.
@@ -165,6 +171,7 @@ pub(super) async fn revise(
     }
     let planning = Planning {
         builder,
+        step_model,
         kind: agent.kind,
         operations,
         trusted_hosts,
@@ -199,7 +206,8 @@ pub(super) fn save_paused_schedule(db: &Database, agent: &Agent, schedule: &Sche
         missed_run_policy: MissedRunPolicy::Skip,
         inputs: schedule.inputs.clone(),
     };
-    let saved = db.create_trigger(new_trigger, None).and_then(|trigger| db.set_trigger_enabled(&trigger.id, false, None));
+    let saved =
+        db.create_trigger(new_trigger, None).and_then(|trigger| db.set_trigger_enabled(&trigger.id, false, None));
     match saved {
         Ok(_) => Some(format!(
             "A schedule ({}) is saved but turned off: try the agent first, then turn the schedule on.",
@@ -260,7 +268,8 @@ fn plan_for_the_model(plan: &Plan) -> serde_json::Value {
 
 impl Planning<'_> {
     fn rules(&self) -> PlanRules<'_> {
-        static MESSAGE_INPUT: std::sync::LazyLock<plan::PlanInput> = std::sync::LazyLock::new(compose::chatbot_message_input);
+        static MESSAGE_INPUT: std::sync::LazyLock<plan::PlanInput> =
+            std::sync::LazyLock::new(compose::chatbot_message_input);
         let is_chatbot = self.kind == AgentKind::Chatbot;
         PlanRules {
             fixed_input: is_chatbot.then_some(&*MESSAGE_INPUT),
@@ -270,7 +279,11 @@ impl Planning<'_> {
     }
 
     /// Asks for a plan until one passes every check, at most [`MAX_PLAN_ATTEMPTS`] times.
-    async fn plan_until_valid(&self, mut messages: Vec<Message>, first_message: &str) -> AppResult<Option<(Plan, ValidDraft)>> {
+    async fn plan_until_valid(
+        &self,
+        mut messages: Vec<Message>,
+        first_message: &str,
+    ) -> AppResult<Option<(Plan, ValidDraft)>> {
         let rules = self.rules();
         let schema = plan::schema(&rules);
         for attempt in 1..=MAX_PLAN_ATTEMPTS {
@@ -284,7 +297,9 @@ impl Planning<'_> {
             let check_message = if attempt == 1 { "Checking the steps" } else { "Checking it again" };
             report(self.on_progress, BuildStage::Checking, check_message);
             let checked = match self.checked_plan(&reply, &rules) {
-                Ok(plan) => self.with_fields(plan, stage, stage_message).await?.and_then(|plan| self.checked_draft(plan)),
+                Ok(plan) => {
+                    self.with_fields(plan, stage, stage_message).await?.and_then(|plan| self.checked_draft(plan))
+                }
                 Err(problem) => Err(problem),
             };
             let problem = match checked {
@@ -325,7 +340,12 @@ impl Planning<'_> {
 
     /// Fills in the fields of every plugin step. `Ok(Err(problem))` is a sentence for the
     /// model about the plan as a whole.
-    async fn with_fields(&self, mut plan: Plan, stage: BuildStage, stage_message: &str) -> AppResult<Result<Plan, String>> {
+    async fn with_fields(
+        &self,
+        mut plan: Plan,
+        stage: BuildStage,
+        stage_message: &str,
+    ) -> AppResult<Result<Plan, String>> {
         for index in 0..plan.steps.len() {
             let PlanStep::Use { operation, .. } = &plan.steps[index] else { continue };
             let Some(offered) = self.operations.iter().find(|offered| &offered.kind == operation) else {
@@ -360,7 +380,9 @@ impl Planning<'_> {
             (
                 PlanStep::Use { operation: old_operation, instruction: old_instruction, fields, .. },
                 PlanStep::Use { operation, instruction, .. },
-            ) if old_operation == operation && old_instruction == instruction && !fields.is_empty() => Some(fields.clone()),
+            ) if old_operation == operation && old_instruction == instruction && !fields.is_empty() => {
+                Some(fields.clone())
+            }
             _ => None,
         }
     }
@@ -391,12 +413,15 @@ impl Planning<'_> {
                 }
             }
         }
-        Ok(Err(format!("step {} could not be filled in ({last_problem}); make its instruction simpler", step_index + 1)))
+        Ok(Err(format!(
+            "step {} could not be filled in ({last_problem}); make its instruction simpler",
+            step_index + 1
+        )))
     }
 
     /// Plan → document → the builder's checks. `Err` is a sentence for the model.
     fn checked_draft(&self, plan: Plan) -> Result<(Plan, ValidDraft), String> {
-        let flow_yaml = compose::workflow_yaml(&plan, &self.builder.choice, self.kind)?;
+        let flow_yaml = compose::workflow_yaml(&plan, &self.step_model, self.kind)?;
         // A lookup needs the user's trust in its host: proposed here, granted only by their click.
         let mut proposed_hosts: Vec<String> = Vec::new();
         for step in &plan.steps {
@@ -413,7 +438,8 @@ impl Planning<'_> {
             explanation.push_str(&format!(" Trust {host} for lookups."));
         }
         let explanation = explanation.trim().to_owned();
-        let name_line = if plan.name.is_empty() { String::new() } else { format!("{AGENT_NAME_PREFIX} {}\n", plan.name) };
+        let name_line =
+            if plan.name.is_empty() { String::new() } else { format!("{AGENT_NAME_PREFIX} {}\n", plan.name) };
         // The same shape as a full-path reply, so the name and document are read the same way.
         let reply = format!("{explanation}\n{name_line}```yaml\n{flow_yaml}```\n");
         Ok((plan, ValidDraft { reply, flow_yaml, summary, explanation }))

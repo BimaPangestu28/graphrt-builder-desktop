@@ -126,7 +126,12 @@ pub(super) fn fields_request(operation: &OfferedOperation, plan: &Plan, step_ind
     }
     for (index, step) in plan.steps.iter().enumerate().take(step_index) {
         if step.has_result() {
-            request.push_str(&format!("\n- {{step_{}}}: the result of step {} \"{}\"", index + 1, index + 1, step.title()));
+            request.push_str(&format!(
+                "\n- {{step_{}}}: the result of step {} \"{}\"",
+                index + 1,
+                index + 1,
+                step.title()
+            ));
         }
     }
     request
@@ -163,7 +168,8 @@ mod tests {
     #[test]
     fn a_chatbot_is_not_told_about_approvals() {
         let message = chatbot_message_input();
-        let prompt = system_prompt(&PlanRules { fixed_input: Some(&message), operations: &[], allows_approvals: false });
+        let prompt =
+            system_prompt(&PlanRules { fixed_input: Some(&message), operations: &[], allows_approvals: false });
         assert!(prompt.contains("chatbot"));
         assert!(!prompt.contains("\"approve\""));
         assert!(!system_prompt(&task_rules(&[])).contains("chatbot"));
@@ -181,10 +187,20 @@ mod tests {
         let plan = Plan {
             summary: String::new(),
             name: String::new(),
-            inputs: vec![super::super::plan::PlanInput { name: "address".into(), label: "Email address".into(), long_text: false, value: String::new() }],
+            inputs: vec![super::super::plan::PlanInput {
+                name: "address".into(),
+                label: "Email address".into(),
+                long_text: false,
+                value: String::new(),
+            }],
             steps: vec![
                 PlanStep::Write { title: "Write the note".into(), instruction: "Write it.".into() },
-                PlanStep::Use { title: "Send it".into(), instruction: "Send the note".into(), operation: operation.kind.clone(), fields: Default::default() },
+                PlanStep::Use {
+                    title: "Send it".into(),
+                    instruction: "Send the note".into(),
+                    operation: operation.kind.clone(),
+                    fields: Default::default(),
+                },
             ],
             schedule: None,
         };

@@ -261,7 +261,11 @@ pub(crate) async fn revise_agent_with_model(
         Some(draft) => draft,
         None => {
             let messages = vec![
-                Message::system(prompt::revision_system_prompt(&builder.choice, &saved_secret_names(db), &trusted_hosts)),
+                Message::system(prompt::revision_system_prompt(
+                    &builder.choice,
+                    &saved_secret_names(db),
+                    &trusted_hosts,
+                )),
                 Message::user(prompt::revision_request(&agent.flow_yaml, instruction)),
             ];
             report(on_progress, BuildStage::Drafting, "Updating the steps");
