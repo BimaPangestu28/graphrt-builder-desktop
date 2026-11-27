@@ -634,8 +634,11 @@ fn drop_repeated_recipients(operation: &OfferedOperation, fields: &mut BTreeMap<
             fields.remove(&field.name);
         }
     }
-    // The same written text as `html` too would send plain text as a web page.
-    if fields.contains_key("html") && fields.get("html") == fields.get("text") {
+    // The same written text as `html` too would send plain text as a web page, and a fixed
+    // `html` body (gpt-4o-mini wrote one into a change) would replace the written note.
+    let html_reads_a_result =
+        fields.get("html").and_then(serde_json::Value::as_str).is_some_and(|html| html.contains("{step_"));
+    if fields.contains_key("html") && (fields.get("html") == fields.get("text") || !html_reads_a_result) {
         fields.remove("html");
     }
 }
@@ -1661,6 +1664,14 @@ mod tests {
         )
         .unwrap();
         assert!(!both.contains_key("html"), "{both:?}");
+        let fixed_html = normalize_fields(
+            &with_html,
+            r#"{"subject": "S", "to": "{address}", "text": "{step_1}", "html": "<p>Terima kasih</p>"}"#,
+            &sending_plan(),
+            2,
+        )
+        .unwrap();
+        assert!(!fixed_html.contains_key("html"), "{fixed_html:?}");
 
         let fixed_words = normalize_fields(
             &send_email_operation(),

@@ -40,7 +40,7 @@ export function BuilderExplanation({ text, agentId }: { text: string; agentId: s
   const proposedHosts = findTrustProposals(text)
   return (
     <>
-      <p className="m-0 leading-[1.55]">{text}</p>
+      <p className="m-0 whitespace-pre-line leading-[1.55]">{text}</p>
       {agentId && proposedHosts.length > 0 && <TrustProposalButtons agentId={agentId} proposedHosts={proposedHosts} />}
     </>
   )
