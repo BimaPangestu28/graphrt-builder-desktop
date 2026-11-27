@@ -1,5 +1,6 @@
 import type { GraphrtEvent, RunEventRecord } from '@/api/types'
 import { pluginNameFromNodeType } from '@/lib/errorHelp'
+import { describeChosenAction, readChosenActionId, readPauseActionTitles } from './approvalAnswers'
 import { humanizeRunError } from './runErrorText'
 import { buildItemFrame, findIterationItems, describeItemShort, parseFrame, readFrame, readIteratorPath, readNumber, readString } from './runEventValues'
 import { collectNodeTracks } from './runNodeTracks'
@@ -56,6 +57,8 @@ interface NarrationState {
   closedItemFrames: Set<string>
   firstFailure: FailureNote | null
   runStartedAt: string | null
+  /** Pause line key → button id → title of the question asked there. */
+  actionTitlesByPause: Map<string, ReadonlyMap<string, string>>
 }
 
 function setLine(state: NarrationState, key: string, text: string, changes: Partial<NarrationLine> = {}): void {
@@ -109,9 +112,8 @@ function describeSuccess(step: StepInfo, event: GraphrtEvent): string {
 function answerPause(state: NarrationState, nodeId: string, frame: string, event: GraphrtEvent): void {
   const pauseKey = `pause:${nodeId}:${frame}`
   if (!state.lines.has(pauseKey)) return
-  const outputs = event.outputs && typeof event.outputs === 'object' ? (event.outputs as Record<string, unknown>) : {}
-  const action = typeof outputs.action === 'string' ? outputs.action : readString(event, 'branch')
-  setLine(state, pauseKey, action ? messages().agentRun.youAnsweredWith(action) : messages().agentRun.youAnswered)
+  const actionId = readChosenActionId(event)
+  setLine(state, pauseKey, actionId ? messages().agentRun.youAnsweredWith(describeChosenAction(actionId, state.actionTitlesByPause.get(pauseKey))) : messages().agentRun.youAnswered)
 }
 
 function recordFailure(state: NarrationState, step: StepInfo, event: GraphrtEvent, itemTitle: string | null) {
@@ -177,6 +179,8 @@ function handleNodeEvent(state: NarrationState, record: RunEventRecord, step: St
     const pauseKind = event.reason && typeof event.reason === 'object' ? (event.reason as Record<string, unknown>).kind : event.kind
     const text = pauseKind === 'tool_approval' ? messages().agentRun.waitingForYourOkToUse : isApproval ? messages().agentRun.waitingForYourApproval : messages().agentRun.waitingForYou2
     setLine(state, `pause:${nodeId}:${frame}`, text, { tone: 'amber', isApprovalLink: true })
+    const titles = readPauseActionTitles(event)
+    if (titles) state.actionTitlesByPause.set(`pause:${nodeId}:${frame}`, titles)
   }
   if (event.type === 'node_succeeded') answerPause(state, nodeId, frame, event)
   const lastSegment = parseFrame(frame).at(-1)
@@ -266,6 +270,7 @@ export function buildRunNarration(template: RunStepTemplate[], events: RunEventR
     closedItemFrames: new Set(),
     firstFailure: null,
     runStartedAt: events[0]?.createdAt ?? null,
+    actionTitlesByPause: new Map(),
   }
   for (const record of events) {
     const { type, node_id: nodeId } = record.event

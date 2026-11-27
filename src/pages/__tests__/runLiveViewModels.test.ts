@@ -1,4 +1,5 @@
 import type { FlowSummary, Run, RunEventRecord } from '@/api/types'
+import { setLocale } from '@/i18n'
 import { humanizeRunError } from '@/pages/agent-run/runErrorText'
 import { buildRunNarration } from '@/pages/agent-run/runNarration'
 import { formatDurationMs, formatElapsedClock, toRunStepTemplate } from '@/pages/agent-run/runProgress'
@@ -193,8 +194,35 @@ describe('run narration', () => {
       { type: 'run_succeeded', outputs: {}, elapsed_ms: 72_000 },
     ])
     const lines = buildRunNarration(template, finishedEvents)
-    expect(lines.map((line) => line.text)).toEqual(['Business 1 of 1 — done', 'You answered: approve', 'For each business: all 1 done', 'Finished in 1m 12s'])
+    expect(lines.map((line) => line.text)).toEqual(['Business 1 of 1 — done', 'You chose “approve”', 'For each business: all 1 done', 'Finished in 1m 12s'])
     expect(lines.some((line) => line.isApprovalLink)).toBe(false)
+  })
+
+  it('names the chosen button by its title, in the words the button was written in', () => {
+    const askEvents = [
+      { type: 'run_started' },
+      node('node_started', 'send_promotion', '', { kind: 'human-input' }),
+      node('node_paused', 'send_promotion', '', { reason: { kind: 'human_input', data: { prompt: 'Buat invoice ini?', actions: [{ id: 'create', title: 'Buat invoice' }, { id: 'cancel', title: 'Batal' }] } } }),
+      { type: 'run_paused', reasons: [] },
+      { type: 'run_started', resumed: true },
+      node('node_started', 'send_promotion', '', { kind: 'human-input' }),
+      node('node_succeeded', 'send_promotion', '', { outputs: { action: 'create' }, branch: 'create', elapsed_ms: 0 }),
+    ]
+    expect(buildRunNarration(template, buildEventLog(askEvents)).map((line) => line.text)).toContain('You chose “Buat invoice”')
+    setLocale('id')
+    expect(buildRunNarration(template, buildEventLog(askEvents)).map((line) => line.text)).toContain('Kamu memilih “Buat invoice”')
+    const steps = buildRunStepViews([{ id: 'send_promotion', label: 'Ask first', nodeType: 'human-input' }], buildEventLog(askEvents))
+    expect(steps[0].chosenAction).toBe('Buat invoice')
+  })
+
+  it('falls back to the button id only when the question gave no title', () => {
+    const events = buildEventLog([
+      node('node_started', 'send_promotion', '', { kind: 'human-input' }),
+      node('node_paused', 'send_promotion', '', { reason: { kind: 'human_input', data: { actions: [{ id: 'create' }] } } }),
+      node('node_succeeded', 'send_promotion', '', { outputs: { action: 'create' } }),
+    ])
+    expect(buildRunNarration(template, events).map((line) => line.text)).toContain('You chose “create”')
+    expect(buildRunStepViews([{ id: 'send_promotion', label: 'Ask first', nodeType: 'human-input' }], events)[0].chosenAction).toBe('create')
   })
 
   it('names the failed step and item in plain words, raw error kept', () => {
