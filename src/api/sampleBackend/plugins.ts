@@ -17,7 +17,7 @@ import type {
   PluginSource,
   PluginTemplateInfo,
 } from '../pluginTypes'
-import type { FlowStep } from '../types'
+import type { Agent, FlowStep } from '../types'
 import { readCurrentSteps } from './sampleAgentStore'
 import { requireText, respondWith } from './sampleResponse'
 import { sampleAppSettingsBackend } from './appSettings'
@@ -536,6 +536,11 @@ export const samplePluginsBackend = {
   listInstalledPlugins: (): Promise<InstalledPlugin[]> => respondWith(() => [...pluginsState.installedByName.values()].map(toInstalledPlugin)),
   /** The sample catalog has no plugin with templates. */
   listPluginTemplates: (): Promise<PluginTemplateInfo[]> => respondWith(() => []),
+  /** So it has no ready-made agent to make either. */
+  createAgentFromPluginTemplate: (plugin: string, templateId: string): Promise<Agent> =>
+    respondWith(() => {
+      throw new BackendError('not_found', `the ready-made agent ${templateId} of plugin ${plugin}`)
+    }),
   installPlugin: (name: string, approvedPermissions?: PluginPermissions): Promise<InstalledPlugin> => respondWith(() => installSamplePlugin(name, approvedPermissions)),
   updatePlugin: (name: string): Promise<InstalledPlugin> => respondWith(() => updateSamplePlugin(name)),
   updateAllPlugins: (): Promise<PluginBulkUpdateSummary> => respondWith(updateAllSamplePlugins),

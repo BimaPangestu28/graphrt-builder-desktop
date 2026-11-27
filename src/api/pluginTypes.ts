@@ -96,14 +96,19 @@ export interface McpServerSummary {
   auth: 'none' | 'bearer' | 'oauth'
 }
 
-/** A starter prompt from an installed plugin, shown on the New agent screen. */
+/** A starter from an installed plugin, shown on the New agent screen: a prompt, or a ready-made agent. */
 export interface PluginTemplateInfo {
   plugin: string
   pluginDisplayName: string
   id: string
   title: string
   description: string
+  /** The text for the "describe the job" box; empty for a ready-made agent. */
   prompt: string
+  /** The plugin ships the finished workflow: picking it makes the agent at once, without a model. */
+  readyToUse?: boolean
+  /** The language a ready-made agent is written in (`en`, `id`), when the plugin says so. */
+  language?: string | null
 }
 
 /** One plugin moved between versions. */

@@ -1038,3 +1038,71 @@ impl SkillCatalogFixture {
         CATALOG_URL
     }
 }
+
+/// A plugin's `graphrt-agents.json` offers finished agents: one whose workflow asks before
+/// its plugin step is listed and becomes an agent without a model; one that sends without
+/// asking, or uses a step outside the plugin, is not offered and cannot be made.
+#[tokio::test]
+async fn a_plugins_ready_made_agent_is_offered_and_made_only_when_its_workflow_is_safe() {
+    let fixture = installed_fixture().await;
+    assert!(fixture.service.templates().is_empty());
+
+    let workflow = |steps: &str, edges: &str| {
+        format!(
+            "version: \"1\"\nname: ready\ngraph:\n  nodes:\n    - id: start\n      type: start\n      variables:\n        \
+             - {{ variable: text, label: Text, type: text-input, required: true, default: hi }}\n{steps}  edges:\n{edges}"
+        )
+    };
+    let ask =
+        "    - id: ask\n      type: human-input\n      prompt: \"Send {{#start.text#}}?\"\n      actions:\n        \
+               - { id: send, title: Send }\n";
+    let say = "    - { id: say, type: fixture-echo.send_text, title: Send it, text: \"{{#start.text#}}\" }\n";
+    let asks_first = workflow(
+        &format!("{ask}{say}"),
+        "    - { source: start, target: ask }\n    - { source: ask, target: say, handle: send }\n",
+    );
+    let sends_unasked = workflow(say, "    - { source: start, target: say }\n");
+    let calls_the_web = workflow(
+        &format!("{ask}    - {{ id: call, type: http-request, method: get, url: \"https://example.org\" }}\n"),
+        "    - { source: start, target: ask }\n    - { source: ask, target: call, handle: send }\n",
+    );
+
+    let folder = fixture.plugins_dir().join(PLUGIN);
+    std::fs::create_dir(folder.join("agents")).unwrap();
+    for (name, text) in [("ask", &asks_first), ("unasked", &sends_unasked), ("web", &calls_the_web)] {
+        std::fs::write(folder.join("agents").join(format!("{name}.yaml")), text).unwrap();
+    }
+    std::fs::write(
+        folder.join("graphrt-agents.json"),
+        r#"{ "agents": [
+            { "id": "send-a-text", "title": "Send a text", "description": "Asks, then sends", "language": "en", "workflow": "agents/ask.yaml" },
+            { "id": "unasked", "title": "Unasked", "description": "Sends at once", "workflow": "agents/unasked.yaml" },
+            { "id": "web", "title": "Web", "description": "Calls a site", "workflow": "agents/web.yaml" }
+        ] }"#,
+    )
+    .unwrap();
+    fixture.service.reload();
+
+    let templates = fixture.service.templates();
+    assert_eq!(templates.len(), 1, "{templates:?}");
+    let offered = &templates[0];
+    assert_eq!(
+        (offered.plugin.as_str(), offered.id.as_str(), offered.title.as_str()),
+        (PLUGIN, "send-a-text", "Send a text")
+    );
+    assert!(offered.ready_to_use && offered.prompt.is_empty());
+    assert_eq!(offered.language.as_deref(), Some("en"));
+
+    let agent = fixture.service.create_ready_agent(PLUGIN, "send-a-text").unwrap();
+    assert_eq!((agent.name.as_str(), agent.description.as_str()), ("Send a text", "Asks, then sends"));
+    assert_eq!(agent.flow_yaml, asks_first);
+    assert_eq!(fixture.db.list_agents().unwrap().len(), 1);
+
+    for refused in ["unasked", "web"] {
+        let result = fixture.service.create_ready_agent(PLUGIN, refused);
+        assert!(matches!(result, Err(AppError::InvalidInput(_))), "{refused}: {result:?}");
+    }
+    assert!(matches!(fixture.service.create_ready_agent(PLUGIN, "none"), Err(AppError::NotFound(_))));
+    assert!(matches!(fixture.service.create_ready_agent("not-installed", "send-a-text"), Err(AppError::NotFound(_))));
+    assert_eq!(fixture.db.list_agents().unwrap().len(), 1, "a refused agent is not saved");
+}

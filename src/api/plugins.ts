@@ -18,6 +18,21 @@ import {
 import type { PluginRequirement, PluginSessionState } from './pluginRequirementTypes'
 import { samplePluginsBackend, subscribeToSampleBrowserRuntimeEvents, subscribeToSamplePluginEvents } from './sampleBackend/plugins'
 import { messages } from '@/i18n'
+import type { Agent } from './types'
+
+/**
+ * Makes an agent from a ready-made workflow an installed plugin ships (a `readyToUse`
+ * template), without a model. The backend uses the plugin's own copy and checks it again.
+ *
+ * @param plugin - The plugin's name, e.g. "document-templates" (string)
+ * @param templateId - The template's id, e.g. "make-invoice" (string)
+ * @returns The new agent (Agent)
+ * @throws BackendError - `not_found` when the plugin no longer ships it, `invalid_input` when its workflow is refused
+ */
+export function createAgentFromPluginTemplate(plugin: string, templateId: string): Promise<Agent> {
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return samplePluginsBackend.createAgentFromPluginTemplate(plugin, templateId)
+  return callBackend('create_agent_from_plugin_template', { plugin, templateId })
+}
 
 /**
  * graphrt plugins: the online catalog, installed plugins with their trust and settings,

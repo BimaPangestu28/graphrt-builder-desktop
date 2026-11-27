@@ -14,8 +14,10 @@ import {
 } from '@/pages/new-agent/agentTemplates'
 import type { BuildRequestLocationState } from './agent-builder/buildRequestState'
 import { ModelPickerChip } from './new-agent/ModelPickerChip'
-import { messages } from '@/i18n'
-import { listPluginTemplates } from '@/api/plugins'
+import { messages, useLocale } from '@/i18n'
+import { createAgentFromPluginTemplate, listPluginTemplates } from '@/api/plugins'
+import { describeError } from '@/lib/agentDisplay'
+import { agentPath } from '@/routes'
 import { useAsyncData } from '@/hooks/useAsyncData'
 import { pluginTemplateCards } from './new-agent/pluginTemplates'
 
@@ -58,16 +60,18 @@ function TemplateNeedChip({ label }: { label: string }) {
 }
 
 /**
- * A starter: picking it fills the prompt and the kind; it builds nothing by itself.
- * Every card has the same rows: title (and kind tag), what it does, what it needs (chips),
+ * A starter: picking it fills the prompt and the kind; it builds nothing by itself. The
+ * exception is a card tagged "Ready to use" (an agent a plugin ships finished), which the
+ * page makes at once. Every card has the same rows: title (and kind tag), what it does, what it needs (chips),
  * a short setup note, and the services/size line at the bottom.
  */
-function TemplateCard({ template, onPick }: { template: AgentTemplate; onPick: (template: AgentTemplate) => void }) {
+function TemplateCard({ template, isDisabled, onPick }: { template: AgentTemplate; isDisabled: boolean; onPick: (template: AgentTemplate) => void }) {
   return (
     <button
       type="button"
       onClick={() => onPick(template)}
-      className="flex h-full cursor-pointer flex-col gap-2 rounded-[14px] border border-line bg-surface p-[18px] text-left text-ink hover:border-line-heavy"
+      disabled={isDisabled}
+      className="flex h-full cursor-pointer flex-col gap-2 rounded-[14px] border border-line bg-surface p-[18px] text-left text-ink hover:border-line-heavy disabled:cursor-wait disabled:opacity-60"
     >
       <span className="flex items-start justify-between gap-2">
         <span className="font-semibold">{template.title}</span>
@@ -93,7 +97,9 @@ function TemplateCard({ template, onPick }: { template: AgentTemplate; onPick: (
  * or pick a template below to fill in the description and kind as a starting point
  * (`?template=<id>` opens it with that template already picked, e.g. from Home).
  * The chip under the prompt shows the real default model. "Build agent" hands the request
- * (`{ buildRequest }` router state) to the screen that builds it.
+ * (`{ buildRequest }` router state) to the screen that builds it. A "Ready to use" card of an
+ * installed plugin skips all of that: the agent is made from the plugin's workflow and its
+ * test form opens, with no model involved.
  */
 export function NewAgentPage() {
   const navigate = useNavigate()
@@ -105,8 +111,28 @@ export function NewAgentPage() {
   const [jobDescription, setJobDescription] = useState(initialTemplate ? templatePromptText(initialTemplate) : '')
   const jobDescriptionRef = useRef<HTMLTextAreaElement>(null)
   const canBuild = jobDescription.trim().length > 0
+  const locale = useLocale()
+  /** Title of the ready-made agent being made; every card waits meanwhile. */
+  const [makingTitle, setMakingTitle] = useState<string | null>(null)
+  const [makeError, setMakeError] = useState<string | null>(null)
+
+  async function makeReadyAgent(template: AgentTemplate, readyAgent: NonNullable<AgentTemplate['readyAgent']>) {
+    setMakingTitle(template.title)
+    setMakeError(null)
+    try {
+      const agent = await createAgentFromPluginTemplate(readyAgent.plugin, readyAgent.templateId)
+      navigate(agentPath('testRun', agent.id))
+    } catch (createError) {
+      setMakeError(messages().newAgent.couldNotMakeAgent(template.title, describeError(createError)))
+      setMakingTitle(null)
+    }
+  }
 
   function handleTemplatePick(template: AgentTemplate) {
+    if (template.readyAgent) {
+      void makeReadyAgent(template, template.readyAgent)
+      return
+    }
     setSelectedKind(template.kind)
     setJobDescription(templatePromptText(template))
     jobDescriptionRef.current?.focus()
@@ -160,9 +186,19 @@ export function NewAgentPage() {
 
       <section aria-label={messages().newAgent.templates} className="flex w-full max-w-[960px] flex-col gap-3.5">
         <span className="font-semibold">{messages().newAgent.orStartFromATemplate}</span>
+        {makingTitle && (
+          <p role="status" className="m-0 text-[13px] text-body">
+            {messages().newAgent.makingAgent(makingTitle)}
+          </p>
+        )}
+        {makeError && (
+          <p role="alert" className="m-0 text-[13px] text-danger">
+            {makeError}
+          </p>
+        )}
         <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
-          {[...agentTemplates, ...pluginTemplateCards(pluginTemplates.data ?? [])].map((template) => (
-            <TemplateCard key={template.id} template={template} onPick={handleTemplatePick} />
+          {[...agentTemplates, ...pluginTemplateCards(pluginTemplates.data ?? [], locale)].map((template) => (
+            <TemplateCard key={template.id} template={template} isDisabled={makingTitle !== null} onPick={handleTemplatePick} />
           ))}
         </div>
       </section>

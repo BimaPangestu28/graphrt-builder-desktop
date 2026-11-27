@@ -13,6 +13,7 @@ use crate::plugins::models::{
 use crate::plugins::requirements::PluginRequirement;
 use crate::plugins::session::SessionState;
 use crate::state::AppState;
+use crate::storage::models::Agent;
 
 #[tauri::command]
 pub async fn list_plugin_catalog(state: State<'_, AppState>, refresh: Option<bool>) -> AppResult<PluginCatalog> {
@@ -35,6 +36,17 @@ pub fn list_installed_plugins(state: State<'_, AppState>) -> AppResult<Vec<Insta
 #[tauri::command]
 pub fn list_plugin_templates(state: State<'_, AppState>) -> Vec<PluginTemplateInfo> {
     state.plugins.templates()
+}
+
+/// Makes an agent from a ready-made workflow an installed plugin ships, without a model.
+/// The workflow is the plugin's own copy, checked again here; the page only names it.
+#[tauri::command]
+pub fn create_agent_from_plugin_template(
+    state: State<'_, AppState>,
+    plugin: String,
+    template_id: String,
+) -> AppResult<Agent> {
+    state.plugins.create_ready_agent(plugin.trim(), template_id.trim())
 }
 
 /// `permissions` is what the install card showed and the user approved; a downloaded

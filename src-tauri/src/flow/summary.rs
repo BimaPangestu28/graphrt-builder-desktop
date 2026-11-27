@@ -280,8 +280,11 @@ pub(super) fn build_input(variable: &Json) -> Option<FlowInput> {
         .map(|choices| choices.iter().filter_map(option_text).collect())
         .unwrap_or_default();
     let default_value = variable.get("default").filter(|value| !value.is_null()).cloned();
-    let schema =
-        ["json_schema", "schema"].iter().filter_map(|field| variable.get(*field)).find(|schema| schema.is_object()).cloned();
+    let schema = ["json_schema", "schema"]
+        .iter()
+        .filter_map(|field| variable.get(*field))
+        .find(|schema| schema.is_object())
+        .cloned();
     Some(FlowInput { name, label, required, input_type, options, default_value, schema })
 }
 
