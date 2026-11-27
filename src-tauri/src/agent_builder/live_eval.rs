@@ -704,3 +704,114 @@ async fn live_eval_chatbots() {
         "[{model_name}] CHATBOTS built {built}/{total}, first try {first_try}/{total}, answered {answered}/{total}"
     );
 }
+
+/// An `agent` step that answers with a plugin's tools, no builder involved: measures the
+/// runtime's tool calls with a real model (`GRAPHRT_EVAL_ATTEMPTS` runs, default 2).
+///
+/// ```sh
+/// GRAPHRT_EVAL_OLLAMA=http://127.0.0.1:11500 GRAPHRT_EVAL_MODEL=llama3.2 GRAPHRT_EVAL_ATTEMPTS=5 \
+///   cargo test --manifest-path src-tauri/Cargo.toml live_eval_agent_plugin_tool -- --ignored --nocapture
+/// ```
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a real model (Ollama or OPENAI_API_KEY), the network and Node.js"]
+async fn live_eval_agent_plugin_tool() {
+    let _ = log::set_logger(&PrintLogger).map(|()| log::set_max_level(log::LevelFilter::Info));
+    let model_name = env_or("GRAPHRT_EVAL_MODEL", "llama3.2");
+    let attempts: usize = env_or("GRAPHRT_EVAL_ATTEMPTS", "2").parse().unwrap();
+    let EvalSetup { builder, credentials, ollama_base_url } = eval_setup(&model_name);
+    let (_plugins, _plugin_dir) = install_plugins(credentials.clone()).await;
+    let provider = provider_name(builder.choice.provider);
+    let flow_yaml = format!(
+        r#"version: "1"
+name: rate-agent
+graph:
+  nodes:
+    - id: start
+      type: start
+      variables:
+        - {{ variable: question, type: paragraph, required: true, label: Question }}
+    - id: answer
+      type: agent
+      title: Answer with the rates
+      model: {{ provider: {provider}, name: "{model_name}" }}
+      instruction: "Answer the question with today's rates. Use the currency tools to look them up."
+      query: "{{{{#start.question#}}}}"
+      max_iterations: 4
+      tools: ["currency-rates/*"]
+    - id: end
+      type: end
+      outputs:
+        - {{ variable: result, value_selector: [answer, text] }}
+  edges:
+    - {{ source: start, target: answer }}
+    - {{ source: answer, target: end }}
+"#
+    );
+    let mut worked = 0;
+    for attempt in 1..=attempts {
+        let db = Arc::new(Database::open_in_memory().unwrap());
+        db.set_setting(crate::credentials::SETTING_OLLAMA_BASE_URL, &ollama_base_url).unwrap();
+        let agent = db
+            .create_agent(NewAgent {
+                name: "Rates".into(),
+                kind: AgentKind::Task,
+                description: "Rates".into(),
+                flow_yaml: flow_yaml.clone(),
+            })
+            .unwrap();
+        let runs = RunManager::new(db.clone(), credentials.clone(), Arc::new(QuietSink));
+        let inputs = json!({"question": "What is the latest US dollar to Indonesian rupiah exchange rate?"});
+        let run = runs.start_run(&agent.id, RunTrigger::Test, inputs).await.unwrap();
+        let started = Instant::now();
+        let finished = loop {
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            let current = db.get_run(&run.id).unwrap();
+            if current.status != RunStatus::Running || started.elapsed() > RUN_TIMEOUT {
+                break current;
+            }
+        };
+        // The agent step's `tool_calls` output, from the stored run events.
+        let calls: Vec<serde_json::Value> = db
+            .list_run_events(&run.id)
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|record| find_tool_calls(&record.event))
+            .next_back()
+            .unwrap_or_default();
+        let good_calls = calls.iter().filter(|call| call["is_error"] != json!(true)).count();
+        let text = finished.outputs.clone().unwrap_or_default().to_string().to_lowercase();
+        let has_rate = text.chars().any(|character| character.is_ascii_digit())
+            && ["idr", "rupiah"].iter().any(|word| text.contains(word));
+        let outcome = if finished.status != RunStatus::Succeeded {
+            format!("RUN-FAIL {:?} {}", finished.status, first_line(&finished.error_message.unwrap_or_default()))
+        } else if good_calls == 0 {
+            format!("NO-TOOL ({} calls, all errors): {}", calls.len(), first_line(&text))
+        } else if !has_rate {
+            format!("NO-RATE: {}", first_line(&text))
+        } else {
+            worked += 1;
+            format!("WORKED {good_calls} good of {} calls: {}", calls.len(), first_line(&text))
+        };
+        let errors: Vec<String> = calls
+            .iter()
+            .filter(|call| call["is_error"] == json!(true))
+            .map(|call| first_line(&call["result"].to_string()))
+            .collect();
+        println!("[{model_name}] agent-tool a{attempt} {outcome} | errors: {errors:?}");
+    }
+    println!("[{model_name}] agent-tool worked {worked}/{attempts}");
+}
+
+/// The first `tool_calls` list anywhere in a stored run event.
+fn find_tool_calls(value: &serde_json::Value) -> Option<Vec<serde_json::Value>> {
+    match value {
+        serde_json::Value::Object(fields) => {
+            if let Some(serde_json::Value::Array(calls)) = fields.get("tool_calls") {
+                return Some(calls.clone());
+            }
+            fields.values().find_map(find_tool_calls)
+        }
+        serde_json::Value::Array(items) => items.iter().find_map(find_tool_calls),
+        _ => None,
+    }
+}

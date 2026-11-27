@@ -312,6 +312,14 @@ async fn a_change_in_the_chat_changes_the_plan_not_the_yaml() {
         revision.agent.flow_yaml
     );
     assert_eq!(revision.agent.current_version, agent.current_version + 1);
+    // A new instruction is a changed step, though its title and model stayed the same.
+    assert_eq!(revision.summary, "Changed 1 step: Write the reply");
+    assert_eq!(revision.changed_step_ids, ["write_1"]);
+    assert!(
+        revision.explanation.contains("Step 1 (Write the reply) now: Write a polite reply in Indonesian."),
+        "{}",
+        revision.explanation
+    );
     let requests = mock.requests();
     assert_eq!(requests.len(), 1);
     assert!(matches!(requests[0].response_format, Some(ResponseFormat::JsonSchema { .. })));

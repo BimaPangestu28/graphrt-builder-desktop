@@ -542,6 +542,7 @@ mod tests {
                 detail: String::new(),
                 needs_approval: false,
                 depth: 0,
+                config_fingerprint: 0,
             },
             FlowStep {
                 id: "approve".into(),
@@ -550,6 +551,7 @@ mod tests {
                 detail: String::new(),
                 needs_approval: true,
                 depth: 1,
+                config_fingerprint: 0,
             },
         ]
         .into_iter()

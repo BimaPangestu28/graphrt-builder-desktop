@@ -18,6 +18,7 @@
 //! When no usable plan comes out, the caller falls back to the full path, so this path
 //! can only add working builds.
 
+mod changes;
 mod compose;
 mod coverage;
 mod offer;
@@ -105,6 +106,10 @@ pub(super) async fn draft(
     on_progress: ProgressSink<'_>,
 ) -> AppResult<Option<GuidedDraft>> {
     let operations = offered_for(description, kind);
+    log::info!(
+        "operations offered for the plan: {}",
+        operations.iter().map(|operation| operation.kind.as_str()).collect::<Vec<_>>().join(", ")
+    );
     if coverage::is_out_of_reach(description, !operations.is_empty()) {
         log::info!("the job needs the full workflow format; not planning it");
         return Ok(None);
@@ -201,7 +206,15 @@ pub(super) async fn revise(
         Message::system(prompt::system_prompt(&rules)),
         Message::user(prompt::revision_request(&current_plan_json, instruction)),
     ];
-    Ok(planning.plan_until_valid(messages, "Updating the steps").await?.map(|(_, draft)| draft))
+    let Some((new_plan, mut draft)) = planning.plan_until_valid(messages, "Updating the steps").await? else {
+        return Ok(None);
+    };
+    // What each changed step does now, and what the change asked for that is not there.
+    let sentences = changes::describe_changes(&current_plan, &new_plan, instruction);
+    if !sentences.is_empty() {
+        draft.explanation = format!("{}\n- {}", draft.explanation, sentences.join("\n- ")).trim().to_owned();
+    }
+    Ok(Some(draft))
 }
 
 /// The schedule the description's own words ask for ("every morning"), for an agent drafted

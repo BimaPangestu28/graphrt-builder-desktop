@@ -40,9 +40,12 @@ pub(super) fn compare_flows(before: &FlowSummary, after: &FlowSummary) -> FlowCh
     FlowChanges { changed_step_ids: changed_steps.iter().map(|step| step.id.clone()).collect(), summary }
 }
 
-/// True when a step's type, title or detail differ between two versions.
+/// True when a step's type, title, detail or configuration differ between two versions
+/// (a model step's new instruction shows in neither its title nor its detail).
 pub(crate) fn step_differs(old: &FlowStep, new: &FlowStep) -> bool {
-    old.node_type != new.node_type || old.title != new.title || old.detail != new.detail
+    let configured_differently =
+        old.config_fingerprint != 0 && new.config_fingerprint != 0 && old.config_fingerprint != new.config_fingerprint;
+    old.node_type != new.node_type || old.title != new.title || old.detail != new.detail || configured_differently
 }
 
 /// How one step id fares between two step lists (see [`match_steps`]).
@@ -120,6 +123,7 @@ mod tests {
             detail: detail.into(),
             needs_approval: false,
             depth: 0,
+            config_fingerprint: 0,
         }
     }
 
