@@ -68,7 +68,7 @@ const testPlayIcon = (
  * the reason when it is off), so the header leaves it out there: one Test per view.
  */
 function BuilderHeaderActions({ agentId, onTestBlocked, showTest, isOnline }: { agentId: string; onTestBlocked?: () => void; showTest: boolean; isOnline: boolean }) {
-  const testClassNames = `${headerLinkBaseClassNames} bg-ink !text-white hover:bg-ink-2`
+  const testClassNames = `${headerLinkBaseClassNames} bg-ink !text-inverse hover:bg-ink-2`
   return (
     <div className="flex flex-wrap justify-end gap-2">
       <Link to={agentPath('versionHistory', agentId)} className={outlineHeaderLinkClassNames}>

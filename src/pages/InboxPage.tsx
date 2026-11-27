@@ -118,7 +118,7 @@ function InboxFilterChips({ activeFilterKey, counts, onSelect }: { activeFilterK
             onClick={() => onSelect(inboxFilter.key)}
             className={joinClassNames(
               'h-[34px] cursor-pointer rounded-full px-3 text-[13px] font-medium',
-              isActive ? 'border-0 bg-ink text-white' : 'border border-line-strong bg-surface text-ink hover:bg-subtle',
+              isActive ? 'border-0 bg-ink text-inverse' : 'border border-line-strong bg-surface text-ink hover:bg-subtle',
             )}
           >
             {count === undefined ? inboxFilter.label : `${inboxFilter.label} ${count}`}

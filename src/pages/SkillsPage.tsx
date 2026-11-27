@@ -82,7 +82,7 @@ export function SkillsPage() {
           title={t.title}
           subtitle={t.subtitle}
           actions={
-            <LinkButton to={routePaths.skillCreate} className="!text-white">
+            <LinkButton to={routePaths.skillCreate} className="!text-inverse">
               <Icon name="plus" size={16} />
               {t.createSkill}
             </LinkButton>

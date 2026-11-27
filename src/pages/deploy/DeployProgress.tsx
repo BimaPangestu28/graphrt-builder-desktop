@@ -48,7 +48,7 @@ export function DeployProgressView({ stepStates, logLines, errorMessage, onCance
               <span
                 className={joinClassNames(
                   'flex size-6 items-center justify-center rounded-full',
-                  status === 'done' ? 'bg-ok text-white' : status === 'failed' ? 'bg-danger text-white' : status === 'running' ? 'bg-brand-soft text-brand' : 'bg-chip text-muted',
+                  status === 'done' ? 'bg-ok text-inverse' : status === 'failed' ? 'bg-danger text-inverse' : status === 'running' ? 'bg-brand-soft text-brand' : 'bg-chip text-muted',
                 )}
               >
                 {status === 'done' ? <Icon name="check" size={13} /> : status === 'failed' ? <Icon name="close" size={13} /> : <StatusDot tone={status === 'running' ? 'brand' : 'paused'} />}

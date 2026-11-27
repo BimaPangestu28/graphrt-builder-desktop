@@ -60,7 +60,7 @@ function PluginChips({ requirements }: { requirements: PluginRequirement[] }) {
 function PrimaryAction({ action, agentId, agentTriggers }: { action: AgentCardAction; agentId: string; agentTriggers: Trigger[] }) {
   if (action.kind === 'run_now') return <RunNowButton agentId={agentId} agentTriggers={agentTriggers} label={action.label} />
   return (
-    <LinkButton to={action.path} size="sm" className="!text-white">
+    <LinkButton to={action.path} size="sm" className="!text-inverse">
       {action.label}
     </LinkButton>
   )

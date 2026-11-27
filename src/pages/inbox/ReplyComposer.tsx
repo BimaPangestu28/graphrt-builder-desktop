@@ -82,7 +82,7 @@ export function ReplyComposer({ draft, onDraftChange, onSend, canReply, disabled
         <button
           type="submit"
           disabled={!canSend}
-          className="h-11 cursor-pointer rounded-[10px] border-0 bg-ink px-4 text-[14px] font-medium text-white hover:bg-ink-2 disabled:cursor-default disabled:opacity-50"
+          className="h-11 cursor-pointer rounded-[10px] border-0 bg-ink px-4 text-[14px] font-medium text-inverse hover:bg-ink-2 disabled:cursor-default disabled:opacity-50"
         >
           {messages().inbox.send}
         </button>

@@ -50,7 +50,7 @@ function VersionHeader({ agentId, agentName, selectedVersion, isViewingCurrent, 
           type="button"
           onClick={onRestore}
           disabled={isViewingCurrent || isRestoring}
-          className={`${headerButtonBaseClassNames} border-0 bg-ink text-white hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-40`}
+          className={`${headerButtonBaseClassNames} border-0 bg-ink text-inverse hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-40`}
         >
           {messages().misc.restoreV}{selectedVersion.number}
         </button>
@@ -123,7 +123,7 @@ function ChangeToast({ changeNotice, onUndo }: { changeNotice: ChangeNotice; onU
   return (
     <div
       role="status"
-      className="fixed bottom-7 left-1/2 z-10 flex -translate-x-1/2 items-center gap-4 rounded-xl bg-ink py-3 pr-3 pl-[18px] text-white shadow-[0_12px_32px_rgba(0,0,0,0.2)]"
+      className="fixed bottom-7 left-1/2 z-10 flex -translate-x-1/2 items-center gap-4 rounded-xl bg-ink py-3 pr-3 pl-[18px] text-inverse shadow-[0_12px_32px_rgba(0,0,0,0.2)]"
     >
       <span>{changeNotice.message}</span>
       {changeNotice.previousVersionNumber !== null && (

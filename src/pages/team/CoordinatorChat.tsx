@@ -85,7 +85,7 @@ export function CoordinatorChat({ teamAgentId, exchanges, onSend }: CoordinatorC
   return (
     <section aria-label={messages().team.talkToTheCoordinator} className="box-border flex min-w-0 flex-[1_1_340px] flex-col border-r border-line">
       <header className="box-border flex h-16 items-center gap-2.5 border-b border-line px-5">
-        <span aria-hidden="true" className="flex size-7 items-center justify-center rounded-full bg-ink text-[12px] font-semibold text-white">
+        <span aria-hidden="true" className="flex size-7 items-center justify-center rounded-full bg-ink text-[12px] font-semibold text-inverse">
           {messages().team.co}
         </span>
         <span className="flex flex-col">
@@ -124,7 +124,7 @@ export function CoordinatorChat({ teamAgentId, exchanges, onSend }: CoordinatorC
             type="submit"
             aria-label={messages().team.send}
             disabled={isSending}
-            className="flex size-9 cursor-pointer items-center justify-center rounded-[9px] border-0 bg-ink text-white hover:bg-ink-2 disabled:opacity-60"
+            className="flex size-9 cursor-pointer items-center justify-center rounded-[9px] border-0 bg-ink text-inverse hover:bg-ink-2 disabled:opacity-60"
           >
             <StrokeIcon size={16}>
               <path d="M12 19V5M5 12l7-7 7 7" />

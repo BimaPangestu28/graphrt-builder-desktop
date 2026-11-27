@@ -209,7 +209,7 @@ export function SkillDetailPage() {
         {page.data?.updateAvailable && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-amber-line-2 bg-amber-tint px-4 py-3">
             <span className="text-[14px] text-ink">{t.detail.updateBanner}</span>
-            <LinkButton to={skillAddPath(skill.name)} size="sm" className="!text-white">
+            <LinkButton to={skillAddPath(skill.name)} size="sm" className="!text-inverse">
               {t.update}
             </LinkButton>
           </div>

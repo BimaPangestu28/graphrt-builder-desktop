@@ -8,7 +8,8 @@
 //!   since nothing could reopen it. Starting graphrt again also shows the
 //!   window (single instance).
 
-use tauri::{AppHandle, Manager, Window, WindowEvent};
+use tauri::window::Color;
+use tauri::{AppHandle, Manager, Theme, Window, WindowEvent};
 
 use super::app_settings::AppSettings;
 use crate::state::AppState;
@@ -25,6 +26,28 @@ pub fn show_main_window(app_handle: &AppHandle) {
     let shown = window.show().and_then(|()| window.unminimize()).and_then(|()| window.set_focus());
     if let Err(error) = shown {
         log::warn!("could not show the main window: {error}");
+    }
+}
+
+/// The window background of the dark theme: `--color-canvas` under `[data-theme="dark"]` in
+/// `src/index.css`. The light one is `backgroundColor` in `tauri.conf.json`.
+const DARK_CANVAS: Color = Color(0x09, 0x09, 0x0B, 0xFF);
+
+/// Paints the main window dark before its page loads when the operating system is in dark
+/// mode, so a dark desktop does not flash a light window at startup. The page then follows
+/// the system (or the choice in Settings) by itself, see `src/lib/appearance.ts`.
+pub fn match_system_theme(app_handle: &AppHandle) {
+    let Some(window) = app_handle.get_webview_window(MAIN_WINDOW_LABEL) else {
+        return;
+    };
+    match window.theme() {
+        Ok(Theme::Dark) => {
+            if let Err(error) = window.set_background_color(Some(DARK_CANVAS)) {
+                log::warn!("could not paint the main window dark: {error}");
+            }
+        }
+        Ok(_) => {}
+        Err(error) => log::warn!("could not read the system theme: {error}"),
     }
 }
 

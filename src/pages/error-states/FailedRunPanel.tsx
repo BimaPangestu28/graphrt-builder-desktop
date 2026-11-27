@@ -21,7 +21,7 @@ function StepMarker({ state }: { state: FailedRunStepState }) {
   }
   if (state === 'failed') {
     return (
-      <span aria-hidden="true" className="flex size-[18px] shrink-0 items-center justify-center rounded-full bg-danger text-[11px] font-bold text-white">
+      <span aria-hidden="true" className="flex size-[18px] shrink-0 items-center justify-center rounded-full bg-danger text-[11px] font-bold text-inverse">
         !
       </span>
     )

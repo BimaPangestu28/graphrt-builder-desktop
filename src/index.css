@@ -49,6 +49,24 @@
   --color-danger-soft: #FEE2E2;
   --color-danger-tint: #FEF2F2;
   --color-danger-line: #FECACA;
+
+  --color-inverse: #FFFFFF;        /* text and icons on a filled ink or accent background (bg-ink, bg-ok, bg-danger...) */
+  --color-inverse-accent: #2DD4BF; /* an accent icon on a filled ink background */
+
+  --color-info: #075985;           /* neutral "information" chips (web sources) */
+  --color-info-soft: #E0F2FE;
+
+  --color-note-yellow: #FEF9C3;    /* sticky notes on the canvas: fill and border per colour */
+  --color-note-yellow-line: #FDE68A;
+  --color-note-blue: #E0F2FE;
+  --color-note-blue-line: #BAE6FD;
+  --color-note-green: #DCFCE7;
+  --color-note-green-line: #BBF7D0;
+  --color-note-pink: #FCE7F3;
+  --color-note-pink-line: #FBCFE8;
+
+  --color-chat-wall: #EFEAE2;      /* "Try it" phone preview: chat background and the customer's bubble */
+  --color-chat-sent: #D9FDD3;
 }
 
 /*
@@ -81,13 +99,18 @@
 }
 
 /*
- * Dark theme of the UI blocks agents show (cards, tables, KPI tiles, charts, diagrams). A block's frame has
- * the class `ui-block` (src/components/visuals/VisualBlock.tsx); under `data-theme="dark"` it redefines the
- * colour tokens, so every utility inside (bg-surface, text-ink, border-line...) resolves to the dark value
- * without the renderers knowing about themes. `data-theme` is set on the root element by
- * `src/lib/appearance.ts`. Text inks keep at least 4.5:1 on the dark surface.
+ * Dark theme of the whole app. `data-theme="dark"` on the root element redefines the colour tokens, so every
+ * utility (bg-surface, text-ink, border-line...) resolves to the dark value without the components knowing
+ * about themes. `src/lib/appearance.ts` sets the attribute: it follows the operating system unless someone
+ * picks Light or Dark in Settings > General. Text inks keep at least 4.5:1 on the dark surface.
+ *
+ * Rules for new code: colours come from these tokens only (no `text-white`, `bg-white` or hex utilities, see
+ * `src/__tests__/themeTokens.test.ts`); text on a filled background (`bg-ink`, `bg-ok`, `bg-danger`...) is
+ * `text-inverse`, because those fills turn light in the dark theme.
  */
-[data-theme="dark"] .ui-block {
+:root { color-scheme: light; }
+
+[data-theme="dark"] {
   color-scheme: dark;
   --color-ink: #F4F4F5;
   --color-ink-2: #D4D4D8;
@@ -129,6 +152,24 @@
   --color-danger-soft: #4C1D1D;
   --color-danger-tint: #2F1414;
   --color-danger-line: #7F1D1D;
+
+  --color-inverse: #18181B;
+  --color-inverse-accent: #0E7C66;
+
+  --color-info: #7DD3FC;
+  --color-info-soft: #0C2D48;
+
+  --color-note-yellow: #3A3209;
+  --color-note-yellow-line: #6B5A12;
+  --color-note-blue: #0C2D48;
+  --color-note-blue-line: #164E73;
+  --color-note-green: #12351F;
+  --color-note-green-line: #1F5C36;
+  --color-note-pink: #3D1530;
+  --color-note-pink-line: #6B2550;
+
+  --color-chat-wall: #0B141A;
+  --color-chat-sent: #005C4B;
 }
 
 /* Expanded step rows on the run screens fade in (only with motion-safe). */

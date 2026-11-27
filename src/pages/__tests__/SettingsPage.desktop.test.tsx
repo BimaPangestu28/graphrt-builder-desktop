@@ -108,13 +108,33 @@ describe('SettingsPage in the desktop app', () => {
       </LocaleRoot>,
     )
     fireEvent.click(await screen.findByRole('button', { name: 'General' }))
-    expect(screen.queryByRole('combobox', { name: /Appearance/ })).not.toBeInTheDocument()
     fireEvent.change(screen.getByRole('combobox', { name: /Language/ }), { target: { value: 'Bahasa Indonesia' } })
 
     expect(await screen.findByRole('heading', { name: 'Pengaturan' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Umum', current: 'page' })).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: /Bahasa/ })).toHaveValue('Bahasa Indonesia')
     await waitFor(() => expect(storedSettings.language).toBe('id'))
+  })
+
+  it('follows the system by default and keeps a chosen appearance', async () => {
+    localStorage.removeItem('graphrt.appearance')
+    try {
+      renderSettingsPage()
+      fireEvent.click(await screen.findByRole('button', { name: 'General' }))
+      const appearance = screen.getByRole('combobox', { name: /Appearance/ })
+      expect(appearance).toHaveValue('Match the system')
+
+      fireEvent.change(appearance, { target: { value: 'Dark' } })
+      expect(document.documentElement.dataset.theme).toBe('dark')
+      expect(localStorage.getItem('graphrt.appearance')).toBe('dark')
+
+      fireEvent.change(screen.getByRole('combobox', { name: /Appearance/ }), { target: { value: 'Light' } })
+      expect(document.documentElement.dataset.theme).toBeUndefined()
+      expect(localStorage.getItem('graphrt.appearance')).toBe('light')
+    } finally {
+      localStorage.removeItem('graphrt.appearance')
+      delete document.documentElement.dataset.theme
+    }
   })
 
   it('shows the crash reports with the sharing opt-in stored by the backend', async () => {

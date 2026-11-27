@@ -39,7 +39,7 @@ function ChainHeader({ chain, isBusy, onTest, onToggleActive }: ChainHeaderProps
         <button type="button" disabled={isBusy || chain.steps.length === 0} onClick={onTest} className={`${headerButtonClassNames} border border-line-strong bg-surface text-ink hover:bg-subtle disabled:cursor-default disabled:text-muted`}>
           {messages().team.testChain}
         </button>
-        <button type="button" disabled={isBusy} onClick={onToggleActive} className={`${headerButtonClassNames} border-0 bg-ink text-white hover:bg-ink-2`}>
+        <button type="button" disabled={isBusy} onClick={onToggleActive} className={`${headerButtonClassNames} border-0 bg-ink text-inverse hover:bg-ink-2`}>
           {isActive ? messages().team.pause : messages().team.activate}
         </button>
       </div>

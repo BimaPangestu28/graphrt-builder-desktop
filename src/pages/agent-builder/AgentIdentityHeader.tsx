@@ -170,7 +170,7 @@ export function DeleteConfirmation({ agent, onCancel, onDeleted }: { agent: Agen
         {messages().builder.itsStepsEveryVersionItsRun}{' '}{getCredentialStoreName()} {messages().builder.stayThisCantBeUndone}
       </span>
       <div className="flex flex-wrap gap-2">
-        <Button variant="danger" size="sm" onClick={() => void confirmDelete()} disabled={isDeleting} className="bg-danger !text-white hover:bg-danger-deep">
+        <Button variant="danger" size="sm" onClick={() => void confirmDelete()} disabled={isDeleting} className="bg-danger !text-inverse hover:bg-danger-deep">
           {isDeleting ? messages().builder.deleting : messages().builder.deleteAgent}
         </Button>
         <Button variant="secondary" size="sm" onClick={onCancel} disabled={isDeleting}>

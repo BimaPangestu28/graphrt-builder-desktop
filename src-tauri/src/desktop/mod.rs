@@ -154,6 +154,7 @@ pub fn register_plugins(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<t
 /// ([`window::should_hide_on_close`]) since nothing could bring it back.
 pub fn setup(app: &tauri::App) -> tauri::Result<()> {
     app.manage(KeepAwake::default());
+    window::match_system_theme(app.handle());
     let show_in_menu_bar =
         app.try_state::<AppState>().is_none_or(|state| AppSettings::load_or_default(&state.db).show_in_menu_bar);
     // The Linux tray backend panics instead of failing when libayatana-appindicator is missing.

@@ -70,7 +70,7 @@ export function NodesToolbar({ controller, isPaletteOpen, onTogglePalette, onAut
         aria-pressed={isPaletteOpen}
         aria-keyshortcuts="A"
         onClick={onTogglePalette}
-        className={joinClassNames(toolbarButtonClassNames, 'inline-flex items-center gap-1.5 border-ink bg-ink font-semibold !text-white hover:bg-ink-2', isPaletteOpen && 'ring-2 ring-brand-line')}
+        className={joinClassNames(toolbarButtonClassNames, 'inline-flex items-center gap-1.5 border-ink bg-ink font-semibold !text-inverse hover:bg-ink-2', isPaletteOpen && 'ring-2 ring-brand-line')}
       >
         <Icon name="plus" size={14} />
         <span className={foldingLabelClassNames}>{messages().nodes.addNode}</span>
@@ -107,7 +107,7 @@ export function NodesToolbar({ controller, isPaletteOpen, onTogglePalette, onAut
         type="button"
         onClick={() => void controller.save()}
         disabled={!controller.isDirty || isLocked}
-        className={joinClassNames(toolbarButtonClassNames, 'border-ink bg-ink !text-white hover:bg-ink-2')}
+        className={joinClassNames(toolbarButtonClassNames, 'border-ink bg-ink !text-inverse hover:bg-ink-2')}
       >
         {messages().nodes.save}
       </button>

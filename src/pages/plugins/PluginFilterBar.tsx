@@ -78,7 +78,7 @@ export function PluginCategoryChips({ categoryCounts, activeCategory, onChange }
           className={pillTabClassNames(activeCategory === category, 'sm')}
         >
           {pluginCategoryLabels[category]}
-          <span className={activeCategory === category ? 'text-white/70' : 'text-muted'}>{count}</span>
+          <span className={activeCategory === category ? 'text-inverse/70' : 'text-muted'}>{count}</span>
         </button>
       ))}
     </div>

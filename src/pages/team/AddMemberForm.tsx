@@ -35,7 +35,7 @@ export function AddMemberForm({ candidates, isAdding, onAdd, onCancel }: AddMemb
           ))}
         </select>
       </label>
-      <button type="submit" disabled={isAdding} className="h-9 cursor-pointer rounded-lg border-0 bg-ink px-3.5 text-[13px] font-medium text-white hover:bg-ink-2">
+      <button type="submit" disabled={isAdding} className="h-9 cursor-pointer rounded-lg border-0 bg-ink px-3.5 text-[13px] font-medium text-inverse hover:bg-ink-2">
         {isAdding ? messages().team.adding : messages().team.addToTeam}
       </button>
       <button type="button" onClick={onCancel} className="h-9 cursor-pointer rounded-lg border border-line-strong bg-surface px-3.5 text-[13px] font-medium text-ink hover:bg-subtle">

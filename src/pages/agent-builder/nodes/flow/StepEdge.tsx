@@ -2,7 +2,8 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { joinClassNames } from '@/components/ui'
 import { useCanvasNodeActions } from './canvasActions'
 import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, type EdgeProps } from './flowLibrary'
-import { edgeColors, type EdgeKind, type StepFlowEdge } from './toFlowElements'
+import { useThemeName } from '@/lib/useThemeName'
+import { edgeColorsOf, type EdgeKind, type StepFlowEdge } from './toFlowElements'
 import { messages } from '@/i18n'
 
 /**
@@ -50,6 +51,7 @@ export const StepEdge = memo(function StepEdge(props: EdgeProps<StepFlowEdge>) {
   const { addNodeOnEdge } = useCanvasNodeActions()
   const { isHovered, enter, leave } = useLingeringHover()
   const kind = data?.kind ?? 'default'
+  const edgeColors = edgeColorsOf(useThemeName())
   const stroke = selected ? edgeColors.selected : edgeColors[kind]
   const isDashed = kind === 'error' || kind === 'unused'
   const showsAddButton = Boolean(addNodeOnEdge) && (isHovered || Boolean(selected))
@@ -87,7 +89,7 @@ export const StepEdge = memo(function StepEdge(props: EdgeProps<StepFlowEdge>) {
                   event.stopPropagation()
                   addNodeOnEdge?.(id)
                 }}
-                className="pointer-events-auto flex size-5 cursor-pointer items-center justify-center rounded-full border border-brand bg-surface p-0 text-brand shadow-sm hover:bg-brand hover:text-white"
+                className="pointer-events-auto flex size-5 cursor-pointer items-center justify-center rounded-full border border-brand bg-surface p-0 text-brand shadow-sm hover:bg-brand hover:text-inverse"
               >
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" aria-hidden="true">
                   <path d="M12 5v14M5 12h14" />

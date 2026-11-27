@@ -754,3 +754,5 @@ async fn a_media_channel_gets_the_chart_as_an_image() {
     assert!(sent[0].1.ends_with("1. Yes, today\n2. Later"), "{}", sent[0].1);
     assert!(!sent[0].1.contains("Orders"));
 }
+
+mod blocks_and_files;

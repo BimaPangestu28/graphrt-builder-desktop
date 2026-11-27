@@ -22,7 +22,7 @@ interface LineActionProps {
 function ReviewLink({ path, isPrimary, ariaLabel }: { path: string; isPrimary: boolean; ariaLabel: string }) {
   const t = useT().home
   return (
-    <Link to={path} aria-label={ariaLabel} className={buttonClassNames(isPrimary ? 'primary' : 'secondary', 'sm', joinClassNames(actionClassNames, isPrimary ? '!text-white' : '!text-ink'))}>
+    <Link to={path} aria-label={ariaLabel} className={buttonClassNames(isPrimary ? 'primary' : 'secondary', 'sm', joinClassNames(actionClassNames, isPrimary ? '!text-inverse' : '!text-ink'))}>
       {t.review}
     </Link>
   )

@@ -23,7 +23,7 @@ function TryItBubble({ message, onCardSubmit, isSubmitting }: TryItBubbleProps) 
   const isFilesOnly = readMessageFiles(message).isFilesOnly
   if (isFilesOnly && message.author !== 'bot') return null
   if (message.author === 'customer') {
-    return <div className="box-content max-w-[80%] self-end rounded-[12px_12px_4px_12px] bg-[#D9FDD3] px-3 py-2.5 leading-[1.45]">{message.text}</div>
+    return <div className="box-content max-w-[80%] self-end rounded-[12px_12px_4px_12px] bg-chat-sent px-3 py-2.5 leading-[1.45]">{message.text}</div>
   }
   if (message.author === 'system') {
     return (
@@ -179,7 +179,7 @@ export function TryItPanel({ agentId }: { agentId: string }) {
         lang="id"
         aria-live="polite"
         className={joinClassNames(
-          'box-border flex h-[460px] flex-none flex-col gap-2.5 overflow-y-auto rounded-[14px] bg-[#EFEAE2] p-4',
+          'box-border flex h-[460px] flex-none flex-col gap-2.5 overflow-y-auto rounded-[14px] bg-chat-wall p-4',
           dragState === 'accepting' && 'outline-2 outline-offset-2 outline-brand',
         )}
       >
@@ -247,7 +247,7 @@ export function TryItPanel({ agentId }: { agentId: string }) {
         <button
           type="submit"
           disabled={!conversationId || isWaitingForBot || attachments.isAttaching}
-          className="h-10 cursor-pointer rounded-[10px] border-0 bg-ink px-3.5 text-[14px] font-medium text-white hover:bg-ink-2 disabled:cursor-default disabled:opacity-50"
+          className="h-10 cursor-pointer rounded-[10px] border-0 bg-ink px-3.5 text-[14px] font-medium text-inverse hover:bg-ink-2 disabled:cursor-default disabled:opacity-50"
         >
           {messages().chatbot.send}
         </button>

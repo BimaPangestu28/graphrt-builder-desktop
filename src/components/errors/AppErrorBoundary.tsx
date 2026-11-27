@@ -29,7 +29,7 @@ function ErrorFallback({ onReload }: { onReload: () => void }) {
         <button
           type="button"
           onClick={onReload}
-          className="h-9 cursor-pointer rounded-[9px] border-0 bg-ink px-4 font-sans text-[13px] font-semibold text-white"
+          className="h-9 cursor-pointer rounded-[9px] border-0 bg-ink px-4 font-sans text-[13px] font-semibold text-inverse"
         >
           {t.reload}
         </button>

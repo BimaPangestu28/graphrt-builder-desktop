@@ -24,7 +24,7 @@ interface SystemNotificationCardProps {
 export function SystemNotificationCard({ notification, onSnooze }: SystemNotificationCardProps) {
   const navigate = useNavigate()
   return (
-    <article aria-label={notification.title} className="flex gap-3 rounded-2xl bg-white/92 p-3.5 shadow-[0_8px_24px_rgba(0,0,0,0.12)]">
+    <article aria-label={notification.title} className="flex gap-3 rounded-2xl bg-surface/92 p-3.5 shadow-[0_8px_24px_rgba(0,0,0,0.12)]">
       <NotificationAppIcon />
       <span className="flex flex-auto flex-col gap-1">
         <b className="font-semibold">{notification.title}</b>
@@ -34,7 +34,7 @@ export function SystemNotificationCard({ notification, onSnooze }: SystemNotific
             <button
               type="button"
               onClick={() => navigate(routePaths.batchApproval)}
-              className="h-[30px] cursor-pointer rounded-lg border-0 bg-ink px-3 text-[12px] font-semibold text-white hover:bg-ink-2"
+              className="h-[30px] cursor-pointer rounded-lg border-0 bg-ink px-3 text-[12px] font-semibold text-inverse hover:bg-ink-2"
             >
               {messages().misc.review}
             </button>

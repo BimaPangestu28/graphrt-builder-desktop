@@ -34,7 +34,7 @@ function DropGhost({ graph, dropTarget, kindName, zoneWidth }: { graph: AgentGra
     <div aria-hidden="true" data-testid="palette-drop-ghost" className="pointer-events-none absolute inset-0 z-20 overflow-hidden">
       {isOnEdge && <span className="absolute size-3 rounded-full border-2 border-surface bg-ok-strong shadow" style={{ left: dropTarget.ghostX - 6, top: dropTarget.ghostY - 6 }} />}
       <div className="absolute flex flex-col items-start gap-1" style={{ left, top: dropTarget.ghostY + 14, width: ghostWidth }}>
-        <span className="whitespace-nowrap rounded-md bg-ok-strong px-2 py-0.5 text-[11px] font-semibold text-white">{label}</span>
+        <span className="whitespace-nowrap rounded-md bg-ok-strong px-2 py-0.5 text-[11px] font-semibold text-inverse">{label}</span>
         <div className="flex w-full flex-col gap-0.5 rounded-xl border-2 border-dashed border-ok bg-surface/95 px-3 py-2 shadow-[0_4px_14px_rgba(0,0,0,0.08)]">
           <span className="truncate text-[13px] font-semibold text-ink">{kindName ?? messages().nodes.newStep}</span>
           <span className="line-clamp-2 text-[11px] leading-snug text-muted">{isOnEdge ? messages().nodes.dropToPutItAnchor(describeAnchor(graph, dropTarget.anchor)) : messages().nodes.releaseToAddIt}</span>

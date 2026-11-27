@@ -62,7 +62,7 @@ export function InstalledSkillCard({ skill, agentCount, updateAvailable }: Insta
         <span className="truncate text-[12px] text-muted">{agentCount > 0 ? t.usedBy(agentCount) : t.notUsedYet}</span>
         <div className="flex shrink-0 items-center gap-2">
           {updateAvailable && (
-            <LinkButton to={skillAddPath(skill.name)} size="sm" className="!text-white">
+            <LinkButton to={skillAddPath(skill.name)} size="sm" className="!text-inverse">
               <span aria-hidden="true">{t.update}</span>
               <span className="sr-only">{t.updateSkill(skill.displayName)}</span>
             </LinkButton>
@@ -101,13 +101,13 @@ export function CatalogSkillCard({ skill }: { skill: CatalogSkillEntry }) {
           </LinkButton>
         )}
         {skill.updateAvailable && (
-          <LinkButton to={skillAddPath(skill.name)} size="sm" className="!text-white">
+          <LinkButton to={skillAddPath(skill.name)} size="sm" className="!text-inverse">
             <span aria-hidden="true">{t.update}</span>
             <span className="sr-only">{t.updateSkill(skill.displayName)}</span>
           </LinkButton>
         )}
         {!skill.installed && (
-          <LinkButton to={skillAddPath(skill.name)} size="sm" className="!text-white">
+          <LinkButton to={skillAddPath(skill.name)} size="sm" className="!text-inverse">
             <span aria-hidden="true">{t.add}</span>
             <span className="sr-only">{t.addSkill(skill.displayName)}</span>
           </LinkButton>

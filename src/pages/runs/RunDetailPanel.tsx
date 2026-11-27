@@ -55,7 +55,7 @@ export function RunDetailPanel({ run, stepViews, now, onClose }: RunDetailPanelP
 
       <div className="flex flex-wrap gap-2">
         {run.followUp && (
-          <Link to={run.followUp.path} className="inline-flex h-9 items-center rounded-[9px] bg-ink px-3.5 text-[13px] font-semibold no-underline !text-white hover:bg-ink-2">
+          <Link to={run.followUp.path} className="inline-flex h-9 items-center rounded-[9px] bg-ink px-3.5 text-[13px] font-semibold no-underline !text-inverse hover:bg-ink-2">
             {run.followUp.label}
           </Link>
         )}

@@ -26,6 +26,7 @@ import { useContainerDrag } from './flow/useContainerDrag'
 import { usePrefersReducedMotion } from './flow/usePrefersReducedMotion'
 import { isNoteFlowNodeId, noteIdOf, noteNodeTypes, toNoteFlowNodes } from './notes/NoteNode'
 import { messages } from '@/i18n'
+import { useThemeName } from '@/lib/useThemeName'
 
 /** Step renderers plus the sticky notes (`notes/NoteNode.tsx`). */
 const canvasNodeTypes = { ...flowNodeTypes, ...noteNodeTypes }
@@ -45,10 +46,11 @@ const canvasNodeTypes = { ...flowNodeTypes, ...noteNodeTypes }
  * and `useFlowElementState` (React Flow's node list and the arrow selection).
  */
 
+/** Minimap colours come from the theme tokens (`index.css`), so the map follows light and dark. */
 function minimapNodeColor(flowNode: StepFlowNode): string {
-  if (isNoteFlowNodeId(flowNode.id)) return '#FEF9C3'
-  if (flowNode.data.node.needsApproval) return '#F5C77E'
-  return flowNode.type === 'container' ? 'rgba(244,244,245,0.6)' : '#D4D4D8'
+  if (isNoteFlowNodeId(flowNode.id)) return 'var(--color-note-yellow-line)'
+  if (flowNode.data.node.needsApproval) return 'var(--color-amber-line)'
+  return flowNode.type === 'container' ? 'color-mix(in srgb, var(--color-chip) 60%, transparent)' : 'var(--color-line-heavy)'
 }
 
 function CanvasMiniMap() {
@@ -59,9 +61,9 @@ function CanvasMiniMap() {
       ariaLabel={messages().nodes.minimapOfTheWholeAgent}
       className="node-minimap"
       nodeColor={minimapNodeColor}
-      nodeStrokeColor={(flowNode) => (flowNode.type === 'container' ? '#A1A1AA' : 'transparent')}
+      nodeStrokeColor={(flowNode) => (flowNode.type === 'container' ? 'var(--color-faint)' : 'transparent')}
       nodeBorderRadius={4}
-      maskColor="rgba(244, 244, 245, 0.55)"
+      maskColor="color-mix(in srgb, var(--color-canvas) 55%, transparent)"
       style={{ width: 150, height: 112 }}
     />
   )
@@ -104,6 +106,7 @@ function CanvasBody(props: NodeCanvasProps) {
   const measuredRef = useRef<MeasuredSizes>(new Map())
   const isMac = useMemo(isMacPlatform, [])
   const prefersReducedMotion = usePrefersReducedMotion()
+  const themeName = useThemeName()
   const motion = useMemo(() => ({ duration: prefersReducedMotion ? 0 : 200 }), [prefersReducedMotion])
   const [announcement, setAnnouncement] = useState('')
   const announce = useCallback((message: string) => setAnnouncement(message), [])
@@ -125,7 +128,7 @@ function CanvasBody(props: NodeCanvasProps) {
   )
   const { flowNodes, resetFlowNodes, handleNodesChange } = useFlowNodeState(flowNodesFromGraph, { readOnly, measuredRef })
   const { selectedEdgeIds, handleEdgesChange, clearEdgeSelection } = useEdgeSelection(graph)
-  const flowEdges = useMemo(() => toFlowEdges(graph, selectedEdgeIds), [graph, selectedEdgeIds])
+  const flowEdges = useMemo(() => toFlowEdges(graph, selectedEdgeIds, themeName), [graph, selectedEdgeIds, themeName])
 
   const canvasSize = useElementSize(containerRef, mergedPositions !== null)
   const [minimapPreference, setMinimapPreference] = useMinimapPreference()
@@ -250,8 +253,8 @@ function CanvasBody(props: NodeCanvasProps) {
             defaultViewport={viewport ?? undefined}
             fitView={!viewport}
             fitViewOptions={fitViewOptions}
-            // React Flow 13 follows the system color scheme by default; the app is light only.
-            forceColorMode="light"
+            // React Flow 13 follows the system color scheme by default; the app's theme can differ (Settings).
+            forceColorMode={themeName}
             nodesDraggable={!readOnly}
             nodesConnectable={!readOnly && Boolean(props.onConnect)}
             edgesReconnectable={canEdit}
@@ -268,14 +271,14 @@ function CanvasBody(props: NodeCanvasProps) {
             deleteKeyCode={null}
             disableKeyboardA11y
             connectionLineType={ConnectionLineType.SmoothStep}
-            connectionLineStyle={{ stroke: '#0E7C66', strokeWidth: 2 }}
+            connectionLineStyle={{ stroke: 'var(--color-brand)', strokeWidth: 2 }}
             connectionRadius={28}
             proOptions={{ hideAttribution: true }}
             minZoom={0.2}
             maxZoom={2}
             ariaLabelConfig={{ 'node.a11yDescription.default': messages().nodes.pressEnterToOpenItsSettings }}
           >
-            <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#D4D4D8" />
+            <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="var(--color-line-heavy)" />
             {showMinimap && <CanvasMiniMap />}
           </ReactFlow>
           <ZoomControls
@@ -300,7 +303,7 @@ function CanvasBody(props: NodeCanvasProps) {
             />
           )}
           {connectingFrom?.viaKeyboard && (
-            <div role="status" className="absolute left-1/2 top-4 z-20 -translate-x-1/2 rounded-lg bg-ink px-3 py-1.5 text-[12px] font-medium text-white shadow-md">
+            <div role="status" className="absolute left-1/2 top-4 z-20 -translate-x-1/2 rounded-lg bg-ink px-3 py-1.5 text-[12px] font-medium text-inverse shadow-md">
               {messages().nodes.connectingFrom}{' '}{describeNodeList(graph, [connectingFrom.nodeId])}{messages().nodes.tabToAStepAndPress}
             </div>
           )}

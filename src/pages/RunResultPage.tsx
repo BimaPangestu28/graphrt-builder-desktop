@@ -67,7 +67,7 @@ function WhatNextCard({ agentId, runInputs }: { agentId: string; runInputs: RunI
         <button
           type="button"
           onClick={() => navigate(agentPath('scheduleAgent', agentId))}
-          className="h-11 cursor-pointer rounded-[9px] border-0 bg-ink px-3.5 text-left text-[14px] font-semibold text-white hover:bg-ink-2"
+          className="h-11 cursor-pointer rounded-[9px] border-0 bg-ink px-3.5 text-left text-[14px] font-semibold text-inverse hover:bg-ink-2"
         >
           {messages().agentRun.putItOnASchedule}
         </button>

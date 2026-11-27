@@ -37,7 +37,7 @@ const secondaryButtonClassNames =
   'inline-flex h-8 cursor-pointer items-center rounded-lg border border-line-strong bg-surface px-3 text-[13px] font-medium text-ink hover:bg-subtle'
 
 const primaryButtonClassNames =
-  'inline-flex h-8 cursor-pointer items-center rounded-lg border-0 bg-ink px-3 text-[13px] font-medium text-white hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-50'
+  'inline-flex h-8 cursor-pointer items-center rounded-lg border-0 bg-ink px-3 text-[13px] font-medium text-inverse hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-50'
 
 function UpdateToast({ label, children }: { label: string; children: ReactNode }) {
   return (

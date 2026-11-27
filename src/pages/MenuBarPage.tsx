@@ -24,7 +24,7 @@ export function MenuBarPage() {
   const snoozeNotification = (notificationId: string) => setSnoozedNotificationIds((previousIds) => [...previousIds, notificationId])
 
   return (
-    <div className="min-h-screen overflow-auto bg-[#E9E9EC]">
+    <div className="min-h-screen overflow-auto bg-selected">
       <div className="mx-auto box-border flex h-[900px] w-[1440px] gap-16 p-16 text-[14px] text-ink">
         <div className="flex flex-[0_0_380px] flex-col gap-3">
           <CanvasColumnLabel>{getTrayAreaName() === 'menu bar' ? messages().misc.menuBarPopover : messages().misc.systemTrayMenu}</CanvasColumnLabel>

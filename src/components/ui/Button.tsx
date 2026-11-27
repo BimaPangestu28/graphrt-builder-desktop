@@ -13,10 +13,10 @@ export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'approve' | 'dan
 export type ButtonSize = 'sm' | 'md' | 'lg'
 
 const variantClassNames: Record<ButtonVariant, string> = {
-  primary: 'bg-ink text-white hover:bg-ink-2 border border-ink',
+  primary: 'bg-ink text-inverse hover:bg-ink-2 border border-ink',
   secondary: 'bg-surface text-ink border border-line-strong hover:bg-subtle',
   ghost: 'bg-transparent text-ink-2 border border-transparent hover:bg-chip',
-  approve: 'bg-ok text-white border border-ok hover:bg-ok-strong',
+  approve: 'bg-ok text-inverse border border-ok hover:bg-ok-strong',
   danger: 'bg-surface text-danger border border-danger-line hover:bg-danger-tint',
 }
 

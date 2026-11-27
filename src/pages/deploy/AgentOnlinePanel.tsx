@@ -36,7 +36,7 @@ function TakeOfflineConfirmation({ agentName, providerName, onConfirm, onCancel,
       </label>
       <input id={inputId} value={typedName} onChange={(event) => setTypedName(event.target.value)} className="h-9 rounded-lg border border-line-strong bg-surface px-3 text-[14px]" />
       <div className="flex flex-wrap gap-2">
-        <Button variant="danger" size="sm" onClick={onConfirm} disabled={isBusy || typedName.trim() !== agentName.trim()} className="bg-danger !text-white hover:bg-danger-deep">
+        <Button variant="danger" size="sm" onClick={onConfirm} disabled={isBusy || typedName.trim() !== agentName.trim()} className="bg-danger !text-inverse hover:bg-danger-deep">
           {isBusy ? messages().deploy.takingOffline : messages().deploy.takeOffline2}
         </Button>
         <Button variant="secondary" size="sm" onClick={onCancel} disabled={isBusy}>

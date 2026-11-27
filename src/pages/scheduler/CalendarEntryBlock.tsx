@@ -7,7 +7,7 @@ import { routePaths } from '@/routes'
 const entryKindClassNames: Record<CalendarEntryKind, string> = {
   done: 'bg-ok-soft !text-ok-deep hover:bg-ok-soft/70',
   failed: 'bg-danger-soft !text-danger-deep hover:bg-danger-soft/70',
-  needsYou: 'border border-amber-line bg-amber-soft !text-[#7C2D12] hover:bg-amber-soft/70',
+  needsYou: 'border border-amber-line bg-amber-soft !text-amber-deep hover:bg-amber-soft/70',
   running: 'border border-brand bg-brand-tint !text-brand-strong hover:bg-brand-soft',
   planned: 'border border-dashed border-brand text-brand-strong',
   paused: 'border border-dashed border-faint text-body',

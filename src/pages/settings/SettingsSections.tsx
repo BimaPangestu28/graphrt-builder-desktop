@@ -173,7 +173,7 @@ export function PrivacySection({ appSettings, updateAppSetting, appInfo, onDataD
 export function RemoteRunnerBanner({ onConnectServer }: { onConnectServer: () => void }) {
   const t = useT().settings
   return (
-    <section aria-labelledby="settings-remote-banner-heading" className="flex flex-wrap items-center gap-4 rounded-[14px] bg-ink p-[18px] text-white">
+    <section aria-labelledby="settings-remote-banner-heading" className="flex flex-wrap items-center gap-4 rounded-[14px] bg-ink p-[18px] text-inverse">
       <span className="flex flex-[1_1_280px] flex-col gap-1">
         <h2 id="settings-remote-banner-heading" className="m-0 text-[15px] font-semibold">
           {t.freeNoLimits}
@@ -221,7 +221,7 @@ export function RemoteRunnerSection({ settingsValues, updateSetting }: SectionPr
         <button
           type="submit"
           disabled={!trimmedServerUrl}
-          className="h-9 cursor-pointer rounded-[9px] border-0 bg-ink px-4 font-sans text-[13px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+          className="h-9 cursor-pointer rounded-[9px] border-0 bg-ink px-4 font-sans text-[13px] font-semibold text-inverse disabled:cursor-not-allowed disabled:opacity-50"
         >
           {t.connect}
         </button>
@@ -274,20 +274,18 @@ function LanguageRow({ hasDivider }: { hasDivider: boolean }) {
   )
 }
 
-export function GeneralSection({ settingsValues, updateSetting, showsPreviewOnlySettings }: SectionProps & { appSettings: AppSettings | null }) {
+export function GeneralSection({ settingsValues, updateSetting }: SectionProps & { appSettings: AppSettings | null }) {
   const t = useT().settings
   return (
     <SettingsGroup headingId="settings-general-heading" title={t.sections.general}>
-      <LanguageRow hasDivider={showsPreviewOnlySettings} />
-      {showsPreviewOnlySettings && (
-        <SelectRow
-          title={t.appearance}
-          value={t.appearanceOptions[settingsValues.appearance]}
-          options={appearanceKeys.map((key) => t.appearanceOptions[key])}
-          onSelect={(label) => updateSetting('appearance', appearanceKeys.find((key) => t.appearanceOptions[key] === label) ?? settingsValues.appearance)}
-          hasDivider={false}
-        />
-      )}
+      <LanguageRow hasDivider />
+      <SelectRow
+        title={t.appearance}
+        value={t.appearanceOptions[settingsValues.appearance]}
+        options={appearanceKeys.map((key) => t.appearanceOptions[key])}
+        onSelect={(label) => updateSetting('appearance', appearanceKeys.find((key) => t.appearanceOptions[key] === label) ?? settingsValues.appearance)}
+        hasDivider={false}
+      />
     </SettingsGroup>
   )
 }

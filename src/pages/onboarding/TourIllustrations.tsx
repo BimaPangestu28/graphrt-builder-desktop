@@ -40,7 +40,7 @@ function HowItWorksIllustration() {
 function BuildWithChatIllustration() {
   return (
     <div className="flex w-full max-w-[320px] flex-col gap-1.5 text-[12px]">
-      <span className="self-end rounded-[10px] bg-ink px-2.5 py-1.5 text-white">{messages().misc.alsoSendMeASummary}</span>
+      <span className="self-end rounded-[10px] bg-ink px-2.5 py-1.5 text-inverse">{messages().misc.alsoSendMeASummary}</span>
       <span className="flex items-center gap-1.5 self-start rounded-[10px] border border-line-strong bg-surface px-2.5 py-1.5 text-ink-2">
         <LogoMark size={14} />
         {messages().misc.addedStep6SendSummary}
@@ -56,7 +56,7 @@ function TestRunIllustration() {
       <MiniCard className="border-2 border-amber-line">
         <span className="font-semibold">{messages().misc.askMeBeforeSending}</span>
         <span className="flex gap-1">
-          <span className="rounded-md bg-ok px-1.5 py-0.5 text-[11px] font-semibold text-white">{messages().misc.approve}</span>
+          <span className="rounded-md bg-ok px-1.5 py-0.5 text-[11px] font-semibold text-inverse">{messages().misc.approve}</span>
           <span className="rounded-md border border-line-strong px-1.5 py-0.5 text-[11px]">{messages().misc.skip}</span>
         </span>
       </MiniCard>

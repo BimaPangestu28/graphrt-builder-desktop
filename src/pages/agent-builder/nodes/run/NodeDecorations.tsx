@@ -150,7 +150,7 @@ function RunDetailLines({ view, onReview }: { view: NodeRunView; onReview?: (nod
           event.stopPropagation()
           onReview(view.nodeId)
         }}
-        className="nodrag nopan cursor-pointer self-start rounded-md border border-amber-line bg-amber px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-amber-strong"
+        className="nodrag nopan cursor-pointer self-start rounded-md border border-amber-line bg-amber px-2 py-0.5 text-[11px] font-semibold text-inverse hover:bg-amber-strong"
       >
         {view.approval.toolCall ? messages().nodes.reviewTheToolCall : messages().nodes.review}
       </button>,

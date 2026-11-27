@@ -8,9 +8,9 @@ const agentToolPrefix = 'agents/'
 
 function AgentLogoTile() {
   return (
-    <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-ink">
+    <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-ink text-inverse">
       <svg width="16" height="16" viewBox="0 0 28 28" aria-hidden="true">
-        <path d="M20.5 10A7.5 7.5 0 1 0 21.5 15" fill="none" stroke="#FFFFFF" strokeWidth="3" strokeLinecap="round" />
+        <path d="M20.5 10A7.5 7.5 0 1 0 21.5 15" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
         <circle cx="14" cy="14" r="3" fill="#2DD4BF" />
       </svg>
     </span>
