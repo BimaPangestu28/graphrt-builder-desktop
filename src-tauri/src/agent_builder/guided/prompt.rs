@@ -74,8 +74,9 @@ pub(super) fn system_prompt(rules: &PlanRules<'_>) -> String {
 
 /// The `use` step and the operations offered for this job, one line each.
 fn use_step_guide(operations: &[OfferedOperation]) -> String {
-    let mut guide = "\n- \"use\": do something in another app. \"operation\" is one of the operations below, copied \
-                     exactly; \"instruction\" says what to send or fetch and to whom. The app asks the person before \
+    let mut guide = "\n- \"use\": do something in another app. Only when the job needs that app: text the person \
+                     gives (notes, a message, a complaint) is worked on by \"write\" steps alone. \"operation\" is one \
+                     of the operations below, copied exactly; \"instruction\" says what to send or fetch and to whom. The app asks the person before \
                      anything is sent, so do not add an \"approve\" step for that. To send a text, first write it in a \
                      \"write\" step. Operations:"
         .to_owned();
