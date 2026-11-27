@@ -9,8 +9,9 @@
 //!   `PluginService::download_catalog_skill`, so the signed index and its checksum are
 //!   checked exactly as for a plugin.
 //! - **Written in the app** ([`SkillService::review_authored_skill`], then
-//!   [`SkillService::install_authored_skill`]): `draft` turns the form into a `SKILL.md`,
-//!   which then takes the same path.
+//!   [`SkillService::install_authored_skill`]): the runtime drafts a skill from plain
+//!   words or an example conversation ([`SkillService::draft_skill`]), the person edits
+//!   it, and the edited draft is checked again and takes the same path.
 //!
 //! Rules this module keeps:
 //! - An install is refused when the skill is not the one the person reviewed
@@ -32,14 +33,14 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use graphrt_skill::{
     Finding, Grant, GrantMode, InstallOptions, OriginKind, Severity, SkillDetails, SkillEntry, SkillOrigin, SkillStore,
-    SKILL_FILE,
 };
 
 pub(crate) use self::active::skills_service;
-use self::draft::SkillDraft;
+use self::draft::CheckedDraft;
 use self::models::{
-    AuthoredSkillInput, CatalogSkillEntry, FindingSeverity, InstalledSkill, SkillCatalog, SkillFinding, SkillReview,
-    SkillToolRequest, SkillUpdateChanges, ToolPermission, ToolPermissionMode,
+    AuthoredSkillInput, CatalogSkillEntry, FindingSeverity, InstalledSkill, SkillCatalog, SkillDraftSource,
+    SkillDraftView, SkillFinding, SkillReview, SkillToolRequest, SkillUpdateChanges, ToolPermission,
+    ToolPermissionMode,
 };
 use crate::error::{AppError, AppResult};
 use crate::plugins::display_name::{humanize_plugin_name, resolve_display_name};
@@ -53,11 +54,40 @@ const EVERY_TOOL: &str = "*";
 /// Tool providers the app always has.
 const BUILT_IN_TOOL_PROVIDERS: &[&str] = &["agents"];
 
+/// Where the model that drafts skills comes from: the app uses the person's default
+/// model, tests a scripted one.
+pub trait DraftModelSource: Send + Sync + std::fmt::Debug {
+    /// The model to draft with.
+    ///
+    /// # Errors
+    /// `MissingCredentials` when no model is connected; whatever building it reports.
+    fn text_model(&self) -> AppResult<Arc<dyn graphrt_core::text_model::TextModel>>;
+}
+
+/// The person's default model (Connections > AI models), built from the keychain.
+#[derive(Debug)]
+pub struct DefaultDraftModel {
+    pub db: Arc<crate::storage::Database>,
+    pub credentials: Arc<crate::credentials::CredentialStore>,
+}
+
+impl DraftModelSource for DefaultDraftModel {
+    fn text_model(&self) -> AppResult<Arc<dyn graphrt_core::text_model::TextModel>> {
+        let choice = crate::credentials::default_model(&self.credentials, &self.db)?;
+        let registry = crate::credentials::build_model_registry(&self.credentials, &self.db)?;
+        let model = registry
+            .get(choice.provider.registry_name())
+            .map_err(|error| AppError::Model(format!("the default model is not available: {error}")))?;
+        Ok(Arc::new(graphrt_llm::text_model::ChatTextModel::new(model, choice.name)))
+    }
+}
+
 /// The Skills screens' backend.
 #[derive(Debug)]
 pub struct SkillService {
     store: Arc<SkillStore>,
     plugins: Arc<PluginService>,
+    draft_model: Arc<dyn DraftModelSource>,
 }
 
 /// Who a skill being installed comes from.
@@ -69,8 +99,8 @@ struct Provenance {
 
 impl SkillService {
     /// A service over the store in `<app data>/skills`. Nothing is read or created yet.
-    pub fn new(app_data_dir: &Path, plugins: Arc<PluginService>) -> Self {
-        Self { store: Arc::new(SkillStore::open(app_data_dir.join(SKILLS_DIR_NAME))), plugins }
+    pub fn new(app_data_dir: &Path, plugins: Arc<PluginService>, draft_model: Arc<dyn DraftModelSource>) -> Self {
+        Self { store: Arc::new(SkillStore::open(app_data_dir.join(SKILLS_DIR_NAME))), plugins, draft_model }
     }
 
     /// Makes this service's store the one runs read skills from (the app's service only).
@@ -158,17 +188,35 @@ impl SkillService {
         self.install(&staged.skill_dir, catalog_provenance(&entry), &request)
     }
 
-    /// Drafts a skill from the form and returns what the confirmation screens show.
+    /// Asks the person's model to draft a skill from plain words or an example
+    /// conversation. Nothing is installed: the draft is for the person to read and edit.
+    /// It may ask only for tools of the plugins installed here, and asking allows nothing.
     ///
     /// # Errors
-    /// `InvalidInput` for a form that cannot become a skill (see `draft::draft_skill`).
+    /// `MissingCredentials` when no model is connected; `InvalidInput` for an empty
+    /// source; `Model` when the model fails or its answer is not a skill.
+    pub async fn draft_skill(&self, source: &SkillDraftSource) -> AppResult<SkillDraftView> {
+        let model = self.draft_model.text_model()?;
+        let available_tools: Vec<String> = self
+            .plugins
+            .tool_specs()
+            .into_iter()
+            .flat_map(|(provider, specs)| specs.into_iter().map(move |spec| format!("{provider}/{}", spec.name)))
+            .collect();
+        draft::draft_from_source(model.as_ref(), source, available_tools).await
+    }
+
+    /// Checks the draft as the person left it and returns what the confirmation screens show.
+    ///
+    /// # Errors
+    /// `InvalidInput` for a draft that cannot be a skill (see `draft::checked_draft`).
     pub fn review_authored_skill(&self, input: &AuthoredSkillInput) -> AppResult<SkillReview> {
-        let draft = draft::draft_skill(input)?;
+        let draft = draft::checked_draft(input)?;
         let staged = stage_draft(&draft)?;
         self.review(&staged.skill_dir, authored_provenance(&draft))
     }
 
-    /// Installs the skill drafted from the form, as reviewed.
+    /// Installs the draft as reviewed.
     ///
     /// # Errors
     /// As [`SkillService::install_catalog_skill`].
@@ -179,7 +227,7 @@ impl SkillService {
         permissions: &[ToolPermission],
         accept_findings: bool,
     ) -> AppResult<InstalledSkill> {
-        let draft = draft::draft_skill(input)?;
+        let draft = draft::checked_draft(input)?;
         let staged = stage_draft(&draft)?;
         let request = InstallRequest { review_id, permissions, accept_findings };
         self.install(&staged.skill_dir, authored_provenance(&draft), &request)
@@ -290,8 +338,13 @@ impl SkillService {
 
     /// Curated names of the catalog's skills, when a catalog is known without fetching.
     fn known_catalog_display_names(&self) -> HashMap<String, String> {
-        let Some(index) = crate::plugins::active::current_catalog() else { return HashMap::new() };
-        index.skills.iter().filter_map(|skill| Some((skill.name.clone(), skill.display_name.clone()?))).collect()
+        // Asked from this app's plugin service, not from the process-wide published copy:
+        // that one is only there once start-up has published it.
+        self.plugins
+            .known_catalog_skills()
+            .into_iter()
+            .filter_map(|skill| Some((skill.name, skill.display_name?)))
+            .collect()
     }
 }
 
@@ -329,12 +382,11 @@ fn stage_archive(name: &str, archive: &[u8]) -> AppResult<StagedSkill> {
     Ok(StagedSkill { _folder: folder, skill_dir })
 }
 
-fn stage_draft(draft: &SkillDraft) -> AppResult<StagedSkill> {
+/// Writes a checked draft as a one-file skill folder, so it is reviewed and installed
+/// through the same calls as a downloaded skill.
+fn stage_draft(checked: &CheckedDraft) -> AppResult<StagedSkill> {
     let folder = staging_folder()?;
-    let skill_dir = folder.path().join(&draft.name);
-    let write_error = |error: std::io::Error| AppError::Internal(format!("could not write the skill: {error}"));
-    std::fs::create_dir_all(&skill_dir).map_err(write_error)?;
-    std::fs::write(skill_dir.join(SKILL_FILE), &draft.skill_file).map_err(write_error)?;
+    let skill_dir = checked.draft.write_to(folder.path()).map_err(skill_error)?;
     Ok(StagedSkill { _folder: folder, skill_dir })
 }
 
@@ -353,17 +405,17 @@ fn catalog_provenance(entry: &CatalogSkill) -> Provenance {
     }
 }
 
-fn authored_provenance(draft: &SkillDraft) -> Provenance {
+fn authored_provenance(checked: &CheckedDraft) -> Provenance {
     Provenance {
         origin: SkillOrigin {
             kind: OriginKind::Authored,
             // The name as the person typed it, shown instead of the technical name.
-            detail: Some(draft.title.clone()),
+            detail: Some(checked.title.clone()),
             publisher: None,
             verified: false,
         },
-        display_name: draft.title.clone(),
-        instructions: Some(draft.instructions.clone()),
+        display_name: checked.title.clone(),
+        instructions: Some(checked.draft.body.clone()),
     }
 }
 

@@ -110,12 +110,23 @@ export interface SkillCatalog {
   fromCache: boolean
 }
 
-/** "Create a skill": what the person typed. */
+/** "Create a skill": the draft as the person left it after reading and editing it. */
 export interface AuthoredSkillInput {
+  /** The skill's name as people say it, e.g. "Refund policy". */
   title: string
-  whenToUse: string
-  steps: string[]
+  /** When the agent should use it, in one or two sentences. */
+  description: string
+  /** What the agent should do. */
+  instructions: string
+  /** Tools the draft asks for (references, only ever handed back). Asking allows nothing. */
+  requestedTools: string[]
 }
+
+/** What a draft is written from: the person's own words, or a pasted example conversation. */
+export type SkillDraftSource = { kind: 'description'; text: string } | { kind: 'conversation'; text: string }
+
+/** A draft the model wrote, for the person to read and edit. Same shape as what they send back. */
+export type SkillDraft = AuthoredSkillInput
 
 /** What the person decided on the confirmation screens. */
 export interface SkillInstallChoices {

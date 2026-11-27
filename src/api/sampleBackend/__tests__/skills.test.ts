@@ -1,7 +1,7 @@
 import { BackendError } from '../../client'
 import type { SkillInstallChoices } from '../../skillTypes'
 import { resetSampleAgents } from '../agents'
-import { resetSampleSkills, sampleSkillsBackend } from '../skills'
+import { resetSampleSkills, sampleSkillsBackend, setSampleDraftModelConnected } from '../skills'
 
 async function expectBackendError(promise: Promise<unknown>, code: BackendError['code']) {
   await expect(promise).rejects.toMatchObject({ code })
@@ -51,15 +51,29 @@ describe('sample skills backend', () => {
     await sampleSkillsBackend.installCatalogSkill('invoice-follow-up', choices(review.reviewId, { acceptFindings: true }))
   })
 
-  it('turns the form into a skill and refuses to install a form that changed', async () => {
-    const form = { title: 'Late delivery', whenToUse: 'When an order is late', steps: ['Apologise', ''] }
-    const review = await sampleSkillsBackend.reviewAuthoredSkill(form)
-    expect(review).toMatchObject({ name: 'late-delivery', displayName: 'Late delivery', source: 'authored' })
-    expect(review.instructions).toContain('1. Apologise')
-    await expectBackendError(sampleSkillsBackend.installAuthoredSkill({ ...form, steps: ['Refund everything'] }, choices(review.reviewId)), 'conflict')
-    const installed = await sampleSkillsBackend.installAuthoredSkill(form, choices(review.reviewId))
-    expect(installed).toMatchObject({ displayName: 'Late delivery', verified: false })
-    await expectBackendError(sampleSkillsBackend.reviewAuthoredSkill({ ...form, title: ' ' }), 'invalid_input')
+  it('drafts a skill from plain words or a conversation, and installs nothing by drafting', async () => {
+    const fromWords = await sampleSkillsBackend.draftSkill({ kind: 'description', text: 'When an order is late, apologise. Check the delivery sheet first.' })
+    expect(fromWords.title).toBe('When an order is')
+    expect(fromWords.instructions).toContain('1. Check what the customer is asking for.')
+    expect(fromWords.requestedTools).toEqual(['google-sheets/read_rows'])
+    const fromChat = await sampleSkillsBackend.draftSkill({ kind: 'conversation', text: 'Customer: My order is late\nMe: Sorry, the next delivery is free' })
+    expect(fromChat.description).toBe('Use when a conversation goes like the example: My order is late.')
+    expect((await sampleSkillsBackend.listInstalledSkills()).map((skill) => skill.name)).toEqual(['friendly-tone', 'meeting-notes'])
+    await expectBackendError(sampleSkillsBackend.draftSkill({ kind: 'description', text: '  ' }), 'invalid_input')
+    setSampleDraftModelConnected(false)
+    await expectBackendError(sampleSkillsBackend.draftSkill({ kind: 'description', text: 'Anything' }), 'missing_credentials')
+  })
+
+  it('checks an edited draft and refuses to install one that changed after the review', async () => {
+    const draft = { title: 'Late delivery', description: 'When an order is late', instructions: '1. Apologise', requestedTools: ['google-sheets/read_rows'] }
+    const review = await sampleSkillsBackend.reviewAuthoredSkill(draft)
+    expect(review).toMatchObject({ name: 'late-delivery', displayName: 'Late delivery', source: 'authored', instructions: '1. Apologise' })
+    expect(review.requestedTools.map((request) => request.tool)).toEqual(['google-sheets/read_rows'])
+    await expectBackendError(sampleSkillsBackend.installAuthoredSkill({ ...draft, instructions: 'Refund everything' }, choices(review.reviewId)), 'conflict')
+    const installed = await sampleSkillsBackend.installAuthoredSkill(draft, choices(review.reviewId))
+    expect(installed).toMatchObject({ displayName: 'Late delivery', verified: false, permissions: [] })
+    await expectBackendError(sampleSkillsBackend.reviewAuthoredSkill({ ...draft, title: ' ' }), 'invalid_input')
+    await expectBackendError(sampleSkillsBackend.reviewAuthoredSkill({ ...draft, instructions: ' ' }), 'invalid_input')
   })
 
   it('puts skills on agents and takes a removed skill off them', async () => {

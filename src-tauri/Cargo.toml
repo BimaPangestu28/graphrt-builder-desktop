@@ -27,25 +27,25 @@ tauri-plugin-dialog = "2.4"
 tauri-plugin-notification = "2.8.1"
 
 # graphrt runtime, pinned to a commit until the crates are published on crates.io
-# (branch backport/agent-learning: backport/ui-blocks plus agent skills and self learning,
-# Graphrt/graphrt#101 and #107)
-graphrt-core = { git = "https://github.com/Graphrt/graphrt", rev = "5ee1f8997861c8b70be62af667580082ab5a2c21" }
-graphrt-llm = { git = "https://github.com/Graphrt/graphrt", rev = "5ee1f8997861c8b70be62af667580082ab5a2c21", default-features = false, features = ["openai", "anthropic", "gemini", "mock", "skills", "learning"] }
-graphrt-http = { git = "https://github.com/Graphrt/graphrt", rev = "5ee1f8997861c8b70be62af667580082ab5a2c21" }
+# (branch backport/skill-drafts-pdf-pages: backport/ui-blocks plus agent skills, self learning,
+# PDF page markers and skill drafts: Graphrt/graphrt#101, #107, #96 and #108)
+graphrt-core = { git = "https://github.com/Graphrt/graphrt", rev = "9ac099dd1633f408e94adc5ae81c320dfd7b46c9" }
+graphrt-llm = { git = "https://github.com/Graphrt/graphrt", rev = "9ac099dd1633f408e94adc5ae81c320dfd7b46c9", default-features = false, features = ["openai", "anthropic", "gemini", "mock", "skills", "learning", "text-model"] }
+graphrt-http = { git = "https://github.com/Graphrt/graphrt", rev = "9ac099dd1633f408e94adc5ae81c320dfd7b46c9" }
 # Knowledge bases: SQLite vector store, document extractors and OpenAI-compatible embeddings
-graphrt-rag = { git = "https://github.com/Graphrt/graphrt", rev = "5ee1f8997861c8b70be62af667580082ab5a2c21", default-features = false, features = ["sqlite", "doc", "http"] }
+graphrt-rag = { git = "https://github.com/Graphrt/graphrt", rev = "9ac099dd1633f408e94adc5ae81c320dfd7b46c9", default-features = false, features = ["sqlite", "doc", "http"] }
 # Plugins: node kinds and tools from external processes (graphrt-plugins catalog)
-graphrt-plugin = { git = "https://github.com/Graphrt/graphrt", rev = "5ee1f8997861c8b70be62af667580082ab5a2c21", default-features = false, features = ["process", "http", "yaml", "mcp-presets"] }
+graphrt-plugin = { git = "https://github.com/Graphrt/graphrt", rev = "9ac099dd1633f408e94adc5ae81c320dfd7b46c9", default-features = false, features = ["process", "http", "yaml", "mcp-presets"] }
 # MCP servers configured in Connections > Advanced: their tools for `tool` / `agent` nodes (stdio and Streamable HTTP)
-graphrt-mcp = { git = "https://github.com/Graphrt/graphrt", rev = "5ee1f8997861c8b70be62af667580082ab5a2c21" }
+graphrt-mcp = { git = "https://github.com/Graphrt/graphrt", rev = "9ac099dd1633f408e94adc5ae81c320dfd7b46c9" }
 # "My own server": exporting an agent as a portable .grt bundle for `graphrt serve` (no WebAssembly plugins)
-graphrt-bundle = { git = "https://github.com/Graphrt/graphrt", rev = "5ee1f8997861c8b70be62af667580082ab5a2c21", default-features = false }
+graphrt-bundle = { git = "https://github.com/Graphrt/graphrt", rev = "9ac099dd1633f408e94adc5ae81c320dfd7b46c9", default-features = false }
 # UI blocks (cards, charts, tables, KPI tiles): validation before the Run result screen renders them
-graphrt-ui = { git = "https://github.com/Graphrt/graphrt", rev = "5ee1f8997861c8b70be62af667580082ab5a2c21" }
+graphrt-ui = { git = "https://github.com/Graphrt/graphrt", rev = "9ac099dd1633f408e94adc5ae81c320dfd7b46c9" }
 # Agent skills: SKILL.md packages pinned and checked at install, loaded by `agent` nodes on demand
-graphrt-skill = { git = "https://github.com/Graphrt/graphrt", rev = "5ee1f8997861c8b70be62af667580082ab5a2c21" }
+graphrt-skill = { git = "https://github.com/Graphrt/graphrt", rev = "9ac099dd1633f408e94adc5ae81c320dfd7b46c9" }
 # Self learning: lessons a person approves, read by `agent` nodes; feedback becomes proposals
-graphrt-learn = { git = "https://github.com/Graphrt/graphrt", rev = "5ee1f8997861c8b70be62af667580082ab5a2c21" }
+graphrt-learn = { git = "https://github.com/Graphrt/graphrt", rev = "9ac099dd1633f408e94adc5ae81c320dfd7b46c9" }
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "process", "io-util"] }
 futures = "0.3"
