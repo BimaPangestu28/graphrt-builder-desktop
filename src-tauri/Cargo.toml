@@ -39,43 +39,43 @@ minijinja = { version = "3", default-features = false, features = ["builtins", "
 
 # graphrt runtime, pinned to a commit until the crates are published on crates.io
 # (a commit of graphrt main; all graphrt crates share the same rev)
-graphrt-core = { git = "https://github.com/Graphrt/graphrt", rev = "0fd983ebf872459c7c93680260a2e5b9ffb752d3" }
-graphrt-llm = { git = "https://github.com/Graphrt/graphrt", rev = "0fd983ebf872459c7c93680260a2e5b9ffb752d3", default-features = false, features = ["openai", "anthropic", "gemini", "mock", "skills", "learning", "text-model", "tool-files", "vision-preparer"] }
-graphrt-http = { git = "https://github.com/Graphrt/graphrt", rev = "0fd983ebf872459c7c93680260a2e5b9ffb752d3" }
+graphrt-core = { git = "https://github.com/Graphrt/graphrt", rev = "bd0779c902de0737e588caa003cf627e19d72750" }
+graphrt-llm = { git = "https://github.com/Graphrt/graphrt", rev = "bd0779c902de0737e588caa003cf627e19d72750", default-features = false, features = ["openai", "anthropic", "gemini", "mock", "skills", "learning", "text-model", "tool-files", "vision-preparer"] }
+graphrt-http = { git = "https://github.com/Graphrt/graphrt", rev = "bd0779c902de0737e588caa003cf627e19d72750" }
 # Knowledge bases: SQLite vector store, document extractors and OpenAI-compatible embeddings
-graphrt-rag = { git = "https://github.com/Graphrt/graphrt", rev = "0fd983ebf872459c7c93680260a2e5b9ffb752d3", default-features = false, features = ["sqlite", "doc", "http", "regex"] }
+graphrt-rag = { git = "https://github.com/Graphrt/graphrt", rev = "bd0779c902de0737e588caa003cf627e19d72750", default-features = false, features = ["sqlite", "doc", "http", "regex"] }
 # Knowledge connectors: web sites, REST APIs, Google Drive, Notion and SharePoint, synced on a schedule
 # (sync state and lock shared with `graphrt serve`). Documents go through the app's own indexing.
-graphrt-connect = { git = "https://github.com/Graphrt/graphrt", rev = "0fd983ebf872459c7c93680260a2e5b9ffb752d3", default-features = false, features = ["web", "api", "google-drive", "notion", "sharepoint", "sqlite"] }
+graphrt-connect = { git = "https://github.com/Graphrt/graphrt", rev = "bd0779c902de0737e588caa003cf627e19d72750", default-features = false, features = ["web", "api", "google-drive", "notion", "sharepoint", "sqlite"] }
 # Plugins: node kinds and tools from external processes (graphrt-plugins catalog)
-graphrt-plugin = { git = "https://github.com/Graphrt/graphrt", rev = "0fd983ebf872459c7c93680260a2e5b9ffb752d3", default-features = false, features = ["process", "http", "yaml", "mcp-presets"] }
+graphrt-plugin = { git = "https://github.com/Graphrt/graphrt", rev = "bd0779c902de0737e588caa003cf627e19d72750", default-features = false, features = ["process", "http", "yaml", "mcp-presets"] }
 # MCP servers configured in Connections > Advanced: their tools for `tool` / `agent` nodes (stdio and Streamable HTTP)
-graphrt-mcp = { git = "https://github.com/Graphrt/graphrt", rev = "0fd983ebf872459c7c93680260a2e5b9ffb752d3" }
+graphrt-mcp = { git = "https://github.com/Graphrt/graphrt", rev = "bd0779c902de0737e588caa003cf627e19d72750" }
 # "My own server": exporting an agent as a portable .grt bundle for `graphrt serve` (no WebAssembly plugins)
-graphrt-bundle = { git = "https://github.com/Graphrt/graphrt", rev = "0fd983ebf872459c7c93680260a2e5b9ffb752d3", default-features = false }
+graphrt-bundle = { git = "https://github.com/Graphrt/graphrt", rev = "bd0779c902de0737e588caa003cf627e19d72750", default-features = false }
 # UI blocks (cards, charts, tables, KPI tiles, diagrams): validation before a screen renders them, and their
 # text / PNG form for chat channels that cannot draw them (`png`: charts as images)
-graphrt-ui = { git = "https://github.com/Graphrt/graphrt", rev = "0fd983ebf872459c7c93680260a2e5b9ffb752d3", features = ["png"] }
+graphrt-ui = { git = "https://github.com/Graphrt/graphrt", rev = "bd0779c902de0737e588caa003cf627e19d72750", features = ["png"] }
 # Agent skills: SKILL.md packages pinned and checked at install, loaded by `agent` nodes on demand
-graphrt-skill = { git = "https://github.com/Graphrt/graphrt", rev = "0fd983ebf872459c7c93680260a2e5b9ffb752d3" }
+graphrt-skill = { git = "https://github.com/Graphrt/graphrt", rev = "bd0779c902de0737e588caa003cf627e19d72750" }
 # Self learning: lessons a person approves, read by `agent` nodes; feedback becomes proposals
-graphrt-learn = { git = "https://github.com/Graphrt/graphrt", rev = "0fd983ebf872459c7c93680260a2e5b9ffb752d3" }
+graphrt-learn = { git = "https://github.com/Graphrt/graphrt", rev = "bd0779c902de0737e588caa003cf627e19d72750" }
 # Tests and release checks: graphrt's eval harness (cases, LLM judges, pass rate, comparison with the last check).
-graphrt-eval = { git = "https://github.com/Graphrt/graphrt", rev = "0fd983ebf872459c7c93680260a2e5b9ffb752d3" }
+graphrt-eval = { git = "https://github.com/Graphrt/graphrt", rev = "bd0779c902de0737e588caa003cf627e19d72750" }
 # Files and images for agents that use them (`agent_files`): a workspace per agent with the
 # `files`, `documents` and `image` tools, and the gate every image passes before a model sees it.
-graphrt-files = { git = "https://github.com/Graphrt/graphrt", rev = "0fd983ebf872459c7c93680260a2e5b9ffb752d3" }
-graphrt-image = { git = "https://github.com/Graphrt/graphrt", rev = "0fd983ebf872459c7c93680260a2e5b9ffb752d3" }
-graphrt-docgen = { git = "https://github.com/Graphrt/graphrt", rev = "0fd983ebf872459c7c93680260a2e5b9ffb752d3" }
+graphrt-files = { git = "https://github.com/Graphrt/graphrt", rev = "bd0779c902de0737e588caa003cf627e19d72750" }
+graphrt-image = { git = "https://github.com/Graphrt/graphrt", rev = "bd0779c902de0737e588caa003cf627e19d72750" }
+graphrt-docgen = { git = "https://github.com/Graphrt/graphrt", rev = "bd0779c902de0737e588caa003cf627e19d72750" }
 # Telegram, WhatsApp, Slack and Microsoft Teams for chatbots: parsing, signatures, tokens, sending (docs/channels.md and docs/slack-teams.md of graphrt).
-graphrt-channel = { git = "https://github.com/Graphrt/graphrt", rev = "0fd983ebf872459c7c93680260a2e5b9ffb752d3", features = ["telegram", "whatsapp", "slack", "socket-mode", "teams", "client"] }
+graphrt-channel = { git = "https://github.com/Graphrt/graphrt", rev = "bd0779c902de0737e588caa003cf627e19d72750", features = ["telegram", "whatsapp", "slack", "socket-mode", "teams", "client"] }
 # Teams: share an agent with a team server (graphrt collab, hosted by Graphrt or a company's own),
 # edit it together live, see who is there. Off until someone chooses a server and signs in.
-graphrt-collab = { git = "https://github.com/Graphrt/graphrt", rev = "0fd983ebf872459c7c93680260a2e5b9ffb752d3", features = ["client"] }
+graphrt-collab = { git = "https://github.com/Graphrt/graphrt", rev = "bd0779c902de0737e588caa003cf627e19d72750", features = ["client"] }
 # Phone access (feature `phone-access`): the device tokens, the approvals inbox and the Web Push
 # notifier of `graphrt serve` (graphrt#136), reused for agents that run on this computer. Only
 # those features: no workflow runner of the CLI and none of its `serve` routes are used.
-graphrt-cli = { git = "https://github.com/Graphrt/graphrt", rev = "0fd983ebf872459c7c93680260a2e5b9ffb752d3", default-features = false, features = ["web-push", "approvals"], optional = true }
+graphrt-cli = { git = "https://github.com/Graphrt/graphrt", rev = "bd0779c902de0737e588caa003cf627e19d72750", default-features = false, features = ["web-push", "approvals"], optional = true }
 # The small HTTP server of Phone access (the same axum version graphrt serve uses).
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"], optional = true }
 # The computer's network addresses, to serve Phone access on the Wi-Fi / cable one only.
@@ -149,8 +149,8 @@ windows-sys = { version = "0.61", features = ["Win32_System_Power"] }
 [dev-dependencies]
 minisign = "0.10.0"
 # Teams tests run a real team server in the test process (the same rev as the client).
-graphrt-collab = { git = "https://github.com/Graphrt/graphrt", rev = "0fd983ebf872459c7c93680260a2e5b9ffb752d3", features = ["client", "server"] }
-graphrt-console = { git = "https://github.com/Graphrt/graphrt", rev = "0fd983ebf872459c7c93680260a2e5b9ffb752d3" }
+graphrt-collab = { git = "https://github.com/Graphrt/graphrt", rev = "bd0779c902de0737e588caa003cf627e19d72750", features = ["client", "server"] }
+graphrt-console = { git = "https://github.com/Graphrt/graphrt", rev = "bd0779c902de0737e588caa003cf627e19d72750" }
 # Tests build .tar.xz fixtures of the Node runtime archive.
 lzma-rust2 = { version = "0.25", default-features = false, features = ["std", "xz", "encoder"] }
 # Tests encode a large photo to check that attaching it does not block (the version graphrt-image uses).

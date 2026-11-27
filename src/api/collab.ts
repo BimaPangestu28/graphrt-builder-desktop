@@ -16,7 +16,7 @@ import type {
 const COLLAB_CHANGED_EVENT = 'collab-changed'
 const COLLAB_AGENT_EVENT = 'collab-agent'
 
-const previewStatus: CollabStatus = { server: 'https://collab.graphrt.dev', defaultServer: 'https://collab.graphrt.dev', signedIn: false, account: null }
+const previewStatus: CollabStatus = { server: 'https://collab.graphrt.com', defaultServer: 'https://collab.graphrt.com', signedIn: false, account: null }
 const localOnly: AgentCollab = { shared: false, link: null, connection: 'local', role: null, readOnly: false, people: [], message: null }
 
 export function getCollabStatus(): Promise<CollabStatus> {
@@ -31,8 +31,9 @@ export function setCollabServer(address: string): Promise<CollabStatus> {
   return callBackend('collab_set_server', { address })
 }
 
-export function signInToCollab(): Promise<CollabStatus> {
-  return callBackend('collab_sign_in')
+/** Signs in in the browser with `provider` (an id of `ServerCheck.signInProviders`), or the server's first. */
+export function signInToCollab(provider?: string): Promise<CollabStatus> {
+  return callBackend('collab_sign_in', { provider: provider ?? null })
 }
 
 export function signOutOfCollab(): Promise<CollabStatus> {

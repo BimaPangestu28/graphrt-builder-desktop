@@ -37,7 +37,7 @@ use crate::storage::Database;
 /// Graphrt's hosted team server, unless the build names another (`GRAPHRT_COLLAB_DEFAULT_URL`).
 pub const DEFAULT_SERVER: &str = match option_env!("GRAPHRT_COLLAB_DEFAULT_URL") {
     Some(url) => url,
-    None => "https://collab.graphrt.dev",
+    None => "https://collab.graphrt.com",
 };
 
 /// App setting: the team server address.
@@ -143,8 +143,18 @@ pub struct ServerCheck {
     /// How people sign in there: with the browser, with invite links.
     pub sign_in_with_browser: bool,
     pub sign_in_with_invite: bool,
+    /// The identity providers, one sign in button each (e.g. Google and Microsoft).
+    /// Empty for a server with one unnamed provider: one "Sign in" button.
+    pub sign_in_providers: Vec<SignInChoice>,
     /// `hosted` or `self_hosted`.
     pub mode: Option<String>,
+}
+
+/// An identity provider of the server, a sign in button.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SignInChoice {
+    pub id: String,
+    pub name: String,
 }
 
 /// The sharing state of one agent, for its header.
@@ -264,6 +274,7 @@ impl Collab {
             detail,
             sign_in_with_browser: false,
             sign_in_with_invite: false,
+            sign_in_providers: Vec::new(),
             mode: None,
         };
         let api = match Api::new(address) {
@@ -282,6 +293,12 @@ impl Collab {
                 detail: None,
                 sign_in_with_browser: info.sign_in.oidc,
                 sign_in_with_invite: info.sign_in.invite_codes,
+                sign_in_providers: info
+                    .sign_in
+                    .providers
+                    .iter()
+                    .map(|p| SignInChoice { id: p.id.clone(), name: p.name.clone() })
+                    .collect(),
                 mode: Some(info.mode),
             },
             Err(ClientError::Tls(why)) => failed(server, ServerProblem::Tls, Some(why)),
@@ -302,11 +319,12 @@ impl Collab {
         self.status().await
     }
 
-    /// Sign in with the server's identity provider in the browser.
-    pub async fn sign_in(self: &Arc<Self>) -> AppResult<CollabStatus> {
+    /// Sign in with one of the server's identity providers in the browser
+    /// (`provider` is the id of a [`SignInChoice`], `None` for the server's first).
+    pub async fn sign_in(self: &Arc<Self>, provider: Option<&str>) -> AppResult<CollabStatus> {
         let api = self.api()?;
         let login = LoopbackLogin::start().await.map_err(client_error)?;
-        let url = login.url(&api, &device_name()).map_err(client_error)?;
+        let url = login.url(&api, &device_name(), provider).map_err(client_error)?;
         self.open_browser(url)?;
         let tokens = login.finish(&api, SIGN_IN_TIMEOUT).await.map_err(client_error)?;
         self.keep(&tokens).await?;
