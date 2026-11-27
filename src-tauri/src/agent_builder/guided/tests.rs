@@ -450,3 +450,32 @@ async fn an_openai_model_plans_a_job_within_reach_and_the_steps_run_on_it() {
     );
     assert!(agent.flow_yaml.contains("provider: openai") && agent.flow_yaml.contains("name: gpt-4o-mini"));
 }
+
+#[tokio::test]
+async fn a_lookup_on_a_site_the_job_does_not_name_reads_with_the_offered_plugin() {
+    let _catalog = PublishedCatalog::publish().await;
+    let db = Database::open_in_memory().unwrap();
+    // As llama3.2 planned the exchange-rate job: a guessed API instead of the offered plugin.
+    let guessed = format!(
+        r#"{{"looks_up_the_web": true, "summary": "Lists the newest mail in the inbox.", "name": "Inbox",
+            "inputs": [],
+            "steps": [{{"kind": "lookup", "title": "Get the inbox", "instruction": "", "url": "https://api.mailcheck.example/inbox"}},
+                      {{"kind": "write", "title": "Sum it up", "instruction": "Sum up the mail.", "url": ""}}], {NO_SCHEDULE}}}"#
+    );
+    let (mock, builder) = local_builder(&[&guessed, r#"{"limit": 5}"#]);
+
+    let agent =
+        build_agent_with_model(&db, &builder, request("Check my mail inbox and sum it up"), &|_| {}).await.unwrap();
+
+    assert!(agent.flow_yaml.contains("type: fixture-mail.list_inbox"), "{}", agent.flow_yaml);
+    assert!(!agent.flow_yaml.contains("mailcheck"), "{}", agent.flow_yaml);
+    let fields_request = mock.requests()[1].messages[1].text();
+    assert!(fields_request.contains("The job: <<<Check my mail inbox and sum it up>>>"), "{fields_request}");
+    // A site the job names stays a lookup.
+    let named = wikipedia_plan();
+    let (_mock, builder) = local_builder(&[&named]);
+    let wiki = build_agent_with_model(&db, &builder, request("Look up Jakarta on Wikipedia and sum it up"), &|_| {})
+        .await
+        .unwrap();
+    assert!(wiki.flow_yaml.contains("type: http-request"), "{}", wiki.flow_yaml);
+}

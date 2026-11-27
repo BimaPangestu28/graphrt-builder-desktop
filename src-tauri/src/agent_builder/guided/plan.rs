@@ -415,6 +415,24 @@ pub(super) fn normalize(raw: RawPlan, rules: &PlanRules<'_>) -> Result<Plan, Str
                 });
                 continue;
             }
+            // `https://currency-rates.get_latest_rates?base=USD`: an offered operation written
+            // as an address (llama3.2) is that operation.
+            if let Some(operation) = operation_in_address(&raw_step.url, rules) {
+                let title = if title.is_empty() { operation.title.clone() } else { title };
+                let instruction = if instruction.is_empty() || instruction.contains("://") {
+                    plain_text(&raw.summary)
+                } else {
+                    instruction
+                };
+                let instruction = if instruction.is_empty() { title.clone() } else { instruction };
+                steps.push(PlanStep::Use {
+                    title,
+                    instruction,
+                    operation: operation.kind.clone(),
+                    fields: BTreeMap::new(),
+                });
+                continue;
+            }
             let url = lookup_url(&raw_step.url, &mut inputs, inputs_are_fixed)?;
             let title = match (title.is_empty(), url.host()) {
                 (false, _) => title,
@@ -932,6 +950,17 @@ fn reads_what_an_input_holds(operation: &OfferedOperation, inputs: &[PlanInput])
         })
 }
 
+/// The offered operation a lookup address names (`currency-rates.get_latest_rates`, or its
+/// operation part `get_latest_rates`), if any.
+fn operation_in_address<'a>(raw_url: &str, rules: &'a PlanRules<'_>) -> Option<&'a OfferedOperation> {
+    let address = raw_url.to_ascii_lowercase();
+    rules.operations.iter().find(|operation| {
+        let kind = operation.kind.to_ascii_lowercase();
+        let name = kind.split_once('.').map_or(kind.as_str(), |(_, name)| name);
+        address.contains(&kind) || (name.contains('_') && address.contains(name))
+    })
+}
+
 /// The input name a lookup address consists of, when it is one placeholder and nothing
 /// else (`{topic}`, `{{topic}}`, `https://{topic}`).
 fn bare_placeholder(raw_url: &str) -> Option<String> {
@@ -1290,6 +1319,23 @@ mod tests {
 
         assert_eq!(plan.steps.len(), 1, "{plan:?}");
         assert!(matches!(plan.steps[0], PlanStep::Write { .. }));
+    }
+
+    #[test]
+    fn an_operation_written_as_an_address_is_that_operation() {
+        let operations = [list_messages_operation()];
+        let rules = task_rules(&operations);
+        let raw = parse(
+            r#"{"looks_up_the_web": true, "summary": "Lists new mail.", "inputs": [],
+                "steps": [{"kind": "lookup", "title": "", "instruction": "https://email.list_messages", "url": "https://email.list_messages?limit=5"}]}"#,
+        )
+        .unwrap();
+
+        let plan = normalize(raw, &rules).unwrap();
+
+        let PlanStep::Use { operation, instruction, .. } = &plan.steps[0] else { panic!("use expected: {plan:?}") };
+        assert_eq!(operation, "email.list_messages");
+        assert_eq!(instruction, "Lists new mail.");
     }
 
     #[test]

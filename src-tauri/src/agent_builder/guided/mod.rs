@@ -366,6 +366,7 @@ impl Planning<'_> {
     fn checked_plan(&self, reply: &str, rules: &PlanRules<'_>) -> Result<Plan, PlanProblem> {
         let mut plan = plan::normalize(plan::parse(reply)?, rules)?;
         coverage::verify_job_words(&mut plan.job_words, self.request);
+        prefer_offered_reading(&mut plan, &self.operations, self.request);
         if let Some(reason) = coverage::out_of_reach(&plan.job_words, !self.operations.is_empty()) {
             return Err(PlanProblem::OutOfReach(reason));
         }
@@ -459,7 +460,7 @@ impl Planning<'_> {
         let schema = plan::fields_schema(operation);
         let mut messages = vec![
             Message::system(prompt::fields_system_prompt()),
-            Message::user(prompt::fields_request(operation, plan, step_index)),
+            Message::user(prompt::fields_request(operation, plan, step_index, self.request)),
         ];
         let mut last_problem = String::new();
         for _ in 0..MAX_FIELDS_ATTEMPTS {
@@ -541,6 +542,39 @@ impl Planning<'_> {
         .map_err(|error| model_error(&error))?;
         log::debug!("builder model {schema_name} ({} chars):\n{}", response.text.len(), response.text);
         Ok(response.text)
+    }
+}
+
+/// Replaces each lookup on a site the job does not name with the best offered operation that
+/// only reads: the job matched that plugin, and a small model otherwise copies an example
+/// address (a Wikipedia summary for an exchange rate) or guesses an API.
+fn prefer_offered_reading(plan: &mut Plan, operations: &[OfferedOperation], job: &str) {
+    let Some(operation) = operations.iter().find(|operation| !operation.sends) else { return };
+    let job_words: Vec<String> = job
+        .to_lowercase()
+        .split(|character: char| !character.is_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .map(str::to_owned)
+        .collect();
+    let summary = plan.summary.clone();
+    for step in &mut plan.steps {
+        let PlanStep::Lookup { title, url } = step else { continue };
+        let Some(host) = url.host() else { continue };
+        let named = host
+            .split(['.', '-'])
+            .filter(|label| label.len() >= 4 && !matches!(*label, "www" | "api" | "apis"))
+            .any(|label| job_words.iter().any(|word| word == label));
+        if named {
+            continue;
+        }
+        log::info!("the lookup on {host} becomes the offered operation {}", operation.kind);
+        let instruction = if summary.is_empty() { title.clone() } else { summary.clone() };
+        *step = PlanStep::Use {
+            title: title.clone(),
+            instruction,
+            operation: operation.kind.clone(),
+            fields: std::collections::BTreeMap::new(),
+        };
     }
 }
 

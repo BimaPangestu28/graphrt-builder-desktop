@@ -83,7 +83,8 @@ fn use_step_guide(operations: &[OfferedOperation]) -> String {
                      gives (notes, a message, a complaint) is worked on by \"write\" steps alone. \"operation\" is one \
                      of the operations below, copied exactly; \"instruction\" says what to send or fetch and to whom. The app asks the person before \
                      anything is sent, so do not add an \"approve\" step for that. To send a text, first write it in a \
-                     \"write\" step. Operations:"
+                     \"write\" step. When an operation below gives the facts the job needs, use it instead of a \
+                     \"lookup\". Operations:"
         .to_owned();
     for operation in operations {
         let note = if operation.installed { "" } else { " (the app will offer to install it)" };
@@ -119,13 +120,15 @@ pub(super) fn fields_system_prompt() -> &'static str {
 }
 
 /// The request to fill in the fields of the plugin step at `step_index` of `plan`.
-pub(super) fn fields_request(operation: &OfferedOperation, plan: &Plan, step_index: usize) -> String {
+/// `job` is what the person asked for, so values the job names ("US dollar", "rupiah") reach
+/// the fields instead of a default the field's description mentions.
+pub(super) fn fields_request(operation: &OfferedOperation, plan: &Plan, step_index: usize, job: &str) -> String {
     let (title, instruction) = match plan.steps.get(step_index) {
         Some(PlanStep::Use { title, instruction, .. }) => (title.as_str(), instruction.as_str()),
         _ => ("", ""),
     };
     let mut request = format!(
-        "The step: {title}. What it should do: {instruction}\nIt uses \"{}\": {}\n\nFields:",
+        "The job: <<<{job}>>>\nThe step: {title}. What it should do: {instruction}\nIt uses \"{}\": {}\n\nFields:",
         operation.title, operation.description
     );
     for field in &operation.fields {
@@ -221,7 +224,7 @@ mod tests {
             schedule: None,
             job_words: Default::default(),
         };
-        let request = fields_request(&operation, &plan, 1);
+        let request = fields_request(&operation, &plan, 1, "Email the note to the address I give");
         assert!(request.contains("\"to\" (required): Recipients"), "{request}");
         assert!(request.contains("{address}: Email address"), "{request}");
         assert!(request.contains("{step_1}: the result of step 1 \"Write the note\""), "{request}");
