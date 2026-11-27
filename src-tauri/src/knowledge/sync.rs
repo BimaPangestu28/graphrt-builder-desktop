@@ -1,8 +1,8 @@
 //! Indexing: reads every source of a knowledge base, re-indexes documents
 //! whose bytes changed, drops documents that disappeared and reports progress.
 //!
-//! Unchanged documents (same byte fingerprint as last time) are not even
-//! extracted again; changed ones go through graphrt-rag's [`Ingestor`], which
+//! Unchanged documents (same byte fingerprint and chunking settings as last
+//! time) are not even extracted again; changed ones go through graphrt-rag's [`Ingestor`], which
 //! re-embeds only the passages whose text changed. A document that fails to
 //! read keeps its previously indexed passages.
 
@@ -10,10 +10,10 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 
-use graphrt_rag::{Document, Embedder, Ingestor, Metadata, SqliteStore, VectorStore};
+use graphrt_rag::{ChunkerConfig, Document, Embedder, Ingestor, Metadata, SqliteStore, VectorStore};
 
 use super::events::KnowledgeEvent;
-use super::models::{KnowledgeSource, SourceKind, SourceStatus, SyncProgress, SyncReport};
+use super::models::{ChunkingSettings, KnowledgeSource, SourceKind, SourceStatus, SyncProgress, SyncReport};
 use super::records::{self, SourceOutcome, StoredDocument, StoredKnowledgeBase};
 use super::retrieval::{METADATA_SOURCE_ID, METADATA_SOURCE_NAME};
 use super::sources::{self, SourceEntry};
@@ -48,6 +48,47 @@ struct SyncContext<'a> {
     knowledge_base: &'a StoredKnowledgeBase,
     store: Arc<SqliteStore>,
     setup: EmbeddingSetup,
+    /// The knowledge base's chunking when the sync started.
+    chunker: ChunkerConfig,
+    /// [`ChunkingSettings::key`] of that chunking.
+    chunking_key: String,
+    /// Key of the default chunking, which documents without a key were indexed with.
+    default_chunking_key: String,
+}
+
+impl<'a> SyncContext<'a> {
+    /// The store, embedder and chunking of `knowledge_base` for one sync.
+    fn new(knowledge_base: &'a StoredKnowledgeBase, keys: &EmbeddingKeys) -> AppResult<Self> {
+        Ok(Self {
+            knowledge_base,
+            store: stores::open_store(Path::new(&knowledge_base.store_path))?,
+            setup: keys.setup_for(knowledge_base.settings.embedding)?,
+            chunker: knowledge_base.settings.chunking.to_chunker_config(),
+            chunking_key: knowledge_base.settings.chunking.key()?,
+            default_chunking_key: ChunkingSettings::default().key()?,
+        })
+    }
+
+    /// Whether `previous` was cut with the current chunking settings.
+    fn same_chunking(&self, previous: &StoredDocument) -> bool {
+        previous.chunking_key.as_deref().unwrap_or(&self.default_chunking_key) == self.chunking_key
+    }
+
+    /// Whether `previous` was indexed from the same bytes with the same chunking.
+    fn is_unchanged(&self, previous: &StoredDocument, fingerprint: &str) -> bool {
+        previous.fingerprint == fingerprint && self.same_chunking(previous)
+    }
+
+    /// The document record after indexing it now with this sync's chunking.
+    fn indexed_document(&self, document_id: &str, fingerprint: String, passage_count: u64) -> StoredDocument {
+        StoredDocument {
+            document_id: document_id.to_owned(),
+            fingerprint,
+            passage_count,
+            chunking_key: Some(self.chunking_key.clone()),
+            indexed_at: Some(now_rfc3339()),
+        }
+    }
 }
 
 impl SourceTally {
@@ -145,11 +186,7 @@ impl KnowledgeService {
         self.sink.send(KnowledgeEvent::SyncStarted { knowledge_base_id: knowledge_base_id.to_owned() });
         let sources = records::list_sources(&self.db, knowledge_base_id)?;
         let keys = EmbeddingKeys::load(&self.credentials, [knowledge_base.settings.embedding])?;
-        let context = SyncContext {
-            knowledge_base: &knowledge_base,
-            store: stores::open_store(Path::new(&knowledge_base.store_path))?,
-            setup: keys.setup_for(knowledge_base.settings.embedding)?,
-        };
+        let context = SyncContext::new(&knowledge_base, &keys)?;
         let total = to_u32(sources.len());
         self.tracker.set_progress(knowledge_base_id, SyncProgress { done: 0, total });
         let mut report = SyncReport::default();
@@ -264,7 +301,7 @@ impl KnowledgeService {
             Err(message) => return Ok(DocumentResult::Failed { message }),
         };
         let fingerprint = sources::fingerprint(&loaded.bytes);
-        if let Some(previous) = previous.filter(|previous| previous.fingerprint == fingerprint) {
+        if let Some(previous) = previous.filter(|previous| context.is_unchanged(previous, &fingerprint)) {
             return Ok(DocumentResult::Unchanged { passage_count: previous.passage_count });
         }
         let Some(embedder) = context.setup.embedder.clone() else {
@@ -281,7 +318,7 @@ impl KnowledgeService {
             Ok(passage_count) => passage_count,
             Err(message) => return Ok(DocumentResult::Failed { message }),
         };
-        let document = StoredDocument { document_id: entry.document_id.clone(), fingerprint, passage_count };
+        let document = context.indexed_document(&entry.document_id, fingerprint, passage_count);
         records::upsert_document(&self.db, &source.id, &document)?;
         Ok(DocumentResult::Indexed { passage_count })
     }
@@ -303,7 +340,11 @@ impl KnowledgeService {
             .title(entry.display_name.clone())
             .metadata(metadata);
         let store: Arc<dyn VectorStore> = context.store.clone();
-        Ingestor::new(store, embedder).ingest(&document).await.map_err(|error| error.to_string())?;
+        Ingestor::new(store, embedder)
+            .chunker(context.chunker.clone())
+            .ingest(&document)
+            .await
+            .map_err(|error| error.to_string())?;
         let chunks = context
             .store
             .document_chunks(knowledge_base_id, &entry.document_id)

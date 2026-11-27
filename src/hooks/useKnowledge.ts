@@ -67,7 +67,11 @@ function applyEventToDetail(detail: KnowledgeBaseDetail | null, event: Knowledge
     case 'source_updated': {
       const isKnown = detail.sources.some((source) => source.id === event.source.id)
       const sources = isKnown ? detail.sources.map((source) => (source.id === event.source.id ? event.source : source)) : [...detail.sources, event.source]
-      return { ...detail, sources }
+      // A source finished (no percent): one more done in the running sync's progress.
+      const progress = detail.knowledgeBase.syncProgress
+      const isSourceDone = event.progressPercent === null && detail.knowledgeBase.status === 'syncing' && progress !== null
+      const knowledgeBase = isSourceDone ? { ...detail.knowledgeBase, syncProgress: { ...progress, done: Math.min(progress.done + 1, progress.total) } } : detail.knowledgeBase
+      return { ...detail, sources, knowledgeBase }
     }
   }
 }

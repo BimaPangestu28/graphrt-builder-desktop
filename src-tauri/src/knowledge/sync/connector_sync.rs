@@ -24,7 +24,7 @@ use super::super::connectors::{self, find_connector, set_last_error_kind};
 use super::super::models::{KnowledgeSource, SourceStatus, SyncProgress, SyncReport};
 use super::super::records::{self, StoredDocument};
 use super::super::sources::{self, EntryOrigin, LoadedDocument, SourceEntry};
-use super::super::stores::{self, EmbeddingKeys};
+use super::super::stores::EmbeddingKeys;
 use super::{SourceTally, SyncContext, MISSING_OPENAI_KEY};
 use crate::error::{AppError, AppResult};
 use crate::knowledge::events::KnowledgeEvent;
@@ -124,11 +124,7 @@ impl KnowledgeService {
             .filter(|source| only.contains(source.id.as_str()))
             .collect();
         let keys = EmbeddingKeys::load(&self.credentials, [knowledge_base.settings.embedding])?;
-        let context = SyncContext {
-            knowledge_base: &knowledge_base,
-            store: stores::open_store(Path::new(&knowledge_base.store_path))?,
-            setup: keys.setup_for(knowledge_base.settings.embedding)?,
-        };
+        let context = SyncContext::new(&knowledge_base, &keys)?;
         let total = u32::try_from(sources.len()).unwrap_or(u32::MAX);
         self.tracker.set_progress(knowledge_base_id, SyncProgress { done: 0, total });
         let mut report = SyncReport::default();
@@ -204,7 +200,7 @@ impl KnowledgeService {
                 continue;
             }
             match (known.get(&id), version_fingerprint(item)) {
-                (Some(previous), Some(fingerprint)) if previous.fingerprint == fingerprint => {
+                (Some(previous), Some(fingerprint)) if context.is_unchanged(previous, &fingerprint) => {
                     tally.report.documents_unchanged += 1;
                     tally.document_count += 1;
                     tally.passage_count += previous.passage_count;
@@ -306,7 +302,8 @@ impl KnowledgeService {
         let fingerprint =
             version_fingerprint(item).unwrap_or_else(|| format!("h:{}", graphrt_connect::content_hash(&content)));
         let hash_fingerprint = format!("h:{}", graphrt_connect::content_hash(&content));
-        if let Some(previous) = previous.filter(|p| p.fingerprint == fingerprint || p.fingerprint == hash_fingerprint) {
+        let same_content = |p: &&StoredDocument| p.fingerprint == fingerprint || p.fingerprint == hash_fingerprint;
+        if let Some(previous) = previous.filter(same_content).filter(|p| context.same_chunking(p)) {
             records::upsert_document(&self.db, &source.id, &StoredDocument { fingerprint, ..previous.clone() })?;
             return Ok(Ok((previous.passage_count, false)));
         }
@@ -330,7 +327,7 @@ impl KnowledgeService {
         records::upsert_document(
             &self.db,
             &source.id,
-            &StoredDocument { document_id: document_id.to_owned(), fingerprint, passage_count },
+            &context.indexed_document(document_id, fingerprint, passage_count),
         )?;
         Ok(Ok((passage_count, true)))
     }

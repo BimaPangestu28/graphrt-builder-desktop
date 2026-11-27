@@ -360,6 +360,14 @@ const MIGRATIONS: &[&str] = &[
         last_error_kind TEXT
     );
     "#,
+    // Knowledge chunking (see `knowledge::chunking`): the settings of each knowledge
+    // base (NULL = defaults), and per document the chunking it was indexed with
+    // (NULL = the defaults, for documents indexed before) and when.
+    r#"
+    ALTER TABLE knowledge_bases ADD COLUMN chunking_json TEXT;
+    ALTER TABLE knowledge_documents ADD COLUMN chunking_key TEXT;
+    ALTER TABLE knowledge_documents ADD COLUMN indexed_at TEXT;
+    "#,
 ];
 
 /// Applies every migration newer than the database's `user_version`.

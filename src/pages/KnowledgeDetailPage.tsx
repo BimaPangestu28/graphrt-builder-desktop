@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { FileDropZone } from '@/components/fileDrop'
 import { AppShell } from '@/components/layout'
-import { Button } from '@/components/ui'
+import { Button, pillTabClassNames, PillTabBadge } from '@/components/ui'
 import {
   addKnowledgeSource,
   deleteKnowledgeBase,
@@ -11,13 +11,14 @@ import {
   syncKnowledgeBase,
   updateKnowledgeSettings,
 } from '@/api/knowledge'
-import type { KnowledgeBase, KnowledgeBaseDetail, KnowledgeSettings, KnowledgeSource, KnowledgeSourceKind, KnowledgeUsage } from '@/api/knowledgeTypes'
+import type { ChunkingSettings, KnowledgeBase, KnowledgeBaseDetail, KnowledgeSettings, KnowledgeSource, KnowledgeSourceKind, KnowledgeUsage } from '@/api/knowledgeTypes'
 import { useKnowledgeBaseDetail } from '@/hooks/useKnowledge'
 import { agentPath, routePaths, sampleKnowledgeBaseId } from '@/routes'
 import { AddLinkForm } from './knowledge/AddLinkForm'
 import { ConnectSourceCard } from './knowledge/connectors/ConnectorWizard'
 import { syncKnowledgeSource } from '@/api/knowledgeConnectors'
 import { SectionHeading, compactButtonClassNames } from './knowledge/FormControls'
+import { KnowledgeIndexingTab } from './knowledge/KnowledgeIndexingTab'
 import { KnowledgeSettingsPanel } from './knowledge/KnowledgeSettingsPanel'
 import { KnowledgeSourcesTable } from './knowledge/KnowledgeSourcesTable'
 import { TestQuestionSection, parseMatchThreshold } from './knowledge/TestQuestionSection'
@@ -61,12 +62,15 @@ function useKnowledgeBaseActions(knowledgeBaseId: string, live: ReturnType<typeo
   const [actionError, setActionError] = useState<string | null>(null)
   const { setData, reload } = live
 
-  const runAction = async (action: () => Promise<void>) => {
+  /** Runs the action and resolves whether it succeeded; a failure becomes the message on screen. */
+  const runAction = async (action: () => Promise<void>): Promise<boolean> => {
     setActionError(null)
     try {
       await action()
+      return true
     } catch (actionFailure) {
       setActionError(toError(actionFailure).message)
+      return false
     }
   }
 
@@ -104,6 +108,14 @@ function useKnowledgeBaseActions(knowledgeBaseId: string, live: ReturnType<typeo
         setData((current) => replaceKnowledgeBase(current, knowledgeBase))
         if (knowledgeBase.status === 'syncing' || settings.embedding !== live.data?.knowledgeBase.settings.embedding) reload()
       }),
+    /** Saves chunking only; the next "Index again" applies it. */
+    saveChunking: (chunking: ChunkingSettings) =>
+      runAction(async () => {
+        const current = live.data?.knowledgeBase.settings
+        if (!current) return
+        const knowledgeBase = await updateKnowledgeSettings(knowledgeBaseId, { ...current, chunking })
+        setData((detail) => replaceKnowledgeBase(detail, knowledgeBase))
+      }),
     rename: (name: string) =>
       runAction(async () => {
         const knowledgeBase = await renameKnowledgeBase(knowledgeBaseId, name)
@@ -118,11 +130,36 @@ function useKnowledgeBaseActions(knowledgeBaseId: string, live: ReturnType<typeo
   }
 }
 
+type DetailView = 'sources' | 'indexing'
+
+function DetailTabs({ view, onChange, needsReindex }: { view: DetailView; onChange: (view: DetailView) => void; needsReindex: boolean }) {
+  const t = useT().knowledgeIndexing
+  const tabs: { id: DetailView; label: string }[] = [
+    { id: 'sources', label: t.tabSources },
+    { id: 'indexing', label: t.tabIndexing },
+  ]
+  return (
+    <div role="tablist" aria-label={t.tabsLabel} className="flex flex-wrap gap-2 border-b border-line px-8 py-3">
+      {tabs.map((tab) => (
+        <button key={tab.id} type="button" role="tab" id={`tab-${tab.id}`} aria-selected={view === tab.id} aria-controls={`panel-${tab.id}`} onClick={() => onChange(tab.id)} className={pillTabClassNames(view === tab.id)}>
+          {tab.label}
+          {tab.id === 'indexing' && needsReindex && (
+            <PillTabBadge isActive={view === tab.id} isWarning>
+              !
+            </PillTabBadge>
+          )}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 /**
  * Screen 18 · Knowledge detail.
  * Sources with live status (reading → ready / failed, from `knowledge-event`), adding files,
  * a folder or a link, removing sources, "Sync now", "Test a question" searched by the backend,
- * the agents whose workflow uses this knowledge base, and retrieval settings.
+ * the agents whose workflow uses this knowledge base, and retrieval settings. The "Indexing results"
+ * tab (`?view=indexing`) shows each document's passages and the chunking settings.
  */
 export function KnowledgeDetailPage() {
   const t = useT().knowledge
@@ -137,6 +174,18 @@ export function KnowledgeDetailPage() {
     { files: t.pickFilesAdd, folder: t.pickFolderAdd },
   )
   const knowledgeBase = detail?.knowledgeBase
+  const [searchParams, setSearchParams] = useSearchParams()
+  const view: DetailView = searchParams.get('view') === 'indexing' ? 'indexing' : 'sources'
+  const showView = (next: DetailView) =>
+    setSearchParams(
+      (current) => {
+        const params = new URLSearchParams(current)
+        if (next === 'indexing') params.set('view', 'indexing')
+        else params.delete('view')
+        return params
+      },
+      { replace: true },
+    )
   const currentThresholdText = thresholdText ?? String(knowledgeBase?.settings.minScore ?? 0)
 
   return (
@@ -165,8 +214,19 @@ export function KnowledgeDetailPage() {
           {t.couldNotLoadBase(loadError.message)}
         </p>
       )}
-      {detail && knowledgeBase && (
-        <div className="flex flex-auto flex-wrap">
+      {detail && knowledgeBase && <DetailTabs view={view} onChange={showView} needsReindex={knowledgeBase.needsReindex} />}
+      {detail && knowledgeBase && view === 'indexing' && (
+        <div role="tabpanel" id="panel-indexing" aria-labelledby="tab-indexing" className="box-border flex min-w-0 flex-col gap-5 px-8 py-7">
+          {actions.actionError && (
+            <p role="alert" className="m-0 rounded-[10px] border border-danger-line bg-danger-tint px-3.5 py-3 text-[13px] text-danger">
+              {actions.actionError}
+            </p>
+          )}
+          <KnowledgeIndexingTab detail={detail} onReindex={() => void actions.syncNow()} onSaveChunking={actions.saveChunking} />
+        </div>
+      )}
+      {detail && knowledgeBase && view === 'sources' && (
+        <div role="tabpanel" id="panel-sources" aria-labelledby="tab-sources" className="flex flex-auto flex-wrap">
           <div className="box-border flex min-w-0 flex-[3_1_520px] flex-col gap-6 px-8 py-7">
             {actions.actionError && (
               <p role="alert" className="m-0 rounded-[10px] border border-danger-line bg-danger-tint px-3.5 py-3 text-[13px] text-danger">
@@ -196,7 +256,12 @@ export function KnowledgeDetailPage() {
                 }
                 hint={knowledgeDropHint()}
               />
-              <AddLinkForm label={t.websiteLinkToAdd} onAddLink={(url) => actions.addSources('url', [url])} />
+              <AddLinkForm
+                label={t.websiteLinkToAdd}
+                onAddLink={async (url) => {
+                  await actions.addSources('url', [url])
+                }}
+              />
               <ConnectSourceCard knowledgeBaseId={knowledgeBase.id} onAdded={actions.addConnectedSource} />
             </section>
             <TestQuestionSection knowledgeBaseId={knowledgeBase.id} matchThreshold={parseMatchThreshold(currentThresholdText)} />

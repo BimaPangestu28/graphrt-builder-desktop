@@ -1396,6 +1396,7 @@ impl DeployService {
     }
 
     /// Writes the agent's release in use as a `.grt` bundle (or plain YAML when `path` ends in `.yaml` / `.yml`).
+    /// A bundle carries the knowledge bases the agent uses (passages and chunking settings).
     /// Keys are never inside: the IT team adds them on the server.
     pub fn export_agent_file(&self, agent_id: &str, path: &Path) -> AppResult<PathBuf> {
         let agent = self.db.released_agent(agent_id)?;
@@ -1404,11 +1405,23 @@ impl DeployService {
         let bytes = if extension == "yaml" || extension == "yml" {
             agent.flow_yaml.clone().into_bytes()
         } else {
-            graphrt_bundle::BundleBuilder::new(deployment_name_for(&agent), format!("{}.0.0", agent.current_version))
-                .description(agent.description.clone())
-                .workflow("workflow.yaml", agent.flow_yaml.clone())
-                .and_then(graphrt_bundle::BundleBuilder::build)
-                .map_err(|error| AppError::Workflow(format!("could not build the agent file: {error}")))?
+            // Knowledge goes inside with its chunking, so `graphrt serve` searches and indexes the same way.
+            let knowledge = crate::knowledge::bundle::knowledge_for_bundle(&self.db, &agent)?;
+            let bundle_error = |error: graphrt_bundle::BundleError| {
+                AppError::Workflow(format!("could not build the agent file: {error}"))
+            };
+            let mut builder = graphrt_bundle::BundleBuilder::new(
+                deployment_name_for(&agent),
+                format!("{}.0.0", agent.current_version),
+            )
+            .description(agent.description.clone())
+            .workflow("workflow.yaml", agent.flow_yaml.clone())
+            .map_err(bundle_error)?;
+            if let Some(knowledge) = &knowledge {
+                builder =
+                    builder.knowledge(&knowledge.config_json, knowledge.directory.path()).map_err(bundle_error)?;
+            }
+            builder.build().map_err(bundle_error)?
         };
         std::fs::write(path, bytes)
             .map_err(|error| AppError::Internal(format!("could not save {}: {error}", path.display())))?;

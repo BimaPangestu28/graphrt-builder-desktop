@@ -67,4 +67,31 @@ describe('sample knowledge backend', () => {
     await sampleKnowledgeBackend.deleteKnowledgeBase('past-orders')
     await expect(sampleKnowledgeBackend.getKnowledgeBase('past-orders')).rejects.toMatchObject({ code: 'not_found' })
   })
+
+  it('keeps a second subscription of the same callback when the first one ends (strict mode)', async () => {
+    const received: KnowledgeEvent[] = []
+    const onEvent = (event: KnowledgeEvent) => received.push(event)
+    const stopFirst = await sampleKnowledgeBackend.subscribeToKnowledgeEvents(onEvent)
+    const stopSecond = await sampleKnowledgeBackend.subscribeToKnowledgeEvents(onEvent)
+    stopFirst()
+    await sampleKnowledgeBackend.syncKnowledgeBase('past-orders')
+    expect(received.map((event) => event.type)).toEqual(['sync_finished'])
+    stopSecond()
+  })
+
+  it('flags new chunking until the knowledge base is indexed again, and lists passages a page at a time', async () => {
+    vi.useFakeTimers()
+    const detail = await sampleKnowledgeBackend.getKnowledgeBase('menu-and-prices')
+    const chunking = { ...detail.knowledgeBase.settings.chunking, maxTokens: 500 }
+    const saved = await sampleKnowledgeBackend.updateKnowledgeSettings('menu-and-prices', { ...detail.knowledgeBase.settings, chunking })
+    expect(saved.needsReindex).toBe(true)
+    const [document] = await sampleKnowledgeBackend.listKnowledgeDocuments('menu-november')
+    expect(document).toMatchObject({ name: 'Menu November.pdf', passageCount: 186, needsReindex: true })
+    await sampleKnowledgeBackend.syncKnowledgeBase('menu-and-prices')
+    await vi.advanceTimersByTimeAsync(SAMPLE_INDEXING_DELAY_MS * 5)
+    expect((await sampleKnowledgeBackend.getKnowledgeBase('menu-and-prices')).knowledgeBase.needsReindex).toBe(false)
+    const page = await sampleKnowledgeBackend.listKnowledgeChunks('menu-november', 'menu-november', '', 20, 20)
+    expect(page.total).toBe(88)
+    expect(page.chunks.map((chunk) => chunk.index)).toEqual(Array.from({ length: 20 }, (_, index) => index + 20))
+  })
 })

@@ -462,6 +462,8 @@ pub fn run() {
             commands::knowledge::sync_knowledge_source,
             commands::knowledge::knowledge_connector_sign_in_setup,
             commands::knowledge::sign_in_knowledge_connector,
+            commands::knowledge::list_knowledge_documents,
+            commands::knowledge::list_knowledge_chunks,
             commands::app_settings::get_app_settings,
             commands::app_settings::update_app_settings,
             commands::app_settings::export_agents,

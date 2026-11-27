@@ -6,7 +6,7 @@
 
 use rusqlite::{params, OptionalExtension, Row};
 
-use super::models::{EmbeddingChoice, KnowledgeSettings, KnowledgeSource, SourceKind, SourceStatus};
+use super::models::{ChunkingSettings, EmbeddingChoice, KnowledgeSettings, KnowledgeSource, SourceKind, SourceStatus};
 use crate::error::{AppError, AppResult};
 use crate::storage::{now_rfc3339, Database};
 
@@ -31,6 +31,11 @@ pub struct StoredDocument {
     /// Hash of the raw bytes last indexed; equal bytes are not re-read.
     pub fingerprint: String,
     pub passage_count: u64,
+    /// [`ChunkingSettings::key`] of the settings it was indexed with; `None`
+    /// for documents indexed before chunking was configurable (the defaults).
+    pub chunking_key: Option<String>,
+    /// RFC 3339, `None` for documents indexed by older versions.
+    pub indexed_at: Option<String>,
 }
 
 /// Result of syncing one source, written in one update.
@@ -44,7 +49,7 @@ pub struct SourceOutcome {
 }
 
 const KNOWLEDGE_BASE_COLUMNS: &str = "id, name, description, store_path, embedding, passages_per_answer, \
-     min_score, show_sources, last_synced_at, created_at, updated_at";
+     min_score, show_sources, last_synced_at, created_at, updated_at, chunking_json";
 
 const SOURCE_COLUMNS: &str = "id, knowledge_base_id, kind, location, name, status, status_message, \
      document_count, failed_count, passage_count, last_synced_at, created_at";
@@ -68,9 +73,29 @@ fn parse_column<T>(row: &Row<'_>, index: usize, parse: fn(&str) -> AppResult<T>)
         .map_err(|error| rusqlite::Error::FromSqlConversionFailure(index, rusqlite::types::Type::Text, Box::new(error)))
 }
 
+/// Chunking settings from their column; NULL (older rows) or unreadable JSON are the defaults.
+fn chunking_from_column(knowledge_base_id: &str, json: Option<String>) -> ChunkingSettings {
+    let Some(json) = json else { return ChunkingSettings::default() };
+    serde_json::from_str(&json).unwrap_or_else(|error| {
+        log::warn!("knowledge base {knowledge_base_id} has unreadable chunking settings, using the defaults: {error}");
+        ChunkingSettings::default()
+    })
+}
+
+fn chunking_to_column(settings: &KnowledgeSettings) -> AppResult<Option<String>> {
+    if settings.chunking == ChunkingSettings::default() {
+        return Ok(None);
+    }
+    serde_json::to_string(&settings.chunking)
+        .map(Some)
+        .map_err(|error| AppError::Internal(format!("could not save the chunking settings: {error}")))
+}
+
 fn knowledge_base_from_row(row: &Row<'_>) -> rusqlite::Result<StoredKnowledgeBase> {
+    let id: String = row.get(0)?;
+    let chunking = chunking_from_column(&id, row.get(11)?);
     Ok(StoredKnowledgeBase {
-        id: row.get(0)?,
+        id,
         name: row.get(1)?,
         description: row.get(2)?,
         store_path: row.get(3)?,
@@ -79,6 +104,7 @@ fn knowledge_base_from_row(row: &Row<'_>) -> rusqlite::Result<StoredKnowledgeBas
             passages_per_answer: to_u32(row.get(5)?),
             min_score: row.get(6)?,
             show_sources: row.get::<_, i64>(7)? != 0,
+            chunking,
         },
         last_synced_at: row.get(8)?,
         created_at: row.get(9)?,
@@ -114,8 +140,11 @@ fn not_found_if_unchanged(changed_rows: usize, what: String) -> AppResult<()> {
 
 pub fn insert_knowledge_base(db: &Database, knowledge_base: &StoredKnowledgeBase) -> AppResult<()> {
     let settings = &knowledge_base.settings;
+    let chunking_json = chunking_to_column(settings)?;
     db.lock()?.execute(
-        &format!("INSERT INTO knowledge_bases ({KNOWLEDGE_BASE_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)"),
+        &format!(
+            "INSERT INTO knowledge_bases ({KNOWLEDGE_BASE_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)"
+        ),
         params![
             knowledge_base.id,
             knowledge_base.name,
@@ -128,6 +157,7 @@ pub fn insert_knowledge_base(db: &Database, knowledge_base: &StoredKnowledgeBase
             knowledge_base.last_synced_at,
             knowledge_base.created_at,
             knowledge_base.updated_at,
+            chunking_json,
         ],
     )?;
     Ok(())
@@ -169,9 +199,10 @@ pub fn rename_knowledge_base(db: &Database, knowledge_base_id: &str, name: &str)
 }
 
 pub fn update_settings(db: &Database, knowledge_base_id: &str, settings: &KnowledgeSettings) -> AppResult<()> {
+    let chunking_json = chunking_to_column(settings)?;
     let changed_rows = db.lock()?.execute(
         "UPDATE knowledge_bases SET embedding = ?2, passages_per_answer = ?3, min_score = ?4, show_sources = ?5, \
-         updated_at = ?6 WHERE id = ?1",
+         updated_at = ?6, chunking_json = ?7 WHERE id = ?1",
         params![
             knowledge_base_id,
             settings.embedding.as_str(),
@@ -179,6 +210,7 @@ pub fn update_settings(db: &Database, knowledge_base_id: &str, settings: &Knowle
             settings.min_score,
             i64::from(settings.show_sources),
             now_rfc3339(),
+            chunking_json,
         ],
     )?;
     not_found_if_unchanged(changed_rows, format!("knowledge base {knowledge_base_id}"))
@@ -308,21 +340,35 @@ pub fn delete_source(db: &Database, source_id: &str) -> AppResult<()> {
 pub fn list_documents(db: &Database, source_id: &str) -> AppResult<Vec<StoredDocument>> {
     let connection = db.lock()?;
     let mut statement = connection.prepare(
-        "SELECT document_id, fingerprint, passage_count FROM knowledge_documents WHERE source_id = ?1 \
-         ORDER BY document_id",
+        "SELECT document_id, fingerprint, passage_count, chunking_key, indexed_at FROM knowledge_documents \
+         WHERE source_id = ?1 ORDER BY document_id",
     )?;
     let rows = statement.query_map([source_id], |row| {
-        Ok(StoredDocument { document_id: row.get(0)?, fingerprint: row.get(1)?, passage_count: to_u64(row.get(2)?) })
+        Ok(StoredDocument {
+            document_id: row.get(0)?,
+            fingerprint: row.get(1)?,
+            passage_count: to_u64(row.get(2)?),
+            chunking_key: row.get(3)?,
+            indexed_at: row.get(4)?,
+        })
     })?;
     Ok(rows.collect::<Result<_, _>>()?)
 }
 
 pub fn upsert_document(db: &Database, source_id: &str, document: &StoredDocument) -> AppResult<()> {
     db.lock()?.execute(
-        "INSERT INTO knowledge_documents (source_id, document_id, fingerprint, passage_count) VALUES (?1, ?2, ?3, ?4) \
+        "INSERT INTO knowledge_documents (source_id, document_id, fingerprint, passage_count, chunking_key, indexed_at) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
          ON CONFLICT (source_id, document_id) DO UPDATE SET fingerprint = excluded.fingerprint, \
-         passage_count = excluded.passage_count",
-        params![source_id, document.document_id, document.fingerprint, to_i64(document.passage_count)],
+         passage_count = excluded.passage_count, chunking_key = excluded.chunking_key, indexed_at = excluded.indexed_at",
+        params![
+            source_id,
+            document.document_id,
+            document.fingerprint,
+            to_i64(document.passage_count),
+            document.chunking_key,
+            document.indexed_at,
+        ],
     )?;
     Ok(())
 }
@@ -343,4 +389,22 @@ pub fn clear_documents(db: &Database, knowledge_base_id: &str) -> AppResult<()> 
         [knowledge_base_id],
     )?;
     Ok(())
+}
+
+/// Documents of a knowledge base indexed with other chunking than `current_key`.
+/// Documents without a key were indexed with the defaults (`default_key`).
+pub fn count_documents_needing_reindex(
+    db: &Database,
+    knowledge_base_id: &str,
+    current_key: &str,
+    default_key: &str,
+) -> AppResult<u64> {
+    let count: i64 = db.lock()?.query_row(
+        "SELECT COUNT(*) FROM knowledge_documents AS document \
+         JOIN knowledge_sources AS source ON document.source_id = source.id \
+         WHERE source.knowledge_base_id = ?1 AND COALESCE(document.chunking_key, ?3) != ?2",
+        params![knowledge_base_id, current_key, default_key],
+        |row| row.get(0),
+    )?;
+    Ok(to_u64(count))
 }

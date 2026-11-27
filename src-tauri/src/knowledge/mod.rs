@@ -6,6 +6,9 @@
 //! - `records`: knowledge bases, sources and document fingerprints in the app database.
 //! - `stores`: one graphrt-rag `SqliteStore` file per knowledge base, and embedders.
 //! - `sources`: validating sources and reading files, folders and links.
+//! - `chunking`: how documents are cut into passages (advanced settings).
+//! - `chunks`: listing the passages of an indexed document.
+//! - `bundle`: the knowledge config and store snapshots inside exported `.grt` bundles.
 //! - `sync`: background indexing with progress events.
 //! - `retrieval`: search for the UI and the `knowledge-retrieval` node in runs.
 //! - `events`: the `knowledge-event` Tauri event.
@@ -16,6 +19,9 @@
 //! falls back to keywords only when the OpenAI key is removed or unreachable,
 //! so knowledge works without any key.
 
+pub mod bundle;
+pub mod chunking;
+mod chunks;
 pub mod connector_oauth;
 pub mod connector_schedule;
 #[cfg(test)]
@@ -37,8 +43,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use self::events::KnowledgeEventSink;
 use self::models::{
-    EmbeddingChoice, KnowledgeBase, KnowledgeBaseDetail, KnowledgeBaseStatus, KnowledgePassage, KnowledgeSettings,
-    KnowledgeSource, KnowledgeUsage, SourceKind, SourceStatus, SyncProgress,
+    ChunkingSettings, EmbeddingChoice, KnowledgeBase, KnowledgeBaseDetail, KnowledgeBaseStatus, KnowledgePassage,
+    KnowledgeSettings, KnowledgeSource, KnowledgeUsage, SourceKind, SourceStatus, SyncProgress,
 };
 use self::records::StoredKnowledgeBase;
 use self::sources::WebFetcher;
@@ -140,7 +146,7 @@ fn validate_name(name: &str) -> AppResult<String> {
 /// Agents that use the knowledge base: chatbots whose saved setup attaches it
 /// (`crate::chatbot_setup`), and other agents whose current workflow refers to
 /// it by id or (in a `knowledge-retrieval` step) by its exact name.
-fn usages_of(knowledge_base: &StoredKnowledgeBase, agents: &[Agent], db: &Database) -> Vec<KnowledgeUsage> {
+pub(super) fn usages_of(knowledge_base: &StoredKnowledgeBase, agents: &[Agent], db: &Database) -> Vec<KnowledgeUsage> {
     let mentions_name = |flow_yaml: &str| {
         flow_yaml.contains(retrieval::KNOWLEDGE_RETRIEVAL_KIND) && flow_yaml.contains(&knowledge_base.name)
     };
@@ -193,13 +199,29 @@ impl KnowledgeService {
         Self { db, credentials, knowledge_dir, sink, tracker: SyncTracker::default(), web: WebFetcher::new() }
     }
 
+    /// Whether some documents were indexed with other chunking than the current settings.
+    fn needs_reindex(&self, stored: &StoredKnowledgeBase) -> bool {
+        let keys = stored.settings.chunking.key().and_then(|current| Ok((current, ChunkingSettings::default().key()?)));
+        let count = keys.and_then(|(current, default)| {
+            records::count_documents_needing_reindex(&self.db, &stored.id, &current, &default)
+        });
+        match count {
+            Ok(count) => count > 0,
+            Err(error) => {
+                log::warn!("could not check whether knowledge base {} needs indexing again: {error}", stored.id);
+                false
+            }
+        }
+    }
+
     fn summarize(&self, stored: &StoredKnowledgeBase, sources: &[KnowledgeSource], agents: &[Agent]) -> KnowledgeBase {
         let sync_progress = self.tracker.progress(&stored.id);
         KnowledgeBase {
             id: stored.id.clone(),
             name: stored.name.clone(),
             description: stored.description.clone(),
-            settings: stored.settings,
+            settings: stored.settings.clone(),
+            needs_reindex: self.needs_reindex(stored),
             status: derive_status(sources, sync_progress.is_some()),
             sync_progress,
             source_count: u32::try_from(sources.len()).unwrap_or(u32::MAX),
@@ -352,7 +374,9 @@ impl KnowledgeService {
     }
 
     /// Saves settings. Changing the embedding model clears the passages; the
-    /// returned flag says a sync is needed to index them again.
+    /// returned flag says a sync is needed to index them again. New chunking
+    /// settings keep the current passages until the next sync re-cuts every
+    /// document (`KnowledgeBase::needs_reindex` says so meanwhile).
     ///
     /// # Errors
     /// `InvalidInput` for out-of-range values or OpenAI without a key.

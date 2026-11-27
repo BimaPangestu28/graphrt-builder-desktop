@@ -3,6 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
+pub use super::chunking::{ChunkingSettings, SeparatorSetting};
 use crate::error::{AppError, AppResult};
 
 /// Where a knowledge source comes from.
@@ -101,7 +102,7 @@ impl EmbeddingChoice {
 }
 
 /// Retrieval settings of a knowledge base.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KnowledgeSettings {
     pub embedding: EmbeddingChoice,
@@ -111,6 +112,9 @@ pub struct KnowledgeSettings {
     pub min_score: f64,
     /// Whether agents should cite the source in their answers.
     pub show_sources: bool,
+    /// How documents are cut into passages. Changing it takes effect at the next sync.
+    #[serde(default)]
+    pub chunking: ChunkingSettings,
 }
 
 /// Highest `passages_per_answer` accepted.
@@ -119,7 +123,13 @@ pub const MAX_PASSAGES_PER_ANSWER: u32 = 20;
 impl KnowledgeSettings {
     /// Defaults for a new knowledge base using `embedding`.
     pub fn with_embedding(embedding: EmbeddingChoice) -> Self {
-        Self { embedding, passages_per_answer: 4, min_score: 0.0, show_sources: true }
+        Self {
+            embedding,
+            passages_per_answer: 4,
+            min_score: 0.0,
+            show_sources: true,
+            chunking: ChunkingSettings::default(),
+        }
     }
 
     /// # Errors
@@ -133,7 +143,7 @@ impl KnowledgeSettings {
         if !self.min_score.is_finite() || !(0.0..=1.0).contains(&self.min_score) {
             return Err(AppError::InvalidInput("the minimum score must be between 0 and 1".into()));
         }
-        Ok(())
+        self.chunking.validate()
     }
 }
 
@@ -181,6 +191,9 @@ pub struct KnowledgeBase {
     pub file_count: u32,
     pub website_count: u32,
     pub passage_count: u64,
+    /// Some documents were indexed with other chunking settings than the
+    /// current ones: "Index again" applies them.
+    pub needs_reindex: bool,
     /// Size of the passage store on disk.
     pub storage_bytes: u64,
     pub used_by: Vec<KnowledgeUsage>,
@@ -224,6 +237,60 @@ pub struct KnowledgeBaseDetail {
     pub sources: Vec<KnowledgeSource>,
 }
 
+/// One indexed document of a source (the file itself, or one file of a folder).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KnowledgeDocument {
+    pub source_id: String,
+    pub document_id: String,
+    /// File name, path inside the folder, or page address.
+    pub name: String,
+    pub passage_count: u64,
+    /// RFC 3339; `None` for documents indexed by an older version of the app.
+    pub indexed_at: Option<String>,
+    /// Indexed with other chunking settings than the current ones.
+    pub needs_reindex: bool,
+}
+
+/// One passage of a document, as stored and searched.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KnowledgeChunk {
+    pub id: String,
+    /// Position in the document, from 0.
+    pub index: u64,
+    pub text: String,
+    pub char_count: u64,
+    /// Estimated with graphrt's 4 characters per token.
+    pub token_count: u64,
+    /// Character range of the passage's own text in the document (without the
+    /// part repeated from the previous passage). `None` for passages indexed
+    /// before ranges were recorded.
+    pub char_start: Option<u64>,
+    pub char_end: Option<u64>,
+    /// Heading path, e.g. "Menu > Delivery".
+    pub heading: Option<String>,
+    /// PDF pages the passage comes from (ascending; empty when unknown).
+    pub pages: Vec<u32>,
+}
+
+/// One page of a document's passages, in document order.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KnowledgeChunkPage {
+    pub document: KnowledgeDocument,
+    /// Passages in the document.
+    pub total: u64,
+    /// Passages matching the filter (equal to `total` without a filter).
+    pub matching: u64,
+    /// Index (among the matching passages) of the first one returned.
+    pub offset: u64,
+    pub chunks: Vec<KnowledgeChunk>,
+    /// Characters and estimated tokens across the whole document.
+    pub total_chars: u64,
+    pub total_tokens: u64,
+}
+
 /// One search result.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -235,6 +302,10 @@ pub struct KnowledgePassage {
     pub source_name: String,
     /// Section heading path or "Passage N" inside the file.
     pub location: Option<String>,
+    /// Position of the passage in its document, from 0, when known.
+    pub chunk_index: Option<u64>,
+    /// First PDF page of the passage, when known.
+    pub page: Option<u32>,
     pub text: String,
     /// Relevance between 0 and 1 (higher is better).
     pub score: f32,
