@@ -1,16 +1,19 @@
 import { useState, type ReactNode } from 'react'
 import { installGraphrtCli, openDeployLink } from '@/api/deploy'
-import { deployProviderNames, type CliInfo, type DeployMode, type DeployReview, type ServerArea } from '@/api/deployTypes'
+import { deployProviderNames, noOnlineFeatures, type CliInfo, type DeployMode, type DeployReview, type OnlineFeatures, type ServerArea } from '@/api/deployTypes'
 import { Badge, Button, Icon, joinClassNames } from '@/components/ui'
 import { DevelopersDetails } from './DeployDialog'
 import { deployModeLabels, describeCliNeed, plainErrorMessage, serverAreaLabels } from './deployDisplay'
+import type { FeaturesAvailability } from './onlineFeatures'
+import { OnlineFeaturesForm } from './OnlineFeaturesForm'
 import { messages } from '@/i18n'
 
-/** What Review sends to the deploy: how and where it runs, and the Advanced image (null: graphrt's own). */
+/** What Review sends to the deploy: how and where it runs, the Advanced image (null: graphrt's own) and what people can use. */
 export interface DeployChoice {
   mode: DeployMode
   area: ServerArea
   image: string | null
+  features: OnlineFeatures
 }
 
 interface ReviewStepProps {
@@ -88,6 +91,9 @@ export function ReviewStep({ agentName, review, isUpdate, onCliChanged, onBack, 
   const [mode, setMode] = useState<DeployMode>(review.mode)
   const [area, setArea] = useState<ServerArea>(review.area)
   const [image, setImage] = useState(review.image ?? '')
+  const [features, setFeatures] = useState<OnlineFeatures>(review.features)
+  // Asked from the installed tools themselves: a version too old for these gets a plain note.
+  const featuresAvailability: FeaturesAvailability = review.cli.status !== 'installed' ? 'needs_tools' : review.cli.onlineFeatures ? 'ready' : 'needs_newer_tools'
   const [acceptsBilling, setAcceptsBilling] = useState(isUpdate)
   const providerName = deployProviderNames[review.provider]
   const isFly = review.provider === 'fly'
@@ -166,6 +172,7 @@ export function ReviewStep({ agentName, review, isUpdate, onCliChanged, onBack, 
           <span className="text-[12px] text-muted">{messages().deploy.theyGoStraightTo}{' '}{providerName}{messages().deploy.sSafeStorageNeverShownOr}</span>
         </ReviewSection>
       </div>
+      <OnlineFeaturesForm value={features} onChange={setFeatures} providerName={providerName} availability={featuresAvailability} phoneWasOn={review.features.phone} />
       <ReviewSection title={messages().deploy.monthlyCost}>
         <span className="text-[13px] leading-normal text-body">
           {messages().deploy.billedBy}{' '}{providerName} {messages().deploy.toYourAccountSeeTheirPricing}{' '}
@@ -187,7 +194,7 @@ export function ReviewStep({ agentName, review, isUpdate, onCliChanged, onBack, 
         <span>{messages().deploy.iUnderstand}{' '}{providerName} {messages().deploy.billsMeForThis}</span>
       </label>
       <div className="flex flex-wrap gap-2">
-        <Button onClick={() => onConfirm({ mode, area, image: image.trim() || null })} disabled={!canConfirm}>
+        <Button onClick={() => onConfirm({ mode, area, image: image.trim() || null, features: featuresAvailability === 'ready' ? features : noOnlineFeatures })} disabled={!canConfirm}>
           {!review.canDeploy ? messages().deploy.comingSoon : isUpdate ? messages().deploy.updateOnlineVersion : messages().deploy.putItOnline}
         </Button>
         <Button variant="ghost" onClick={onBack}>

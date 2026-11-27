@@ -21,9 +21,53 @@ pub struct HttpReply {
     pub body: String,
 }
 
+/// The request methods the online screens use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HttpMethod {
+    Get,
+    Post,
+    Delete,
+}
+
+impl HttpMethod {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Get => "GET",
+            Self::Post => "POST",
+            Self::Delete => "DELETE",
+        }
+    }
+}
+
+/// One request. `Debug` never shows the bearer token or the body.
+#[derive(Clone, PartialEq, Eq)]
+pub struct HttpRequest {
+    pub method: HttpMethod,
+    pub url: String,
+    pub bearer: Option<String>,
+    /// A JSON body.
+    pub body: Option<serde_json::Value>,
+}
+
+impl std::fmt::Debug for HttpRequest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("HttpRequest")
+            .field("method", &self.method)
+            .field("url", &self.url)
+            .field("bearer", &self.bearer.as_ref().map(|_| "<redacted>"))
+            .finish_non_exhaustive()
+    }
+}
+
 pub trait DeployHttp: Send + Sync + std::fmt::Debug {
+    /// Sends one request.
+    fn send(&self, request: HttpRequest) -> BoxFuture<'_, AppResult<HttpReply>>;
+
     /// `GET url` with an optional bearer token.
-    fn get(&self, url: String, bearer: Option<String>) -> BoxFuture<'_, AppResult<HttpReply>>;
+    fn get(&self, url: String, bearer: Option<String>) -> BoxFuture<'_, AppResult<HttpReply>> {
+        self.send(HttpRequest { method: HttpMethod::Get, url, bearer, body: None })
+    }
 }
 
 /// Whether `url` may be called: https anywhere, or plain http to this computer or the local
@@ -79,11 +123,19 @@ impl ReqwestDeployHttp {
 }
 
 impl DeployHttp for ReqwestDeployHttp {
-    fn get(&self, url: String, bearer: Option<String>) -> BoxFuture<'_, AppResult<HttpReply>> {
+    fn send(&self, request: HttpRequest) -> BoxFuture<'_, AppResult<HttpReply>> {
         Box::pin(async move {
-            let mut request = self.client.get(&url);
+            let HttpRequest { method, url, bearer, body } = request;
+            let mut request = match method {
+                HttpMethod::Get => self.client.get(&url),
+                HttpMethod::Post => self.client.post(&url),
+                HttpMethod::Delete => self.client.delete(&url),
+            };
             if let Some(token) = bearer {
                 request = request.bearer_auth(token);
+            }
+            if let Some(body) = body {
+                request = request.header(reqwest::header::CONTENT_TYPE, "application/json").body(body.to_string());
             }
             let host = reqwest::Url::parse(&url).ok().and_then(|parsed| parsed.host_str().map(str::to_owned));
             let unreachable = |error: reqwest::Error| {
@@ -207,11 +259,13 @@ pub(crate) mod tests {
 
     use super::*;
 
-    /// Answers by URL; records what was asked.
+    /// Answers by URL (`GET`) or by `METHOD url` (the others); records what was asked.
     #[derive(Debug, Default)]
     pub(crate) struct FakeHttp {
         pub replies: Mutex<HashMap<String, HttpReply>>,
         pub requests: Mutex<Vec<(String, Option<String>)>>,
+        /// The JSON bodies sent, by `METHOD url`.
+        pub bodies: Mutex<Vec<(String, serde_json::Value)>>,
     }
 
     impl FakeHttp {
@@ -221,9 +275,16 @@ pub(crate) mod tests {
     }
 
     impl DeployHttp for FakeHttp {
-        fn get(&self, url: String, bearer: Option<String>) -> BoxFuture<'_, AppResult<HttpReply>> {
-            self.requests.lock().unwrap().push((url.clone(), bearer));
-            let reply = self.replies.lock().unwrap().get(&url).cloned();
+        fn send(&self, request: HttpRequest) -> BoxFuture<'_, AppResult<HttpReply>> {
+            let key = match request.method {
+                HttpMethod::Get => request.url.clone(),
+                other => format!("{} {}", other.as_str(), request.url),
+            };
+            self.requests.lock().unwrap().push((key.clone(), request.bearer));
+            if let Some(body) = request.body {
+                self.bodies.lock().unwrap().push((key.clone(), body));
+            }
+            let reply = self.replies.lock().unwrap().get(&key).cloned();
             Box::pin(
                 async move { reply.ok_or_else(|| AppError::Internal("example.test: it could not be reached".into())) },
             )

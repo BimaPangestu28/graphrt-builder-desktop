@@ -61,6 +61,10 @@ pub struct DeployRequest {
     pub image: Option<String>,
     /// `--rotate-api-key`: replace the deployment's API key (the new one is in the result).
     pub rotate_api_key: bool,
+    /// The chat page, the phone page and what goes with them, as flags
+    /// ([`super::online::OnlineFeatures::deploy_arguments`]). Empty for graphrt tools that do
+    /// not know them ([`knows_online_features`]): an unknown flag would stop the deploy.
+    pub feature_arguments: Vec<String>,
     pub agent_file: PathBuf,
 }
 
@@ -115,6 +119,7 @@ pub fn deploy_arguments(request: &DeployRequest) -> Vec<String> {
     if request.rotate_api_key {
         arguments.push("--rotate-api-key".into());
     }
+    arguments.extend(request.feature_arguments.iter().cloned());
     arguments.push("--json".into());
     arguments.push(request.agent_file.to_string_lossy().into_owned());
     arguments
@@ -140,6 +145,37 @@ pub fn manage_arguments(action: &ManageAction, provider: DeployProvider, deploym
         "--json".into(),
     ]);
     arguments
+}
+
+/// Whether the `deploy --help` text of a graphrt CLI lists the flags for the chat page and the
+/// phone page. Asking the tools themselves keeps the app right whatever number the graphrt
+/// release that brings them gets.
+pub fn help_lists_online_features(deploy_help: &str) -> bool {
+    ["--chat-access", "--monitor", "--push", "--expire-approvals", "--drop-store"]
+        .iter()
+        .all(|flag| deploy_help.contains(flag))
+}
+
+/// Runs `graphrt deploy --help` and checks it with [`help_lists_online_features`]. `false`
+/// when the tools do not start.
+pub fn knows_online_features(executable: &Path) -> bool {
+    let mut command = std::process::Command::new(executable);
+    command.args(["deploy", "--help"]).env_clear().stdin(Stdio::null()).stderr(Stdio::null());
+    for name in PASSTHROUGH_ENV {
+        if let Ok(value) = std::env::var(name) {
+            command.env(name, value);
+        }
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt as _;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    match command.output() {
+        Ok(output) if output.status.success() => help_lists_online_features(&String::from_utf8_lossy(&output.stdout)),
+        Ok(_) | Err(_) => false,
+    }
 }
 
 /// The four human steps.
@@ -381,8 +417,51 @@ mod tests {
             secret_names: vec!["OPENAI_API_KEY".into(), "WHATSAPP_CLOUD_ACCESS_TOKEN".into()],
             image: None,
             rotate_api_key: false,
+            feature_arguments: Vec::new(),
             agent_file: PathBuf::from("/tmp/agent.yaml"),
         }
+    }
+
+    #[test]
+    fn feature_flags_go_before_the_agent_file_and_only_when_given() {
+        let request = DeployRequest {
+            feature_arguments: vec!["--chat".into(), "--chat-access".into(), "guests".into(), "--monitor".into()],
+            ..sample_request()
+        };
+        let arguments = deploy_arguments(&request);
+        let chat_at = arguments.iter().position(|argument| argument == "--chat").unwrap();
+        assert_eq!(arguments[chat_at..chat_at + 4], ["--chat", "--chat-access", "guests", "--monitor"]);
+        assert_eq!(arguments[arguments.len() - 2..], ["--json", "/tmp/agent.yaml"]);
+        assert!(!deploy_arguments(&sample_request()).iter().any(|argument| argument == "--chat"));
+    }
+
+    #[test]
+    fn the_help_text_says_whether_the_tools_know_the_chat_and_phone_flags() {
+        let old = "Usage: graphrt deploy [OPTIONS]\n  --rotate-api-key\n  --json\n";
+        assert!(!help_lists_online_features(old));
+        let new = "  --chat\n  --chat-access <WHO>\n  --cors-origin <ORIGIN>\n  --monitor\n  --push <CONTACT>\n  \
+                   --expire-approvals\n  --drop-store\n";
+        assert!(help_lists_online_features(new));
+        assert!(!help_lists_online_features("--chat-access --monitor"), "every flag the app sends must be there");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn asks_the_tools_themselves_and_takes_a_failure_as_no() {
+        let temp = tempfile::tempdir().unwrap();
+        let knows = temp.path().join("new");
+        crate::test_support::write_executable_script(
+            &knows,
+            r#"[ "$1 $2" = "deploy --help" ] && echo "--chat-access --monitor --push --expire-approvals --drop-store""#,
+        );
+        assert!(knows_online_features(&knows));
+        let old = temp.path().join("old");
+        crate::test_support::write_executable_script(&old, "echo '--rotate-api-key --json'");
+        assert!(!knows_online_features(&old));
+        let broken = temp.path().join("broken");
+        crate::test_support::write_executable_script(&broken, "exit 3");
+        assert!(!knows_online_features(&broken));
+        assert!(!knows_online_features(&temp.path().join("missing")));
     }
 
     #[test]

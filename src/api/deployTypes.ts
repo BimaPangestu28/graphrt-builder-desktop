@@ -22,6 +22,14 @@ export function onlineDeployNotAvailableMessage(): string {
   return messages().deploy.notAvailable
 }
 
+/**
+ * Why the chat page and the phone page can't be turned on with the installed graphrt tools
+ * (mirrors `ONLINE_FEATURES_NEED_NEWER_TOOLS` in `src-tauri/src/deploy`).
+ */
+export function onlineFeaturesNeedNewerToolsMessage(): string {
+  return messages().deploy.sharing.needNewerTools
+}
+
 /** `not_available`: this app build pins no graphrt release yet. */
 export type CliStatus = 'not_available' | 'not_installed' | 'installing' | 'installed'
 
@@ -29,6 +37,8 @@ export interface CliInfo {
   status: CliStatus
   version: string | null
   downloadSizeBytes: number | null
+  /** The installed tools can turn on the chat page and the phone page (false until installed, and for older tools). */
+  onlineFeatures: boolean
 }
 
 export interface DeployAccount {
@@ -80,6 +90,81 @@ export interface KeyToCopy {
   envName: string
 }
 
+/** Who may use the chat page: anyone with the link (within the server's limits), or holders of the access key. */
+export type ChatAudience = 'guests' | 'key'
+
+/** What an online agent offers to browsers and phones. Everything is off by default. */
+export interface OnlineFeatures {
+  /** A chat page, and a chat bubble for a website. */
+  chat: boolean
+  chatAudience: ChatAudience
+  /** The website that may show the chat bubble. */
+  embedSite: string | null
+  /** The page for a phone: runs, and requests that wait for a person. */
+  phone: boolean
+  /** Notifications on the phone when a run fails or waits for a person. */
+  notifications: boolean
+  /** The email address notification services may write to. */
+  notifyEmail: string | null
+  /** Requests whose time ran out answer themselves as the agent says. */
+  answerWhenTimeRunsOut: boolean
+}
+
+export const noOnlineFeatures: OnlineFeatures = { chat: false, chatAudience: 'guests', embedSite: null, phone: false, notifications: false, notifyEmail: null, answerWhenTimeRunsOut: false }
+
+/** An online agent, or a server connected in "My own server". */
+export type OnlineTarget = { kind: 'agent'; agentId: string } | { kind: 'server'; serverId: string }
+
+export interface LiveChat {
+  /** `guests`, `key`, `users` (signed-in users) or `open` (a server without an access key). */
+  audience: string
+  link: string
+  /** The one line that adds the chat bubble to a website. */
+  widgetSnippet: string
+  keepsConversations: boolean
+}
+
+export interface LivePhone {
+  link: string
+  canPair: boolean
+  approvals: boolean
+  answersWhenTimeRunsOut: boolean
+  notifications: boolean
+}
+
+/** What a server offers right now, asked from the server itself. */
+export interface LiveFeatures {
+  reachable: boolean
+  problem: string | null
+  chat: LiveChat | null
+  phone: LivePhone | null
+}
+
+export interface PairedDevice {
+  id: string
+  name: string
+  pairedAtMs: number | null
+  lastUsedAtMs: number | null
+  /** Its pairing code is kept on this computer and can be shown again. */
+  canShowCode: boolean
+}
+
+/** A pairing code. `link` is the phone's key: show it only when asked for. */
+export interface DevicePairing {
+  deviceId: string
+  deviceName: string
+  link: string
+}
+
+/** The `docker run` an IT team starts the agent with. */
+export interface OwnServerInstructions {
+  command: string
+  /** The chosen pages need a graphrt newer than this version; null when none is on. */
+  needsGraphrtNewerThan: string | null
+  chatAddress: string | null
+  phoneAddress: string | null
+}
+
 export interface DeployReview {
   provider: DeployProvider
   providerConnected: boolean
@@ -92,6 +177,8 @@ export interface DeployReview {
   area: ServerArea
   /** The `--image` of the last deploy (Advanced); null: graphrt's own image. */
   image: string | null
+  /** The chat page and phone page choices of the online copy. */
+  features: OnlineFeatures
 }
 
 export interface DeployOptions {
@@ -100,6 +187,8 @@ export interface DeployOptions {
   area: ServerArea
   /** Advanced: another image running `graphrt serve`; null or empty: graphrt's own image. */
   image?: string | null
+  /** The chat page, the phone page and what goes with them; absent: all off. */
+  features?: OnlineFeatures
 }
 
 export type DeploymentStatus = 'deploying' | 'working' | 'paused' | 'needs_attention' | 'failed'
@@ -128,6 +217,8 @@ export interface DeploymentView {
   hasChanges: boolean
   agentVersion: number
   hasApiKey: boolean
+  /** What the online copy was last put online with. */
+  features: OnlineFeatures
 }
 
 export interface DeployOutcome {

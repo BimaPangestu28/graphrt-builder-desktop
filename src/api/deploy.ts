@@ -7,15 +7,21 @@ import type {
   DeployAccountInput,
   DeployEvent,
   DeployedVersion,
+  DevicePairing,
   DeployLink,
   DeployOptions,
   DeployOutcome,
   DeployProvider,
   DeployReview,
   DeploymentView,
+  LiveFeatures,
   ManageAction,
+  OnlineFeatures,
   OnlineRuns,
+  OnlineTarget,
+  OwnServerInstructions,
   OwnServerView,
+  PairedDevice,
   RotatedApiKey,
 } from './deployTypes'
 import { sampleDeployBackend, subscribeToSampleDeployEvents } from './sampleBackend/deploy'
@@ -130,6 +136,40 @@ export function removeOwnServer(serverId: string): Promise<void> {
 /** Saves the agent file for an IT team at `path` (`.grt`, or `.yaml`). */
 export function exportAgentFile(agentId: string, path: string): Promise<string> {
   return useSample() ? sampleDeployBackend.exportAgentFile(agentId, path) : callBackend('export_agent_file', { agentId, path })
+}
+
+/**
+ * The Docker instructions of "My own server", with the chosen chat page and phone page.
+ *
+ * @throws BackendError - `invalid_input` for a website or an email address that can't be used
+ */
+export function getOwnServerInstructions(agentId: string, features: OnlineFeatures): Promise<OwnServerInstructions> {
+  return useSample() ? sampleDeployBackend.getOwnServerInstructions(agentId, features) : callBackend('get_own_server_instructions', { agentId, features })
+}
+
+/** What an online agent or a connected server offers right now (asked from the server). */
+export function getLiveOnlineFeatures(target: OnlineTarget): Promise<LiveFeatures> {
+  return useSample() ? sampleDeployBackend.getLiveOnlineFeatures(target) : callBackend('get_live_online_features', { target })
+}
+
+/** The phones paired with an online agent or a connected server, newest first. */
+export function listPairedDevices(target: OnlineTarget): Promise<PairedDevice[]> {
+  return useSample() ? sampleDeployBackend.listPairedDevices(target) : callBackend('list_paired_devices', { target })
+}
+
+/** Pairs a new phone. The returned link is the phone's key: show it, never store or log it. */
+export function pairDevice(target: OnlineTarget, name: string): Promise<DevicePairing> {
+  return useSample() ? sampleDeployBackend.pairDevice(target, name) : callBackend('pair_device', { target, name })
+}
+
+/** The kept code of a paired phone. Call only when the person asks to see it. */
+export function showDevicePairing(target: OnlineTarget, deviceId: string): Promise<DevicePairing> {
+  return useSample() ? sampleDeployBackend.showDevicePairing(target, deviceId) : callBackend('show_device_pairing', { target, deviceId })
+}
+
+/** Removes a paired phone: its key stops working at once. */
+export function revokePairedDevice(target: OnlineTarget, deviceId: string): Promise<void> {
+  return useSample() ? sampleDeployBackend.revokePairedDevice(target, deviceId) : callBackend('revoke_paired_device', { target, deviceId })
 }
 
 /** Asks where to save the agent file (desktop); a sample path in the preview. */

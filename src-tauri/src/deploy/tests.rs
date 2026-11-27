@@ -87,7 +87,13 @@ fn ready_report() -> CompatibilityReport {
 }
 
 fn fly_options() -> DeployOptions {
-    DeployOptions { provider: DeployProvider::Fly, mode: DeployMode::ScaleToZero, area: ServerArea::Asia, image: None }
+    DeployOptions {
+        provider: DeployProvider::Fly,
+        mode: DeployMode::ScaleToZero,
+        area: ServerArea::Asia,
+        image: None,
+        features: OnlineFeatures::default(),
+    }
 }
 
 #[cfg(unix)]
@@ -198,6 +204,7 @@ async fn deploys_with_secrets_in_the_environment_then_updates_and_takes_offline(
         r#"echo "ARGS $*" >> "{record}"
 echo "ENV OPENAI=$OPENAI_API_KEY FLY=$FLY_API_TOKEN" >> "{record}"
 case "$2" in
+  --help) ;;
   pause) echo '{{"type":"result","action":"pause","app":"menu","url":"https://menu.fly.dev","status":"paused","changed":true}}' ;;
   resume) echo '{{"type":"result","action":"resume","app":"menu","url":"https://menu.fly.dev","status":"online","version":"v2","changed":true}}' ;;
   remove) echo '{{"type":"result","action":"remove","app":"menu","removed":true}}' ;;
@@ -502,4 +509,285 @@ fn exports_a_bundle_or_yaml_without_keys() {
     assert!(!String::from_utf8_lossy(&bytes).contains("sk-never-exported"));
     let yaml_path = harness.service.export_agent_file(&harness.agent.id, &folder.path().join("menu.yaml")).unwrap();
     assert_eq!(std::fs::read_to_string(yaml_path).unwrap(), FLOW);
+}
+
+// ---- the chat page, the phone page and paired phones ----
+
+fn chat_and_phone() -> OnlineFeatures {
+    OnlineFeatures {
+        chat: true,
+        chat_audience: online::ChatAudience::Guests,
+        embed_site: Some("www.toko-kue.example/menu".into()),
+        phone: true,
+        notifications: true,
+        notify_email: Some("ana@example.com".into()),
+        answer_when_time_runs_out: true,
+    }
+}
+
+/// A fake `graphrt` whose `deploy --help` lists the chat and phone flags when `knows_features`,
+/// and which records the arguments of every other call in `record`.
+#[cfg(unix)]
+fn feature_cli(folder: &std::path::Path, record: &std::path::Path, knows_features: bool) -> PathBuf {
+    let help = if knows_features {
+        "--chat --chat-access <WHO> --cors-origin <ORIGIN> --monitor --push <CONTACT> --expire-approvals --drop-store"
+    } else {
+        "--rotate-api-key --json"
+    };
+    let script = format!(
+        r#"if [ "$1 $2" = "deploy --help" ]; then echo "{help}"; exit 0; fi
+echo "ARGS $*" >> "{record}"
+case "$2" in
+  remove) echo '{{"type":"result","action":"remove","app":"menu","removed":true}}' ;;
+  *) echo '{{"type":"result","action":"deploy","url":"https://menu.fly.dev","version":"v1","app":"menu","workflow":"agent","api_key":"grk_shown_once_0123456789"}}' ;;
+esac"#,
+        record = record.display()
+    );
+    fake_cli(folder, &script)
+}
+
+#[cfg(unix)]
+fn ready_to_deploy(knows_features: bool) -> (Harness, tempfile::TempDir, PathBuf) {
+    let mut harness = harness(FLOW);
+    let folder = tempfile::tempdir().unwrap();
+    let record = folder.path().join("calls.txt");
+    harness.service = harness.service.with_cli_executable(feature_cli(folder.path(), &record, knows_features));
+    harness.credentials.set_api_key(ModelProvider::Openai, "sk-openai-secret").unwrap();
+    harness.credentials.set_deploy_secret("account:fly", r#"{"token":"fly-secret"}"#).unwrap();
+    (harness, folder, record)
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn tools_older_than_the_chat_and_phone_pages_refuse_them_in_plain_words_and_still_deploy_without() {
+    let (harness, _folder, record) = ready_to_deploy(false);
+    assert!(!harness.service.cli_info().online_features);
+
+    let options = DeployOptions { features: chat_and_phone(), ..fly_options() };
+    let refused = harness.service.deploy(&harness.agent.id, options, &[], &ready_report()).await.unwrap_err();
+
+    assert_eq!(refused.code(), "invalid_input");
+    assert!(refused.to_string().ends_with(ONLINE_FEATURES_NEED_NEWER_TOOLS), "{refused}");
+    assert!(!record.exists(), "nothing was sent to the provider");
+    assert!(harness.service.view(&harness.agent.id).unwrap().is_none());
+
+    // Without them the deploy goes through, and no flag the old tools do not know is sent.
+    harness.service.deploy(&harness.agent.id, fly_options(), &[], &ready_report()).await.unwrap();
+    let calls = std::fs::read_to_string(&record).unwrap();
+    assert!(!calls.contains("--drop-store") && !calls.contains("--chat"), "{calls}");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn the_chat_and_phone_choices_become_flags_are_remembered_and_survive_a_new_key() {
+    let (harness, _folder, record) = ready_to_deploy(true);
+    assert!(harness.service.cli_info().online_features);
+    assert_eq!(
+        harness.service.review(&harness.agent, &[], DeployProvider::Fly).unwrap().features,
+        OnlineFeatures::default()
+    );
+
+    let options = DeployOptions { features: chat_and_phone(), ..fly_options() };
+    let outcome = harness.service.deploy(&harness.agent.id, options, &[], &ready_report()).await.unwrap();
+
+    let calls = std::fs::read_to_string(&record).unwrap();
+    let deploy_line = calls.lines().next().unwrap();
+    assert!(
+        deploy_line.contains(
+            "--chat --chat-access guests --cors-origin https://www.toko-kue.example --monitor \
+             --push mailto:ana@example.com --expire-approvals --json"
+        ),
+        "{deploy_line}"
+    );
+    assert!(!deploy_line.contains("--drop-store"), "the storage with the paired phones is kept");
+    let saved = outcome.view.features;
+    assert!(saved.chat && saved.phone && saved.notifications && saved.answer_when_time_runs_out);
+    assert_eq!(saved.embed_site.as_deref(), Some("https://www.toko-kue.example"), "saved as the site's origin");
+    assert_eq!(harness.service.review(&harness.agent, &[], DeployProvider::Fly).unwrap().features, saved);
+
+    // "Make a new key" is a deploy too: it must name what is on, or it would turn it off.
+    harness.service.rotate_api_key(&harness.agent.id).await.unwrap();
+    let calls = std::fs::read_to_string(&record).unwrap();
+    let rotation = calls.lines().nth(1).unwrap();
+    assert!(rotation.contains("--rotate-api-key") && rotation.contains("--monitor"), "{rotation}");
+    assert!(rotation.contains("--chat --chat-access guests"), "{rotation}");
+
+    // Turning everything off removes the storage volume, so its cost ends.
+    let off = harness.service.deploy(&harness.agent.id, fly_options(), &[], &ready_report()).await.unwrap();
+    assert_eq!(off.view.features, OnlineFeatures::default());
+    let calls = std::fs::read_to_string(&record).unwrap();
+    let last = calls.lines().last().unwrap();
+    assert!(last.contains("--drop-store") && !last.contains("--monitor") && !last.contains("--chat"), "{last}");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_website_or_email_that_cannot_work_stops_the_deploy_before_anything_runs() {
+    let (harness, _folder, record) = ready_to_deploy(true);
+    let no_email = OnlineFeatures { notify_email: None, ..chat_and_phone() };
+    let bad_site = OnlineFeatures { embed_site: Some("not a site".into()), ..chat_and_phone() };
+    for features in [no_email, bad_site] {
+        let options = DeployOptions { features, ..fly_options() };
+        let refused = harness.service.deploy(&harness.agent.id, options, &[], &ready_report()).await.unwrap_err();
+        assert_eq!(refused.code(), "invalid_input", "{refused}");
+    }
+    assert!(!record.exists());
+}
+
+const PAIRED: &str = r#"{"device":{"id":"dev-5c1f","name":"Ana's phone","scopes":["runs:read","approvals:resolve"],"created_ms":1795750000000},"token":"grd1.dev-5c1f.TOKENSECRET","pairing":{"v":1,"url":"https://menu.fly.dev","token":"grd1.dev-5c1f.TOKENSECRET"},"link":"https://menu.fly.dev/monitor/#pair=grd1.dev-5c1f.TOKENSECRET"}"#;
+
+fn online_with_key(harness: &Harness) -> phone::OnlineTarget {
+    harness.db.save_deployment(&online_record(&harness.agent.id)).unwrap();
+    harness.credentials.set_deploy_secret(&format!("key:{}", harness.agent.id), "grk_access_key").unwrap();
+    phone::OnlineTarget::Agent { agent_id: harness.agent.id.clone() }
+}
+
+#[tokio::test]
+async fn what_is_on_is_asked_from_the_online_agent_itself() {
+    let harness = harness(FLOW);
+    let target = online_with_key(&harness);
+    harness.http.answer(
+        "https://menu.fly.dev/v1/chat/config",
+        200,
+        r#"{"title":"agent","workflows":[{"name":"agent","input":null}],"access":"guests","conversations":false}"#,
+    );
+    harness.http.answer(
+        "https://menu.fly.dev/v1/monitor/config",
+        404,
+        r#"{"error":"this server has no monitoring page"}"#,
+    );
+
+    let live = harness.service.live_features(&target).await.unwrap();
+
+    assert!(live.reachable);
+    let chat = live.chat.unwrap();
+    assert_eq!(chat.link, "https://menu.fly.dev/chat/agent");
+    assert_eq!(
+        chat.widget_snippet,
+        r#"<script src="https://menu.fly.dev/chat/embed.js" data-workflow="agent" async></script>"#
+    );
+    assert!(live.phone.is_none(), "an agent without the phone page says so");
+    let asked = harness.http.requests.lock().unwrap().clone();
+    assert!(asked.iter().all(|(_, bearer)| bearer.is_none()), "both pages' settings are public: no key is sent");
+
+    // An agent that does not answer is reported as such, not as "everything is off".
+    let unreachable = super::tests::harness(FLOW);
+    let target = online_with_key(&unreachable);
+    let live = unreachable.service.live_features(&target).await.unwrap();
+    assert!(!live.reachable && live.problem.is_some() && live.chat.is_none());
+}
+
+#[tokio::test]
+async fn pairing_keeps_the_code_in_the_keychain_only_and_revoking_forgets_it() {
+    let harness = harness(FLOW);
+    let target = online_with_key(&harness);
+    harness.http.answer("POST https://menu.fly.dev/v1/devices", 201, PAIRED);
+    harness.http.answer("DELETE https://menu.fly.dev/v1/devices/dev-5c1f", 204, "");
+
+    for bad_name in ["", "   ", "a\nb", &"x".repeat(101)] {
+        assert_eq!(harness.service.pair_device(&target, bad_name).await.unwrap_err().code(), "invalid_input");
+    }
+    let pairing = harness.service.pair_device(&target, " Ana's phone ").await.unwrap();
+
+    assert_eq!(pairing.link, "https://menu.fly.dev/monitor/#pair=grd1.dev-5c1f.TOKENSECRET");
+    let (_, body) = harness.http.bodies.lock().unwrap()[0].clone();
+    assert_eq!(body, serde_json::json!({ "name": "Ana's phone", "url": "https://menu.fly.dev" }));
+    let sent = harness.http.requests.lock().unwrap().clone();
+    assert_eq!(sent.last().unwrap().1.as_deref(), Some("grk_access_key"), "paired with the access key");
+    assert!(sent.iter().all(|(url, _)| !url.contains("grk_access_key")), "the key is never in an address");
+    let secret_name = format!("device:agent:{}:dev-5c1f", harness.agent.id);
+    assert!(harness.credentials.read_deploy_secret(&secret_name).unwrap().unwrap().contains("TOKENSECRET"));
+    {
+        let settings = harness.db.lock().unwrap();
+        let stored: Vec<String> = settings
+            .prepare("SELECT value FROM settings")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert!(stored.iter().all(|value| !value.contains("TOKENSECRET") && !value.contains("grd1.")), "{stored:?}");
+        assert!(stored.iter().any(|value| value.contains("dev-5c1f")), "only the phone's id is remembered");
+    }
+
+    // The code can be shown again, on request, for that phone only.
+    assert_eq!(harness.service.device_pairing(&target, "dev-5c1f").unwrap().link, pairing.link);
+    assert_eq!(harness.service.device_pairing(&target, "dev-other").unwrap_err().code(), "not_found");
+    assert_eq!(harness.service.device_pairing(&target, "../key").unwrap_err().code(), "not_found");
+
+    harness.http.answer(
+        "https://menu.fly.dev/v1/devices",
+        200,
+        r#"{"devices":[{"id":"dev-5c1f","name":"Ana's phone","created_ms":1795750000000,"last_used_ms":1795750060000},{"id":"dev-9a9a","name":"Wall display","created_ms":1795740000000}]}"#,
+    );
+    let devices = harness.service.list_devices(&target).await.unwrap();
+    assert_eq!(devices.iter().map(|device| device.name.as_str()).collect::<Vec<_>>(), ["Ana's phone", "Wall display"]);
+    assert!(devices[0].can_show_code && !devices[1].can_show_code, "a phone paired elsewhere has no code here");
+
+    harness.service.revoke_device(&target, "dev-5c1f").await.unwrap();
+    assert!(harness.credentials.read_deploy_secret(&secret_name).unwrap().is_none());
+    assert_eq!(harness.service.device_pairing(&target, "dev-5c1f").unwrap_err().code(), "not_found");
+    assert_eq!(harness.service.revoke_device(&target, "../../v1/runs").await.unwrap_err().code(), "invalid_input");
+}
+
+#[tokio::test]
+async fn a_refused_revoke_keeps_the_phone_and_codes_of_phones_removed_elsewhere_are_forgotten() {
+    let harness = harness(FLOW);
+    let target = online_with_key(&harness);
+    harness.http.answer("POST https://menu.fly.dev/v1/devices", 201, PAIRED);
+    harness.service.pair_device(&target, "Ana's phone").await.unwrap();
+    let secret_name = format!("device:agent:{}:dev-5c1f", harness.agent.id);
+
+    harness.http.answer("DELETE https://menu.fly.dev/v1/devices/dev-5c1f", 401, "");
+    assert_eq!(harness.service.revoke_device(&target, "dev-5c1f").await.unwrap_err().code(), "credentials");
+    assert!(harness.credentials.read_deploy_secret(&secret_name).unwrap().is_some(), "it is still paired");
+
+    // The phone unpaired itself in the phone page: its code here is of no use.
+    harness.http.answer("https://menu.fly.dev/v1/devices", 200, r#"{"devices":[]}"#);
+    assert!(harness.service.list_devices(&target).await.unwrap().is_empty());
+    assert!(harness.credentials.read_deploy_secret(&secret_name).unwrap().is_none());
+
+    harness.http.answer("https://menu.fly.dev/v1/devices", 404, r#"{"error":"not found"}"#);
+    let off = harness.service.list_devices(&target).await.unwrap_err();
+    assert!(off.to_string().contains("Follow it from your phone"), "{off}");
+}
+
+#[tokio::test]
+async fn a_connected_server_pairs_phones_with_its_own_key_and_forgets_them_when_removed() {
+    let harness = harness(FLOW);
+    harness.http.answer("https://agents.example.com/healthz", 200, "ok");
+    harness.http.answer("https://agents.example.com/v1/runs?limit=1", 200, "[]");
+    let server =
+        harness.service.connect_own_server("Office server", "https://agents.example.com", "srv_key").await.unwrap();
+    let target = phone::OnlineTarget::Server { server_id: server.server.id.clone() };
+    harness.http.answer(
+        "POST https://agents.example.com/v1/devices",
+        201,
+        &PAIRED.replace("menu.fly.dev", "agents.example.com"),
+    );
+
+    let pairing = harness.service.pair_device(&target, "Ana's phone").await.unwrap();
+
+    assert!(pairing.link.starts_with("https://agents.example.com/monitor/#pair="));
+    assert_eq!(harness.http.requests.lock().unwrap().last().unwrap().1.as_deref(), Some("srv_key"));
+    let secret_name = format!("device:server:{}:dev-5c1f", server.server.id);
+    assert!(harness.credentials.read_deploy_secret(&secret_name).unwrap().is_some());
+
+    harness.service.remove_own_server(&server.server.id).unwrap();
+    assert!(harness.credentials.read_deploy_secret(&secret_name).unwrap().is_none());
+    assert_eq!(harness.service.pair_device(&target, "Ana's phone").await.unwrap_err().code(), "not_found");
+}
+
+#[test]
+fn own_server_instructions_name_the_agents_keys_and_the_chosen_pages() {
+    let harness = harness(FLOW);
+    let instructions = harness.service.own_server_instructions(&harness.agent, &[], &chat_and_phone()).unwrap();
+    // The agent file is saved as menu-questions-chatbot.grt, and graphrt serves it under that name.
+    let name = "menu-questions-chatbot";
+    assert!(instructions.command.contains("-e OPENAI_API_KEY=<your key>"), "{}", instructions.command);
+    assert!(instructions.command.contains(&format!("-e GRAPHRT_CHAT={name}")));
+    assert!(instructions.command.contains("-e GRAPHRT_MONITOR=1"));
+    assert_eq!(instructions.chat_address.unwrap(), format!("https://<the address of this server>/chat/{name}"));
+    let bad = OnlineFeatures { embed_site: Some("nope".into()), ..chat_and_phone() };
+    assert_eq!(harness.service.own_server_instructions(&harness.agent, &[], &bad).unwrap_err().code(), "invalid_input");
 }

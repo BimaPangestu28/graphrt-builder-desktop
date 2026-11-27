@@ -8,6 +8,8 @@ use tauri::State;
 
 use crate::deploy::cli::ManageAction;
 use crate::deploy::compatibility::{CompatibilityFix, CompatibilityReport, WHATSAPP_CLOUD_PLUGIN};
+use crate::deploy::online::{OnlineFeatures, OwnServerInstructions};
+use crate::deploy::phone::{DevicePairing, LiveFeatures, OnlineTarget, PairedDevice};
 use crate::deploy::providers::{DeployAccountInput, DeployProvider};
 use crate::deploy::{
     CliInfo, DeployAccount, DeployOptions, DeployOutcome, DeployReview, DeployedVersion, DeploymentView, OnlineRuns,
@@ -173,6 +175,57 @@ pub fn remove_own_server(state: State<'_, AppState>, server_id: String) -> AppRe
 pub fn export_agent_file(state: State<'_, AppState>, agent_id: String, path: String) -> AppResult<String> {
     let saved = state.deploy.export_agent_file(agent_id.trim(), &PathBuf::from(path.trim()))?;
     Ok(saved.to_string_lossy().into_owned())
+}
+
+/// The Docker instructions of "My own server" for the agent, with the chosen chat page and
+/// phone page as environment variables of `graphrt serve`.
+#[tauri::command]
+pub fn get_own_server_instructions(
+    state: State<'_, AppState>,
+    agent_id: String,
+    features: OnlineFeatures,
+) -> AppResult<OwnServerInstructions> {
+    let agent = state.db.get_agent(agent_id.trim())?;
+    let requirements = plugin_requirements(&state, &agent)?;
+    state.deploy.own_server_instructions(&agent, &requirements, &features)
+}
+
+/// What an online agent or a connected server offers right now (chat page, phone page).
+#[tauri::command]
+pub async fn get_live_online_features(state: State<'_, AppState>, target: OnlineTarget) -> AppResult<LiveFeatures> {
+    state.deploy.live_features(&target).await
+}
+
+/// The phones paired with an online agent or a connected server.
+#[tauri::command]
+pub async fn list_paired_devices(state: State<'_, AppState>, target: OnlineTarget) -> AppResult<Vec<PairedDevice>> {
+    state.deploy.list_devices(&target).await
+}
+
+/// Pairs a new phone and returns its code (a link that is the phone's key).
+#[tauri::command]
+pub async fn pair_device(state: State<'_, AppState>, target: OnlineTarget, name: String) -> AppResult<DevicePairing> {
+    state.deploy.pair_device(&target, &name).await
+}
+
+/// The kept code of a paired phone. Call only for an explicit "Show code".
+#[tauri::command]
+pub fn show_device_pairing(
+    state: State<'_, AppState>,
+    target: OnlineTarget,
+    device_id: String,
+) -> AppResult<DevicePairing> {
+    state.deploy.device_pairing(&target, &device_id)
+}
+
+/// Removes a paired phone: its key stops working at once.
+#[tauri::command]
+pub async fn revoke_paired_device(
+    state: State<'_, AppState>,
+    target: OnlineTarget,
+    device_id: String,
+) -> AppResult<()> {
+    state.deploy.revoke_device(&target, &device_id).await
 }
 
 /// Pages the online-provider screens link to (fixed addresses; the UI names one, never a URL).

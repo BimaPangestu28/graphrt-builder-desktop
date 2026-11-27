@@ -13,12 +13,18 @@ import type {
   DeployReview,
   DeploymentView,
   DeployStep,
+  DevicePairing,
+  LiveFeatures,
   ManageAction,
+  OnlineFeatures,
   OnlineRuns,
+  OnlineTarget,
+  OwnServerInstructions,
   OwnServerView,
+  PairedDevice,
   RotatedApiKey,
 } from '../deployTypes'
-import { deployProviderNames, onlineDeployNotAvailableMessage } from '../deployTypes'
+import { deployProviderNames, noOnlineFeatures, onlineDeployNotAvailableMessage, onlineFeaturesNeedNewerToolsMessage } from '../deployTypes'
 import type { Agent } from '../types'
 import { listStoredAgents, readCurrentSteps, readStoredAgent, saveNewVersion } from './sampleAgentStore'
 import { respondWith, waitFor } from './sampleResponse'
@@ -42,6 +48,13 @@ interface SampleDeployState {
   fixedAgents: Set<string>
   images: Map<string, string>
   keyNumber: number
+  /** Whether the sample tools know the chat page and the phone page once installed. */
+  toolsKnowOnlineFeatures: boolean
+  /** What each connected server offers (an online agent's comes from its deployment). */
+  serverFeatures: Map<string, OnlineFeatures>
+  /** Paired phones by target (`agent:<id>` / `server:<id>`), with their kept codes. */
+  devices: Map<string, Array<PairedDevice & { link: string }>>
+  deviceNumber: number
 }
 
 function freshState(): SampleDeployState {
@@ -50,11 +63,15 @@ function freshState(): SampleDeployState {
     deployments: new Map(),
     histories: new Map(),
     servers: [],
-    cli: { status: 'not_installed', version: '0.9.0', downloadSizeBytes: 9_400_000 },
+    cli: { status: 'not_installed', version: '0.9.0', downloadSizeBytes: 9_400_000, onlineFeatures: false },
     compatibility: new Map(),
     fixedAgents: new Set(),
     images: new Map(),
     keyNumber: 0,
+    toolsKnowOnlineFeatures: true,
+    serverFeatures: new Map(),
+    devices: new Map(),
+    deviceNumber: 0,
   }
 }
 
@@ -69,16 +86,27 @@ export function setSampleCliStatus(cli: CliInfo): void {
   state.cli = cli
 }
 
+/** Makes the sample tools older than the chat page and the phone page (the honest "needs an update" state). */
+export function setSampleToolsKnowOnlineFeatures(known: boolean): void {
+  state.toolsKnowOnlineFeatures = known
+  state.cli = { ...state.cli, onlineFeatures: known && state.cli.status === 'installed' }
+}
+
+/** What a connected sample server offers (default: a chat page for guests and the phone page). */
+export function setSampleServerFeatures(serverId: string, features: OnlineFeatures): void {
+  state.serverFeatures.set(serverId, features)
+}
+
 /** Forces the checklist of one agent (tests and screenshots). */
 export function setSampleCompatibility(agentId: string, report: CompatibilityReport): void {
   state.compatibility.set(agentId, report)
 }
 
 /** Puts an agent online without a deploy (screenshots of the deployed state). */
-export function seedSampleDeployment(agentId: string, changes: Partial<DeploymentView['deployment']> = {}, hasChanges = false): void {
+export function seedSampleDeployment(agentId: string, changes: Partial<DeploymentView['deployment']> = {}, hasChanges = false, features: OnlineFeatures = noOnlineFeatures): void {
   const agent = readStoredAgent(agentId)
   state.accounts.set('fly', 'Access key saved')
-  state.deployments.set(agentId, buildView(agent, { deployedVersionLabel: 'v3', deployedAgentVersion: agent.currentVersion, ...changes }, hasChanges))
+  state.deployments.set(agentId, { ...buildView(agent, { deployedVersionLabel: 'v3', deployedAgentVersion: agent.currentVersion, ...changes }, hasChanges), features })
   state.histories.set(agentId, [
     { label: 'v1', agentVersion: 1, changeSummary: 'First time online', deployedAt: '2026-11-12T09:00:00Z', isCurrent: false },
     { label: 'v2', agentVersion: Math.max(1, agent.currentVersion - 1), changeSummary: 'Friendlier greeting', deployedAt: '2026-11-19T09:00:00Z', isCurrent: false },
@@ -120,7 +148,7 @@ function buildView(agent: Agent, changes: Partial<DeploymentView['deployment']>,
     updatedAt: now,
     ...changes,
   }
-  return { deployment, providerName: deployProviderNames[deployment.provider], area: regionArea(deployment.region), hasChanges, agentVersion: agent.currentVersion, hasApiKey: true }
+  return { deployment, providerName: deployProviderNames[deployment.provider], area: regionArea(deployment.region), hasChanges, agentVersion: agent.currentVersion, hasApiKey: true, features: noOnlineFeatures }
 }
 
 function regionArea(region: string | null): DeploymentView['area'] {
@@ -212,6 +240,102 @@ function review(agentId: string, provider: DeployProvider): DeployReview {
     mode: existing?.deployment.mode ?? 'scale_to_zero',
     area: existing?.area ?? 'us',
     image: state.images.get(agentId) ?? null,
+    features: existing?.features ?? noOnlineFeatures,
+  }
+}
+
+/** Like `deploy::online::OnlineFeatures::checked`: the website as an origin, options of what is off dropped. */
+function checkedFeatures(features: OnlineFeatures): OnlineFeatures {
+  const site = features.embedSite?.trim() ?? ''
+  let embedSite: string | null = null
+  if (features.chat && site) {
+    let parsed: URL
+    try {
+      parsed = new URL(site.includes('://') ? site : `https://${site}`)
+    } catch {
+      return invalid(`\`${site}\` is not a website address such as https://www.example.com`)
+    }
+    if (!/^https?:$/.test(parsed.protocol) || !(parsed.hostname.includes('.') || parsed.hostname === 'localhost')) invalid(`\`${site}\` is not a website address such as https://www.example.com`)
+    embedSite = parsed.origin
+  }
+  const notifications = features.phone && features.notifications
+  const email = features.notifyEmail?.trim().replace(/^mailto:/, '') ?? ''
+  if (notifications && !email) invalid('Enter your email address for notifications. Notification services use it only to reach you if something is wrong with this sender')
+  if (notifications && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) invalid(`\`${email}\` is not an email address such as you@example.com`)
+  return { chat: features.chat, chatAudience: features.chat ? features.chatAudience : 'guests', embedSite, phone: features.phone, notifications, notifyEmail: notifications ? email : null, answerWhenTimeRunsOut: features.answerWhenTimeRunsOut }
+}
+
+function anyFeature(features: OnlineFeatures): boolean {
+  return features.chat || features.phone || features.notifications || features.answerWhenTimeRunsOut
+}
+
+function targetKey(target: OnlineTarget): string {
+  return target.kind === 'agent' ? `agent:${target.agentId}` : `server:${target.serverId}`
+}
+
+/** The address and the features of a target, or a refusal like the backend's. */
+function targetState(target: OnlineTarget): { url: string; features: OnlineFeatures; workflow: string } {
+  if (target.kind === 'agent') {
+    const view = state.deployments.get(target.agentId)
+    if (!view?.deployment.url) throw new BackendError('not_found', "this agent's online copy not found")
+    return { url: view.deployment.url, features: view.features, workflow: 'agent' }
+  }
+  const server = state.servers.find((view) => view.server.id === target.serverId)
+  if (!server) throw new BackendError('not_found', 'this server not found')
+  const features = state.serverFeatures.get(target.serverId) ?? { ...noOnlineFeatures, chat: true, phone: true, notifications: true }
+  return { url: server.server.url, features, workflow: 'support' }
+}
+
+function liveFeatures(target: OnlineTarget): LiveFeatures {
+  const { url, features, workflow } = targetState(target)
+  return {
+    reachable: true,
+    problem: null,
+    chat: features.chat
+      ? { audience: features.chatAudience, link: `${url}/chat/${workflow}`, widgetSnippet: `<script src="${url}/chat/embed.js" data-workflow="${workflow}" async></script>`, keepsConversations: false }
+      : null,
+    phone: features.phone ? { link: `${url}/monitor/`, canPair: true, approvals: true, answersWhenTimeRunsOut: features.answerWhenTimeRunsOut, notifications: features.notifications } : null,
+  }
+}
+
+function requirePairing(target: OnlineTarget): string {
+  const { url, features } = targetState(target)
+  if (!features.phone) invalid('Pairing a phone is not turned on for this agent. Turn on "Follow it from your phone" and update the online copy')
+  return url
+}
+
+function pair(target: OnlineTarget, name: string): DevicePairing {
+  const url = requirePairing(target)
+  const deviceName = name.trim()
+  if (!deviceName || deviceName.length > 100) invalid('Give the phone a short name, like "Ana\'s phone"')
+  state.deviceNumber += 1
+  const id = `dev-sample${state.deviceNumber}`
+  // A sample link: the real one carries the phone's key, which only the backend makes.
+  const link = `${url}/monitor/#pair=grd1.${id}.sample-preview-only`
+  const devices = state.devices.get(targetKey(target)) ?? []
+  state.devices.set(targetKey(target), [{ id, name: deviceName, pairedAtMs: Date.now(), lastUsedAtMs: null, canShowCode: true, link }, ...devices])
+  return { deviceId: id, deviceName, link }
+}
+
+function ownServerInstructions(agentId: string, requested: OnlineFeatures): OwnServerInstructions {
+  const features = checkedFeatures(requested)
+  const name = readStoredAgent(agentId).name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'agent'
+  const needsStorage = features.phone || features.notifications
+  const lines = [`docker run -d --name ${name} -p 8080:8080 \\`, '  -v "$PWD/bundles:/workflows:ro" \\']
+  if (needsStorage) lines.push(`  -v ${name}-store:/data \\`)
+  lines.push('  -e GRAPHRT_API_KEY=<generate one> \\', '  -e OPENAI_API_KEY=<your key> \\')
+  if (features.chat) lines.push(`  -e GRAPHRT_CHAT=${name} \\`, `  -e GRAPHRT_CHAT_ACCESS=${features.chatAudience} \\`)
+  if (features.chat && features.embedSite) lines.push(`  -e GRAPHRT_CORS_ORIGINS=${features.embedSite} \\`)
+  if (needsStorage) lines.push('  -e GRAPHRT_STORE=/data \\', '  -e GRAPHRT_PUBLIC_URL="<https://the address of this server>" \\')
+  if (features.phone) lines.push('  -e GRAPHRT_MONITOR=1 \\')
+  if (features.notifications && features.notifyEmail) lines.push(`  -e GRAPHRT_PUSH=mailto:${features.notifyEmail} \\`)
+  if (features.answerWhenTimeRunsOut) lines.push('  -e GRAPHRT_EXPIRE_APPROVALS=1 \\')
+  lines.push(anyFeature(features) ? '  ghcr.io/graphrt/graphrt:<a version newer than 0.6.2>' : '  ghcr.io/graphrt/graphrt')
+  return {
+    command: lines.join('\n'),
+    needsGraphrtNewerThan: anyFeature(features) ? '0.6.2' : null,
+    chatAddress: features.chat ? `https://<the address of this server>/chat/${name}` : null,
+    phoneAddress: features.phone ? 'https://<the address of this server>/monitor/' : null,
   }
 }
 
@@ -224,6 +348,8 @@ async function deploy(agentId: string, options: DeployOptions): Promise<DeployOu
   if (state.cli.status !== 'installed') invalid('Download the graphrt tools first (Review › Allow download)')
   const image = options.image?.trim() || null
   if (image && (image.startsWith('-') || !/^[A-Za-z0-9./:_@-]+$/.test(image))) invalid(`\`${image}\` is not an image name such as ghcr.io/you/graphrt:0.6.0 (leave it empty for graphrt's own image)`)
+  const features = checkedFeatures(options.features ?? noOnlineFeatures)
+  if (anyFeature(features) && !state.cli.onlineFeatures) invalid(onlineFeaturesNeedNewerToolsMessage())
   if (!state.accounts.has('fly')) throw new BackendError('missing_credentials', 'not set up yet: your Fly.io account (connect it in Online accounts)')
   const agent = readStoredAgent(agentId)
   for (const step of sampleSteps) {
@@ -235,8 +361,10 @@ async function deploy(agentId: string, options: DeployOptions): Promise<DeployOu
   const previous = state.deployments.get(agentId)
   const nextNumber = Number(previous?.deployment.deployedVersionLabel?.slice(1) ?? 0) + 1
   const label = `v${nextNumber}`
-  const view = buildView(agent, { mode: options.mode, region: regionForArea[options.area], deployedVersionLabel: label, createdAt: previous?.deployment.createdAt })
+  const view = { ...buildView(agent, { mode: options.mode, region: regionForArea[options.area], deployedVersionLabel: label, createdAt: previous?.deployment.createdAt }), features }
   state.deployments.set(agentId, view)
+  // Without the phone page its storage is removed, and the paired phones with it.
+  if (!features.phone) state.devices.delete(`agent:${agentId}`)
   const history = (state.histories.get(agentId) ?? []).map((entry) => ({ ...entry, isCurrent: false }))
   state.histories.set(agentId, [...history, { label, agentVersion: agent.currentVersion, changeSummary: nextNumber === 1 ? 'First time online' : 'Latest changes', deployedAt: new Date().toISOString(), isCurrent: true }])
   if (image) state.images.set(agentId, image)
@@ -307,7 +435,7 @@ export const sampleDeployBackend = {
     if (state.cli.status === 'not_available') invalid(onlineDeployNotAvailableMessage())
     state.cli = { ...state.cli, status: 'installing' }
     await waitFor(1200)
-    state.cli = { ...state.cli, status: 'installed' }
+    state.cli = { ...state.cli, status: 'installed', onlineFeatures: state.toolsKnowOnlineFeatures }
     return state.cli
   },
   listDeployAccounts: () => respondWith(listAccounts),
@@ -342,5 +470,24 @@ export const sampleDeployBackend = {
   },
   removeOwnServer: (serverId: string) => respondWith(() => void (state.servers = state.servers.filter((view) => view.server.id !== serverId))),
   exportAgentFile: (_agentId: string, path: string) => respondWith(() => path),
+  getOwnServerInstructions: (agentId: string, features: OnlineFeatures) => respondWith(() => ownServerInstructions(agentId, features)),
+  getLiveOnlineFeatures: (target: OnlineTarget) => respondWith(() => liveFeatures(target)),
+  listPairedDevices: (target: OnlineTarget) =>
+    respondWith((): PairedDevice[] => {
+      requirePairing(target)
+      return (state.devices.get(targetKey(target)) ?? []).map((device) => ({ id: device.id, name: device.name, pairedAtMs: device.pairedAtMs, lastUsedAtMs: device.lastUsedAtMs, canShowCode: device.canShowCode }))
+    }),
+  pairDevice: (target: OnlineTarget, name: string) => respondWith(() => pair(target, name)),
+  showDevicePairing: (target: OnlineTarget, deviceId: string) =>
+    respondWith((): DevicePairing => {
+      const device = (state.devices.get(targetKey(target)) ?? []).find((entry) => entry.id === deviceId)
+      if (!device) throw new BackendError('not_found', "this phone's code on this computer not found")
+      return { deviceId: device.id, deviceName: device.name, link: device.link }
+    }),
+  revokePairedDevice: (target: OnlineTarget, deviceId: string) =>
+    respondWith(() => {
+      const key = targetKey(target)
+      state.devices.set(key, (state.devices.get(key) ?? []).filter((device) => device.id !== deviceId))
+    }),
   openDeployLink: () => respondWith(() => undefined),
 }

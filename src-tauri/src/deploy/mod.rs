@@ -8,10 +8,14 @@
 //! - [`cli`]: `graphrt deploy` with secrets passed only as environment variables
 //! - [`contract`]: the `status` / `list-versions` results, checked against graphrt's JSON schema
 //! - [`http`]: health checks, online runs and the Fly.io key check
+//! - [`online`]: the chat page and the phone page of an online agent, as deploy flags
+//! - [`phone`]: what an online agent offers right now, and the phones paired with it
 //!
 //! [`DeployService`] ties them to the database (`storage::deployments`) and the keychain.
 //! Keychain names (`CredentialStore::set_deploy_secret`): `account:<provider>` (the provider
-//! credential JSON), `key:<agent id>` (a deployment's API key, shown once), `server:<id>`.
+//! credential JSON), `key:<agent id>` (a deployment's API key, shown once), `server:<id>`,
+//! `device:agent:<agent id>:<device id>` / `device:server:<id>:<device id>` (a paired phone's
+//! pairing link).
 
 pub mod cli;
 pub mod cli_release;
@@ -19,6 +23,10 @@ pub mod compatibility;
 pub mod contract;
 pub mod fixes;
 pub mod http;
+#[cfg(test)]
+mod live_check;
+pub mod online;
+pub mod phone;
 pub mod plan;
 pub mod providers;
 #[cfg(test)]
@@ -35,6 +43,8 @@ use tauri::{AppHandle, Emitter};
 use self::cli::{CliEvent, CliLine, DeployRequest, DeployStep, ManageAction, StepStatus};
 use self::compatibility::{CompatibilityFacts, CompatibilityFix, CompatibilityReport, KeyFacts, PluginFacts};
 use self::http::{CloudRun, DeployHttp, HealthCheck};
+use self::online::{OnlineFeatures, OwnServerInstructions, ONLINE_FEATURES_KEY};
+use self::phone::OnlineTarget;
 use self::plan::{KeyToCopy, KeyToCopyView, PluginSettings};
 use self::providers::{DeployAccountInput, DeployProvider, ALL_DEPLOY_PROVIDERS};
 use crate::credentials::CredentialStore;
@@ -57,6 +67,10 @@ const MAX_IMAGE_REFERENCE_CHARS: usize = 255;
 pub const NOT_AVAILABLE_MESSAGE: &str = "Online deploy is not available yet. It needs a graphrt release that can put \
      agents online (graphrt deploy --direct) and the matching graphrt server image published with it, and neither \
      exists yet. It comes with an app update.";
+/// Why the chat page and the phone page cannot be turned on with the installed graphrt tools.
+pub const ONLINE_FEATURES_NEED_NEWER_TOOLS: &str = "The chat page and following an agent from your phone need newer \
+     graphrt tools than this version of the app can download. They come with an app update. Turn them off to put \
+     the agent online now.";
 /// Settings key prefix of an account's non-secret summary.
 const ACCOUNT_SUMMARY_SETTING_PREFIX: &str = "deploy_account_summary:";
 const CLI_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(15 * 60);
@@ -104,6 +118,9 @@ pub struct CliInfo {
     pub status: CliStatus,
     pub version: Option<String>,
     pub download_size_bytes: Option<u64>,
+    /// The installed tools can turn on the chat page and the phone page of an online agent.
+    /// `false` until they are installed, and for tools older than these features.
+    pub online_features: bool,
 }
 
 /// One row of "Online accounts".
@@ -168,6 +185,8 @@ pub struct DeployReview {
     pub area: ServerArea,
     /// The `--image` of the last deploy (Advanced); `None`: graphrt's own image.
     pub image: Option<String>,
+    /// The chat page and phone page choices of the online copy (all off before the first deploy).
+    pub features: OnlineFeatures,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -179,6 +198,9 @@ pub struct DeployOptions {
     /// Advanced: another image running `graphrt serve` (`--image`). `None`: graphrt's own image.
     #[serde(default)]
     pub image: Option<String>,
+    /// The chat page, the phone page and what goes with them. Absent: all off.
+    #[serde(default)]
+    pub features: OnlineFeatures,
 }
 
 /// The agent's online state for the builder.
@@ -193,6 +215,8 @@ pub struct DeploymentView {
     pub agent_version: i64,
     /// A deployment API key is saved (for Runs).
     pub has_api_key: bool,
+    /// What the online copy was last put online with: chat page, phone page...
+    pub features: OnlineFeatures,
 }
 
 /// A finished deploy. `api_key` is the only time the key leaves the backend: set on the first
@@ -278,6 +302,8 @@ pub struct DeployService {
     installing: std::sync::atomic::AtomicBool,
     /// One cancel signal per agent with a deploy running.
     running_deploys: Mutex<HashMap<String, Arc<tokio::sync::Notify>>>,
+    /// Whether each graphrt executable asked so far knows the chat and phone flags.
+    cli_features: Mutex<HashMap<PathBuf, bool>>,
 }
 
 impl std::fmt::Debug for DeployService {
@@ -341,6 +367,7 @@ impl DeployService {
             install_lock: tokio::sync::Mutex::new(()),
             installing: std::sync::atomic::AtomicBool::new(false),
             running_deploys: Mutex::new(HashMap::new()),
+            cli_features: Mutex::new(HashMap::new()),
         }
     }
 
@@ -362,6 +389,20 @@ impl DeployService {
         path.is_file().then_some(path)
     }
 
+    /// Whether the installed graphrt tools know the flags of the chat page and the phone page
+    /// (asked once per executable with `graphrt deploy --help`).
+    fn cli_knows_online_features(&self) -> bool {
+        let Some(executable) = self.installed_cli() else { return false };
+        if let Some(known) = self.cli_features.lock().ok().and_then(|cache| cache.get(&executable).copied()) {
+            return known;
+        }
+        let knows = cli::knows_online_features(&executable);
+        if let Ok(mut cache) = self.cli_features.lock() {
+            cache.insert(executable, knows);
+        }
+        knows
+    }
+
     pub fn cli_info(&self) -> CliInfo {
         let archive = cli_release::archive_for_this_computer();
         let status = if self.installed_cli().is_some() {
@@ -377,6 +418,7 @@ impl DeployService {
             status,
             version: cli_release::GRAPHRT_CLI_VERSION.map(str::to_owned),
             download_size_bytes: archive.map(|archive| archive.size_bytes),
+            online_features: self.cli_knows_online_features(),
         }
     }
 
@@ -639,7 +681,46 @@ impl DeployService {
                 .and_then(ServerArea::from_fly_region)
                 .unwrap_or(ServerArea::Us),
             image: self.deploy_image(&agent.id)?,
+            features: self.online_features(&agent.id)?,
         })
+    }
+
+    /// The chat page and phone page choices the agent was last put online with.
+    pub fn online_features(&self, agent_id: &str) -> AppResult<OnlineFeatures> {
+        Ok(self
+            .db
+            .get_agent_setting(agent_id, ONLINE_FEATURES_KEY)?
+            .and_then(|stored| serde_json::from_value(stored).ok())
+            .unwrap_or_default())
+    }
+
+    /// The `graphrt deploy` flags for `features`: none for tools that do not know them, which
+    /// is only right while nothing is asked for.
+    ///
+    /// # Errors
+    /// `InvalidInput` when something is turned on and the installed tools are too old for it.
+    fn feature_arguments(&self, features: &OnlineFeatures) -> AppResult<Vec<String>> {
+        if self.cli_knows_online_features() {
+            return Ok(features.deploy_arguments());
+        }
+        if features.any() {
+            return Err(AppError::InvalidInput(ONLINE_FEATURES_NEED_NEWER_TOOLS.into()));
+        }
+        Ok(Vec::new())
+    }
+
+    /// The Docker instructions of "My own server" with these choices.
+    ///
+    /// # Errors
+    /// `InvalidInput` for a website or an email address that cannot be used.
+    pub fn own_server_instructions(
+        &self,
+        agent: &Agent,
+        requirements: &[PluginRequirement],
+        features: &OnlineFeatures,
+    ) -> AppResult<OwnServerInstructions> {
+        let key_names: Vec<String> = self.keys_for(agent, requirements)?.into_iter().map(|key| key.env_name).collect();
+        Ok(online::own_server_instructions(&online::agent_file_stem(&agent.name), &features.checked()?, &key_names))
     }
 
     fn deploy_image(&self, agent_id: &str) -> AppResult<Option<String>> {
@@ -730,7 +811,11 @@ impl DeployService {
         if !report.ready {
             return Err(AppError::InvalidInput("Fix the items in the checklist before putting it online".into()));
         }
-        let options = DeployOptions { image: checked_image_reference(options.image.as_deref())?, ..options };
+        let options = DeployOptions {
+            image: checked_image_reference(options.image.as_deref())?,
+            features: options.features.checked()?,
+            ..options
+        };
         let executable = self.require_cli()?;
         let agent = self.db.get_agent(agent_id)?;
         let keys = self.keys_for(&agent, requirements)?;
@@ -760,6 +845,8 @@ impl DeployService {
         environment: &[(String, String)],
         cancel: Arc<tokio::sync::Notify>,
     ) -> AppResult<DeployOutcome> {
+        // Before anything is written or sent: tools too old for a chosen page refuse here.
+        let feature_arguments = self.feature_arguments(&options.features)?;
         let previous = self.db.get_deployment(&agent.id)?;
         let is_first = previous.as_ref().is_none_or(|record| record.status == DeploymentStatus::Failed);
         let version_label =
@@ -803,6 +890,7 @@ impl DeployService {
             secret_names: keys.iter().map(|key| key.env_name.clone()).collect(),
             image: options.image.clone(),
             rotate_api_key: false,
+            feature_arguments,
             agent_file,
         };
         log::info!("putting agent {} online as {} {version_label}", agent.id, record.deployment_name);
@@ -841,6 +929,11 @@ impl DeployService {
         match &options.image {
             Some(image) => self.db.set_agent_setting(&agent.id, DEPLOY_IMAGE_KEY, &serde_json::json!(image))?,
             None => self.db.set_agent_setting(&agent.id, DEPLOY_IMAGE_KEY, &serde_json::Value::Null)?,
+        }
+        self.db.set_agent_setting(&agent.id, ONLINE_FEATURES_KEY, &serde_json::to_value(&options.features)?)?;
+        if !options.features.needs_storage() {
+            // The storage with the paired phones is gone: their codes are of no use any more.
+            self.forget_device_codes(&OnlineTarget::Agent { agent_id: agent.id.clone() }, None)?;
         }
         record.url = Some(url);
         record.app = app.or(record.app);
@@ -895,6 +988,8 @@ impl DeployService {
             secret_names: Vec::new(),
             image: self.deploy_image(agent_id)?,
             rotate_api_key: true,
+            // A deploy turns off what it does not name: keep what is on.
+            feature_arguments: self.feature_arguments(&self.online_features(agent_id)?)?,
             agent_file,
         };
         let cancel = self.start_tracking_deploy(agent_id)?;
@@ -983,6 +1078,7 @@ impl DeployService {
             provider_name: deployment.provider.display_name().to_owned(),
             area: deployment.region.as_deref().and_then(ServerArea::from_fly_region),
             has_api_key: self.credentials.read_deploy_secret(&format!("key:{agent_id}"))?.is_some(),
+            features: self.online_features(agent_id)?,
             deployment,
         }))
     }
@@ -1037,6 +1133,8 @@ impl DeployService {
                 self.db.delete_deployment(agent_id)?;
                 self.credentials.delete_deploy_secret(&format!("key:{agent_id}"))?;
                 self.db.set_agent_setting(agent_id, DEPLOY_HISTORY_KEY, &serde_json::json!([]))?;
+                self.db.set_agent_setting(agent_id, ONLINE_FEATURES_KEY, &serde_json::Value::Null)?;
+                self.forget_device_codes(&OnlineTarget::Agent { agent_id: agent_id.to_owned() }, None)?;
                 log::info!("took agent {agent_id} offline");
                 return Ok(None);
             }
@@ -1183,6 +1281,7 @@ impl DeployService {
     }
 
     pub fn remove_own_server(&self, server_id: &str) -> AppResult<()> {
+        self.forget_device_codes(&OnlineTarget::Server { server_id: server_id.to_owned() }, None)?;
         self.db.remove_own_server(server_id)?;
         self.credentials.delete_deploy_secret(&format!("server:{server_id}"))
     }
@@ -1217,11 +1316,18 @@ impl DeployService {
         for provider in ALL_DEPLOY_PROVIDERS {
             forget(Self::account_secret_name(provider));
         }
+        let forget_codes = |target: OnlineTarget| {
+            if let Err(error) = self.forget_device_codes(&target, None) {
+                log::warn!("could not remove the pairing codes of a phone: {error}");
+            }
+        };
         for deployment in self.db.list_deployments().unwrap_or_default() {
             forget(format!("key:{}", deployment.agent_id));
+            forget_codes(OnlineTarget::Agent { agent_id: deployment.agent_id });
         }
         for server in self.db.list_own_servers().unwrap_or_default() {
             forget(format!("server:{}", server.id));
+            forget_codes(OnlineTarget::Server { server_id: server.id });
         }
     }
 }
