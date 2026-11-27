@@ -6,15 +6,14 @@
 //!
 //! - `human_input` (an "Ask me before continuing" step) with a time limit:
 //!   `expires_at` (RFC 3339) and `on_timeout` (`{"kind": "stop"}` or
-//!   `{"kind": "answer", "action": "<button id>"}`). The time limit is the
-//!   pause data's `timeout_ms` when graphrt sends one, else the step's own
-//!   `timeout_ms`. graphrt's document loader moves a node's top-level
-//!   `timeout_ms` into the node's run policy, so for a `human-input` step it
-//!   never reaches the pause data; the desktop reads it from the policy instead
-//!   (the step pauses at once, so as a run time limit it changes nothing).
-//!   What happens on expiry is the step's `on_timeout` config key, which
-//!   graphrt ignores (its `human-input` config allows extra keys):
-//!   `on_timeout: stop` (also the default) or `on_timeout: { action: skip }`.
+//!   `{"kind": "answer", "action": "<button id>"}`; the app's own key in the
+//!   stored reason). The time limit is the pause data's `timeout_ms`, which
+//!   graphrt fills from the step's `expire_after_ms`; the step's config is read
+//!   as a fallback. What happens on expiry is the step's `on_expire`
+//!   (`on_expire: stop`, the default, or `on_expire: { action: skip }`), which
+//!   graphrt checks against the step's buttons but never carries out itself:
+//!   the app does, in `approval_expiry`. Documents from before graphrt had
+//!   these fields are upgraded by [`crate::flow::migration`].
 //!   A deadline survives a resume that leaves the question unanswered (e.g.
 //!   another question of the same run was answered): see [`carried_deadlines`].
 //! - `tool_approval` (a "Run an agent" step whose tools ask first): each
@@ -42,6 +41,9 @@ const HUMAN_INPUT_NODE_KIND: &str = "human-input";
 const AGENT_NODE_KIND: &str = "agent";
 pub(crate) const EXPIRES_AT_KEY: &str = "expires_at";
 pub(crate) const ON_TIMEOUT_KEY: &str = "on_timeout";
+/// The `human-input` config key holding the step's time limit (graphrt reports it
+/// as the pause data's `timeout_ms`).
+const EXPIRE_AFTER_KEY: &str = "expire_after_ms";
 /// Shown instead of a tool argument that looks like a secret.
 pub(crate) const REDACTED: &str = "[hidden]";
 /// Longest tool name graphrt offers a model (see `unique_name` in graphrt-llm's agent node).
@@ -105,13 +107,13 @@ impl PauseSettings {
             .collect();
         for node in graph.nodes() {
             let config = &node.doc.config;
-            match node.kind.as_str() {
+            match &*node.kind {
                 HUMAN_INPUT_NODE_KIND => {
-                    let timeout_ms = node.policy.timeout_ms.or_else(|| config.get("timeout_ms").and_then(Json::as_u64));
+                    let timeout_ms = config.get(EXPIRE_AFTER_KEY).and_then(Json::as_u64);
                     let on_timeout = if answers_into_a_send.iter().any(|node_id| **node_id == *node.id) {
                         // Saved before validation refused this: never send without a person answering.
                         log::warn!(
-                            "approval step {}: on_timeout would answer into a send, the run stops instead",
+                            "approval step {}: on_expire would answer into a send, the run stops instead",
                             node.id
                         );
                         TimeoutAction::Stop
@@ -198,14 +200,14 @@ fn deadline_after(now: DateTime<Utc>, timeout_ms: u64) -> DateTime<Utc> {
     now.checked_add_signed(timeout).unwrap_or(DateTime::<Utc>::MAX_UTC)
 }
 
-/// `on_timeout: stop`, `on_timeout: { action: <id> }` or `on_timeout: <id>`; anything
-/// else (or a button the step does not have) stops the run.
+/// `on_expire: stop` (or no setting) or `on_expire: { action: <id> }`; a button the
+/// step does not have (graphrt refuses that document) stops the run as well.
 fn read_on_timeout(node_id: &str, config: &Map<String, Json>) -> TimeoutAction {
     match crate::flow::read_timeout_choice(config) {
         TimeoutChoice::Stop => TimeoutAction::Stop,
         TimeoutChoice::Answer(action) => TimeoutAction::Answer { action },
         TimeoutChoice::UnknownAction => {
-            log::warn!("approval step {node_id}: on_timeout names no button of the step, the run stops instead");
+            log::warn!("approval step {node_id}: on_expire names no button of the step, the run stops instead");
             TimeoutAction::Stop
         }
     }
@@ -427,8 +429,8 @@ graph:
     - id: ask
       type: human-input
       prompt: "Send?"
-      timeout_ms: 7200000
-      on_timeout: { action: skip }
+      expire_after_ms: 7200000
+      on_expire: { action: skip }
       actions: [{ id: send, title: Send }, { id: skip, title: Skip it }]
     - id: ask_forever
       type: human-input
@@ -436,8 +438,7 @@ graph:
     - id: ask_unknown
       type: human-input
       prompt: "Hm?"
-      timeout_ms: 1000
-      on_timeout: { action: nope }
+      expire_after_ms: 1000
     - id: helper
       type: agent
       model: { provider: openai, name: gpt-4o-mini }
@@ -447,8 +448,8 @@ graph:
   edges:
     - { source: start, target: ask }
     - { source: ask, target: ask_forever, handle: send }
-    - { source: ask_forever, target: ask_unknown }
-    - { source: ask_unknown, target: helper }
+    - { source: ask_forever, target: ask_unknown, handle: submit }
+    - { source: ask_unknown, target: helper, handle: submit }
     - { source: helper, target: end }
 "#;
 
@@ -468,7 +469,7 @@ graph:
         assert_eq!(reasons[0][EXPIRES_AT_KEY], json!("2026-11-21T12:00:00+00:00"));
         assert_eq!(reasons[0][ON_TIMEOUT_KEY], json!({"kind": "answer", "action": "skip"}));
         assert!(reasons[1].get(EXPIRES_AT_KEY).is_none(), "no time limit, waits until answered");
-        assert_eq!(reasons[2][ON_TIMEOUT_KEY], json!({"kind": "stop"}), "unknown button falls back to stop");
+        assert_eq!(reasons[2][ON_TIMEOUT_KEY], json!({"kind": "stop"}), "no on_expire stops the run");
     }
 
     #[test]

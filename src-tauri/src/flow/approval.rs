@@ -13,9 +13,9 @@
 //! without passing an approval means the step is unprotected.
 //!
 //! An approval only protects when a person answers it: an approval whose
-//! `on_timeout` answers with a button that leads to a sending step (without
+//! `on_expire` answers with a button that leads to a sending step (without
 //! another approval in between) sends without asking once the time runs out.
-//! [`timeouts_that_send`] finds those; only `on_timeout: stop` or a button
+//! [`timeouts_that_send`] finds those; only `on_expire: stop` or a button
 //! that does not lead to a send is allowed.
 
 use std::collections::HashSet;
@@ -28,15 +28,15 @@ use super::trusted_hosts::TrustedHosts;
 
 const APPROVAL_KIND: &str = "human-input";
 const HTTP_REQUEST_KIND: &str = "http-request";
-const ON_TIMEOUT_KEY: &str = "on_timeout";
+const ON_EXPIRE_KEY: &str = "on_expire";
 const STOP_ON_TIMEOUT: &str = "stop";
 /// The button graphrt's `human-input` node offers when the step sets none.
 const DEFAULT_ACTION: &str = "submit";
 
-/// What an approval step's `on_timeout` setting says.
+/// What an approval step's `on_expire` setting says.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum TimeoutChoice {
-    /// `on_timeout: stop`, or no setting: the run stops.
+    /// `on_expire: stop`, or no setting: the run stops.
     Stop,
     /// Answer with this button of the step.
     Answer(String),
@@ -77,7 +77,7 @@ pub(super) fn unapproved_steps(graph: &Graph, trusted: &TrustedHosts) -> Vec<Una
         .into_iter()
         .map(|node| {
             let carries_unvetted = super::sending::passes_on_unvetted_output(&node.kind, &node.doc.config, &unvetted);
-            let trustable_host = (node.kind == HTTP_REQUEST_KIND && !carries_unvetted)
+            let trustable_host = (&*node.kind == HTTP_REQUEST_KIND && !carries_unvetted)
                 .then(|| {
                     super::sending::check_http_request(&node.doc.config, trusted).trustable_host().map(str::to_owned)
                 })
@@ -97,12 +97,12 @@ pub(super) fn is_sending_kind(kind: &str, config: &serde_json::Map<String, Json>
     super::sending::is_sending_kind(kind, config, trusted)
 }
 
-/// `on_timeout: stop`, `on_timeout: { action: <id> }` or `on_timeout: <id>` of a `human-input` config.
+/// `on_expire: stop` or `on_expire: { action: <id> }` of a `human-input` config (graphrt
+/// refuses other forms; older documents are upgraded by [`super::migration`]).
 pub(crate) fn read_timeout_choice(config: &serde_json::Map<String, Json>) -> TimeoutChoice {
-    let action_id = match config.get(ON_TIMEOUT_KEY) {
+    let action_id = match config.get(ON_EXPIRE_KEY) {
         None | Some(Json::Null) => return TimeoutChoice::Stop,
         Some(Json::String(text)) if text.trim() == STOP_ON_TIMEOUT => return TimeoutChoice::Stop,
-        Some(Json::String(text)) => Some(text.as_str()),
         Some(Json::Object(choice)) => choice.get("action").and_then(Json::as_str),
         Some(_) => None,
     };
@@ -130,11 +130,11 @@ fn read_action_ids(config: &serde_json::Map<String, Json>) -> Vec<String> {
     }
 }
 
-/// Approval steps whose `on_timeout` answer leads to a sending step.
+/// Approval steps whose `on_expire` answer leads to a sending step.
 pub(crate) fn timeouts_that_send(graph: &Graph, trusted: &TrustedHosts) -> Vec<TimeoutSend> {
     (0..graph.nodes().len())
         .filter_map(|node_index| graph.node(node_index).map(|node| (node_index, node)))
-        .filter(|(_, node)| node.kind == APPROVAL_KIND)
+        .filter(|(_, node)| &*node.kind == APPROVAL_KIND)
         .filter_map(|(node_index, node)| {
             let TimeoutChoice::Answer(action) = read_timeout_choice(&node.doc.config) else { return None };
             let sending_step = first_send_after_action(graph, node_index, &action, trusted)?;
@@ -165,7 +165,7 @@ fn first_send_after_action<'graph>(
             continue;
         }
         let node = graph.node(node_index)?;
-        if node.kind == APPROVAL_KIND {
+        if &*node.kind == APPROVAL_KIND {
             continue;
         }
         if is_sending_step(node, &unvetted, trusted) {
@@ -221,7 +221,7 @@ fn reachable_without_approval(graph: &Graph, target: NodeIx) -> bool {
         let Some(node) = graph.node(node_index) else {
             continue;
         };
-        if node_index != target && node.kind == APPROVAL_KIND {
+        if node_index != target && &*node.kind == APPROVAL_KIND {
             continue;
         }
         let predecessors: Vec<NodeIx> = graph

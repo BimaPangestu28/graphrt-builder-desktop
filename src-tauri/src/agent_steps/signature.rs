@@ -104,7 +104,7 @@ fn collect_typed_inputs(graph: &Graph) -> Vec<(String, InputValueType, Vec<Strin
     graph
         .nodes()
         .iter()
-        .filter(|node| node.kind == "start")
+        .filter(|node| &*node.kind == "start")
         .filter_map(|node| node.doc.config.get("variables").and_then(Json::as_array))
         .flatten()
         .filter_map(|variable| {
@@ -130,13 +130,13 @@ fn collect_outputs(graph: &Graph) -> Vec<String> {
     let mut outputs: Vec<String> = graph
         .nodes()
         .iter()
-        .filter(|node| node.kind == "end")
+        .filter(|node| &*node.kind == "end")
         .filter_map(|node| node.doc.config.get("outputs").and_then(Json::as_array))
         .flatten()
         .filter_map(|output| output.get("variable").and_then(Json::as_str))
         .map(str::to_owned)
         .collect();
-    if graph.nodes().iter().any(|node| node.kind == "answer") && !outputs.iter().any(|output| output == "answer") {
+    if graph.nodes().iter().any(|node| &*node.kind == "answer") && !outputs.iter().any(|output| output == "answer") {
         outputs.push("answer".into());
     }
     outputs.dedup();

@@ -3,6 +3,7 @@
 //! for the builder (screen 04) and run views (06, 07, 20).
 
 mod approval;
+pub mod migration;
 mod placeholders;
 mod sending;
 mod summary;
@@ -251,7 +252,7 @@ pub fn has_trusted_lookups(graph: &graphrt_core::Graph, trusted: &TrustedHosts) 
         && graph
             .nodes()
             .iter()
-            .filter(|node| node.kind == "http-request")
+            .filter(|node| &*node.kind == "http-request")
             .any(|node| matches!(check_http_request(&node.doc.config, trusted), HttpRequestCheck::TrustedLookup { .. }))
 }
 
@@ -276,7 +277,7 @@ pub(crate) fn timeouts_that_send(graph: &graphrt_core::Graph, trusted: &TrustedH
 pub(crate) fn timeout_send_message(timeout: &TimeoutSend) -> String {
     format!(
         "{} answers `{}` by itself when its time runs out, and that leads to {}, which sends without asking: \
-         set its `on_timeout` to `stop` or to a button that does not lead to a send",
+         set its `on_expire` to `stop` or to a button that does not lead to a send",
         timeout.approval_label, timeout.action, timeout.sending_step_label
     )
 }

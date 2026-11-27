@@ -378,14 +378,14 @@ fn an_approval_that_stops_or_skips_on_timeout_is_allowed() {
         find_unapproved_sending_steps(&stops, &crate::flow::TrustedHosts::none()).unwrap(),
         Vec::<String>::new()
     );
-    let skips = stops.replace("on_timeout: stop", "on_timeout: { action: skip }");
+    let skips = stops.replace("on_expire: stop", "on_expire: { action: skip }");
     assert_eq!(find_timeouts_that_send(&skips, &crate::flow::TrustedHosts::none()).unwrap(), Vec::<String>::new());
-    let unknown_button = stops.replace("on_timeout: stop", "on_timeout: publish");
-    assert_eq!(
-        find_timeouts_that_send(&unknown_button, &crate::flow::TrustedHosts::none()).unwrap(),
-        Vec::<String>::new(),
-        "an unknown button stops"
-    );
+    // graphrt refuses a button the step does not have, and a bare id instead of `{ action: <id> }`.
+    for refused in ["on_expire: { action: publish }", "on_expire: skip"] {
+        let document = stops.replace("on_expire: stop", refused);
+        let error = find_timeouts_that_send(&document, &crate::flow::TrustedHosts::none()).unwrap_err();
+        assert!(error.to_string().contains("on_expire"), "{refused}: {error}");
+    }
 }
 
 #[test]
@@ -395,15 +395,17 @@ fn a_timeout_answer_that_leads_to_a_send_names_both_steps() {
     assert_eq!(messages.len(), 1);
     assert!(messages[0].contains("Ask before posting") && messages[0].contains("Post the note"), "{}", messages[0]);
     assert!(messages[0].contains("`stop`"), "{}", messages[0]);
-    let as_plain_answer = draft.replace("on_timeout: { action: send }", "on_timeout: send");
-    assert_eq!(find_timeouts_that_send(&as_plain_answer, &crate::flow::TrustedHosts::none()).unwrap().len(), 1);
+    // The bare id older documents used is upgraded to `{ action: send }`, and caught the same way.
+    let as_plain_answer = draft.replace("on_expire: { action: send }", "on_timeout: send");
+    let upgraded = crate::flow::migration::upgraded_flow_yaml(&as_plain_answer).unwrap();
+    assert_eq!(find_timeouts_that_send(&upgraded, &crate::flow::TrustedHosts::none()).unwrap().len(), 1);
 }
 
 #[test]
 fn a_timeout_answer_into_a_loop_with_a_send_inside_is_caught() {
     // The per-message approval moved in front of the loop, answering `send` on timeout.
     let answers_into_the_loop = test_fixtures::without_search_confirmation(APPROVAL_LOOP)
-        .replace("      type: human-input\n      parent: each_cafe\n", "      type: human-input\n      on_timeout: send\n")
+        .replace("      type: human-input\n      parent: each_cafe\n", "      type: human-input\n      on_expire: { action: send }\n")
         .replace(
             "    - { source: find_cafes, target: each_cafe }",
             "    - { source: find_cafes, target: approve_message }\n    - { source: approve_message, target: each_cafe, handle: send }",
@@ -467,8 +469,8 @@ fn runs_with_trusted_lookups_are_recognized() {
 
 #[test]
 fn a_timeout_answer_into_a_trusted_lookup_does_not_send() {
-    let ask = "    - { id: ask, type: human-input, prompt: \"Look it up?\", timeout_ms: 1000, \
-               on_timeout: { action: submit } }\n    - id: lookup\n";
+    let ask = "    - { id: ask, type: human-input, prompt: \"Look it up?\", expire_after_ms: 1000, \
+               on_expire: { action: submit } }\n    - id: lookup\n";
     let with_approval = test_fixtures::trusted_weather_lookup().replace("    - id: lookup\n", ask).replace(
         "{ source: start, target: lookup }",
         "{ source: start, target: ask }\n    - { source: ask, target: lookup, handle: submit }",

@@ -19,6 +19,12 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 - **Linux without a password keyring**: on a computer whose keyring has no default keyring yet (a fresh install) or that runs no keyring at all, every bot reply and run failed with "credential store error: could not read the openai key", even when it only used Ollama. A key that was never saved now simply counts as not set, so Ollama and the AI tools on your computer keep working. Saving a key there now says what is wrong and how to fix it (create a default keyring in "Passwords and Keys", start a keyring, or unlock it) instead of a technical error. Keys are still never written to a plain file.
 
+### Changed
+
+- **HTTP request time limits now apply**: the `timeout: { connect, read }` you set on an HTTP request step used to be ignored, so a slow site could hold the step until the step's overall time limit. It now applies: a site that does not connect or answer in time fails the step (and its "When this step fails" settings take over).
+- **Approval time limits use graphrt's own fields**: an "Ask me before continuing" step's time limit is now saved as `expire_after_ms` and what happens when it runs out as `on_expire` (`stop`, or the button to answer with). Your agents are upgraded once when the app starts, and every saved version too; nothing changes in how they behave. Workflow files exported or deployed from the app now validate with the `graphrt` command as well.
+- **Stricter workflow check**: the app now uses graphrt's workflow format v1, which refuses keys it does not know, so a typo in a step's settings is reported instead of being silently ignored. Tools can keep their own notes on a step under keys that start with `x-`.
+
 ## [0.2.0] - 2026-11-26
 
 Agents can now start on their own when something happens, the app speaks Bahasa Indonesia, and agents can use online services through MCP sign-in.

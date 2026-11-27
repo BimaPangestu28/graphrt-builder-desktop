@@ -35,7 +35,7 @@ use std::time::Duration;
 
 use futures::future::BoxFuture;
 use futures::StreamExt;
-use graphrt_core::tool::{ToolError, ToolOutput, ToolRegistry, ToolRuntime, ToolSpec};
+use graphrt_core::tool::{ToolCallContext, ToolError, ToolOutput, ToolRegistry, ToolRuntime, ToolSpec};
 use graphrt_core::{Event, IndexMap, RunInput, RunStream, Value};
 
 use super::{preparation, ModelRegistrySource};
@@ -214,7 +214,13 @@ impl ToolRuntime for AgentToolRuntime {
         Box::pin(async move { self.list_specs() })
     }
 
-    fn call<'a>(&'a self, name: &'a str, arguments: serde_json::Value) -> BoxFuture<'a, Result<ToolOutput, ToolError>> {
+    /// `context` is always empty here: this runtime does not accept secrets.
+    fn call<'a>(
+        &'a self,
+        name: &'a str,
+        arguments: serde_json::Value,
+        _context: &'a ToolCallContext,
+    ) -> BoxFuture<'a, Result<ToolOutput, ToolError>> {
         Box::pin(self.call_agent(name, arguments))
     }
 }
@@ -265,5 +271,5 @@ fn success_output(outputs: IndexMap<String, Value>) -> ToolOutput {
         Some(Value::String(only_text)) if outputs.len() == 1 => only_text.to_string(),
         _ => serde_json::to_string(&outputs).unwrap_or_default(),
     };
-    ToolOutput { text, data: Value::from(outputs), is_error: false }
+    ToolOutput { text, data: Value::from(outputs), is_error: false, images: Vec::new() }
 }

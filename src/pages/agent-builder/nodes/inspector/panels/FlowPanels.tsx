@@ -280,25 +280,32 @@ function ApprovalFieldsEditor() {
 
 const millisecondsPerHour = 3_600_000
 
-/** `on_timeout` as a select value: `stop` or `action:<id>`. */
-export function readOnTimeout(config: NodeConfig): string {
-  const onTimeout = config.on_timeout
-  if (isJsonObject(onTimeout) && typeof onTimeout.action === 'string') return `action:${onTimeout.action}`
+/** `on_expire` as a select value: `stop` or `action:<id>`. */
+export function readOnExpire(config: NodeConfig): string {
+  const onExpire = config.on_expire
+  if (isJsonObject(onExpire) && typeof onExpire.action === 'string') return `action:${onExpire.action}`
   return 'stop'
 }
 
-function toOnTimeout(choice: string): JsonValue {
+function toOnExpire(choice: string): JsonValue {
   return choice.startsWith('action:') ? { action: choice.slice(7) } : 'stop'
+}
+
+/** The step's time limit (`expire_after_ms`), or null when it waits until answered. */
+function readExpireAfterMs(config: NodeConfig): number | null {
+  const value = config.expire_after_ms
+  return typeof value === 'number' && value > 0 ? value : null
 }
 
 /** Settings of Ask me before continuing: question, fields, buttons (ports) and time limit. */
 export function HumanInputPanel() {
-  const { node, readOnly, setConfigValue, updateNode } = useInspector()
+  const { node, readOnly, setConfigValue } = useInspector()
   const promptKey = node.config.prompt === undefined && typeof node.config.content === 'string' ? 'content' : 'prompt'
   const actions = readConfigList(node.config, ['actions']).filter(isJsonObject)
   const writeActions = (next: JsonObject[], what: string) => setConfigValue(['actions'], next, what)
-  const hours = node.timeoutMs === null ? null : Number((node.timeoutMs / millisecondsPerHour).toFixed(2))
-  const timeoutChoice = readOnTimeout(node.config)
+  const expireAfterMs = readExpireAfterMs(node.config)
+  const hours = expireAfterMs === null ? null : Number((expireAfterMs / millisecondsPerHour).toFixed(2))
+  const timeoutChoice = readOnExpire(node.config)
   return (
     <>
       <InspectorSection title={messages().nodes.question}>
@@ -334,17 +341,17 @@ export function HumanInputPanel() {
         </AddButton>
         <p className={hintClassName}>{messages().nodes.eachButtonIsAPortThe}</p>
       </InspectorSection>
-      <InspectorSection title={messages().nodes.timeLimit} defaultOpen={node.timeoutMs !== null}>
+      <InspectorSection title={messages().nodes.timeLimit} defaultOpen={expireAfterMs !== null}>
         <Field label={messages().nodes.expireTheRequestAfter}>
-          <NumberInput ariaLabel={messages().nodes.hours} value={hours} min={0.01} max={8760} step={0.5} suffix={messages().nodes.hoursEmptyWaitsUntilYouAnswer} disabled={readOnly} onCommit={(nextHours) => updateNode({ timeoutMs: nextHours === null ? null : Math.round(nextHours * millisecondsPerHour) }, nextHours === null ? messages().nodes.removedTheApprovalTimeLimit : messages().nodes.setTheApprovalToExpireAfter(nextHours))} />
+          <NumberInput ariaLabel={messages().nodes.hours} value={hours} min={0.01} max={8760} step={0.5} suffix={messages().nodes.hoursEmptyWaitsUntilYouAnswer} disabled={readOnly} onCommit={(nextHours) => setConfigValue(['expire_after_ms'], nextHours === null ? undefined : Math.round(nextHours * millisecondsPerHour), nextHours === null ? messages().nodes.removedTheApprovalTimeLimit : messages().nodes.setTheApprovalToExpireAfter(nextHours))} />
         </Field>
         <Field label={messages().nodes.whenItExpires}>
           <SelectInput
             ariaLabel={messages().nodes.whenItExpires}
             value={timeoutChoice}
-            disabled={readOnly || node.timeoutMs === null}
+            disabled={readOnly || expireAfterMs === null}
             options={[{ value: 'stop', label: messages().nodes.stopTheRunDefault }, ...actions.map((action) => ({ value: `action:${readConfigText(action, ['id'])}`, label: messages().nodes.answerWith(readConfigText(action, ['title']) || readConfigText(action, ['id'])) }))]}
-            onChange={(choice) => setConfigValue(['on_timeout'], choice === 'stop' ? undefined : toOnTimeout(choice), choice === 'stop' ? messages().nodes.stoppedTheRunWhenTheApproval : messages().nodes.answeredAButtonWhenTheApproval)}
+            onChange={(choice) => setConfigValue(['on_expire'], choice === 'stop' ? undefined : toOnExpire(choice), choice === 'stop' ? messages().nodes.stoppedTheRunWhenTheApproval : messages().nodes.answeredAButtonWhenTheApproval)}
           />
         </Field>
         <p className={hintClassName}>{messages().nodes.aButtonAnswerUsesTheFields}</p>

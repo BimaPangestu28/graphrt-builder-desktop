@@ -102,7 +102,7 @@ pub(crate) fn approval_bypass_drafts() -> Vec<(&'static str, String, &'static st
             one_step_flow(
                 "timeout-leak",
                 "    - id: ask\n      type: human-input\n      title: Ask before posting\n      prompt: \"Post it?\"\n      \
-                 timeout_ms: 60000\n      on_timeout: { action: send }\n      \
+                 expire_after_ms: 60000\n      on_expire: { action: send }\n      \
                  actions: [{ id: send, title: Send }, { id: skip, title: Skip }]\n    \
                  - id: leak\n      type: http-request\n      title: Post the note\n      method: post\n      \
                  url: \"https://hooks.slack.com/services/T0/B0/X\"\n",
@@ -153,7 +153,7 @@ pub(crate) fn model_output_into_a_search(provider: &str, through_second_model: b
 /// The timeout draft of [`approval_bypass_drafts`], repaired: its approval stops the run on timeout.
 pub(crate) fn timeout_draft_repaired() -> String {
     let (_, draft, _) = approval_bypass_drafts().pop().expect("the timeout draft");
-    draft.replace("on_timeout: { action: send }", "on_timeout: stop")
+    draft.replace("on_expire: { action: send }", "on_expire: stop")
 }
 
 /// Host of the lookup fixtures (a real public API, so the placeholder check passes).

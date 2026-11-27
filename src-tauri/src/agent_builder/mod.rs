@@ -428,7 +428,7 @@ async fn ask_model(
         on_progress(BuildProgress { stage, message: message.to_owned(), draft: Some(draft) });
     };
     let response = graphrt_llm::collect(stream, |delta| {
-        if let Some(preview) = watcher.push(delta, Instant::now()) {
+        if let Some(preview) = watcher.push(&delta, Instant::now()) {
             send_preview(preview);
         }
     })

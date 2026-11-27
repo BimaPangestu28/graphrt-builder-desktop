@@ -16,14 +16,14 @@ impl Database {
     /// Creates an agent as version 1 with status `Draft` and records that version.
     pub fn create_agent(&self, new_agent: NewAgent) -> AppResult<Agent> {
         let name = validated_name(&new_agent.name)?;
-        validate_flow(&new_agent.flow_yaml)?;
+        let flow_yaml = prepared_flow(&new_agent.flow_yaml)?;
         let now = now_rfc3339();
         let agent = Agent {
             id: uuid::Uuid::new_v4().to_string(),
             name,
             kind: new_agent.kind,
             description: new_agent.description,
-            flow_yaml: new_agent.flow_yaml,
+            flow_yaml,
             status: AgentStatus::Draft,
             current_version: 1,
             created_at: now.clone(),
@@ -67,7 +67,7 @@ impl Database {
 
     /// Saves a new flow as the next version and makes it current.
     pub fn update_agent_flow(&self, agent_id: &str, flow_yaml: &str, change_summary: &str) -> AppResult<Agent> {
-        validate_flow(flow_yaml)?;
+        let flow_yaml = &prepared_flow(flow_yaml)?;
         let mut connection = self.lock()?;
         let transaction = connection.transaction()?;
         let agent = fetch_agent(&transaction, agent_id)?;
@@ -91,7 +91,7 @@ impl Database {
         flow_yaml: &str,
         change_summary: &str,
     ) -> AppResult<Agent> {
-        validate_flow(flow_yaml)?;
+        let flow_yaml = &prepared_flow(flow_yaml)?;
         let mut connection = self.lock()?;
         let transaction = connection.transaction()?;
         let agent = fetch_agent(&transaction, agent_id)?;
@@ -267,9 +267,47 @@ fn validated_name(name: &str) -> AppResult<String> {
     Ok(trimmed_name.to_string())
 }
 
-fn validate_flow(flow_yaml: &str) -> AppResult<()> {
+/// `flow_yaml` in the current document form (see [`crate::flow::migration`]).
+///
+/// # Errors
+/// `InvalidInput` for an empty flow.
+fn prepared_flow(flow_yaml: &str) -> AppResult<String> {
     if flow_yaml.trim().is_empty() {
         return Err(AppError::InvalidInput("agent flow must not be empty".into()));
+    }
+    crate::flow::migration::upgraded_flow_yaml(flow_yaml)
+}
+
+/// Rewrites stored flows (current and every version) still in an older document
+/// form; a flow that needs no change is not touched. Runs when the database opens.
+///
+/// # Errors
+/// Storage errors; a document that cannot be rewritten is logged and kept.
+pub(super) fn upgrade_stored_flows(connection: &Connection) -> AppResult<()> {
+    for (table, key_columns) in [("agents", "id"), ("agent_versions", "agent_id, version")] {
+        let select = format!("SELECT rowid, flow_yaml FROM {table}");
+        let rows: Vec<(i64, String)> = {
+            let mut statement = connection.prepare(&select)?;
+            let mapped = statement.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+            mapped.collect::<Result<_, _>>()?
+        };
+        let mut upgraded = 0;
+        for (rowid, flow_yaml) in rows {
+            match crate::flow::migration::migrate_flow_yaml(&flow_yaml) {
+                Ok(Some(new_flow)) => {
+                    connection.execute(
+                        &format!("UPDATE {table} SET flow_yaml = ?1 WHERE rowid = ?2"),
+                        params![new_flow, rowid],
+                    )?;
+                    upgraded += 1;
+                }
+                Ok(None) => {}
+                Err(error) => log::warn!("kept a stored flow of {table} ({key_columns}) in its old form: {error}"),
+            }
+        }
+        if upgraded > 0 {
+            log::info!("upgraded {upgraded} stored flow(s) in {table} to the current document form");
+        }
     }
     Ok(())
 }
@@ -303,6 +341,53 @@ mod tests {
     use super::*;
     use crate::storage::models::{AgentKind, MissedRunPolicy, NewTrigger, RunTrigger};
     use crate::storage::test_support::{create_test_agent, test_database};
+
+    const LEGACY_APPROVAL_FLOW: &str = "version: \"1\"\ngraph:\n  nodes:\n    - id: start\n      type: start\n    - id: ask\n      type: human-input\n      timeout_ms: 60000\n      on_timeout: { action: submit }\n    - id: end\n      type: end\n  edges:\n    - { source: start, target: ask }\n    - { source: ask, target: end, handle: submit }\n";
+
+    /// Writes `flow_yaml` as an agent's current flow and its version 1, bypassing the
+    /// upgrade on write (as a database from an older app would hold it).
+    fn store_raw_flow(database: &Database, agent_id: &str, flow_yaml: &str) {
+        let connection = database.lock().unwrap();
+        connection.execute("UPDATE agents SET flow_yaml = ?1 WHERE id = ?2", params![flow_yaml, agent_id]).unwrap();
+        connection
+            .execute("UPDATE agent_versions SET flow_yaml = ?1 WHERE agent_id = ?2", params![flow_yaml, agent_id])
+            .unwrap();
+    }
+
+    #[test]
+    fn stored_flows_in_the_old_form_are_upgraded_when_the_database_opens() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("graphrt.db");
+        let agent_id = {
+            let database = Database::open(&path).unwrap();
+            let agent = create_test_agent(&database, "Approvals");
+            store_raw_flow(&database, &agent.id, LEGACY_APPROVAL_FLOW);
+            agent.id
+        };
+
+        let database = Database::open(&path).unwrap();
+        let upgraded = database.get_agent(&agent_id).unwrap().flow_yaml;
+        assert!(upgraded.contains("expire_after_ms: 60000") && upgraded.contains("on_expire"), "{upgraded}");
+        assert!(!upgraded.contains("on_timeout") && !upgraded.contains("timeout_ms"), "{upgraded}");
+        assert_eq!(database.list_agent_versions(&agent_id).unwrap()[0].flow_yaml, upgraded, "versions too");
+        crate::flow::compile_flow(&upgraded).unwrap();
+        drop(database);
+
+        let reopened = Database::open(&path).unwrap();
+        assert_eq!(reopened.get_agent(&agent_id).unwrap().flow_yaml, upgraded, "upgrading again changes nothing");
+    }
+
+    #[test]
+    fn a_flow_saved_in_the_old_form_is_stored_upgraded() {
+        let database = test_database();
+        let agent = create_test_agent(&database, "Approvals");
+        let saved = database.update_agent_flow(&agent.id, LEGACY_APPROVAL_FLOW, "old form").unwrap();
+        assert!(
+            saved.flow_yaml.contains("on_expire") && !saved.flow_yaml.contains("on_timeout"),
+            "{}",
+            saved.flow_yaml
+        );
+    }
 
     #[test]
     fn create_agent_starts_as_draft_version_one() {

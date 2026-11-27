@@ -74,7 +74,7 @@ fn append_scope_steps(
         let Some(node) = graph.node(node_index) else {
             continue;
         };
-        if !HIDDEN_KINDS.contains(&node.kind.as_str()) {
+        if !HIDDEN_KINDS.contains(&&*node.kind) {
             steps.push(build_step(node, depth));
         }
         if let Some(body) = graph.scope_of(node_index) {
@@ -92,7 +92,7 @@ fn push_step(
     steps: &mut Vec<FlowStep>,
 ) {
     visited.insert(node_index);
-    if HIDDEN_KINDS.contains(&node.kind.as_str()) {
+    if HIDDEN_KINDS.contains(&&*node.kind) {
         return;
     }
     let mut depth = 0;
@@ -115,7 +115,7 @@ fn build_step(node: &GraphNode, depth: u32) -> FlowStep {
         .map_or_else(|| fallback_title(&node.kind), str::to_owned);
     FlowStep {
         id: node.id.to_string(),
-        node_type: node.kind.clone(),
+        node_type: node.kind.to_string(),
         title,
         detail: step_detail(&node.kind, config),
         needs_approval: step_needs_approval(&node.kind, config),
@@ -251,7 +251,7 @@ fn collect_inputs(graph: &Graph) -> Vec<FlowInput> {
     graph
         .nodes()
         .iter()
-        .filter(|node| node.kind == "start")
+        .filter(|node| &*node.kind == "start")
         .filter_map(|node| node.doc.config.get("variables").and_then(Json::as_array))
         .flatten()
         .filter_map(build_input)
@@ -297,7 +297,7 @@ fn collect_model_providers(graph: &Graph) -> Vec<String> {
     let providers: BTreeSet<String> = graph
         .nodes()
         .iter()
-        .filter(|node| MODEL_KINDS.contains(&node.kind.as_str()))
+        .filter(|node| MODEL_KINDS.contains(&&*node.kind))
         .filter_map(|node| model_field(&node.doc.config, "provider"))
         .map(str::to_owned)
         .collect();

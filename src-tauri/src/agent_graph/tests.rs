@@ -81,7 +81,7 @@ fn an_approval_answering_into_a_send_on_timeout_explains_how_to_fix_it() {
     let (_, draft, _) = flow::test_fixtures::approval_bypass_drafts().pop().unwrap();
     let graph = graph_of(&draft, &registry);
     let problem = graph.problems.iter().find(|problem| problem.code == problem_codes::APPROVAL_TIMEOUT_SENDS).unwrap();
-    assert!(problem.message.contains("on_timeout") && problem.message.contains("`stop`"), "{}", problem.message);
+    assert!(problem.message.contains("on_expire") && problem.message.contains("`stop`"), "{}", problem.message);
     assert!(node(&graph, "leak").sends_data);
 
     let repaired = graph_of(&flow::test_fixtures::timeout_draft_repaired(), &registry);
@@ -142,13 +142,15 @@ async fn every_fixture_round_trips_through_an_unchanged_edit() {
 }
 
 #[test]
+/// graphrt refuses unknown keys except `x-` ones, which tools may add anywhere; the
+/// editor keeps those where they were.
 fn unknown_keys_are_kept_at_every_level() {
     let flow_yaml = "\
 version: \"1\"
 name: extra
 x-owner: { team: growth }
 graph:
-  layout_hint: compact
+  x-layout_hint: compact
   nodes:
     - id: start
       type: start
@@ -158,7 +160,7 @@ graph:
       title: Ask
       model: { provider: openai, name: gpt-4o-mini }
       prompt_template: [{ role: user, text: 'yes' }]
-      future_option: { nested: [1, 2.5, true, null, \"no\"] }
+      x-future_option: { nested: [1, 2.5, true, null, \"no\"] }
       retry: { max_retries: 2, interval_ms: 500, backoff: 2.0 }
       on_error: { strategy: default-value, values: { text: fallback } }
     - id: end
@@ -175,13 +177,14 @@ graph:
 
     let position = |needle: &str| written.find(needle).unwrap_or_else(|| panic!("no {needle} in\n{written}"));
     assert!(
-        position("model:") < position("prompt_template:") && position("prompt_template:") < position("future_option:"),
+        position("model:") < position("prompt_template:")
+            && position("prompt_template:") < position("x-future_option:"),
         "config keys keep their order"
     );
     assert_eq!(raw["x-owner"]["team"], "growth");
-    assert_eq!(raw["graph"]["layout_hint"], "compact");
+    assert_eq!(raw["graph"]["x-layout_hint"], "compact");
     let ask = &raw["graph"]["nodes"][1];
-    assert_eq!(ask["future_option"], serde_json::json!({ "nested": [1, 2.5, true, null, "no"] }));
+    assert_eq!(ask["x-future_option"], serde_json::json!({ "nested": [1, 2.5, true, null, "no"] }));
     assert_eq!(ask["prompt_template"][0]["text"], "yes", "strings that look like booleans stay strings");
     assert_eq!(ask["retry"]["max_retries"], 2);
     assert_eq!(ask["on_error"], serde_json::json!({ "strategy": "default-value", "values": { "text": "fallback" } }));

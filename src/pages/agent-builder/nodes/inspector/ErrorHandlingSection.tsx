@@ -100,7 +100,7 @@ export function ErrorHandlingSection() {
   const isHttp = node.kind === 'http-request'
   const method = readConfigText(node.config, ['method']).toLowerCase() || 'get'
   const isNonIdempotent = isHttp && (method === 'post' || method === 'patch') && node.config.retry_non_idempotent !== true
-  // Approvals and tools set `timeout_ms` in their own panel (expiry, tool wait).
+  // Approvals set their time limit (`expire_after_ms`) and tools their wait (`timeout_ms`) in their own panel.
   const ownsTimeout = node.kind === 'human-input' || node.kind === 'tool'
   return (
     <InspectorSection title={messages().nodes.whenThisStepFails} sectionKey="on-error" defaultOpen={onError.strategy !== 'fail' || retry.maxRetries > 0}>

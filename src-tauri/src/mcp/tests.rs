@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use graphrt_core::tool::ToolRegistry;
+use graphrt_core::tool::{ToolCallContext, ToolRegistry};
 use graphrt_mcp::McpTransport;
 
 use super::definitions::{
@@ -219,7 +219,7 @@ async fn a_server_that_cannot_start_fails_only_when_used() {
     let error = runtime.list().await.unwrap_err();
     assert_eq!(error.tool, "ghost/*");
     assert!(error.message.contains("ghost"), "{}", error.message);
-    let call_error = runtime.call("anything", serde_json::json!({})).await.unwrap_err();
+    let call_error = runtime.call("anything", serde_json::json!({}), ToolCallContext::empty()).await.unwrap_err();
     assert_eq!(call_error.message, error.message, "the failed connection is not retried within a run");
 }
 
@@ -311,9 +311,9 @@ async fn checks_a_real_stdio_server_and_calls_its_tools_in_a_run_registry() {
     let mut registry = ToolRegistry::new();
     register_servers(&mut registry, &[checked], &credentials);
     let runtime = registry.get("mcp:fake").unwrap();
-    let echoed = runtime.call("echo", serde_json::json!({"text": "hello"})).await.unwrap();
+    let echoed = runtime.call("echo", serde_json::json!({"text": "hello"}), ToolCallContext::empty()).await.unwrap();
     assert_eq!(echoed.text, "hello");
-    let token = runtime.call("token", serde_json::json!({})).await.unwrap();
+    let token = runtime.call("token", serde_json::json!({}), ToolCallContext::empty()).await.unwrap();
     assert_eq!(token.text, "token-from-keychain", "the named secret reaches the server as an env variable");
 }
 

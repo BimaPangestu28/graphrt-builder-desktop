@@ -141,7 +141,7 @@ pub struct TeamOverview {
 pub fn team_overview(db: &Database, team_agent_id: &str) -> AppResult<TeamOverview> {
     let team_agent = db.get_agent(team_agent_id)?;
     let graph = flow::compile_flow(&team_agent.flow_yaml)?;
-    let coordinator = graph.nodes().iter().find(|node| node.kind == "agent");
+    let coordinator = graph.nodes().iter().find(|node| &*node.kind == "agent");
     let member_references = coordinator.map(references::node_references).unwrap_or_default();
     let all_agents = db.list_agents()?;
     let member_agents: Vec<&Agent> = if member_references.includes_every_agent {

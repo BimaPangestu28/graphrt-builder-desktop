@@ -47,7 +47,7 @@ action to that step. Inside an `iteration` that contains `human-input`, set `is_
 body reads a `{{#…#}}` value (except a read-only lookup on a trusted host, see below), `tool` steps and plugin \
 steps that change something, and `agent` steps with such tools unless `require_approval` lists each of them. \
 Put a `human-input` before those too. A `human-input` with a \
-time limit must use `on_timeout: stop` or a button that does not lead to a sending step.
+time limit (`expire_after_ms`) must use `on_expire: stop` or a button that does not lead to a sending step.
 - Keys and tokens for third-party services go under `env` with `type: secret` and are read as `{{#env.NAME#}}`. \
 Never write a real or made-up key into the document.
 - Every `llm`, `agent`, `question-classifier` and `parameter-extractor` node uses \

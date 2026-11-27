@@ -305,7 +305,7 @@ async fn unknown_agents_are_a_tool_error() {
     };
     let registry = agent_tool_registry(&dependencies, vec!["caller".into()]);
     let runtime = registry.get(AGENT_TOOL_PROVIDER).unwrap();
-    let error = runtime.call("ghost", json!({})).await.unwrap_err();
+    let error = runtime.call("ghost", json!({}), ToolCallContext::empty()).await.unwrap_err();
     assert!(error.message.contains("not found"));
     create_agent(&db, "Listed", SUMMARIZER_FLOW);
     let specs = runtime.list().await.unwrap();
