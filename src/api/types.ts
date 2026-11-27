@@ -187,6 +187,8 @@ export interface FlowInput {
   options?: string[]
   /** The workflow's `default`, if any. */
   defaultValue?: unknown
+  /** The variable's JSON schema, when the workflow gives one (the columns of a list input). */
+  schema?: unknown
 }
 
 /** A value the workflow reads from `env.<name>` (API keys, tokens, account ids). */

@@ -54,6 +54,10 @@ pub struct FlowInput {
     /// The document's `default`, if any.
     #[serde(default)]
     pub default_value: Option<serde_json::Value>,
+    /// The variable's `json_schema` (or `schema`), when the document gives one: the form
+    /// reads the columns of a list input from it. The runtime ignores the field.
+    #[serde(default)]
+    pub schema: Option<serde_json::Value>,
 }
 
 /// graphrt's start variable type when none is given.
@@ -73,6 +77,7 @@ impl FlowInput {
             input_type: default_input_type(),
             options: Vec::new(),
             default_value: None,
+            schema: None,
         }
     }
 }

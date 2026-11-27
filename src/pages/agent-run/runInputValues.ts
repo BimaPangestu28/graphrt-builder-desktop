@@ -1,19 +1,54 @@
 import type { RunInputs } from '@/api/runReviewTypes'
 import type { FlowInput } from '@/api/types'
 import { messages } from '@/i18n'
+import { listColumns, rowsFromValue, valueFromRows, type ListColumn, type ListRow } from './listInput'
 
 /**
  * Form state of a flow's start inputs (screen 06): the control each graphrt input type gets,
  * the values a form starts with (the last run's inputs, else the workflow default) and the
  * typed inputs a run starts with. Text and number values are kept as strings, checkboxes as
  * booleans, a file as its path and a file list as a list of paths (absolute in the desktop app,
- * which turns them into graphrt files; plain names in the browser preview).
+ * which turns them into graphrt files; plain names in the browser preview). A JSON input that
+ * is a list of simple records is kept as rows (see `listInput.ts`), any other JSON as text.
  */
 
 export type RunInputControl = 'text' | 'textarea' | 'number' | 'checkbox' | 'select' | 'json' | 'file' | 'file-list'
 
-/** One input's form value: text, a checkbox, or the chosen file paths of a file list. */
-export type RunInputValue = string | boolean | string[]
+/** A list input shown as rows: its columns and one entry per row, empty cells included. */
+export interface ListRowsState {
+  columns: ListColumn[]
+  rows: ListRow[]
+}
+
+/** One input's form value: text, a checkbox, the chosen file paths of a file list, or the rows of a list. */
+export type RunInputValue = string | boolean | string[] | ListRowsState
+
+export function isListRowsState(value: RunInputValue | undefined): value is ListRowsState {
+  return typeof value === 'object' && !Array.isArray(value)
+}
+
+/** The rows of a JSON input, or null when it is not a list of simple records (it stays text). */
+function toListRowsState(input: FlowInput, rawValue: unknown): ListRowsState | null {
+  // The default's keys count too: a column left empty in the last run must not disappear.
+  const defaultRecords = input.defaultValue
+  const sample = Array.isArray(rawValue) && Array.isArray(defaultRecords) ? [...defaultRecords, ...(rawValue as unknown[])] : rawValue
+  const columns = listColumns(input.schema, sample)
+  return columns ? { columns, rows: rowsFromValue(columns, rawValue) } : null
+}
+
+/** The rows as JSON text, for "Edit as text". */
+export function listRowsToJsonText(state: ListRowsState): string {
+  return JSON.stringify(valueFromRows(state.columns, state.rows).records, null, 2)
+}
+
+/** The rows `jsonText` can be shown as, or null when it is not a list of simple records. */
+export function jsonTextToListRows(input: FlowInput, jsonText: string): ListRowsState | null {
+  try {
+    return toListRowsState(input, JSON.parse(jsonText) as unknown)
+  } catch {
+    return null
+  }
+}
 
 export type RunInputValues = Record<string, RunInputValue>
 
@@ -50,6 +85,10 @@ function toFormValue(input: FlowInput, rawValue: unknown): RunInputValue {
   if (control === 'checkbox') return rawValue === true
   if (control === 'file-list') return toFileListValue(rawValue)
   if (control === 'file') return typeof rawValue === 'string' ? rawValue : ''
+  if (control === 'json' && typeof rawValue !== 'string') {
+    const listRows = toListRowsState(input, rawValue ?? null)
+    if (listRows) return listRows
+  }
   if (rawValue === null || rawValue === undefined) return control === 'select' ? (input.options?.[0] ?? '') : ''
   if (typeof rawValue === 'string') return rawValue
   return control === 'json' ? JSON.stringify(rawValue, null, 2) : String(rawValue)
@@ -82,10 +121,19 @@ function parseFileValue(input: FlowInput, formValue: RunInputValue | undefined):
   return { value: controlForInput(input) === 'file' ? paths[0] : paths }
 }
 
+function parseListRows(input: FlowInput, state: ListRowsState): { value?: unknown; problem?: string } {
+  const { records, invalidNumbers } = valueFromRows(state.columns, state.rows)
+  const [firstInvalid] = invalidNumbers
+  if (firstInvalid) return { problem: messages().agentRun.rowMustBeNumber(input.label, firstInvalid.rowNumber, firstInvalid.label) }
+  if (records.length === 0) return input.required ? { problem: messages().agentRun.addAtLeastOneRow(input.label) } : {}
+  return { value: records }
+}
+
 function parseInputValue(input: FlowInput, formValue: RunInputValue | undefined): { value?: unknown; problem?: string } {
   const control = controlForInput(input)
   if (control === 'checkbox') return { value: formValue === true }
   if (control === 'file' || control === 'file-list') return parseFileValue(input, formValue)
+  if (isListRowsState(formValue)) return parseListRows(input, formValue)
   const text = typeof formValue === 'string' ? formValue.trim() : ''
   if (text === '') return input.required ? { problem: messages().agentRun.fillInField(input.label) } : {}
   if (control === 'number') {

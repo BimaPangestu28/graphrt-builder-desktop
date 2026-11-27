@@ -1,8 +1,9 @@
 import { useId, useState, type FormEvent } from 'react'
 import type { RunInputs } from '@/api/runReviewTypes'
 import type { FlowInput } from '@/api/types'
+import { ListRowsInput } from './ListRowsInput'
 import { RunFileInput } from './RunFileInput'
-import { controlForInput, initialRunInputValues, parseRunInputValues, type RunInputValue, type RunInputValues } from './runInputValues'
+import { controlForInput, initialRunInputValues, isListRowsState, jsonTextToListRows, listRowsToJsonText, parseRunInputValues, type RunInputValue, type RunInputValues } from './runInputValues'
 import { messages } from '@/i18n'
 
 interface RunInputsFormProps {
@@ -12,6 +13,8 @@ interface RunInputsFormProps {
   isStarting: boolean
   onStart: (inputs: RunInputs) => void
 }
+
+const switchViewClassNames = 'cursor-pointer border-0 bg-transparent p-0 text-[12px] font-medium text-brand-strong hover:underline'
 
 const fieldClassNames =
   'box-border w-full rounded-[10px] border border-line-strong bg-surface px-3 text-[14px] text-ink outline-none focus:border-ink'
@@ -43,12 +46,34 @@ function InputControl({ input, value, onChange }: { input: FlowInput; value: Run
       </div>
     )
   }
+  if (isListRowsState(value)) {
+    return (
+      <div role="group" aria-label={labelText} className="flex flex-col gap-1.5">
+        <span className="flex items-baseline justify-between gap-3">
+          <span className="text-[12px] font-medium text-ink-2">{labelText}</span>
+          <button type="button" onClick={() => onChange(listRowsToJsonText(value))} className={switchViewClassNames}>
+            {messages().agentRun.editAsText}
+          </button>
+        </span>
+        <ListRowsInput columns={value.columns} rows={value.rows} onChange={(rows) => onChange({ columns: value.columns, rows })} />
+      </div>
+    )
+  }
   const textValue = typeof value === 'string' ? value : ''
+  // JSON text that is a list of simple records can go (back) to rows.
+  const listRows = control === 'json' ? jsonTextToListRows(input, textValue) : null
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={inputId} className="text-[12px] font-medium text-ink-2">
-        {labelText}
-      </label>
+      <span className="flex items-baseline justify-between gap-3">
+        <label htmlFor={inputId} className="text-[12px] font-medium text-ink-2">
+          {labelText}
+        </label>
+        {listRows && (
+          <button type="button" onClick={() => onChange(listRows)} className={switchViewClassNames}>
+            {messages().agentRun.showAsRows}
+          </button>
+        )}
+      </span>
       {control === 'select' && (
         <select id={inputId} value={textValue} required={input.required} onChange={(event) => onChange(event.target.value)} className={`h-10 ${fieldClassNames}`}>
           {(input.options ?? []).map((option) => (
