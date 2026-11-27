@@ -7,7 +7,7 @@ import { Button, joinClassNames } from '@/components/ui'
 import { useFlowSummary } from '@/hooks/useFlowSummary'
 import { useFollowNewContent } from '@/hooks/useFollowNewContent'
 import { describeError } from '@/lib/agentDisplay'
-import { builtAgentPath, connectionsTabPath, routePaths } from '@/routes'
+import { agentOpenPath, connectionsTabPath, routePaths } from '@/routes'
 import { BuildProgressChecklist, type BuildChecklistItem } from './agent-builder/BuildProgressChecklist'
 import { readBuildRequest } from './agent-builder/buildRequestState'
 import { PanelHeader, UserChatBubble } from './agent-builder/ChatBubbles'
@@ -145,7 +145,7 @@ function useOpenBuiltAgentWhenReady(builtAgent: Agent | null, pluginSetup: Plugi
   const navigate = useNavigate()
   const [isHeldForPlugins, setIsHeldForPlugins] = useState(false)
   const { isReady, loadError } = pluginSetup
-  const openPath = builtAgent ? builtAgentPath(builtAgent.id, builtAgent.kind) : null
+  const openPath = builtAgent ? agentOpenPath(builtAgent.id, builtAgent.kind) : null
   const opensAtOnce = openPath !== null && !isHeldForPlugins && (isReady === true || loadError !== null)
 
   useEffect(() => {
@@ -167,7 +167,7 @@ function ContinueButton({ agent, isReady }: { agent: Agent; isReady: boolean }) 
   const continueLabel = agent.kind === 'chatbot' ? messages().newAgent.continueToChatbotSetup : messages().newAgent.continueToSteps
   return (
     <div className="flex">
-      <Button size="sm" variant={isReady ? 'primary' : 'secondary'} onClick={() => navigate(builtAgentPath(agent.id, agent.kind))}>
+      <Button size="sm" variant={isReady ? 'primary' : 'secondary'} onClick={() => navigate(agentOpenPath(agent.id, agent.kind))}>
         {isReady ? continueLabel : messages().newAgent.continueWithoutThem}
       </Button>
     </div>

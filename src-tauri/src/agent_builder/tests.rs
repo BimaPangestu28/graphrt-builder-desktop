@@ -413,7 +413,7 @@ fn system_prompt_includes_the_chatbot_guide() {
     for system_prompt in
         [prompt::build_system_prompt(&choice, &[]), prompt::revision_system_prompt(&choice, &[], &TrustedHosts::none())]
     {
-        assert!(system_prompt.contains("`handoff_reason`"), "{system_prompt}");
+        assert!(system_prompt.contains("variable: handoff_reason"), "{system_prompt}");
         assert!(system_prompt.contains("{{#conversation.notes#}}"));
     }
 }
@@ -1014,4 +1014,39 @@ async fn a_draft_reading_a_step_that_never_ran_is_repaired_before_it_is_saved() 
     let repair_text = mock.requests()[1].messages[3].text();
     assert!(repair_text.contains("`answer_hours` never runs before `reply_hours`"), "{repair_text}");
     assert!(progress.stages().contains(&BuildStage::Repairing));
+}
+
+#[test]
+fn a_chatbot_build_shows_a_working_chatbot_that_passes_every_check() {
+    let (_, builder) = mock_builder(&[]);
+    let summary = validate_draft(prompt::EXAMPLE_CHATBOT, &builder, &no_trust()).unwrap();
+    assert!(summary.steps.iter().any(|step| step.node_type == "question-classifier"));
+    assert!(flow::find_unrun_references(prompt::EXAMPLE_CHATBOT).unwrap().is_empty());
+
+    let chatbot_request = prompt::build_request("Answer questions about my bakery", AgentKind::Chatbot);
+    assert!(chatbot_request.contains(prompt::EXAMPLE_CHATBOT.trim_end()));
+    assert!(chatbot_request.contains("template: \"true\""));
+    // Each step that writes to the customer names the language rule with examples (see guides/chatbot.md).
+    assert_eq!(prompt::EXAMPLE_CHATBOT.matches("English if they write English").count(), 2);
+    for kind in [AgentKind::Task, AgentKind::Chain, AgentKind::Team] {
+        assert!(!prompt::build_request("Summarize my notes", kind).contains("A working chatbot"), "{kind:?}");
+    }
+}
+
+#[tokio::test]
+async fn a_repair_request_shows_the_format_of_the_step_it_is_about() {
+    let db = test_database();
+    let broken = SIMPLE_ANSWER.replace(
+        "        - { variable: result, value_selector: [answer_question, text], value_type: string }",
+        "        - { variable: result, value: \"done\" }",
+    );
+    assert_ne!(broken, SIMPLE_ANSWER);
+    let (mock, builder) =
+        mock_builder(&[fenced_reply("Helpful agent", &broken), fenced_reply("Helpful agent", SIMPLE_ANSWER)]);
+
+    build_agent_with_model(&db, &builder, request("Answer my question", None), &|_| {}).await.unwrap();
+
+    let repair_text = mock.requests()[1].messages[3].text();
+    assert!(repair_text.contains("The format of what the problem is about"), "{repair_text}");
+    assert!(repair_text.contains("`end` - run outputs:"), "{repair_text}");
 }

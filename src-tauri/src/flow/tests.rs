@@ -572,3 +572,46 @@ fn working_flows_read_only_steps_that_ran_before() {
         assert_eq!(find_unrun_references(fixture).unwrap(), vec![], "{fixture}");
     }
 }
+
+#[test]
+fn finds_expressions_inside_value_references_and_undeclared_jinja_names() {
+    let draft = r#"
+version: "1"
+name: bakery
+graph:
+  nodes:
+    - id: start
+      type: start
+      variables: [{ variable: message, type: paragraph, required: true }]
+    - id: write
+      type: llm
+      model: { provider: openai, name: gpt-4o-mini }
+      prompt_template: [{ role: user, text: "{{#start.message#}}" }]
+    - id: reply
+      type: answer
+      answer: '{{#write.text == "" ? "Sorry" : write.text#}}'
+    - id: tidy
+      type: template-transform
+      template: "{{ reason }} {% for item in items %}{{ item }}{{ loop.index }}{% endfor %} {{ range(2) }}"
+      variables: [{ variable: items, value_selector: [write, text] }]
+    - id: end
+      type: end
+      outputs: [{ variable: tidy, value_selector: [tidy, output] }]
+  edges:
+    - { source: start, target: write }
+    - { source: write, target: reply }
+    - { source: reply, target: tidy }
+    - { source: tidy, target: end }
+"#;
+    let problems = find_template_problems(draft).unwrap();
+    assert_eq!(problems.len(), 2, "{problems:?}");
+    assert!(
+        problems[0].starts_with(r#"step `reply` writes `{{#write.text == "" ? "Sorry" : write.text#}}`"#),
+        "{problems:?}"
+    );
+    assert!(problems[1].starts_with("step `tidy` (template-transform) uses `reason`"), "{problems:?}");
+
+    for fixture in [SIMPLE_ANSWER, APPROVAL_LOOP, include_str!("../../fixtures/flows/chatbot_handoff.yaml")] {
+        assert_eq!(find_template_problems(fixture).unwrap(), Vec::<String>::new());
+    }
+}

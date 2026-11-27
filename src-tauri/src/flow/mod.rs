@@ -3,13 +3,16 @@
 //! for the builder (screen 04) and run views (06, 07, 20).
 
 mod approval;
+pub mod guide_sections;
 pub mod migration;
 mod placeholders;
 mod references;
 mod sending;
 mod summary;
+mod template_checks;
 #[cfg(test)]
 pub(crate) mod test_fixtures;
+mod text_fields;
 pub mod trusted_hosts;
 
 use serde::{Deserialize, Serialize};
@@ -19,6 +22,7 @@ pub use approval::UnapprovedStep;
 pub(crate) use approval::{read_timeout_choice, TimeoutChoice, TimeoutSend};
 pub use references::UnrunReference;
 pub use sending::{check_http_request, HttpRequestCheck};
+pub use text_fields::quote_text_fields;
 pub use trusted_hosts::TrustedHosts;
 
 /// One step as listed in the builder.
@@ -307,6 +311,16 @@ pub fn find_placeholder_http_steps(flow_yaml: &str) -> AppResult<Vec<String>> {
 pub fn find_unrun_references(flow_yaml: &str) -> AppResult<Vec<UnrunReference>> {
     let graph = compile_draft(flow_yaml)?;
     Ok(references::unrun_references(&graph))
+}
+
+/// Template mistakes that compile but break the run: a `{{#…#}}` that is not a value path,
+/// and Jinja names a `template-transform` does not declare. One sentence per problem.
+///
+/// # Errors
+/// Same as [`compile_flow`]: the document is compiled first.
+pub fn find_template_problems(flow_yaml: &str) -> AppResult<Vec<String>> {
+    let graph = compile_draft(flow_yaml)?;
+    Ok(template_checks::template_problems(&graph))
 }
 
 /// Steps a local CLI model provider cannot run (a "Run an agent" step with tools,

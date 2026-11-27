@@ -1,0 +1,78 @@
+version: "1"
+name: shop-assistant
+description: Answers questions about the shop and hands orders to the owner.
+conversation:
+  - { name: notes, type: string, value: "" }
+graph:
+  nodes:
+    - id: start
+      type: start
+      variables:
+        - { variable: message, type: paragraph, required: true, label: Customer message }
+    - id: sort_message
+      type: question-classifier
+      title: Sort the message
+      model: { provider: openai, name: gpt-4o-mini }
+      query_variable_selector: [start, message]
+      classes:
+        - { id: question, name: Questions about products, prices or opening hours }
+        - { id: order, name: The customer wants to order or asks for a person }
+    - id: write_answer
+      type: llm
+      title: Answer the question
+      model: { provider: openai, name: gpt-4o-mini }
+      prompt_template:
+        - role: system
+          text: |
+            You answer customers of a small shop, briefly and politely.
+            Facts: open 8:00 to 17:00, closed on Sunday. Brownies cost 50k, cheesecake 120k.
+            If the answer is not in these facts, say the owner will reply soon.
+            Notes about this customer from earlier messages (may be empty): {{#conversation.notes#}}
+            Write your reply in the same language as the customer's message: English if they write English, Indonesian if they write Indonesian, and so on.
+        - { role: user, text: "{{#start.message#}}" }
+    - id: send_answer
+      type: answer
+      title: Reply
+      answer: "{{#write_answer.text#}}"
+    - id: answer_done
+      type: end
+      outputs: []
+    - id: write_handoff
+      type: llm
+      title: Tell the customer the owner will reply
+      model: { provider: openai, name: gpt-4o-mini }
+      prompt_template:
+        - role: system
+          text: >-
+            Reply in one short polite sentence that the owner will answer them here soon.
+            Write your reply in the same language as the customer's message: English if they write English, Indonesian if they write Indonesian, and so on.
+        - { role: user, text: "{{#start.message#}}" }
+    - id: send_handoff
+      type: answer
+      title: Reply
+      answer: "{{#write_handoff.text#}}"
+    - id: mark_handoff
+      type: template-transform
+      title: Hand over to the owner
+      template: "true"
+      variables: []
+    - id: handoff_reason
+      type: template-transform
+      title: Why
+      template: "order_to_confirm"
+      variables: []
+    - id: handoff_done
+      type: end
+      outputs:
+        - { variable: handoff, value_selector: [mark_handoff, output] }
+        - { variable: handoff_reason, value_selector: [handoff_reason, output] }
+  edges:
+    - { source: start, target: sort_message }
+    - { source: sort_message, target: write_answer, handle: question }
+    - { source: write_answer, target: send_answer }
+    - { source: send_answer, target: answer_done }
+    - { source: sort_message, target: write_handoff, handle: order }
+    - { source: write_handoff, target: send_handoff }
+    - { source: send_handoff, target: mark_handoff }
+    - { source: mark_handoff, target: handoff_reason }
+    - { source: handoff_reason, target: handoff_done }

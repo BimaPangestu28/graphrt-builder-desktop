@@ -33,6 +33,10 @@ tauri-plugin-log = "2.0.0"
 tauri-plugin-dialog = "2.4"
 tauri-plugin-notification = "2.8.1"
 
+# The builder checks the Jinja names of `template-transform` drafts with the same parser graphrt
+# renders them with (same major version and features as graphrt-core's).
+minijinja = { version = "3", default-features = false, features = ["builtins", "macros", "multi_template"] }
+
 # graphrt runtime, pinned to a commit until the crates are published on crates.io
 # (a commit of graphrt main; all graphrt crates share the same rev)
 graphrt-core = { git = "https://github.com/Graphrt/graphrt", rev = "9ea3018cc09af91bf66f3ee2fbe787c92b4eb028" }

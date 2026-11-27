@@ -244,7 +244,8 @@ fn ensure_chatbot(db: &Database, agent_id: &str) -> AppResult<Agent> {
     Ok(agent)
 }
 
-/// Defaults for a never-saved chatbot: its name, every rule on, and the
+/// Defaults for a never-saved chatbot: its name, what the owner asked for when building
+/// it (the agent's description, as a starting point to edit), every rule on, and the
 /// knowledge bases its retrieval steps already search.
 fn default_settings(agent: &Agent, knowledge_bases: &[StoredKnowledgeBase]) -> ChatbotSettings {
     let referenced = overlay::referenced_dataset_ids(&agent.flow_yaml);
@@ -254,7 +255,11 @@ fn default_settings(agent: &Agent, knowledge_bases: &[StoredKnowledgeBase]) -> C
         .map(|base| base.id.clone())
         .collect();
     ChatbotSettings {
-        persona: ChatbotPersona { display_name: agent.name.clone(), ..ChatbotPersona::default() },
+        persona: ChatbotPersona {
+            display_name: agent.name.clone(),
+            instructions: agent.description.trim().chars().take(MAX_INSTRUCTIONS_CHARS).collect(),
+            ..ChatbotPersona::default()
+        },
         handoff_rules: HandoffRules::default(),
         knowledge_base_ids,
         disabled_channels: Vec::new(),

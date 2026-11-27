@@ -1,4 +1,4 @@
-import { agentPath, agentRoutePatterns, builtAgentPath, chatbotSetupPath, pluginDetailPath, routePaths, sampleAgentId, skillAddPath, skillDetailPath } from './routes'
+import { agentPath, agentRoutePatterns, agentOpenPath, chatbotSetupPath, pluginDetailPath, routePaths, sampleAgentId, skillAddPath, skillDetailPath } from './routes'
 
 describe('agentPath', () => {
   it('fills in the agent id', () => {
@@ -36,15 +36,15 @@ describe('skill paths', () => {
   })
 })
 
-describe('builtAgentPath', () => {
+describe('agentOpenPath', () => {
   it('opens a new chatbot in its own setup, never the sample chatbot', () => {
-    expect(builtAgentPath('agent-9', 'chatbot')).toBe(chatbotSetupPath('agent-9'))
-    expect(builtAgentPath('agent-9', 'chatbot')).toContain('agentId=agent-9')
+    expect(agentOpenPath('agent-9', 'chatbot')).toBe(chatbotSetupPath('agent-9'))
+    expect(agentOpenPath('agent-9', 'chatbot')).toContain('agentId=agent-9')
   })
 
   it('opens every other kind in the builder', () => {
     for (const kind of ['task', 'chain', 'team'] as const) {
-      expect(builtAgentPath('agent-9', kind)).toBe('/agents/agent-9/steps')
+      expect(agentOpenPath('agent-9', kind)).toBe('/agents/agent-9/steps')
     }
   })
 })

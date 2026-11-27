@@ -11,6 +11,10 @@ use crate::storage::models::AgentKind;
 
 const EXAMPLE_SIMPLE_ANSWER: &str = include_str!("../../fixtures/flows/simple_answer.yaml");
 const EXAMPLE_APPROVAL_LOOP: &str = include_str!("../../fixtures/flows/approval_loop.yaml");
+/// A working chatbot (answer branch and hand-off branch), shown only when building a chatbot:
+/// without it, models invented hand-off shapes graphrt rejects (`template: true` as a YAML
+/// boolean, literal text as an `end` selector, conditions inside `{{#…#}}`).
+pub(super) const EXAMPLE_CHATBOT: &str = include_str!("../../fixtures/flows/chatbot_handoff.yaml");
 
 /// Extra guidance per feature area (run outputs, knowledge, chatbots, agents as
 /// tools...), each in its own Markdown file under `guides/` so features can be
@@ -196,7 +200,17 @@ fn append_mcp_guide(rules: String) -> String {
 
 /// First user message for a new agent.
 pub(super) fn build_request(description: &str, kind: AgentKind) -> String {
-    format!("Build this agent.\n\nKind: {}\n\nWhat it should do:\n<<<\n{description}\n>>>", kind_guidance(kind))
+    let request =
+        format!("Build this agent.\n\nKind: {}\n\nWhat it should do:\n<<<\n{description}\n>>>", kind_guidance(kind));
+    match kind {
+        AgentKind::Chatbot => format!(
+            "{request}\n\nA working chatbot to start from: keep its shape (one `answer` step per branch, each \
+             reading the step right before it, and the hand-off steps exactly as written), and change the \
+             classes, facts and wording to this job:\n```yaml\n{}\n```",
+            EXAMPLE_CHATBOT.trim_end()
+        ),
+        AgentKind::Task | AgentKind::Chain | AgentKind::Team => request,
+    }
 }
 
 /// How each kind of agent is usually shaped.
@@ -218,10 +232,16 @@ fn kind_guidance(kind: AgentKind) -> &'static str {
     }
 }
 
-/// Follow-up after validation failed; `problem` is graphrt's error (or ours).
-pub(super) fn repair_request(problem: &str) -> String {
+/// Follow-up after validation failed; `problem` is graphrt's error (or ours), `format_help`
+/// the format guide sections about what the problem names (see `repair::format_help`).
+pub(super) fn repair_request(problem: &str, format_help: &[String]) -> String {
+    let help = if format_help.is_empty() {
+        String::new()
+    } else {
+        format!("\n\nThe format of what the problem is about:\n\n{}", format_help.join("\n\n"))
+    };
     format!(
-        "graphrt could not use that document. The problem:\n\n{problem}\n\n\
+        "graphrt could not use that document. The problem:\n\n{problem}{help}\n\n\
          Fix it and reply again in the same format: one short plain sentence saying what you fixed, then the \
          complete corrected document."
     )
