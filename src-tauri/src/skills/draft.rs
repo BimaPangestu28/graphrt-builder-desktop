@@ -66,12 +66,18 @@ pub(crate) async fn draft_from_source(
         graphrt_skill::Error::Draft(message) => AppError::Model(message),
         other => AppError::Model(other.to_string()),
     })?;
-    Ok(SkillDraftView {
-        title: humanize_plugin_name(&draft.name),
-        description: draft.description,
-        instructions: draft.body,
-        requested_tools: draft.requested_tools,
-    })
+    Ok(draft_view(&draft, None))
+}
+
+/// A runtime draft as the editor shows it. `name` is the installed skill it changes.
+pub(crate) fn draft_view(draft: &SkillDraft, name: Option<String>) -> SkillDraftView {
+    SkillDraftView {
+        name,
+        title: draft.title.clone().unwrap_or_else(|| humanize_plugin_name(&draft.name)),
+        description: draft.description.clone(),
+        instructions: draft.body.clone(),
+        requested_tools: draft.requested_tools.clone(),
+    }
 }
 
 /// The turns of a pasted conversation. A line that starts with a short label and a colon
@@ -114,7 +120,12 @@ pub(crate) fn checked_draft(input: &AuthoredSkillInput) -> AppResult<CheckedDraf
     if title.chars().count() > MAX_TITLE_CHARS {
         return Err(invalid(&format!("The name is longer than {MAX_TITLE_CHARS} characters")));
     }
-    let name = skill_name(&title).ok_or_else(|| invalid("Use at least one letter (a to z) or digit in the name"))?;
+    // A skill being changed keeps its technical name: agents refer to it by that.
+    let name = match input.name.as_deref() {
+        Some(existing) if graphrt_skill::is_valid_name(existing) => existing.to_owned(),
+        Some(_) => return Err(invalid("This skill cannot be changed here")),
+        None => skill_name(&title).ok_or_else(|| invalid("Use at least one letter (a to z) or digit in the name"))?,
+    };
     let description = single_line(&input.description);
     if description.is_empty() {
         return Err(invalid("Say when the agent should use this skill"));
@@ -123,6 +134,7 @@ pub(crate) fn checked_draft(input: &AuthoredSkillInput) -> AppResult<CheckedDraf
         return Err(invalid("Write what the agent should do"));
     }
     let draft = SkillDraft::new(&name, &description, input.instructions.trim(), &input.requested_tools)
+        .and_then(|draft| draft.with_title(&title))
         .map_err(|error| AppError::InvalidInput(error.to_string()))?;
     Ok(CheckedDraft { title, draft })
 }

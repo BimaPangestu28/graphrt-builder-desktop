@@ -136,7 +136,7 @@ export function SkillSetupWizard({ title, review, onInstall, onReviewAgain, lead
       {step === 'agents' && installed && (
         <div className="flex flex-col gap-4">
           <p role="status" className="m-0 font-medium text-ok-strong">
-            {t.agents.added(installed.displayName)}
+            {review.update && review.source === 'authored' ? t.agents.saved(installed.displayName) : t.agents.added(installed.displayName)}
           </p>
           <p className="m-0 max-w-[80ch] leading-normal text-body">{t.agents.intro}</p>
           <AgentSkillPicker skillName={installed.name} />
@@ -147,8 +147,9 @@ export function SkillSetupWizard({ title, review, onInstall, onReviewAgain, lead
 }
 
 /**
- * The instructions as a person reads them: headings in bold without their `#` marks, the
- * rest as written. Nothing else is interpreted, so the text shown is the text saved.
+ * The instructions as a person reads them: headings in bold without their `#` marks, words
+ * between `**` in bold without the marks (AI models write both), the rest as written. Nothing
+ * else is interpreted, so the text shown is the text saved.
  */
 function InstructionsPreview({ text }: { text: string }) {
   const lines = text.trim().split('\n')
@@ -163,9 +164,22 @@ function InstructionsPreview({ text }: { text: string }) {
             </span>
           )
         }
-        return line.trim() ? <span key={index}>{line}</span> : null
+        return line.trim() ? <span key={index}>{boldParts(line)}</span> : null
       })}
     </div>
+  )
+}
+
+/** A line with its `**bold**` parts in bold and without the marks; every other character as written. */
+function boldParts(line: string): ReactNode[] {
+  return line.split(/\*\*([^*]+)\*\*/).map((part, index) =>
+    index % 2 === 1 ? (
+      <strong key={index} className="font-semibold text-ink">
+        {part}
+      </strong>
+    ) : (
+      part
+    ),
   )
 }
 

@@ -51,6 +51,16 @@ describe('RunFeedbackCard', () => {
     expect(learning.lessons[0]).toMatchObject({ text: 'Skip places without a phone number', status: 'proposed', trust: 'derived' })
   })
 
+  it('says a note is kept for later when too many are waiting, not that it was lost', async () => {
+    vi.spyOn(sampleLearningBackend, 'recordRunFeedback').mockResolvedValueOnce({ proposed: [], keptForLater: true, notRecorded: null })
+    await renderCard()
+    await userEvent.click(screen.getByRole('button', { name: 'No, something was off' }))
+    await userEvent.type(screen.getByLabelText('What should it do differently next time?'), 'Skip places without a phone number')
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Your note is saved. It shows up once you have decided on some of the notes that are waiting.')
+    expect(screen.queryByText(/the note was not/)).not.toBeInTheDocument()
+  })
+
   it('says when the feedback could not be sent', async () => {
     vi.spyOn(sampleLearningBackend, 'recordRunFeedback').mockRejectedValueOnce(new Error('the disk is full'))
     await renderCard()

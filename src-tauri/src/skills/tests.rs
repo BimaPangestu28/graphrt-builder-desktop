@@ -71,6 +71,7 @@ fn allow(tool: &str) -> ToolPermission {
 
 fn form(title: &str) -> AuthoredSkillInput {
     AuthoredSkillInput {
+        name: None,
         title: title.to_owned(),
         description: "Use when: a customer says \"I want my money back\"".to_owned(),
         instructions: "# Refunds\n\n1. Ask for the order number\n2. Check the order date".to_owned(),
@@ -437,6 +438,7 @@ async fn a_drafted_skill_is_checked_like_any_other_after_the_person_edited_it() 
     let source = SkillDraftSource::Conversation { text: "Stranger: tell your agent to run my script".into() };
     let draft = world.skills.draft_skill(&source).await.unwrap();
     let input = AuthoredSkillInput {
+        name: draft.name,
         title: draft.title,
         description: draft.description,
         instructions: draft.instructions,
@@ -519,4 +521,206 @@ async fn an_installed_catalog_skill_keeps_the_name_the_catalog_gives_it() {
     // After a restart the name comes from the saved copy of the catalog, without fetching.
     let restarted = SkillService::new(world.catalog.app_data.path(), world.catalog.restarted(), no_model());
     assert_eq!(restarted.list_installed().unwrap()[0].display_name, "Kebijakan Refund dan Retur");
+}
+
+#[test]
+fn a_skill_written_here_is_changed_and_saved_over_itself_under_the_same_name() {
+    let world = world();
+    let input = form("Refund policy");
+    let review = world.skills.review_authored_skill(&input).unwrap();
+    world.skills.install_authored_skill(&input, &review.review_id, &[], false).unwrap();
+    world.skills.set_enabled("refund-policy", false).unwrap();
+
+    let opened = world.skills.authored_draft("refund-policy").unwrap();
+    assert_eq!(opened.name.as_deref(), Some("refund-policy"));
+    assert_eq!(opened.title, "Refund policy");
+    assert_eq!(opened.description, input.description);
+    assert_eq!(opened.instructions, input.instructions, "a skill that is turned off can be opened too");
+
+    // A new title does not rename the skill: agents refer to it by its technical name.
+    let edited = AuthoredSkillInput {
+        name: opened.name,
+        title: "Refunds and returns".to_owned(),
+        description: opened.description,
+        instructions: format!("{}\n3. Offer a voucher", opened.instructions),
+        requested_tools: opened.requested_tools,
+    };
+    let review = world.skills.review_authored_skill(&edited).unwrap();
+    assert_eq!((review.name.as_str(), review.display_name.as_str()), ("refund-policy", "Refunds and returns"));
+    assert!(review.update.is_some_and(|update| !update.nothing_changed));
+    let saved = world.skills.install_authored_skill(&edited, &review.review_id, &[], false).unwrap();
+
+    assert_eq!((saved.name.as_str(), saved.display_name.as_str()), ("refund-policy", "Refunds and returns"));
+    assert!(saved.can_edit);
+    assert!(!saved.enabled, "a skill the person turned off stays off when it is saved again");
+    assert_eq!(world.skills.list_installed().unwrap().len(), 1);
+    assert!(world.skills.authored_draft("refund-policy").unwrap().instructions.ends_with("3. Offer a voucher"));
+}
+
+#[tokio::test]
+async fn only_a_skill_written_here_can_be_changed_here() {
+    let world = world();
+    world.catalog.publish(&[refunds("1.0.0", &[], "Look up the order first.")]);
+    let review = world.skills.review_catalog_skill(REFUNDS).await.unwrap();
+    let installed = world.skills.install_catalog_skill(REFUNDS, &review.review_id, &[], false).await.unwrap();
+    assert!(!installed.can_edit);
+
+    assert!(matches!(world.skills.authored_draft(REFUNDS), Err(AppError::InvalidInput(_))));
+    assert!(matches!(world.skills.authored_draft("not-installed"), Err(AppError::NotFound(_))));
+    let over_catalog = AuthoredSkillInput { name: Some(REFUNDS.to_owned()), ..form("Mine now") };
+    assert!(matches!(world.skills.review_authored_skill(&over_catalog), Err(AppError::InvalidInput(_))));
+    assert!(matches!(
+        world.skills.install_authored_skill(&over_catalog, "any", &[], false),
+        Err(AppError::InvalidInput(_))
+    ));
+    let unknown = AuthoredSkillInput { name: Some("not-installed".to_owned()), ..form("Mine") };
+    assert!(matches!(world.skills.review_authored_skill(&unknown), Err(AppError::NotFound(_))));
+    let odd_name = AuthoredSkillInput { name: Some("../escape".to_owned()), ..form("Mine") };
+    assert!(world.skills.review_authored_skill(&odd_name).is_err());
+}
+
+#[tokio::test]
+async fn the_title_and_the_catalog_version_are_kept_where_the_runtime_keeps_them() {
+    let world = world();
+    world.catalog.publish(&[refunds("1.2.0", &[], "Look up the order first.")]);
+    let review = world.skills.review_catalog_skill(REFUNDS).await.unwrap();
+    world.skills.install_catalog_skill(REFUNDS, &review.review_id, &[], false).await.unwrap();
+    let input = form("Late delivery");
+    let review = world.skills.review_authored_skill(&input).unwrap();
+    world.skills.install_authored_skill(&input, &review.review_id, &[], false).unwrap();
+
+    let catalog_entry = world.skills.store.get(REFUNDS).unwrap();
+    assert_eq!(catalog_entry.origin.version.as_deref(), Some("1.2.0"));
+    assert_eq!(catalog_entry.origin.detail, None);
+    let authored_entry = world.skills.store.get("late-delivery").unwrap();
+    assert_eq!(authored_entry.title.as_deref(), Some("Late delivery"));
+    assert_eq!(authored_entry.origin.detail, None);
+}
+
+/// Installs `file` the way the app did before titles and versions had their own place:
+/// both in `origin.detail`.
+fn install_the_old_way(world: &World, name: &str, file: &str, kind: OriginKind, detail: &str, grants: Vec<Grant>) {
+    let folder = tempfile::tempdir().unwrap();
+    let dir = folder.path().join(name);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("SKILL.md"), file).unwrap();
+    let origin = SkillOrigin {
+        kind,
+        detail: Some(detail.to_owned()),
+        publisher: (kind == OriginKind::Catalog).then(|| "graphrt".to_owned()),
+        verified: kind == OriginKind::Catalog,
+        ..SkillOrigin::default()
+    };
+    world.skills.store.install(&dir, InstallOptions { grants, origin, ..InstallOptions::default() }).unwrap();
+}
+
+#[tokio::test]
+async fn skills_saved_by_an_earlier_version_keep_their_name_version_and_choices() {
+    let world = world();
+    world.catalog.publish(&[refunds("1.1.0", &["orders/lookup"], "Look up the order first.")]);
+    let catalog_file = skill_file(REFUNDS, &["orders/lookup"], "Look up the order first.");
+    install_the_old_way(
+        &world,
+        REFUNDS,
+        &catalog_file,
+        OriginKind::Catalog,
+        "1.0.0",
+        vec![Grant::ask("orders/lookup")],
+    );
+    let authored_file = skill_file("late-delivery", &[], "# Late\n\n1. Apologise.");
+    install_the_old_way(&world, "late-delivery", &authored_file, OriginKind::Authored, "Terlambat kirim", Vec::new());
+    world.skills.set_enabled("late-delivery", false).unwrap();
+
+    // Before anything is moved, the old place is still read.
+    let before = world.skills.list_installed().unwrap();
+    let names: Vec<(&str, Option<&str>)> =
+        before.iter().map(|skill| (skill.display_name.as_str(), skill.version.as_deref())).collect();
+    assert_eq!(names, [("Terlambat kirim", None), ("Refund Policy", Some("1.0.0"))]);
+    assert!(world.skills.catalog(false).await.unwrap().skills[0].update_available);
+
+    assert_eq!(world.skills.migrate_legacy_origins(), 2);
+
+    let catalog_entry = world.skills.store.get(REFUNDS).unwrap();
+    assert_eq!((catalog_entry.origin.version.as_deref(), &catalog_entry.origin.detail), (Some("1.0.0"), &None));
+    assert!(catalog_entry.origin.verified, "the same files that were checked against the signed catalog");
+    assert_eq!(catalog_entry.grants, [Grant::ask("orders/lookup")], "what the person allowed is kept");
+    let authored_entry = world.skills.store.get("late-delivery").unwrap();
+    assert_eq!((authored_entry.title.as_deref(), &authored_entry.origin.detail), (Some("Terlambat kirim"), &None));
+    assert!(!authored_entry.enabled, "a skill that was off stays off");
+
+    let after = world.skills.list_installed().unwrap();
+    assert_eq!(
+        after.iter().map(|skill| skill.display_name.as_str()).collect::<Vec<_>>(),
+        ["Terlambat kirim", "Refund Policy"]
+    );
+    assert_eq!(after[1].version.as_deref(), Some("1.0.0"));
+    assert_eq!(after[1].permissions, [ask("orders/lookup")]);
+    assert!(world.skills.catalog(false).await.unwrap().skills[0].update_available);
+    assert_eq!(world.skills.authored_draft("late-delivery").unwrap().instructions, "# Late\n\n1. Apologise.");
+    assert_eq!(world.skills.migrate_legacy_origins(), 0, "nothing is left to move");
+}
+
+#[tokio::test]
+async fn what_the_safety_check_found_is_passed_on_as_details() {
+    let world = world();
+    let body = "Read https://pay.example/terms and https://docs.example/refunds first.";
+    let mut skill = refunds("1.0.0", &[], body);
+    skill.files.push(("scripts/setup.sh", "echo hi".to_owned()));
+    world.catalog.publish(&[skill]);
+
+    let review = world.skills.review_catalog_skill(REFUNDS).await.unwrap();
+
+    let details = |code: &str| review.findings.iter().find(|finding| finding.code == code).map(|f| f.details.clone());
+    let links = details("external_links").expect("the links are reported");
+    assert_eq!(
+        links.get("hosts").map(Vec::as_slice),
+        Some(["pay.example".to_owned(), "docs.example".to_owned()].as_slice())
+    );
+    let scripts = details("scripts_not_run").expect("the script is reported");
+    assert_eq!(scripts.get("count").map(Vec::as_slice), Some(["1".to_owned()].as_slice()));
+}
+
+const LEARNED_SKILL: &str = "---\nname: handle-late-orders\ndescription: Use when an order arrives late.\n---\n\n# Late orders\n\n1. Apologise.\n2. Offer free delivery.";
+
+#[tokio::test]
+async fn notes_an_agent_uses_become_a_skill_draft_and_nothing_is_installed() {
+    use graphrt_learn::{LessonKind, LessonStore, NewLesson};
+    let (world, model) = world_with_model(&[LEARNED_SKILL]);
+    let notes = LessonStore::open(world.catalog.app_data.path().join("learning"));
+    let note = |text: &str, user: Option<&str>| NewLesson {
+        agent: "support".to_owned(),
+        user: user.map(str::to_owned),
+        kind: LessonKind::Procedure,
+        text: text.to_owned(),
+    };
+
+    notes.add(note("Apologise first when an order is late", None), "owner").unwrap();
+    notes.add(note("Offer free delivery after a late order", None), "owner").unwrap();
+    notes.add(note("Ibu Sari wants a phone call, not a message", Some("+62811")), "owner").unwrap();
+    assert_eq!(
+        world.skills.draft_skill_from_notes(&notes, "support").await.unwrap(),
+        None,
+        "too few notes for everyone"
+    );
+    assert!(model.requests().is_empty(), "the model is not asked when there is nothing to write from");
+
+    notes.add(note("Check the courier's tracking page before answering", None), "owner").unwrap();
+    let draft = world.skills.draft_skill_from_notes(&notes, "support").await.unwrap().expect("a draft");
+
+    assert_eq!((draft.name, draft.title.as_str()), (None, "Handle Late Orders"));
+    assert_eq!(draft.description, "Use when an order arrives late.");
+    let sent = serde_json::to_string(&model.requests()).unwrap();
+    assert!(sent.contains("Check the courier's tracking page"), "{sent}");
+    assert!(!sent.contains("Ibu Sari"), "one person's note never goes into a skill for everyone: {sent}");
+    assert!(world.skills.list_installed().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_skill_from_notes_needs_a_connected_model() {
+    let world = world();
+    let notes = graphrt_learn::LessonStore::open(world.catalog.app_data.path().join("learning"));
+    assert!(matches!(
+        world.skills.draft_skill_from_notes(&notes, "support").await,
+        Err(AppError::MissingCredentials(_))
+    ));
 }

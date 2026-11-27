@@ -99,6 +99,32 @@ export function skillAddPath(skillName: string): string {
   return skillAddPattern.replace(':skillName', encodeURIComponent(skillName))
 }
 
+/** The wizard that changes a skill written in the app. */
+export const skillEditPattern = '/skills/edit/:skillName'
+
+/**
+ * Builds the URL of the wizard that changes a skill written in the app.
+ *
+ * @example
+ * skillEditPath('refund-policy') // "/skills/edit/refund-policy"
+ */
+export function skillEditPath(skillName: string): string {
+  return skillEditPattern.replace(':skillName', encodeURIComponent(skillName))
+}
+
+/** Query parameter of "Create a skill": the agent whose notes the draft is written from. */
+export const skillFromAgentParam = 'fromAgent'
+
+/**
+ * Builds the URL of "Create a skill" starting from what an agent learned.
+ *
+ * @example
+ * skillFromNotesPath('maps-leads') // "/skills/new?fromAgent=maps-leads"
+ */
+export function skillFromNotesPath(agentId: string): string {
+  return `${routePaths.skillCreate}?${skillFromAgentParam}=${encodeURIComponent(agentId)}`
+}
+
 /** The page of an installed skill. */
 export const skillDetailPattern = '/skills/view/:skillName'
 

@@ -3,8 +3,9 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { resetSampleAgents } from '@/api/sampleBackend/agents'
+import { resetSampleLearning, sampleLearningBackend } from '@/api/sampleBackend/learning'
 import { resetSampleSkills, sampleSkillsBackend, setSampleDraftModelConnected } from '@/api/sampleBackend/skills'
-import { routePaths, skillAddPath, skillAddPattern, skillDetailPattern } from '@/routes'
+import { agentRoutePatterns, routePaths, skillAddPath, skillAddPattern, skillDetailPattern, skillEditPath, skillEditPattern, skillFromNotesPath } from '@/routes'
 import { SkillAddPage } from '../SkillAddPage'
 import { SkillCreatePage } from '../SkillCreatePage'
 
@@ -14,6 +15,8 @@ function renderWizard(initialPath: string) {
       <Routes>
         <Route path={skillAddPattern} element={<SkillAddPage />} />
         <Route path={routePaths.skillCreate} element={<SkillCreatePage />} />
+        <Route path={skillEditPattern} element={<SkillCreatePage />} />
+        <Route path={agentRoutePatterns.learned} element={<h1>Learned page</h1>} />
         <Route path={routePaths.skills} element={<h1>Skills list</h1>} />
         <Route path={skillDetailPattern} element={<h1>Skill page</h1>} />
       </Routes>
@@ -193,13 +196,16 @@ describe('creating a skill', () => {
     await userEvent.clear(screen.getByLabelText('Name'))
     await userEvent.type(screen.getByLabelText('Name'), 'Late delivery')
     await userEvent.clear(screen.getByLabelText('What should it do?'))
-    await userEvent.type(screen.getByLabelText('What should it do?'), '1. Apologise first{enter}2. Offer free delivery next time')
+    await userEvent.type(screen.getByLabelText('What should it do?'), '1. **Apologise** first{enter}2. Offer free delivery next time')
     await next()
 
     expect(await screen.findByText('What will be saved')).toBeInTheDocument()
     expect(currentStep()).toContain('What it does')
     expect(screen.getByText('Written here')).toBeInTheDocument()
-    expect(screen.getByText('1. Apologise first')).toBeInTheDocument()
+    // Bold as an AI model writes it is shown as bold, without the marks.
+    const boldWord = screen.getByText('Apologise')
+    expect(boldWord.tagName).toBe('STRONG')
+    expect(boldWord.parentElement).toHaveTextContent(/^1\. Apologise first$/)
     expect(screen.getByText('2. Offer free delivery next time')).toBeInTheDocument()
     await next()
     expect(screen.getByText('This skill asks for no tools. It only adds instructions.')).toBeInTheDocument()
@@ -296,5 +302,89 @@ describe('creating a skill', () => {
     await next()
     expect(screen.getByRole('button', { name: 'Save skill' })).toBeDisabled()
     expect(screen.getByText('Stop and read')).toBeInTheDocument()
+  })
+})
+
+describe('changing a skill written here', () => {
+  beforeEach(() => {
+    resetSampleAgents()
+    resetSampleSkills()
+  })
+  afterEach(() => vi.restoreAllMocks())
+
+  it('opens on the saved wording and saves over the same skill, whatever the name becomes', async () => {
+    renderWizard(skillEditPath('meeting-notes'))
+    expect(screen.getByRole('heading', { level: 1, name: 'Change a skill' })).toBeInTheDocument()
+    expect(await screen.findByLabelText('Name')).toHaveValue('Meeting notes')
+    expect(currentStep()).toContain('Check the draft')
+    expect(screen.getByText(/This is the skill as it is saved now/)).toBeInTheDocument()
+    expect(within(screen.getByRole('list', { name: 'Steps' })).queryByText(/Describe it/)).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute('href', '/skills/view/meeting-notes')
+
+    await userEvent.clear(screen.getByLabelText('Name'))
+    await userEvent.type(screen.getByLabelText('Name'), 'Weekly meeting notes')
+    await userEvent.clear(screen.getByLabelText('What should it do?'))
+    await userEvent.type(screen.getByLabelText('What should it do?'), '1. List the decisions first')
+    await next()
+    expect(await screen.findByText('1. List the decisions first')).toBeInTheDocument()
+    expect(screen.getByText('What this update changes')).toBeInTheDocument()
+    await next()
+    await next()
+    await userEvent.click(screen.getByRole('button', { name: 'Save skill' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Weekly meeting notes is saved.')
+
+    // The same skill under its first technical name: agents that use it keep it.
+    expect(await installedSkill('meeting-notes')).toMatchObject({ displayName: 'Weekly meeting notes', source: 'authored', canEdit: true })
+    expect(await installedSkill('weekly-meeting-notes')).toBeUndefined()
+    expect((await sampleSkillsBackend.getAuthoredSkillDraft('meeting-notes')).instructions).toBe('1. List the decisions first')
+  })
+
+  it('says so when the skill cannot be opened, and does not offer to change a catalog skill', async () => {
+    renderWizard(skillEditPath('friendly-tone'))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Could not open the skill/)
+    expect(screen.queryByLabelText('Name')).not.toBeInTheDocument()
+    await expect(sampleSkillsBackend.reviewAuthoredSkill({ name: 'friendly-tone', title: 'x', description: 'd', instructions: 'i', requestedTools: [] })).resolves.toBeDefined()
+    await expect(
+      sampleSkillsBackend.installAuthoredSkill({ name: 'friendly-tone', title: 'x', description: 'd', instructions: 'i', requestedTools: [] }, { reviewId: 'any', permissions: [], acceptFindings: false }),
+    ).rejects.toMatchObject({ code: 'invalid_input' })
+  })
+})
+
+describe('writing a skill from what an agent learned', () => {
+  const agentId = 'catering-assistant'
+  beforeEach(() => {
+    resetSampleAgents()
+    resetSampleSkills()
+    resetSampleLearning()
+  })
+  afterEach(() => vi.restoreAllMocks())
+
+  async function approveEnoughNotes() {
+    await sampleLearningBackend.decideLesson(agentId, 'lesson-open-hours', 'approve')
+    await sampleLearningBackend.decideLesson(agentId, 'lesson-refund', 'approve')
+  }
+
+  it('drafts the skill from the notes in use and adds nothing until the person has been through the steps', async () => {
+    await approveEnoughNotes()
+    renderWizard(skillFromNotesPath(agentId))
+    expect(await screen.findByLabelText('Name')).toHaveValue('How we handle requests')
+    expect(currentStep()).toContain('Check the draft')
+    expect(screen.getByText(/Your AI model wrote this from the notes the agent uses/)).toBeInTheDocument()
+    expect((screen.getByLabelText('What should it do?') as HTMLTextAreaElement).value).toContain('The smallest order is 20 boxes')
+    expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute('href', `/agents/${agentId}/learned`)
+    expect(await installedSkill('how-we-handle-requests')).toBeUndefined()
+  })
+
+  it('says when the agent has too few notes, and offers to connect a model when there is none', async () => {
+    renderWizard(skillFromNotesPath(agentId))
+    expect(await screen.findByRole('alert')).toHaveTextContent('This agent does not have enough notes in use to write a skill from yet.')
+
+    setSampleDraftModelConnected(false)
+    try {
+      renderWizard(skillFromNotesPath('order-helper'))
+      expect(await screen.findByRole('link', { name: 'Connect an AI model' })).toBeInTheDocument()
+    } finally {
+      setSampleDraftModelConnected(true)
+    }
   })
 })

@@ -1,7 +1,7 @@
 import type { SkillFinding, SkillToolRequest, SkillUpdateChanges } from '@/api/skillTypes'
 import { setLocale } from '@/i18n'
 import { dictionaries } from '@/i18n/messages'
-import { countAgentsUsing, describeFinding, describeFindingLocation, describeSkillSource, describeToolRequest, describeUpdateChanges, sortFindings } from './skillDisplay'
+import { countAgentsUsing, describeFinding, describeFindingDetail, describeFindingLocation, describeSkillSource, describeToolRequest, describeUpdateChanges, sortFindings } from './skillDisplay'
 
 function request(changes: Partial<SkillToolRequest> = {}): SkillToolRequest {
   return { tool: 'whatsapp-api/send_message', providerLabel: 'WhatsApp Cloud API', actionLabel: 'Send message', coversEverything: false, available: true, ...changes }
@@ -83,5 +83,31 @@ describe('skills copy', () => {
   it.each(['en', 'id'] as const)('uses no technical words in %s', (locale) => {
     const offending = collectText(dictionaries[locale].skills).filter((text) => technicalWords.test(text))
     expect(offending).toEqual([])
+  })
+  it('spells out what a finding is about in the person’s language, from the details the backend sends', () => {
+    const links = finding({ severity: 'info', code: 'external_links', details: { hosts: ['pay.example', 'docs.example'], more: ['3'] } })
+    const scripts = finding({ severity: 'info', code: 'scripts_not_run', details: { count: ['2'] } })
+    const tools = finding({ severity: 'info', code: 'unsupported_tools', details: { tools: ['Bash', 'WebFetch'] } })
+    setLocale('en')
+    expect(describeFindingDetail(links)).toBe('Addresses it mentions: pay.example, docs.example and 3 more')
+    expect(describeFindingDetail(scripts)).toBe('2 script files')
+    expect(describeFindingDetail(finding({ code: 'scripts_not_run', details: { count: ['1'] } }))).toBe('1 script file')
+    expect(describeFindingDetail(tools)).toBe('Tools it mentions: Bash, WebFetch')
+    setLocale('id')
+    try {
+      expect(describeFindingDetail(links)).toBe('Alamat yang disebut pay.example, docs.example dan 3 lainnya')
+      expect(describeFindingDetail(scripts)).toBe('2 berkas skrip')
+      expect(describeFindingDetail(tools)).toBe('Tool yang disebut Bash, WebFetch')
+    } finally {
+      setLocale('en')
+    }
+  })
+
+  it('counts what does not fit instead of listing everything, and says nothing without details', () => {
+    const hosts = Array.from({ length: 8 }, (_, index) => `site${index + 1}.example`)
+    expect(describeFindingDetail(finding({ code: 'external_links', details: { hosts } }))).toBe(`Addresses it mentions: ${hosts.slice(0, 6).join(', ')} and 2 more`)
+    expect(describeFindingDetail(finding({ code: 'external_links' }))).toBeNull()
+    expect(describeFindingDetail(finding({ code: 'hides_from_user', details: { hosts: ['x.example'] } }))).toBeNull()
+    expect(describeFindingDetail(finding({ code: 'scripts_not_run', details: { count: ['many'] } }))).toBeNull()
   })
 })

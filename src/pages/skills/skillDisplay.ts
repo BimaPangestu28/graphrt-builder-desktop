@@ -37,6 +37,34 @@ export function describeFinding(finding: SkillFinding): string {
   return known[finding.code] ?? finding.message
 }
 
+/** Most web addresses or tool names spelled out for one finding; the rest are counted. */
+const maxListedDetails = 6
+
+/**
+ * What exactly a finding is about, when the backend says: the web addresses a skill
+ * mentions, how many script files it has, or the tools of other products it names.
+ * Null for findings without such details.
+ */
+export function describeFindingDetail(finding: SkillFinding): string | null {
+  const t = messages().skills.safety.findingDetail
+  const details = finding.details ?? {}
+  const listed = (values: readonly string[], alreadyLeftOut = 0) => {
+    const shown = values.slice(0, maxListedDetails)
+    const leftOut = values.length - shown.length + alreadyLeftOut
+    return leftOut > 0 ? t.andMore(shown.join(', '), leftOut) : shown.join(', ')
+  }
+  if (finding.code === 'external_links' && details.hosts?.length) {
+    return t.links(listed(details.hosts, Number(details.more?.[0] ?? 0) || 0))
+  }
+  if (finding.code === 'scripts_not_run' && Number(details.count?.[0]) > 0) {
+    return t.scripts(Number(details.count?.[0]))
+  }
+  if (finding.code === 'unsupported_tools' && details.tools?.length) {
+    return t.otherTools(listed(details.tools))
+  }
+  return null
+}
+
 /** "In SKILL.md, line 12", "In SKILL.md", or null when the finding names no file. */
 export function describeFindingLocation(finding: SkillFinding): string | null {
   const t = messages().skills.safety

@@ -11,8 +11,10 @@
 
 use crate::crash_reports::scrub::Scrubber;
 
-/// Shown instead of a known secret value.
-const HIDDEN: &str = "[hidden]";
+/// Shown instead of a known secret value. The same mark the scrubber leaves, which the
+/// runtime recognises: a note that holds it is flagged as being about a secret
+/// (risk reason `masked_secret`) and waits for a careful look.
+const HIDDEN: &str = "[redacted]";
 /// Values shorter than this are not replaced on their own: too likely a common word.
 const SHORTEST_KNOWN_SECRET_CHARS: usize = 6;
 

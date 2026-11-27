@@ -163,9 +163,13 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
     }));
     plugins.activate_installed();
     let draft_model = Arc::new(skills::DefaultDraftModel { db: db.clone(), credentials: credentials.clone() });
-    let skills = Arc::new(skills::SkillService::new(&data_dir, plugins.clone(), draft_model));
+    let skills = Arc::new(skills::SkillService::new(&data_dir, plugins.clone(), draft_model.clone()));
+    let moved_skills = skills.migrate_legacy_origins();
+    if moved_skills > 0 {
+        log::info!("skills: updated how {moved_skills} skill(s) are saved");
+    }
     skills.activate();
-    let learning = Arc::new(learning::LearningService::new(&data_dir, db.clone(), credentials.clone()));
+    let learning = Arc::new(learning::LearningService::new(&data_dir, db.clone(), credentials.clone(), draft_model));
     learning.activate();
     mcp::publish_from_database(&db);
     conversations::file_cleanup::spawn(conversations.clone());
@@ -416,11 +420,14 @@ pub fn run() {
             commands::learning::set_auto_learn,
             commands::learning::set_agent_uses_learning,
             commands::learning::record_run_feedback,
+            commands::learning::suggest_notes_from_runs,
+            commands::learning::draft_skill_from_notes,
             commands::skills::list_installed_skills,
             commands::skills::list_skill_catalog,
             commands::skills::review_catalog_skill,
             commands::skills::install_catalog_skill,
             commands::skills::draft_skill,
+            commands::skills::get_authored_skill_draft,
             commands::skills::review_authored_skill,
             commands::skills::install_authored_skill,
             commands::skills::set_skill_permissions,

@@ -8,7 +8,10 @@ use crate::agent_graph::learning::{self as agent_learning, LearningUse};
 use crate::agent_graph::{self, GraphContext};
 use crate::error::AppResult;
 use crate::flow;
-use crate::learning::models::{AgentLearning, FeedbackOutcome, LessonDecision, LessonView, RunFeedback};
+use crate::learning::models::{
+    AgentLearning, FeedbackOutcome, LessonDecision, LessonView, RunFeedback, RunSuggestions,
+};
+use crate::skills::models::SkillDraftView;
 use crate::state::AppState;
 
 /// The screen's data: the lessons and history, and whether the agent's steps read them.
@@ -97,4 +100,19 @@ pub async fn record_run_feedback(
     feedback: RunFeedback,
 ) -> AppResult<FeedbackOutcome> {
     state.learning.record_feedback(&run_id, &feedback).await
+}
+
+/// Asks the person's model to read the agent's latest runs and suggest notes. Every
+/// suggestion waits for the owner.
+#[tauri::command]
+pub async fn suggest_notes_from_runs(state: State<'_, AppState>, agent_id: String) -> AppResult<RunSuggestions> {
+    state.learning.suggest_from_runs(&agent_id).await
+}
+
+/// Asks the person's model to write one skill from the notes the agent learned about how
+/// to do its work. `None` when there are too few. Nothing is installed.
+#[tauri::command]
+pub async fn draft_skill_from_notes(state: State<'_, AppState>, agent_id: String) -> AppResult<Option<SkillDraftView>> {
+    state.db.get_agent(&agent_id)?;
+    state.skills.draft_skill_from_notes(state.learning.store(), &agent_id).await
 }

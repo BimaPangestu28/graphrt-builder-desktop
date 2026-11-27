@@ -1,8 +1,9 @@
 import { BackendError } from '../client'
-import type { AgentLearning, FeedbackOutcome, LearningUse, Lesson, LessonDecision, LessonHistoryEntry, LessonRiskReason, RunFeedback } from '../learningTypes'
+import type { AgentLearning, FeedbackOutcome, LearningUse, Lesson, LessonDecision, LessonHistoryEntry, LessonRiskReason, RunFeedback, RunSuggestions } from '../learningTypes'
 import { sampleRunsBackend } from './runs'
 import { readStoredAgent } from './sampleAgentStore'
 import { respondWith } from './sampleResponse'
+import { minNotesForSkill, setSampleNotesForSkill } from './skills'
 
 /**
  * Sample learning backend for the browser preview and tests. It keeps the rules of the
@@ -13,6 +14,8 @@ import { respondWith } from './sampleResponse'
 
 interface SampleAgentLearning {
   lessons: Lesson[]
+  /** The sample model already read this agent's runs. */
+  hasSuggested?: boolean
   history: LessonHistoryEntry[]
   autoLearn: boolean
   usage: LearningUse
@@ -167,10 +170,20 @@ function assessRisk(text: string): LessonRiskReason[] {
   return checks.filter(([pattern]) => pattern.test(text)).map(([, reason]) => reason)
 }
 
+/** Notes in use for everyone that describe how to do the work (the runtime's rule for a skill). */
+function notesForSkill(agentId: string): string[] {
+  return learningOf(agentId)
+    .lessons.filter((candidate) => candidate.status === 'approved' && !candidate.user && (candidate.kind === 'procedure' || candidate.kind === 'correction'))
+    .map((candidate) => candidate.text)
+}
+
+setSampleNotesForSkill(notesForSkill)
+
 function overview(agentId: string): AgentLearning {
   const learning = learningOf(agentId)
   const lessons = [...learning.lessons].sort((left, right) => (right.updatedAt ?? '').localeCompare(left.updatedAt ?? ''))
-  return { agentId, lessons, autoLearn: learning.autoLearn, history: [...learning.history], usage: { ...learning.usage } }
+  const canBecomeSkill = notesForSkill(agentId).length >= minNotesForSkill
+  return { agentId, lessons, autoLearn: learning.autoLearn, canBecomeSkill, history: [...learning.history], usage: { ...learning.usage } }
 }
 
 export const sampleLearningBackend = {
@@ -269,7 +282,7 @@ export const sampleLearningBackend = {
       if (run.status === 'running' || run.status === 'paused') throw new BackendError('invalid_input', 'invalid input: this run has not finished yet')
       const comment = feedback.comment?.trim() ?? ''
       if (comment.length > maxLessonChars) throw new BackendError('invalid_input', `invalid input: the comment is longer than ${maxLessonChars} characters`)
-      if (!comment) return { proposed: [], notRecorded: null }
+      if (!comment) return { proposed: [], keptForLater: false, notRecorded: null }
       lessonCounter += 1
       const now = new Date().toISOString()
       const text = cleanText(hideSecrets(comment))
@@ -285,7 +298,28 @@ export const sampleLearningBackend = {
       })
       learningOf(run.agentId).lessons.push(proposed)
       record(run.agentId, 'propose', proposed, 'system')
-      return { proposed: [{ ...proposed }], notRecorded: null }
+      return { proposed: [{ ...proposed }], keptForLater: false, notRecorded: null }
     })
   },
+
+  suggestNotesFromRuns: (agentId: string): Promise<RunSuggestions> =>
+    respondWith(() => {
+      const learning = learningOf(agentId)
+      // The sample "model" has one thing to suggest, once: asking again finds no new runs.
+      if (learning.hasSuggested) return { runsRead: 0, proposed: [] }
+      learning.hasSuggested = true
+      lessonCounter += 1
+      const now = new Date().toISOString()
+      // From a model, so never verified: it waits for the owner like unverified feedback.
+      const proposed = lesson(`lesson-suggested-${lessonCounter}`, 'Offer a callback when the customer sounds unsure.', {
+        signal: 'reflection',
+        kind: 'procedure',
+        createdAt: now,
+        updatedAt: now,
+        expiresAt: null,
+      })
+      learning.lessons.push(proposed)
+      record(agentId, 'propose', proposed, 'system')
+      return { runsRead: 3, proposed: [{ ...proposed }] }
+    }),
 }

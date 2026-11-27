@@ -6,7 +6,9 @@
 //! - [`LearningService::overview`] and the decisions (approve, reject, retire, edit,
 //!   delete, apply to everyone, forget a person) for the "What this agent learned" screen;
 //! - [`LearningService::record_feedback`]: thumbs up or down on a finished run. A comment
-//!   becomes a proposal that waits for the owner.
+//!   becomes a proposal that waits for the owner;
+//! - [`LearningService::suggest_from_runs`]: the owner asks their model to read the
+//!   agent's latest runs and suggest notes. Every suggestion waits for the owner too.
 //!
 //! Rules this module keeps:
 //! - **Nobody is verified here.** The desktop app has no sign-in, so feedback is always
@@ -16,6 +18,8 @@
 //!   comment and the run excerpt both.
 //! - What the owner types themselves ("Add a note") is the owner's word and is added
 //!   directly.
+//! - **A model only suggests.** What it writes from runs is recorded by the runtime as
+//!   derived, like unverified feedback: it never reaches a run before the owner approves it.
 
 mod active;
 pub mod models;
@@ -24,18 +28,28 @@ mod redact;
 mod tests;
 
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 
+use futures::future::BoxFuture;
 use graphrt_learn::{
-    Decision, Forget, Learner, LearningPolicy, LessonFilter, LessonKind, LessonStore, NewLesson, Observation,
-    ObservationKind,
+    Candidate, Decision, Distiller, Forget, Learner, LearningPolicy, LessonFilter, LessonKind, LessonStore,
+    ModelDistiller, NewLesson, Observation, ObservationKind,
 };
 
 pub(crate) use self::active::lessons_service;
-use self::models::{AgentLearning, FeedbackOutcome, HistoryEntry, LessonDecision, LessonView, RunFeedback};
+
+/// Clears the store runs read lessons from (tests that published one).
+#[cfg(test)]
+pub(crate) fn unpublish_for_tests() {
+    active::publish(None);
+}
+use self::models::{
+    AgentLearning, FeedbackOutcome, HistoryEntry, LessonDecision, LessonView, RunFeedback, RunSuggestions,
+};
 use crate::credentials::{CredentialStore, ModelProvider};
 use crate::error::{AppError, AppResult};
-use crate::storage::models::{Run, RunStatus};
+use crate::skills::DraftModelSource;
+use crate::storage::models::{Run, RunFilter, RunStatus};
 use crate::storage::Database;
 
 /// Folder of the lesson store inside the app data folder.
@@ -50,6 +64,11 @@ const AUTHOR_IS_VERIFIED: bool = false;
 pub(crate) const MAX_COMMENT_CHARS: usize = 500;
 /// Most characters of a run's answer kept as the excerpt shown with a proposal.
 const MAX_EXCERPT_CHARS: usize = 600;
+/// Most runs the model reads when the owner asks for suggestions (the latest ones).
+const MAX_RUNS_PER_SUGGESTION: i64 = 10;
+/// Agent setting: when the newest run the model has already read started (RFC 3339), so
+/// asking again reads only what came after.
+const SUGGESTED_UNTIL_SETTING: &str = "learning_suggested_until";
 
 /// The "What this agent learned" backend.
 #[derive(Debug)]
@@ -58,13 +77,25 @@ pub struct LearningService {
     learner: Learner,
     db: Arc<Database>,
     credentials: Arc<CredentialStore>,
+    /// The person's own model, asked only when they ask for suggestions.
+    model: Arc<dyn DraftModelSource>,
 }
 
 impl LearningService {
     /// A service over the store in `<app data>/learning`. Nothing is read or created yet.
-    pub fn new(app_data_dir: &Path, db: Arc<Database>, credentials: Arc<CredentialStore>) -> Self {
+    pub fn new(
+        app_data_dir: &Path,
+        db: Arc<Database>,
+        credentials: Arc<CredentialStore>,
+        model: Arc<dyn DraftModelSource>,
+    ) -> Self {
         let store = Arc::new(LessonStore::open(app_data_dir.join(LEARNING_DIR_NAME)));
-        Self { learner: Learner::new(store.clone()), store, db, credentials }
+        Self { learner: Learner::new(store.clone()), store, db, credentials, model }
+    }
+
+    /// The lesson store, for writing a skill from what an agent learned.
+    pub fn store(&self) -> &LessonStore {
+        &self.store
     }
 
     /// Makes this service's store the one runs read lessons from (the app's service only).
@@ -85,8 +116,10 @@ impl LearningService {
         // order written is kept and only reversed.
         let mut audit = self.store.audit(agent_id).map_err(learning_error)?;
         audit.reverse();
+        let procedure_notes = graphrt_learn::procedure_lessons(&self.store, agent_id).map_err(learning_error)?.len();
         Ok(AgentLearning {
             agent_id: agent_id.to_owned(),
+            can_become_skill: procedure_notes >= graphrt_learn::skill_draft::MIN_PROCEDURES,
             history: audit.iter().map(|entry| HistoryEntry::of(entry, &lessons)).collect(),
             lessons: lessons.iter().map(LessonView::from).collect(),
             auto_learn: policy.auto_approve_user_feedback,
@@ -203,6 +236,7 @@ impl LearningService {
         if !recorded {
             return Ok(FeedbackOutcome {
                 proposed: Vec::new(),
+                kept_for_later: false,
                 not_recorded: Some("too much feedback is waiting to be looked at".into()),
             });
         }
@@ -210,7 +244,78 @@ impl LearningService {
         let report = self.learner.distill(&run.agent_id, None).await.map_err(learning_error)?;
         Ok(FeedbackOutcome {
             proposed: report.lessons.iter().map(LessonView::from).collect(),
-            not_recorded: report.skipped.first().cloned(),
+            // The runtime keeps a comment it could not record yet and tries again on the
+            // next pass, so it is not lost and not reported as dropped.
+            kept_for_later: report.kept > 0,
+            not_recorded: report.skipped.first().cloned().filter(|_| report.kept == 0),
+        })
+    }
+
+    /// Asks the person's model to read the agent's latest finished runs (the ones it has
+    /// not read yet) and suggest notes. Every suggestion is recorded as a proposal that
+    /// waits for the owner; nothing a model writes is used before the owner approves it.
+    /// Secrets are hidden in what the model is shown.
+    ///
+    /// # Errors
+    /// `NotFound` for an unknown agent; `MissingCredentials` when no model is connected;
+    /// `Model` when the model fails or its answer cannot be read.
+    pub async fn suggest_from_runs(&self, agent_id: &str) -> AppResult<RunSuggestions> {
+        self.db.get_agent(agent_id)?;
+        let model = self.model.text_model()?;
+        let read_until = self
+            .db
+            .get_agent_setting(agent_id, SUGGESTED_UNTIL_SETTING)?
+            .and_then(|value| value.as_str().map(str::to_owned));
+        let filter =
+            RunFilter { agent_id: Some(agent_id.to_owned()), status: None, limit: Some(MAX_RUNS_PER_SUGGESTION) };
+        let runs: Vec<Run> = self
+            .db
+            .list_runs(&filter)?
+            .into_iter()
+            .filter(|run| matches!(run.status, RunStatus::Succeeded | RunStatus::Failed))
+            // Timestamps are written in one format, so they compare as text.
+            .filter(|run| read_until.as_deref().is_none_or(|until| run.started_at.as_str() > until))
+            .collect();
+        let Some(newest) = runs.first().map(|run| run.started_at.clone()) else {
+            return Ok(RunSuggestions { runs_read: 0, proposed: Vec::new() });
+        };
+        let known_secrets = self.known_secrets();
+        let mut runs_read = 0;
+        // Oldest first, as they happened.
+        for run in runs.iter().rev() {
+            let kind = match (&run.status, &run.error_message) {
+                (RunStatus::Failed, Some(error)) => {
+                    ObservationKind::RunFailed { error: redact::hide_secrets(error, &known_secrets) }
+                }
+                _ => ObservationKind::RunSucceeded,
+            };
+            let observation = Observation {
+                agent: agent_id.to_owned(),
+                user: None,
+                run_id: run.id.clone(),
+                kind,
+                excerpt: run_excerpt(run).map(|excerpt| redact::hide_secrets(&excerpt, &known_secrets)),
+                at_ms: 0,
+            };
+            if self.learner.observe(observation).map_err(learning_error)? {
+                runs_read += 1;
+            }
+        }
+        let distiller = RecordingDistiller { inner: ModelDistiller::new(model), failure: Mutex::new(None) };
+        let report = self.learner.distill(agent_id, Some(&distiller)).await.map_err(learning_error)?;
+        if let Some(failure) = distiller.failure.lock().unwrap_or_else(PoisonError::into_inner).take() {
+            // Nothing is remembered as read: the owner can ask again.
+            return Err(AppError::Model(failure));
+        }
+        self.db.set_agent_setting(agent_id, SUGGESTED_UNTIL_SETTING, &serde_json::Value::String(newest))?;
+        Ok(RunSuggestions {
+            runs_read,
+            proposed: report
+                .lessons
+                .iter()
+                .filter(|lesson| lesson.status == graphrt_learn::LessonStatus::Proposed)
+                .map(LessonView::from)
+                .collect(),
         })
     }
 
@@ -236,6 +341,29 @@ impl LearningService {
             }
         }
         values
+    }
+}
+
+/// The model that suggests notes, remembering why it failed. The runtime reports a failing
+/// distiller as one skipped line among others; the owner is told the reason instead.
+struct RecordingDistiller {
+    inner: ModelDistiller,
+    failure: Mutex<Option<String>>,
+}
+
+impl Distiller for RecordingDistiller {
+    fn distill<'a>(
+        &'a self,
+        agent: &'a str,
+        observations: &'a [Observation],
+    ) -> BoxFuture<'a, Result<Vec<Candidate>, String>> {
+        Box::pin(async move {
+            let outcome = self.inner.distill(agent, observations).await;
+            if let Err(message) = &outcome {
+                *self.failure.lock().unwrap_or_else(PoisonError::into_inner) = Some(message.clone());
+            }
+            outcome
+        })
     }
 }
 

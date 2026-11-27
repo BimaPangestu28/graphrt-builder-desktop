@@ -1,7 +1,7 @@
 import type { SkillFinding } from '@/api/skillTypes'
 import { Badge } from '@/components/ui'
 import { useT } from '@/i18n'
-import { describeFinding, describeFindingLocation, findingSeverityTones, sortFindings } from './skillDisplay'
+import { describeFinding, describeFindingDetail, describeFindingLocation, findingSeverityTones, sortFindings } from './skillDisplay'
 
 /**
  * What the safety check found, most serious first, each in one plain sentence with where it
@@ -18,6 +18,7 @@ export function SkillFindingsList({ findings }: { findings: readonly SkillFindin
         <ul aria-label={t.listLabel} className="m-0 flex list-none flex-col gap-2 p-0">
           {sorted.map((finding, index) => {
             const location = describeFindingLocation(finding)
+            const detail = describeFindingDetail(finding)
             return (
               <li
                 key={`${finding.code}-${index}`}
@@ -33,6 +34,7 @@ export function SkillFindingsList({ findings }: { findings: readonly SkillFindin
                 </Badge>
                 <span className="flex min-w-0 flex-1 basis-[280px] flex-col gap-0.5">
                   <span className="text-[14px] leading-normal text-ink">{describeFinding(finding)}</span>
+                  {detail && <span className="text-[13px] leading-normal break-words text-body">{detail}</span>}
                   {location && <span className="text-[12px] text-muted">{location}</span>}
                 </span>
               </li>

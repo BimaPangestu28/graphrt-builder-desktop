@@ -52,6 +52,7 @@ export function RunFeedbackCard({ agentId, runId }: RunFeedbackCardProps) {
             </Link>
           </>
         )}
+        {outcome.keptForLater && <span className="text-[13px] text-body">{t.keptForLater}</span>}
         {outcome.notRecorded && <span className="text-[13px] text-amber-strong">{t.notRecorded(outcome.notRecorded)}</span>}
       </div>
     )
