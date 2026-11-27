@@ -6,6 +6,7 @@ import { resetSampleAgents } from '@/api/sampleBackend/agents'
 import { resetSampleCredentials } from '@/api/sampleBackend/credentials'
 import { resetSampleAppSettings } from '@/api/sampleBackend/appSettings'
 import { resetSamplePlugins, samplePluginsBackend } from '@/api/sampleBackend/plugins'
+import { isInstallableUpdate } from '@/hooks/usePluginUpdates'
 import { setLocale } from '@/i18n/locale'
 import { pluginDetailPath, pluginDetailPattern, routePaths } from '@/routes'
 import { PluginDetailPage } from '../PluginDetailPage'
@@ -252,6 +253,19 @@ describe('plugins that need a newer app', () => {
       await waitFor(() => expect(alert).toHaveTextContent('This plugin needs Graphrt Desktop 0.3.0 or newer. You have 0.2.1. Update the app, then try again.'))
       expect(alert).not.toHaveTextContent(/unknown field|manifest/)
     })
+  })
+})
+
+describe('updates the Home notice counts', () => {
+  beforeEach(() => resetSamplePlugins())
+
+  it('leave out an update that needs a newer app', async () => {
+    const catalog = await catalogNeedingNewerApp({})
+    const update = catalog.plugins.find((entry) => entry.updateAvailable)
+    if (!update) throw new Error('the sample catalog has no pending update')
+    expect(isInstallableUpdate(update)).toBe(true)
+    expect(isInstallableUpdate({ ...update, needsNewerApp: { minVersion: '0.3.0' } })).toBe(false)
+    expect(isInstallableUpdate({ ...update, updateAvailable: false })).toBe(false)
   })
 })
 

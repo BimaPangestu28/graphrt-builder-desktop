@@ -7,7 +7,10 @@ import { useBackendSubscription } from './useBackendSubscription'
 
 /** Installed plugins with another catalog version, and what graphrt updated by itself. */
 export interface PluginUpdatesData {
-  /** Catalog entries with `updateAvailable`, in catalog order. */
+  /**
+   * Catalog entries with `updateAvailable` that this app can install, in catalog order. An update
+   * that needs a newer app is left out: nothing here can install it, its plugin page says why.
+   */
   pendingUpdates: PluginCatalogEntry[]
   /** Newest first. */
   autoUpdates: PluginAutoUpdate[]
@@ -26,7 +29,12 @@ async function readAutoUpdates(): Promise<PluginAutoUpdate[]> {
 
 async function loadPluginUpdates(): Promise<PluginUpdatesData> {
   const [catalog, autoUpdates] = await Promise.all([listPluginCatalog(false), readAutoUpdates()])
-  return { pendingUpdates: catalog.plugins.filter((entry) => entry.updateAvailable), autoUpdates, catalogPlugins: catalog.plugins }
+  return { pendingUpdates: catalog.plugins.filter(isInstallableUpdate), autoUpdates, catalogPlugins: catalog.plugins }
+}
+
+/** Whether the catalog has a newer version of an installed plugin that this app can install. */
+export function isInstallableUpdate(entry: PluginCatalogEntry): boolean {
+  return entry.updateAvailable && !entry.needsNewerApp
 }
 
 /**
