@@ -107,6 +107,43 @@ describe('AgentLearnedPage', () => {
     expect(screen.getByRole('textbox', { name: 'Your note' })).toHaveValue('')
   })
 
+  it('asks the model for suggestions from recent runs, and every suggestion waits for the owner', async () => {
+    renderLearnedPage()
+    await screen.findByRole('list', { name: 'Notes waiting for you' })
+    expect(screen.getByText(/Each one waits here for your approval/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Look at recent runs' }))
+    expect(await screen.findByText('1 new suggestion is waiting for you.')).toBeInTheDocument()
+    const suggested = await screen.findByRole('article', { name: 'Offer a callback when the customer sounds unsure.' })
+    expect(within(suggested).getByText('Not verified')).toBeInTheDocument()
+    expect(await lessonsWithStatus('approved')).not.toContain('lesson-suggested-1')
+    const learning = await sampleLearningBackend.getAgentLearning(agentId)
+    expect(learning.lessons.find((lesson) => lesson.text.startsWith('Offer a callback'))).toMatchObject({ status: 'proposed', trust: 'derived', signal: 'reflection' })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Look at recent runs' }))
+    expect(await screen.findByText('There are no new runs since the last look. Try the agent first.')).toBeInTheDocument()
+  })
+
+  it('explains a missing model when asking for suggestions, without the technical error', async () => {
+    vi.spyOn(sampleLearningBackend, 'suggestNotesFromRuns').mockRejectedValueOnce(new BackendError('missing_credentials', 'not set up yet: no model'))
+    renderLearnedPage()
+    await screen.findByRole('list', { name: 'Notes waiting for you' })
+    await userEvent.click(screen.getByRole('button', { name: 'Look at recent runs' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('No AI model is connected yet, so the runs cannot be read for you.')
+    expect(screen.getByRole('link', { name: 'Connect an AI model' })).toBeInTheDocument()
+  })
+
+  it('offers to turn notes into a skill only once enough of them describe how to do the work', async () => {
+    const { unmount } = renderLearnedPage('inUse')
+    await screen.findByRole('list', { name: 'Notes in use' })
+    expect(screen.queryByRole('link', { name: 'Write the skill' })).not.toBeInTheDocument()
+    unmount()
+
+    await sampleLearningBackend.decideLesson(agentId, 'lesson-open-hours', 'approve')
+    await sampleLearningBackend.decideLesson(agentId, 'lesson-refund', 'approve')
+    renderLearnedPage('inUse')
+    expect(await screen.findByRole('link', { name: 'Write the skill' })).toHaveAttribute('href', `/skills/new?fromAgent=${agentId}`)
+  })
+
   it('applies one person’s note to everyone only after asking, and forgets a person', async () => {
     await sampleLearningBackend.decideLesson(agentId, 'lesson-ibu-sari', 'approve')
     renderLearnedPage('inUse')

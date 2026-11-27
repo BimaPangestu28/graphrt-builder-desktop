@@ -11,7 +11,8 @@
 //! - **Written in the app** ([`SkillService::review_authored_skill`], then
 //!   [`SkillService::install_authored_skill`]): the runtime drafts a skill from plain
 //!   words or an example conversation ([`SkillService::draft_skill`]), the person edits
-//!   it, and the edited draft is checked again and takes the same path.
+//!   it, and the edited draft is checked again and takes the same path. A skill written
+//!   here can be opened again ([`SkillService::authored_draft`]) and saved over itself.
 //!
 //! Rules this module keeps:
 //! - An install is refused when the skill is not the one the person reviewed
@@ -19,6 +20,11 @@
 //! - A skill gets exactly the tools the person ticked on the screen, nothing else. An
 //!   update never keeps what the installed copy was allowed: the person ticks again.
 //! - A finding that blocks needs an explicit second confirmation.
+//!
+//! The name people see is the skill's own title ([`SkillEntry::title`]) and the catalog
+//! version is [`SkillOrigin::version`]. Earlier versions of the app kept both in
+//! `origin.detail`; [`SkillService::migrate_legacy_origins`] moves them once, and
+//! [`legacy_detail`] reads what has not been moved.
 
 mod active;
 mod draft;
@@ -36,10 +42,16 @@ use graphrt_skill::{
 };
 
 pub(crate) use self::active::skills_service;
+
+/// Clears the store runs read skills from (tests that published one).
+#[cfg(test)]
+pub(crate) fn unpublish_for_tests() {
+    active::publish(None);
+}
 use self::draft::CheckedDraft;
 use self::models::{
     AuthoredSkillInput, CatalogSkillEntry, FindingSeverity, InstalledSkill, SkillCatalog, SkillDraftSource,
-    SkillDraftView, SkillFinding, SkillReview, SkillToolRequest, SkillUpdateChanges, ToolPermission,
+    SkillDraftView, SkillFinding, SkillReview, SkillSource, SkillToolRequest, SkillUpdateChanges, ToolPermission,
     ToolPermissionMode,
 };
 use crate::error::{AppError, AppResult};
@@ -197,13 +209,141 @@ impl SkillService {
     /// source; `Model` when the model fails or its answer is not a skill.
     pub async fn draft_skill(&self, source: &SkillDraftSource) -> AppResult<SkillDraftView> {
         let model = self.draft_model.text_model()?;
-        let available_tools: Vec<String> = self
-            .plugins
+        draft::draft_from_source(model.as_ref(), source, self.available_tools()).await
+    }
+
+    /// Asks the person's model to write one skill from the notes `agent_id` learned
+    /// about how to do its work (approved notes that apply to everyone). `None` when
+    /// there are too few such notes. Nothing is installed: the draft is read and edited
+    /// like any other.
+    ///
+    /// # Errors
+    /// `MissingCredentials` when no model is connected; `Model` when the model fails or
+    /// its answer is not a skill; `Internal` when the notes cannot be read.
+    pub async fn draft_skill_from_notes(
+        &self,
+        notes: &graphrt_learn::LessonStore,
+        agent_id: &str,
+    ) -> AppResult<Option<SkillDraftView>> {
+        let model = self.draft_model.text_model()?;
+        let drafted = graphrt_learn::draft_skill_from_lessons(notes, agent_id, model.as_ref(), &self.available_tools())
+            .await
+            .map_err(|error| match error {
+                graphrt_learn::Error::SkillDraft(message) => AppError::Model(message),
+                other => {
+                    log::error!("lesson store: {other}");
+                    AppError::Internal("what this agent learned could not be read".into())
+                }
+            })?;
+        Ok(drafted.map(|drafted| draft::draft_view(&drafted, None)))
+    }
+
+    /// A skill written in the app, as the editor shows it, so it can be changed and
+    /// saved over itself.
+    ///
+    /// # Errors
+    /// `NotFound` when it is not installed; `InvalidInput` when it was not written here.
+    pub fn authored_draft(&self, name: &str) -> AppResult<SkillDraftView> {
+        let entry = self.store.get(name).map_err(skill_error)?;
+        if entry.origin.kind != OriginKind::Authored {
+            return Err(AppError::InvalidInput("only a skill written in the app can be edited here".into()));
+        }
+        Ok(SkillDraftView {
+            name: Some(entry.name.clone()),
+            title: resolve_display_name(&entry.name, [display_title(&entry)]),
+            description: entry.description.clone(),
+            instructions: self.instructions_of(&entry)?,
+            requested_tools: entry.requested_tools.clone(),
+        })
+    }
+
+    /// Moves what earlier versions of the app kept in `origin.detail` (the name people
+    /// see of a skill written here, the catalog version of a catalog skill) to where the
+    /// runtime now keeps it. The same files are installed again with what the person
+    /// allowed; nothing else changes. Returns how many skills were moved. A skill that
+    /// cannot be moved is logged and keeps working ([`legacy_detail`]).
+    pub fn migrate_legacy_origins(&self) -> usize {
+        let entries = match self.store.list() {
+            Ok(entries) => entries,
+            Err(error) => {
+                log::warn!("skills: could not read the installed skills to update how they are saved: {error}");
+                return 0;
+            }
+        };
+        let mut moved = 0;
+        for entry in entries.iter().filter(|entry| legacy_detail(entry).is_some()) {
+            match self.reinstall_without_legacy_detail(entry) {
+                Ok(()) => moved += 1,
+                Err(error) => log::warn!("skills: could not update how {} is saved: {error}", entry.name),
+            }
+        }
+        moved
+    }
+
+    fn reinstall_without_legacy_detail(&self, entry: &SkillEntry) -> AppResult<()> {
+        let legacy = legacy_detail(entry).map(str::to_owned);
+        let folder = staging_folder()?;
+        let skill_dir = match entry.origin.kind {
+            // The title becomes part of the skill file.
+            OriginKind::Authored => graphrt_skill::SkillDraft::new(
+                &entry.name,
+                &entry.description,
+                &self.instructions_of(entry)?,
+                &entry.requested_tools,
+            )
+            .and_then(|draft| draft.with_title(legacy.as_deref().unwrap_or_default()))
+            .and_then(|draft| draft.write_to(folder.path()))
+            .map_err(skill_error)?,
+            // The same files, as pinned at install: only the origin is written anew.
+            _ => {
+                let skill_dir = folder.path().join(&entry.name);
+                for (path, bytes) in self.store.export(&entry.name).map_err(skill_error)? {
+                    let target = skill_dir.join(&path);
+                    let parent = target.parent().unwrap_or(&skill_dir);
+                    std::fs::create_dir_all(parent)
+                        .and_then(|()| std::fs::write(&target, bytes))
+                        .map_err(|error| AppError::Internal(format!("could not copy the skill: {error}")))?;
+                }
+                skill_dir
+            }
+        };
+        let origin = SkillOrigin {
+            detail: None,
+            version: entry.origin.version.clone().or(legacy.filter(|_| is_catalog(&entry.origin))),
+            ..entry.origin.clone()
+        };
+        let options = InstallOptions {
+            grants: entry.grants.clone(),
+            // The person confirmed these findings when they added the skill.
+            accept_findings: true,
+            replace: true,
+            origin,
+        };
+        self.store.install(&skill_dir, options).map_err(skill_error)?;
+        if !entry.enabled {
+            self.store.set_enabled(&entry.name, false).map_err(skill_error)?;
+        }
+        Ok(())
+    }
+
+    /// The instructions of an installed skill, also of one that is turned off.
+    fn instructions_of(&self, entry: &SkillEntry) -> AppResult<String> {
+        let files = self.store.export(&entry.name).map_err(skill_error)?;
+        let skill_file = files
+            .iter()
+            .find(|(path, _)| path == graphrt_skill::SKILL_FILE)
+            .ok_or_else(|| AppError::Internal("the skill has no instructions file".into()))?;
+        let text = String::from_utf8_lossy(&skill_file.1);
+        Ok(graphrt_skill::parse_skill_file(&text).map_err(skill_error)?.body)
+    }
+
+    /// Every tool of the plugins installed here, as a draft may ask for it.
+    fn available_tools(&self) -> Vec<String> {
+        self.plugins
             .tool_specs()
             .into_iter()
             .flat_map(|(provider, specs)| specs.into_iter().map(move |spec| format!("{provider}/{}", spec.name)))
-            .collect();
-        draft::draft_from_source(model.as_ref(), source, available_tools).await
+            .collect()
     }
 
     /// Checks the draft as the person left it and returns what the confirmation screens show.
@@ -211,6 +351,7 @@ impl SkillService {
     /// # Errors
     /// `InvalidInput` for a draft that cannot be a skill (see `draft::checked_draft`).
     pub fn review_authored_skill(&self, input: &AuthoredSkillInput) -> AppResult<SkillReview> {
+        self.check_edited_skill(input)?;
         let draft = draft::checked_draft(input)?;
         let staged = stage_draft(&draft)?;
         self.review(&staged.skill_dir, authored_provenance(&draft))
@@ -227,10 +368,22 @@ impl SkillService {
         permissions: &[ToolPermission],
         accept_findings: bool,
     ) -> AppResult<InstalledSkill> {
+        self.check_edited_skill(input)?;
         let draft = draft::checked_draft(input)?;
         let staged = stage_draft(&draft)?;
         let request = InstallRequest { review_id, permissions, accept_findings };
         self.install(&staged.skill_dir, authored_provenance(&draft), &request)
+    }
+
+    /// When `input` changes an installed skill ([`AuthoredSkillInput::name`]): that skill
+    /// must be installed and written here.
+    fn check_edited_skill(&self, input: &AuthoredSkillInput) -> AppResult<()> {
+        let Some(name) = input.name.as_deref() else { return Ok(()) };
+        let entry = self.store.get(name).map_err(skill_error)?;
+        if entry.origin.kind != OriginKind::Authored {
+            return Err(AppError::InvalidInput("only a skill written in the app can be edited here".into()));
+        }
+        Ok(())
     }
 
     /// Replaces what an installed skill may use.
@@ -270,10 +423,7 @@ impl SkillService {
             description: entry.description.clone(),
             source: provenance.origin.kind.into(),
             publisher: provenance.origin.publisher.clone(),
-            version: entry
-                .version
-                .clone()
-                .or_else(|| provenance.origin.detail.clone().filter(|_| is_catalog(&provenance.origin))),
+            version: entry.version.clone().or_else(|| provenance.origin.version.clone()),
             review_id: entry.digest.clone(),
             requested_tools: labels.requests(&entry.requested_tools),
             unsupported_tools: entry.unsupported_tools.clone(),
@@ -297,8 +447,9 @@ impl SkillService {
                 "this skill changed since you looked at it; nothing was installed. Review it again".into(),
             ));
         }
-        let installed_origin = self.store.get(&details.entry.name).ok().map(|installed| installed.origin.kind);
-        if installed_origin.is_some_and(|kind| kind != provenance.origin.kind) {
+        // `details.installed` is the runtime's word on whether this replaces a skill.
+        let replaced = if details.installed { self.store.get(&details.entry.name).ok() } else { None };
+        if replaced.as_ref().is_some_and(|installed| installed.origin.kind != provenance.origin.kind) {
             return Err(AppError::Conflict(format!(
                 "another skill named {} is already installed; remove it first",
                 provenance.display_name
@@ -309,10 +460,14 @@ impl SkillService {
             // so an update never keeps a tool the person did not allow again.
             grants: grants_of(request.permissions),
             accept_findings: request.accept_findings,
-            replace: installed_origin.is_some(),
+            replace: replaced.is_some(),
             origin: provenance.origin,
         };
-        let entry = self.store.install(skill_dir, options).map_err(skill_error)?;
+        let mut entry = self.store.install(skill_dir, options).map_err(skill_error)?;
+        // Installing turns a skill on. One the person had turned off stays off.
+        if replaced.is_some_and(|installed| !installed.enabled) {
+            entry = self.store.set_enabled(&entry.name, false).map_err(skill_error)?;
+        }
         Ok(installed_view(&entry, &self.tool_labels(), &self.known_catalog_display_names()))
     }
 
@@ -386,6 +541,7 @@ fn stage_archive(name: &str, archive: &[u8]) -> AppResult<StagedSkill> {
 /// through the same calls as a downloaded skill.
 fn stage_draft(checked: &CheckedDraft) -> AppResult<StagedSkill> {
     let folder = staging_folder()?;
+    // The draft carries the name people see, so it is saved with the skill itself.
     let skill_dir = checked.draft.write_to(folder.path()).map_err(skill_error)?;
     Ok(StagedSkill { _folder: folder, skill_dir })
 }
@@ -395,10 +551,11 @@ fn catalog_provenance(entry: &CatalogSkill) -> Provenance {
         origin: SkillOrigin {
             kind: OriginKind::Catalog,
             // The catalog version installed, compared with the catalog's to offer updates.
-            detail: Some(entry.version.clone()).filter(|version| !version.is_empty()),
+            version: Some(entry.version.clone()).filter(|version| !version.is_empty()),
             publisher: entry.publisher.clone(),
             // Set only here: the archive matched the checksum of the signed index.
             verified: true,
+            ..SkillOrigin::default()
         },
         display_name: resolve_display_name(&entry.name, [entry.display_name.as_deref()]),
         instructions: None,
@@ -407,13 +564,7 @@ fn catalog_provenance(entry: &CatalogSkill) -> Provenance {
 
 fn authored_provenance(checked: &CheckedDraft) -> Provenance {
     Provenance {
-        origin: SkillOrigin {
-            kind: OriginKind::Authored,
-            // The name as the person typed it, shown instead of the technical name.
-            detail: Some(checked.title.clone()),
-            publisher: None,
-            verified: false,
-        },
+        origin: SkillOrigin { kind: OriginKind::Authored, ..SkillOrigin::default() },
         display_name: checked.title.clone(),
         instructions: Some(checked.draft.body.clone()),
     }
@@ -428,10 +579,36 @@ fn catalog_has_newer(skill: &CatalogSkill, installed: &SkillEntry) -> bool {
     if !is_catalog(&installed.origin) || skill.version.is_empty() {
         return false;
     }
-    match installed.origin.detail.as_deref() {
+    match catalog_version(installed) {
         Some(installed_version) => crate::plugins::is_newer_version(&skill.version, installed_version),
         None => true,
     }
+}
+
+/// What an earlier version of the app kept in `origin.detail` and has not been moved yet
+/// (see [`SkillService::migrate_legacy_origins`]): the name people see of a skill written
+/// here, or the catalog version of a catalog skill.
+fn legacy_detail(entry: &SkillEntry) -> Option<&str> {
+    let already_moved = match entry.origin.kind {
+        OriginKind::Authored => entry.title.is_some(),
+        OriginKind::Catalog => entry.origin.version.is_some(),
+        OriginKind::Local | OriginKind::Learned => true,
+    };
+    entry.origin.detail.as_deref().filter(|detail| !already_moved && !detail.trim().is_empty())
+}
+
+/// The catalog version an installed catalog skill came as.
+fn catalog_version(entry: &SkillEntry) -> Option<&str> {
+    if !is_catalog(&entry.origin) {
+        return None;
+    }
+    entry.origin.version.as_deref().or_else(|| legacy_detail(entry))
+}
+
+/// The name the skill gives itself for people, when it has one.
+fn display_title(entry: &SkillEntry) -> Option<&str> {
+    let legacy = legacy_detail(entry).filter(|_| entry.origin.kind == OriginKind::Authored);
+    entry.title.as_deref().or(legacy)
 }
 
 fn grants_of(permissions: &[ToolPermission]) -> Vec<Grant> {
@@ -464,6 +641,7 @@ fn finding_view(finding: &Finding) -> SkillFinding {
         message: finding.message.clone(),
         file: finding.file.clone(),
         line: finding.line,
+        details: finding.params.clone(),
     }
 }
 
@@ -480,18 +658,17 @@ fn update_view(details: &SkillDetails, labels: &ToolLabels) -> Option<SkillUpdat
 }
 
 fn installed_view(entry: &SkillEntry, labels: &ToolLabels, catalog_names: &HashMap<String, String>) -> InstalledSkill {
-    let curated = match entry.origin.kind {
-        OriginKind::Authored => entry.origin.detail.as_deref(),
-        OriginKind::Catalog => catalog_names.get(&entry.name).map(String::as_str),
-        OriginKind::Local | OriginKind::Learned => None,
-    };
-    let catalog_version = entry.origin.detail.clone().filter(|_| is_catalog(&entry.origin));
+    // The catalog's own name for a catalog skill, then the name the skill gives itself.
+    let catalog_name = catalog_names.get(&entry.name).map(String::as_str).filter(|_| is_catalog(&entry.origin));
+    let catalog_version = catalog_version(entry).map(str::to_owned);
+    let source = SkillSource::from(entry.origin.kind);
     InstalledSkill {
         name: entry.name.clone(),
-        display_name: resolve_display_name(&entry.name, [curated]),
+        display_name: resolve_display_name(&entry.name, [catalog_name, display_title(entry)]),
         description: entry.description.clone(),
         enabled: entry.enabled,
-        source: entry.origin.kind.into(),
+        source,
+        can_edit: source == SkillSource::Authored,
         publisher: entry.origin.publisher.clone(),
         verified: is_catalog(&entry.origin) && entry.origin.verified,
         version: entry.version.clone().or(catalog_version),

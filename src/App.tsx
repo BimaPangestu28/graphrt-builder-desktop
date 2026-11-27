@@ -2,7 +2,7 @@ import { Suspense, lazy, useEffect, useState, type ComponentType, type LazyExoti
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { hasFinishedWelcome } from './lib/firstLaunch'
 import { prefetchWhenIdle, type ChunkLoader } from './lib/prefetchWhenIdle'
-import { agentRoutePatterns, connectionsTabPattern, knowledgeDetailPattern, pluginDetailPattern, routePaths, skillAddPattern, skillDetailPattern } from './routes'
+import { agentRoutePatterns, connectionsTabPattern, knowledgeDetailPattern, pluginDetailPattern, routePaths, skillAddPattern, skillDetailPattern, skillEditPattern } from './routes'
 import { ScreenLoading } from './components/layout/ScreenLoading'
 
 /**
@@ -107,6 +107,7 @@ const screenRoutes = [
   { path: routePaths.skills, element: <SkillsPage /> },
   { path: routePaths.skillCreate, element: <SkillCreatePage /> },
   { path: skillAddPattern, element: <SkillAddPage /> },
+  { path: skillEditPattern, element: <SkillCreatePage /> },
   { path: skillDetailPattern, element: <SkillDetailPage /> },
   { path: agentRoutePatterns.learned, element: <AgentLearnedPage /> },
   { path: agentRoutePatterns.putOnline, element: <PutOnlinePage /> },

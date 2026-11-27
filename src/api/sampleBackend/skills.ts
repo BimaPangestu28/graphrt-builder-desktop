@@ -81,6 +81,8 @@ const catalogSeeds: readonly SampleSkillSeed[] = [
 
 interface SampleInstalledSkill {
   seed: SampleSkillSeed
+  /** For a skill written in the app: its instructions, so it can be opened again. */
+  instructions?: string
   source: SkillSource
   version: string | null
   enabled: boolean
@@ -139,6 +141,7 @@ function installedView(record: SampleInstalledSkill): InstalledSkill {
     description: seed.description,
     enabled: record.enabled,
     source: record.source,
+    canEdit: record.source === 'authored',
     publisher: record.source === 'catalog' ? 'graphrt' : null,
     verified: record.source === 'catalog',
     version: record.version,
@@ -235,7 +238,8 @@ function draftSeed(input: AuthoredSkillInput): { seed: SampleSkillSeed; instruct
   const description = input.description.trim().replace(/\s+/g, ' ')
   const instructions = input.instructions.trim()
   if (!title) throw new BackendError('invalid_input', 'invalid input: Give the skill a name')
-  const name = technicalName(title)
+  // A skill being changed keeps its technical name.
+  const name = input.name ?? technicalName(title)
   if (!name) throw new BackendError('invalid_input', 'invalid input: Use at least one letter (a to z) or digit in the name')
   if (!description) throw new BackendError('invalid_input', 'invalid input: Say when the agent should use this skill')
   if (!instructions) throw new BackendError('invalid_input', 'invalid input: Write what the agent should do')
@@ -246,6 +250,17 @@ function draftSeed(input: AuthoredSkillInput): { seed: SampleSkillSeed; instruct
   const seed: SampleSkillSeed = { name, displayName: title, description, version: '', requestedTools, unsupportedTools: [], hasScripts: false, findings }
   // Two different drafts with the same name must not share a review.
   return { seed: { ...seed, version: String(instructions.length + description.length) }, instructions }
+}
+
+/** Fewest notes about how to do the work that a skill is written from (the runtime's rule). */
+export const minNotesForSkill = 3
+
+/** The notes a skill may be written from; the sample learning backend registers its own. */
+let sampleNotesForSkill: (agentId: string) => string[] = () => []
+
+/** Lets the sample learning backend say which notes of an agent describe how to do its work. */
+export function setSampleNotesForSkill(read: (agentId: string) => string[]): void {
+  sampleNotesForSkill = read
 }
 
 /** Whether the sample "model" is connected; a test turns it off to see the no-model path. */
@@ -326,10 +341,41 @@ export const sampleSkillsBackend = {
 
   installAuthoredSkill: (input: AuthoredSkillInput, choices: SkillInstallChoices): Promise<InstalledSkill> =>
     respondWith(() => {
-      const installed = install(draftSeed(input).seed, 'authored', choices)
+      if (input.name && requireInstalled(input.name).source !== 'authored') {
+        throw new BackendError('invalid_input', 'invalid input: only a skill written in the app can be edited here')
+      }
+      const { seed, instructions } = draftSeed(input)
+      const installed = install(seed, 'authored', choices)
       const record = requireInstalled(installed.name)
       record.version = null
+      record.instructions = instructions
       return installedView(record)
+    }),
+
+  getAuthoredSkillDraft: (name: string): Promise<AuthoredSkillInput> =>
+    respondWith(() => {
+      const record = requireInstalled(name)
+      if (record.source !== 'authored') throw new BackendError('invalid_input', 'invalid input: only a skill written in the app can be edited here')
+      return {
+        name,
+        title: record.seed.displayName,
+        description: record.seed.description,
+        instructions: record.instructions ?? `# ${record.seed.displayName}\n\n1. ${record.seed.description}`,
+        requestedTools: record.seed.requestedTools.map((requested) => requested.tool),
+      }
+    }),
+
+  draftSkillFromNotes: (agentId: string): Promise<AuthoredSkillInput | null> =>
+    respondWith(() => {
+      if (!isSampleModelConnected) throw new BackendError('missing_credentials', 'not set up yet: connect an AI model')
+      const notes = sampleNotesForSkill(agentId)
+      if (notes.length < minNotesForSkill) return null
+      return {
+        title: 'How we handle requests',
+        description: 'Use when a request matches what this agent was taught in its notes.',
+        instructions: `# How we handle requests\n\n${notes.map((note, index) => `${index + 1}. ${note}`).join('\n')}`,
+        requestedTools: [],
+      }
     }),
 
   setSkillPermissions: (name: string, permissions: ToolPermission[]): Promise<InstalledSkill> =>

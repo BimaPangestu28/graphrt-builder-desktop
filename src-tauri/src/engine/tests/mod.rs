@@ -2,6 +2,7 @@ mod approvals;
 mod chosen_file_inputs;
 mod event_storage;
 mod review_flow;
+mod skills_and_learning;
 mod trusted_lookups;
 
 use std::sync::{Arc, Mutex};

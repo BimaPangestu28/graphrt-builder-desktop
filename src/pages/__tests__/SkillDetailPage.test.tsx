@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { resetSampleAgents } from '@/api/sampleBackend/agents'
 import { resetSampleSkills, sampleSkillsBackend } from '@/api/sampleBackend/skills'
-import { routePaths, skillAddPath, skillAddPattern, skillDetailPath, skillDetailPattern } from '@/routes'
+import { routePaths, skillAddPath, skillAddPattern, skillDetailPath, skillDetailPattern, skillEditPath } from '@/routes'
 import { SkillDetailPage } from '../SkillDetailPage'
 
 function renderSkillPage(skillName: string) {
@@ -37,6 +37,15 @@ describe('SkillDetailPage', () => {
     expect(screen.getByText(/From the Graphrt catalog · By graphrt · Version 1\.0\.0 · Added/)).toBeInTheDocument()
     expect(screen.getByText('The catalog has a newer version of this skill.')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Review update' })).toHaveAttribute('href', skillAddPath('friendly-tone'))
+  })
+
+  it('offers to change the wording of a skill written here, and not of a catalog skill', async () => {
+    const { unmount } = renderSkillPage('meeting-notes')
+    expect(await screen.findByRole('link', { name: 'Change the wording' })).toHaveAttribute('href', skillEditPath('meeting-notes'))
+    unmount()
+    renderSkillPage('friendly-tone')
+    await screen.findByRole('heading', { level: 1, name: /Friendly tone/ })
+    expect(screen.queryByRole('link', { name: 'Change the wording' })).not.toBeInTheDocument()
   })
 
   it('changes what the skill may use only when the choices are saved', async () => {

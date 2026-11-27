@@ -60,6 +60,7 @@ export const skills = defineMessages(
       addTitle: (name: string) => `Add ${name}`,
       updateTitle: (name: string) => `Update ${name}`,
       createTitle: 'Create a skill',
+      editTitle: 'Change a skill',
       stepsLabel: 'Steps',
       steps: {
         describe: 'Describe it',
@@ -101,6 +102,16 @@ export const skills = defineMessages(
       keyUnreadable: 'The key of your AI model could not be read from this computer’s password store, so a draft cannot be written for you right now. You can write the skill yourself instead.',
       connectModel: 'Connect an AI model',
       couldNotDraft: (reason: string) => `The draft could not be written: ${reason}`,
+    },
+    edit: {
+      opening: 'Opening the skill…',
+      couldNotOpen: (reason: string) => `Could not open the skill: ${reason}`,
+      intro: 'This is the skill as it is saved now. Change what you like. Nothing changes until you have been through the next steps.',
+    },
+    fromNotes: {
+      writing: 'Writing a skill from what the agent learned…',
+      tooFew: 'This agent does not have enough notes in use to write a skill from yet.',
+      intro: 'Your AI model wrote this from the notes the agent uses. Read it and change anything that is not how you do it. Nothing is added yet.',
     },
     draft: {
       intro: 'This is the draft. Read it and change anything that is not how you do it. Nothing is added yet.',
@@ -169,6 +180,12 @@ export const skills = defineMessages(
         scripts_not_run: 'Contains script files. Graphrt never runs scripts from a skill.',
         unsupported_tools: 'Mentions tools from other products. They cannot be used here.',
       } satisfies Record<FindingCode, string>,
+      findingDetail: {
+        links: (addresses: string) => `Addresses it mentions: ${addresses}`,
+        scripts: (count: number) => (count === 1 ? '1 script file' : `${count} script files`),
+        otherTools: (tools: string) => `Tools it mentions: ${tools}`,
+        andMore: (listed: string, leftOut: number) => `${listed} and ${leftOut} more`,
+      },
       inFile: (file: string) => `In ${file}`,
       inFileLine: (file: string, line: number) => `In ${file}, line ${line}`,
       confirmBlocking: 'I read what was found and still want to add this skill',
@@ -179,6 +196,7 @@ export const skills = defineMessages(
     },
     agents: {
       added: (name: string) => `${name} is added.`,
+      saved: (name: string) => `${name} is saved.`,
       intro: 'Choose the agents that may use it. You can change this any time.',
       listLabel: 'Agents that can use this skill',
       loading: 'Loading agents…',
@@ -207,6 +225,7 @@ export const skills = defineMessages(
       couldNotRemove: (reason: string) => `Could not remove the skill: ${reason}`,
       couldNotChange: (reason: string) => `Could not change the skill: ${reason}`,
       addedOn: (date: string) => `Added ${date}`,
+      edit: 'Change the wording',
     },
   },
   {
@@ -251,6 +270,7 @@ export const skills = defineMessages(
       addTitle: (name: string) => `Tambahkan ${name}`,
       updateTitle: (name: string) => `Perbarui ${name}`,
       createTitle: 'Buat skill',
+      editTitle: 'Ubah skill',
       stepsLabel: 'Langkah',
       steps: {
         describe: 'Jelaskan',
@@ -292,6 +312,16 @@ export const skills = defineMessages(
       keyUnreadable: 'Kunci model AI Anda tidak bisa dibaca dari penyimpanan kata sandi komputer ini, jadi draf belum bisa dituliskan untuk Anda. Anda tetap bisa menulis skill ini sendiri.',
       connectModel: 'Hubungkan model AI',
       couldNotDraft: (reason: string) => `Draf tidak bisa ditulis. ${reason}`,
+    },
+    edit: {
+      opening: 'Membuka skill…',
+      couldNotOpen: (reason: string) => `Skill tidak bisa dibuka. ${reason}`,
+      intro: 'Ini skill yang tersimpan sekarang. Ubah yang perlu. Belum ada yang berubah sampai Anda melewati langkah berikutnya.',
+    },
+    fromNotes: {
+      writing: 'Menulis skill dari yang dipelajari agent…',
+      tooFew: 'Catatan yang dipakai agent ini belum cukup untuk dijadikan skill.',
+      intro: 'Model AI Anda menulis ini dari catatan yang dipakai agent. Baca, lalu ubah yang tidak sesuai cara Anda. Belum ada yang ditambahkan.',
     },
     draft: {
       intro: 'Ini drafnya. Baca dan ubah bagian yang tidak sesuai cara kerja Anda. Belum ada yang ditambahkan.',
@@ -360,6 +390,12 @@ export const skills = defineMessages(
         scripts_not_run: 'Berisi berkas skrip. Graphrt tidak pernah menjalankan skrip dari skill.',
         unsupported_tools: 'Menyebut tool dari produk lain. Tool itu tidak bisa dipakai di sini.',
       },
+      findingDetail: {
+        links: (addresses: string) => `Alamat yang disebut ${addresses}`,
+        scripts: (count: number) => `${count} berkas skrip`,
+        otherTools: (tools: string) => `Tool yang disebut ${tools}`,
+        andMore: (listed: string, leftOut: number) => `${listed} dan ${leftOut} lainnya`,
+      },
       inFile: (file: string) => `Di ${file}`,
       inFileLine: (file: string, line: number) => `Di ${file}, baris ${line}`,
       confirmBlocking: 'Saya sudah membaca temuannya dan tetap ingin menambahkan skill ini',
@@ -370,6 +406,7 @@ export const skills = defineMessages(
     },
     agents: {
       added: (name: string) => `${name} sudah ditambahkan.`,
+      saved: (name: string) => `${name} sudah disimpan.`,
       intro: 'Pilih agent yang boleh memakainya. Anda bisa mengubahnya kapan saja.',
       listLabel: 'Agent yang bisa memakai skill ini',
       loading: 'Memuat agent…',
@@ -398,6 +435,7 @@ export const skills = defineMessages(
       couldNotRemove: (reason: string) => `Skill tidak bisa dihapus. ${reason}`,
       couldNotChange: (reason: string) => `Skill tidak bisa diubah. ${reason}`,
       addedOn: (date: string) => `Ditambahkan ${date}`,
+      edit: 'Ubah isi',
     },
   },
 )

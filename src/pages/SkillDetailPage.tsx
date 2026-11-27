@@ -7,7 +7,7 @@ import { Badge, Button, Card, Icon, LinkButton } from '@/components/ui'
 import { useAsyncData } from '@/hooks/useAsyncData'
 import { describeError } from '@/lib/agentDisplay'
 import { formatDate, useT } from '@/i18n'
-import { routePaths, skillAddPath } from '@/routes'
+import { routePaths, skillAddPath, skillEditPath } from '@/routes'
 import { AgentSkillPicker } from './skills/AgentSkillPicker'
 import { SkillFindingsList } from './skills/SkillFindingsList'
 import { describeSkillSource } from './skills/skillDisplay'
@@ -215,7 +215,15 @@ export function SkillDetailPage() {
           </div>
         )}
         <Card className="flex flex-col gap-4 p-5">
-          <p className="m-0 max-w-[80ch] text-[15px] leading-relaxed text-ink">{skill.description}</p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <p className="m-0 max-w-[80ch] min-w-0 flex-1 basis-[320px] text-[15px] leading-relaxed text-ink">{skill.description}</p>
+            {skill.canEdit && (
+              <LinkButton to={skillEditPath(skill.name)} variant="secondary" size="sm" className="shrink-0 !text-ink">
+                <Icon name="edit" size={14} />
+                {t.detail.edit}
+              </LinkButton>
+            )}
+          </div>
           <label className="flex cursor-pointer items-center gap-2.5 text-[14px] font-medium text-ink">
             <input type="checkbox" checked={skill.enabled} onChange={(event) => void toggleEnabled(event.target.checked)} className="size-4 shrink-0 accent-ink" />
             {t.detail.enabledLabel(skill.displayName)}

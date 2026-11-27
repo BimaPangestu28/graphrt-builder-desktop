@@ -5,6 +5,8 @@
 //! here carries file hashes or store paths except [`SkillReview::review_id`], which the UI
 //! only hands back.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 /// Where an installed skill came from.
@@ -87,6 +89,10 @@ pub struct SkillFinding {
     pub message: String,
     pub file: Option<String>,
     pub line: Option<u32>,
+    /// What exactly was found, as data the UI words itself: `hosts` and `more` for
+    /// `external_links`, `count` for `scripts_not_run`, `tools` for `unsupported_tools`.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub details: BTreeMap<String, Vec<String>>,
 }
 
 /// What an update changes compared with the installed copy.
@@ -142,6 +148,8 @@ pub struct InstalledSkill {
     /// Off: no agent is offered this skill.
     pub enabled: bool,
     pub source: SkillSource,
+    /// Whether it was written in the app, so its wording can be changed there.
+    pub can_edit: bool,
     pub publisher: Option<String>,
     /// Whether it came from the signed catalog.
     pub verified: bool,
@@ -183,6 +191,10 @@ pub struct SkillCatalog {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthoredSkillInput {
+    /// Set when this changes a skill written here earlier: that skill's technical name.
+    /// It stays the same whatever the title becomes, so agents keep the skill.
+    #[serde(default)]
+    pub name: Option<String>,
     /// The skill's name as people say it, e.g. "Refund policy".
     pub title: String,
     /// When the agent should use it, in one or two sentences.
@@ -208,6 +220,8 @@ pub enum SkillDraftSource {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SkillDraftView {
+    /// The installed skill this draft changes; `None` for a new skill.
+    pub name: Option<String>,
     pub title: String,
     pub description: String,
     pub instructions: String,

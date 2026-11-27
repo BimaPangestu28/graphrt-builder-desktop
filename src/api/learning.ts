@@ -1,5 +1,5 @@
 import { callBackend, isDesktopApp } from './client'
-import type { AgentLearning, FeedbackOutcome, LearningUse, Lesson, LessonDecision, RunFeedback } from './learningTypes'
+import type { AgentLearning, FeedbackOutcome, LearningUse, Lesson, LessonDecision, RunFeedback, RunSuggestions } from './learningTypes'
 import { sampleLearningBackend } from './sampleBackend/learning'
 
 /**
@@ -75,4 +75,16 @@ export function setAgentUsesLearning(agentId: string, enabled: boolean): Promise
 export function recordRunFeedback(runId: string, feedback: RunFeedback): Promise<FeedbackOutcome> {
   if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleLearningBackend.recordRunFeedback(runId, feedback)
   return callBackend('record_run_feedback', { runId, feedback })
+}
+
+/**
+ * Asks the person's default model to read the agent's latest runs and suggest notes. Every
+ * suggestion waits for the owner; none is used before they approve it.
+ *
+ * @throws BackendError - `missing_credentials` when no model is connected, `model` when the
+ *   model fails
+ */
+export function suggestNotesFromRuns(agentId: string): Promise<RunSuggestions> {
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleLearningBackend.suggestNotesFromRuns(agentId)
+  return callBackend('suggest_notes_from_runs', { agentId })
 }

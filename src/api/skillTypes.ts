@@ -41,6 +41,11 @@ export interface SkillFinding {
   message: string
   file: string | null
   line: number | null
+  /**
+   * What exactly was found, for the app to word itself: `hosts` and `more` for
+   * `external_links`, `count` for `scripts_not_run`, `tools` for `unsupported_tools`.
+   */
+  details?: Record<string, string[]>
 }
 
 /** What an update changes compared with the installed copy. */
@@ -82,6 +87,8 @@ export interface InstalledSkill {
   description: string
   enabled: boolean
   source: SkillSource
+  /** Whether it was written in the app, so its wording can be changed there. */
+  canEdit: boolean
   publisher: string | null
   /** Whether it came from the signed catalog. */
   verified: boolean
@@ -112,6 +119,8 @@ export interface SkillCatalog {
 
 /** "Create a skill": the draft as the person left it after reading and editing it. */
 export interface AuthoredSkillInput {
+  /** Set when this changes a skill written here earlier (only ever handed back). A new skill has none. */
+  name?: string | null
   /** The skill's name as people say it, e.g. "Refund policy". */
   title: string
   /** When the agent should use it, in one or two sentences. */

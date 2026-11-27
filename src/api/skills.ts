@@ -57,6 +57,30 @@ export function draftSkill(source: SkillDraftSource): Promise<SkillDraft> {
 }
 
 /**
+ * Asks the person's default model to write one skill from the notes an agent learned about
+ * how to do its work. Installs nothing.
+ *
+ * @returns The draft, or `null` when the agent has too few such notes
+ * @throws BackendError - `missing_credentials` when no model is connected, `model` when the
+ *   model fails or does not answer with a skill
+ */
+export function draftSkillFromNotes(agentId: string): Promise<SkillDraft | null> {
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleSkillsBackend.draftSkillFromNotes(agentId)
+  return callBackend('draft_skill_from_notes', { agentId })
+}
+
+/**
+ * A skill written in the app as its editor shows it, to change it and save it again.
+ *
+ * @throws BackendError - `not_found` when it is not installed, `invalid_input` when it was
+ *   not written in the app
+ */
+export function getAuthoredSkillDraft(name: string): Promise<SkillDraft> {
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleSkillsBackend.getAuthoredSkillDraft(name)
+  return callBackend('get_authored_skill_draft', { name })
+}
+
+/**
  * Checks the draft as the person left it, for the confirmation screens. Installs nothing.
  *
  * @throws BackendError - `invalid_input` when the draft cannot be a skill

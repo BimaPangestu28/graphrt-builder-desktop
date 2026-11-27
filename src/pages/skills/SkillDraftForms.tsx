@@ -66,6 +66,8 @@ interface SkillDraftEditorProps {
   draft: SkillDraft
   /** The person is writing it themselves: there is no model draft to check. */
   isManual: boolean
+  /** Said above the fields instead of the usual line (changing a skill, or one written from notes). */
+  intro?: string
   onChange: (draft: SkillDraft) => void
   disabled?: boolean
 }
@@ -75,14 +77,14 @@ interface SkillDraftEditorProps {
  * leaves here is what gets checked and reviewed in the next steps; the model's draft itself
  * is never added.
  */
-export function SkillDraftEditor({ draft, isManual, onChange, disabled = false }: SkillDraftEditorProps) {
+export function SkillDraftEditor({ draft, isManual, intro, onChange, disabled = false }: SkillDraftEditorProps) {
   const t = useT().skills.draft
   const nameId = useId()
   const whenId = useId()
   const instructionsId = useId()
   return (
     <div className="flex flex-col gap-5">
-      <p className="m-0 max-w-[80ch] leading-normal text-body">{isManual ? t.introManual : t.intro}</p>
+      <p className="m-0 max-w-[80ch] leading-normal text-body">{intro ?? (isManual ? t.introManual : t.intro)}</p>
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <div className="flex flex-col gap-1.5">
           <label htmlFor={nameId} className="text-[13px] font-semibold text-ink">

@@ -1,15 +1,15 @@
 import { useState, type ReactNode } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { isBackendErrorWithCode } from '@/api/client'
-import { addLearningNote, forgetLearningPerson, getAgentLearning, setAgentUsesLearning, setAutoLearn } from '@/api/learning'
-import type { AgentLearning } from '@/api/learningTypes'
+import { addLearningNote, forgetLearningPerson, getAgentLearning, setAgentUsesLearning, setAutoLearn, suggestNotesFromRuns } from '@/api/learning'
+import type { AgentLearning, RunSuggestions } from '@/api/learningTypes'
 import { AppShell, PageFrame, PageTitleBlock } from '@/components/layout'
-import { Button, Card, Icon, PillTabBadge, pillTabClassNames } from '@/components/ui'
+import { Button, Card, Icon, LinkButton, PillTabBadge, Spinner, pillTabClassNames } from '@/components/ui'
 import { useAgent } from '@/hooks/useAgent'
 import { useAsyncData } from '@/hooks/useAsyncData'
 import { describeError } from '@/lib/agentDisplay'
 import { useT } from '@/i18n'
-import { agentPath, sampleAgentId } from '@/routes'
+import { agentPath, connectionsTabPath, sampleAgentId, skillFromNotesPath } from '@/routes'
 import { LessonCard } from './learning/LessonCard'
 import { describeHistoryEntry, describeHistoryTime, lessonsOfTab, peopleRemembered, type LessonTab } from './learning/lessonDisplay'
 
@@ -132,6 +132,80 @@ function AddNoteForm({ agentId, onAdded }: { agentId: string; onAdded: () => voi
           {error}
         </span>
       )}
+    </Card>
+  )
+}
+
+/**
+ * "Look at recent runs": the owner asks their AI model to read the agent's latest runs and
+ * suggest notes. Whatever it suggests lands in "Waiting for you"; nothing is used before the
+ * owner approves it.
+ */
+function SuggestFromRunsCard({ agentId, onSuggested }: { agentId: string; onSuggested: () => void }) {
+  const t = useT().learning.suggest
+  const [isLooking, setIsLooking] = useState(false)
+  const [outcome, setOutcome] = useState<RunSuggestions | null>(null)
+  const [error, setError] = useState<{ message: string; needsModel: boolean } | null>(null)
+
+  async function look() {
+    setIsLooking(true)
+    setError(null)
+    setOutcome(null)
+    try {
+      const suggestions = await suggestNotesFromRuns(agentId)
+      setOutcome(suggestions)
+      if (suggestions.proposed.length > 0) onSuggested()
+    } catch (lookError) {
+      const needsModel = isBackendErrorWithCode(lookError, 'missing_credentials')
+      const keyUnreadable = isBackendErrorWithCode(lookError, 'credentials')
+      setError({ message: needsModel ? t.noModel : keyUnreadable ? t.keyUnreadable : t.couldNot(describeError(lookError)), needsModel })
+    } finally {
+      setIsLooking(false)
+    }
+  }
+
+  const result = outcome && (outcome.runsRead === 0 ? t.nothingNew : outcome.proposed.length === 0 ? t.nothingFound(outcome.runsRead) : t.found(outcome.proposed.length))
+  return (
+    <Card className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 p-4">
+      <div className="flex min-w-0 flex-1 basis-[320px] flex-col gap-0.5">
+        <span className="text-[14px] font-semibold text-ink">{t.heading}</span>
+        <span className="text-[12px] leading-normal text-muted">{t.hint}</span>
+      </div>
+      <Button variant="secondary" disabled={isLooking} onClick={() => void look()}>
+        {isLooking ? <Spinner /> : <Icon name="lightbulb" size={16} />}
+        {isLooking ? t.looking : t.look}
+      </Button>
+      {result && (
+        <span role="status" className="basis-full text-[13px] text-body">
+          {result}
+        </span>
+      )}
+      {error && (
+        <div role="alert" className="flex basis-full flex-wrap items-center gap-3 text-[13px] text-danger">
+          <span>{error.message}</span>
+          {error.needsModel && (
+            <LinkButton to={connectionsTabPath('models')} variant="secondary" size="sm" className="!text-ink">
+              {t.connectModel}
+            </LinkButton>
+          )}
+        </div>
+      )}
+    </Card>
+  )
+}
+
+/** "Turn these notes into a skill": shown once enough notes in use describe how to do the work. */
+function SkillFromNotesCard({ agentId }: { agentId: string }) {
+  const t = useT().learning.toSkill
+  return (
+    <Card className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 p-4">
+      <div className="flex min-w-0 flex-1 basis-[320px] flex-col gap-0.5">
+        <span className="text-[14px] font-semibold text-ink">{t.heading}</span>
+        <span className="text-[12px] leading-normal text-muted">{t.hint}</span>
+      </div>
+      <LinkButton to={skillFromNotesPath(agentId)} variant="secondary" className="!text-ink">
+        {t.write}
+      </LinkButton>
     </Card>
   )
 }
@@ -302,6 +376,8 @@ export function AgentLearnedPage() {
                     ))}
                   </ul>
                 )}
+                {tab === 'waiting' && <SuggestFromRunsCard agentId={agentId} onSuggested={reload} />}
+                {tab === 'inUse' && learning.canBecomeSkill && <SkillFromNotesCard agentId={agentId} />}
                 {tab === 'inUse' && <AddNoteForm agentId={agentId} onAdded={reload} />}
               </>
             )}

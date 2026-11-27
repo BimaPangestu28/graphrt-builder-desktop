@@ -75,6 +75,8 @@ export interface AgentLearning {
   lessons: Lesson[]
   /** "Learn automatically". Off unless the owner turned it on. */
   autoLearn: boolean
+  /** Enough notes in use describe how to do the work that they can be written up as one skill. */
+  canBecomeSkill: boolean
   /** Newest first. */
   history: LessonHistoryEntry[]
   usage: LearningUse
@@ -91,6 +93,16 @@ export interface RunFeedback {
 export interface FeedbackOutcome {
   /** Lessons now waiting for the owner because of this feedback. */
   proposed: Lesson[]
-  /** Why a comment did not become a proposal, when it did not. */
+  /** The comment is saved but shows up as a note only once some waiting notes are decided. */
+  keptForLater: boolean
+  /** Why a comment did not become a proposal and is not kept, when that happened. */
   notRecorded: string | null
+}
+
+/** What asking the model for suggestions from recent runs gave. */
+export interface RunSuggestions {
+  /** How many runs the model read; 0 when there was no run it had not read yet. */
+  runsRead: number
+  /** The suggestions now waiting for the owner. */
+  proposed: Lesson[]
 }

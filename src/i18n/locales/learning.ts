@@ -15,6 +15,7 @@ type RiskCode =
   | 'web_address'
   | 'email_address'
   | 'long_number'
+  | 'masked_secret'
   | 'overrides_instructions'
   | 'hides_from_user'
   | 'skips_approval'
@@ -81,6 +82,7 @@ export const learning = defineMessages(
       touches_credentials: 'It mentions files or values that hold passwords or keys.',
       hidden_characters: 'It contains hidden characters a person cannot see.',
       download_and_run: 'It tells the reader to download something and run it.',
+      masked_secret: 'It contains a password or key that was hidden.',
     } satisfies Record<RiskCode, string>,
     origin: {
       manual: 'Written by you',
@@ -157,6 +159,24 @@ export const learning = defineMessages(
       otherAction: 'changed something',
       line: (who: string, what: string) => `${who} ${what}`,
     },
+    suggest: {
+      heading: 'Look for more to learn',
+      hint: 'Your AI model reads this agent’s latest runs and suggests notes. Each one waits here for your approval.',
+      look: 'Look at recent runs',
+      looking: 'Reading the runs…',
+      found: (count: number) => (count === 1 ? '1 new suggestion is waiting for you.' : `${count} new suggestions are waiting for you.`),
+      nothingFound: (runs: number) => (runs === 1 ? 'Read 1 run. Nothing new worth keeping.' : `Read ${runs} runs. Nothing new worth keeping.`),
+      nothingNew: 'There are no new runs since the last look. Try the agent first.',
+      noModel: 'No AI model is connected yet, so the runs cannot be read for you.',
+      keyUnreadable: 'The key of your AI model could not be read from this computer’s password store, so the runs cannot be read for you right now.',
+      connectModel: 'Connect an AI model',
+      couldNot: (reason: string) => `Could not look at the runs: ${reason}`,
+    },
+    toSkill: {
+      heading: 'Turn these notes into a skill',
+      hint: 'Several notes describe how to do the work. Your AI model can write them up as one skill for you to check.',
+      write: 'Write the skill',
+    },
     feedback: {
       heading: 'Was this what you wanted?',
       yes: 'Yes',
@@ -168,6 +188,7 @@ export const learning = defineMessages(
       sending: 'Sending…',
       thanks: 'Thanks, noted.',
       proposed: 'Your note is waiting for your approval.',
+      keptForLater: 'Your note is saved. It shows up once you have decided on some of the notes that are waiting.',
       openLearned: 'See what it learned',
       notRecorded: (reason: string) => `Your rating was saved, but the note was not: ${reason}`,
       couldNotSend: (reason: string) => `Could not send: ${reason}`,
@@ -230,6 +251,7 @@ export const learning = defineMessages(
       touches_credentials: 'Ini menyebut berkas atau nilai yang menyimpan kata sandi atau kunci.',
       hidden_characters: 'Ini berisi karakter tersembunyi yang tidak terlihat oleh orang.',
       download_and_run: 'Ini menyuruh pembacanya mengunduh sesuatu lalu menjalankannya.',
+      masked_secret: 'Berisi kata sandi atau kunci yang sudah disamarkan.',
     },
     origin: {
       manual: 'Ditulis oleh Anda',
@@ -306,6 +328,24 @@ export const learning = defineMessages(
       otherAction: 'mengubah sesuatu',
       line: (who: string, what: string) => `${who} ${what}`,
     },
+    suggest: {
+      heading: 'Cari hal lain untuk dipelajari',
+      hint: 'Model AI Anda membaca run terakhir agent ini lalu menyarankan catatan. Tiap saran menunggu persetujuan Anda di sini.',
+      look: 'Lihat run terakhir',
+      looking: 'Membaca run…',
+      found: (count: number) => `${count} saran baru menunggu Anda.`,
+      nothingFound: (runs: number) => `${runs} run sudah dibaca. Tidak ada hal baru yang perlu dicatat.`,
+      nothingNew: 'Belum ada run baru sejak terakhir dilihat. Coba jalankan agent dulu.',
+      noModel: 'Belum ada model AI yang terhubung, jadi run belum bisa dibacakan untuk Anda.',
+      keyUnreadable: 'Kunci model AI Anda tidak bisa dibaca dari penyimpanan kata sandi komputer ini, jadi run belum bisa dibacakan untuk Anda.',
+      connectModel: 'Hubungkan model AI',
+      couldNot: (reason: string) => `Run tidak bisa dilihat. ${reason}`,
+    },
+    toSkill: {
+      heading: 'Jadikan catatan ini skill',
+      hint: 'Beberapa catatan menjelaskan cara mengerjakan tugas. Model AI Anda bisa merangkumnya jadi satu skill untuk Anda periksa.',
+      write: 'Tulis skill',
+    },
     feedback: {
       heading: 'Apakah ini sesuai yang Anda mau?',
       yes: 'Ya',
@@ -317,6 +357,7 @@ export const learning = defineMessages(
       sending: 'Mengirim…',
       thanks: 'Terima kasih, sudah dicatat.',
       proposed: 'Catatan Anda menunggu persetujuan Anda.',
+      keptForLater: 'Catatan Anda tersimpan. Catatan itu muncul setelah Anda memutuskan sebagian catatan yang sedang menunggu.',
       openLearned: 'Lihat yang dipelajari',
       notRecorded: (reason: string) => `Penilaian Anda tersimpan, tetapi catatannya tidak. ${reason}`,
       couldNotSend: (reason: string) => `Tidak bisa dikirim. ${reason}`,

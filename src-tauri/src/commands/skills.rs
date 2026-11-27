@@ -49,6 +49,12 @@ pub async fn draft_skill(state: State<'_, AppState>, source: SkillDraftSource) -
     state.skills.draft_skill(&source).await
 }
 
+/// A skill written in the app as its editor shows it, to change it and save it again.
+#[tauri::command]
+pub fn get_authored_skill_draft(state: State<'_, AppState>, name: String) -> AppResult<SkillDraftView> {
+    state.skills.authored_draft(name.trim())
+}
+
 /// Checks the draft as the person left it, for the confirmation screens.
 #[tauri::command]
 pub fn review_authored_skill(state: State<'_, AppState>, input: AuthoredSkillInput) -> AppResult<SkillReview> {

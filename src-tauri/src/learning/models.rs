@@ -116,6 +116,9 @@ pub struct AgentLearning {
     /// "Learn automatically": low-risk feedback of a verified person may apply to that
     /// person without the owner. Off unless the owner turned it on.
     pub auto_learn: bool,
+    /// Enough approved notes for everyone describe how to do the work that they can be
+    /// written up as one skill.
+    pub can_become_skill: bool,
     /// Newest first.
     pub history: Vec<HistoryEntry>,
 }
@@ -145,8 +148,21 @@ pub struct RunFeedback {
 pub struct FeedbackOutcome {
     /// Lessons now waiting for the owner because of this feedback.
     pub proposed: Vec<LessonView>,
-    /// Why a comment did not become a proposal (e.g. the inbox is full), when it did not.
+    /// The comment is saved but cannot be shown as a note yet (too many notes are
+    /// waiting); it becomes one once the owner has decided on some of them.
+    pub kept_for_later: bool,
+    /// Why a comment did not become a proposal and is not kept, when that happened.
     pub not_recorded: Option<String>,
+}
+
+/// What asking the model for suggestions from recent runs gave.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunSuggestions {
+    /// How many runs the model read; `0` when there was no run it had not read yet.
+    pub runs_read: usize,
+    /// The suggestions now waiting for the owner.
+    pub proposed: Vec<LessonView>,
 }
 
 fn rfc3339(milliseconds: u64) -> Option<String> {

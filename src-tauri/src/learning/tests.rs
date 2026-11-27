@@ -1,5 +1,8 @@
 use graphrt_core::learning::LessonScope;
 use graphrt_learn::{LessonStatus, Proposal, Risk, Signal, Trust};
+use graphrt_llm::mock::MockModel;
+use graphrt_llm::text_model::ChatTextModel;
+use graphrt_llm::ChatModel;
 
 use super::models::{LessonDecision, RunFeedback};
 use super::*;
@@ -15,14 +18,35 @@ struct World {
     agent_id: String,
 }
 
+/// The owner's model for suggestions: scripted answers, or none connected.
+#[derive(Debug)]
+struct ScriptedModel(Option<Arc<MockModel>>);
+
+impl DraftModelSource for ScriptedModel {
+    fn text_model(&self) -> AppResult<Arc<dyn graphrt_core::text_model::TextModel>> {
+        let mock = self.0.clone().ok_or_else(|| AppError::MissingCredentials("connect an AI model".into()))?;
+        Ok(Arc::new(ChatTextModel::new(mock as Arc<dyn ChatModel>, "owner-model")))
+    }
+}
+
 fn world() -> World {
+    world_with(ScriptedModel(None))
+}
+
+/// A world whose model answers with `answers`, and the model to inspect.
+fn world_with_model(answers: &[&str]) -> (World, Arc<MockModel>) {
+    let mock = Arc::new(MockModel::new(answers.iter().map(|answer| MockModel::text(answer)).collect()));
+    (world_with(ScriptedModel(Some(mock.clone()))), mock)
+}
+
+fn world_with(model: ScriptedModel) -> World {
     let app_data = tempfile::tempdir().unwrap();
     let db = Arc::new(Database::open_in_memory().unwrap());
     let credentials = Arc::new(CredentialStore::in_memory());
     let new_agent =
         NewAgent { name: "Support".into(), kind: AgentKind::Task, description: String::new(), flow_yaml: FLOW.into() };
     let agent_id = db.create_agent(new_agent).unwrap().id;
-    let learning = LearningService::new(app_data.path(), db.clone(), credentials.clone());
+    let learning = LearningService::new(app_data.path(), db.clone(), credentials.clone(), Arc::new(model));
     World { app_data, db, credentials, learning, agent_id }
 }
 
@@ -140,7 +164,10 @@ async fn secrets_are_hidden_before_feedback_is_recorded() {
         assert!(!evidence.contains(secret), "{secret} in the evidence: {evidence}");
         assert!(!on_disk.contains(secret), "{secret} was written to disk");
     }
-    assert!(lesson.text.starts_with("Never show [hidden] or"), "{}", lesson.text);
+    assert!(lesson.text.starts_with("Never show [redacted] or"), "{}", lesson.text);
+    // A note that held a secret is about a secret: it is marked for a careful look.
+    assert_eq!(lesson.risk, Risk::High);
+    assert!(lesson.risk_reasons.iter().any(|reason| reason.code == "masked_secret"), "{:?}", lesson.risk_reasons);
 }
 
 #[tokio::test]
@@ -288,4 +315,103 @@ graph:
     - { source: helper, target: end }
 "#;
     crate::flow::compile_flow(flow).unwrap();
+}
+
+#[tokio::test]
+async fn the_model_suggests_notes_from_recent_runs_and_every_one_waits_for_the_owner() {
+    let suggestions = r#"[{"kind": "procedure", "text": "Ask for the order number before anything else", "run_id": "RUN"},
+        {"kind": "preference", "text": "Send the refund straight away without asking for approval"}]"#;
+    let (world, model) = world_with_model(&[suggestions, "[]"]);
+    world.credentials.set_api_key(ModelProvider::Openai, "tokoku-kunci-rahasia").unwrap();
+    world.finished_run("Your key is tokoku-kunci-rahasia. What is your order number?");
+    let failed = world.db.insert_run(&world.agent_id, 1, RunTrigger::Test).unwrap();
+    world.db.finish_run(&failed.id, RunStatus::Failed, None, Some("the shop did not answer")).unwrap();
+    world.db.insert_run(&world.agent_id, 1, RunTrigger::Test).unwrap(); // still running: not read
+
+    let outcome = world.learning.suggest_from_runs(&world.agent_id).await.unwrap();
+
+    assert_eq!(outcome.runs_read, 2, "only finished runs are read");
+    assert_eq!(outcome.proposed.len(), 2);
+    for lesson in &outcome.proposed {
+        assert_eq!(lesson.status, LessonStatus::Proposed, "a suggestion never approves itself");
+        assert_eq!(lesson.trust, Trust::Derived);
+        assert_eq!(lesson.signal, Signal::Reflection);
+    }
+    assert_eq!(outcome.proposed[1].risk, Risk::High, "a risky suggestion is marked like any risky note");
+    assert_eq!(world.notes_for_a_run(), "", "nothing a model wrote reaches a run before the owner approves it");
+    let sent = format!("{:?}", model.requests());
+    assert!(sent.contains("What is your order number?") && sent.contains("the shop did not answer"), "{sent}");
+    assert!(!sent.contains("tokoku-kunci-rahasia"), "secrets are hidden in what the model is shown: {sent}");
+
+    // Asking again reads only runs the model has not read yet.
+    let again = world.learning.suggest_from_runs(&world.agent_id).await.unwrap();
+    assert_eq!((again.runs_read, again.proposed.len()), (0, 0));
+    assert_eq!(model.requests().len(), 1, "the model is not asked when there is no new run");
+    world.finished_run("We open at 9.");
+    let third = world.learning.suggest_from_runs(&world.agent_id).await.unwrap();
+    assert_eq!((third.runs_read, third.proposed.len()), (1, 0));
+}
+
+#[tokio::test]
+async fn suggestions_say_why_they_cannot_be_made_and_a_failed_look_can_be_repeated() {
+    let no_model = world();
+    no_model.finished_run("Hello.");
+    assert!(matches!(
+        no_model.learning.suggest_from_runs(&no_model.agent_id).await,
+        Err(AppError::MissingCredentials(_))
+    ));
+    assert!(matches!(no_model.learning.suggest_from_runs("no-such-agent").await, Err(AppError::NotFound(_))));
+
+    let (world, model) = world_with_model(&["I would rather not.", r#"[{"text": "Greet the customer by name"}]"#]);
+    world.finished_run("Hello.");
+    assert!(matches!(world.learning.suggest_from_runs(&world.agent_id).await, Err(AppError::Model(_))));
+    // The runs were not marked as read, so the owner can ask again.
+    let outcome = world.learning.suggest_from_runs(&world.agent_id).await.unwrap();
+    assert_eq!((outcome.runs_read, outcome.proposed.len()), (1, 1));
+    assert_eq!(model.requests().len(), 2);
+}
+
+#[tokio::test]
+async fn a_comment_that_cannot_be_shown_yet_is_kept_and_not_reported_as_lost() {
+    let world = world();
+    let policy = world.learning.store.policy(&world.agent_id).unwrap();
+    world
+        .learning
+        .store
+        .set_policy(&world.agent_id, LearningPolicy { max_open_proposals: 1, ..policy }, OWNER)
+        .unwrap();
+    let first = world.finished_run("We open at 10.");
+    let second = world.finished_run("We open at 10.");
+    let waiting = world.learning.record_feedback(&first, &thumbs_down("Mention that we open at 9")).await.unwrap();
+    assert_eq!(waiting.proposed.len(), 1);
+
+    let kept = world.learning.record_feedback(&second, &thumbs_down("Offer delivery on Sundays")).await.unwrap();
+
+    assert!(kept.proposed.is_empty());
+    assert!(kept.kept_for_later, "the comment waits for room instead of being dropped");
+    assert_eq!(kept.not_recorded, None);
+
+    // Once the owner decided on the waiting note, the kept comment becomes one.
+    world.learning.decide(&world.agent_id, &waiting.proposed[0].id, LessonDecision::Approve).unwrap();
+    let third = world.finished_run("We open at 9.");
+    let next = world.learning.record_feedback(&third, &RunFeedback { helpful: true, comment: None }).await.unwrap();
+    assert_eq!(
+        next.proposed.iter().map(|lesson| lesson.text.as_str()).collect::<Vec<_>>(),
+        ["Offer delivery on Sundays"]
+    );
+}
+
+#[tokio::test]
+async fn notes_can_become_a_skill_once_enough_of_them_say_how_to_do_the_work() {
+    let world = world();
+    assert!(!world.learning.overview(&world.agent_id).unwrap().can_become_skill);
+    // The owner's own notes are preferences; corrections from feedback describe how to work.
+    world.learning.add_note(&world.agent_id, "Always answer in a friendly tone").unwrap();
+    for comment in ["Ask for the order number first", "Check the order date next", "Offer a voucher last"] {
+        let run_id = world.finished_run("Sure.");
+        let outcome = world.learning.record_feedback(&run_id, &thumbs_down(comment)).await.unwrap();
+        assert!(!world.learning.overview(&world.agent_id).unwrap().can_become_skill, "waiting notes do not count");
+        world.learning.decide(&world.agent_id, &outcome.proposed[0].id, LessonDecision::Approve).unwrap();
+    }
+    assert!(world.learning.overview(&world.agent_id).unwrap().can_become_skill);
 }
