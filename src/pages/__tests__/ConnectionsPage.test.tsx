@@ -59,7 +59,7 @@ describe('ConnectionsPage tabs', () => {
     renderConnectionsPage('/connections')
     expect(screen.getByRole('heading', { level: 1, name: 'Connections' })).toBeInTheDocument()
     expect(getCurrentLocation()).toHaveTextContent('/connections/models')
-    expect(await within(getTabBar()).findByRole('link', { name: 'AI models 2 connected' })).toHaveAttribute('aria-current', 'page')
+    expect(await within(getTabBar()).findByRole('link', { name: 'AI models 1 connected' })).toHaveAttribute('aria-current', 'page')
     expect(await within(getTabBar()).findByRole('link', { name: 'Secrets 1 saved' })).toHaveAttribute('href', '/connections/secrets')
     expect(await within(getTabBar()).findByRole('link', { name: 'MCP servers 1 added' })).toHaveAttribute('href', '/connections/mcp')
     expect(await within(getTabBar()).findByRole('link', { name: 'Apps 1 signed out' })).toHaveAttribute('href', '/connections/apps')
@@ -154,7 +154,7 @@ describe('ConnectionsPage AI models and apps', () => {
     expect(setApiKeySpy).toHaveBeenCalledWith('anthropic', 'sk-ant-123')
     expect(screen.queryByRole('button', { name: 'Add key Anthropic' })).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Anthropic API key')).not.toBeInTheDocument()
-    expect(getTab(/^AI models/)).toHaveAccessibleName('AI models 3 connected')
+    expect(getTab(/^AI models/)).toHaveAccessibleName('AI models 2 connected')
   })
 
   it('makes a connected provider the default model', async () => {
@@ -217,7 +217,7 @@ describe('ConnectionsPage local CLI models', () => {
     expect(within(group).getByText(/Usage counts against your ChatGPT plan/)).toBeInTheDocument()
     expect(within(group).queryByRole('button', { name: 'Turn on Codex' })).not.toBeInTheDocument()
     // The tab count does not include CLIs that are off.
-    expect(getTab(/^AI models/)).toHaveAccessibleName('AI models 2 connected')
+    expect(getTab(/^AI models/)).toHaveAccessibleName('AI models 1 connected')
   })
 
   it('turns Claude Code on, checks the connection on request and makes it the default with a chosen model', async () => {
@@ -229,7 +229,7 @@ describe('ConnectionsPage local CLI models', () => {
     expect(await screen.findByRole('button', { name: 'Turn off Claude Code' })).toBeInTheDocument()
     expect(setLocalCliEnabledSpy).toHaveBeenCalledWith('claude-code-cli', true)
     expect(checkLocalCliSpy).not.toHaveBeenCalled()
-    expect(getTab(/^AI models/)).toHaveAccessibleName('AI models 3 connected')
+    expect(getTab(/^AI models/)).toHaveAccessibleName('AI models 2 connected')
 
     fireEvent.click(screen.getByRole('button', { name: 'Check Claude Code connection' }))
     expect(await screen.findByText('Claude Code answered in 2.1 s')).toBeInTheDocument()

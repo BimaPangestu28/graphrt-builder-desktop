@@ -1,5 +1,5 @@
 import type { ProviderStatus } from '@/api/types'
-import { buildModelConnections } from './modelConnections'
+import { buildModelConnections, countConnectedModels } from './modelConnections'
 
 const statuses: ProviderStatus[] = [
   { provider: 'openai', configured: true, baseUrl: null, localCli: null },
@@ -42,5 +42,24 @@ describe('buildModelConnections in the desktop app', () => {
     expect(cards.find((card) => card.provider === 'openai')?.connectedDescription).toBe('Key in Keychain')
     expect(cards.find((card) => card.provider === 'ollama')?.connectedDescription).toBe('http://localhost:11434')
     expect(cards.map((card) => card.connectedDescription).join(' ')).not.toMatch(/\$|qwen|this month/)
+  })
+})
+
+describe('countConnectedModels', () => {
+  const onlyOllama: ProviderStatus[] = [
+    { provider: 'openai', configured: false, baseUrl: null, localCli: null },
+    { provider: 'ollama', configured: true, baseUrl: 'http://localhost:11434', localCli: null },
+  ]
+
+  it('does not count Ollama while no model is connected, though the backend always reports it as set up', () => {
+    expect(countConnectedModels(buildModelConnections(onlyOllama, null))).toBe(0)
+  })
+
+  it('counts Ollama once it is the default model', () => {
+    expect(countConnectedModels(buildModelConnections(onlyOllama, { provider: 'ollama', name: 'llama3.2' }))).toBe(1)
+  })
+
+  it('counts every provider with a key, and leaves Ollama out while another one is the default', () => {
+    expect(countConnectedModels(buildModelConnections(statuses, { provider: 'openai', name: 'gpt-4o-mini' }))).toBe(2)
   })
 })

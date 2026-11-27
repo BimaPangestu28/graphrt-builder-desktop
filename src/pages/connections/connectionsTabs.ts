@@ -2,6 +2,7 @@ import type { McpServerDefinition, WorkflowSecretOverview } from '@/api/connecti
 import type { Connection } from '@/api/appConnectionTypes'
 import type { DeployAccount } from '@/api/deployTypes'
 import { connectionsTabPath, legacyConnectionsPluginsSection, routePaths, type ConnectionsTab } from '@/routes'
+import { countConnectedModels } from './modelConnections'
 import { isSecretMissing } from './secretDisplay'
 import { messages } from '@/i18n'
 import { localizedRecord } from '@/i18n/localized'
@@ -37,7 +38,7 @@ function isConnectedState(connection: Connection): boolean {
 }
 
 function describeModelsBadge(modelConnections: Connection[]): ConnectionsTabBadge {
-  const connectedCount = modelConnections.filter(isConnectedState).length
+  const connectedCount = countConnectedModels(modelConnections)
   return connectedCount > 0 ? { text: messages().connections.connectedcountConnected(connectedCount), isWarning: false } : { text: messages().connections.noneConnected, isWarning: true }
 }
 

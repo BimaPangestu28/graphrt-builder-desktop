@@ -74,3 +74,30 @@ export function buildModelConnections(
     ]
   })
 }
+
+/**
+ * Whether a model card is one agents can think with right now. Ollama needs no key, so the
+ * backend always reports it as set up, whether or not it runs or has a model: it counts
+ * only once it is the default model (the same rule as `isModelConnected` on first launch).
+ *
+ * @param connection - A card from {@link buildModelConnections} (Connection)
+ * @returns True for the default model's card and every other connected one except Ollama (boolean)
+ */
+export function isUsableModelConnection(connection: Connection): boolean {
+  if (connection.state === 'default') return true
+  return connection.state === 'connected' && connection.id !== 'ollama'
+}
+
+/**
+ * How many models are connected. The AI models tab badge and the "Connect an AI model to
+ * get started" notice both read this, so they cannot disagree.
+ *
+ * @param connections - Cards from {@link buildModelConnections} (Connection[])
+ * @returns The number of usable model cards (number)
+ *
+ * @example
+ * countConnectedModels(buildModelConnections([{ provider: 'ollama', configured: true, baseUrl: null, localCli: null }], null)) // 0
+ */
+export function countConnectedModels(connections: Connection[]): number {
+  return connections.filter(isUsableModelConnection).length
+}
