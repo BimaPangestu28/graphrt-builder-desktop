@@ -9,6 +9,9 @@
 //! - [`bot`]: one bot turn on graphrt (reply, memory, hand-off outputs).
 //! - [`channel`]: the [`channel::ChannelAdapter`] trait; only the in-app
 //!   `test` channel exists so far.
+//! - [`visuals`]: UI blocks in replies: shown by the app, written out as text (or
+//!   PNG charts) for channels that cannot draw them, and numbered choices read back
+//!   as card buttons.
 //!
 //! Status flow:
 //! ```text
@@ -37,6 +40,7 @@ mod store;
 pub mod tauri_sink;
 #[cfg(test)]
 mod tests;
+pub mod visuals;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -52,9 +56,11 @@ use self::models::{
     MessageAuthor, NewConversation,
 };
 pub use self::store::OUTREACH_ORIGIN;
+use self::visuals::{compose_reply, CardAnswer, ChannelCapabilities};
 use crate::agent_files::{AgentFiles, FileAccess, FileScope};
 use crate::chatbot_setup::reply::prepare_reply;
 use crate::credentials::CredentialStore;
+use crate::desktop::app_settings::AppSettings;
 use crate::engine::{agent_tools_for, prepare_engine_and_env, KeychainModelRegistrySource, ModelRegistrySource};
 use crate::error::{AppError, AppResult};
 use crate::storage::models::AgentKind;
@@ -232,6 +238,10 @@ impl ConversationManager {
     /// Stores a customer message and, while the bot is answering, runs the
     /// bot's turn before returning. A closed chat reopens with the bot answering.
     ///
+    /// When the bot's last message offered numbered choices (a card on a text
+    /// channel) and `text` is one of the numbers or titles, the message is read as
+    /// that card button (see [`visuals::match_reply`]).
+    ///
     /// Bot failures do not fail the call: the chat is handed to the owner with
     /// a system message explaining why.
     ///
@@ -245,6 +255,9 @@ impl ConversationManager {
     /// `attachment_references` name files stored for this conversation
     /// (`AgentFiles::attach_host_files`). The text may be blank when there are files.
     ///
+    /// A message without files that is the number or the title of a choice in the bot's
+    /// last message counts as pressing that card button (see `visuals::match_reply`).
+    ///
     /// # Errors
     /// As [`Self::send_customer_message`], plus `InvalidInput` when a reference names no
     /// file attached to this conversation, or there are too many.
@@ -253,6 +266,51 @@ impl ConversationManager {
         conversation_id: &str,
         text: &str,
         attachment_references: &[String],
+    ) -> AppResult<ConversationDetail> {
+        let answer = if attachment_references.is_empty() {
+            self.last_exchange_message(conversation_id)?
+                .filter(|message| message.author == MessageAuthor::Bot)
+                .and_then(|message| visuals::match_reply(&message.metadata, text))
+        } else {
+            None
+        };
+        self.receive_customer_message(conversation_id, text, attachment_references, answer).await
+    }
+
+    /// The customer pressed a card button in the app (the "Try it" panel): stored as a
+    /// customer message saying what was chosen, then answered like any message.
+    ///
+    /// # Errors
+    /// `NotFound` for an unknown conversation; `InvalidInput` for a bad answer, or when
+    /// the bot's last message has no card.
+    pub async fn send_customer_card_answer(
+        &self,
+        conversation_id: &str,
+        answer: CardAnswer,
+    ) -> AppResult<ConversationDetail> {
+        let answer = answer.validated()?;
+        let shows_card = self
+            .last_exchange_message(conversation_id)?
+            .is_some_and(|message| message.author == MessageAuthor::Bot && visuals::has_card(&message.metadata));
+        if !shows_card {
+            return Err(AppError::InvalidInput("this card can no longer be answered".into()));
+        }
+        let text = answer.as_message_text();
+        self.receive_customer_message(conversation_id, &text, &[], Some(answer)).await
+    }
+
+    /// The latest customer, bot or owner message (system notices are skipped).
+    fn last_exchange_message(&self, conversation_id: &str) -> AppResult<Option<Message>> {
+        let messages = self.db.list_conversation_messages(conversation_id)?;
+        Ok(messages.into_iter().rev().find(|message| message.author != MessageAuthor::System))
+    }
+
+    async fn receive_customer_message(
+        &self,
+        conversation_id: &str,
+        text: &str,
+        attachment_references: &[String],
+        answer: Option<CardAnswer>,
     ) -> AppResult<ConversationDetail> {
         let mut conversation = self.db.get_conversation(conversation_id)?;
         let attached = match (&self.agent_files, attachment_references.is_empty()) {
@@ -267,17 +325,21 @@ impl ConversationManager {
         if conversation.status == ConversationStatus::Closed {
             conversation = self.change_status(&conversation, ConversationStatus::BotAnswering, None)?;
         }
+        let mut metadata = customer_turn.metadata.clone();
+        if let (Some(answer), Some(fields)) = (&answer, metadata.as_object_mut()) {
+            fields.insert(visuals::CARD_ACTION_KEY.into(), json!(answer));
+        }
         let message = self.db.insert_conversation_message(
             conversation_id,
             MessageAuthor::Customer,
             &customer_turn.stored_text,
-            &customer_turn.metadata,
+            &metadata,
         )?;
         self.emit(ConversationEventKind::MessageAdded, &conversation, Some(message.clone()));
 
         if conversation.status == ConversationStatus::BotAnswering {
             if self.bot_answers(&conversation)? {
-                self.answer_as_bot(conversation_id, &customer_turn).await?;
+                self.answer_as_bot(conversation_id, &customer_turn, answer.as_ref()).await?;
             } else {
                 self.hand_off(&conversation, Some(BOT_PAUSED_REASON), "Bot is paused · waiting for you")?;
             }
@@ -331,7 +393,7 @@ impl ConversationManager {
         let current = self.db.get_conversation(conversation_id)?;
         let conversation =
             if current.status == ConversationStatus::YouReplying { current } else { self.take_over(conversation_id)? };
-        self.deliver_and_store(&conversation, MessageAuthor::Operator, text, json!({})).await
+        self.deliver_and_store(&conversation, MessageAuthor::Operator, text, json!({}), &[]).await
     }
 
     /// Closes the chat. A later customer message reopens it.
@@ -386,7 +448,12 @@ impl ConversationManager {
     }
 
     /// Runs one bot turn and records its reply, memory and hand-off.
-    async fn answer_as_bot(&self, conversation_id: &str, customer_turn: &CustomerTurn) -> AppResult<()> {
+    async fn answer_as_bot(
+        &self,
+        conversation_id: &str,
+        customer_turn: &CustomerTurn,
+        answer: Option<&CardAnswer>,
+    ) -> AppResult<()> {
         let turn_lock = self.turn_lock(conversation_id)?;
         let _turn_guard = turn_lock.lock().await;
         // Read again under the lock: the previous turn may have changed variables or status.
@@ -394,7 +461,7 @@ impl ConversationManager {
         if conversation.status != ConversationStatus::BotAnswering {
             return Ok(());
         }
-        let turn = match self.run_turn(&conversation, customer_turn).await {
+        let turn = match self.run_turn(&conversation, customer_turn, answer).await {
             Ok(turn) => turn,
             Err(error) => {
                 log::warn!("the bot of conversation {conversation_id} could not answer: {error}");
@@ -407,9 +474,22 @@ impl ConversationManager {
 
     /// Runs the chatbot's flow with its saved setup applied (persona, rules,
     /// knowledge; see `crate::chatbot_setup`) and enforces the hand-off rules.
-    async fn run_turn(&self, conversation: &Conversation, customer_turn: &CustomerTurn) -> AppResult<BotTurn> {
+    ///
+    /// For a card `answer` the bot reads the choice in words (the button's title and
+    /// the card's values) and also gets `sys.card_action` / `sys.card_values`.
+    async fn run_turn(
+        &self,
+        conversation: &Conversation,
+        customer_turn: &CustomerTurn,
+        answer: Option<&CardAnswer>,
+    ) -> AppResult<BotTurn> {
         let agent = self.db.get_agent(&conversation.agent_id)?;
-        let prepared = prepare_reply(&self.db, &self.credentials, &agent, &customer_turn.knowledge_query).await?;
+        let answer_text = answer.map(CardAnswer::as_message_text);
+        let knowledge_query = answer_text.as_deref().unwrap_or(&customer_turn.knowledge_query);
+        let model_text = answer_text.as_deref().unwrap_or(&customer_turn.model_text);
+        let prepared = prepare_reply(&self.db, &self.credentials, &agent, knowledge_query).await?;
+        let mut sys_values = prepared.sys_values.clone();
+        sys_values.extend(answer.map(CardAnswer::sys_values).unwrap_or_default());
         // Chatbots can call other agents as tools, like any run of this agent.
         let tools = agent_tools_for(
             self.db.clone(),
@@ -430,16 +510,8 @@ impl ConversationManager {
             file_access.as_ref(),
         )?;
         let on_draft = |draft: &str| self.emit_draft(conversation, draft);
-        let mut turn = run_bot_turn(
-            &engine,
-            env,
-            conversation,
-            &customer_turn.model_text,
-            &prepared.sys_values,
-            &customer_turn.files,
-            &on_draft,
-        )
-        .await?;
+        let mut turn =
+            run_bot_turn(&engine, env, conversation, model_text, &sys_values, &customer_turn.files, &on_draft).await?;
         turn.citations = prepared.citations(&turn.retrieved_sources);
         if let (Some(rules), Some(handoff)) = (prepared.handoff_rules, turn.handoff.as_ref()) {
             if !rules.allows(handoff.reason.as_deref()) {
@@ -466,8 +538,15 @@ impl ConversationManager {
             return Ok(());
         }
         let files = self.reply_files(&conversation, &turn.produced_file_references).await;
-        if let Some((text, metadata)) = attachments::bot_reply(&turn.reply_text, &turn.citations, &files) {
-            self.deliver_and_store(&conversation, MessageAuthor::Bot, &text, metadata).await?;
+        let blocks = visuals::validated_blocks(&turn.visuals, &conversation.id);
+        let reply = match attachments::bot_reply(&turn.reply_text, &turn.citations, &files) {
+            Some(reply) => Some(reply),
+            // Only blocks: nothing to say and no files, but the blocks are the answer.
+            None if !blocks.is_empty() => Some((String::new(), json!({}))),
+            None => None,
+        };
+        if let Some((text, metadata)) = reply {
+            self.deliver_and_store(&conversation, MessageAuthor::Bot, &text, metadata, &blocks).await?;
         }
         if let Some(handoff) = turn.handoff {
             let reason = handoff.reason.as_deref();
@@ -507,27 +586,44 @@ impl ConversationManager {
     /// Sends a bot or owner message on the conversation's channel, then stores it
     /// with `metadata` (a JSON object). A delivery failure is kept in the
     /// metadata rather than lost.
+    ///
+    /// `blocks` are the reply's UI blocks: stored in the metadata for the app to
+    /// draw, and written out as text (charts as images where the channel sends
+    /// them) for a channel that cannot draw them (see [`visuals::compose_reply`]).
     async fn deliver_and_store(
         &self,
         conversation: &Conversation,
         author: MessageAuthor,
         text: &str,
         mut metadata: serde_json::Value,
+        blocks: &[graphrt_ui::UiBlock],
     ) -> AppResult<Message> {
-        let delivery_error = match self.channels.get(&conversation.channel) {
-            Ok(adapter) => match adapter.send(OutboundMessage { conversation, author, text }).await {
-                Ok(()) => None,
-                Err(error) => {
-                    log::warn!("could not deliver a message in conversation {}: {error}", conversation.id);
-                    Some(error.to_string())
+        let adapter = self.channels.get(&conversation.channel);
+        let capabilities =
+            adapter.as_ref().map_or_else(|_| ChannelCapabilities::default(), |adapter| adapter.capabilities());
+        let language = AppSettings::load_or_default(&self.db).language.unwrap_or_default();
+        let reply = compose_reply(text, blocks, capabilities, language);
+        let delivery_error = match adapter {
+            Ok(adapter) => {
+                let outbound =
+                    OutboundMessage { conversation, author, text: &reply.outbound_text, images: &reply.images };
+                match adapter.send(outbound).await {
+                    Ok(()) => None,
+                    Err(error) => {
+                        log::warn!("could not deliver a message in conversation {}: {error}", conversation.id);
+                        Some(error.to_string())
+                    }
                 }
-            },
+            }
             Err(error) => Some(error.to_string()),
         };
-        if let (Some(error), Some(fields)) = (delivery_error, metadata.as_object_mut()) {
-            fields.insert("deliveryError".into(), json!(error));
+        if let Some(fields) = metadata.as_object_mut() {
+            fields.extend(reply.metadata);
+            if let Some(error) = delivery_error {
+                fields.insert("deliveryError".into(), json!(error));
+            }
         }
-        let message = self.db.insert_conversation_message(&conversation.id, author, text, &metadata)?;
+        let message = self.db.insert_conversation_message(&conversation.id, author, &reply.stored_text, &metadata)?;
         self.emit(ConversationEventKind::MessageAdded, conversation, Some(message.clone()));
         Ok(message)
     }

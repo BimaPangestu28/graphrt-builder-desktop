@@ -10,6 +10,13 @@ import productsTable from './fixtures/table-top-products.json'
 import weeklyStats from './fixtures/stats-weekly-kpis.json'
 import refundCard from './fixtures/adaptive-card-refund-approval.json'
 import showCard from './fixtures/adaptive-card-showcard-and-table.json'
+import orderFlowDiagram from './fixtures/diagram-order-flow.json'
+import sequenceDiagram from './fixtures/diagram-sequence.json'
+
+// Mermaid needs a real layout engine (text measuring); the diagram tests cover the view with this stand-in.
+vi.mock('../diagram/renderDiagram', () => ({
+  renderDiagram: vi.fn(async () => ({ svg: '<svg width="200" height="100" viewBox="0 0 200 100"></svg>', width: 200, height: 100 })),
+}))
 
 const fixtures: Array<[string, unknown]> = [
   ['bar chart', salesChart],
@@ -20,6 +27,8 @@ const fixtures: Array<[string, unknown]> = [
   ['stats', weeklyStats],
   ['approval card', refundCard],
   ['show-card card', showCard],
+  ['flowchart diagram', orderFlowDiagram],
+  ['sequence diagram', sequenceDiagram],
 ]
 
 describe('VisualBlock', () => {
@@ -61,7 +70,7 @@ describe('VisualBlock', () => {
     await userEvent.type(await screen.findByLabelText('Note to customer'), 'Sorry about that')
     await userEvent.click(screen.getByRole('checkbox', { name: 'Put the items back in stock' }))
     await userEvent.click(screen.getByRole('button', { name: 'Approve refund' }))
-    expect(onSubmit).toHaveBeenCalledWith({ action: 'approve', values: { reason: 'damaged', amount: 250000, note: 'Sorry about that', restock: true } })
+    expect(onSubmit).toHaveBeenCalledWith({ action: 'approve', title: 'Approve refund', values: { reason: 'damaged', amount: 250000, note: 'Sorry about that', restock: true } })
   })
 
   it('opens a ShowCard inline and renders its table', async () => {

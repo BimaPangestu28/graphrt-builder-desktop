@@ -1,5 +1,6 @@
 import { callBackend, isDesktopApp, listenToBackend } from './client'
 import type {
+  CardAnswer,
   Conversation,
   ConversationCounts,
   ConversationDetail,
@@ -43,6 +44,15 @@ export function startTestConversation(agentId: string): Promise<ConversationDeta
 export function sendCustomerMessage(conversationId: string, text: string, attachments: string[] = []): Promise<ConversationDetail> {
   if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleConversationsBackend.sendCustomerMessage(conversationId, text, attachments)
   return callBackend('send_customer_message', { conversationId, text, attachments })
+}
+
+/**
+ * Presses a card button as the customer (Try it). The chat gets a customer message saying what was chosen,
+ * then the bot answers as for any message.
+ */
+export function sendCustomerCardAnswer(conversationId: string, answer: CardAnswer): Promise<ConversationDetail> {
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleConversationsBackend.sendCustomerCardAnswer(conversationId, answer)
+  return callBackend('send_customer_card_answer', { conversationId, answer })
 }
 
 export function takeOver(conversationId: string): Promise<Conversation> {

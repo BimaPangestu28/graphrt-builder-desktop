@@ -1,6 +1,7 @@
 use tauri::State;
 
 use crate::conversations::models::{Conversation, ConversationCounts, ConversationDetail, ConversationFilter, Message};
+use crate::conversations::visuals::CardAnswer;
 use crate::error::AppResult;
 use crate::state::AppState;
 
@@ -39,6 +40,16 @@ pub async fn send_customer_message(
 ) -> AppResult<ConversationDetail> {
     let attachments = attachments.unwrap_or_default();
     state.conversations.send_customer_message_with_files(&conversation_id, &text, &attachments).await
+}
+
+/// A card button pressed in the "Try it" panel; resolves after the bot's turn.
+#[tauri::command]
+pub async fn send_customer_card_answer(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    answer: CardAnswer,
+) -> AppResult<ConversationDetail> {
+    state.conversations.send_customer_card_answer(&conversation_id, answer).await
 }
 
 #[tauri::command]

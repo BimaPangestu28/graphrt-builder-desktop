@@ -46,9 +46,27 @@ export interface ConversationMessage {
   conversationId: string
   author: MessageAuthor
   text: string
-  /** e.g. { handoffReason }, { deliveryError }, and in the sample data { sentBy: 'outreach' } or { citations } */
+  /**
+   * e.g. { handoffReason }, { deliveryError }, { citations }, and in the sample data { sentBy: 'outreach' }.
+   * A bot reply with cards, charts, tables, KPI tiles or diagrams has { visuals } (validated graphrt UI
+   * blocks, read with `readMessageVisuals`), { choices } (its card buttons as numbered answers for text
+   * channels) and { textIsFallback: true } when `text` is only the blocks' text form. A customer message
+   * that stands for a card button has { cardAction }.
+   */
   metadata: Record<string, unknown>
   createdAt: string
+}
+
+/**
+ * A card button pressed by the customer. Mirrors `CardAnswer` in `src-tauri/src/conversations/visuals.rs`.
+ */
+export interface CardAnswer {
+  /** The button's answer key (Action.Execute verb, else the action id). */
+  action: string | null
+  /** The button's title: what the customer chose, in words. */
+  title: string
+  /** The card's input values and the button's data. */
+  values: Record<string, unknown>
 }
 
 export interface ConversationDetail {

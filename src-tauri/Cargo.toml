@@ -27,8 +27,7 @@ tauri-plugin-dialog = "2.4"
 tauri-plugin-notification = "2.8.1"
 
 # graphrt runtime, pinned to a commit until the crates are published on crates.io
-# (branch backport/skill-drafts-pdf-pages: backport/ui-blocks plus agent skills, self learning,
-# PDF page markers and skill drafts: Graphrt/graphrt#101, #107, #96 and #108)
+# (a commit of graphrt main; all graphrt crates share the same rev)
 graphrt-core = { git = "https://github.com/Graphrt/graphrt", rev = "65ac59887a01cdf2e0244921522b48e526f43d07" }
 graphrt-llm = { git = "https://github.com/Graphrt/graphrt", rev = "65ac59887a01cdf2e0244921522b48e526f43d07", default-features = false, features = ["openai", "anthropic", "gemini", "mock", "skills", "learning", "text-model", "tool-files", "vision-preparer"] }
 graphrt-http = { git = "https://github.com/Graphrt/graphrt", rev = "65ac59887a01cdf2e0244921522b48e526f43d07" }
@@ -40,8 +39,9 @@ graphrt-plugin = { git = "https://github.com/Graphrt/graphrt", rev = "65ac59887a
 graphrt-mcp = { git = "https://github.com/Graphrt/graphrt", rev = "65ac59887a01cdf2e0244921522b48e526f43d07" }
 # "My own server": exporting an agent as a portable .grt bundle for `graphrt serve` (no WebAssembly plugins)
 graphrt-bundle = { git = "https://github.com/Graphrt/graphrt", rev = "65ac59887a01cdf2e0244921522b48e526f43d07", default-features = false }
-# UI blocks (cards, charts, tables, KPI tiles): validation before the Run result screen renders them
-graphrt-ui = { git = "https://github.com/Graphrt/graphrt", rev = "65ac59887a01cdf2e0244921522b48e526f43d07" }
+# UI blocks (cards, charts, tables, KPI tiles, diagrams): validation before a screen renders them, and their
+# text / PNG form for chat channels that cannot draw them (`png`: charts as images)
+graphrt-ui = { git = "https://github.com/Graphrt/graphrt", rev = "65ac59887a01cdf2e0244921522b48e526f43d07", features = ["png"] }
 # Agent skills: SKILL.md packages pinned and checked at install, loaded by `agent` nodes on demand
 graphrt-skill = { git = "https://github.com/Graphrt/graphrt", rev = "65ac59887a01cdf2e0244921522b48e526f43d07" }
 # Self learning: lessons a person approves, read by `agent` nodes; feedback becomes proposals

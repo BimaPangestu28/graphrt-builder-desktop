@@ -12,6 +12,7 @@ use std::sync::Arc;
 use futures::future::BoxFuture;
 
 use super::models::{Conversation, MessageAuthor};
+pub use super::visuals::{ChannelCapabilities, OutboundImage};
 use crate::error::{AppError, AppResult};
 
 /// Name of the in-app test channel.
@@ -33,13 +34,22 @@ pub struct OutboundMessage<'a> {
     pub conversation: &'a Conversation,
     /// `Bot` or `Operator`.
     pub author: MessageAuthor,
+    /// The reply, with any UI blocks the channel cannot draw already written out as text.
     pub text: &'a str,
+    /// Charts drawn as PNG, for a channel whose [`ChannelCapabilities::images`] is set.
+    pub images: &'a [OutboundImage],
 }
 
 /// Receives customer messages from, and sends replies to, one messaging channel.
 pub trait ChannelAdapter: Send + Sync + std::fmt::Debug {
     /// Stable channel name stored on conversations, e.g. `test` or `whatsapp`.
     fn name(&self) -> &'static str;
+
+    /// What the channel shows besides text. The default is plain text only, so a reply's
+    /// cards, tables and charts are written out as text before [`Self::send`].
+    fn capabilities(&self) -> ChannelCapabilities {
+        ChannelCapabilities::default()
+    }
 
     /// Turns a payload delivered by the channel (webhook body, polled update...)
     /// into a customer message.
@@ -66,6 +76,11 @@ pub struct TestChannel;
 impl ChannelAdapter for TestChannel {
     fn name(&self) -> &'static str {
         TEST_CHANNEL
+    }
+
+    /// The app draws the blocks itself.
+    fn capabilities(&self) -> ChannelCapabilities {
+        ChannelCapabilities::RICH
     }
 
     fn parse_inbound(&self, payload: &serde_json::Value) -> AppResult<InboundMessage> {

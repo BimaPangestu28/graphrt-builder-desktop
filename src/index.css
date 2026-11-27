@@ -68,8 +68,8 @@
   --color-series-8: #EC4647;
 }
 
-/* The same hues stepped for a dark surface (validated separately), for when the app gets a dark theme. */
-:root[data-theme="dark"] {
+/* The same hues stepped for a dark surface (validated separately). */
+[data-theme="dark"] {
   --color-series-1: #338CED;
   --color-series-2: #E76624;
   --color-series-3: #00A888;
@@ -78,6 +78,57 @@
   --color-series-6: #0AAC23;
   --color-series-7: #9887EF;
   --color-series-8: #EB6263;
+}
+
+/*
+ * Dark theme of the UI blocks agents show (cards, tables, KPI tiles, charts, diagrams). A block's frame has
+ * the class `ui-block` (src/components/visuals/VisualBlock.tsx); under `data-theme="dark"` it redefines the
+ * colour tokens, so every utility inside (bg-surface, text-ink, border-line...) resolves to the dark value
+ * without the renderers knowing about themes. `data-theme` is set on the root element by
+ * `src/lib/appearance.ts`. Text inks keep at least 4.5:1 on the dark surface.
+ */
+[data-theme="dark"] .ui-block {
+  color-scheme: dark;
+  --color-ink: #F4F4F5;
+  --color-ink-2: #D4D4D8;
+  --color-body: #C8C8CF;
+  --color-muted: #A1A1AA;
+  --color-faint: #71717A;
+  --color-canvas: #09090B;
+  --color-surface: #18181B;
+  --color-subtle: #1F1F23;
+  --color-chip: #27272A;
+  --color-selected: #2E2E33;
+  --color-line: #2E2E33;
+  --color-line-strong: #3F3F46;
+  --color-line-heavy: #52525B;
+
+  --color-brand: #3CCBAE;
+  --color-brand-strong: #6EE0C8;
+  --color-brand-soft: #12362F;
+  --color-brand-tint: #0F2A25;
+  --color-brand-line: #1F5247;
+  --color-brand-line-2: #256356;
+
+  --color-ok: #22C55E;
+  --color-ok-strong: #4ADE80;
+  --color-ok-deep: #86EFAC;
+  --color-ok-soft: #14532D;
+  --color-ok-tint: #0F2E1B;
+
+  --color-amber-strong: #FBBF24;
+  --color-amber-deep: #FCD34D;
+  --color-amber: #F59E0B;
+  --color-amber-soft: #3A2A0C;
+  --color-amber-tint: #2A1F0A;
+  --color-amber-line: #7C5A14;
+  --color-amber-line-2: #5C4310;
+
+  --color-danger: #F87171;
+  --color-danger-deep: #FCA5A5;
+  --color-danger-soft: #4C1D1D;
+  --color-danger-tint: #2F1414;
+  --color-danger-line: #7F1D1D;
 }
 
 /* Expanded step rows on the run screens fade in (only with motion-safe). */

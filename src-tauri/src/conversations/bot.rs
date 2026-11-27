@@ -14,6 +14,10 @@
 //! [`ResponseAssembler`], falling back to the `answer` output. End outputs
 //! `handoff`, `handoff_reason`, `summary` and `suggested_reply` follow the
 //! hand-off convention described in `guides/chatbot.md`.
+//!
+//! UI blocks (cards, charts, tables, KPI tiles, diagrams) follow the Run result rule: the
+//! blocks in the run's outputs when there are any, otherwise the blocks the steps produced
+//! (a `ui-render` node, an agent's `ui` output), in the order they finished.
 
 use std::time::{Duration, Instant};
 
@@ -67,6 +71,8 @@ pub struct BotTurn {
     /// `workspace:` references of the files the turn's steps made, in order (the host
     /// looks each up in the conversation's workspace before showing it).
     pub produced_file_references: Vec<String>,
+    /// UI blocks the turn produced, not yet validated (see `super::visuals`).
+    pub visuals: Vec<Json>,
 }
 
 /// Where one passage the bot was given comes from.
@@ -129,6 +135,8 @@ pub async fn run_bot_turn(
     let mut run_input = build_run_input(env, conversation, message_text, &variables);
     for (name, value) in extra_sys_values {
         run_input = run_input.sys(name.as_str(), value.as_str());
+        // The assembler renders answer templates itself, so it needs the values too.
+        assembler = assembler.with_value(&Selector::of("sys", name), Value::from(value.as_str()));
     }
     if !attached_files.is_empty() {
         run_input = run_input.sys("files", Value::array(attached_files.iter().cloned().map(Value::from)));
@@ -142,6 +150,7 @@ pub async fn run_bot_turn(
         .map(|node| &*node.id)
         .collect();
     let mut retrieved_sources = Vec::new();
+    let mut step_visuals: Vec<Json> = Vec::new();
     let mut stream = engine.run(run_input);
 
     let mut assembled_reply = String::new();
@@ -173,6 +182,7 @@ pub async fn run_bot_turn(
                 if let Some(step_files) = step_outputs.get(STEP_FILES_OUTPUT) {
                     add_file_references(&mut produced_file_references, &step_files.to_json());
                 }
+                step_visuals.extend(step_outputs.values().flat_map(ui_blocks_in));
             }
             Event::RunSucceeded { outputs: run_outputs, .. } => {
                 for output in run_outputs.values() {
@@ -199,7 +209,14 @@ pub async fn run_bot_turn(
     let mut turn = collect_turn(assembled_reply, &outputs, Json::Object(variables));
     turn.retrieved_sources = retrieved_sources;
     turn.produced_file_references = produced_file_references;
+    let output_visuals: Vec<Json> = outputs.values().flat_map(ui_blocks_in).collect();
+    turn.visuals = if output_visuals.is_empty() { step_visuals } else { output_visuals };
     Ok(turn)
+}
+
+/// UI blocks in `value` (see `graphrt_core::ui::collect_ui_blocks`), as JSON.
+fn ui_blocks_in(value: &Value) -> Vec<Json> {
+    graphrt_core::ui::collect_ui_blocks(value).iter().map(Value::to_json).collect()
 }
 
 /// Adds the `workspace:` references of the file values in `value`, each once.
@@ -247,6 +264,7 @@ fn collect_turn(assembled_reply: String, outputs: &IndexMap<String, Value>, vari
         retrieved_sources: Vec::new(),
         citations: Vec::new(),
         produced_file_references: Vec::new(),
+        visuals: Vec::new(),
     }
 }
 

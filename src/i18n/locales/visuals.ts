@@ -1,11 +1,11 @@
 import { defineMessages } from '../types'
 
-type VisualKind = 'adaptive_card' | 'chart' | 'table' | 'stats'
+type VisualKind = 'adaptive_card' | 'chart' | 'table' | 'stats' | 'diagram'
 
-/** Cards, charts, tables and KPI tiles agents show (src/components/visuals). */
+/** Cards, charts, tables, KPI tiles and diagrams agents show (src/components/visuals). */
 export const visuals = defineMessages(
   {
-    kindNames: { adaptive_card: 'card', chart: 'chart', table: 'table', stats: 'KPI tiles' } satisfies Record<VisualKind, string>,
+    kindNames: { adaptive_card: 'card', chart: 'chart', table: 'table', stats: 'KPI tiles', diagram: 'diagram' } satisfies Record<VisualKind, string>,
     resultsHeading: 'What the agent made',
     loading: 'Drawing…',
     showAsTable: 'Show as table',
@@ -20,6 +20,9 @@ export const visuals = defineMessages(
     drawnAsArea: 'Too many bars to draw one by one, so this shows the shape as an area.',
     imageNotLoaded: (host: string) => `Image from ${host} (not loaded: graphrt only shows images that come with the card)`,
     buttonsWorkWhenAsked: 'Buttons work when the agent asks you to choose',
+    buttonsAreForCustomer: 'The customer answers with these buttons',
+    buttonsAnswered: 'Answered. Buttons work on the latest message',
+    diagramNotDrawn: 'This diagram could not be drawn.',
     noAnswerForButton: 'This button does not match an answer of this step',
     fillInBeforeSending: (labels: string) => `Fill in ${labels} first`,
     couldNotOpenLink: (reason: string) => `Could not open the link: ${reason}`,
@@ -35,7 +38,7 @@ export const visuals = defineMessages(
     no: 'No',
   },
   {
-    kindNames: { adaptive_card: 'kartu', chart: 'grafik', table: 'tabel', stats: 'kotak KPI' },
+    kindNames: { adaptive_card: 'kartu', chart: 'grafik', table: 'tabel', stats: 'kotak KPI', diagram: 'diagram' },
     resultsHeading: 'Yang dibuat agen',
     loading: 'Menggambar…',
     showAsTable: 'Tampilkan sebagai tabel',
@@ -50,6 +53,9 @@ export const visuals = defineMessages(
     drawnAsArea: 'Batangnya terlalu banyak untuk digambar satu per satu, jadi bentuknya ditampilkan sebagai area.',
     imageNotLoaded: (host: string) => `Gambar dari ${host} (tidak dimuat, Graphrt hanya menampilkan gambar yang ikut di dalam kartu)`,
     buttonsWorkWhenAsked: 'Tombol berfungsi saat agen meminta Anda memilih',
+    buttonsAreForCustomer: 'Pelanggan menjawab dengan tombol ini',
+    buttonsAnswered: 'Sudah dijawab. Tombol berfungsi di pesan terbaru',
+    diagramNotDrawn: 'Diagram ini tidak bisa digambar.',
     noAnswerForButton: 'Tombol ini tidak cocok dengan jawaban langkah ini',
     fillInBeforeSending: (labels: string) => `Isi ${labels} dulu`,
     couldNotOpenLink: (reason: string) => `Tautan tidak bisa dibuka (${reason})`,

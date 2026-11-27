@@ -6,10 +6,11 @@ use graphrt_llm::mock::MockModel;
 use graphrt_llm::{ChatModel, ModelRegistry};
 use serde_json::json;
 
-use super::channel::{ChannelAdapter, InboundMessage, OutboundMessage};
+use super::channel::{ChannelAdapter, ChannelCapabilities, InboundMessage, OutboundImage, OutboundMessage};
 use super::*;
 use crate::credentials::ModelProvider;
 use crate::storage::models::{Agent, NewAgent};
+use graphrt_ui::fallback::Markup;
 
 /// Replies with the model's text and remembers every customer message in `conversation.history`.
 const MEMORY_FLOW: &str = r#"
@@ -140,11 +141,18 @@ impl ModelRegistrySource for FixedModelSource {
 #[derive(Debug, Default)]
 struct RecordingChannel {
     sent: Mutex<Vec<(MessageAuthor, String)>>,
+    images: Mutex<Vec<OutboundImage>>,
+    /// Whether this pretend channel sends images.
+    sends_images: bool,
 }
 
 impl ChannelAdapter for RecordingChannel {
     fn name(&self) -> &'static str {
         "whatsapp"
+    }
+
+    fn capabilities(&self) -> ChannelCapabilities {
+        ChannelCapabilities { blocks: false, images: self.sends_images, markup: Markup::WhatsApp }
     }
 
     fn parse_inbound(&self, payload: &serde_json::Value) -> AppResult<InboundMessage> {
@@ -157,6 +165,7 @@ impl ChannelAdapter for RecordingChannel {
 
     fn send<'a>(&'a self, outbound: OutboundMessage<'a>) -> BoxFuture<'a, AppResult<()>> {
         self.sent.lock().unwrap().push((outbound.author, outbound.text.to_owned()));
+        self.images.lock().unwrap().extend(outbound.images.iter().cloned());
         Box::pin(async { Ok(()) })
     }
 }
@@ -581,4 +590,167 @@ async fn bot_reply_timing_report() {
         })
         .map(|(at, _)| at.duration_since(started));
     println!("TIMING first visible bot text: {first_text:?}, reply complete: {total:?}");
+}
+
+/// Replies with a fixed text, a card with two buttons and a chart (run outputs), and echoes
+/// what the bot was told plus the card button it stands for.
+const VISUALS_FLOW: &str = r#"
+version: "1"
+name: chatbot-visuals
+conversation:
+  - name: card
+    type: object
+    value:
+      $ui: adaptive_card
+      version: 1
+      title: Delivery
+      card:
+        type: AdaptiveCard
+        version: "1.5"
+        body:
+          - { type: TextBlock, text: "Deliver **today**?", wrap: true }
+        actions:
+          - { type: Action.Submit, id: deliver_today, title: "Yes, today" }
+          - { type: Action.Submit, id: deliver_later, title: Later }
+  - name: chart
+    type: object
+    value:
+      $ui: chart
+      version: 1
+      type: bar
+      title: Orders
+      x: { values: [Mon, Tue] }
+      series: [{ name: Boxes, values: [12, 18] }]
+  - name: broken
+    type: object
+    value: { $ui: chart, version: 1, type: bar }
+graph:
+  nodes:
+    - id: start
+      type: start
+      variables:
+        - { variable: message, type: paragraph, required: true }
+    - id: reply
+      type: answer
+      answer: "Heard: {{#start.message#}} [{{#sys.card_action#}}]"
+    - id: end
+      type: end
+      outputs:
+        - { variable: card, value_selector: [conversation, card] }
+        - { variable: chart, value_selector: [conversation, chart] }
+        - { variable: broken, value_selector: [conversation, broken] }
+  edges:
+    - { source: start, target: reply }
+    - { source: reply, target: end }
+"#;
+
+#[tokio::test]
+async fn the_app_gets_a_replys_blocks_and_a_card_button_answers_it() {
+    let harness = harness_with_answers(&[]);
+    let agent = create_chatbot(&harness.db, VISUALS_FLOW);
+    let conversation = harness.conversations.start_test_conversation(&agent.id).unwrap().conversation;
+
+    let detail = harness.conversations.send_customer_message(&conversation.id, "Hi").await.unwrap();
+    let reply = detail.messages.last().unwrap();
+    assert_eq!(reply.author, MessageAuthor::Bot);
+    assert_eq!(reply.text, "Heard: Hi []");
+    // The valid blocks, in output order; the broken chart is dropped, not shown.
+    let kinds: Vec<&str> =
+        reply.metadata["visuals"].as_array().unwrap().iter().map(|block| block["$ui"].as_str().unwrap()).collect();
+    assert_eq!(kinds, ["adaptive_card", "chart"]);
+    assert_eq!(reply.metadata["choices"][0]["action"], "deliver_today");
+    assert!(reply.metadata.get("textIsFallback").is_none());
+
+    // A button pressed in the Try it panel: the bot reads the choice in words and gets its id.
+    let answer = visuals::CardAnswer {
+        action: Some("deliver_later".into()),
+        title: "Later".into(),
+        values: json!({"note": "after 5 pm"}).as_object().cloned().unwrap(),
+    };
+    let detail = harness.conversations.send_customer_card_answer(&conversation.id, answer.clone()).await.unwrap();
+    let texts = authors_and_texts(&detail);
+    assert_eq!(texts[2], (MessageAuthor::Customer, "Later\nnote: after 5 pm".to_owned()));
+    assert_eq!(texts[3], (MessageAuthor::Bot, "Heard: Later\nnote: after 5 pm [deliver_later]".to_owned()));
+    assert_eq!(detail.messages[2].metadata["cardAction"]["action"], "deliver_later");
+
+    // Typing a number works in the app too.
+    let detail = harness.conversations.send_customer_message(&conversation.id, "1").await.unwrap();
+    assert_eq!(detail.messages[4].text, "1");
+    assert_eq!(detail.messages[5].text, "Heard: Yes, today [deliver_today]");
+}
+
+#[tokio::test]
+async fn a_card_answer_needs_a_card_in_the_bots_last_message() {
+    let harness = harness_with_answers(&["Halo kak"]);
+    let agent = create_chatbot(&harness.db, MEMORY_FLOW);
+    let conversation = harness.conversations.start_test_conversation(&agent.id).unwrap().conversation;
+    harness.conversations.send_customer_message(&conversation.id, "Hi").await.unwrap();
+    let answer = visuals::CardAnswer { action: Some("ok".into()), title: "OK".into(), values: Default::default() };
+    let refused = harness.conversations.send_customer_card_answer(&conversation.id, answer).await;
+    assert!(matches!(refused, Err(AppError::InvalidInput(_))));
+    assert_eq!(harness.conversations.get_conversation(&conversation.id).unwrap().messages.len(), 2);
+}
+
+#[tokio::test]
+async fn a_text_channel_gets_blocks_as_text_and_a_number_picks_a_card_button() {
+    let harness = harness_with_answers(&[]);
+    let agent = create_chatbot(&harness.db, VISUALS_FLOW);
+    let detail = harness
+        .conversations
+        .receive_inbound("whatsapp", &agent.id, &json!({"from": "+62 800", "body": "Hi"}))
+        .await
+        .unwrap();
+    let sent = harness.channel.sent.lock().unwrap().clone();
+    assert_eq!(
+        sent,
+        [(
+            MessageAuthor::Bot,
+            "Heard: Hi []\n\n*Delivery*\nDeliver *today*?\n\nReply with a number:\n1. Yes, today\n2. Later\n\n*Orders*\nMon: 12\nTue: 18"
+                .to_owned()
+        )]
+    );
+    assert!(harness.channel.images.lock().unwrap().is_empty());
+    // The app still stores the blocks, so the Inbox shows the card and the chart.
+    assert_eq!(detail.messages[1].text, "Heard: Hi []");
+    assert_eq!(detail.messages[1].metadata["visuals"].as_array().unwrap().len(), 2);
+
+    let detail = harness
+        .conversations
+        .receive_inbound("whatsapp", &agent.id, &json!({"from": "+62 800", "body": " 2. "}))
+        .await
+        .unwrap();
+    assert_eq!(detail.messages[2].text, "2.");
+    assert_eq!(
+        detail.messages[2].metadata["cardAction"],
+        json!({"action": "deliver_later", "title": "Later", "values": {}})
+    );
+    assert_eq!(detail.messages[3].text, "Heard: Later [deliver_later]");
+
+    // Anything else is an ordinary message.
+    let detail = harness
+        .conversations
+        .receive_inbound("whatsapp", &agent.id, &json!({"from": "+62 800", "body": "How much is one box?"}))
+        .await
+        .unwrap();
+    assert_eq!(detail.messages[4].metadata, json!({}));
+    assert_eq!(detail.messages[5].text, "Heard: How much is one box? []");
+}
+
+#[tokio::test]
+async fn a_media_channel_gets_the_chart_as_an_image() {
+    let db = Arc::new(Database::open_in_memory().unwrap());
+    let credentials = Arc::new(CredentialStore::in_memory());
+    let channel = Arc::new(RecordingChannel { sends_images: true, ..RecordingChannel::default() });
+    let conversations = ConversationManager::new(db.clone(), credentials, Arc::new(CollectingSink::default()))
+        .with_channel(channel.clone());
+    let agent = create_chatbot(&db, VISUALS_FLOW);
+    conversations.receive_inbound("whatsapp", &agent.id, &json!({"from": "+62 800", "body": "Hi"})).await.unwrap();
+
+    let images = channel.images.lock().unwrap().clone();
+    assert_eq!(images.len(), 1);
+    assert!(images[0].png.starts_with(b"\x89PNG"));
+    assert_eq!(images[0].caption.as_deref(), Some("Orders"));
+    let sent = channel.sent.lock().unwrap().clone();
+    assert!(sent[0].1.ends_with("1. Yes, today\n2. Later"), "{}", sent[0].1);
+    assert!(!sent[0].1.contains("Orders"));
 }

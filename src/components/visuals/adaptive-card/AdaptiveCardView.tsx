@@ -23,7 +23,8 @@ import { isSafeCardLink, parseCardMarkdown, type InlineToken } from './inlineMar
  * read whole sentences, not clipped lines.
  *
  * Buttons: Action.Submit / Action.Execute answer a paused step when `onSubmit` is given and the button maps
- * to one of `answerActionIds` (see `resolveAnswerAction`); elsewhere they are shown disabled with a hint.
+ * to one of `answerActionIds` (see `resolveAnswerAction`) or `acceptsAnyAction` is set (a chat); elsewhere
+ * they are shown disabled with a hint.
  * Action.OpenUrl opens https / mailto links in the browser through the backend; Action.ShowCard and
  * Action.ToggleVisibility work locally. Remote images are never fetched (the app's CSP forbids them too).
  */
@@ -31,6 +32,8 @@ import { isSafeCardLink, parseCardMarkdown, type InlineToken } from './inlineMar
 export interface CardSubmission {
   action: string
   values: Record<string, unknown>
+  /** The pressed button's title, for hosts that show the choice in words (a chat). */
+  title: string
 }
 
 interface AdaptiveCardViewProps {
@@ -39,8 +42,12 @@ interface AdaptiveCardViewProps {
   onSubmit?: (submission: CardSubmission) => void
   /** The paused step's action ids. */
   answerActionIds?: string[]
+  /** Every submit button answers with its own key (a chat has no step with a fixed list of actions). */
+  acceptsAnyAction?: boolean
   /** True while an answer is being sent. */
   isSubmitting?: boolean
+  /** Shown instead of the default hint while buttons are disabled for lack of `onSubmit`. */
+  disabledHint?: string
 }
 
 interface CardContextValue {
@@ -433,7 +440,7 @@ function CardInputField({ node }: { node: CardNode }) {
 
 const buttonBase = 'inline-flex h-10 max-w-full items-center justify-center rounded-[10px] px-4 text-[14px] font-semibold disabled:cursor-not-allowed disabled:opacity-50'
 const buttonStyles: Record<string, string> = {
-  positive: `${buttonBase} cursor-pointer border-0 bg-ink text-white hover:bg-ink-2`,
+  positive: `${buttonBase} cursor-pointer border-0 bg-ink text-surface hover:bg-ink-2`,
   destructive: `${buttonBase} cursor-pointer border border-danger-line bg-surface text-danger hover:bg-danger-tint`,
   default: `${buttonBase} cursor-pointer border border-line-strong bg-surface font-medium text-ink hover:bg-subtle`,
 }
@@ -563,14 +570,14 @@ function CardBody({ card }: { card: AdaptiveCard }) {
 }
 
 /** An `adaptive_card` block. */
-export function AdaptiveCardView({ block, onSubmit, answerActionIds = [], isSubmitting = false }: AdaptiveCardViewProps) {
+export function AdaptiveCardView({ block, onSubmit, answerActionIds = [], acceptsAnyAction = false, isSubmitting = false, disabledHint }: AdaptiveCardViewProps) {
   const inputs = useMemo(() => collectInputs(block.card), [block.card])
   const [values, setValues] = useState<CardValues>(() => initialCardValues(inputs))
   const [hidden, setHidden] = useState<Record<string, boolean>>({})
   const missing = missingRequiredInputs(inputs, values)
-  const answerOf = (action: CardNode) => resolveAnswerAction(actionKey(action), answerActionIds)
+  const answerOf = (action: CardNode) => (acceptsAnyAction ? actionKey(action) : resolveAnswerAction(actionKey(action), answerActionIds))
   const submitHint = !onSubmit
-    ? messages().visuals.buttonsWorkWhenAsked
+    ? (disabledHint ?? messages().visuals.buttonsWorkWhenAsked)
     : missing.length > 0
       ? messages().visuals.fillInBeforeSending(missing.join(', '))
       : null
@@ -605,7 +612,7 @@ export function AdaptiveCardView({ block, onSubmit, answerActionIds = [], isSubm
       if (action.type !== 'Action.Submit' && action.type !== 'Action.Execute') return
       const answer = answerOf(action)
       if (!onSubmit || answer === null || missing.length > 0) return
-      onSubmit({ action: answer, values: buildSubmissionValues(action, inputs, values) })
+      onSubmit({ action: answer, values: buildSubmissionValues(action, inputs, values), title: str(action.title) ?? answer })
     },
   }
 

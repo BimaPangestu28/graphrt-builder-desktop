@@ -1,17 +1,27 @@
 import { Fragment, useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { sendCustomerMessage, startTestConversation } from '@/api/conversations'
+import { sendCustomerCardAnswer, sendCustomerMessage, startTestConversation } from '@/api/conversations'
 import type { ConversationMessage } from '@/api/conversationTypes'
 import { useFileDropZone } from '@/components/fileDrop'
 import { AttachmentTray, MessageFiles, readMessageFiles, useChatAttachments } from '@/components/files'
 import { Icon, joinClassNames } from '@/components/ui'
+import type { CardSubmission } from '@/components/visuals/adaptive-card/AdaptiveCardView'
+import { isTextOnlyFallback, MessageVisuals, readMessageVisuals } from '@/components/visuals/MessageVisuals'
 import { useConversationDetail, useReplyDraft } from '@/hooks/useConversations'
 import { readCitations } from '@/pages/inbox/conversationDisplay'
 import { toErrorMessage } from '@/lib/errors'
 import { messages } from '@/i18n'
 
-function TryItBubble({ message }: { message: ConversationMessage }) {
+interface TryItBubbleProps {
+  message: ConversationMessage
+  /** Answers this message's card as the customer; only the bot's latest message can be answered. */
+  onCardSubmit?: (submission: CardSubmission) => void
+  isSubmitting: boolean
+}
+
+function TryItBubble({ message, onCardSubmit, isSubmitting }: TryItBubbleProps) {
   // A message that is only files shows its cards (MessageFiles), not their names again.
-  if (readMessageFiles(message).isFilesOnly) return null
+  const isFilesOnly = readMessageFiles(message).isFilesOnly
+  if (isFilesOnly && message.author !== 'bot') return null
   if (message.author === 'customer') {
     return <div className="box-content max-w-[80%] self-end rounded-[12px_12px_4px_12px] bg-[#D9FDD3] px-3 py-2.5 leading-[1.45]">{message.text}</div>
   }
@@ -23,16 +33,16 @@ function TryItBubble({ message }: { message: ConversationMessage }) {
     )
   }
   const citations = readCitations(message)
-  return (
+  const visuals = readMessageVisuals(message.metadata)
+  const showsText = !isTextOnlyFallback(message.metadata) && !isFilesOnly
+  const bubble = (showsText || citations.length > 0) && (
     <div className="flex box-content max-w-[86%] flex-col gap-2 self-start rounded-[12px_12px_12px_4px] bg-surface px-3 py-2.5 leading-[1.45]">
       {message.author === 'operator' && (
         <span lang="en" className="text-[11px] text-muted">
           {messages().chatbot.you}
         </span>
       )}
-      {message.text.split('\n\n').map((paragraph, index) => (
-        <span key={index}>{paragraph}</span>
-      ))}
+      {showsText && message.text.split('\n\n').map((paragraph, index) => <span key={index}>{paragraph}</span>)}
       {citations.length > 0 && (
         <span lang="en" className="flex flex-wrap gap-1.5">
           {citations.map((citation) => (
@@ -43,6 +53,12 @@ function TryItBubble({ message }: { message: ConversationMessage }) {
         </span>
       )}
     </div>
+  )
+  return (
+    <>
+      {bubble}
+      <MessageVisuals blocks={visuals} onCardSubmit={onCardSubmit} isSubmitting={isSubmitting} disabledHint={messages().visuals.buttonsAnswered} />
+    </>
   )
 }
 
@@ -78,7 +94,8 @@ function useTestConversation(agentId: string) {
 /**
  * "Try it" panel on the chatbot setup: a WhatsApp-styled chat on the in-app test channel. You write as
  * a customer and the chatbot's real workflow answers (sample answers in the browser preview); hand-offs
- * show as notices. Reset starts a new test conversation, so the bot's memory starts empty again.
+ * show as notices. Cards, charts, tables, KPI tiles and diagrams the bot returns are drawn in the chat, and
+ * the buttons of its latest card answer as the customer. Reset starts a new test conversation, so the bot's memory starts empty again.
  * When the chatbot reads files or looks at pictures, the paperclip (or a drop on the chat)
  * attaches them to the next message, and files the bot hands back appear as cards under its reply.
  */
@@ -126,6 +143,21 @@ export function TryItPanel({ agentId }: { agentId: string }) {
     }
   }
 
+  async function handleCardSubmit(submission: CardSubmission) {
+    if (!conversationId || isWaitingForBot) return
+    setSendError(null)
+    setIsWaitingForBot(true)
+    try {
+      await sendCustomerCardAnswer(conversationId, { action: submission.action, title: submission.title, values: submission.values })
+    } catch (rawError) {
+      setSendError(toErrorMessage(rawError))
+    } finally {
+      setIsWaitingForBot(false)
+    }
+  }
+
+  // A card can be answered while it is the bot's latest word: once anyone wrote after it, it is history.
+  const answerableMessageId = detail?.messages.filter((message) => message.author !== 'system').at(-1)?.id
   const errorMessage = startError ?? sendError
   return (
     <aside aria-labelledby="t-h" className="box-border flex min-w-0 flex-[2_1_340px] flex-col gap-3.5 self-start border-l border-line bg-subtle p-6">
@@ -163,7 +195,11 @@ export function TryItPanel({ agentId }: { agentId: string }) {
         )}
         {detail?.messages.map((message) => (
           <Fragment key={message.id}>
-            <TryItBubble message={message} />
+            <TryItBubble
+              message={message}
+              onCardSubmit={message.author === 'bot' && message.id === answerableMessageId ? (submission) => void handleCardSubmit(submission) : undefined}
+              isSubmitting={isWaitingForBot}
+            />
             <MessageFiles agentId={agentId} message={message} side={message.author === 'customer' ? 'end' : 'start'} />
           </Fragment>
         ))}
