@@ -391,6 +391,7 @@ fn set_state(state: &Mutex<TelegramState>, new_state: TelegramState) {
 async fn poll(service: Arc<TelegramService>, agent_id: String, bot: TelegramBot, state: Arc<Mutex<TelegramState>>) {
     let mut failures: u32 = 0;
     let mut removed_webhook = false;
+    let mut is_first_call = true;
     loop {
         let Some(manager) = service.manager() else {
             log::warn!("telegram: no conversations to deliver to; the bot of {agent_id} stops");
@@ -410,8 +411,12 @@ async fn poll(service: Arc<TelegramService>, agent_id: String, bot: TelegramBot,
             Err(error) => log::warn!("telegram: {error}"),
         }
         let cursor = service.cursor(&agent_id);
-        match bot.get_updates(cursor.map(|cursor| cursor.saturating_add(1)), POLL_WAIT_SECS).await {
+        // The first call answers at once, so the connect step says "Connected" right away
+        // instead of after a whole long poll.
+        let wait_secs = if is_first_call { 0 } else { POLL_WAIT_SECS };
+        match bot.get_updates(cursor.map(|cursor| cursor.saturating_add(1)), wait_secs).await {
             Ok(updates) => {
+                is_first_call = false;
                 failures = 0;
                 set_state(&state, TelegramState::Connected);
                 for update in updates {

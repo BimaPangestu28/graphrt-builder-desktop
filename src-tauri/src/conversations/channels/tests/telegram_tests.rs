@@ -30,6 +30,8 @@ struct BotApi {
     /// The file a customer sent.
     file: Vec<u8>,
     next_message_id: i64,
+    /// How long an empty `getUpdates` with a `timeout` waits (Telegram: the whole timeout).
+    long_poll: Option<Duration>,
 }
 
 struct FakeTelegram {
@@ -74,8 +76,13 @@ fn answer(api: &Mutex<BotApi>, request: &FakeRequest) -> FakeResponse {
             let offset = body["offset"].as_i64().unwrap_or(0);
             api.updates.retain(|update| update["update_id"].as_i64().unwrap_or(0) >= offset);
             if api.updates.is_empty() {
-                // A long poll with nothing new: answer after a short wait.
-                ok(json!([])).after(Duration::from_millis(150))
+                // A long poll with nothing new: answer after a short wait (none for `timeout: 0`).
+                let wait = if body["timeout"].as_u64() == Some(0) {
+                    Duration::ZERO
+                } else {
+                    api.long_poll.unwrap_or(Duration::from_millis(150))
+                };
+                ok(json!([])).after(wait)
             } else {
                 ok(json!(api.updates.clone()))
             }
@@ -496,4 +503,45 @@ fn the_backoff_doubles_up_to_a_minute() {
     assert_eq!(backoff_after(2), Duration::from_secs(4));
     assert_eq!(backoff_after(5), Duration::from_secs(32));
     assert_eq!(backoff_after(40), Duration::from_secs(60));
+}
+
+#[tokio::test]
+async fn the_connect_step_says_connected_without_waiting_for_a_long_poll() {
+    let base = Base::new(REPLY_FLOW);
+    let fake = FakeTelegram::start().await;
+    fake.api.lock().unwrap().long_poll = Some(Duration::from_secs(20));
+    let (telegram, _manager) = Rig::app(&base, &fake);
+    telegram.connect(&base.agent.id, TOKEN).await.unwrap();
+    let state = || telegram.connection(&base.agent.id).map(|connection| connection.state);
+    assert!(eventually(2, || state() == Some(TelegramState::Connected)).await, "{:?}", state());
+    assert_eq!(fake.server.requests_to("/getUpdates")[0].json()["timeout"], 0);
+    telegram.stop_all();
+}
+
+#[tokio::test]
+async fn after_a_hand_back_the_bot_answers_the_message_that_came_during_the_take_over() {
+    let rig = Rig::start(REPLY_FLOW).await;
+    rig.base.model.push(MockModel::text("Ada, Kak."));
+    rig.fake.push(text_update(700, 50, "Lapis ada?"));
+    assert!(eventually(10, || rig.fake.sent_texts().len() == 1).await);
+    let id = rig.base.only_chat(&rig.manager, TELEGRAM_CHANNEL).conversation.id;
+
+    rig.manager.send_operator_reply(&id, "Saya pemiliknya").await.unwrap();
+    rig.fake.push(text_update(701, 51, "Brownies ada?"));
+    assert!(eventually(10, || rig.cursor() == Some(701)).await);
+    assert!(eventually(5, || rig.messages().last().is_some_and(|(_, text)| text == "Brownies ada?")).await);
+    assert_eq!(rig.fake.sent_texts().len(), 2, "the bot stays quiet while the owner holds the chat");
+
+    rig.manager.hand_back(&id).unwrap();
+    rig.base.model.push(MockModel::text("Brownies ada, Rp 90.000."));
+    assert!(rig.manager.answer_after_hand_back(&id).await.unwrap());
+    assert!(rig.fake.sent_texts().last().is_some_and(|text| text.contains("Brownies ada, Rp 90.000")));
+    assert_eq!(rig.messages().last().map(|(author, _)| *author), Some(MessageAuthor::Bot));
+
+    // Nothing waits any more: a second hand back answers nothing.
+    assert!(!rig.manager.answer_after_hand_back(&id).await.unwrap());
+    rig.manager.take_over(&id).unwrap();
+    rig.manager.hand_back(&id).unwrap();
+    assert!(!rig.manager.answer_after_hand_back(&id).await.unwrap(), "the last message is the bot's");
+    assert_eq!(rig.fake.sent_texts().len(), 3, "bot, owner, bot after the hand back");
 }

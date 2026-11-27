@@ -204,24 +204,55 @@ impl ConversationManager {
             if !local || conversation.last_message_author != Some(MessageAuthor::Customer) {
                 continue;
             }
-            let Some(last) = self.last_exchange_message(&conversation.id)? else { continue };
-            let references: Vec<String> = last
-                .metadata
-                .get(ATTACHMENTS_KEY)
-                .cloned()
-                .and_then(|cards| serde_json::from_value::<Vec<FileCard>>(cards).ok())
-                .unwrap_or_default()
-                .into_iter()
-                .map(|card| card.reference)
-                .collect();
-            let attached = self.attached_files(&conversation, &references).await.unwrap_or_default();
-            let text = if last.metadata.get(super::attachments::FILES_ONLY_KEY).is_some() { "" } else { &last.text };
-            let customer_turn = CustomerTurn::new(text, attached);
             log::info!("answering a message of conversation {} left unanswered at the last stop", conversation.id);
-            self.answer_customer_turn(&conversation, &customer_turn, None).await?;
-            answered += 1;
+            if self.answer_last_customer_message(&conversation).await? {
+                answered += 1;
+            }
         }
         Ok(answered)
+    }
+
+    /// After the owner handed `conversation_id` back to the bot: the bot answers the
+    /// customer's latest message when nobody answered it (it arrived while the owner held the
+    /// chat), so the customer is not left waiting. Returns whether the bot answered. A chat
+    /// another program answers is left to that program.
+    ///
+    /// # Errors
+    /// `NotFound` for an unknown conversation; storage errors. A failing bot hands the chat
+    /// back to the owner instead.
+    pub async fn answer_after_hand_back(&self, conversation_id: &str) -> AppResult<bool> {
+        let conversation = self.db.get_conversation(conversation_id)?;
+        let remote = self.channels.find(&conversation.channel).is_some_and(|adapter| adapter.answers_remotely());
+        if remote
+            || conversation.status != ConversationStatus::BotAnswering
+            || conversation.last_message_author != Some(MessageAuthor::Customer)
+        {
+            return Ok(false);
+        }
+        log::info!("conversation {conversation_id}: the bot answers the message that waited during the take-over");
+        self.answer_last_customer_message(&conversation).await
+    }
+
+    /// Runs the bot on the latest customer message of `conversation`, with its files.
+    async fn answer_last_customer_message(&self, conversation: &Conversation) -> AppResult<bool> {
+        let Some(last) = self.last_exchange_message(&conversation.id)? else { return Ok(false) };
+        if last.author != MessageAuthor::Customer {
+            return Ok(false);
+        }
+        let references: Vec<String> = last
+            .metadata
+            .get(ATTACHMENTS_KEY)
+            .cloned()
+            .and_then(|cards| serde_json::from_value::<Vec<FileCard>>(cards).ok())
+            .unwrap_or_default()
+            .into_iter()
+            .map(|card| card.reference)
+            .collect();
+        let attached = self.attached_files(conversation, &references).await.unwrap_or_default();
+        let text = if last.metadata.get(super::attachments::FILES_ONLY_KEY).is_some() { "" } else { &last.text };
+        let customer_turn = CustomerTurn::new(text, attached);
+        self.answer_customer_turn(conversation, &customer_turn, None).await?;
+        Ok(true)
     }
 
     /// Stores one message of a chat another program answers (see the module docs). The
