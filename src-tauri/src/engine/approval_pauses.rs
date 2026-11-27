@@ -274,14 +274,18 @@ pub(crate) fn redact_secrets(value: &Json) -> Json {
                 .collect(),
         ),
         Json::Array(items) => Json::Array(items.iter().map(redact_secrets).collect()),
-        Json::String(text) if SECRET_VALUE_PREFIXES.iter().any(|prefix| text.starts_with(prefix)) => {
-            Json::String(REDACTED.to_owned())
-        }
+        Json::String(text) if is_secret_value(text) => Json::String(REDACTED.to_owned()),
         other => other.clone(),
     }
 }
 
-fn is_secret_name(name: &str) -> bool {
+/// A string that starts like an API key or a token (`sk-`, `Bearer `, ...).
+pub(crate) fn is_secret_value(text: &str) -> bool {
+    SECRET_VALUE_PREFIXES.iter().any(|prefix| text.starts_with(prefix))
+}
+
+/// A field name that sounds like it holds a secret (`password`, `api_key`, ...).
+pub(crate) fn is_secret_name(name: &str) -> bool {
     let lowercase = name.to_ascii_lowercase();
     SECRET_KEY_PARTS.iter().any(|part| lowercase.contains(part))
 }

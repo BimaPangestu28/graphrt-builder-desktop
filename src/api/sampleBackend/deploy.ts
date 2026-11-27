@@ -270,6 +270,7 @@ function anyFeature(features: OnlineFeatures): boolean {
 }
 
 function targetKey(target: OnlineTarget): string {
+  if (target.kind === 'computer') return 'computer'
   return target.kind === 'agent' ? `agent:${target.agentId}` : `server:${target.serverId}`
 }
 
@@ -280,6 +281,7 @@ function targetState(target: OnlineTarget): { url: string; features: OnlineFeatu
     if (!view?.deployment.url) throw new BackendError('not_found', "this agent's online copy not found")
     return { url: view.deployment.url, features: view.features, workflow: 'agent' }
   }
+  if (target.kind === 'computer') invalid('phones of this computer are paired in Settings, Phone access')
   const server = state.servers.find((view) => view.server.id === target.serverId)
   if (!server) throw new BackendError('not_found', 'this server not found')
   const features = state.serverFeatures.get(target.serverId) ?? { ...noOnlineFeatures, chat: true, phone: true, notifications: true }

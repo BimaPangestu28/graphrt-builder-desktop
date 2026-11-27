@@ -25,6 +25,7 @@ import type {
   RotatedApiKey,
 } from './deployTypes'
 import { sampleDeployBackend, subscribeToSampleDeployEvents } from './sampleBackend/deploy'
+import { samplePhoneAccessBackend } from './sampleBackend/phoneAccess'
 import type { Agent } from './types'
 import { messages } from '@/i18n'
 
@@ -154,11 +155,13 @@ export function getLiveOnlineFeatures(target: OnlineTarget): Promise<LiveFeature
 
 /** The phones paired with an online agent or a connected server, newest first. */
 export function listPairedDevices(target: OnlineTarget): Promise<PairedDevice[]> {
+  if (useSample() && target.kind === 'computer') return samplePhoneAccessBackend.listDevices()
   return useSample() ? sampleDeployBackend.listPairedDevices(target) : callBackend('list_paired_devices', { target })
 }
 
 /** Pairs a new phone. The returned link is the phone's key: show it, never store or log it. */
 export function pairDevice(target: OnlineTarget, name: string): Promise<DevicePairing> {
+  if (useSample() && target.kind === 'computer') return samplePhoneAccessBackend.pair(name)
   return useSample() ? sampleDeployBackend.pairDevice(target, name) : callBackend('pair_device', { target, name })
 }
 
@@ -169,6 +172,7 @@ export function showDevicePairing(target: OnlineTarget, deviceId: string): Promi
 
 /** Removes a paired phone: its key stops working at once. */
 export function revokePairedDevice(target: OnlineTarget, deviceId: string): Promise<void> {
+  if (useSample() && target.kind === 'computer') return samplePhoneAccessBackend.revoke(deviceId)
   return useSample() ? sampleDeployBackend.revokePairedDevice(target, deviceId) : callBackend('revoke_paired_device', { target, deviceId })
 }
 

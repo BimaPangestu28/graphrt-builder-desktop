@@ -21,12 +21,15 @@ const PAIRED_DEVICES_SETTING_PREFIX: &str = "deploy_paired_devices:";
 /// Longest device name the server takes (bytes).
 const MAX_DEVICE_NAME_BYTES: usize = 100;
 
-/// An online agent, or a server connected in "My own server".
+/// An online agent, or a server connected in "My own server". `Computer` is this computer
+/// itself (Settings > Phone access, `crate::phone_access`): the pairing commands hand it to
+/// Phone access, and nothing here serves it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum OnlineTarget {
     Agent { agent_id: String },
     Server { server_id: String },
+    Computer,
 }
 
 impl OnlineTarget {
@@ -35,6 +38,7 @@ impl OnlineTarget {
         match self {
             Self::Agent { agent_id } => format!("agent:{}", agent_id.trim()),
             Self::Server { server_id } => format!("server:{}", server_id.trim()),
+            Self::Computer => "computer".to_owned(),
         }
     }
 }
@@ -191,6 +195,11 @@ impl DeployService {
                     .find(|server| server.id == server_id.trim())
                     .ok_or_else(|| AppError::NotFound("this server".into()))?;
                 (Some(server.url), format!("server:{}", server.id))
+            }
+            OnlineTarget::Computer => {
+                return Err(AppError::InvalidInput(
+                    "phones of this computer are paired in Settings, Phone access".into(),
+                ))
             }
         };
         let url = url.ok_or_else(|| AppError::InvalidInput("This agent is not online yet".into()))?;

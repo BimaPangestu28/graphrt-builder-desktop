@@ -199,12 +199,18 @@ pub async fn get_live_online_features(state: State<'_, AppState>, target: Online
 /// The phones paired with an online agent or a connected server.
 #[tauri::command]
 pub async fn list_paired_devices(state: State<'_, AppState>, target: OnlineTarget) -> AppResult<Vec<PairedDevice>> {
+    if target == OnlineTarget::Computer {
+        return state.phone_access.list_devices();
+    }
     state.deploy.list_devices(&target).await
 }
 
 /// Pairs a new phone and returns its code (a link that is the phone's key).
 #[tauri::command]
 pub async fn pair_device(state: State<'_, AppState>, target: OnlineTarget, name: String) -> AppResult<DevicePairing> {
+    if target == OnlineTarget::Computer {
+        return state.phone_access.pair(&name).await;
+    }
     state.deploy.pair_device(&target, &name).await
 }
 
@@ -225,6 +231,9 @@ pub async fn revoke_paired_device(
     target: OnlineTarget,
     device_id: String,
 ) -> AppResult<()> {
+    if target == OnlineTarget::Computer {
+        return state.phone_access.revoke(&device_id);
+    }
     state.deploy.revoke_device(&target, &device_id).await
 }
 

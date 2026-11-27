@@ -16,6 +16,7 @@ import {
   RemoteRunnerSection,
   RunnerSection,
 } from './settings/SettingsSections'
+import { PhoneAccessSection } from './settings/PhoneAccessSection'
 import { PluginRuntimeSection } from './settings/PluginRuntimeSection'
 import { RunLimitsPanel } from './settings/RunLimitsPanel'
 import { UpdatesSection } from './settings/UpdatesSection'
@@ -102,6 +103,8 @@ function SettingsSectionContent({ activeSection, onSelectSection, appSettingsSta
     case 'notifications':
       if (!appSettings) return <AppSettingsPlaceholder appSettingsState={appSettingsState} />
       return <NotificationsSection {...sectionProps} appSettings={appSettings} updateAppSetting={updateAppSetting} />
+    case 'phone':
+      return <PhoneAccessSection />
     case 'privacy':
       return privacySection
     case 'remote':
@@ -131,7 +134,7 @@ function SettingsSectionContent({ activeSection, onSelectSection, appSettingsSta
 
 /**
  * Screen 22 · Settings.
- * App-wide preferences with an inner sub-nav (General, Runner, Notifications, Privacy and data,
+ * App-wide preferences with an inner sub-nav (General, Runner, Notifications, Phone access, Privacy and data,
  * Remote runner, Updates, About). Opens on Runner, matching the design. Launch at login, menu bar,
  * keep awake, missed runs, notifications and run history retention are saved by the backend
  * on every change; the default model through the credentials commands; crash reports and

@@ -18,6 +18,7 @@ pub mod knowledge;
 pub mod learning;
 pub mod mcp;
 pub mod node_runtime;
+pub mod phone_access;
 pub mod plugin_triggers;
 pub mod plugins;
 pub mod problems;

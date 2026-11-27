@@ -4,6 +4,7 @@ import type { LiveFeatures, OnlineFeatures, OnlineTarget } from '@/api/deployTyp
 import { Badge, Button, LinkButton } from '@/components/ui'
 import { messages } from '@/i18n'
 import { plainErrorMessage } from './deployDisplay'
+import { onlineTargetKey } from './onlineFeatures'
 import { PairedPhones } from './PairedPhones'
 
 interface OnlineFeaturesPanelProps {
@@ -61,7 +62,7 @@ export function OnlineFeaturesPanel({ target, changeTo, chosen }: OnlineFeatures
   const text = messages().deploy.sharing
   const [live, setLive] = useState<LiveFeatures | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const targetKey = target.kind === 'agent' ? `agent:${target.agentId}` : `server:${target.serverId}`
+  const targetKey = onlineTargetKey(target)
 
   const load = useCallback(async () => {
     setErrorMessage(null)

@@ -17,6 +17,13 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [build-dependencies]
 tauri-build = { version = "2.0.2", features = [] }
 
+[features]
+default = ["phone-access"]
+# Phone access (Settings > Phone access): this computer serves the monitoring page of
+# graphrt to paired phones, on the local network or the person's own Tailscale. Off at
+# run time until the person turns it on; a build without the feature has none of its code.
+phone-access = ["dep:graphrt-cli", "dep:axum", "dep:if-addrs", "tokio/net"]
+
 [dependencies]
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
@@ -51,6 +58,14 @@ graphrt-learn = { git = "https://github.com/Graphrt/graphrt", rev = "0add2d50cfa
 graphrt-files = { git = "https://github.com/Graphrt/graphrt", rev = "0add2d50cfa23a6d63c2f02c747b6195a85bfd84" }
 graphrt-image = { git = "https://github.com/Graphrt/graphrt", rev = "0add2d50cfa23a6d63c2f02c747b6195a85bfd84" }
 graphrt-docgen = { git = "https://github.com/Graphrt/graphrt", rev = "0add2d50cfa23a6d63c2f02c747b6195a85bfd84" }
+# Phone access (feature `phone-access`): the device tokens, the approvals inbox and the Web Push
+# notifier of `graphrt serve` (graphrt#136), reused for agents that run on this computer. Only
+# those features: no workflow runner of the CLI and none of its `serve` routes are used.
+graphrt-cli = { git = "https://github.com/Graphrt/graphrt", rev = "0add2d50cfa23a6d63c2f02c747b6195a85bfd84", default-features = false, features = ["web-push", "approvals"], optional = true }
+# The small HTTP server of Phone access (the same axum version graphrt serve uses).
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"], optional = true }
+# The computer's network addresses, to serve Phone access on the Wi-Fi / cable one only.
+if-addrs = { version = "0.15", optional = true }
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "process", "io-util"] }
 futures = "0.3"
