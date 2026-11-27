@@ -43,6 +43,30 @@ pub(super) struct RawPlan {
     steps: Vec<RawStep>,
     #[serde(default)]
     schedule: RawSchedule,
+    #[serde(default)]
+    job_words: JobWords,
+}
+
+/// Words the model copied from the job as the reason for a decision, or empty: what tells
+/// the app that the job sends something, runs on a schedule, repeats for each item of a
+/// list, or works on files. The app keeps a quote only when the job holds it
+/// ([`super::coverage::verify_job_words`]), so any language works and nothing is invented.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub(super) struct JobWords {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub send: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub when: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub for_each: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub files: String,
+}
+
+impl JobWords {
+    pub(super) fn is_empty(&self) -> bool {
+        self.send.is_empty() && self.when.is_empty() && self.for_each.is_empty() && self.files.is_empty()
+    }
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -92,6 +116,9 @@ pub(super) struct Plan {
     /// When the agent should run by itself, if the job says so.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub schedule: Option<Schedule>,
+    /// The job's own words behind the plan's decisions (checked against the job).
+    #[serde(default, skip_serializing_if = "JobWords::is_empty")]
+    pub job_words: JobWords,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -296,9 +323,20 @@ pub(super) fn schema(rules: &PlanRules<'_>) -> serde_json::Value {
                 },
                 "required": ["repeat", "hour"],
                 "additionalProperties": false
+            },
+            "job_words": {
+                "type": "object",
+                "properties": {
+                    "send": { "type": "string" },
+                    "when": { "type": "string" },
+                    "for_each": { "type": "string" },
+                    "files": { "type": "string" }
+                },
+                "required": ["send", "when", "for_each", "files"],
+                "additionalProperties": false
             }
         },
-        "required": ["looks_up_the_web", "summary", "name", "inputs", "steps", "schedule"],
+        "required": ["looks_up_the_web", "summary", "name", "inputs", "steps", "schedule", "job_words"],
         "additionalProperties": false
     })
 }
@@ -447,7 +485,13 @@ pub(super) fn normalize(raw: RawPlan, rules: &PlanRules<'_>) -> Result<Plan, Str
         };
         steps.push(PlanStep::Write { title: "Write the result".to_owned(), instruction });
     }
-    Ok(Plan { summary, name: plain_text(&raw.name), inputs, steps, schedule: schedule(&raw.schedule) })
+    let job_words = JobWords {
+        send: plain_text(&raw.job_words.send),
+        when: plain_text(&raw.job_words.when),
+        for_each: plain_text(&raw.job_words.for_each),
+        files: plain_text(&raw.job_words.files),
+    };
+    Ok(Plan { summary, name: plain_text(&raw.name), inputs, steps, schedule: schedule(&raw.schedule), job_words })
 }
 
 /// Whether the plan must end on a writing step it does not have: when what it found last
@@ -1438,6 +1482,7 @@ mod tests {
                 },
             ],
             schedule: None,
+            job_words: Default::default(),
         }
     }
 

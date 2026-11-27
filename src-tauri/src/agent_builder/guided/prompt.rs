@@ -47,6 +47,11 @@ const SCHEDULE: &str = "\
 - \"schedule\": when the agent runs by itself. \"repeat\" is \"never\" unless the job says how often (\"hourly\", \
 \"daily\", \"weekdays\" or \"weekly\"); \"hour\" is the hour of the day, 0 to 23.";
 
+const JOB_WORDS: &str = "\
+- \"job_words\": the exact words of the job, copied, that say it must send, post or save something \
+(\"send\"), when it runs by itself (\"when\"), that it repeats for each item of a list (\"for_each\"), or that it \
+works on files (\"files\"). Leave a field empty when the job has no such words. Copy, do not explain.";
+
 const CLOSING: &str = "\
 Use as few steps as the job needs: most jobs are ONE \"write\" step. Do not add steps for checking, formatting or \
 polishing. Write the summary, name, labels and titles in the language of the job description.";
@@ -58,7 +63,7 @@ pub(super) fn system_prompt(rules: &PlanRules<'_>) -> String {
     if !rules.operations.is_empty() {
         prompt.push_str(" A \"use\" step also has \"operation\"; other steps leave it empty.");
     }
-    prompt.push_str(&format!("\n{SCHEDULE}\n\nStep kinds:\n{WRITE}\n{LOOKUP}"));
+    prompt.push_str(&format!("\n{SCHEDULE}\n{JOB_WORDS}\n\nStep kinds:\n{WRITE}\n{LOOKUP}"));
     if rules.link_given {
         prompt.push_str(LOOKUP_GIVEN_LINK);
     }
@@ -214,6 +219,7 @@ mod tests {
                 },
             ],
             schedule: None,
+            job_words: Default::default(),
         };
         let request = fields_request(&operation, &plan, 1);
         assert!(request.contains("\"to\" (required): Recipients"), "{request}");

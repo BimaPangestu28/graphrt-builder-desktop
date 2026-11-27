@@ -85,6 +85,8 @@ struct Planning<'a> {
     /// The job in the person's words, to check a new plan against; `None` for a change,
     /// which only says what to change.
     description: Option<&'a str>,
+    /// What the person wrote: the job, or the change. The plan's quotes must come from it.
+    request: &'a str,
     /// The plan being changed: its plugin steps keep their fields where nothing before them moved.
     previous: Option<&'a Plan>,
     /// The person gives the agent a link to read (see [`PlanRules::link_given`]).
@@ -110,10 +112,6 @@ pub(super) async fn draft(
         "operations offered for the plan: {}",
         operations.iter().map(|operation| operation.kind.as_str()).collect::<Vec<_>>().join(", ")
     );
-    if coverage::is_out_of_reach(description, !operations.is_empty()) {
-        log::info!("the job needs the full workflow format; not planning it");
-        return Ok(None);
-    }
     let no_trusted_hosts = TrustedHosts::none();
     let planning = Planning {
         builder,
@@ -122,6 +120,7 @@ pub(super) async fn draft(
         operations,
         trusted_hosts: &no_trusted_hosts,
         description: Some(description),
+        request: description,
         previous: None,
         link_given: coverage::gives_a_link(description),
         on_progress,
@@ -176,9 +175,6 @@ pub(super) async fn revise(
             None => return Ok(None),
         }
     }
-    if coverage::is_out_of_reach(instruction, !operations.is_empty()) {
-        return Ok(None);
-    }
     let planning = Planning {
         builder,
         step_model,
@@ -186,6 +182,7 @@ pub(super) async fn revise(
         operations,
         trusted_hosts,
         description: None,
+        request: instruction,
         previous: Some(&current_plan),
         link_given: coverage::gives_a_link(&format!("{}\n{instruction}", agent.description))
             || current_plan
@@ -297,6 +294,7 @@ fn plan_for_the_model(plan: &Plan) -> serde_json::Value {
         })).collect::<Vec<_>>(),
         "steps": steps,
         "schedule": {"repeat": repeat, "hour": hour},
+        "job_words": {"send": "", "when": "", "for_each": "", "files": ""},
     })
 }
 
@@ -335,7 +333,11 @@ impl Planning<'_> {
                 Ok(plan) => {
                     self.with_fields(plan, stage, stage_message).await?.and_then(|plan| self.checked_draft(plan))
                 }
-                Err(problem) => Err(problem),
+                Err(PlanProblem::OutOfReach(reason)) => {
+                    log::info!("{reason}; drafting the full document instead");
+                    return Ok(None);
+                }
+                Err(PlanProblem::Repair(problem)) => Err(problem),
             };
             let problem = match checked {
                 Ok((plan, valid_draft)) => {
@@ -360,19 +362,22 @@ impl Planning<'_> {
         Ok(None)
     }
 
-    /// Reply → plan, checked against the rules and the job. `Err` is a sentence for the model.
-    fn checked_plan(&self, reply: &str, rules: &PlanRules<'_>) -> Result<Plan, String> {
+    /// Reply → plan, checked against the rules and the job.
+    fn checked_plan(&self, reply: &str, rules: &PlanRules<'_>) -> Result<Plan, PlanProblem> {
         let mut plan = plan::normalize(plan::parse(reply)?, rules)?;
-        if let Some(description) = self.description {
-            if let Some(problem) = coverage::missing_action(description, &plan) {
+        coverage::verify_job_words(&mut plan.job_words, self.request);
+        if let Some(reason) = coverage::out_of_reach(&plan.job_words, !self.operations.is_empty()) {
+            return Err(PlanProblem::OutOfReach(reason));
+        }
+        if self.description.is_some() {
+            if let Some(problem) = coverage::missing_action(&plan) {
                 // A small model rarely adds the step when asked again; the app adds the
                 // sending operation offered for the job (best match first) itself.
                 if !self.add_offered_sending_step(&mut plan, rules) {
-                    return Err(problem);
+                    return Err(PlanProblem::Repair(problem));
                 }
             }
-            // "Every morning" in the job is a schedule even when the plan forgot it.
-            plan.schedule = plan.schedule.or_else(|| coverage::schedule_in_words(description));
+            plan.schedule = coverage::checked_schedule(&plan);
         }
         Ok(plan)
     }
@@ -536,6 +541,20 @@ impl Planning<'_> {
         .map_err(|error| model_error(&error))?;
         log::debug!("builder model {schema_name} ({} chars):\n{}", response.text.len(), response.text);
         Ok(response.text)
+    }
+}
+
+/// Why a plan is not used.
+enum PlanProblem {
+    /// A sentence for the model; it is asked again.
+    Repair(String),
+    /// The job needs the full workflow format; asking again would not help.
+    OutOfReach(&'static str),
+}
+
+impl From<String> for PlanProblem {
+    fn from(problem: String) -> Self {
+        Self::Repair(problem)
     }
 }
 

@@ -157,20 +157,46 @@ async fn without_a_usable_plan_the_full_document_is_drafted() {
     assert_eq!(flow::summarize_flow(&agent.flow_yaml).unwrap().model_providers, ["ollama"]);
 }
 
+/// A plan whose own (checked) words say why the job needs the full format.
+fn plan_quoting(field: &str, words: &str) -> String {
+    reply_plan().replace(NO_SCHEDULE, &format!(r#"{NO_SCHEDULE}, "job_words": {{"{field}": "{words}"}}"#))
+}
+
 #[tokio::test]
 async fn jobs_out_of_a_plans_reach_and_teams_are_drafted_in_full() {
-    for build in [
+    for (description, field, words) in [
         // Repeats over a list.
-        BuildRequest { description: "Send each customer in my list a reminder".into(), kind: None },
-        // Acts outside the app, and no plugin operation matches.
-        BuildRequest { description: "Send the answer to my customer by WhatsApp".into(), kind: None },
-        BuildRequest { description: "Answer my question".into(), kind: Some(AgentKind::Team) },
+        ("Send each customer in my list a reminder", "for_each", "each customer in my list"),
+        // Works on files.
+        ("Summarize the PDF I attach", "files", "the PDF I attach"),
+        // Sends, and no plugin operation is offered to send with.
+        ("Kirim jawabannya ke pelanggan lewat WhatsApp", "send", "Kirim jawabannya ke pelanggan lewat WhatsApp"),
     ] {
         let db = Database::open_in_memory().unwrap();
-        let (mock, builder) = local_builder(&[&full_reply()]);
-        build_agent_with_model(&db, &builder, build, &|_| {}).await.unwrap();
-        assert!(mock.requests()[0].response_format.is_none());
+        let (mock, builder) = local_builder(&[&plan_quoting(field, words), &full_reply()]);
+        build_agent_with_model(&db, &builder, request(description), &|_| {}).await.unwrap();
+        let requests = mock.requests();
+        assert_eq!(requests.len(), 2, "{description}: one plan, then the full document at once");
+        assert!(requests[1].response_format.is_none(), "{description}");
     }
+    // A team is never planned.
+    let db = Database::open_in_memory().unwrap();
+    let (mock, builder) = local_builder(&[&full_reply()]);
+    let team = BuildRequest { description: "Answer my question".into(), kind: Some(AgentKind::Team) };
+    build_agent_with_model(&db, &builder, team, &|_| {}).await.unwrap();
+    assert!(mock.requests()[0].response_format.is_none());
+}
+
+#[tokio::test]
+async fn words_the_job_does_not_hold_are_no_evidence() {
+    // The model claims the job repeats for each item; the job says nothing of the kind.
+    let db = Database::open_in_memory().unwrap();
+    let (mock, builder) = local_builder(&[&plan_quoting("for_each", "for each customer")]);
+    let agent = build_agent_with_model(&db, &builder, request("Write a polite reply to a complaint I paste"), &|_| {})
+        .await
+        .unwrap();
+    assert_eq!(mock.requests().len(), 1);
+    assert!(agent.flow_yaml.contains("type: llm"));
 }
 
 #[tokio::test]
@@ -232,7 +258,8 @@ async fn a_plan_that_forgets_to_send_gets_the_offered_sending_step() {
     let only_writes = format!(
         r#"{{"looks_up_the_web": false, "summary": "Writes a note.", "name": "Note",
             "inputs": [{{"name": "address", "label": "Email address", "long_text": false, "value": ""}}],
-            "steps": [{{"kind": "write", "title": "Write the note", "instruction": "Write a short note.", "url": ""}}], {NO_SCHEDULE}}}"#
+            "steps": [{{"kind": "write", "title": "Write the note", "instruction": "Write a short note.", "url": ""}}], {NO_SCHEDULE},
+            "job_words": {{"send": "send it by mail"}}}}"#
     );
     let fields = r#"{"to": "someone@example.com", "body": "Hello"}"#;
     let (mock, builder) = local_builder(&[&only_writes, fields]);
@@ -253,7 +280,10 @@ async fn a_schedule_the_job_asks_for_is_saved_turned_off() {
     let db = Database::open_in_memory().unwrap();
     // A summary without a full stop, as small models write it.
     let plan = wikipedia_plan()
-        .replace(NO_SCHEDULE, r#""schedule": {"repeat": "weekdays", "hour": 7}"#)
+        .replace(
+            NO_SCHEDULE,
+            r#""schedule": {"repeat": "weekdays", "hour": 7}, "job_words": {"when": "On weekdays at 7"}"#,
+        )
         .replace("Summarizes a Wikipedia page.", "Summarizes a Wikipedia page");
     let (_mock, builder) = local_builder(&[&plan]);
 
@@ -277,9 +307,11 @@ async fn a_schedule_the_job_asks_for_is_saved_turned_off() {
 }
 
 #[tokio::test]
-async fn every_morning_in_the_job_is_a_schedule_even_when_the_plan_forgot_it() {
+async fn words_that_say_when_are_a_schedule_even_when_the_plan_forgot_it() {
     let db = Database::open_in_memory().unwrap();
-    let (_mock, builder) = local_builder(&[&wikipedia_plan()]);
+    let plan =
+        wikipedia_plan().replace(NO_SCHEDULE, &format!(r#"{NO_SCHEDULE}, "job_words": {{"when": "Every morning"}}"#));
+    let (_mock, builder) = local_builder(&[&plan]);
 
     let agent = build_agent_with_model(
         &db,
@@ -292,6 +324,17 @@ async fn every_morning_in_the_job_is_a_schedule_even_when_the_plan_forgot_it() {
 
     let triggers = db.list_triggers(Some(&agent.id)).unwrap();
     assert_eq!(triggers.iter().map(|trigger| trigger.cron_expression.as_str()).collect::<Vec<_>>(), ["0 0 8 * * *"]);
+}
+
+#[tokio::test]
+async fn a_schedule_the_job_never_asked_for_is_dropped() {
+    let db = Database::open_in_memory().unwrap();
+    let plan = reply_plan().replace(NO_SCHEDULE, r#""schedule": {"repeat": "daily", "hour": 10}"#);
+    let (_mock, builder) = local_builder(&[&plan]);
+    let agent = build_agent_with_model(&db, &builder, request("Turn my meeting notes into action items"), &|_| {})
+        .await
+        .unwrap();
+    assert!(db.list_triggers(Some(&agent.id)).unwrap().is_empty());
 }
 
 #[tokio::test]
