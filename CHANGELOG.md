@@ -23,6 +23,9 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ### Fixed
 
+- **Files with smaller AI models**: an AI model that wrote a number or a yes/no as text when it used a file tool (for example a size of "400") was refused and gave up; the app now reads it as intended. The model is also told plainly where an attached file is, so it no longer asks the customer for the file's location.
+- **No dead download links in answers**: after making a file, a chatbot often ended its answer with a link that led nowhere, although the file was already shown under the answer. It is now told the file is shown for it, and says what it made instead.
+- **A chatbot that only looks at pictures** can read the picture a customer attaches. Before, it answered "The bot could not answer".
 - **Plugin setup asks only for what a plugin needs**: a setting that already has a sensible default (a size limit, a time limit, extra fonts) is no longer asked for, and the one thing a plugin cannot work without, such as the folder your invoices are saved in, is. A plugin now says this itself; older plugins are read by their setting names as before.
 - **Plugin settings in plain words**: a setting shows a name and a short explanation instead of a technical variable name. A folder or file is chosen with a picker, a folder that does not exist yet is created for you, and a number must be a number. Only passwords and keys are hidden after saving; a folder you chose stays visible and can be changed.
 - **Find the file a run made**: when a run creates a file, such as an invoice PDF, the result shows its name and folder with **Open file** and **Open folder**.

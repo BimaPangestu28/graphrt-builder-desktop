@@ -42,6 +42,7 @@ pub mod cards;
 pub mod cleanup;
 mod delivery;
 mod intake;
+mod lenient;
 pub mod run_files;
 #[cfg(test)]
 mod tests;

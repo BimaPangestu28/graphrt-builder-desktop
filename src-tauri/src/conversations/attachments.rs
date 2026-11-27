@@ -9,6 +9,7 @@
 use graphrt_core::value::File;
 use serde_json::{json, Map, Value as Json};
 
+use crate::agent_files::cards::FileCardKind;
 use crate::agent_files::{AttachedFile, FileCard};
 
 /// Metadata key of the files a customer attached.
@@ -56,16 +57,43 @@ impl CustomerTurn {
         } else {
             text.to_owned()
         };
-        let paths: Vec<&str> = attached.iter().map(|file| file.path.as_str()).collect();
         let words = if text.is_empty() { "(The customer sent files without a message.)" } else { text };
+        let note = attachment_note(&attached);
         Self {
             stored_text,
             metadata: Json::Object(metadata),
-            model_text: format!("{words}\n\n[Files attached to this message: {}]", paths.join(", ")),
+            model_text: format!("{words}\n\n{note}"),
             knowledge_query: text.to_owned(),
             files: attached.into_iter().map(|file| file.value).collect(),
         }
     }
+}
+
+/// What the workflow is told about the files of a message: one line per file with the path
+/// its tools take and what kind of file it is. Small models overlooked a bare list of paths
+/// and asked the customer where the file was; a line that says the file is already saved
+/// and to use exactly this path is acted on (`real_model_tests.rs`).
+fn attachment_note(attached: &[AttachedFile]) -> String {
+    let mut note = String::from("[Attached files, already saved for you. Use these exact paths with your tools:");
+    for file in attached {
+        note.push_str(&format!("\n- {} ({})", file.path, kind_words(&file.card)));
+    }
+    note.push(']');
+    note
+}
+
+/// The kind of a file in the words a model reads, e.g. `picture, image/png`.
+fn kind_words(card: &FileCard) -> String {
+    let kind = match card.kind {
+        FileCardKind::Picture => "picture",
+        FileCardKind::Pdf => "PDF document",
+        FileCardKind::Document => "document",
+        FileCardKind::Spreadsheet => "spreadsheet",
+        FileCardKind::Slides => "slides",
+        FileCardKind::Text => "text file",
+        FileCardKind::WebPage | FileCardKind::Other => "file",
+    };
+    format!("{kind}, {}", card.mime_type)
 }
 
 /// The text and metadata of a bot reply with `citations` and the files it hands back.
