@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import type { McpServerDefinition, WorkflowSecretOverview } from '@/api/connectionTypes'
+import type { LocalCliStatus } from '@/api/types'
 import { connectionsTabPattern } from '@/routes'
 import { ConnectionsTabPage } from '../ConnectionsPage'
 
@@ -12,8 +13,23 @@ import { ConnectionsTabPage } from '../ConnectionsPage'
 
 let workflowSecrets: WorkflowSecretOverview[] = []
 let mcpServers: McpServerDefinition[] = []
-/** No model connected yet: every provider unconfigured and no default model. */
+/**
+ * No model connected yet, as the backend reports it: no key, Claude Code installed but off,
+ * no default model. Ollama needs no key, so it always counts as configured.
+ */
 let noModelYet = false
+/** A real failure reading the default model (not "none connected yet"). */
+let defaultModelFailure: BackendError | null = null
+
+const claudeCodeTurnedOff: LocalCliStatus = {
+  enabled: false,
+  installed: true,
+  version: '2.1.330 (Claude Code)',
+  problem: null,
+  path: '/usr/local/bin/claude',
+  signIn: 'signed_in',
+  installUrl: 'https://example.com/install',
+}
 
 function answerBackend(command: string): unknown {
   switch (command) {
@@ -23,9 +39,14 @@ function answerBackend(command: string): unknown {
       return mcpServers
     case 'list_provider_statuses':
       return noModelYet
-        ? [{ provider: 'openai', configured: false }, { provider: 'ollama', configured: false, baseUrl: null }]
+        ? [
+            { provider: 'openai', configured: false },
+            { provider: 'ollama', configured: true, baseUrl: 'http://localhost:11434' },
+            { provider: 'claude-code-cli', configured: false, localCli: claudeCodeTurnedOff },
+          ]
         : [{ provider: 'ollama', configured: true, baseUrl: 'http://localhost:11434' }]
     case 'get_default_model':
+      if (defaultModelFailure) throw defaultModelFailure
       if (noModelYet) throw new BackendError('missing_credentials', 'not set up yet: an AI model')
       return { provider: 'ollama', name: 'llama3.2' }
     case 'list_installed_plugins':
@@ -72,6 +93,7 @@ describe('ConnectionsPage in the desktop app', () => {
     workflowSecrets = []
     mcpServers = []
     noModelYet = false
+    defaultModelFailure = null
   })
 
   it('explains how to connect a model instead of showing an error when none is connected yet', async () => {
@@ -82,6 +104,15 @@ describe('ConnectionsPage in the desktop app', () => {
     expect(screen.queryByText(/not set up yet/)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Connect a model' })).toBeInTheDocument()
     expect(await screen.findByText('OpenAI')).toBeInTheDocument()
+    // The AI app already on this computer stays offered: it is the easiest one to connect.
+    expect(screen.getByRole('button', { name: 'Turn on Claude Code' })).toBeInTheDocument()
+  })
+
+  it('still reports a real failure to read the default model as an error', async () => {
+    defaultModelFailure = new BackendError('credentials', 'the key store is locked')
+    renderConnectionsPage('/connections/models')
+    expect(await screen.findByText('Could not load AI models: the key store is locked')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Connect an AI model to get started' })).not.toBeInTheDocument()
   })
 
   it('shows no sample apps, no Apps tab and honest empty states', async () => {

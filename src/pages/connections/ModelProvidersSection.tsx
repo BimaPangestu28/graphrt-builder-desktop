@@ -79,7 +79,7 @@ function NoModelYet({ hasLocalCli }: { hasLocalCli: boolean }) {
 
 interface ModelProvidersSectionProps {
   connections: ModelConnection[] | null
-  /** The stored default model, null while loading. */
+  /** The stored default model; null while loading and while no model is connected yet. */
   defaultModel: ModelChoice | null
   loadError: Error | null
   /** Reloads provider statuses after a key changed. */
@@ -167,7 +167,7 @@ export function ModelProvidersSection({ connections, defaultModel, loadError, on
   }
 
   function renderLocalCliCard(connection: ModelConnection) {
-    if (!isLocalCliProvider(connection.provider) || !connection.localCli || !defaultModel) return null
+    if (!isLocalCliProvider(connection.provider) || !connection.localCli) return null
     const providerModels = availableModelsState.data?.find((list) => list.provider === connection.provider)?.models ?? null
     return (
       <LocalCliCard
@@ -186,7 +186,6 @@ export function ModelProvidersSection({ connections, defaultModel, loadError, on
   const isPrimaryLocalCli = (connection: ModelConnection) => (primaryLocalCliProviders as readonly string[]).includes(connection.provider)
   const localCliConnections = connections?.filter((connection) => isLocalCliProvider(connection.provider) && isPrimaryLocalCli(connection)) ?? []
   const moreLocalCliConnections = connections?.filter((connection) => isLocalCliProvider(connection.provider) && !isPrimaryLocalCli(connection)) ?? []
-  const hasConnectedModel = connections?.some((connection) => connection.state !== 'available') ?? false
 
   return (
     <ConnectionsSection
@@ -196,7 +195,7 @@ export function ModelProvidersSection({ connections, defaultModel, loadError, on
     >
       {loadError && <ConnectionsNotice tone="danger">{messages().connections.couldNotLoadAiModels}{' '}{describeError(loadError)}</ConnectionsNotice>}
       {!loadError && !connections && <ConnectionsNotice>{messages().connections.loadingAiModels}</ConnectionsNotice>}
-      {connections && !hasConnectedModel && <NoModelYet hasLocalCli={localCliConnections.some((connection) => connection.localCli?.installed)} />}
+      {connections && !defaultModel && <NoModelYet hasLocalCli={localCliConnections.some((connection) => connection.localCli?.installed)} />}
       {connections && (
         <div id={recommendedTargetIds.keyedCards} className={connectionCardGridClassNames}>
           {keyedConnections.map(renderCard)}

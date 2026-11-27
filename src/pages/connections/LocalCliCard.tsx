@@ -18,7 +18,8 @@ interface LocalCliCardProps {
   connection: ModelConnection
   provider: LocalCliProvider
   localCli: LocalCliStatus
-  defaultModel: ModelChoice
+  /** The model new agents use, or null while no model is connected yet. */
+  defaultModel: ModelChoice | null
   /** This CLI's models from `listAvailableModels`, or null while loading / when off. */
   models: AvailableModel[] | null
   /** Reloads provider statuses and the default model after a change. */
@@ -77,7 +78,7 @@ export function LocalCliCard({ connection, provider, localCli, defaultModel, mod
   const isDefault = connection.state === 'default'
   const status = describeCardStatus(connection, localCli)
   const signInHint = describeLocalCliSignIn(provider, localCli)
-  const selectedModelName = isDefault ? defaultModel.name : pickedModelName
+  const selectedModelName = isDefault && defaultModel ? defaultModel.name : pickedModelName
   const modelOptions = listModelOptions(provider, models)
   const isListed = modelOptions.some((option) => option.name === selectedModelName)
 
