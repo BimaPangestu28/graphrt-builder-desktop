@@ -15,7 +15,7 @@ releases may contain breaking changes; they are called out under **Changed**.
 - **Cards, charts and tables in chatbot conversations**: when a chatbot returns a card, chart, table or KPI tiles, the chat view and Try it draw them under the answer, as wide as the chat. In Try it the buttons of the bot's latest card answer as the customer.
 - **A clean text version for WhatsApp and other text channels**: a channel that cannot draw a block gets it as tidy text. A card becomes its text with numbered choices ("1. Confirm"), and a reply of "1" counts as pressing that button; a table becomes short lines; a chart becomes an image where the channel sends images, otherwise a few numbers.
 - **Diagrams**: agents can show a flowchart, sequence, state or entity diagram, Gantt chart, mind map or timeline, written as Mermaid text (UI Render 0.2.0, `show_diagram`). The app draws it as a picture in its own colours. A diagram is text only: links, scripts, HTML and custom colours are refused before anything is drawn, and the drawing code loads only when a diagram appears.
-- **Dark colours for cards, tables, KPI tiles, charts and diagrams**: they follow the app's theme. The rest of the app is still light, so today this shows in the browser preview's Appearance setting.
+- **Dark mode**: the whole app now has dark colours and follows your computer: when the system switches to dark, graphrt switches with it, also while it is open. Cards, tables, KPI tiles, charts, diagrams and the steps canvas follow too. To keep one look whatever the system does, pick **Light** or **Dark** under **Settings > General > Appearance**; **Match the system** is the default.
 
 ## [0.2.1] - 2026-11-27
 

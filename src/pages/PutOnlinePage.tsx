@@ -41,7 +41,7 @@ function WizardStepper({ screen }: { screen: PutOnlineScreen }) {
             <span
               className={joinClassNames(
                 'flex size-6 items-center justify-center rounded-full text-[12px] font-semibold',
-                isActive ? 'bg-ink text-white' : isDone ? 'bg-ok text-white' : 'bg-chip text-muted',
+                isActive ? 'bg-ink text-inverse' : isDone ? 'bg-ok text-inverse' : 'bg-chip text-muted',
               )}
             >
               {isDone ? <Icon name="check" size={12} /> : index + 1}

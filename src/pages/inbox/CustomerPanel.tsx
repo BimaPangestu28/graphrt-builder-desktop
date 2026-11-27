@@ -74,7 +74,7 @@ export function CustomerPanel({ conversation, isOrderSaved, onSaveOrder, onTakeO
         <span className="leading-normal">{describeOrigin(conversation)}</span>
       </div>
       <div className="mt-auto flex flex-col gap-2">
-        <button type="button" onClick={onSaveOrder} disabled={isOrderSaved} className={joinClassNames(panelButtonClassNames, 'border-0 bg-ink text-white hover:bg-ink-2 disabled:bg-ok disabled:opacity-100')}>
+        <button type="button" onClick={onSaveOrder} disabled={isOrderSaved} className={joinClassNames(panelButtonClassNames, 'border-0 bg-ink text-inverse hover:bg-ink-2 disabled:bg-ok disabled:opacity-100')}>
           {isOrderSaved ? t.savedToSheet : t.saveOrderToSheet}
         </button>
         {!isClosed && (

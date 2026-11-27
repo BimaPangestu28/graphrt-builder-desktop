@@ -75,9 +75,9 @@ interface VisualBlockProps {
 }
 
 /**
- * One block in a framed surface with its title and subtitle; full width of the panel. The frame is the
- * `ui-block` theme scope: under `data-theme="dark"` it switches the colour tokens of everything inside
- * (see `index.css`), so cards, tables, tiles, charts and diagrams follow the app theme.
+ * One block in a framed surface with its title and subtitle; full width of the panel. The frame has the
+ * class `ui-block`. It uses the colour tokens only, so cards, tables, tiles, charts and diagrams follow
+ * the app theme (`data-theme` on the root element, see `index.css`).
  */
 export function VisualBlock({ block, answering, bare = false }: VisualBlockProps) {
   const body = (

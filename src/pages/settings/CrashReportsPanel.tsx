@@ -167,7 +167,7 @@ export function CrashReportsPanel() {
           <button type="button" onClick={() => setActionState({ kind: 'idle' })} className={`${settingsButtonClassNames} h-[34px]`}>
             {t.cancel}
           </button>
-          <button type="button" onClick={() => void handleDelete()} className="h-[34px] cursor-pointer rounded-[9px] border-0 bg-danger px-3.5 font-sans text-[13px] font-semibold text-white">
+          <button type="button" onClick={() => void handleDelete()} className="h-[34px] cursor-pointer rounded-[9px] border-0 bg-danger px-3.5 font-sans text-[13px] font-semibold text-inverse">
             {t.deleteCrashReports}
           </button>
         </div>

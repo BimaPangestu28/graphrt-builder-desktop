@@ -98,7 +98,7 @@ export function SkillSetupWizard({ title, review, onInstall, onReviewAgain, lead
     agents: (
       <>
         <span />
-        <LinkButton to={installed ? skillDetailPath(installed.name) : routePaths.skills} className="!text-white">
+        <LinkButton to={installed ? skillDetailPath(installed.name) : routePaths.skills} className="!text-inverse">
           {t.wizard.done}
         </LinkButton>
       </>

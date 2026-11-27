@@ -55,10 +55,10 @@ export function CanvasNotesProvider({ value, children }: { value: CanvasNotesAct
 }
 
 const colorClassNames: Record<CanvasNoteColor, string> = {
-  yellow: 'bg-[#FEF9C3] border-[#FDE68A]',
-  blue: 'bg-[#E0F2FE] border-[#BAE6FD]',
-  green: 'bg-[#DCFCE7] border-[#BBF7D0]',
-  pink: 'bg-[#FCE7F3] border-[#FBCFE8]',
+  yellow: 'bg-note-yellow border-note-yellow-line',
+  blue: 'bg-note-blue border-note-blue-line',
+  green: 'bg-note-green border-note-green-line',
+  pink: 'bg-note-pink border-note-pink-line',
   gray: 'bg-chip border-line-heavy',
 }
 

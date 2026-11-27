@@ -181,7 +181,7 @@ export function Sidebar({ activeNav, agents = { kind: 'list' }, runnerStatus, in
       <Link to={routePaths.home} className="px-1.5 no-underline" aria-label={t.logoHome}>
         <LogoLockup />
       </Link>
-      <Link to={routePaths.newAgent} className="flex h-10 items-center justify-center gap-2 rounded-[10px] bg-ink font-medium no-underline !text-white hover:bg-ink-2">
+      <Link to={routePaths.newAgent} className="flex h-10 items-center justify-center gap-2 rounded-[10px] bg-ink font-medium no-underline !text-inverse hover:bg-ink-2">
         <Icon name="plus" size={16} />
         {t.newAgent}
       </Link>

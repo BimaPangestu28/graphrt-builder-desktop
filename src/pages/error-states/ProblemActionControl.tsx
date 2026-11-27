@@ -12,7 +12,7 @@ import { messages } from '@/i18n'
 export type ProblemActionStyle = 'primary' | 'secondary' | 'text'
 
 export const problemActionClassNames: Record<ProblemActionStyle, string> = {
-  primary: 'h-[34px] cursor-pointer rounded-lg border-0 bg-ink px-3 font-sans text-[13px] font-semibold !text-white no-underline hover:bg-ink-2 disabled:cursor-default disabled:opacity-60',
+  primary: 'h-[34px] cursor-pointer rounded-lg border-0 bg-ink px-3 font-sans text-[13px] font-semibold !text-inverse no-underline hover:bg-ink-2 disabled:cursor-default disabled:opacity-60',
   secondary:
     'h-[34px] cursor-pointer rounded-lg border border-line-strong bg-surface px-3 font-sans text-[13px] font-medium !text-ink no-underline hover:bg-subtle disabled:cursor-default disabled:opacity-60',
   text: 'cursor-pointer border-0 bg-transparent p-0 font-sans text-[13px] font-medium text-brand-strong',

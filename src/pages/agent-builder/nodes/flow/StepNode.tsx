@@ -191,10 +191,10 @@ function ConnectionHint({ data }: { data: StepNodeData }) {
   const check = data.connectionCheck
   if (!check) return null
   if (check.allowed) {
-    return <span className="connect-hint pointer-events-none absolute -top-3 left-3 rounded-md bg-brand px-1.5 py-px text-[11px] font-semibold text-white">{messages().nodes.dropToConnect}</span>
+    return <span className="connect-hint pointer-events-none absolute -top-3 left-3 rounded-md bg-brand px-1.5 py-px text-[11px] font-semibold text-inverse">{messages().nodes.dropToConnect}</span>
   }
   return (
-    <span role="tooltip" className="connect-hint pointer-events-none absolute left-0 top-full z-10 mt-2 w-[240px] rounded-lg bg-ink px-2.5 py-1.5 text-[12px] leading-[1.4] text-white shadow-md">
+    <span role="tooltip" className="connect-hint pointer-events-none absolute left-0 top-full z-10 mt-2 w-[240px] rounded-lg bg-ink px-2.5 py-1.5 text-[12px] leading-[1.4] text-inverse shadow-md">
       {check.reason}
     </span>
   )
@@ -287,7 +287,7 @@ export const ContainerNodeCard = memo(function ContainerNodeCard({ id, data, sel
         <span
           role="status"
           className={joinClassNames(
-            'pointer-events-none absolute -top-3 left-12 z-10 max-w-[calc(100%-4rem)] truncate rounded-md px-1.5 py-px text-[11px] font-semibold text-white',
+            'pointer-events-none absolute -top-3 left-12 z-10 max-w-[calc(100%-4rem)] truncate rounded-md px-1.5 py-px text-[11px] font-semibold text-inverse',
             dropHint.allowed ? 'bg-brand' : 'bg-danger',
           )}
         >

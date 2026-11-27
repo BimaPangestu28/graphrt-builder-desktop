@@ -42,10 +42,10 @@ export function WizardFrame({ title, steps, currentStep, children, footer }: Wiz
                 key={step}
                 aria-current={isCurrent ? 'step' : undefined}
                 className={`inline-flex h-[34px] items-center gap-2 rounded-full border px-3 text-[13px] font-medium whitespace-nowrap ${
-                  isCurrent ? 'border-ink bg-ink text-white' : isDone ? 'border-line-strong bg-surface text-ink' : 'border-line bg-surface text-muted'
+                  isCurrent ? 'border-ink bg-ink text-inverse' : isDone ? 'border-line-strong bg-surface text-ink' : 'border-line bg-surface text-muted'
                 }`}
               >
-                <span className={`flex size-5 items-center justify-center rounded-full text-[11px] font-semibold ${isCurrent ? 'bg-white/20' : 'bg-chip text-ink-2'}`}>
+                <span className={`flex size-5 items-center justify-center rounded-full text-[11px] font-semibold ${isCurrent ? 'bg-inverse/20' : 'bg-chip text-ink-2'}`}>
                   {isDone ? <Icon name="check" size={12} /> : index + 1}
                 </span>
                 {t.wizard.steps[step]}

@@ -35,7 +35,7 @@ function StepMarker({ stepNumber, isDone, isNext }: { stepNumber: number; isDone
       className={joinClassNames(
         'flex size-6 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold tabular-nums',
         isDone && 'bg-ok-soft text-ok-strong',
-        isNext && 'bg-amber-strong text-white',
+        isNext && 'bg-amber-strong text-inverse',
         !isDone && !isNext && 'border border-line-strong text-muted',
       )}
     >

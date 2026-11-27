@@ -191,7 +191,7 @@ function DeleteWarning({ label, usages, onDelete, onKeep }: { label: string; usa
         <button type="button" onClick={onKeep} autoFocus className="h-7 cursor-pointer rounded-md border border-line-strong bg-surface px-2.5 text-[12px] font-medium text-ink hover:bg-subtle">
           {messages().nodes.keepIt}
         </button>
-        <button type="button" onClick={onDelete} className="h-7 cursor-pointer rounded-md border-0 bg-danger px-2.5 text-[12px] font-medium text-white hover:opacity-90">
+        <button type="button" onClick={onDelete} className="h-7 cursor-pointer rounded-md border-0 bg-danger px-2.5 text-[12px] font-medium text-inverse hover:opacity-90">
           {messages().nodes.deleteAnyway}
         </button>
       </div>

@@ -196,7 +196,7 @@ function ChangeRequestForm({ isBusy, onSubmitRequest, askDraft }: ChangeRequestF
           type="submit"
           aria-label={messages().builder.send}
           disabled={!draftRequest.trim() || isBusy}
-          className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-[9px] border-0 bg-ink text-white hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-[9px] border-0 bg-ink text-inverse hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <StrokeIcon size={18}>
             <path d="M12 19V5M5 12l7-7 7 7" />

@@ -13,7 +13,7 @@ export function pillTabClassNames(isActive: boolean, size: 'md' | 'sm' = 'md'): 
   return joinClassNames(
     'inline-flex cursor-pointer items-center gap-1.5 rounded-full font-medium whitespace-nowrap no-underline',
     size === 'md' ? 'h-[34px] px-3 text-[13px]' : 'h-7 px-2.5 text-[12px]',
-    isActive ? 'border border-ink bg-ink !text-white' : 'border border-line-strong bg-surface !text-ink hover:bg-subtle',
+    isActive ? 'border border-ink bg-ink !text-inverse' : 'border border-line-strong bg-surface !text-ink hover:bg-subtle',
   )
 }
 
@@ -30,7 +30,7 @@ export function PillTabBadge({ isActive, isWarning = false, children }: PillTabB
     <span
       className={joinClassNames(
         'rounded-full px-1.5 text-[11px] font-semibold',
-        isActive ? 'bg-white/20' : isWarning ? 'bg-amber-soft text-amber-strong' : 'bg-chip text-ink-2',
+        isActive ? 'bg-inverse/20' : isWarning ? 'bg-amber-soft text-amber-strong' : 'bg-chip text-ink-2',
       )}
     >
       {children}

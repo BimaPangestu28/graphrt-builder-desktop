@@ -16,7 +16,7 @@ const sentBubbleBase = 'self-end rounded-[12px_12px_4px_12px]'
 
 const customerStyle: BubbleStyle = { bubbleClassNames: 'self-start rounded-[12px_12px_12px_4px] border border-line bg-surface' }
 const outreachStyle: BubbleStyle = {
-  bubbleClassNames: joinClassNames(sentBubbleBase, 'bg-ink text-white'),
+  bubbleClassNames: joinClassNames(sentBubbleBase, 'bg-ink text-inverse'),
   get authorLabel() {
     return messages().inbox.outreachAgent
   },
@@ -30,7 +30,7 @@ const botStyle: BubbleStyle = {
   authorLabelClassNames: 'text-brand-strong',
 }
 const operatorStyle: BubbleStyle = {
-  bubbleClassNames: joinClassNames(sentBubbleBase, 'bg-ink text-white'),
+  bubbleClassNames: joinClassNames(sentBubbleBase, 'bg-ink text-inverse'),
   get authorLabel() {
     return messages().inbox.you
   },

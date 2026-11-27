@@ -20,7 +20,7 @@ function MenuBarAttentionRow({ item }: { item: MenuBarAttentionItem }) {
         to={item.actionPath}
         variant={item.isPrimaryAction ? 'primary' : 'secondary'}
         size="sm"
-        className={joinClassNames('!h-[30px] !px-2.5 !text-[12px]', item.isPrimaryAction ? '!text-white' : '!text-ink')}
+        className={joinClassNames('!h-[30px] !px-2.5 !text-[12px]', item.isPrimaryAction ? '!text-inverse' : '!text-ink')}
       >
         {item.actionLabel}
       </LinkButton>

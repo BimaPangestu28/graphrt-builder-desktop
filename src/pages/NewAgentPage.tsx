@@ -148,7 +148,7 @@ export function NewAgentPage() {
             <button
               type="submit"
               disabled={!canBuild}
-              className="flex h-10 cursor-pointer items-center gap-2 rounded-[9px] border-0 bg-ink px-[18px] text-[14px] font-semibold text-white hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex h-10 cursor-pointer items-center gap-2 rounded-[9px] border-0 bg-ink px-[18px] text-[14px] font-semibold text-inverse hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {messages().newAgent.buildAgent}
               <Icon name="arrowRight" size={16} />

@@ -36,7 +36,7 @@ function NeedsYouList({ items }: { items: AttentionItem[] }) {
             to={item.actionPath}
             variant={item.isPrimaryAction ? 'primary' : 'secondary'}
             size="sm"
-            className={joinClassNames('ml-auto !h-9 shrink-0 !rounded-[9px] !px-3.5', item.isPrimaryAction ? '!text-white' : '!text-ink')}
+            className={joinClassNames('ml-auto !h-9 shrink-0 !rounded-[9px] !px-3.5', item.isPrimaryAction ? '!text-inverse' : '!text-ink')}
           >
             {item.actionLabel}
           </LinkButton>

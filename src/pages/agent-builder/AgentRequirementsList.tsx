@@ -35,7 +35,7 @@ interface AgentRequirementsListProps {
   onPluginSessionChange?: () => unknown
 }
 
-const actionClassNames = 'flex h-8 items-center rounded-lg bg-ink px-3 text-[13px] font-medium no-underline !text-white hover:bg-ink-2'
+const actionClassNames = 'flex h-8 items-center rounded-lg bg-ink px-3 text-[13px] font-medium no-underline !text-inverse hover:bg-ink-2'
 
 interface RequirementActionProps {
   requirement: BuilderRequirement

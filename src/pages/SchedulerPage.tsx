@@ -24,8 +24,8 @@ import { messages } from '@/i18n'
 /** Dark promo card pointing to moving schedules onto a server so they run with the computer off. */
 function RemoteRunnerPromo() {
   return (
-    <Link to={routePaths.settings} className="flex items-center gap-3 rounded-[14px] bg-ink px-4 py-3.5 no-underline !text-white hover:bg-ink-2">
-      <StrokeIcon size={20} className="shrink-0 text-teal">
+    <Link to={routePaths.settings} className="flex items-center gap-3 rounded-[14px] bg-ink px-4 py-3.5 no-underline !text-inverse hover:bg-ink-2">
+      <StrokeIcon size={20} className="shrink-0 text-inverse-accent">
         <path d="M7 18a4 4 0 0 1-.6-8 6 6 0 0 1 11.6 1.5A3.5 3.5 0 0 1 17.5 18z" />
       </StrokeIcon>
       <span className="flex flex-col gap-0.5">

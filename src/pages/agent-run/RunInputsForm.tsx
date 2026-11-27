@@ -113,7 +113,7 @@ export function RunInputsForm({ inputs, lastInputs, isStarting, onStart }: RunIn
         <button
           type="submit"
           disabled={problems.length > 0 || isStarting}
-          className="h-10 cursor-pointer rounded-[9px] border-0 bg-ink px-[18px] text-[14px] font-semibold text-white hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-50"
+          className="h-10 cursor-pointer rounded-[9px] border-0 bg-ink px-[18px] text-[14px] font-semibold text-inverse hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isStarting ? messages().agentRun.starting : messages().agentRun.startTheTest}
         </button>

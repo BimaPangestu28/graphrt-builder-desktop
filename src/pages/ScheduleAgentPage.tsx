@@ -246,7 +246,7 @@ export function ScheduleAgentPage() {
             <button
               type="submit"
               disabled={isSaving}
-              className="h-11 cursor-pointer rounded-xl border-0 bg-ink px-5 text-[14px] font-semibold text-white hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-50"
+              className="h-11 cursor-pointer rounded-xl border-0 bg-ink px-5 text-[14px] font-semibold text-inverse hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isSaving ? messages().schedule.activating : messages().schedule.activateAgent}
             </button>

@@ -59,7 +59,7 @@ function OpenLink({ item, listSearch, label, isPrimary }: { item: PluginListItem
       to={pluginDetailPath(item.name)}
       state={{ listSearch }}
       aria-label={`${label} ${item.displayName}`}
-      className={buttonClassNames(isPrimary ? 'primary' : 'secondary', 'sm', isPrimary ? '!text-white' : '!text-ink')}
+      className={buttonClassNames(isPrimary ? 'primary' : 'secondary', 'sm', isPrimary ? '!text-inverse' : '!text-ink')}
     >
       {label}
     </Link>

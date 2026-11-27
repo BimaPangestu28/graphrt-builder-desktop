@@ -5,7 +5,7 @@ const sourceTypeClassNames: Record<KnowledgeSourceType, string> = {
   PDF: 'bg-danger-soft text-danger',
   XLS: 'bg-ok-soft text-ok-strong',
   TXT: 'bg-selected text-ink-2',
-  WEB: 'bg-[#E0F2FE] text-[#075985]',
+  WEB: 'bg-info-soft text-info',
 }
 
 /**

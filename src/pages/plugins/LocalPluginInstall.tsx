@@ -189,7 +189,7 @@ function InstalledStep({ installedPlugin, onClose }: { installedPlugin: Installe
         {t.installedLocal(installedPlugin.displayName, installedPlugin.version)}
       </p>
       <div className="flex flex-wrap gap-2">
-        <Link to={pluginDetailPath(installedPlugin.name)} className={buttonClassNames('primary', 'sm', '!text-white')}>
+        <Link to={pluginDetailPath(installedPlugin.name)} className={buttonClassNames('primary', 'sm', '!text-inverse')}>
           {t.openPlugin(installedPlugin.displayName)}
         </Link>
         <Button variant="ghost" size="sm" onClick={onClose}>

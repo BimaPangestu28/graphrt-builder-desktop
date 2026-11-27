@@ -51,7 +51,7 @@ export function NodesRunActions({ problems, isValidating, onValidate, onAddNote,
         </StrokeIcon>
         <span className={foldingLabelClassNames}>{isValidating ? messages().nodes.checking : messages().nodes.validate}</span>
         {errorCount > 0 && (
-          <span aria-label={messages().nodes.errorcountProblems(errorCount)} className="rounded-full bg-danger px-1.5 text-[11px] leading-[18px] font-semibold text-white">
+          <span aria-label={messages().nodes.errorcountProblems(errorCount)} className="rounded-full bg-danger px-1.5 text-[11px] leading-[18px] font-semibold text-inverse">
             {errorCount}
           </span>
         )}
@@ -62,7 +62,7 @@ export function NodesRunActions({ problems, isValidating, onValidate, onAddNote,
         disabled={Boolean(testBlock?.isBlocking) || isStarting || isRunActive}
         aria-describedby={testBlockReason ? reasonId : undefined}
         title={testBlockReason ?? undefined}
-        className={joinClassNames(actionButtonClassNames, 'border-ink bg-ink !text-white hover:bg-ink-2')}
+        className={joinClassNames(actionButtonClassNames, 'border-ink bg-ink !text-inverse hover:bg-ink-2')}
       >
         <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <path d="M7 4.5v15l13-7.5z" />

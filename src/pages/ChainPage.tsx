@@ -22,7 +22,7 @@ function EmptyChains({ onCreate, isCreating }: { onCreate: () => void; isCreatin
     <div className="flex flex-col items-start gap-3 p-8">
       <h1 className="m-0 text-[22px] font-semibold">{messages().team.chains}</h1>
       <p className="m-0 max-w-[460px] leading-normal text-body">{messages().team.aChainStartsTheNextAgent}</p>
-      <button type="button" disabled={isCreating} onClick={onCreate} className="h-10 cursor-pointer rounded-[10px] border-0 bg-ink px-4 font-medium text-white hover:bg-ink-2">
+      <button type="button" disabled={isCreating} onClick={onCreate} className="h-10 cursor-pointer rounded-[10px] border-0 bg-ink px-4 font-medium text-inverse hover:bg-ink-2">
         {messages().team.newChain}
       </button>
     </div>

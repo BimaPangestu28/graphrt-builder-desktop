@@ -102,8 +102,8 @@ interface FileCardGridProps {
 /**
  * Files as cards in two columns, three when there is room (the grid follows its own width, not
  * the window's). Names and labels stay on one line and are cut with an ellipsis; the full name
- * is the tooltip. Uses the colour tokens only, inside the `ui-block` theme scope UI blocks use,
- * so the cards follow the same light and dark colours.
+ * is the tooltip. Uses the colour tokens only, like the UI blocks, so the cards follow the app's
+ * light and dark colours.
  *
  * @param agentId - The agent the files belong to (string)
  * @param cards - The files to show; nothing is rendered for none (FileCard[])

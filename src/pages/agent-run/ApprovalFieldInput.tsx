@@ -15,7 +15,7 @@ interface ApprovalFieldInputProps {
   autoFocus?: boolean
 }
 
-const textControlClassNames = 'rounded-xl border border-line-strong bg-[#F7FCF9] px-3.5 py-3 text-[14px] leading-[1.55] text-ink outline-brand'
+const textControlClassNames = 'rounded-xl border border-line-strong bg-brand-tint px-3.5 py-3 text-[14px] leading-[1.55] text-ink outline-brand'
 
 /**
  * One form field of a `human-input` question, with the control its graphrt `type` calls for:

@@ -152,7 +152,7 @@ export function EmptyCanvas({ readOnly, onAddNode, onWriteInChat }: EmptyCanvasP
         <p className="m-0 text-[13px] leading-[1.5] text-body">{messages().nodes.theBuilderTurnsADescriptionInto}</p>
         <div className="flex gap-2">
           {onAddNode && (
-            <button type="button" disabled={readOnly} onClick={onAddNode} className="flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-ink bg-ink px-3 text-[13px] font-semibold text-white hover:bg-ink-2 disabled:cursor-default disabled:opacity-50">
+            <button type="button" disabled={readOnly} onClick={onAddNode} className="flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-ink bg-ink px-3 text-[13px] font-semibold text-inverse hover:bg-ink-2 disabled:cursor-default disabled:opacity-50">
               <StrokeIcon size={14}>
                 <path d="M12 5v14M5 12h14" />
               </StrokeIcon>

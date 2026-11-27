@@ -1,3 +1,4 @@
+import type { ThemeName } from '@/lib/useThemeName'
 import type { AgentGraph, GraphEdge, GraphNode, GraphProblem, NodeKindInfo, NodeLayout } from '@/api/agentGraphTypes'
 import { FAIL_BRANCH_HANDLE, type ConnectionCheck } from '@/lib/agentGraphRules'
 import { pluginDisplayName } from '@/lib/pluginDisplayName'
@@ -165,13 +166,20 @@ export function toFlowNodes(graph: AgentGraph, options: FlowElementOptions): Ste
     })
 }
 
-/** Colours of the arrows (hex: SVG markers do not read CSS variables everywhere). */
-export const edgeColors: Record<EdgeKind | 'selected', string> = {
-  default: '#A1A1AA',
-  branch: '#A1A1AA',
-  error: '#991B1B',
-  unused: '#D4D4D8',
-  selected: '#0E7C66',
+export type EdgeColors = Record<EdgeKind | 'selected', string>
+
+/**
+ * Colours of the arrows per theme (hex: SVG markers do not read CSS variables everywhere). They match the
+ * tokens in `index.css`: faint, danger, line-heavy and brand.
+ */
+const edgeColorsByTheme: Record<ThemeName, EdgeColors> = {
+  light: { default: '#A1A1AA', branch: '#A1A1AA', error: '#991B1B', unused: '#D4D4D8', selected: '#0E7C66' },
+  dark: { default: '#A1A1AA', branch: '#A1A1AA', error: '#F87171', unused: '#52525B', selected: '#3CCBAE' },
+}
+
+/** The arrow colours of a theme. */
+export function edgeColorsOf(themeName: ThemeName): EdgeColors {
+  return edgeColorsByTheme[themeName]
 }
 
 /** The exit's name for branch and error arrows ("Send", "Else", "On error"); drawn on the port. */
@@ -198,7 +206,8 @@ function edgeKindOf(edge: GraphEdge): EdgeKind {
  * React Flow edges with arrowheads: error-path arrows dashed red, unused ones dashed
  * faint with "not used", branch arrows named on their port.
  */
-export function toFlowEdges(graph: AgentGraph, selectedEdgeIds: string[] = []): StepFlowEdge[] {
+export function toFlowEdges(graph: AgentGraph, selectedEdgeIds: string[] = [], themeName: ThemeName = 'light'): StepFlowEdge[] {
+  const edgeColors = edgeColorsOf(themeName)
   const nodesById = new Map(graph.nodes.map((node) => [node.id, node]))
   const selected = new Set(selectedEdgeIds)
   return graph.edges

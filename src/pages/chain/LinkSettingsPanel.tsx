@@ -132,7 +132,7 @@ export function LinkSettingsPanel({ step, linkNumber, targetAgent, previousAgent
         type="button"
         onClick={onSave}
         disabled={!hasUnsavedChanges || isSaving}
-        className="h-10 cursor-pointer rounded-[10px] border-0 bg-ink text-[14px] font-medium text-white hover:bg-ink-2 disabled:cursor-default disabled:bg-selected disabled:text-muted"
+        className="h-10 cursor-pointer rounded-[10px] border-0 bg-ink text-[14px] font-medium text-inverse hover:bg-ink-2 disabled:cursor-default disabled:bg-selected disabled:text-muted"
       >
         {isSaving ? messages().team.saving : hasUnsavedChanges ? messages().team.saveLink : messages().team.saved}
       </button>

@@ -11,7 +11,7 @@ import { joinClassNames } from '@/components/ui'
 export type CompactButtonVariant = 'primary' | 'secondary'
 
 const compactButtonVariantClassNames: Record<CompactButtonVariant, string> = {
-  primary: 'border-0 bg-ink !text-white hover:bg-ink-2',
+  primary: 'border-0 bg-ink !text-inverse hover:bg-ink-2',
   secondary: 'border border-line-strong bg-surface !text-ink hover:bg-subtle',
 }
 

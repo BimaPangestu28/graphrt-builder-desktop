@@ -31,7 +31,7 @@ function DeleteConfirmation({ shouldRemoveKeys, onRemoveKeysChange, onConfirm, o
         <button
           type="button"
           onClick={onConfirm}
-          className="h-[34px] cursor-pointer rounded-[9px] border-0 bg-danger px-3.5 font-sans text-[13px] font-semibold text-white"
+          className="h-[34px] cursor-pointer rounded-[9px] border-0 bg-danger px-3.5 font-sans text-[13px] font-semibold text-inverse"
         >
           {t.deleteEverything}
         </button>

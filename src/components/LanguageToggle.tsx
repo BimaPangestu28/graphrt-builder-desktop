@@ -48,7 +48,7 @@ export function LanguageToggle({ showFullNames = false, className }: LanguageTog
               onClick={() => choose(option)}
               className={joinClassNames(
                 'h-7 cursor-pointer rounded-full border-0 px-3 font-sans text-[12px] font-semibold whitespace-nowrap',
-                isActive ? 'bg-ink text-white' : 'bg-transparent text-ink-2 hover:bg-subtle',
+                isActive ? 'bg-ink text-inverse' : 'bg-transparent text-ink-2 hover:bg-subtle',
               )}
             >
               {showFullNames ? fullNames[option] : shortLabels[option]}

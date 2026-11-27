@@ -84,13 +84,13 @@ function NewTriggerAction() {
     )
   }
   return (
-    <label className="flex h-10 items-center gap-2 rounded-[9px] bg-ink px-3 text-[14px] font-semibold text-white">
+    <label className="flex h-10 items-center gap-2 rounded-[9px] bg-ink px-3 text-[14px] font-semibold text-inverse">
       <Icon name="plus" size={16} />
       <span className="sr-only">{messages().schedule.newTriggerFor}</span>
       <select
         value=""
         onChange={(event) => event.target.value && navigate(agentPath('scheduleAgent', event.target.value))}
-        className="cursor-pointer border-0 bg-transparent text-[14px] font-semibold text-white outline-none"
+        className="cursor-pointer border-0 bg-transparent text-[14px] font-semibold text-inverse outline-none"
       >
         <option value="" disabled>
           {messages().schedule.newTriggerFor2}

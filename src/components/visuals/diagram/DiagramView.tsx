@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { messages } from '@/i18n'
 import type { DiagramBlock } from '../uiBlockTypes'
-import { useThemeName } from '../useThemeName'
+import { useThemeName } from '@/lib/useThemeName'
 import { renderDiagram, type DiagramTheme, type RenderedDiagram } from './renderDiagram'
 
 /**
