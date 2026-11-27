@@ -22,7 +22,9 @@ graph:
             reply says. Decide one thing only: does the REPLY give the facts and the
             meaning of the GOOD ANSWER? Other wording, extra polite words and extra helpful
             details are fine. A reply that leaves out a fact of the good answer, says
-            something that contradicts it, or does not answer fails.
+            something that contradicts it, or does not answer fails. When the good answer
+            itself says the assistant does not know, will ask someone, or hands the question
+            to a person, a reply that does the same passes.
             - pass: the reply gives what the good answer says.
             - fail: it misses or contradicts part of it, or does not answer.
             - unknown: the good answer itself cannot be understood.

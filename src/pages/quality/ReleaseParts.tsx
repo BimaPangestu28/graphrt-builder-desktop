@@ -91,7 +91,8 @@ export function NewReleaseCard({ agentId, overview, isOnline, onReleased }: NewR
     }
   }
 
-  if (released) {
+  // Only while the release just made is still the one in use (a roll back replaces it).
+  if (released && overview.inUse?.number === released.number) {
     return (
       <Card className="flex flex-col items-start gap-3 border-ok-soft bg-ok-tint p-5">
         <span className="text-[16px] font-semibold text-ok-strong">{t.release.released(released.number)}</span>
@@ -101,7 +102,7 @@ export function NewReleaseCard({ agentId, overview, isOnline, onReleased }: NewR
   }
 
   if (readiness.status === 'blocked' && readiness.block.kind === 'already_released') {
-    return <p className="m-0 rounded-[10px] bg-subtle px-3.5 py-3 text-[14px] text-body">{blockText}</p>
+    return <p className="m-0 self-start rounded-[10px] bg-subtle px-3.5 py-3 text-[14px] text-body">{blockText}</p>
   }
 
   return (

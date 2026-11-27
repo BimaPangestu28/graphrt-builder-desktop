@@ -23,7 +23,7 @@ export function DeployReleaseNotice({ agentId, needsRelease }: { agentId: string
       </Card>
     )
   }
-  const hasNewerDraft = overview.currentVersion > overview.inUse.agentVersion
+  const hasNewerDraft = !overview.releases.some((release) => release.agentVersion === overview.currentVersion)
   return (
     <div className="flex flex-col gap-1 text-[13px]">
       <span className="font-medium text-ink-2">{t.deploy.putsOnline(overview.inUse.number, overview.inUse.agentVersion)}</span>

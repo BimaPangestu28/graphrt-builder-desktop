@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { addAgentTests, deleteAgentTest, startAgentCheck, updateAgentTest } from '@/api/quality'
-import type { AgentTest, QualityOverview, TestInput } from '@/api/qualityTypes'
+import type { AgentTest, QualityOverview, QuestionResult, TestInput } from '@/api/qualityTypes'
 import { AppShell, PageFrame, PageTitleBlock } from '@/components/layout'
 import { Button, Card, Icon } from '@/components/ui'
 import { useAgent } from '@/hooks/useAgent'
@@ -22,6 +22,12 @@ type Editing = { kind: 'none' } | { kind: 'suggest' } | { kind: 'new' } | { kind
 
 function toInput(test: AgentTest): TestInput {
   return { question: test.question, goodAnswer: test.goodAnswer, mustInclude: test.mustInclude, mustNotInclude: test.mustNotInclude, suggested: test.suggested }
+}
+
+/** Questions whose last answer was not good come first; the order is kept otherwise. */
+function testsNotGoodFirst(tests: AgentTest[], resultOf: (test: AgentTest) => QuestionResult | null): AgentTest[] {
+  const rank = (test: AgentTest) => (resultOf(test)?.good === false ? 0 : 1)
+  return [...tests].sort((left, right) => rank(left) - rank(right))
 }
 
 function EmptyTests({ onSuggest, onWrite }: { onSuggest: () => void; onWrite: () => void }) {
@@ -112,6 +118,8 @@ function TestsContent({ agentId, overview, quality }: { agentId: string; overvie
     <>
       <CheckSummary
         check={latest}
+        testsCount={overview.tests.length}
+        currentVersion={overview.currentVersion}
         progress={quality.progress}
         canStart={overview.tests.length > 0}
         isStarting={isStarting}
@@ -134,7 +142,7 @@ function TestsContent({ agentId, overview, quality }: { agentId: string; overvie
       </div>
       {editor}
       <ul aria-label={t.test.questionsHeading(overview.tests.length)} className="m-0 grid list-none grid-cols-1 gap-3 p-0 lg:grid-cols-2">
-        {overview.tests.map((test) => (
+        {testsNotGoodFirst(overview.tests, resultOf).map((test) => (
           <li key={test.id} className="min-w-0">
             <TestCard
               test={test}

@@ -4,6 +4,9 @@ import { useT } from '@/i18n'
 
 interface CheckSummaryProps {
   check: CheckView | null
+  testsCount: number
+  /** The agent's latest version, to say when the last check was of an older one. */
+  currentVersion: number
   progress: CheckProgress | null
   canStart: boolean
   isStarting: boolean
@@ -17,7 +20,7 @@ interface CheckSummaryProps {
  * The big number of the last check (good answers of all, against what a release needs),
  * how it compares with the check before, and the one button that checks again.
  */
-export function CheckSummary({ check, progress, canStart, isStarting, error, releasePath, onStart }: CheckSummaryProps) {
+export function CheckSummary({ check, testsCount, currentVersion, progress, canStart, isStarting, error, releasePath, onStart }: CheckSummaryProps) {
   const t = useT().quality
   const isRunning = progress !== null || check?.status === 'running'
   const total = progress?.total ?? check?.total ?? 0
@@ -43,7 +46,9 @@ export function CheckSummary({ check, progress, canStart, isStarting, error, rel
             </>
           ) : check?.status === 'failed' ? (
             <span className="text-[14px] text-danger">{t.result.didNotFinish(check.errorMessage ?? '')}</span>
-          ) : null}
+          ) : (
+            <span className="text-[15px] text-body">{t.test.readyToCheck(testsCount)}</span>
+          )}
           {isRunning && <span className="text-[13px] text-muted">{t.test.checkingHint}</span>}
         </div>
         <div className="flex flex-wrap gap-2">
@@ -53,10 +58,13 @@ export function CheckSummary({ check, progress, canStart, isStarting, error, rel
             </LinkButton>
           )}
           <Button size="lg" onClick={onStart} disabled={!canStart || isRunning || isStarting}>
-            {check ? t.test.checkAgain : t.test.check}
+            {check && check.status !== 'running' ? t.test.checkAgain : t.test.check}
           </Button>
         </div>
       </div>
+      {check && check.status !== 'running' && check.agentVersion < currentVersion && !isRunning && (
+        <p className="m-0 rounded-[10px] border border-amber-line-2 bg-amber-tint px-3 py-2 text-[13px] text-amber-deep">{t.result.olderVersion(currentVersion)}</p>
+      )}
       {check?.testsChangedSince && !isRunning && <p className="m-0 rounded-[10px] border border-amber-line-2 bg-amber-tint px-3 py-2 text-[13px] text-amber-deep">{t.result.testsChanged}</p>}
       {releasePath && !isRunning && <p className="m-0 text-[13px] text-ok-strong">{t.result.readyHint}</p>}
       {error && (
