@@ -8,6 +8,7 @@ import { sampleRunSummaryBackend } from '@/api/sampleBackend/runSummary'
 import { resetSampleRuns, sampleRunStepDelayMs, sampleRunsBackend, sampleStepsUntilApproval } from '@/api/sampleBackend/runs'
 import { agentPath, routePaths, sampleAgentId } from '@/routes'
 import { RunResultPage } from '@/pages/RunResultPage'
+import { pinClock, pinnedNow } from '@/test/pinnedClock'
 import { LocationProbe } from '@/test/runTestUtils'
 
 function renderRunResultPage(initialEntry: string = routePaths.runResult) {
@@ -24,12 +25,12 @@ function renderRunResultPage(initialEntry: string = routePaths.runResult) {
 
 /** Plays the sample test run to the end and returns its id. */
 async function finishSampleRun(action: 'approve' | 'skip'): Promise<string> {
-  vi.useFakeTimers()
+  vi.useFakeTimers({ now: pinnedNow })
   const run = await startRun(sampleAgentId, 'test', { keyword: 'cafe', city: '[CITY]' })
   await vi.advanceTimersByTimeAsync(sampleRunStepDelayMs * sampleStepsUntilApproval)
   await resumeRun(run.id, { approve_message: { action, values: { message: 'Hi' } } })
   await vi.advanceTimersByTimeAsync(sampleRunStepDelayMs * 5)
-  vi.useRealTimers()
+  pinClock()
   return run.id
 }
 
@@ -56,6 +57,7 @@ function buildSummary(changes: Partial<RunSummary>): RunSummary {
 
 describe('RunResultPage', () => {
   beforeEach(() => {
+    pinClock()
     resetSampleRuns()
     vi.spyOn(console, 'warn').mockImplementation(() => {})
   })
