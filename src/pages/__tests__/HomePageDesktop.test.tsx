@@ -38,15 +38,22 @@ const promoAgent: Agent = {
   description: 'Find cafes in Bandung on Google Maps and send each one our promotion on WhatsApp, then log replies',
 }
 
+/**
+ * The clock of every test here: noon, local time. The screen says "Today 11:30" for a run of
+ * 30 minutes ago, which is only true when "now" is not just after midnight, so the tests must
+ * not read the real clock (they failed between 00:00 and 01:00).
+ */
+const frozenNow = new Date(2026, 10, 20, 12, 0, 0)
+
 function tomorrowAt(hour: number): string {
-  const tomorrow = new Date()
+  const tomorrow = new Date(frozenNow)
   tomorrow.setDate(tomorrow.getDate() + 1)
   tomorrow.setHours(hour, 0, 0, 0)
   return tomorrow.toISOString()
 }
 
 function minutesAgo(minutes: number): string {
-  return new Date(Date.now() - minutes * 60_000).toISOString()
+  return new Date(frozenNow.getTime() - minutes * 60_000).toISOString()
 }
 
 function createTrigger(overrides: Partial<Trigger>): Trigger {
@@ -176,7 +183,14 @@ function renderHomePage() {
 }
 
 describe('HomePage in the desktop app', () => {
-  beforeEach(() => window.localStorage.removeItem(gettingStartedDismissedKey))
+  beforeEach(() => {
+    // Only the date is frozen; timers stay real so `findBy…` keeps polling.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(frozenNow)
+    window.localStorage.removeItem(gettingStartedDismissedKey)
+  })
+
+  afterEach(() => vi.useRealTimers())
 
   it('puts approvals, chats, failed runs and unready plugins in "Needs you", most urgent first', async () => {
     answerBackend({

@@ -4,15 +4,19 @@ on:
   push:
     branches: [main]
   pull_request:
+  # The merge queue tests each pull request on top of main and of the ones queued before
+  # it, so two pull requests that are green on their own cannot turn main red together.
+  merge_group:
   workflow_dispatch:
 
 permissions:
   contents: read
 
 # A new push to the same PR cancels the run it supersedes. Runs on main (push or
-# workflow_dispatch) are never cancelled, so every main commit keeps a full result:
-# each gets its own group (the run id), because a group holds at most one pending
-# run and a newer one cancels it even with cancel-in-progress off.
+# workflow_dispatch) and merge queue runs are never cancelled, so every main commit and
+# every queue entry keeps a full result: each gets its own group (the run id), because a
+# group holds at most one pending run and a newer one cancels it even with
+# cancel-in-progress off.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -29,7 +33,8 @@ env:
 jobs:
   # Decides whether a pull request touches anything that can change the build. A PR
   # that only edits docs skips the jobs gated on `code` (they still report, as skipped).
-  # Pushes to main and manual runs always set `code` to true: nothing is skipped there.
+  # Pushes to main, merge queue runs and manual runs always set `code` to true: nothing
+  # is skipped there.
   changes:
     name: detect changes
     timeout-minutes: 5
@@ -98,19 +103,18 @@ jobs:
           retention-days: 1
 
   rust:
-    name: fmt + clippy + test (${{ matrix.platform == 'macos-latest' && github.event_name == 'pull_request' && 'macos-26-intel' || matrix.platform }})
+    name: fmt + clippy + test (${{ matrix.platform }})
     timeout-minutes: 40
     needs: [changes, frontend]
     if: needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
       matrix:
-        platform: [macos-latest, windows-latest, ubuntu-22.04]
-    # macOS on pull requests runs on Intel (macos-26-intel): GitHub's arm64 macOS pool is
-    # often out of capacity and PR jobs waited for hours. main, tags and manual runs keep
-    # arm64 (macos-latest), the architecture most users have. Caches are keyed per
-    # architecture and only main saves them, so Intel PR jobs build without a Rust cache.
-    runs-on: ${{ matrix.platform == 'macos-latest' && github.event_name == 'pull_request' && 'macos-26-intel' || matrix.platform }}
+        platform: [windows-latest, ubuntu-22.04]
+    # macOS is not built here: its runners are slow to start and made every pull request
+    # wait. The same steps run on macOS in macos.yml (main, nightly, manual runs and pull
+    # requests labelled `macos`), and nothing here waits for them.
+    runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v7
       - name: Install Linux dependencies
@@ -134,7 +138,7 @@ jobs:
           name: dist
           path: dist
       - name: cargo fmt
-        if: runner.os == 'macOS'
+        if: runner.os == 'Linux'
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
       # The app bundles no Node.js (it downloads the pinned release on demand), so fmt /
       # clippy / tests stay network-free; build.rs compiles the pinned checksums in.
@@ -144,19 +148,18 @@ jobs:
       - run: cargo test --manifest-path src-tauri/Cargo.toml
 
   bundle:
-    name: desktop bundle (${{ matrix.platform == 'macos-latest' && github.event_name == 'pull_request' && 'macos-26-intel' || matrix.platform }})
+    name: desktop bundle (${{ matrix.platform }})
     timeout-minutes: 45
     needs: [changes, frontend]
     if: needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
       matrix:
-        platform: [macos-latest, windows-latest, ubuntu-22.04]
-    # macOS on pull requests runs on Intel (macos-26-intel): GitHub's arm64 macOS pool is
-    # often out of capacity and PR jobs waited for hours. main, tags and manual runs keep
-    # arm64 (macos-latest), the architecture most users have. Caches are keyed per
-    # architecture and only main saves them, so Intel PR jobs build without a Rust cache.
-    runs-on: ${{ matrix.platform == 'macos-latest' && github.event_name == 'pull_request' && 'macos-26-intel' || matrix.platform }}
+        platform: [windows-latest, ubuntu-22.04]
+    # macOS is not built here: its runners are slow to start and made every pull request
+    # wait. The same steps run on macOS in macos.yml (main, nightly, manual runs and pull
+    # requests labelled `macos`), and nothing here waits for them.
+    runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v7
       - name: Install Linux dependencies
@@ -186,3 +189,25 @@ jobs:
           GRAPHRT_REQUIRE_NODE_SIGNATURE: "1"
         run: scripts/fetch-node.sh --verify-checksums
       - run: pnpm tauri build --no-bundle
+
+  # The one check to require in the branch ruleset (and so in the merge queue). It always
+  # runs, fails when a job above failed or was cancelled, and passes when each one
+  # succeeded or was skipped (a docs-only pull request skips the jobs gated on `code`).
+  # It does not depend on macOS (macos.yml): a red macOS run is reported, it blocks no merge.
+  ci-ok:
+    name: ci-ok
+    timeout-minutes: 5
+    needs: [changes, version, frontend, rust, bundle]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the result of every job
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          bad="$(echo "$NEEDS" | jq -r '[to_entries[] | select(.value.result != "success" and .value.result != "skipped") | .key] | join(", ")')"
+          if [ -n "$bad" ]; then
+            echo "::error::These jobs did not pass: $bad"
+            exit 1
+          fi
