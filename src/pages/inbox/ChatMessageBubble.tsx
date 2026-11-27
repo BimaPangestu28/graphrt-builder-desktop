@@ -1,4 +1,5 @@
 import type { ConversationMessage } from '@/api/conversationTypes'
+import { readMessageFiles } from '@/components/files'
 import { joinClassNames } from '@/components/ui'
 import { formatClockTime, readCitations } from './conversationDisplay'
 import { messages } from '@/i18n'
@@ -56,6 +57,8 @@ export function ChatMessageBubble({ message }: { message: ConversationMessage })
     )
   }
 
+  // A message that is only files shows its cards (MessageFiles, next to this bubble), not their names again.
+  if (readMessageFiles(message).isFilesOnly) return null
   const bubbleStyle = getBubbleStyle(message)
   const deliveryError = typeof message.metadata.deliveryError === 'string' ? message.metadata.deliveryError : null
   const citations = readCitations(message)

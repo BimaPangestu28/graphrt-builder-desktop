@@ -28,13 +28,17 @@ pub fn start_test_conversation(state: State<'_, AppState>, agent_id: String) -> 
 }
 
 /// Simulated inbound message for the "Try it" panel; resolves after the bot's turn.
+/// `attachments` are the references of files attached to this conversation
+/// (`commands::agent_files::pick_chat_attachments`).
 #[tauri::command]
 pub async fn send_customer_message(
     state: State<'_, AppState>,
     conversation_id: String,
     text: String,
+    attachments: Option<Vec<String>>,
 ) -> AppResult<ConversationDetail> {
-    state.conversations.send_customer_message(&conversation_id, &text).await
+    let attachments = attachments.unwrap_or_default();
+    state.conversations.send_customer_message_with_files(&conversation_id, &text, &attachments).await
 }
 
 #[tauri::command]

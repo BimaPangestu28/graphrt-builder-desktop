@@ -178,9 +178,14 @@ pub(super) fn remember_stored_file_inputs(flow_yaml: &str, stored_inputs: serde_
 }
 
 /// The file resolver of every run: data URLs, then `local_file` references the
-/// user chose (see [`attach_chosen_files`]).
-pub(super) fn run_file_resolver() -> Arc<dyn FileResolver> {
-    Arc::new(ChainResolver::with_data_urls().then(Arc::new(ChosenFilesResolver)))
+/// user chose (see [`attach_chosen_files`]), then `workspace` (the agent's own
+/// files, `crate::agent_files`) when the run has one.
+pub(super) fn run_file_resolver(workspace: Option<Arc<dyn FileResolver>>) -> Arc<dyn FileResolver> {
+    let chain = ChainResolver::with_data_urls().then(Arc::new(ChosenFilesResolver));
+    Arc::new(match workspace {
+        Some(workspace) => chain.then(workspace),
+        None => chain,
+    })
 }
 
 /// Reads `local_file` references the user chose for a run input; refuses others.
@@ -310,7 +315,7 @@ mod tests {
         attach_chosen_files(FLOW_WITH_FILES, &mut run_inputs).unwrap();
         let Value::File(chosen) = &run_inputs["invoice"] else { panic!("not a file") };
 
-        let resolver = run_file_resolver();
+        let resolver = run_file_resolver(None);
         assert_eq!(resolver.read(chosen, 1024).await.unwrap().bytes, b"hello");
         assert!(matches!(resolver.read(chosen, 2).await, Err(FileError::TooLarge { .. })));
         let forged = local_file(&other_path.canonicalize().unwrap(), 6);

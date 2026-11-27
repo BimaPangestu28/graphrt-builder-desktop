@@ -38,7 +38,12 @@ pub fn delete_agent(state: State<'_, AppState>, agent_id: String) -> AppResult<(
             }
         }
     }
-    state.db.delete_agent(&agent_id)
+    state.db.delete_agent(&agent_id)?;
+    // The files it kept go with it. A failure leaves files nobody can reach, not a broken app.
+    if let Err(error) = state.agent_files.forget_agent(&agent_id) {
+        log::warn!("could not remove the files of deleted agent {agent_id}: {error}");
+    }
+    Ok(())
 }
 
 #[tauri::command]

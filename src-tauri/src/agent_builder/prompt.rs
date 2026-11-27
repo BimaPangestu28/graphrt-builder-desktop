@@ -25,6 +25,7 @@ const DOMAIN_GUIDES: &[&str] = &[
     include_str!("guides/trusted_lookups.md"), // read-only lookups on trusted hosts, "Trust <host>" proposals
     include_str!("guides/plugin_triggers.md"), // agents started by plugin events (start inputs = event fields)
     include_str!("guides/visuals.md"),     // cards, charts, tables and KPI tiles from the ui-render plugin
+    include_str!("guides/files.md"),       // reading attached files and pictures, handing files back
 ];
 
 /// Prefix of the line carrying the agent's display name in a build reply.

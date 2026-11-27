@@ -94,6 +94,21 @@ const icons = {
     </>
   ),
   upload: <path d="M12 16V4M6 10l6-6 6 6M4 20h16" />,
+  download: <path d="M12 4v12M6 10l6 6 6-6M4 20h16" />,
+  paperclip: <path d="M20 11.5l-8.2 8.2a5 5 0 01-7.1-7.1l8.5-8.5a3.3 3.3 0 014.7 4.7l-8.4 8.5a1.7 1.7 0 01-2.4-2.4l7.8-7.8" />,
+  image: (
+    <>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <circle cx="8.5" cy="10" r="1.5" />
+      <path d="M21 16l-5-5-8 8" />
+    </>
+  ),
+  table: (
+    <>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="M3 10h18M3 14.5h18M9 5v14" />
+    </>
+  ),
   send: <path d="M4 12l16-8-6 16-3-7z" />,
   user: (
     <>

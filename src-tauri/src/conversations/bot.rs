@@ -3,7 +3,10 @@
 //! Inputs: the start input `message`, `sys.query` (same text),
 //! `sys.conversation_id`, `sys.user_id` (the customer handle), the stored
 //! `conversation.*` variables and the chatbot setup's `sys` values
-//! (`crate::chatbot_setup::reply`). graphrt does not keep conversation variables
+//! (`crate::chatbot_setup::reply`). Files the customer attached arrive as `sys.files`
+//! (trusted file values of the conversation's workspace, `crate::agent_files`), and
+//! the files the steps made are collected from their `files` outputs and the run's
+//! outputs. graphrt does not keep conversation variables
 //! between runs; the host does, so the values the run writes (`variable_updated`
 //! events) are merged back and returned for storage.
 //!
@@ -16,13 +19,17 @@ use std::time::{Duration, Instant};
 
 use futures::StreamExt;
 use graphrt_core::response::ResponseAssembler;
+use graphrt_core::value::File;
 use graphrt_core::{Engine, Event, IndexMap, RunInput, Selector, Value};
 use serde_json::{Map, Value as Json};
 
 use super::models::Conversation;
+use crate::agent_files::cards::workspace_references_in;
 use crate::error::{AppError, AppResult};
 use crate::knowledge::retrieval::{passage_pages, KNOWLEDGE_RETRIEVAL_KIND};
 
+/// Output of `agent`, `tool` and `answer` steps holding the files they made.
+const STEP_FILES_OUTPUT: &str = "files";
 /// Start input carrying the customer's message.
 pub const MESSAGE_INPUT: &str = "message";
 /// End output that hands the chat to the owner when truthy.
@@ -57,6 +64,9 @@ pub struct BotTurn {
     pub retrieved_sources: Vec<RetrievedSource>,
     /// Source names shown under the reply (filled by the host from the setup).
     pub citations: Vec<String>,
+    /// `workspace:` references of the files the turn's steps made, in order (the host
+    /// looks each up in the conversation's workspace before showing it).
+    pub produced_file_references: Vec<String>,
 }
 
 /// Where one passage the bot was given comes from.
@@ -108,6 +118,7 @@ pub async fn run_bot_turn(
     conversation: &Conversation,
     message_text: &str,
     extra_sys_values: &[(String, String)],
+    attached_files: &[File],
     on_draft: &(dyn Fn(&str) + Send + Sync),
 ) -> AppResult<BotTurn> {
     let mut variables = conversation.variables.as_object().cloned().unwrap_or_default();
@@ -119,6 +130,10 @@ pub async fn run_bot_turn(
     for (name, value) in extra_sys_values {
         run_input = run_input.sys(name.as_str(), value.as_str());
     }
+    if !attached_files.is_empty() {
+        run_input = run_input.sys("files", Value::array(attached_files.iter().cloned().map(Value::from)));
+    }
+    let mut produced_file_references: Vec<String> = Vec::new();
     let retrieval_steps: Vec<&str> = engine
         .graph()
         .nodes()
@@ -149,12 +164,22 @@ pub async fn run_bot_turn(
             Event::VariableUpdated { selector, value, .. } if selector.namespace() == "conversation" => {
                 apply_variable_update(&mut variables, &selector, value.to_json());
             }
-            Event::NodeSucceeded { node_id, outputs: step_outputs, .. } if retrieval_steps.contains(&&*node_id) => {
-                if let Some(Json::Array(items)) = step_outputs.get("result").map(Value::to_json) {
-                    retrieved_sources.extend(items.iter().filter_map(RetrievedSource::from_result_item));
+            Event::NodeSucceeded { node_id, outputs: step_outputs, .. } => {
+                if retrieval_steps.contains(&&*node_id) {
+                    if let Some(Json::Array(items)) = step_outputs.get("result").map(Value::to_json) {
+                        retrieved_sources.extend(items.iter().filter_map(RetrievedSource::from_result_item));
+                    }
+                }
+                if let Some(step_files) = step_outputs.get(STEP_FILES_OUTPUT) {
+                    add_file_references(&mut produced_file_references, &step_files.to_json());
                 }
             }
-            Event::RunSucceeded { outputs: run_outputs, .. } => outputs = Some(run_outputs),
+            Event::RunSucceeded { outputs: run_outputs, .. } => {
+                for output in run_outputs.values() {
+                    add_file_references(&mut produced_file_references, &output.to_json());
+                }
+                outputs = Some(run_outputs);
+            }
             Event::RunFailed { error, .. } => return Err(AppError::Workflow(error)),
             Event::RunAborted { reason, .. } => {
                 return Err(AppError::Workflow(format!("the bot was stopped: {reason}")))
@@ -173,7 +198,17 @@ pub async fn run_bot_turn(
     let outputs = outputs.ok_or_else(|| AppError::Workflow("the bot stopped without an answer".into()))?;
     let mut turn = collect_turn(assembled_reply, &outputs, Json::Object(variables));
     turn.retrieved_sources = retrieved_sources;
+    turn.produced_file_references = produced_file_references;
     Ok(turn)
+}
+
+/// Adds the `workspace:` references of the file values in `value`, each once.
+fn add_file_references(references: &mut Vec<String>, value: &Json) {
+    for reference in workspace_references_in(value) {
+        if !references.contains(&reference) {
+            references.push(reference);
+        }
+    }
 }
 
 fn build_run_input(
@@ -211,6 +246,7 @@ fn collect_turn(assembled_reply: String, outputs: &IndexMap<String, Value>, vari
         suggested_reply: non_empty_text(outputs.get(SUGGESTED_REPLY_OUTPUT)),
         retrieved_sources: Vec::new(),
         citations: Vec::new(),
+        produced_file_references: Vec::new(),
     }
 }
 

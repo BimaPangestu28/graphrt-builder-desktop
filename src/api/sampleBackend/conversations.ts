@@ -14,6 +14,7 @@ import {
 import { initialTryItMessages } from '@/api/sampleBackend/fixtures/chatbotSetup'
 import { inboxConversations, type ChatMessage, type InboxConversation } from '@/api/sampleBackend/fixtures/inbox'
 import { searchKnowledgePassages } from '@/api/sampleBackend/fixtures/knowledgePassages'
+import { sampleBotFile, sampleCardsFor } from './agentFiles'
 import { readStoredAgent } from './sampleAgentStore'
 import { requireText, respondWith } from './sampleResponse'
 
@@ -262,12 +263,25 @@ function answerAsSampleBot(conversationId: string, customerText: string): void {
   addMessage(conversationId, 'bot', bestPassage.text, { citations: [sourceName] })
 }
 
-function receiveCustomerMessage(conversationId: string, text: string): ConversationDetail {
-  const customerText = requireText(text, 'message text must not be empty')
+/** The sample bot's answer to files: it "read" them and hands a summary back as a file. */
+function answerFilesAsSampleBot(conversationId: string, fileCount: number): void {
+  const reply = fileCount === 1 ? 'Sudah saya baca kak, ini ringkasannya.' : `Sudah saya baca ${fileCount} berkasnya kak, ini ringkasannya.`
+  addMessage(conversationId, 'bot', reply, { files: [sampleBotFile()] })
+}
+
+function receiveCustomerMessage(conversationId: string, text: string, attachmentReferences: string[] = []): ConversationDetail {
+  const attachments = sampleCardsFor(attachmentReferences)
+  const isFilesOnly = attachments.length > 0 && text.trim() === ''
+  const customerText = isFilesOnly ? attachments.map((card) => card.name).join(', ') : requireText(text, 'message text must not be empty')
   let conversation = findConversation(conversationId)
   if (conversation.status === 'closed') conversation = changeStatus(conversationId, 'bot_answering')
-  addMessage(conversationId, 'customer', customerText)
+  const metadata = attachments.length === 0 ? undefined : isFilesOnly ? { attachments, filesOnly: true } : { attachments }
+  addMessage(conversationId, 'customer', customerText, metadata)
   if (conversation.status !== 'bot_answering') return readDetail(conversationId)
+  if (attachments.length > 0 && (conversation.channel === 'test' || !botDisabledAgentIds.has(conversation.agentId))) {
+    answerFilesAsSampleBot(conversationId, attachments.length)
+    return readDetail(conversationId)
+  }
   if (conversation.channel !== 'test' && botDisabledAgentIds.has(conversation.agentId)) {
     changeStatus(conversationId, 'waiting_for_you', 'bot_paused')
     addMessage(conversationId, 'system', 'Bot is paused · waiting for you', { handoffReason: 'bot_paused' })
@@ -321,7 +335,8 @@ export const sampleConversationsBackend = {
   countConversations: (agentId?: string): Promise<ConversationCounts> => respondWith(() => countMatching(agentId)),
   getConversation: (conversationId: string): Promise<ConversationDetail> => respondWith(() => readDetail(conversationId)),
   startTestConversation: (agentId: string): Promise<ConversationDetail> => respondWith(() => startTestChat(agentId)),
-  sendCustomerMessage: (conversationId: string, text: string): Promise<ConversationDetail> => respondWith(() => receiveCustomerMessage(conversationId, text)),
+  sendCustomerMessage: (conversationId: string, text: string, attachments: string[] = []): Promise<ConversationDetail> =>
+    respondWith(() => receiveCustomerMessage(conversationId, text, attachments)),
   takeOver: (conversationId: string): Promise<Conversation> => respondWith(() => takeOverChat(conversationId)),
   handBack: (conversationId: string): Promise<Conversation> => respondWith(() => handBackChat(conversationId)),
   sendOperatorReply: (conversationId: string, text: string): Promise<ConversationMessage> => respondWith(() => replyAsOperator(conversationId, text)),

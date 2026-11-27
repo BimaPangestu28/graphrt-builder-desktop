@@ -56,6 +56,8 @@ pub(crate) struct EngineDependencies {
     pub(crate) db: Arc<Database>,
     pub(crate) credentials: Arc<CredentialStore>,
     pub(crate) model_source: Arc<dyn ModelRegistrySource>,
+    /// The agents' file workspaces; a nested agent works in its own.
+    pub(crate) agent_files: Option<Arc<crate::agent_files::AgentFiles>>,
 }
 
 /// The tool registry for a run of `agent_ids_above.last()`: holds the `agents`
@@ -194,6 +196,10 @@ impl AgentToolRuntime {
         let mut agent_ids_below = self.agent_ids_above.clone();
         agent_ids_below.push(agent.id.clone());
         let trusted_hosts = self.dependencies.db.trusted_lookup_hosts(&agent.id)?;
+        let file_access = self.dependencies.agent_files.clone().map(|files| crate::agent_files::FileAccess {
+            files,
+            scope: crate::agent_files::FileScope::agent(&agent.id),
+        });
         let engine = preparation::build_engine(
             &agent.flow_yaml,
             &trusted_hosts,
@@ -201,6 +207,7 @@ impl AgentToolRuntime {
             &self.dependencies.db,
             &*self.dependencies.model_source,
             registry_with_budget(&self.dependencies, agent_ids_below, self.budget.clone()),
+            file_access.as_ref(),
         )?;
         let mut run_input = RunInput::new();
         run_input.inputs = preparation::json_object_to_value_map(arguments, "step inputs")?;

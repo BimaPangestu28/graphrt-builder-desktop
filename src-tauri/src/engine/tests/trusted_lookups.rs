@@ -16,6 +16,7 @@ fn build(harness: &Harness, flow_yaml: &str, trusted_hosts: &TrustedHosts) -> Ap
         &harness.db,
         &*harness.runs.model_source,
         graphrt_core::tool::ToolRegistry::new(),
+        None,
     )
 }
 
@@ -56,6 +57,7 @@ fn a_chatbot_lookup_runs_on_a_trusted_host() {
             &harness.db,
             &*harness.runs.model_source,
             graphrt_core::tool::ToolRegistry::new(),
+            None,
         )
     };
     assert!(matches!(prepare(&TrustedHosts::none()), Err(AppError::InvalidInput(_))));

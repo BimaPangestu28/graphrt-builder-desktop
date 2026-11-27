@@ -30,7 +30,7 @@ tauri-plugin-notification = "2.8.1"
 # (branch backport/skill-drafts-pdf-pages: backport/ui-blocks plus agent skills, self learning,
 # PDF page markers and skill drafts: Graphrt/graphrt#101, #107, #96 and #108)
 graphrt-core = { git = "https://github.com/Graphrt/graphrt", rev = "65ac59887a01cdf2e0244921522b48e526f43d07" }
-graphrt-llm = { git = "https://github.com/Graphrt/graphrt", rev = "65ac59887a01cdf2e0244921522b48e526f43d07", default-features = false, features = ["openai", "anthropic", "gemini", "mock", "skills", "learning", "text-model"] }
+graphrt-llm = { git = "https://github.com/Graphrt/graphrt", rev = "65ac59887a01cdf2e0244921522b48e526f43d07", default-features = false, features = ["openai", "anthropic", "gemini", "mock", "skills", "learning", "text-model", "tool-files", "vision-preparer"] }
 graphrt-http = { git = "https://github.com/Graphrt/graphrt", rev = "65ac59887a01cdf2e0244921522b48e526f43d07" }
 # Knowledge bases: SQLite vector store, document extractors and OpenAI-compatible embeddings
 graphrt-rag = { git = "https://github.com/Graphrt/graphrt", rev = "65ac59887a01cdf2e0244921522b48e526f43d07", default-features = false, features = ["sqlite", "doc", "http"] }
@@ -46,6 +46,11 @@ graphrt-ui = { git = "https://github.com/Graphrt/graphrt", rev = "65ac59887a01cd
 graphrt-skill = { git = "https://github.com/Graphrt/graphrt", rev = "65ac59887a01cdf2e0244921522b48e526f43d07" }
 # Self learning: lessons a person approves, read by `agent` nodes; feedback becomes proposals
 graphrt-learn = { git = "https://github.com/Graphrt/graphrt", rev = "65ac59887a01cdf2e0244921522b48e526f43d07" }
+# Files and images for agents that use them (`agent_files`): a workspace per agent with the
+# `files`, `documents` and `image` tools, and the gate every image passes before a model sees it.
+graphrt-files = { git = "https://github.com/Graphrt/graphrt", rev = "65ac59887a01cdf2e0244921522b48e526f43d07" }
+graphrt-image = { git = "https://github.com/Graphrt/graphrt", rev = "65ac59887a01cdf2e0244921522b48e526f43d07" }
+graphrt-docgen = { git = "https://github.com/Graphrt/graphrt", rev = "65ac59887a01cdf2e0244921522b48e526f43d07" }
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "process", "io-util"] }
 futures = "0.3"
