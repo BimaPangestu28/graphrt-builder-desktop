@@ -1,21 +1,28 @@
 name: Release
 
-# Push a tag like `v0.2.0` to build the desktop app for macOS (universal),
-# Windows (x64: .msi + NSIS .exe) and Linux (x64 and arm64: .AppImage, .deb,
-# .rpm) and attach the bundles plus SHA256SUMS to a DRAFT GitHub
-# Release whose body is the matching CHANGELOG.md section. A maintainer reviews
-# the draft and publishes it by hand. See CONTRIBUTING.md > Releasing.
+# A release starts by itself when a version bump reaches `main`: the version in
+# package.json (kept equal to src-tauri/Cargo.toml and src-tauri/tauri.conf.json by
+# scripts/check-version.sh) has no `vX.Y.Z` tag yet, so this workflow creates the tag and
+# builds it in the same run. (A tag pushed with the workflow token starts no other
+# workflow, which is why tagging and building are one workflow.) Pushing a tag by hand
+# still works, and a manual run rebuilds an existing tag or tags the selected branch.
 #
-# Auto-update (required repository secrets): every bundle is also signed for
-# tauri-plugin-updater, and `latest.json` plus the `.sig` files are attached.
-# Installed apps read `releases/latest/download/latest.json`, so an update
-# reaches users once the draft is published.
+# The result is always a DRAFT GitHub Release: Windows (x64: .msi + NSIS .exe), Linux (x64
+# and arm64: .AppImage, .deb, .rpm) and macOS (universal .dmg), the updater signatures,
+# latest.json and SHA256SUMS, with the CHANGELOG.md section as its notes. A maintainer
+# reviews the draft and publishes it by hand; nothing here publishes. Installed apps read
+# `releases/latest/download/latest.json`, so an update reaches users only then.
+# See CONTRIBUTING.md > Releasing.
+#
+# macOS never holds the other platforms back: the draft is completed for Windows and
+# Linux first (job `finalize`) and says "macOS: not in this release yet" until the macOS
+# job attaches its bundles (job `finalize-macos`). macOS is attached only when it is signed
+# and notarized; without the Apple secrets the macOS job is skipped, never ad-hoc signed.
+#
+# Required repository secrets (updater signing, public key in tauri.conf.json):
 #   TAURI_SIGNING_PRIVATE_KEY           contents of the minisign private key
-#                                       (its public key is in tauri.conf.json)
 #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  its password
-#
-# Optional macOS signing and notarization (repository secrets). When they are
-# absent the app is ad-hoc signed and users open it with right-click > Open:
+# Repository secrets for macOS (all six, or macOS is left out of the draft):
 #   APPLE_CERTIFICATE           base64 of the "Developer ID Application" .p12
 #   APPLE_CERTIFICATE_PASSWORD  password of that .p12
 #   APPLE_SIGNING_IDENTITY      e.g. "Developer ID Application: Name (TEAMID)"
@@ -24,13 +31,30 @@ name: Release
 #   APPLE_TEAM_ID               10-character team id
 on:
   push:
+    branches: [main]
+    # Only pushes that touch a version file can be a version bump. (Not applied to tags.)
+    paths:
+      - package.json
+      - src-tauri/Cargo.toml
+      - src-tauri/tauri.conf.json
     tags: ["v*.*.*"]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to (re)build, e.g. v0.2.0"
-        required: true
+        description: "Tag to build, e.g. v0.2.1. An existing tag is rebuilt; a new one is created on the selected branch. Empty: release the version on main if it has no tag yet."
+        required: false
         type: string
+      macos_runner:
+        description: "Runner of the macOS job"
+        type: choice
+        default: macos-26-intel
+        options:
+          - macos-26-intel
+          - macos-latest
+      macos_test_build:
+        description: "Without Apple secrets: still build macOS (ad-hoc signed) and keep it as a workflow artifact. It is never attached to the release."
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -46,27 +70,74 @@ env:
     build-essential pkg-config file patchelf
     libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
     libxdo-dev libssl-dev libdbus-1-dev
-  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+  MACOS_JOB_NAME: bundle (macOS universal)
 
 jobs:
   prepare:
-    name: check version + create draft release
+    name: pick the tag + create draft release
     timeout-minutes: 10
     runs-on: ubuntu-latest
     outputs:
+      # "true" when there is something to build. Empty or "false": every other job is skipped.
+      release: ${{ steps.tag.outputs.release }}
+      tag: ${{ steps.tag.outputs.tag }}
       release-id: ${{ steps.draft.outputs.release-id }}
+      # signed | test | skip
+      macos: ${{ steps.macos.outputs.mode }}
     steps:
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.RELEASE_TAG }}
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+      - name: Pick the tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            tag="$GITHUB_REF_NAME"
+          elif [ -n "$INPUT_TAG" ]; then
+            tag="$INPUT_TAG"
+          else
+            # A push to main, or a manual run without a tag: the version in the files decides.
+            if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+              echo "::error::Without a tag this workflow releases the version on main. On another branch, give the tag to create."
+              exit 1
+            fi
+            tag="v$(node -p 'require("./package.json").version')"
+            automatic=true
+          fi
+          if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::\"$tag\" is not a release tag (vX.Y.Z)."
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" > /dev/null; then
+            if [ "${automatic:-false}" = "true" ]; then
+              echo "::notice::$tag is already tagged: this push is not a version bump, nothing to release."
+              echo "release=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            git fetch --depth 1 origin "refs/tags/$tag:refs/tags/$tag"
+            git checkout --quiet "$tag"
+            echo "create-tag=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "create-tag=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "release=true" >> "$GITHUB_OUTPUT"
       - name: Versions match the tag
+        if: steps.tag.outputs.release == 'true'
+        env:
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
         run: scripts/check-version.sh "$RELEASE_TAG"
       - name: Release notes from CHANGELOG.md
-        # Same layout as scripts/release-macos-local.sh: "What's new", then "Download", where
-        # platform blocks (<!-- name:start/end -->) are added by scripts/merge-release-notes.py.
+        if: steps.tag.outputs.release == 'true'
+        env:
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+        # "What's new", then "Download", where each platform has a block between
+        # <!-- name:start/end --> markers (written by scripts/finalize-release.sh and
+        # scripts/release-macos-local.sh).
         run: |
           {
             echo "## What's new"
@@ -80,10 +151,30 @@ jobs:
             echo "Checksums of every file are in \`SHA256SUMS\`."
           } > release-notes.md
           cat release-notes.md
-      - name: Create (or reuse) the draft release
-        id: draft
+      - name: Test the release scripts
+        if: steps.tag.outputs.release == 'true'
+        run: |
+          if [ -d scripts/tests ]; then
+            python3 -m unittest discover -s scripts/tests
+          fi
+      # After every check above, so a version bump that cannot be released leaves no tag.
+      - name: Create the tag
+        if: steps.tag.outputs.release == 'true' && steps.tag.outputs.create-tag == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          tag_object="$(gh api -X POST "repos/$GITHUB_REPOSITORY/git/tags" \
+            -f tag="$RELEASE_TAG" -f message="$RELEASE_TAG" -f object="$GITHUB_SHA" -f type=commit --jq .sha)"
+          gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f ref="refs/tags/$RELEASE_TAG" -f sha="$tag_object" --silent
+          echo "::notice::Created tag $RELEASE_TAG at $GITHUB_SHA"
+      - name: Create (or reuse) the draft release
+        id: draft
+        if: steps.tag.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
         run: |
           # Drafts are not reachable through /releases/tags/<tag>, so search the list.
           existing="$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
@@ -94,8 +185,8 @@ jobs:
               echo "::error::Release $RELEASE_TAG is already published; refusing to change it."
               exit 1
             fi
-            gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" \
-              -F body=@release-notes.md --silent
+            # Its notes are kept (a maintainer may have edited them); the platform blocks
+            # are refreshed by the finalize jobs.
             echo "Reusing draft release $release_id"
           else
             release_id="$(gh api -X POST "repos/$GITHUB_REPOSITORY/releases" \
@@ -104,39 +195,64 @@ jobs:
             echo "Created draft release $release_id"
           fi
           echo "release-id=$release_id" >> "$GITHUB_OUTPUT"
+      - name: Decide how macOS is built
+        id: macos
+        if: steps.tag.outputs.release == 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TEST_BUILD: ${{ inputs.macos_test_build }}
+        run: |
+          # Only the names of missing secrets are printed, never a value.
+          missing=""
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY \
+            APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!name}" ]; then
+              missing="$missing $name"
+            fi
+          done
+          if [ -z "$missing" ]; then
+            mode=signed
+          else
+            echo "::warning::macOS is NOT in this release: repository secrets not set:$missing. An app that is not signed and notarized is never attached. Add the secrets and re-run this workflow for the tag, or add macOS from a Mac with scripts/release-macos-local.sh."
+            if [ "$TEST_BUILD" = "true" ]; then
+              mode="test"
+            else
+              mode=skip
+            fi
+          fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "macOS: $mode"
 
   build:
     name: bundle (${{ matrix.name }})
-    # The universal macOS build compiles twice and may wait on notarization.
-    timeout-minutes: 90
+    timeout-minutes: 60
     needs: prepare
+    if: needs.prepare.outputs.release == 'true'
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: macOS universal
-            platform: macos-latest
-            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
-            args: --target universal-apple-darwin --bundles app,dmg
           - name: Windows
             platform: windows-latest
-            rust-targets: ""
             args: --bundles msi,nsis
           # Built on the oldest supported Ubuntu so the AppImage / .deb run on
           # newer glibc distributions too.
           - name: Linux x64
             platform: ubuntu-22.04
-            rust-targets: ""
             args: --bundles appimage,deb,rpm
           - name: Linux arm64
             platform: ubuntu-22.04-arm
-            rust-targets: ""
             args: --bundles appimage,deb,rpm
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          ref: ${{ needs.prepare.outputs.tag }}
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
@@ -150,8 +266,6 @@ jobs:
           node-version: 22
           cache: pnpm
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.rust-targets }}
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
@@ -164,41 +278,6 @@ jobs:
         env:
           GRAPHRT_REQUIRE_NODE_SIGNATURE: "1"
         run: scripts/fetch-node.sh --verify-checksums
-      - name: Configure macOS signing (optional)
-        if: runner.os == 'macOS'
-        shell: bash
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          # Only export variables that are set: the Tauri bundler treats an empty
-          # APPLE_CERTIFICATE as "import this certificate" and would fail.
-          export_variable() {
-            { echo "$1<<__APPLE_ENV__"; printf '%s\n' "$2"; echo "__APPLE_ENV__"; } >> "$GITHUB_ENV"
-          }
-          if [ -n "$APPLE_CERTIFICATE" ] && [ -n "$APPLE_CERTIFICATE_PASSWORD" ] && [ -n "$APPLE_SIGNING_IDENTITY" ]; then
-            export_variable APPLE_CERTIFICATE "$APPLE_CERTIFICATE"
-            export_variable APPLE_CERTIFICATE_PASSWORD "$APPLE_CERTIFICATE_PASSWORD"
-            export_variable APPLE_SIGNING_IDENTITY "$APPLE_SIGNING_IDENTITY"
-            echo "Signing with a Developer ID certificate."
-            if [ -n "$APPLE_ID" ] && [ -n "$APPLE_PASSWORD" ] && [ -n "$APPLE_TEAM_ID" ]; then
-              export_variable APPLE_ID "$APPLE_ID"
-              export_variable APPLE_PASSWORD "$APPLE_PASSWORD"
-              export_variable APPLE_TEAM_ID "$APPLE_TEAM_ID"
-              echo "Notarization enabled."
-            else
-              echo "::warning::APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID not set: the app is signed but not notarized."
-            fi
-          else
-            # Ad-hoc signature so the universal binary launches on Apple silicon;
-            # Gatekeeper still asks users to confirm (right-click > Open).
-            export_variable APPLE_SIGNING_IDENTITY "-"
-            echo "::warning::Apple signing secrets not set: building an unsigned (ad-hoc) macOS app."
-          fi
       # `createUpdaterArtifacts` is on, so the build fails without the key: say why first.
       - name: Updater signing key is set
         shell: bash
@@ -212,38 +291,261 @@ jobs:
       - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          # Signs the updater bundles (.app.tar.gz, NSIS / MSI, AppImage, deb, rpm) -> .sig
+          # Signs the updater bundles (NSIS / MSI, AppImage, deb, rpm) -> .sig
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           releaseId: ${{ needs.prepare.outputs.release-id }}
           tauriScript: pnpm tauri
           args: ${{ matrix.args }}
-          # Each job adds its platforms to the release's latest.json (the universal
-          # macOS build is listed for both darwin-aarch64 and darwin-x86_64).
-          # tauri-action v1 renamed this input from `includeUpdaterJson`.
-          uploadUpdaterJson: true
-          # Windows updates install through the NSIS installer (same as a fresh install).
-          updaterJsonPreferNsis: true
+          # latest.json is written once from the attached .sig files by
+          # scripts/finalize-release.sh, so parallel jobs never overwrite each other's entries.
+          uploadUpdaterJson: false
 
-  checksums:
-    name: SHA256SUMS
+  # Completes the draft for Windows and Linux without waiting for macOS. It also runs when
+  # one of those builds failed: the platforms that did build get their latest.json entries
+  # and checksums, and the notes name the one that is missing.
+  finalize:
+    name: latest.json + SHA256SUMS + notes
     timeout-minutes: 15
     needs: [prepare, build]
+    if: always() && needs.prepare.outputs.release == 'true'
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+      MACOS_MODE: ${{ needs.prepare.outputs.macos }}
     steps:
-      - name: Download release assets
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+      - name: Complete the draft release
+        run: scripts/finalize-release.sh "$RELEASE_TAG" | tee finalize.log
+      - name: Summary
+        run: |
+          {
+            echo "## Draft release $RELEASE_TAG"
+            echo
+            echo "Review and publish by hand: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases"
+            echo
+            for platform in linux windows; do
+              if grep -qx "missing: $platform" finalize.log; then
+                echo "- **$platform: NOT in the draft** (its build job failed). Re-run the failed job, then this workflow for the tag."
+              else
+                echo "- $platform: attached"
+              fi
+            done
+            case "$MACOS_MODE" in
+              signed) echo "- macOS: not attached yet. The job \"$MACOS_JOB_NAME\" attaches it, signed and notarized, when it finishes; until then the notes say macOS is not in this release." ;;
+              *) echo "- **macOS: NOT in the draft** (Apple signing secrets are not set). Publishing now ships Windows and Linux only. Add macOS with the secrets and a re-run for this tag, or from a Mac with \`scripts/release-macos-local.sh\`." ;;
+            esac
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  macos:
+    # Keep in sync with env.MACOS_JOB_NAME (the queue watch looks this job up by name).
+    name: bundle (macOS universal)
+    # Time on the runner (two Rust builds plus notarization). Time spent waiting for a
+    # runner is limited by the `macos-queue-watch` job.
+    timeout-minutes: 90
+    needs: prepare
+    if: needs.prepare.outputs.release == 'true' && needs.prepare.outputs.macos != 'skip'
+    # Intel by default: in this organization the arm64 pool (macos-latest) left the v0.2.0
+    # job without a runner for 100 minutes. Either architecture builds the universal app.
+    runs-on: ${{ inputs.macos_runner || 'macos-26-intel' }}
+    env:
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+      MACOS_MODE: ${{ needs.prepare.outputs.macos }}
+      BUNDLE_DIR: src-tauri/target/universal-apple-darwin/release/bundle
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: release-macos-universal-${{ runner.arch }}
+      - run: pnpm install --frozen-lockfile
+      - name: Verify pinned Node.js checksums
+        env:
+          GRAPHRT_REQUIRE_NODE_SIGNATURE: "1"
+        run: scripts/fetch-node.sh --verify-checksums
+      - name: Updater signing key is set
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::Repository secret TAURI_SIGNING_PRIVATE_KEY is not set: updater bundles cannot be signed (CONTRIBUTING.md > Releasing)."
+            exit 1
+          fi
+      - name: Build the universal app and .dmg
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          SECRET_APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          SECRET_APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          SECRET_APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          SECRET_APPLE_ID: ${{ secrets.APPLE_ID }}
+          SECRET_APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          SECRET_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # The Tauri bundler reads these names. They are only exported for a signed build:
+          # an empty APPLE_CERTIFICATE would be imported as a certificate and fail.
+          if [ "$MACOS_MODE" = "signed" ]; then
+            export APPLE_CERTIFICATE="$SECRET_APPLE_CERTIFICATE"
+            export APPLE_CERTIFICATE_PASSWORD="$SECRET_APPLE_CERTIFICATE_PASSWORD"
+            export APPLE_SIGNING_IDENTITY="$SECRET_APPLE_SIGNING_IDENTITY"
+            export APPLE_ID="$SECRET_APPLE_ID"
+            export APPLE_PASSWORD="$SECRET_APPLE_PASSWORD"
+            export APPLE_TEAM_ID="$SECRET_APPLE_TEAM_ID"
+            echo "Signing with the Developer ID certificate and notarizing."
+          else
+            # Test build: ad-hoc signature, kept as a workflow artifact only.
+            export APPLE_SIGNING_IDENTITY="-"
+            echo "::warning::Test build without Apple secrets: ad-hoc signed, not attached to the release."
+          fi
+          pnpm tauri build --target universal-apple-darwin --bundles app,dmg
+      - name: Check the app
+        run: |
+          app="$BUNDLE_DIR/macos/graphrt.app"
+          version="${RELEASE_TAG#v}"
+          built_version="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist")"
+          if [ "$built_version" != "$version" ]; then
+            echo "::error::The built app is $built_version, expected $version."
+            exit 1
+          fi
+          executable="$app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print CFBundleExecutable' "$app/Contents/Info.plist")"
+          architectures="$(lipo -archs "$executable")"
+          echo "architectures: $architectures"
+          case "$architectures" in
+            *x86_64*arm64* | *arm64*x86_64*) ;;
+            *) echo "::error::The app is not universal (found: $architectures)."; exit 1 ;;
+          esac
+          # Node.js is downloaded on demand, never bundled: a stray sidecar would add ~110 MB.
+          if [ -e "$app/Contents/MacOS/graphrt-node" ]; then
+            echo "::error::The app bundles graphrt-node; release builds must not (see scripts/fetch-node.sh)."
+            exit 1
+          fi
+          codesign --verify --deep --strict "$app"
+          if [ "$MACOS_MODE" = "signed" ]; then
+            # Fails unless Gatekeeper accepts the app as notarized Developer ID software.
+            spctl --assess --type execute --verbose=2 "$app"
+            xcrun stapler validate "$app"
+          fi
+      - name: Notarize and staple the .dmg
+        if: needs.prepare.outputs.macos == 'signed'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # The bundler notarizes the app; the disk image users download gets its own ticket.
+          dmg="$(ls "$BUNDLE_DIR"/dmg/*.dmg)"
+          xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" --wait --timeout 30m | tee notarize.log
+          if ! grep -Eq "status: Accepted" notarize.log; then
+            echo "::error::Apple did not accept the .dmg for notarization."
+            exit 1
+          fi
+          xcrun stapler staple "$dmg"
+          spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
+      - name: Collect the release files
+        run: |
+          version="${RELEASE_TAG#v}"
+          mkdir macos-release
+          cp "$BUNDLE_DIR"/dmg/*.dmg "macos-release/graphrt_${version}_universal.dmg"
+          cp "$BUNDLE_DIR/macos/graphrt.app.tar.gz" "macos-release/graphrt_${version}_universal.app.tar.gz"
+          cp "$BUNDLE_DIR/macos/graphrt.app.tar.gz.sig" "macos-release/graphrt_${version}_universal.app.tar.gz.sig"
+          ls -l macos-release
+      - name: Attach to the draft release
+        if: needs.prepare.outputs.macos == 'signed'
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ needs.prepare.outputs.release-id }}
         run: |
-          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir bundles
-          rm -f bundles/SHA256SUMS
-      - name: Compute checksums
-        working-directory: bundles
+          if [ "$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" --jq .draft)" != "true" ]; then
+            echo "::error::Release $RELEASE_TAG was published while macOS was building; refusing to change it. Add macOS with scripts/release-macos-local.sh."
+            exit 1
+          fi
+          gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --clobber macos-release/*
+      - name: Keep the test build as a workflow artifact
+        if: needs.prepare.outputs.macos == 'test'
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-universal-unsigned-test
+          path: macos-release
+          if-no-files-found: error
+          retention-days: 3
+      - name: Say what a failure means
+        if: failure() || cancelled()
         run: |
-          sha256sum -- * > ../SHA256SUMS
-          cat ../SHA256SUMS
-      - name: Attach SHA256SUMS
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$RELEASE_TAG" SHA256SUMS --repo "$GITHUB_REPOSITORY" --clobber
+          echo "::error::macOS was not attached to the draft release $RELEASE_TAG. The draft stays complete for Windows and Linux and its notes say macOS is not in this release. Re-run this job (Re-run failed jobs), or add macOS from a Mac with scripts/release-macos-local.sh."
+
+  # A job that waits for a runner has no timeout of its own. This one gives the macOS job
+  # a limit: when it still has no runner after MAX_QUEUE_MINUTES, the run is cancelled with
+  # a clear message. By then the draft is already complete for Windows and Linux.
+  macos-queue-watch:
+    name: macOS runner wait limit
+    timeout-minutes: 150
+    needs: [prepare, finalize]
+    if: always() && needs.prepare.outputs.release == 'true' && needs.prepare.outputs.macos != 'skip'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+      MAX_QUEUE_MINUTES: 120
+    steps:
+      - name: Wait until the macOS job has a runner
+        run: |
+          waited=0
+          while true; do
+            status="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100" \
+              --jq ".jobs[] | select(.name == \"$MACOS_JOB_NAME\") | .status" | head -n 1)"
+            case "$status" in
+              in_progress | completed)
+                echo "The macOS job has a runner (status: $status) after about $waited more minutes."
+                exit 0 ;;
+            esac
+            if [ "$waited" -ge "$MAX_QUEUE_MINUTES" ]; then
+              echo "::error::The macOS job waited more than $MAX_QUEUE_MINUTES minutes for a runner (status: ${status:-unknown}). Cancelling this run. The draft release $RELEASE_TAG is complete for Windows and Linux and says macOS is not in it. Run the workflow again for the tag (try the other macOS runner), or add macOS from a Mac with scripts/release-macos-local.sh."
+              gh run cancel "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY"
+              exit 1
+            fi
+            sleep 60
+            waited=$((waited + 1))
+          done
+
+  # Adds macOS to latest.json, SHA256SUMS and the notes once its bundles are attached.
+  finalize-macos:
+    name: add macOS to latest.json + SHA256SUMS + notes
+    timeout-minutes: 15
+    needs: [prepare, finalize, macos]
+    if: always() && needs.prepare.outputs.macos == 'signed' && needs.macos.result == 'success'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+      - name: Complete the draft release with macOS
+        run: scripts/finalize-release.sh "$RELEASE_TAG" --macos-signed
+      - name: Summary
+        run: |
+          {
+            echo "## macOS added to draft release $RELEASE_TAG"
+            echo
+            echo "Universal app, signed with Developer ID and notarized. The draft is complete: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases"
+          } >> "$GITHUB_STEP_SUMMARY"

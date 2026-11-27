@@ -167,42 +167,75 @@ rather than public issues. See [SECURITY.md](SECURITY.md).
 
 ## Releasing (maintainers)
 
-Releases are built by [`.github/workflows/release.yml`](.github/workflows/release.yml)
-when a `vX.Y.Z` tag is pushed.
+Releases are built by [`.github/workflows/release.yml`](.github/workflows/release.yml).
+A release starts by itself when a version bump reaches `main`; nobody pushes a tag.
 
 1. Bump the version in `package.json`, `src-tauri/Cargo.toml`,
    `src-tauri/tauri.conf.json` and `src-tauri/Cargo.lock` in one go:
    ```bash
-   scripts/bump-version.sh 0.2.0
+   scripts/bump-version.sh 0.2.1
    ```
-2. In `CHANGELOG.md`, move the `Unreleased` notes under `## [0.2.0] - YYYY-MM-DD`
+2. In `CHANGELOG.md`, move the `Unreleased` notes under `## [0.2.1] - YYYY-MM-DD`
    and update the compare links at the bottom. Check the release notes render:
    ```bash
-   scripts/changelog-section.sh 0.2.0
+   scripts/changelog-section.sh 0.2.1
    ```
 3. Run the checks above and `pnpm build:desktop`, then commit
-   (`chore: release v0.2.0`) and merge to `main`.
-4. Tag the release commit and push the tag:
-   ```bash
-   git tag -a v0.2.0 -m "v0.2.0" && git push origin v0.2.0
-   ```
-5. The workflow checks that every version equals the tag
-   (`scripts/check-version.sh v0.2.0`), creates a **draft** release titled
-   "Graphrt Desktop 0.2.0" with the CHANGELOG section under "What's new" and an
-   empty "Download" heading for the platform checksum blocks, builds macOS (universal `.dmg` and `.app.tar.gz`),
-   Windows x64 (`.msi`, NSIS `.exe`) and Linux x64 and arm64 (`.AppImage`, `.deb`,
-   `.rpm`) bundles, and
-   attaches them with a `SHA256SUMS` file, the updater signatures (`.sig`) and
-   `latest.json`. Review the draft on GitHub (keep "What's new" to short bullets
-   in plain language, since the readers are mostly not engineers, and keep every
-   `<!-- name:start -->` / `<!-- name:end -->` marker as is) and publish it: installed apps pick
-   the update up from `releases/latest/download/latest.json` within six hours
-   (or right away with Settings > Updates > Check for updates).
+   (`chore: release v0.2.1`), open a pull request and merge it. Everything in `main`
+   up to that commit is in the release.
+4. When the commit lands on `main`, the Release workflow sees a version with no
+   `v0.2.1` tag. It checks that every version is the same
+   (`scripts/check-version.sh`) and that the CHANGELOG section exists, creates the tag
+   on that commit, and builds a **draft** release titled "Graphrt Desktop 0.2.1":
+   - Windows x64 (`.msi`, NSIS `.exe`) and Linux x64 and arm64 (`.AppImage`, `.deb`,
+     `.rpm`), ready after about 15 minutes with the updater signatures (`.sig`),
+     `latest.json` and `SHA256SUMS`;
+   - macOS (universal `.dmg` and `.app.tar.gz`), signed and notarized, added to the
+     same draft (and to `latest.json` and `SHA256SUMS`) when its job finishes.
+5. Review the draft on GitHub (keep "What's new" to short bullets in plain language,
+   since the readers are mostly not engineers, and keep every
+   `<!-- name:start -->` / `<!-- name:end -->` marker as is) and publish it by hand;
+   the workflow never publishes. Installed apps pick the update up from
+   `releases/latest/download/latest.json` within six hours (or right away with
+   Settings > Updates > Check for updates).
 
-To rebuild an existing tag (for example after a failed job), run the Release
-workflow manually from the Actions tab with that tag; it reuses the draft and
-refuses to touch a release that is already published. CI runs
-`scripts/check-version.sh` on every push, so the three versions can never drift.
+Under "Download" the draft has one block per platform. A platform whose build is
+missing says **not in this release yet**, and the summary of the workflow run says why.
+macOS does not hold the other platforms back, so check its block before publishing:
+
+- **The Apple secrets are not set** (see below): the macOS job is skipped. An app
+  that is not signed and notarized is never attached.
+- **The macOS job failed, or waited more than two hours for a runner** (the run is
+  then cancelled): the draft stays complete for Windows and Linux.
+
+Either publish without macOS and add it later, or add it first:
+
+- Re-run the Release workflow from the Actions tab with the tag (`v0.2.1`). It reuses
+  the draft, keeps your edits of the notes and rebuilds every platform. The
+  `macos_runner` input switches between Intel (`macos-26-intel`, the default) and
+  Apple silicon (`macos-latest`) runners when one of them has no capacity.
+  "Re-run failed jobs" on the run does the same for only the jobs that failed.
+- Or build on a Mac with the backup script, which signs, notarizes and adds the Apple
+  silicon build to the draft or to the published release:
+  ```bash
+  git checkout v0.2.1
+  scripts/changelog-section.sh 0.2.1 > /tmp/notes.md
+  scripts/release-macos-local.sh 0.2.1 /tmp/notes.md --draft
+  ```
+  Without `--draft` the script publishes the release; its header lists what it needs.
+
+Other things to know:
+
+- A release that is already published is never changed by the workflow.
+- If the workflow stops before it creates the tag (for example a missing CHANGELOG
+  section), fix `main` and start it from the Actions tab with no tag: it releases the
+  version on `main` when that version has no tag yet.
+- Pushing a `vX.Y.Z` tag by hand still starts the same build, and a manual run with a
+  tag that does not exist creates it on the selected branch.
+- CI runs `scripts/check-version.sh` on every push, so the three versions can never drift.
+- `scripts/finalize-release.sh` writes `latest.json`, `SHA256SUMS` and the platform
+  blocks from the files attached to the draft; its rules are tested with
+  `python3 -m unittest discover -s scripts/tests`.
 
 ### Auto-update signing key (required)
 
@@ -226,9 +259,8 @@ public key in `tauri.conf.json` cuts off updates for every existing install.
 
 ### macOS signing and notarization
 
-Without signing secrets the macOS app is ad-hoc signed only, so Gatekeeper asks
-users to confirm the first launch. To ship a signed and notarized app, add these
-repository secrets (Settings > Secrets and variables > Actions):
+The Release workflow attaches macOS only when it can sign and notarize it. That needs
+all six of these repository secrets (Settings > Secrets and variables > Actions):
 
 | Secret | Value |
 | --- | --- |
@@ -239,5 +271,7 @@ repository secrets (Settings > Secrets and variables > Actions):
 | `APPLE_PASSWORD` | app-specific password for that Apple ID |
 | `APPLE_TEAM_ID` | 10-character Apple Developer team id |
 
-The first three enable signing; the last three also enable notarization. Any
-group left empty is skipped with a warning instead of failing the build.
+The first three sign the app, the last three notarize it. When any of them is missing
+the macOS job is skipped, the run warns which names are missing, and the draft says
+macOS is not in the release: an app that is only ad-hoc signed is never attached,
+because Gatekeeper would stop users at the first launch.
