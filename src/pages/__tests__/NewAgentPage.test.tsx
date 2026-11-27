@@ -4,7 +4,8 @@ import { BackendError } from '@/api/client'
 import { resetSampleCredentials, sampleCredentialsBackend } from '@/api/sampleBackend/credentials'
 import mapsWhatsAppTemplate from '@/pages/new-agent/mapsWhatsAppTemplate.json'
 import { agentTemplates, jobDescriptionPlaceholder, newAgentTemplatePath } from '@/pages/new-agent/agentTemplates'
-import { connectionsTabPath, routePaths } from '@/routes'
+import { samplePluginsBackend } from '@/api/sampleBackend/plugins'
+import { agentPath, agentRoutePatterns, connectionsTabPath, routePaths } from '@/routes'
 import { NewAgentPage } from '../NewAgentPage'
 
 /** Stand-in for screen 03 that shows the router state it received. */
@@ -18,6 +19,11 @@ function ChatbotSetupStandIn() {
   return <p>Chatbot setup screen {JSON.stringify(location.state)}</p>
 }
 
+function TestFormStandIn() {
+  const location = useLocation()
+  return <p>Test form of {location.pathname === agentPath('testRun', 'agent-7') ? 'agent-7' : location.pathname}</p>
+}
+
 const mapsWhatsAppTitle = 'Find businesses on Maps and message them on WhatsApp'
 
 function renderNewAgentPage(initialEntry: string = routePaths.newAgent) {
@@ -28,6 +34,7 @@ function renderNewAgentPage(initialEntry: string = routePaths.newAgent) {
         <Route path={routePaths.generating} element={<GeneratingStandIn />} />
         <Route path={routePaths.chatbotSetup} element={<ChatbotSetupStandIn />} />
         <Route path={connectionsTabPath('models')} element={<p>Connections screen</p>} />
+        <Route path={agentRoutePatterns.testRun} element={<TestFormStandIn />} />
       </Routes>
     </MemoryRouter>,
   )
@@ -113,6 +120,44 @@ describe('NewAgentPage', () => {
     expect(screen.getByText(/Generating screen/)).toHaveTextContent(
       JSON.stringify({ buildRequest: { description: 'Find unpaid rows in a sheet and email a polite reminder', kind: 'task' } }),
     )
+  })
+
+  it('makes a ready-made agent of a plugin at once and opens its test form, without the builder', async () => {
+    vi.spyOn(samplePluginsBackend, 'listPluginTemplates').mockResolvedValue([
+      { plugin: 'document-templates', pluginDisplayName: 'Document Templates', id: 'make-invoice', title: 'Make an invoice', description: 'An invoice as a PDF', prompt: '', readyToUse: true, language: 'en' },
+      { plugin: 'document-templates', pluginDisplayName: 'Document Templates', id: 'buat-invoice', title: 'Buat invoice', description: 'Invoice sebagai PDF', prompt: '', readyToUse: true, language: 'id' },
+    ])
+    const create = vi.spyOn(samplePluginsBackend, 'createAgentFromPluginTemplate').mockResolvedValue({
+      id: 'agent-7',
+      name: 'Make an invoice',
+      kind: 'task',
+      description: 'An invoice as a PDF',
+      flowYaml: '',
+      status: 'draft',
+      currentVersion: 1,
+      createdAt: '2026-11-27T00:00:00Z',
+      updatedAt: '2026-11-27T00:00:00Z',
+    })
+    renderNewAgentPage()
+    const card = await screen.findByRole('button', { name: /Make an invoice/ })
+    expect(within(card).getByText('Ready to use')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Buat invoice/ })).not.toBeInTheDocument()
+
+    fireEvent.click(card)
+    expect(await screen.findByText('Test form of agent-7')).toBeInTheDocument()
+    expect(create).toHaveBeenCalledWith('document-templates', 'make-invoice')
+    expect(screen.queryByText(/Generating screen/)).not.toBeInTheDocument()
+  })
+
+  it('says why a ready-made agent could not be made and stays on the page', async () => {
+    vi.spyOn(samplePluginsBackend, 'listPluginTemplates').mockResolvedValue([
+      { plugin: 'document-templates', pluginDisplayName: 'Document Templates', id: 'make-invoice', title: 'Make an invoice', description: 'An invoice as a PDF', prompt: '', readyToUse: true },
+    ])
+    renderNewAgentPage()
+    fireEvent.click(await screen.findByRole('button', { name: /Make an invoice/ }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Could not make Make an invoice/)
+    expect(screen.getByLabelText('Describe the job')).toHaveValue('')
+    expect(screen.getByRole('button', { name: /Make an invoice/ })).toBeEnabled()
   })
 
   it('builds a task agent by passing the request to the generating screen', () => {

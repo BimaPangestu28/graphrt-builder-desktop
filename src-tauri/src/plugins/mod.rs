@@ -39,6 +39,7 @@ pub mod models;
 mod optional_settings;
 mod placeholder;
 mod prompt_guide;
+pub(crate) mod ready_agents;
 pub mod requirements;
 mod sending;
 pub(crate) mod session;
@@ -402,26 +403,83 @@ impl PluginService {
         }
     }
 
-    /// The templates of the installed plugins, with the plugin's display name.
+    /// The templates of the installed plugins, with the plugin's display name: the starter
+    /// prompts of their manifests, then the ready-made agents whose workflow passes its check
+    /// (see `ready_agents.rs`; one that does not is logged and left out).
     pub fn templates(&self) -> Vec<PluginTemplateInfo> {
         let snapshot = self.snapshot();
         let display_names = self.plugin_display_names();
-        snapshot
-            .plugins
-            .iter()
-            .filter(|plugin| plugin.load_error.is_none())
-            .flat_map(|plugin| {
-                let display_name = display_names.get(&plugin.name).cloned().unwrap_or_else(|| plugin.name.clone());
-                plugin.templates.iter().map(move |template| PluginTemplateInfo {
+        let registry = self.node_registry();
+        let mut templates = Vec::new();
+        for plugin in snapshot.plugins.iter().filter(|plugin| plugin.load_error.is_none()) {
+            let display_name = display_names.get(&plugin.name).cloned().unwrap_or_else(|| plugin.name.clone());
+            templates.extend(plugin.templates.iter().map(|template| PluginTemplateInfo {
+                plugin: plugin.name.clone(),
+                plugin_display_name: display_name.clone(),
+                id: template.id.clone(),
+                title: template.title.clone(),
+                description: template.description.clone(),
+                prompt: template.prompt.clone(),
+                ready_to_use: false,
+                language: None,
+            }));
+            for agent in &plugin.ready_agents {
+                // A ready-made agent never replaces a manifest template with the same id.
+                if plugin.templates.iter().any(|template| template.id == agent.id) {
+                    continue;
+                }
+                if let Err(reason) = ready_agents::check_workflow(&plugin.name, &agent.workflow_yaml, &registry) {
+                    log::warn!("not offering the ready-made agent {} of plugin {}: {reason}", agent.id, plugin.name);
+                    continue;
+                }
+                templates.push(PluginTemplateInfo {
                     plugin: plugin.name.clone(),
                     plugin_display_name: display_name.clone(),
-                    id: template.id.clone(),
-                    title: template.title.clone(),
-                    description: template.description.clone(),
-                    prompt: template.prompt.clone(),
-                })
-            })
-            .collect()
+                    id: agent.id.clone(),
+                    title: agent.title.clone(),
+                    description: agent.description.clone(),
+                    prompt: String::new(),
+                    ready_to_use: true,
+                    language: agent.language.clone(),
+                });
+            }
+        }
+        templates
+    }
+
+    /// Makes an agent from the ready-made agent `id` of `plugin`: its title, description and
+    /// workflow, as a task agent in the user's list.
+    ///
+    /// # Errors
+    /// As [`PluginService::ready_agent`]; `Database` when the agent cannot be saved.
+    pub fn create_ready_agent(&self, plugin: &str, id: &str) -> AppResult<crate::storage::models::Agent> {
+        let ready = self.ready_agent(plugin, id)?;
+        let agent = self.db.create_agent(crate::storage::models::NewAgent {
+            name: ready.title,
+            kind: crate::storage::models::AgentKind::Task,
+            description: ready.description,
+            flow_yaml: ready.workflow_yaml,
+        })?;
+        log::info!("made agent {} from the ready-made agent {id} of plugin {plugin}", agent.id);
+        Ok(agent)
+    }
+
+    /// The ready-made agent `id` of the installed plugin `plugin`, checked again right before
+    /// it becomes an agent (the plugin may have been updated since the screen listed it).
+    ///
+    /// # Errors
+    /// `NotFound` when the plugin is not loaded or ships no such agent; `InvalidInput` when
+    /// its workflow does not pass the check.
+    pub(crate) fn ready_agent(&self, plugin: &str, id: &str) -> AppResult<ready_agents::ReadyAgent> {
+        let snapshot = self.snapshot();
+        let agent = snapshot
+            .plugin(plugin)
+            .filter(|state| state.load_error.is_none())
+            .and_then(|state| state.ready_agents.iter().find(|agent| agent.id == id))
+            .ok_or_else(|| AppError::NotFound(format!("the ready-made agent {id} of plugin {plugin}")))?;
+        ready_agents::check_workflow(plugin, &agent.workflow_yaml, &self.node_registry())
+            .map_err(|reason| AppError::InvalidInput(format!("the ready-made agent {id} cannot be used: {reason}")))?;
+        Ok(agent.clone())
     }
 
     /// What is declared about `plugin`'s settings: its own `graphrt-settings.json`, then the

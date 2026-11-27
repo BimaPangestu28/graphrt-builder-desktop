@@ -478,3 +478,37 @@ fn a_timeout_answer_into_a_trusted_lookup_does_not_send() {
     assert!(find_timeouts_that_send(&with_approval, &weather_trusted()).unwrap().is_empty());
     assert_eq!(find_timeouts_that_send(&with_approval, &TrustedHosts::none()).unwrap().len(), 1);
 }
+
+/// A list input may describe its rows with `json_schema`; the form builds its columns from
+/// it. The document still compiles: the runtime does not read the field.
+#[test]
+fn a_list_inputs_schema_reaches_the_form_and_the_flow_still_compiles() {
+    let yaml = r#"
+version: "1"
+graph:
+  nodes:
+    - id: start
+      type: start
+      variables:
+        - variable: items
+          label: Items
+          type: json
+          required: true
+          json_schema:
+            type: array
+            items:
+              type: object
+              properties:
+                description: { type: string, title: Description }
+                quantity: { type: number }
+        - { variable: note, type: json, schema: "not a schema" }
+    - { id: end, type: end, outputs: [{ variable: items, value_selector: [start, items] }] }
+  edges:
+    - { source: start, target: end }
+"#;
+    compile_flow(yaml).unwrap();
+    let inputs = summarize_flow(yaml).unwrap().inputs;
+    let schema = inputs[0].schema.as_ref().unwrap();
+    assert_eq!(schema["items"]["properties"]["quantity"]["type"], "number");
+    assert_eq!(inputs[1].schema, None, "anything that is not an object is not a schema");
+}

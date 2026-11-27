@@ -29,6 +29,7 @@ use graphrt_core::tool::ToolRegistry;
 use graphrt_plugin::{LoadedManifest, PluginHost, Runtime};
 
 use super::models::{PluginNodeInfo, PluginPermissions, SettingDeclaration};
+use super::ready_agents::{self, ReadyAgent};
 use super::setting_spec;
 use crate::agent_steps::AGENT_TOOL_PROVIDER;
 use crate::credentials::CredentialStore;
@@ -60,6 +61,9 @@ pub(crate) struct PluginState {
     pub templates: Vec<graphrt_plugin::PluginTemplate>,
     /// What the plugin's `graphrt-settings.json` says about its settings (empty without one).
     pub settings: Vec<SettingDeclaration>,
+    /// The agents in the plugin's `graphrt-agents.json` (empty without one); their workflows
+    /// are checked when they are offered and again when one is made (see `ready_agents.rs`).
+    pub ready_agents: Vec<ReadyAgent>,
 }
 
 /// The MCP server of an MCP preset plugin (registered in Connections > MCP servers).
@@ -310,6 +314,7 @@ fn state_from_manifest(manifest: &LoadedManifest, trusted: &BTreeSet<String>) ->
         },
         templates: plugin.templates.clone(),
         settings: setting_spec::read_plugin_declarations(&manifest.dir),
+        ready_agents: ready_agents::read_ready_agents(&manifest.dir),
     }
 }
 
@@ -356,6 +361,7 @@ fn failed_state(dir: &Path, message: String) -> PluginState {
         mcp_server: None,
         templates: Vec::new(),
         settings: Vec::new(),
+        ready_agents: Vec::new(),
     }
 }
 

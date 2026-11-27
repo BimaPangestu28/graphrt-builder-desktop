@@ -33,8 +33,10 @@ export interface AgentTemplate {
   needs: string[]
   /** Short "what you'll need" note, e.g. "WhatsApp linked by QR". */
   setupNote: string
-  /** Kind tag shown top-right, only for non-task agents. */
+  /** Tag shown top-right: the kind of a non-task agent, or "Ready to use". */
   kindLabel?: string
+  /** A plugin ships this agent finished: picking the card makes it at once, without a model. */
+  readyAgent?: { plugin: string; templateId: string }
 }
 
 /** Id of the flagship template (Google Maps → WhatsApp), linked from Home. */

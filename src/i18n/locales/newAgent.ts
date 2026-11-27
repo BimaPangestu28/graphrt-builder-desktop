@@ -46,6 +46,10 @@ export const newAgent = defineMessages(
     forExample: (job: string) => `For example: ${job}`,
     checklist: { understanding: ['Understood the job', 'Read your description'], drafting: ['Picked the steps', 'Steps drafted'], repairing: ['Fixed problems', 'Nothing to fix'], checking: ['Checking it again', 'No problems found'], done: ['Check what it needs to connect', 'Ready to connect'] },
     fromThePlugin: (plugin: string) => `From the ${plugin} plugin`,
+    readyToUse: 'Ready to use',
+    readyToUseNote: (plugin: string) => `the ${plugin} plugin, nothing else. Click to make it`,
+    makingAgent: (title: string) => `Making ${title}…`,
+    couldNotMakeAgent: (title: string, reason: string) => `Could not make ${title}: ${reason}`,
     // en:end
   },
   {
@@ -92,6 +96,10 @@ export const newAgent = defineMessages(
     forExample: (job) => `Misalnya, ${job}`,
     checklist: { understanding: ['Memahami pekerjaannya', 'Membaca cerita kamu'], drafting: ['Memilih langkah', 'Langkah sudah disusun'], repairing: ['Memperbaiki masalah', 'Tidak ada yang perlu diperbaiki'], checking: ['Mengecek ulang', 'Tidak ada masalah'], done: ['Cek apa yang perlu dihubungkan', 'Siap dihubungkan'] },
     fromThePlugin: (plugin) => `Dari plugin ${plugin}`,
+    readyToUse: 'Siap pakai',
+    readyToUseNote: (plugin) => `plugin ${plugin}, tidak ada yang lain. Klik untuk membuatnya`,
+    makingAgent: (title) => `Membuat ${title}…`,
+    couldNotMakeAgent: (title, reason) => `Tidak bisa membuat ${title}. ${reason}`,
     // id:end
   },
 )

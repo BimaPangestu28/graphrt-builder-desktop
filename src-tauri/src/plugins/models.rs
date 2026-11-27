@@ -560,7 +560,7 @@ impl InstallRecord {
     }
 }
 
-/// A starter prompt from an installed plugin (New agent screen).
+/// A starter from an installed plugin (New agent screen): a prompt, or a ready-made agent.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginTemplateInfo {
@@ -569,5 +569,11 @@ pub struct PluginTemplateInfo {
     pub id: String,
     pub title: String,
     pub description: String,
+    /// The text for the "describe the job" box; empty for a ready-made agent.
     pub prompt: String,
+    /// The plugin ships the finished workflow (`graphrt-agents.json`): picking it makes the
+    /// agent at once, without a model (see `ready_agents.rs`).
+    pub ready_to_use: bool,
+    /// The language a ready-made agent is written in (`en`, `id`), when the plugin says so.
+    pub language: Option<String>,
 }

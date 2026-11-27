@@ -432,6 +432,7 @@ pub fn run() {
             commands::plugins::list_plugin_catalog_steps,
             commands::plugins::list_installed_plugins,
             commands::plugins::list_plugin_templates,
+            commands::plugins::create_agent_from_plugin_template,
             commands::plugins::install_plugin,
             commands::plugins::install_local_plugin,
             commands::plugins::update_plugin,
