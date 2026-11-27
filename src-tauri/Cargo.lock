@@ -2080,6 +2080,7 @@ dependencies = [
  "libc",
  "log",
  "lzma-rust2",
+ "minijinja",
  "minisign",
  "minisign-verify",
  "regex",

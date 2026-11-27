@@ -31,6 +31,7 @@ mod live;
 #[cfg(test)]
 mod live_eval;
 mod prompt;
+mod repair;
 pub mod stop;
 #[cfg(test)]
 mod tests;
@@ -309,7 +310,9 @@ async fn draft_until_valid(
     loop {
         let check_message = if repair_attempts == 0 { "Checking the steps" } else { "Checking it again" };
         report(on_progress, BuildStage::Checking, check_message);
-        let flow_yaml = use_available_models(extract::workflow_yaml(&reply), builder);
+        let written = extract::workflow_yaml(&reply);
+        let written = flow::quote_text_fields(&written).unwrap_or(written);
+        let flow_yaml = use_available_models(written, builder);
         let explanation = live::opening_text(&reply);
         let proposed_hosts = extract::proposed_trusted_hosts(&explanation);
         let trust = DraftTrust { trusted_hosts, proposed_hosts: &proposed_hosts };
@@ -324,7 +327,7 @@ async fn draft_until_valid(
         repair_attempts += 1;
         report(on_progress, BuildStage::Repairing, "Fixing a problem in the draft");
         messages.push(Message::assistant(reply));
-        messages.push(Message::user(prompt::repair_request(&problem)));
+        messages.push(Message::user(prompt::repair_request(&problem, &repair::format_help(&problem, &flow_yaml))));
         reply =
             ask_model(builder, &messages, on_progress, BuildStage::Repairing, "Fixing a problem in the draft").await?;
     }
@@ -408,6 +411,10 @@ fn validate_draft(flow_yaml: &str, builder: &BuilderModel, trust: &DraftTrust<'_
              the user should connect",
             placeholders.join(", ")
         ));
+    }
+    let template_problems = flow::find_template_problems(flow_yaml).map_err(|error| error.to_string())?;
+    if !template_problems.is_empty() {
+        return Err(template_problems.join("; "));
     }
     // graphrt accepts reading a step that has not run yet; the value is then empty
     // (a chatbot built like that answers nothing).

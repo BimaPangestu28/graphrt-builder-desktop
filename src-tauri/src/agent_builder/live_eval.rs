@@ -207,6 +207,7 @@ fn first_line(text: &str) -> String {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs a running Ollama with the model pulled"]
 async fn live_eval() {
+    let _ = log::set_logger(&PrintLogger).map(|()| log::set_max_level(log::LevelFilter::Info));
     let model_name = env_or("GRAPHRT_EVAL_MODEL", "llama3.2");
     let attempts: usize = env_or("GRAPHRT_EVAL_ATTEMPTS", "2").parse().unwrap();
     let with_runs = env_or("GRAPHRT_EVAL_RUN", "1") != "0";
@@ -279,4 +280,135 @@ async fn live_eval() {
         println!("[{model_name}] r{index} built {request_built}/{attempts} worked {request_worked}/{attempts}: {description}");
     }
     println!("[{model_name}] TOTAL built {built}/{total} worked {worked}/{total}");
+}
+
+/// Chatbots a small business would ask for first, with one customer message each and
+/// words of which the reply must contain one (lowercase).
+/// `GRAPHRT_EVAL_REQUESTS=3` picks some of them.
+const CHATBOT_REQUESTS: &[(&str, &str, &[&str])] = &[
+    (
+        "Answer customer questions for my bakery about opening hours (8 to 17, closed Sunday) and cake prices \
+         (brownies 50k, cheesecake 120k). Hand over to me for custom orders.",
+        "How much is the cheesecake?",
+        &["120"],
+    ),
+    (
+        "Answer WhatsApp questions about our catering menu (nasi box 25k, tumpeng 350k, minimum order 20 boxes) \
+         and pass confirmed orders to me.",
+        "Berapa harga nasi box?",
+        &["25"],
+    ),
+    (
+        "A chatbot for my laundry shop: prices are 8k per kg, express 15k per kg, pickup between 9 and 18. If a \
+         customer is upset, hand the chat to me.",
+        "How much is express laundry?",
+        &["15"],
+    ),
+    (
+        "Answer patients' questions about our dental clinic: open Monday to Saturday 9-20, scaling costs 300k. \
+         When someone wants to book or asks for a person, hand over to the front desk.",
+        "Are you open on Saturday?",
+        &["saturday", "sabtu", "yes", "open"],
+    ),
+];
+
+/// Prints the builder's info lines (every repair problem) while the eval runs.
+struct PrintLogger;
+
+impl log::Log for PrintLogger {
+    fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+        metadata.level() <= log::Level::Info && metadata.target().starts_with("graphrt_lib::")
+    }
+    fn log(&self, record: &log::Record<'_>) {
+        if self.enabled(record.metadata()) {
+            println!("    log {}: {}", record.target(), first_line(&record.args().to_string()));
+        }
+    }
+    fn flush(&self) {}
+}
+
+#[derive(Debug)]
+struct QuietConversationSink;
+
+impl crate::conversations::ConversationEventSink for QuietConversationSink {
+    fn send(&self, _payload: crate::conversations::ConversationEventPayload) {}
+}
+
+/// Builds each chatbot of [`CHATBOT_REQUESTS`] `GRAPHRT_EVAL_ATTEMPTS` times as the New agent
+/// screen does ("Answer customers"), counts the repair rounds, then sends the customer
+/// message once in a test chat: an attempt works when the bot answers with one of the words.
+///
+/// ```sh
+/// GRAPHRT_EVAL_PROVIDER=openai GRAPHRT_EVAL_MODEL=gpt-4.1-mini OPENAI_API_KEY=... \
+///   cargo test --manifest-path src-tauri/Cargo.toml live_eval_chatbots -- --ignored --nocapture
+/// ```
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a real model (Ollama or OPENAI_API_KEY)"]
+async fn live_eval_chatbots() {
+    let _ = log::set_logger(&PrintLogger).map(|()| log::set_max_level(log::LevelFilter::Info));
+    let model_name = env_or("GRAPHRT_EVAL_MODEL", "llama3.2");
+    let attempts: usize = env_or("GRAPHRT_EVAL_ATTEMPTS", "2").parse().unwrap();
+    let EvalSetup { builder, credentials, ollama_base_url } = eval_setup(&model_name);
+    let (mut total, mut built, mut first_try, mut answered) = (0, 0, 0, 0);
+    let chosen: Vec<usize> = match std::env::var("GRAPHRT_EVAL_REQUESTS") {
+        Ok(list) => list.split(',').map(|index| index.trim().parse().unwrap()).collect(),
+        Err(_) => (0..CHATBOT_REQUESTS.len()).collect(),
+    };
+    for index in chosen {
+        let (description, customer_message, expected_words) = CHATBOT_REQUESTS[index];
+        for attempt in 1..=attempts {
+            total += 1;
+            let db = Arc::new(Database::open_in_memory().unwrap());
+            db.set_setting(crate::credentials::SETTING_OLLAMA_BASE_URL, &ollama_base_url).unwrap();
+            let started = Instant::now();
+            let repairs = std::sync::atomic::AtomicUsize::new(0);
+            let on_progress = |progress: BuildProgress| {
+                if progress.stage == BuildStage::Repairing && progress.draft.is_none() {
+                    repairs.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                }
+            };
+            let request = BuildRequest { description: (*description).into(), kind: Some(AgentKind::Chatbot) };
+            let agent = match build_agent_with_model(&db, &builder, request, &on_progress).await {
+                Ok(agent) => agent,
+                Err(error) => {
+                    println!("[{model_name}] c{index} a{attempt} BUILD-FAIL {}", first_line(&error.to_string()));
+                    continue;
+                }
+            };
+            built += 1;
+            let repairs = repairs.into_inner();
+            if repairs == 0 {
+                first_try += 1;
+            }
+            let seconds = started.elapsed().as_secs();
+            if std::env::var("GRAPHRT_EVAL_SHOW").is_ok() {
+                println!("{}", agent.flow_yaml);
+            }
+            let conversations = crate::conversations::ConversationManager::new(
+                db.clone(),
+                credentials.clone(),
+                Arc::new(QuietConversationSink),
+            );
+            let chat = conversations.start_test_conversation(&agent.id).unwrap().conversation;
+            let detail = conversations.send_customer_message(&chat.id, customer_message).await;
+            let reply = detail
+                .ok()
+                .and_then(|detail| detail.messages.last().cloned())
+                .map(|message| format!("{:?}: {}", message.author, message.text))
+                .unwrap_or_else(|| "no reply".into());
+            let lowered = reply.to_lowercase();
+            let works = lowered.starts_with("bot:") && expected_words.iter().any(|word| lowered.contains(word));
+            if works {
+                answered += 1;
+            }
+            let verdict = if works { "ANSWERED" } else { "NO-ANSWER" };
+            println!(
+                "[{model_name}] c{index} a{attempt} BUILT {seconds}s repairs {repairs} {verdict}: {}",
+                first_line(&reply)
+            );
+        }
+    }
+    println!(
+        "[{model_name}] CHATBOTS built {built}/{total}, first try {first_try}/{total}, answered {answered}/{total}"
+    );
 }

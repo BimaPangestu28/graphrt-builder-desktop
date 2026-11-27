@@ -213,14 +213,14 @@ export function chatbotSetupPath(agentId: string): string {
 }
 
 /**
- * Where an agent opens right after it is built (03): a chatbot opens its setup (persona,
- * knowledge, channels and "Try it"), every other kind opens the builder (04).
+ * Where an agent opens, right after it is built (03) and from the sidebar: a chatbot opens
+ * its setup (persona, knowledge, channels and "Try it"), every other kind opens the builder (04).
  *
  * @example
- * builtAgentPath(agent.id, 'chatbot') // "/agents/catering-assistant?agentId=abc"
- * builtAgentPath(agent.id, 'task') // "/agents/abc/steps"
+ * agentOpenPath(agent.id, 'chatbot') // "/agents/catering-assistant?agentId=abc"
+ * agentOpenPath(agent.id, 'task') // "/agents/abc/steps"
  */
-export function builtAgentPath(agentId: string, kind: AgentKind): string {
+export function agentOpenPath(agentId: string, kind: AgentKind): string {
   return kind === 'chatbot' ? chatbotSetupPath(agentId) : agentPath('builder', agentId)
 }
 

@@ -3,7 +3,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { resetSampleAgents, sampleAgentsBackend } from '@/api/sampleBackend/agents'
 import { resetSamplePlugins, setSampleInstalledPlugin } from '@/api/sampleBackend/plugins'
-import { agentPath, routePaths } from '@/routes'
+import { agentPath, chatbotSetupPath, routePaths } from '@/routes'
 import { Sidebar } from './Sidebar'
 
 function renderSidebar(props: Parameters<typeof Sidebar>[0]) {
@@ -46,6 +46,12 @@ describe('Sidebar', () => {
     expect(activeAgentLink).toHaveAttribute('aria-current', 'page')
     expect(activeAgentLink).toHaveAttribute('href', agentPath('builder', 'leads-recap'))
     expect(screen.getByText('Chatbot')).toBeInTheDocument()
+  })
+
+  it('opens a chatbot in its setup, where a business owner tries it and sets its channels, not in the builder', async () => {
+    renderSidebar({ agents: { kind: 'list' } })
+    const chatbotLink = await screen.findByRole('link', { name: /Catering assistant/ })
+    expect(chatbotLink).toHaveAttribute('href', chatbotSetupPath('catering-assistant'))
   })
 
   it('shows a quiet message when agents cannot be loaded', async () => {

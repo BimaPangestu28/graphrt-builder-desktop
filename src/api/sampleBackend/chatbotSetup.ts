@@ -3,6 +3,7 @@ import { sampleChatbotPersona, sampleHandoffRules } from '@/api/sampleBackend/fi
 import { sampleKnowledgeBackend } from './knowledge'
 import { sampleSlackAccount, sampleTelegramAccount, sampleWhatsAppWebAgent } from './channels'
 import { respondWith } from './sampleResponse'
+import { listStoredAgents } from './sampleAgentStore'
 
 /**
  * Sample chatbot setups for the browser preview and tests, kept in memory. The sample
@@ -48,9 +49,11 @@ function describeChannels(agentId: string, settings: ChatbotSettings): ChatbotCh
   ]
 }
 
-function defaultSettings(): ChatbotSettings {
+/** A never-saved chatbot starts from what the owner asked for (its description), like the desktop backend. */
+function defaultSettings(agentId: string): ChatbotSettings {
+  const agent = listStoredAgents().find((storedAgent) => storedAgent.id === agentId)
   return {
-    persona: { displayName: '', tone: '', instructions: '' },
+    persona: { displayName: '', tone: '', instructions: agent?.description.trim() ?? '' },
     handoffRules: { asksForPerson: true, notInKnowledge: true, orderReady: true, soundsUpset: true },
     knowledgeBaseIds: [],
     disabledChannels: [],
@@ -63,7 +66,7 @@ function cloneSettings(settings: ChatbotSettings): ChatbotSettings {
 
 function readSetup(agentId: string): ChatbotSetup {
   const saved = storedSettings.get(agentId)
-  const settings = cloneSettings(saved ?? defaultSettings())
+  const settings = cloneSettings(saved ?? defaultSettings(agentId))
   return { agentId, settings, isSaved: saved !== undefined, channels: describeChannels(agentId, settings) }
 }
 

@@ -515,3 +515,32 @@ fn citations_merge_pages_per_file_and_keep_files_without_pages_plain() {
     let retrieved = [source("menu.pdf", &[3]), source("menu.pdf", &[12, 13]), source("faq.md", &[])];
     assert_eq!(prepared.citations(&retrieved), ["menu.pdf · p3, p12, p13", "faq.md"]);
 }
+
+#[test]
+fn a_new_chatbot_starts_with_what_the_owner_asked_for() {
+    let db = Database::open_in_memory().unwrap();
+    let agent = db
+        .create_agent(NewAgent {
+            name: "Bakery assistant".into(),
+            kind: AgentKind::Chatbot,
+            description: "  Answer questions about our opening hours and cake prices.\n".into(),
+            flow_yaml: REPLY_FLOW.into(),
+        })
+        .unwrap();
+    let setup = get_chatbot_setup(&db, &agent.id, &nothing_connected).unwrap();
+    assert!(!setup.is_saved, "a starting point only: the bot runs its flow unchanged until it is saved");
+    assert_eq!(setup.settings.persona.instructions, "Answer questions about our opening hours and cake prices.");
+    assert_eq!(setup.settings.persona.display_name, "Bakery assistant");
+
+    let long = db
+        .create_agent(NewAgent {
+            name: "Long".into(),
+            kind: AgentKind::Chatbot,
+            description: "é".repeat(MAX_INSTRUCTIONS_CHARS + 10),
+            flow_yaml: REPLY_FLOW.into(),
+        })
+        .unwrap();
+    let setup = get_chatbot_setup(&db, &long.id, &nothing_connected).unwrap();
+    assert_eq!(setup.settings.persona.instructions.chars().count(), MAX_INSTRUCTIONS_CHARS);
+    save_chatbot_settings(&db, &long.id, setup.settings, &nothing_connected).expect("the prefilled text saves as is");
+}

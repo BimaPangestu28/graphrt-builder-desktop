@@ -7,7 +7,7 @@ import { useConversationCounts } from '@/hooks/useConversations'
 import { usePluginUpdateData } from '@/hooks/usePluginUpdates'
 import { useRunnerStatus, type RunnerStatusFacts } from '@/hooks/useRunnerStatus'
 import { getKindLabel, getProviderName, getStatusDotTone } from '@/lib/agentDisplay'
-import { agentPath, connectionsTabPath, routePaths } from '@/routes'
+import { agentOpenPath, agentPath, connectionsTabPath, routePaths } from '@/routes'
 import { messages, useT } from '@/i18n'
 
 export type MainNavKey = 'home' | 'inbox' | 'runs' | 'schedule' | 'knowledge' | 'skills' | 'plugins' | 'connections' | 'settings'
@@ -68,7 +68,7 @@ function SidebarAgentLink({ agent, isActive }: { agent: Agent; isActive: boolean
   const kindLabel = getKindLabel(agent.kind)
   return (
     <Link
-      to={agentPath('builder', agent.id)}
+      to={agentOpenPath(agent.id, agent.kind)}
       aria-current={isActive ? 'page' : undefined}
       className={joinClassNames('flex items-center gap-2 rounded-lg px-2.5 py-2 no-underline !text-ink', isActive ? 'bg-selected font-semibold' : 'hover:bg-selected/60')}
     >
