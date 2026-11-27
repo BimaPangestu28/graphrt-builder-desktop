@@ -65,10 +65,13 @@ export function handBack(conversationId: string): Promise<Conversation> {
   return callBackend('hand_back', { conversationId })
 }
 
-/** Sends the owner's reply; replying takes the chat over from the bot. */
-export function sendOperatorReply(conversationId: string, text: string): Promise<ConversationMessage> {
-  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleConversationsBackend.sendOperatorReply(conversationId, text)
-  return callBackend('send_operator_reply', { conversationId, text })
+/**
+ * Sends the owner's reply; replying takes the chat over from the bot. `attachments` are the
+ * `reference`s of files the owner attached to this chat; with files the text may be empty.
+ */
+export function sendOperatorReply(conversationId: string, text: string, attachments: string[] = []): Promise<ConversationMessage> {
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleConversationsBackend.sendOperatorReply(conversationId, text, attachments)
+  return callBackend('send_operator_reply', { conversationId, text, attachments })
 }
 
 export function closeConversation(conversationId: string): Promise<Conversation> {

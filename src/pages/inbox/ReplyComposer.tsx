@@ -1,4 +1,6 @@
 import type { FormEvent, KeyboardEvent } from 'react'
+import { AttachmentTray, type ChatAttachments } from '@/components/files'
+import { Icon } from '@/components/ui'
 import { messages } from '@/i18n'
 
 interface ReplyComposerProps {
@@ -12,14 +14,17 @@ interface ReplyComposerProps {
   suggestedReply?: string | null
   /** True while a reply is being sent. */
   isSending?: boolean
+  /** Files for the reply: adds the paperclip and the list of attached files. A reply can then be files alone. */
+  attachments?: ChatAttachments
 }
 
 /**
- * Composer under the chat detail thread: an optional suggested reply chip, a textarea and Send.
- * Enter sends, Shift+Enter adds a new line.
+ * Composer under the chat detail thread: an optional suggested reply chip, the files attached to
+ * the reply, a paperclip, a textarea and Send. Enter sends, Shift+Enter adds a new line.
  */
-export function ReplyComposer({ draft, onDraftChange, onSend, canReply, disabledPlaceholder, suggestedReply, isSending = false }: ReplyComposerProps) {
-  const canSend = canReply && !isSending && draft.trim() !== ''
+export function ReplyComposer({ draft, onDraftChange, onSend, canReply, disabledPlaceholder, suggestedReply, isSending = false, attachments }: ReplyComposerProps) {
+  const hasFiles = (attachments?.pending.length ?? 0) > 0
+  const canSend = canReply && !isSending && !attachments?.isAttaching && (draft.trim() !== '' || hasFiles)
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -47,10 +52,23 @@ export function ReplyComposer({ draft, onDraftChange, onSend, canReply, disabled
           </button>
         </div>
       )}
+      {attachments && <AttachmentTray attachments={attachments} />}
       <label htmlFor="reply" className="sr-only">
         {messages().inbox.yourReply}
       </label>
       <div className="flex items-end gap-2">
+        {attachments && (
+          <button
+            type="button"
+            onClick={attachments.choose}
+            disabled={!canReply || isSending || attachments.isAttaching}
+            aria-label={messages().files.attachFiles}
+            title={messages().files.attachFiles}
+            className="flex size-11 flex-none cursor-pointer items-center justify-center rounded-[10px] border border-line-strong bg-surface text-ink-2 hover:bg-subtle disabled:cursor-default disabled:opacity-50"
+          >
+            <Icon name="paperclip" size={18} />
+          </button>
+        )}
         <textarea
           id="reply"
           rows={2}

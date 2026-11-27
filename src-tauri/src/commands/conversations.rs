@@ -67,8 +67,10 @@ pub async fn send_operator_reply(
     state: State<'_, AppState>,
     conversation_id: String,
     text: String,
+    attachments: Option<Vec<String>>,
 ) -> AppResult<Message> {
-    state.conversations.send_operator_reply(&conversation_id, &text).await
+    let attachments = attachments.unwrap_or_default();
+    state.conversations.send_operator_reply_with_files(&conversation_id, &text, &attachments).await
 }
 
 #[tauri::command]

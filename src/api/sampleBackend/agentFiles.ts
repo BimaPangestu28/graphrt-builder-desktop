@@ -84,6 +84,21 @@ export function sampleBotFile(): FileCard {
   return storeSampleFile('ringkasan-pesanan.pdf', 48_200) as FileCard
 }
 
+/** The sample run that made files, so the preview shows the cards on a Run result (the other sample runs made none). */
+export const sampleRunWithFilesId = 'morning-digest-0700'
+
+const runFileCards = new Map<string, FileCard[]>()
+
+/** The files of a sample run: a report and a spreadsheet for {@link sampleRunWithFilesId}, none for the others. */
+function sampleRunFiles(runId: string): FileCard[] {
+  if (runId !== sampleRunWithFilesId) return []
+  const known = runFileCards.get(runId)
+  if (known) return known
+  const cards = [storeSampleFile('ringkasan-pagi.pdf', 96_300), storeSampleFile('angka-penjualan.xlsx', 18_400)].filter((card): card is FileCard => card !== null)
+  runFileCards.set(runId, cards)
+  return cards
+}
+
 export const sampleAgentFilesBackend = {
   getAgentFileAbilities: (_agentId: string): Promise<FileAbilities> =>
     respondWith(() => ({ readsFiles: true, seesPictures: true, makesFiles: true })),
@@ -104,7 +119,7 @@ export const sampleAgentFilesBackend = {
     respondWith(() => {
       storedCards.delete(reference)
     }),
-  listRunFiles: (_runId: string): Promise<FileCard[]> => respondWith(() => []),
+  listRunFiles: (runId: string): Promise<FileCard[]> => respondWith(() => sampleRunFiles(runId)),
   previewAgentFile: (_agentId: string, reference: string): Promise<FilePreview> =>
     respondWith(() =>
       storedCards.get(reference)?.preview === 'picture' ? { kind: 'picture', dataUrl: samplePictureDataUrl, width: 2, height: 2 } : { kind: 'none' },
@@ -116,6 +131,7 @@ export const sampleAgentFilesBackend = {
 /** Forgets every sample file and starts choosing from the first sample again (tests). */
 export function resetSampleAgentFiles(): void {
   storedCards.clear()
+  runFileCards.clear()
   nextFileNumber = 1
   nextChoice = 0
 }

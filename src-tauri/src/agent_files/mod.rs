@@ -14,6 +14,7 @@
 //! - [`cards`]: what the screens show about a file (name, size, kind).
 //! - `delivery`: the small picture shown on a card, and saving a file to disk.
 //! - [`run_files`]: the files a run made, for the Run result screen.
+//! - [`cleanup`]: removing attachments that were never sent and leftovers of closed conversations.
 //!
 //! # What is kept apart
 //! - Every agent has its own folder ([`AgentFiles::agent_workspace`]). Its name is a hash
@@ -38,6 +39,7 @@
 
 pub mod abilities;
 pub mod cards;
+pub mod cleanup;
 mod delivery;
 mod intake;
 pub mod run_files;
@@ -50,7 +52,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use graphrt_files::{Workspace, WorkspaceLimits};
-use sha2::{Digest, Sha256};
 
 pub use self::abilities::FileAbilities;
 pub use self::cards::FileCard;
@@ -124,8 +125,7 @@ impl AgentFiles {
 
     /// The folder of `agent_id`: 32 hex characters of a hash, never the id itself.
     fn agent_dir(&self, agent_id: &str) -> PathBuf {
-        let digest = Sha256::digest(agent_id.as_bytes());
-        self.root.join(graphrt_files::hex(digest.get(..16).unwrap_or_default()))
+        self.root.join(cleanup::folder_name(agent_id))
     }
 
     /// The whole workspace of an agent (created on first use, readable by the owner only).

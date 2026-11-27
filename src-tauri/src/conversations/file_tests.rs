@@ -72,6 +72,7 @@ impl ModelRegistrySource for FixedModelSource {
 
 struct Harness {
     home: tempfile::TempDir,
+    db: Arc<Database>,
     model: Arc<MockModel>,
     agent_files: Arc<AgentFiles>,
     conversations: ConversationManager,
@@ -97,7 +98,7 @@ impl Harness {
                 flow_yaml: flow_yaml.into(),
             })
             .unwrap();
-        Self { home, model, agent_files, conversations, agent }
+        Self { home, db, model, agent_files, conversations, agent }
     }
 
     fn start_chat(&self) -> Conversation {
@@ -288,4 +289,238 @@ async fn a_chatbot_without_file_steps_runs_as_before() {
     assert_eq!(detail.messages[1].metadata, json!({}));
     assert!(harness.model.requests()[0].tools.is_empty(), "no file tools are offered");
     assert!(!harness.home.path().join("app-data").exists(), "no folder is created for a chatbot without files");
+}
+
+// --- The owner's own reply ---
+
+#[tokio::test]
+async fn the_owner_attaches_a_file_to_their_reply() {
+    let harness = Harness::new(FILES_CHATBOT_FLOW);
+    let conversation = harness.start_chat();
+    let price_list = harness.attach(&conversation, "daftar-harga.pdf", b"%PDF-1.4\n%%EOF\n").await;
+
+    let reply = harness
+        .conversations
+        .send_operator_reply_with_files(
+            &conversation.id,
+            "Ini daftar harganya kak",
+            std::slice::from_ref(&price_list.reference),
+        )
+        .await
+        .unwrap();
+    assert_eq!((reply.author, reply.text.as_str()), (MessageAuthor::Operator, "Ini daftar harganya kak"));
+    assert_eq!(reply.metadata[attachments::ATTACHMENTS_KEY], json!([price_list]));
+    // Replying takes the chat over, as a reply without files does.
+    let detail = harness.conversations.get_conversation(&conversation.id).unwrap();
+    assert_eq!(detail.conversation.status, ConversationStatus::YouReplying);
+    assert!(harness.model.requests().is_empty(), "the bot does not answer the owner");
+
+    // A file alone is a reply too.
+    let photo = harness.attach(&conversation, "menu.jpg", PHOTO_WITH_GPS).await;
+    let files_only = harness
+        .conversations
+        .send_operator_reply_with_files(&conversation.id, " ", std::slice::from_ref(&photo.reference))
+        .await
+        .unwrap();
+    assert_eq!(files_only.text, "menu.jpg");
+    assert_eq!(files_only.metadata[attachments::FILES_ONLY_KEY], json!(true));
+}
+
+#[tokio::test]
+async fn an_owner_reply_needs_text_or_a_file_of_this_chat() {
+    let harness = Harness::new(FILES_CHATBOT_FLOW);
+    let first_chat = harness.start_chat();
+    let second_chat = harness.start_chat();
+    let private = harness.attach(&first_chat, "ktp.txt", b"NIK 3174").await;
+
+    let empty = harness.conversations.send_operator_reply_with_files(&second_chat.id, "  ", &[]).await;
+    assert!(matches!(empty, Err(AppError::InvalidInput(_))));
+    let other_chat = harness
+        .conversations
+        .send_operator_reply_with_files(&second_chat.id, "lihat", std::slice::from_ref(&private.reference))
+        .await;
+    assert!(matches!(other_chat, Err(AppError::InvalidInput(_))), "{other_chat:?}");
+    let detail = harness.conversations.get_conversation(&second_chat.id).unwrap();
+    assert!(detail.messages.is_empty(), "a refused reply stores nothing and does not take the chat over");
+    assert_eq!(detail.conversation.status, ConversationStatus::BotAnswering);
+}
+
+// --- Cleanup with the stored messages ---
+
+/// Writes a file into a conversation's part of the workspace without any message naming it.
+async fn leave_file(harness: &Harness, conversation: &Conversation, path: &str) -> String {
+    let view = harness.agent_files.view(&FileScope::conversation(&harness.agent.id, &conversation.id)).unwrap();
+    let path = graphrt_files::WorkspacePath::parse(path).unwrap();
+    let stored = view.write(&path, b"x".to_vec(), false).await.unwrap();
+    view.file_value(&stored).reference.unwrap()
+}
+
+#[tokio::test]
+async fn closing_a_chat_keeps_what_its_messages_show_and_removes_the_rest() {
+    let harness = Harness::new(FILES_CHATBOT_FLOW);
+    let conversation = harness.start_chat();
+    let order = harness.attach(&conversation, "order.txt", b"50 nasi box").await;
+    harness.model.push(MockModel::tool_calls(&[(
+        "c1",
+        "create_pdf",
+        r##"{"path":"reports/summary.pdf","content":"# Order\n\n50 boxes"}"##,
+    )]));
+    harness.model.push(MockModel::text("Here is the summary."));
+    let detail = harness
+        .conversations
+        .send_customer_message_with_files(&conversation.id, "Summarise", std::slice::from_ref(&order.reference))
+        .await
+        .unwrap();
+    let summary: FileCard =
+        serde_json::from_value(detail.messages[1].metadata[attachments::FILES_KEY][0].clone()).unwrap();
+    let owner_file = harness.attach(&conversation, "invoice.pdf", b"%PDF-1.4\n%%EOF\n").await;
+    harness
+        .conversations
+        .send_operator_reply_with_files(&conversation.id, "Invoice", std::slice::from_ref(&owner_file.reference))
+        .await
+        .unwrap();
+    let scratch = leave_file(&harness, &conversation, "notes/scratch.md").await;
+
+    // What the stored messages show is exactly what the cleanup is told to keep.
+    let file_use = harness.db.conversation_file_use(None).unwrap().remove(&harness.agent.id).unwrap();
+    let mut named = file_use[0].referenced.clone();
+    named.sort();
+    let mut expected = vec![order.reference.clone(), summary.reference.clone(), owner_file.reference.clone()];
+    expected.sort();
+    assert_eq!(named, expected);
+
+    // Open: nothing goes (the note may still be used, nothing unsent is a day old).
+    assert!(harness.conversations.clean_up_files().await.unwrap().is_empty());
+    assert!(harness.agent_files.locate(&harness.agent.id, &scratch).await.is_ok());
+
+    harness.conversations.close_conversation(&conversation.id).unwrap();
+    // Closing cleans in the background; running it again here gives the same end state.
+    harness.conversations.clean_up_files().await.unwrap();
+    assert!(harness.agent_files.locate(&harness.agent.id, &scratch).await.is_err(), "the bot's note is gone");
+    for shown in [&order.reference, &summary.reference, &owner_file.reference] {
+        assert!(harness.agent_files.locate(&harness.agent.id, shown).await.is_ok(), "{shown} is still shown");
+    }
+    // Long after the wait for unsent attachments, the sent ones are still there.
+    let view = harness.agent_files.view(&FileScope::conversation(&harness.agent.id, &conversation.id)).unwrap();
+    let much_later = u64::MAX / 2;
+    let closed = crate::agent_files::cleanup::ConversationFileUse { is_closed: true, ..file_use[0].clone() };
+    harness.agent_files.clean_conversation(&harness.agent.id, &closed, much_later).await.unwrap();
+    assert_eq!(view.list(None, 100).await.unwrap().entries.len(), 3);
+    assert!(harness.conversations.clean_up_files().await.unwrap().is_empty(), "a second round removes nothing");
+}
+
+#[tokio::test]
+async fn nothing_is_removed_when_a_message_cannot_be_read() {
+    let harness = Harness::new(FILES_CHATBOT_FLOW);
+    let conversation = harness.start_chat();
+    let scratch = leave_file(&harness, &conversation, "notes/scratch.md").await;
+    harness.conversations.send_operator_reply(&conversation.id, "Sebentar ya kak").await.unwrap();
+    // Damaged before the chat closes, so the cleanup that closing starts cannot read it either.
+    {
+        let connection = harness.db.lock().unwrap();
+        connection
+            .execute(
+                "UPDATE conversation_messages SET metadata_json = '{\"files\": [\"workspace:' WHERE conversation_id = ?1",
+                [&conversation.id],
+            )
+            .unwrap();
+    }
+    let closed = harness.db.set_conversation_status(&conversation.id, ConversationStatus::Closed, None).unwrap();
+    assert_eq!(closed.status, ConversationStatus::Closed);
+    assert!(harness.conversations.clean_up_files().await.is_err());
+    assert!(
+        harness.agent_files.locate(&harness.agent.id, &scratch).await.is_ok(),
+        "better a leftover than a lost file"
+    );
+}
+
+#[tokio::test]
+async fn deleting_an_agent_leaves_nothing_for_the_next_cleanup_to_find() {
+    let harness = Harness::new(FILES_CHATBOT_FLOW);
+    let conversation = harness.start_chat();
+    let order = harness.attach(&conversation, "order.txt", b"50 nasi box").await;
+    // The agent is deleted but its folder stayed (removing it failed, or the app stopped).
+    harness.db.delete_agent(&harness.agent.id).unwrap();
+    let report = harness.conversations.clean_up_files().await.unwrap();
+    assert_eq!(report.agent_folders, 1);
+    assert!(harness.agent_files.locate(&harness.agent.id, &order.reference).await.is_err());
+}
+
+#[tokio::test]
+async fn taking_a_file_off_a_message_never_removes_one_that_was_sent() {
+    let harness = Harness::new(FILES_CHATBOT_FLOW);
+    let conversation = harness.start_chat();
+    let sent = harness.attach(&conversation, "invoice.pdf", b"%PDF-1.4\n%%EOF\n").await;
+    let waiting = harness.attach(&conversation, "draft.pdf", b"%PDF-1.4\n%%EOF\n").await;
+    harness
+        .conversations
+        .send_operator_reply_with_files(&conversation.id, "Invoice", std::slice::from_ref(&sent.reference))
+        .await
+        .unwrap();
+
+    // The screen asks to remove both (a late or repeated request): only the unsent one goes.
+    harness.conversations.discard_attachment(&conversation.id, &sent.reference).await.unwrap();
+    harness.conversations.discard_attachment(&conversation.id, &waiting.reference).await.unwrap();
+    assert!(harness.agent_files.locate(&harness.agent.id, &sent.reference).await.is_ok());
+    assert!(harness.agent_files.locate(&harness.agent.id, &waiting.reference).await.is_err());
+    // Another chat cannot remove it either.
+    let other_chat = harness.start_chat();
+    assert!(harness.conversations.discard_attachment(&other_chat.id, &sent.reference).await.is_err());
+    assert!(harness.conversations.discard_attachment("no-such-chat", &sent.reference).await.is_err());
+}
+
+/// A chatbot whose one `llm` step looks at pictures and has no tools at all.
+const VISION_ONLY_FLOW: &str = r#"
+version: "1"
+name: vision-chatbot
+graph:
+  nodes:
+    - id: start
+      type: start
+      variables:
+        - { variable: message, type: paragraph, required: true }
+    - id: look
+      type: llm
+      model: { provider: openai, name: gpt-4o-mini }
+      prompt_template:
+        - { role: user, text: "{{#start.message#}}" }
+      vision: { enabled: true }
+    - id: reply
+      type: answer
+      answer: "{{#look.text#}}"
+    - id: end
+      type: end
+      outputs: []
+  edges:
+    - { source: start, target: look }
+    - { source: look, target: reply }
+    - { source: reply, target: end }
+"#;
+
+/// Found with a real model: a chatbot that only looks at pictures could not read the picture
+/// a customer attached ("image has no URL"), because nothing resolved the workspace for it.
+#[tokio::test]
+async fn a_chatbot_that_only_looks_at_pictures_sees_an_attached_picture() {
+    let harness = Harness::new(VISION_ONLY_FLOW);
+    let conversation = harness.start_chat();
+    let pictures_only = FileAbilities { reads_files: false, sees_pictures: true, makes_files: false };
+    assert_eq!(crate::agent_files::abilities::FlowFileUse::of(VISION_ONLY_FLOW).abilities(), pictures_only);
+    let photo = harness.attach(&conversation, "venue.jpg", PHOTO_WITH_GPS).await;
+    harness.model.push(MockModel::text("Itu foto lokasi acara."));
+
+    let detail = harness
+        .conversations
+        .send_customer_message_with_files(&conversation.id, "Ini foto apa?", std::slice::from_ref(&photo.reference))
+        .await
+        .unwrap();
+    assert_eq!(
+        (detail.messages[1].author, detail.messages[1].text.as_str()),
+        (MessageAuthor::Bot, "Itu foto lokasi acara."),
+        "{:?}",
+        detail.messages
+    );
+    let images = images_sent_to_the_model(&harness.model);
+    assert_eq!(images.len(), 1, "the attached picture reached the model");
+    assert!(!contains(&images[0], EXIF_SECRET) && !contains(&images[0], b"Exif"));
+    assert!(harness.model.requests()[0].tools.is_empty(), "looking at pictures offers no tools");
 }

@@ -344,10 +344,13 @@ function handBackChat(conversationId: string): Conversation {
   return withLastMessage(findConversation(conversationId))
 }
 
-function replyAsOperator(conversationId: string, text: string): ConversationMessage {
-  const replyText = requireText(text, 'write a reply first')
+function replyAsOperator(conversationId: string, text: string, attachmentReferences: string[] = []): ConversationMessage {
+  const attachments = sampleCardsFor(attachmentReferences)
+  const isFilesOnly = attachments.length > 0 && text.trim() === ''
+  const replyText = isFilesOnly ? attachments.map((card) => card.name).join(', ') : requireText(text, 'write a reply first')
   if (findConversation(conversationId).status !== 'you_replying') takeOverChat(conversationId)
-  return addMessage(conversationId, 'operator', replyText)
+  const metadata = attachments.length === 0 ? undefined : isFilesOnly ? { attachments, filesOnly: true } : { attachments }
+  return addMessage(conversationId, 'operator', replyText, metadata)
 }
 
 function closeChat(conversationId: string): Conversation {
@@ -375,7 +378,8 @@ export const sampleConversationsBackend = {
   sendCustomerCardAnswer: (conversationId: string, answer: CardAnswer): Promise<ConversationDetail> => respondWith(() => receiveCardAnswer(conversationId, answer)),
   takeOver: (conversationId: string): Promise<Conversation> => respondWith(() => takeOverChat(conversationId)),
   handBack: (conversationId: string): Promise<Conversation> => respondWith(() => handBackChat(conversationId)),
-  sendOperatorReply: (conversationId: string, text: string): Promise<ConversationMessage> => respondWith(() => replyAsOperator(conversationId, text)),
+  sendOperatorReply: (conversationId: string, text: string, attachments: string[] = []): Promise<ConversationMessage> =>
+    respondWith(() => replyAsOperator(conversationId, text, attachments)),
   closeConversation: (conversationId: string): Promise<Conversation> => respondWith(() => closeChat(conversationId)),
   setBotEnabled: (agentId: string, enabled: boolean): Promise<boolean> => respondWith(() => changeBotEnabled(agentId, enabled)),
   getBotEnabled: (agentId: string): Promise<boolean> =>

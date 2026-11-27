@@ -4,7 +4,8 @@
 //! It reads which file features the workflow uses and sets up exactly those:
 //! - `files` tools over the scope's part of the workspace, without `delete`;
 //! - `documents` tools (PDF, Word, Excel) and `image` tools (no image generator);
-//! - the workspace as a place other steps read files from (document extractor, vision).
+//! - the workspace as a place other steps read files from (document extractor, vision),
+//!   also for a workflow that has `vision` and no file tools: attached pictures live there.
 //!
 //! The image gate ([`image_gate`]) is separate because it wraps the run's whole file
 //! resolver: an attached picture and a picture chosen on the Test form pass the same checks.
@@ -45,9 +46,12 @@ impl FileAccess {
     /// `Internal` when the agent's folder cannot be created.
     pub(crate) fn wire(&self, flow_yaml: &str, tools: &mut ToolRegistry) -> AppResult<FileWiring> {
         let file_use = FlowFileUse::of(flow_yaml);
-        if !file_use.needs_workspace() {
-            return Ok(FileWiring { resolver: None, vision: file_use.vision });
+        if !file_use.any() {
+            return Ok(FileWiring::default());
         }
+        // A workflow that only looks at pictures (`vision`, no tools) still needs the
+        // workspace: the pictures a person attaches are stored there, and the image gate
+        // reads them through this resolver.
         let view = self.files.view(&self.scope)?;
         if file_use.file_tools {
             tools.add(FILES_PROVIDER, Arc::new(FileTools::with_config(view.clone(), file_tools_config())));

@@ -2,7 +2,8 @@ import { Fragment, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { closeConversation, handBack, sendOperatorReply, takeOver } from '@/api/conversations'
 import type { Conversation, ConversationDetail } from '@/api/conversationTypes'
-import { MessageFiles } from '@/components/files'
+import { useFileDropZone } from '@/components/fileDrop'
+import { MessageFiles, useChatAttachments } from '@/components/files'
 import { AppShell } from '@/components/layout'
 import { joinClassNames } from '@/components/ui'
 import { useConversationDetail, useConversationList, useReplyDraft } from '@/hooks/useConversations'
@@ -96,7 +97,7 @@ function useConversationActions(conversationId: string) {
     takeOver: () => runAction(() => takeOver(conversationId)),
     handBack: () => runAction(() => handBack(conversationId)),
     close: () => runAction(() => closeConversation(conversationId)),
-    reply: (text: string) => runAction(() => sendOperatorReply(conversationId, text)),
+    reply: (text: string, attachments: string[] = []) => runAction(() => sendOperatorReply(conversationId, text, attachments)),
   }
 }
 
@@ -109,8 +110,22 @@ function ConversationWorkspace({ detail }: { detail: ConversationDetail }) {
   const canReply = isOwnerReplying(conversation)
   const replyDraft = useReplyDraft(conversation.id)
 
+  const attachments = useChatAttachments(conversation.agentId, conversation.id, { asOwner: true })
+  const { zoneRef, dragState, browserDropHandlers } = useFileDropZone({
+    accept: { files: true, folders: false },
+    multiple: true,
+    disabled: !canReply,
+    onDrop: (droppedItems) => attachments.addDropped(droppedItems.map((item) => item.path)),
+  })
+
   async function sendReply() {
-    if (await actions.reply(draft.trim())) setDraft('')
+    const sentFiles = attachments.takeForSending()
+    const wasSent = await actions.reply(
+      draft.trim(),
+      sentFiles.map((card) => card.reference),
+    )
+    if (wasSent) setDraft('')
+    else attachments.putBack(sentFiles)
   }
 
   return (
@@ -125,7 +140,18 @@ function ConversationWorkspace({ detail }: { detail: ConversationDetail }) {
           </span>
           <ConversationStatusBadge conversation={conversation} />
         </header>
-        <div className="flex flex-1 flex-col gap-2.5 bg-subtle p-5" lang="id" aria-live="polite">
+        <div
+          ref={zoneRef}
+          {...browserDropHandlers}
+          className={joinClassNames('flex flex-1 flex-col gap-2.5 bg-subtle p-5', dragState === 'accepting' && 'outline-2 -outline-offset-2 outline-brand')}
+          lang="id"
+          aria-live="polite"
+        >
+          {dragState === 'accepting' && (
+            <span lang="en" className="self-center rounded-full bg-surface px-3 py-1.5 text-[12px] font-medium text-ink-2">
+              {currentMessages().files.dropToAttach}
+            </span>
+          )}
           {messages.map((message) => (
             <Fragment key={message.id}>
               <ChatMessageBubble message={message} />
@@ -144,6 +170,7 @@ function ConversationWorkspace({ detail }: { detail: ConversationDetail }) {
           </p>
         )}
         <ReplyComposer
+          attachments={attachments}
           draft={draft}
           onDraftChange={setDraft}
           onSend={() => void sendReply()}
