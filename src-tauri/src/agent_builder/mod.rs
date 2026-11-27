@@ -17,6 +17,7 @@
 //! - `edit_lock`: which agents a revision is changing (the Nodes view waits meanwhile).
 //! - `stop`: "Stop the builder" cancels a running chat revision.
 //! - `whole_response`: model steps read a looked-up response whole, not by a guessed path.
+//! - `unused_env`: secrets a draft declares but no step reads are dropped.
 //!
 //! The public functions resolve the model from the user's credentials; the
 //! `*_with_model` functions hold the logic and take any [`ChatModel`], so tests
@@ -36,6 +37,7 @@ mod repair;
 pub mod stop;
 #[cfg(test)]
 mod tests;
+mod unused_env;
 mod whole_response;
 
 use std::sync::Arc;
@@ -212,7 +214,9 @@ pub(crate) async fn build_agent_with_model(
             ];
             report(on_progress, BuildStage::Drafting, "Drafting the steps");
             let trusted_hosts = TrustedHosts::none();
-            (draft_until_valid(builder, messages, on_progress, "Drafting the steps", &trusted_hosts).await?, None)
+            let draft = draft_until_valid(builder, messages, on_progress, "Drafting the steps", &trusted_hosts).await?;
+            // A workflow document has no schedule; the job's own words can still ask for one.
+            (draft, guided::schedule_in_words(description))
         }
     };
     let name = extract::agent_name(&draft.reply)
@@ -341,6 +345,8 @@ async fn draft_until_valid(
         let flow_yaml = use_available_models(written, builder);
         // A model step that reads a guessed path into a response gets the whole response instead.
         let flow_yaml = whole_response::read_whole_responses(flow_yaml);
+        // Plugin settings declared as the agent's own secrets would stop every run.
+        let flow_yaml = unused_env::drop_unused_env(flow_yaml);
         let explanation = live::opening_text(&reply);
         let proposed_hosts = extract::proposed_trusted_hosts(&explanation);
         let trust = DraftTrust { trusted_hosts, proposed_hosts: &proposed_hosts };

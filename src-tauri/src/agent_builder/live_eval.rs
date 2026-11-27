@@ -415,7 +415,10 @@ fn judge(scenario: &Scenario, agent: &Agent, report: &RunReport, db: &Database) 
     // What the person would read: the output, or for a sending job what they were asked to send.
     let shown = if sends { asked.to_lowercase() } else { report.outputs.to_string().to_lowercase() };
     if let Some(step) = scenario.needs.plugin_step {
-        if !agent.flow_yaml.contains(&format!("type: {step}")) {
+        // A plugin's operation as a step of its own, or as a tool of a `tool` step.
+        let plugin = step.split('.').next().unwrap_or_default();
+        let as_tool = format!("provider_id: {plugin}");
+        if !agent.flow_yaml.contains(&format!("type: {step}")) && !agent.flow_yaml.contains(&as_tool) {
             return Err(format!("no `{step}` step in the agent"));
         }
     }

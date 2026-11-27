@@ -202,6 +202,17 @@ pub(super) async fn revise(
     Ok(planning.plan_until_valid(messages, "Updating the steps").await?.map(|(_, draft)| draft))
 }
 
+/// The schedule the description's own words ask for ("every morning"), for an agent drafted
+/// on the full path, which has no plan to carry one. Its runs have no input values yet:
+/// the person sets them when they turn the schedule on.
+pub(super) fn schedule_in_words(description: &str) -> Option<ScheduledRun> {
+    coverage::schedule_in_words(description).map(|schedule| ScheduledRun {
+        cron_expression: schedule.cron_expression(),
+        in_words: schedule.in_words(),
+        inputs: serde_json::Value::Object(serde_json::Map::new()),
+    })
+}
+
 /// Saves the schedule of a new agent, turned off: an agent the person has not tried yet
 /// never starts by itself. Returns the sentence that tells them about it, or `None` when
 /// it could not be saved (logged; the agent itself is fine).

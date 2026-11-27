@@ -69,6 +69,24 @@ fn message_text(request: &ChatRequest, index: usize) -> String {
 }
 
 #[tokio::test]
+async fn a_full_draft_of_a_job_that_runs_every_morning_gets_a_paused_schedule() {
+    let db = test_database();
+    let (_mock, builder) = mock_builder(&[fenced_reply("Morning answer", SIMPLE_ANSWER)]);
+
+    let agent = build_agent_with_model(&db, &builder, request("Every morning answer my question", None), &|_| {})
+        .await
+        .unwrap();
+
+    let [trigger] = db.list_triggers(Some(&agent.id)).unwrap().try_into().expect("one schedule");
+    assert_eq!(trigger.cron_expression, "0 0 8 * * *");
+    assert!(!trigger.enabled);
+    let (_mock, builder) = mock_builder(&[fenced_reply("Answer", SIMPLE_ANSWER)]);
+    let unscheduled =
+        build_agent_with_model(&db, &builder, request("Answer my question", None), &|_| {}).await.unwrap();
+    assert!(db.list_triggers(Some(&unscheduled.id)).unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn valid_first_draft_is_saved_with_name_kind_and_progress() {
     let db = test_database();
     let (mock, builder) = mock_builder(&[fenced_reply("Cafe WhatsApp offers", APPROVAL_LOOP)]);
@@ -840,7 +858,9 @@ async fn an_injected_draft_using_any_bypass_trick_is_repaired_before_it_is_saved
         .await
         .unwrap_or_else(|error| panic!("{trick}: {error}"));
 
-        assert_eq!(agent.flow_yaml.trim(), repaired.trim(), "{trick}");
+        // The repaired draft as it is saved: a secret no step reads is dropped.
+        let saved = super::unused_env::drop_unused_env(repaired.clone());
+        assert_eq!(agent.flow_yaml.trim(), saved.trim(), "{trick}");
         let repair_text = mock.requests()[1].messages[3].text();
         assert!(repair_text.contains(expected_problem_part(trick)), "{trick}: {repair_text}");
         assert!(progress.stages().contains(&BuildStage::Repairing), "{trick}");
