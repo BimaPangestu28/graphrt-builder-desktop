@@ -229,12 +229,22 @@ pub(crate) async fn build_agent_with_model(
     // A schedule the job asks for is saved turned off, and the person is told so.
     let schedule_note = schedule.and_then(|schedule| guided::save_paused_schedule(db, &agent, &schedule));
     let explanation = match schedule_note {
-        Some(note) => format!("{} {note}", draft.explanation).trim().to_owned(),
+        Some(note) => format!("{} {note}", as_sentence(&draft.explanation)).trim().to_owned(),
         None => draft.explanation,
     };
     history::record_build(db, &agent, &explanation);
     report(on_progress, BuildStage::Done, &done_message);
     Ok(agent)
+}
+
+/// `text` ending in a full stop, so another sentence can follow it ("Daily note on Jakarta").
+fn as_sentence(text: &str) -> String {
+    let text = text.trim_end();
+    if text.is_empty() || text.ends_with(['.', '!', '?', ':']) {
+        text.to_owned()
+    } else {
+        format!("{text}.")
+    }
 }
 
 /// [`revise_agent`] with an explicit model.

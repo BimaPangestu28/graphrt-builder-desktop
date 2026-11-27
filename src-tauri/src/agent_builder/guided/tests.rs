@@ -243,7 +243,10 @@ async fn a_plan_that_forgets_to_send_is_sent_back_once_then_drafted_in_full() {
 #[tokio::test]
 async fn a_schedule_the_job_asks_for_is_saved_turned_off() {
     let db = Database::open_in_memory().unwrap();
-    let plan = wikipedia_plan().replace(NO_SCHEDULE, r#""schedule": {"repeat": "weekdays", "hour": 7}"#);
+    // A summary without a full stop, as small models write it.
+    let plan = wikipedia_plan()
+        .replace(NO_SCHEDULE, r#""schedule": {"repeat": "weekdays", "hour": 7}"#)
+        .replace("Summarizes a Wikipedia page.", "Summarizes a Wikipedia page");
     let (_mock, builder) = local_builder(&[&plan]);
 
     let agent = build_agent_with_model(
@@ -262,6 +265,7 @@ async fn a_schedule_the_job_asks_for_is_saved_turned_off() {
     assert_eq!(trigger.inputs, serde_json::json!({"topic": "Jakarta"}));
     let explanation = explanation_of(&db, &agent);
     assert!(explanation.contains("Monday to Friday at 07:00") && explanation.contains("turned off"), "{explanation}");
+    assert!(!explanation.contains(". .") && explanation.contains(". A schedule"), "{explanation}");
 }
 
 #[tokio::test]
