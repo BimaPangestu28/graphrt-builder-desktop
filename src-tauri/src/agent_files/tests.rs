@@ -783,3 +783,161 @@ fn the_webview_sees_cards_in_camel_case() {
         json!({ "name": "a.exe", "card": null, "problem": "unsupported_kind" })
     );
 }
+
+// --- Cleanup: only what no message shows ---
+
+use super::cleanup::{CleanupReport, ConversationFileUse, UNSENT_GRACE};
+
+fn now_ms() -> u64 {
+    u64::try_from(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis()).unwrap()
+}
+
+/// A moment after the wait for unsent attachments is over.
+fn after_the_grace() -> u64 {
+    now_ms() + u64::try_from(UNSENT_GRACE.as_millis()).unwrap() + 60_000
+}
+
+async fn write_file(fixture: &Fixture, scope: &FileScope, path: &str) -> String {
+    let view = fixture.files.view(scope).unwrap();
+    let stored = view.write(&WorkspacePath::parse(path).unwrap(), b"x".to_vec(), false).await.unwrap();
+    view.file_value(&stored).reference.unwrap()
+}
+
+async fn paths_in(fixture: &Fixture, scope: &FileScope) -> Vec<String> {
+    let view = fixture.files.view(scope).unwrap();
+    view.list(None, 100).await.unwrap().entries.into_iter().map(|entry| entry.path.to_string()).collect()
+}
+
+fn file_use(conversation_id: &str, is_closed: bool, referenced: &[&String]) -> ConversationFileUse {
+    ConversationFileUse {
+        conversation_id: conversation_id.to_owned(),
+        is_closed,
+        referenced: referenced.iter().map(|reference| (*reference).clone()).collect(),
+    }
+}
+
+#[tokio::test]
+async fn folder_names_follow_the_runtime() {
+    let fixture = Fixture::new();
+    write_file(&fixture, &FileScope::conversation("agent-1", "chat-1"), "note.txt").await;
+    let expected = fixture
+        .workspace_root()
+        .join(cleanup::folder_name("agent-1"))
+        .join("scopes")
+        .join(cleanup::folder_name("chat-1"))
+        .join("note.txt");
+    assert!(expected.is_file(), "graphrt keeps a conversation's files where the cleanup looks for them");
+}
+
+#[tokio::test]
+async fn an_attachment_that_was_never_sent_goes_after_a_day_and_a_sent_one_stays() {
+    let fixture = Fixture::new();
+    let scope = FileScope::conversation("agent-1", "chat-1");
+    let sent = write_file(&fixture, &scope, "uploads/sent.pdf").await;
+    write_file(&fixture, &scope, "uploads/never-sent.pdf").await;
+    let open_chat = file_use("chat-1", false, &[&sent]);
+
+    // Attached a moment ago: it may still be sent.
+    let report = fixture.files.clean_conversation("agent-1", &open_chat, now_ms()).await.unwrap();
+    assert_eq!(report, CleanupReport::default());
+    assert_eq!(paths_in(&fixture, &scope).await, ["uploads/never-sent.pdf", "uploads/sent.pdf"]);
+
+    // A day later only the one no message shows is gone.
+    let report = fixture.files.clean_conversation("agent-1", &open_chat, after_the_grace()).await.unwrap();
+    assert_eq!(report.files, 1);
+    assert_eq!(paths_in(&fixture, &scope).await, ["uploads/sent.pdf"]);
+    assert!(fixture.files.locate("agent-1", &sent).await.is_ok());
+}
+
+#[tokio::test]
+async fn a_closed_conversation_keeps_exactly_what_its_messages_show() {
+    let fixture = Fixture::new();
+    let scope = FileScope::conversation("agent-1", "chat-1");
+    let attachment = write_file(&fixture, &scope, "uploads/order.csv").await;
+    let handed_back = write_file(&fixture, &scope, "reports/summary.pdf").await;
+    write_file(&fixture, &scope, "notes/scratch.md").await;
+    write_file(&fixture, &scope, "uploads/just-attached.pdf").await;
+
+    // While the chat is open the bot keeps its own notes.
+    let open_chat = file_use("chat-1", false, &[&attachment, &handed_back]);
+    assert_eq!(fixture.files.clean_conversation("agent-1", &open_chat, now_ms()).await.unwrap().files, 0);
+    assert_eq!(paths_in(&fixture, &scope).await.len(), 4);
+
+    // Closed: the notes go at once, an attachment that may still be sent waits its day.
+    let closed_chat = file_use("chat-1", true, &[&attachment, &handed_back]);
+    assert_eq!(fixture.files.clean_conversation("agent-1", &closed_chat, now_ms()).await.unwrap().files, 1);
+    assert_eq!(
+        paths_in(&fixture, &scope).await,
+        ["reports/summary.pdf", "uploads/just-attached.pdf", "uploads/order.csv"]
+    );
+    assert_eq!(fixture.files.clean_conversation("agent-1", &closed_chat, after_the_grace()).await.unwrap().files, 1);
+    assert_eq!(paths_in(&fixture, &scope).await, ["reports/summary.pdf", "uploads/order.csv"]);
+
+    // However often it runs, and however late, what a message shows stays downloadable.
+    let much_later = after_the_grace() * 2;
+    assert_eq!(fixture.files.clean_conversation("agent-1", &closed_chat, much_later).await.unwrap().files, 0);
+    let destination = fixture.home.path().join("summary.pdf");
+    fixture.files.save_copy("agent-1", &handed_back, &destination).await.unwrap();
+    assert!(fixture.files.locate("agent-1", &attachment).await.is_ok());
+}
+
+#[tokio::test]
+async fn a_reference_cannot_make_the_cleanup_spare_or_remove_another_chats_file() {
+    let fixture = Fixture::new();
+    let chat_a = FileScope::conversation("agent-1", "chat-a");
+    let chat_b = FileScope::conversation("agent-1", "chat-b");
+    let in_a = write_file(&fixture, &chat_a, "uploads/a.pdf").await;
+    write_file(&fixture, &chat_b, "uploads/b.pdf").await;
+    // Chat B's messages name chat A's file and a path outside: neither protects B's own file,
+    // and cleaning B touches nothing of A.
+    let escape = "workspace:../../uploads/a.pdf".to_owned();
+    let closed_b = file_use("chat-b", true, &[&in_a, &escape]);
+    assert_eq!(fixture.files.clean_conversation("agent-1", &closed_b, after_the_grace()).await.unwrap().files, 1);
+    assert!(paths_in(&fixture, &chat_b).await.is_empty());
+    assert_eq!(paths_in(&fixture, &chat_a).await, ["uploads/a.pdf"]);
+}
+
+#[tokio::test]
+async fn folders_of_conversations_and_agents_that_are_gone_are_removed_and_nothing_else() {
+    let fixture = Fixture::new();
+    let kept = write_file(&fixture, &FileScope::conversation("agent-1", "chat-kept"), "uploads/kept.pdf").await;
+    write_file(&fixture, &FileScope::conversation("agent-1", "chat-gone"), "uploads/gone.pdf").await;
+    let run_file = write_file(&fixture, &FileScope::agent("agent-1"), "reports/run.pdf").await;
+    write_file(&fixture, &FileScope::agent("agent-gone"), "reports/old.pdf").await;
+
+    // Things in the same folders that are not ours: a folder with another name, a file, and a
+    // link named like one of our folders that points outside.
+    let outside = fixture.home.path().join("outside");
+    std::fs::create_dir(&outside).unwrap();
+    std::fs::write(outside.join("precious.txt"), b"keep me").unwrap();
+    let scopes_dir = fixture.workspace_root().join(cleanup::folder_name("agent-1")).join("scopes");
+    std::fs::create_dir(scopes_dir.join("not-ours")).unwrap();
+    std::fs::create_dir(fixture.workspace_root().join("not-ours")).unwrap();
+    std::fs::write(fixture.workspace_root().join("0123456789abcdef0123456789abcdef"), b"a file").unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&outside, scopes_dir.join("fedcba9876543210fedcba9876543210")).unwrap();
+
+    let conversations = [file_use("chat-kept", false, &[&kept])];
+    let report = fixture.files.clean_agent("agent-1", &conversations, now_ms()).await.unwrap();
+    assert_eq!(report, CleanupReport { files: 0, conversation_folders: 1, agent_folders: 0 });
+    let report = fixture.files.remove_folders_of_missing_agents(&["agent-1".to_owned()]).await;
+    assert_eq!(report, CleanupReport { files: 0, conversation_folders: 0, agent_folders: 1 });
+
+    assert!(fixture.files.locate("agent-1", &kept).await.is_ok());
+    assert!(fixture.files.locate("agent-1", &run_file).await.is_ok(), "files of the agent's runs are not touched");
+    assert!(!scopes_dir.join(cleanup::folder_name("chat-gone")).exists());
+    assert!(!fixture.workspace_root().join(cleanup::folder_name("agent-gone")).exists());
+    assert!(scopes_dir.join("not-ours").is_dir() && fixture.workspace_root().join("not-ours").is_dir());
+    assert!(fixture.workspace_root().join("0123456789abcdef0123456789abcdef").is_file());
+    assert_eq!(std::fs::read(outside.join("precious.txt")).unwrap(), b"keep me", "a link is never followed");
+}
+
+#[tokio::test]
+async fn cleaning_an_agent_without_files_creates_nothing() {
+    let fixture = Fixture::new();
+    let conversations = [file_use("chat-1", true, &[])];
+    let report = fixture.files.clean_agent("agent-1", &conversations, after_the_grace()).await.unwrap();
+    assert!(report.is_empty());
+    assert!(fixture.files.remove_folders_of_missing_agents(&[]).await.is_empty());
+    assert!(!fixture.workspace_root().exists());
+}

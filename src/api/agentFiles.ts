@@ -23,17 +23,18 @@ export function getAgentFileAbilities(agentId: string): Promise<FileAbilities> {
  * @param conversationId - The chat the files are for (string)
  * @param title - The dialog's title (string)
  * @param alreadyAttached - How many files the message holds so far (number)
+ * @param asOwner - The files are for the owner's own reply, not a customer's message (boolean, default false)
  * @returns One outcome per chosen file, empty when the dialog was closed (AttachOutcome[])
  */
-export function pickChatAttachments(conversationId: string, title: string, alreadyAttached: number): Promise<AttachOutcome[]> {
+export function pickChatAttachments(conversationId: string, title: string, alreadyAttached: number, asOwner = false): Promise<AttachOutcome[]> {
   if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleAgentFilesBackend.pickChatAttachments(conversationId, alreadyAttached)
-  return callBackend('pick_chat_attachments', { conversationId, title, alreadyAttached })
+  return callBackend('pick_chat_attachments', { conversationId, title, alreadyAttached, asOwner })
 }
 
-/** Attaches files dropped onto the window (`paths` as the drop reported them). */
-export function attachDroppedChatFiles(conversationId: string, paths: string[], alreadyAttached: number): Promise<AttachOutcome[]> {
+/** Attaches files dropped onto the window (`paths` as the drop reported them); `asOwner` as in {@link pickChatAttachments}. */
+export function attachDroppedChatFiles(conversationId: string, paths: string[], alreadyAttached: number, asOwner = false): Promise<AttachOutcome[]> {
   if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleAgentFilesBackend.attachDroppedChatFiles(conversationId, paths, alreadyAttached)
-  return callBackend('attach_dropped_chat_files', { conversationId, paths, alreadyAttached })
+  return callBackend('attach_dropped_chat_files', { conversationId, paths, alreadyAttached, asOwner })
 }
 
 /** Removes an attached file the person took off the message before sending it. */

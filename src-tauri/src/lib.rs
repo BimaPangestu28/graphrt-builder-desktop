@@ -167,6 +167,7 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
     let learning = Arc::new(learning::LearningService::new(&data_dir, db.clone(), credentials.clone()));
     learning.activate();
     mcp::publish_from_database(&db);
+    conversations::file_cleanup::spawn(conversations.clone());
     engine::spawn_approval_expiry(runs.clone());
     let scheduler = scheduler::spawn(db.clone(), runs.clone());
     desktop::daily_summary::spawn(db.clone(), notifier.clone());

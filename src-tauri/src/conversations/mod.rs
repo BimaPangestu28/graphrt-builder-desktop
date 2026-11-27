@@ -33,6 +33,7 @@
 pub mod attachments;
 pub mod bot;
 pub mod channel;
+pub mod file_cleanup;
 #[cfg(test)]
 mod file_tests;
 pub mod models;
@@ -313,14 +314,7 @@ impl ConversationManager {
         answer: Option<CardAnswer>,
     ) -> AppResult<ConversationDetail> {
         let mut conversation = self.db.get_conversation(conversation_id)?;
-        let attached = match (&self.agent_files, attachment_references.is_empty()) {
-            (_, true) => Vec::new(),
-            (Some(agent_files), false) => {
-                let scope = FileScope::conversation(&conversation.agent_id, conversation_id);
-                agent_files.attached_files(&scope, attachment_references).await?
-            }
-            (None, false) => return Err(AppError::InvalidInput("this chat does not take files".into())),
-        };
+        let attached = self.attached_files(&conversation, attachment_references).await?;
         let customer_turn = CustomerTurn::new(text, attached);
         if conversation.status == ConversationStatus::Closed {
             conversation = self.change_status(&conversation, ConversationStatus::BotAnswering, None)?;
@@ -387,13 +381,47 @@ impl ConversationManager {
     /// # Errors
     /// `NotFound` for an unknown conversation; `InvalidInput` for blank text or a closed chat.
     pub async fn send_operator_reply(&self, conversation_id: &str, text: &str) -> AppResult<Message> {
-        if text.trim().is_empty() {
+        self.send_operator_reply_with_files(conversation_id, text, &[]).await
+    }
+
+    /// [`Self::send_operator_reply`] with files the owner attached: `attachment_references`
+    /// name files stored for this conversation (`AgentFiles::attach_host_files`). The text
+    /// may be blank when there are files.
+    ///
+    /// # Errors
+    /// As [`Self::send_operator_reply`], plus `InvalidInput` when a reference names no file
+    /// attached to this conversation, or there are too many.
+    pub async fn send_operator_reply_with_files(
+        &self,
+        conversation_id: &str,
+        text: &str,
+        attachment_references: &[String],
+    ) -> AppResult<Message> {
+        if text.trim().is_empty() && attachment_references.is_empty() {
             return Err(AppError::InvalidInput("write a reply first".into()));
         }
         let current = self.db.get_conversation(conversation_id)?;
+        let attached = self.attached_files(&current, attachment_references).await?;
+        let reply = CustomerTurn::new(text, attached);
         let conversation =
             if current.status == ConversationStatus::YouReplying { current } else { self.take_over(conversation_id)? };
-        self.deliver_and_store(&conversation, MessageAuthor::Operator, text, json!({}), &[]).await
+        self.deliver_and_store(&conversation, MessageAuthor::Operator, &reply.stored_text, reply.metadata, &[]).await
+    }
+
+    /// The files `references` name among the attachments of `conversation`.
+    async fn attached_files(
+        &self,
+        conversation: &Conversation,
+        references: &[String],
+    ) -> AppResult<Vec<crate::agent_files::AttachedFile>> {
+        match (&self.agent_files, references.is_empty()) {
+            (_, true) => Ok(Vec::new()),
+            (Some(agent_files), false) => {
+                let scope = FileScope::conversation(&conversation.agent_id, &conversation.id);
+                agent_files.attached_files(&scope, references).await
+            }
+            (None, false) => Err(AppError::InvalidInput("this chat does not take files".into())),
+        }
     }
 
     /// Closes the chat. A later customer message reopens it.
@@ -407,10 +435,55 @@ impl ConversationManager {
         }
         let conversation = self.change_status(&conversation, ConversationStatus::Closed, None)?;
         self.add_system_message(&conversation, "Chat closed", json!({}))?;
+        self.clean_closed_conversation_soon(conversation_id);
         if let Ok(mut turn_locks) = self.turn_locks.lock() {
             turn_locks.remove(conversation_id);
         }
         Ok(conversation)
+    }
+
+    /// Removes an attached file the person took off a message before sending it. A file a
+    /// message of the conversation already shows is left alone (and that is not an error).
+    ///
+    /// # Errors
+    /// `NotFound` for an unknown conversation; `InvalidInput` when `reference` names no
+    /// attachment of it; whatever reading the database reports (nothing is removed then).
+    pub async fn discard_attachment(&self, conversation_id: &str, reference: &str) -> AppResult<()> {
+        let conversation = self.db.get_conversation(conversation_id)?;
+        let Some(agent_files) = &self.agent_files else { return Ok(()) };
+        let file_use = self.db.conversation_file_use(Some(conversation_id))?;
+        let is_shown =
+            file_use.values().flatten().any(|file_use| file_use.referenced.iter().any(|named| named == reference));
+        if is_shown {
+            return Ok(());
+        }
+        agent_files
+            .discard_attachment(&FileScope::conversation(&conversation.agent_id, conversation_id), reference)
+            .await
+    }
+
+    /// Removes attachments that were never sent and leftovers of closed conversations
+    /// (`crate::agent_files::cleanup`). A file a message still shows is never removed.
+    ///
+    /// # Errors
+    /// Whatever reading the database reports; nothing is removed then.
+    pub async fn clean_up_files(&self) -> AppResult<crate::agent_files::cleanup::CleanupReport> {
+        match &self.agent_files {
+            Some(agent_files) => file_cleanup::clean_everything(&self.db, agent_files).await,
+            None => Ok(Default::default()),
+        }
+    }
+
+    /// Cleans the files of a conversation that was just closed, in the background: closing
+    /// a chat never waits for it or fails because of it.
+    fn clean_closed_conversation_soon(&self, conversation_id: &str) {
+        let Some(agent_files) = self.agent_files.clone() else { return };
+        let (db, conversation_id) = (self.db.clone(), conversation_id.to_owned());
+        tauri::async_runtime::spawn(async move {
+            if let Err(error) = file_cleanup::clean_one(&db, &agent_files, &conversation_id).await {
+                log::warn!("could not clean up the files of closed conversation {conversation_id}: {error}");
+            }
+        });
     }
 
     /// The Inbox "Bot is answering" switch. While off, customer messages on real

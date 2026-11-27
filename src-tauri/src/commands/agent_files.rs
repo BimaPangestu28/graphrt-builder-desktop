@@ -29,19 +29,29 @@ pub fn get_agent_file_abilities(state: State<'_, AppState>, agent_id: String) ->
     Ok(FlowFileUse::of(&state.db.get_agent(&agent_id)?.flow_yaml).abilities())
 }
 
-/// The agent, the scope and the abilities of a conversation's attachments.
-fn chat_scope(state: &AppState, conversation_id: &str) -> AppResult<(FileScope, FileAbilities)> {
+/// What the owner can attach to their own reply: documents and pictures, whatever the
+/// chatbot itself reads (the file is for the customer, not for the bot).
+const OWNER_ATTACHMENTS: FileAbilities = FileAbilities { reads_files: true, sees_pictures: true, makes_files: false };
+
+/// The scope of a conversation's attachments and which kinds it takes. A customer's
+/// attachment (`as_owner` false) must be something the chatbot's steps can use.
+fn chat_scope(state: &AppState, conversation_id: &str, as_owner: bool) -> AppResult<(FileScope, FileAbilities)> {
     let conversation = state.db.get_conversation(conversation_id)?;
     let agent = state.db.get_agent(&conversation.agent_id)?;
+    let scope = FileScope::conversation(&agent.id, conversation_id);
+    if as_owner {
+        return Ok((scope, OWNER_ATTACHMENTS));
+    }
     let abilities = FlowFileUse::of(&agent.flow_yaml).abilities();
     if !abilities.takes_attachments() {
         return Err(AppError::InvalidInput("this chatbot does not take files yet".into()));
     }
-    Ok((FileScope::conversation(&agent.id, conversation_id), abilities))
+    Ok((scope, abilities))
 }
 
 /// Opens the system file dialog and attaches what the person chose to the conversation.
 /// Returns one outcome per chosen file; an empty list when the dialog was closed.
+/// `as_owner` is true for the owner's own reply in the Inbox.
 #[tauri::command]
 pub async fn pick_chat_attachments(
     window: Window,
@@ -49,8 +59,9 @@ pub async fn pick_chat_attachments(
     conversation_id: String,
     title: String,
     already_attached: usize,
+    as_owner: Option<bool>,
 ) -> AppResult<Vec<AttachOutcome>> {
-    let (scope, abilities) = chat_scope(&state, &conversation_id)?;
+    let (scope, abilities) = chat_scope(&state, &conversation_id, as_owner.unwrap_or(false))?;
     let (sender, receiver) = tokio::sync::oneshot::channel();
     window.dialog().file().set_parent(&window).set_title(dialog_title(&title)).pick_files(move |chosen| {
         // The receiver is gone only when the command was dropped: nothing to tell.
@@ -73,22 +84,22 @@ pub async fn attach_dropped_chat_files(
     conversation_id: String,
     paths: Vec<String>,
     already_attached: usize,
+    as_owner: Option<bool>,
 ) -> AppResult<Vec<AttachOutcome>> {
-    let (scope, abilities) = chat_scope(&state, &conversation_id)?;
+    let (scope, abilities) = chat_scope(&state, &conversation_id, as_owner.unwrap_or(false))?;
     let paths = paths.into_iter().map(PathBuf::from).collect();
     state.agent_files.attach_host_files(&scope, abilities, paths, PathOrigin::Dropped, already_attached).await
 }
 
-/// Removes an attached file the person took off the message before sending it.
+/// Removes an attached file the person took off the message before sending it. A file a
+/// message already shows is never removed this way.
 #[tauri::command]
 pub async fn discard_chat_attachment(
     state: State<'_, AppState>,
     conversation_id: String,
     reference: String,
 ) -> AppResult<()> {
-    let conversation = state.db.get_conversation(&conversation_id)?;
-    let scope = FileScope::conversation(&conversation.agent_id, &conversation_id);
-    state.agent_files.discard_attachment(&scope, &reference).await
+    state.conversations.discard_attachment(&conversation_id, &reference).await
 }
 
 /// The files a run made, for the Run result screen.

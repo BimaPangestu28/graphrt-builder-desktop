@@ -5,6 +5,13 @@ import { toErrorMessage } from '@/lib/errors'
 import { messages } from '@/i18n'
 
 const noAbilities: FileAbilities = { readsFiles: false, seesPictures: false, makesFiles: false }
+/** The owner can send documents and pictures, whatever the chatbot itself reads. */
+const ownerAbilities: FileAbilities = { readsFiles: true, seesPictures: true, makesFiles: false }
+
+export interface ChatAttachmentsOptions {
+  /** The files are for the owner's own reply (Inbox), not for a customer's message (Try it). */
+  asOwner?: boolean
+}
 
 /** The files waiting to be sent with the next message of one chat, and how to change them. */
 export interface ChatAttachments {
@@ -42,14 +49,15 @@ function refusalNotices(outcomes: AttachOutcome[]): string[] {
  *
  * @param agentId - The chat's agent (string)
  * @param conversationId - The chat, or null while it is being opened (string | null)
+ * @param options.asOwner - The files are for the owner's own reply (boolean, default false)
  * @returns The pending files and the actions on them (ChatAttachments)
  *
  * @example
  * const attachments = useChatAttachments(agentId, conversationId)
  * <button onClick={attachments.choose}>Attach files</button>
  */
-export function useChatAttachments(agentId: string, conversationId: string | null): ChatAttachments {
-  const [abilities, setAbilities] = useState<FileAbilities>(noAbilities)
+export function useChatAttachments(agentId: string, conversationId: string | null, { asOwner = false }: ChatAttachmentsOptions = {}): ChatAttachments {
+  const [abilities, setAbilities] = useState<FileAbilities>(asOwner ? ownerAbilities : noAbilities)
   const [pending, setPending] = useState<FileCard[]>([])
   const [notices, setNotices] = useState<string[]>([])
   const [isAttaching, setIsAttaching] = useState(false)
@@ -59,6 +67,10 @@ export function useChatAttachments(agentId: string, conversationId: string | nul
   conversationIdRef.current = conversationId
 
   useEffect(() => {
+    if (asOwner) {
+      setAbilities(ownerAbilities)
+      return
+    }
     let isCurrent = true
     setAbilities(noAbilities)
     getAgentFileAbilities(agentId)
@@ -69,12 +81,20 @@ export function useChatAttachments(agentId: string, conversationId: string | nul
     return () => {
       isCurrent = false
     }
-  }, [agentId])
+  }, [agentId, asOwner])
 
   useEffect(() => {
     setPending([])
     setNotices([])
     setIsAttaching(false)
+    // Leaving the chat (another chat, Reset, another screen) with files still waiting: they
+    // will not be sent, so they are removed instead of staying behind.
+    return () => {
+      if (!conversationId) return
+      for (const card of pendingRef.current) {
+        discardChatAttachment(conversationId, card.reference).catch((rawError: unknown) => console.error('Could not remove an attached file', rawError))
+      }
+    }
   }, [conversationId])
 
   const takesFiles = abilities.readsFiles || abilities.seesPictures
@@ -108,15 +128,15 @@ export function useChatAttachments(agentId: string, conversationId: string | nul
   )
 
   const choose = useCallback(() => {
-    attach((forConversationId, alreadyAttached) => pickChatAttachments(forConversationId, messages().files.attachDialogTitle, alreadyAttached))
-  }, [attach])
+    attach((forConversationId, alreadyAttached) => pickChatAttachments(forConversationId, messages().files.attachDialogTitle, alreadyAttached, asOwner))
+  }, [attach, asOwner])
 
   const addDropped = useCallback(
     (paths: string[]) => {
       if (paths.length === 0) return
-      attach((forConversationId, alreadyAttached) => attachDroppedChatFiles(forConversationId, paths, alreadyAttached))
+      attach((forConversationId, alreadyAttached) => attachDroppedChatFiles(forConversationId, paths, alreadyAttached, asOwner))
     },
-    [attach],
+    [attach, asOwner],
   )
 
   const remove = useCallback((card: FileCard) => {
@@ -129,6 +149,9 @@ export function useChatAttachments(agentId: string, conversationId: string | nul
 
   const takeForSending = useCallback(() => {
     const taken = pendingRef.current
+    // Emptied at once, not on the next render: a file that is being sent must not be removed
+    // as "left behind" when the chat is left in the same moment.
+    pendingRef.current = []
     setPending([])
     setNotices([])
     return taken
