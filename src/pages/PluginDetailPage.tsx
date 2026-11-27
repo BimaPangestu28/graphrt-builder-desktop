@@ -1,3 +1,4 @@
+import { useId } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { AppShell, PageFrame, pageTitleClassName } from '@/components/layout'
 import { listPluginCatalogSteps } from '@/api/plugins'
@@ -24,6 +25,7 @@ import {
 } from './plugins/PluginDetailSections'
 import { buildPluginListItems, describeCommunityInstallNote, pluginInstallTrustNote, describeMaturity, describePluginSource, describePluginStatus, type PluginListItem } from './plugins/pluginDisplay'
 import { PluginIcon } from './plugins/PluginIcon'
+import { PluginNewerAppNotice } from './plugins/PluginNewerAppNotice'
 import { pluginRuntimeInstallNote } from './plugins/PluginRuntimeCard'
 import { usePluginUsers } from './plugins/usePluginUsers'
 import { messages } from '@/i18n'
@@ -42,6 +44,15 @@ function BackLink() {
 }
 
 function HeaderActions({ item, plugins, pluginRuntime }: { item: PluginListItem; plugins: PluginsState; pluginRuntime: PluginRuntimeState }) {
+  const newerAppNoticeId = useId()
+  if (!item.installed && item.needsNewerApp) {
+    return (
+      <div className="ml-auto flex max-w-[300px] flex-col items-end gap-2">
+        <PluginInstallButton item={item} plugins={plugins} size="md" describedBy={newerAppNoticeId} />
+        <PluginNewerAppNotice id={newerAppNoticeId} pluginLabel={item.displayName} needed={item.needsNewerApp} align="end" />
+      </div>
+    )
+  }
   if (!item.installed) {
     const communityNote = describeCommunityInstallNote(item)
     const needsPluginRuntime = isPluginRuntimeMissing(pluginRuntime)
@@ -59,10 +70,13 @@ function HeaderActions({ item, plugins, pluginRuntime }: { item: PluginListItem;
   return (
     <div className="ml-auto flex max-w-[320px] flex-col items-end gap-1.5">
       <div className="flex flex-wrap items-center justify-end gap-2">
-        {item.updateAvailable && <PluginUpdateButton item={item} plugins={plugins} size="md" />}
+        {item.updateAvailable && <PluginUpdateButton item={item} plugins={plugins} size="md" describedBy={item.needsNewerApp ? newerAppNoticeId : undefined} />}
         <PluginRemoveButton item={item} plugins={plugins} size="md" />
       </div>
-      {item.updateAvailable && item.updateNeedsApproval && (
+      {item.updateAvailable && item.needsNewerApp && (
+        <PluginNewerAppNotice id={newerAppNoticeId} pluginLabel={item.displayName} needed={item.needsNewerApp} waitingUpdateVersion={item.version} align="end" />
+      )}
+      {item.updateAvailable && item.updateNeedsApproval && !item.needsNewerApp && (
         <span className="text-right text-[12px] leading-normal text-amber-strong">
           {messages().plugins.updateNeedsApproval(item.version)}
         </span>

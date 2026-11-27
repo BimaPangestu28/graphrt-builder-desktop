@@ -7,6 +7,13 @@ interface PluginActionProps {
   item: PluginListItem
   plugins: PluginsState
   size?: ButtonSize
+  /** `id` of the note that says why the button is disabled (see `PluginNewerAppNotice`). */
+  describedBy?: string
+}
+
+/** The plugin needs a newer app: nothing can be installed until the app is updated. */
+function waitsForNewerApp(item: PluginListItem): boolean {
+  return Boolean(item.needsNewerApp)
 }
 
 function isBusy(item: PluginListItem, plugins: PluginsState): boolean {
@@ -23,14 +30,15 @@ interface PluginInstallButtonProps extends PluginActionProps {
  * Installs right away: render it only where what the plugin asks for is on screen next
  * to it (the detail page, or the card's approval step), so the click is an informed OK.
  */
-export function PluginInstallButton({ item, plugins, size = 'sm', ariaLabel, withPluginRuntime = false }: PluginInstallButtonProps) {
+export function PluginInstallButton({ item, plugins, size = 'sm', ariaLabel, withPluginRuntime = false, describedBy }: PluginInstallButtonProps) {
   const t = useT().plugins
   const isInstalling = plugins.operationByName[item.name] === 'installing'
   return (
     <Button
       size={size}
       aria-label={ariaLabel ?? t.installPlugin(item.displayName)}
-      disabled={isBusy(item, plugins)}
+      aria-describedby={describedBy}
+      disabled={isBusy(item, plugins) || waitsForNewerApp(item)}
       onClick={() => void plugins.install(item.name, item.permissions, { withPluginRuntime })}
     >
       {isInstalling ? t.installing : t.install}
@@ -38,11 +46,17 @@ export function PluginInstallButton({ item, plugins, size = 'sm', ariaLabel, wit
   )
 }
 
-export function PluginUpdateButton({ item, plugins, size = 'sm' }: PluginActionProps) {
+export function PluginUpdateButton({ item, plugins, size = 'sm', describedBy }: PluginActionProps) {
   const t = useT().plugins
   const isUpdating = plugins.operationByName[item.name] === 'updating'
   return (
-    <Button size={size} aria-label={t.updatePlugin(item.displayName)} disabled={isBusy(item, plugins)} onClick={() => void plugins.update(item.name)}>
+    <Button
+      size={size}
+      aria-label={t.updatePlugin(item.displayName)}
+      aria-describedby={describedBy}
+      disabled={isBusy(item, plugins) || waitsForNewerApp(item)}
+      onClick={() => void plugins.update(item.name)}
+    >
       {isUpdating ? t.updating : t.updateTo(item.version)}
     </Button>
   )

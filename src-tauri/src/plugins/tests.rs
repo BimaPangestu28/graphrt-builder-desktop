@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use futures::future::BoxFuture;
 
+use super::app_requirement::APP_VERSION;
 use super::download::{Downloader, ProgressCallback};
 use super::events::PluginEventSink;
 use super::models::{PluginEvent, PluginInstallStage};
@@ -17,6 +18,7 @@ use crate::error::{AppError, AppResult};
 use crate::node_runtime::NodeRuntime;
 use crate::storage::Database;
 
+mod app_requirement;
 mod approval;
 mod auto_update;
 mod catalog_plugins;
@@ -591,7 +593,7 @@ async fn readme_links_come_from_the_installed_plugin_or_the_catalog() {
 
 #[test]
 fn catalog_view_carries_the_warning_maturity_and_tos_risk() {
-    let catalog = super::catalog::catalog_view(&not_installed_catalog(), &[], Default::default());
+    let catalog = super::catalog::catalog_view(&not_installed_catalog(), &[], Default::default(), APP_VERSION);
     let mail = catalog.plugins.iter().find(|entry| entry.name == "fixture-mail").unwrap();
     assert_eq!(mail.warning.as_deref(), Some("Sending bulk mail may get the account blocked."));
     assert_eq!(mail.status.as_deref(), Some("beta"));

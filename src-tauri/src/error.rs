@@ -48,6 +48,25 @@ pub enum AppError {
     /// The user stopped a running builder change ("Stop the builder"); nothing was saved.
     #[error("Stopped by you")]
     Stopped,
+    /// A plugin needs a newer version of this app (see `plugins::app_requirement`); nothing
+    /// was installed. `min_version` is the version it needs when known; `unknown_feature` is
+    /// what its manifest uses that this version does not know (plugins from a folder or archive).
+    #[error("{}", newer_app_message(.min_version.as_deref(), .unknown_feature.as_deref()))]
+    NeedsNewerApp { min_version: Option<String>, unknown_feature: Option<String> },
+}
+
+/// "This plugin needs Graphrt Desktop 0.3.0 or newer. ..." in plain words; the screens show
+/// their own translated text from the error's `details`.
+fn newer_app_message(min_version: Option<&str>, unknown_feature: Option<&str>) -> String {
+    let app_version = crate::plugins::app_requirement::APP_VERSION;
+    let needs = match min_version {
+        Some(min_version) => format!("This plugin needs Graphrt Desktop {min_version} or newer"),
+        None => "This plugin was made for a newer version of Graphrt Desktop".to_owned(),
+    };
+    let detail = unknown_feature
+        .map(|feature| format!(" It uses `{feature}`, which this version does not know."))
+        .unwrap_or_default();
+    format!("{needs}. You have {app_version}. Update Graphrt Desktop, then try again.{detail}")
 }
 
 fn first_problem_message(problems: &[crate::agent_graph::GraphProblem]) -> String {
@@ -80,6 +99,7 @@ impl AppError {
             Self::BuilderBusy => "builder_busy",
             Self::InvalidGraph(_) => "invalid_graph",
             Self::Stopped => "stopped",
+            Self::NeedsNewerApp { .. } => "needs_newer_app",
         }
     }
 
@@ -92,6 +112,11 @@ impl AppError {
             Self::InvalidGraph(problems) => {
                 serde_json::to_value(problems).ok().map(|problems| serde_json::json!({ "problems": problems }))
             }
+            Self::NeedsNewerApp { min_version, unknown_feature } => Some(serde_json::json!({
+                "minVersion": min_version,
+                "appVersion": crate::plugins::app_requirement::APP_VERSION,
+                "unknownFeature": unknown_feature,
+            })),
             _ => None,
         }
     }

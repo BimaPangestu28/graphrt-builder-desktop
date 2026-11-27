@@ -138,7 +138,7 @@ impl PluginService {
                 }
             },
         };
-        Ok(catalog::catalog_view(&index, &self.catalog_matched_plugins(), origin))
+        Ok(catalog::catalog_view(&index, &self.catalog_matched_plugins(), origin, &self.app_version))
     }
 
     pub(super) fn session_catalog(&self) -> Option<FetchedCatalog> {

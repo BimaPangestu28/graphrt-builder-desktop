@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Badge, Button, buttonClassNames } from '@/components/ui'
 import type { PluginsState } from '@/hooks/usePlugins'
@@ -8,6 +8,7 @@ import { PluginInstallButton, PluginOperationFeedback, PluginUpdateButton } from
 import { pluginCategoryLabels } from './pluginCategories'
 import { describeCommunityInstallNote, describeMaturity, pluginInstallTrustNote, describePermissionChips, describePluginSource, describePluginStatus, describeStepCount, itemNeedsAttention, type PluginListItem } from './pluginDisplay'
 import { PluginIcon } from './PluginIcon'
+import { PluginNewerAppNotice } from './PluginNewerAppNotice'
 import { PluginPermissionChips } from './PluginPermissionList'
 import { pluginRuntimeInstallNote } from './PluginRuntimeCard'
 import { messages, useT } from '@/i18n'
@@ -65,17 +66,27 @@ function OpenLink({ item, listSearch, label, isPrimary }: { item: PluginListItem
   )
 }
 
-function CardActions({ item, plugins, listSearch, onStartInstall }: PluginCatalogCardProps & { onStartInstall: () => void }) {
+interface CardActionsProps extends PluginCatalogCardProps {
+  onStartInstall: () => void
+  /** `id` of the card's "needs a newer app" note, when it shows one. */
+  newerAppNoticeId: string | undefined
+}
+
+function CardActions({ item, plugins, listSearch, onStartInstall, newerAppNoticeId }: CardActionsProps) {
   const t = useT().plugins
   if (!item.installed) {
     return (
       <>
         <OpenLink item={item} listSearch={listSearch} label={t.details} isPrimary={false} />
-        <Button size="sm" aria-label={t.installPlugin(item.displayName)} onClick={onStartInstall}>
+        <Button size="sm" aria-label={t.installPlugin(item.displayName)} aria-describedby={newerAppNoticeId} disabled={Boolean(item.needsNewerApp)} onClick={onStartInstall}>
           {t.install}
         </Button>
       </>
     )
+  }
+  if (item.updateAvailable && item.needsNewerApp) {
+    // The update waits for a newer app; the installed version is opened as usual.
+    return <OpenLink item={item} listSearch={listSearch} label={t.open} isPrimary={false} />
   }
   if (item.updateAvailable && item.updateNeedsApproval) {
     return <OpenLink item={item} listSearch={listSearch} label={t.reviewUpdate} isPrimary />
@@ -101,7 +112,10 @@ export function PluginCatalogCard({ item, plugins, listSearch }: PluginCatalogCa
   const [isApproving, setIsApproving] = useState(false)
   const status = describePluginStatus(item)
   const sourceBadge = describePluginSource(item.source)
-  const showsApproval = isApproving && !item.installed
+  const noticeId = useId()
+  // Too old an app only matters for what the catalog offers: an install, or an update of an installed plugin.
+  const newerAppNeeded = (!item.installed || item.updateAvailable) && item.needsNewerApp ? item.needsNewerApp : null
+  const showsApproval = isApproving && !item.installed && !newerAppNeeded
   return (
     <article aria-label={item.displayName} className="flex h-full flex-col gap-3 rounded-[14px] border border-line bg-surface p-4 transition-shadow hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
       <div className="flex items-start gap-3">
@@ -133,13 +147,16 @@ export function PluginCatalogCard({ item, plugins, listSearch }: PluginCatalogCa
       </div>
       <div className="mt-auto flex flex-col gap-2 border-t border-chip pt-3">
         <PluginOperationFeedback pluginName={item.name} plugins={plugins} />
+        {newerAppNeeded && (
+          <PluginNewerAppNotice id={noticeId} pluginLabel={item.displayName} needed={newerAppNeeded} waitingUpdateVersion={item.installed ? item.version : undefined} />
+        )}
         {showsApproval ? (
           <InstallApproval item={item} plugins={plugins} onCancel={() => setIsApproving(false)} />
         ) : (
           <div className="flex items-center justify-between gap-2">
             <span className="text-[12px] text-muted">{item.nodes.length > 0 ? describeStepCount(item.nodes.length) : messages().plugins.noStepsListed}</span>
             <div className="flex items-center gap-2">
-              <CardActions item={item} plugins={plugins} listSearch={listSearch} onStartInstall={() => setIsApproving(true)} />
+              <CardActions item={item} plugins={plugins} listSearch={listSearch} onStartInstall={() => setIsApproving(true)} newerAppNoticeId={newerAppNeeded ? noticeId : undefined} />
             </div>
           </div>
         )}

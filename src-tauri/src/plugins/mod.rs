@@ -22,6 +22,7 @@
 
 mod action;
 pub mod active;
+pub(crate) mod app_requirement;
 pub(crate) mod archive;
 pub mod auto_update;
 mod catalog;
@@ -172,6 +173,9 @@ pub struct PluginService {
     changes: tokio::sync::Mutex<()>,
     /// The app's service publishes its snapshot process-wide; test services do not.
     publishes_globally: Arc<AtomicBool>,
+    /// This app's version, compared with a catalog entry's `min_app_version`
+    /// (see [`app_requirement`]); tests set another one.
+    app_version: String,
 }
 
 impl std::fmt::Debug for PluginService {
@@ -190,6 +194,13 @@ impl PluginService {
     /// (see [`catalog_signature`]).
     pub fn new(config: PluginServiceConfig) -> Self {
         Self::with_catalog_keys(config, catalog_signature::CatalogKeys::built_in())
+    }
+
+    /// The same service as an app of `app_version` would run it.
+    #[cfg(test)]
+    pub(crate) fn with_app_version(mut self, app_version: &str) -> Self {
+        app_version.clone_into(&mut self.app_version);
+        self
     }
 
     /// [`PluginService::new`] trusting catalogs signed with `catalog_keys` (tests sign
@@ -228,6 +239,7 @@ impl PluginService {
             failed_icon_urls: Mutex::new(HashSet::new()),
             changes: tokio::sync::Mutex::new(()),
             publishes_globally: Arc::new(AtomicBool::new(false)),
+            app_version: app_requirement::APP_VERSION.to_owned(),
         };
         service.catalog_files.remove_obsolete_v1();
         service.reload();
@@ -704,6 +716,14 @@ impl PluginService {
             )));
         }
         let entry = self.catalog_entry(name).await?;
+        if let Some(needed) = app_requirement::newer_app_needed(entry.min_app_version.as_deref(), &self.app_version) {
+            log::info!(
+                "plugin {name} {} needs a newer app ({:?}); nothing was downloaded",
+                entry.version,
+                needed.min_version
+            );
+            return Err(needed.into_error());
+        }
         require_https(&entry.tarball_url)?;
         self.cache_detail_for_install(&entry).await;
         if entry.size_bytes > MAX_TARBALL_BYTES {

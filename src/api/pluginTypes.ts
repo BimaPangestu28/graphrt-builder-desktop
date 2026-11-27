@@ -76,6 +76,17 @@ export interface PluginCatalogEntry {
   updateNeedsApproval: boolean
   /** An MCP preset plugin: the server it adds to Connections > MCP servers (newer catalogs only). */
   mcpServer?: McpServerSummary | null
+  /**
+   * This app is too old for the catalog's version of the plugin: it cannot be installed (or
+   * updated to that version) until the app is updated. Null or missing when the app is new enough.
+   */
+  needsNewerApp?: NewerAppNeeded | null
+}
+
+/** A plugin needs a newer version of the app than this one. */
+export interface NewerAppNeeded {
+  /** The oldest app version that can use the plugin, e.g. "0.3.0"; null when only "a newer one" is known. */
+  minVersion: string | null
 }
 
 /** The remote MCP server an MCP preset plugin adds (no code runs on this computer). */
