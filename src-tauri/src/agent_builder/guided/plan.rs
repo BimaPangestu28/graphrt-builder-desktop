@@ -508,8 +508,8 @@ pub(super) fn normalize_fields(
     Ok(fields)
 }
 
-/// Removes optional recipient fields (`cc`, `bcc`) that repeat a required one: a small
-/// model copies the one address into every recipient field.
+/// Removes optional recipient fields (`cc`, `bcc`) that repeat a required one, and an
+/// `html` body that repeats `text`: a small model copies one value into every field.
 fn drop_repeated_recipients(operation: &OfferedOperation, fields: &mut BTreeMap<String, serde_json::Value>) {
     let is_recipient = |field: &&OperationField| RECIPIENT_FIELDS.contains(&field.name.as_str());
     let required: Vec<serde_json::Value> = operation
@@ -523,6 +523,10 @@ fn drop_repeated_recipients(operation: &OfferedOperation, fields: &mut BTreeMap<
         if fields.get(&field.name).is_some_and(|value| required.contains(value)) {
             fields.remove(&field.name);
         }
+    }
+    // The same written text as `html` too would send plain text as a web page.
+    if fields.contains_key("html") && fields.get("html") == fields.get("text") {
+        fields.remove("html");
     }
 }
 
@@ -1305,6 +1309,21 @@ mod tests {
         )
         .unwrap();
         assert!(!copied.contains_key("cc"), "{copied:?}");
+        let mut with_html = send_email_operation();
+        with_html.fields.push(OperationField {
+            name: "html".into(),
+            description: String::new(),
+            required: false,
+            field_type: FieldType::Text,
+        });
+        let both = normalize_fields(
+            &with_html,
+            r#"{"subject": "S", "to": "{address}", "text": "{step_1}", "html": "{step_1}"}"#,
+            &sending_plan(),
+            2,
+        )
+        .unwrap();
+        assert!(!both.contains_key("html"), "{both:?}");
 
         let fixed_words = normalize_fields(
             &send_email_operation(),
