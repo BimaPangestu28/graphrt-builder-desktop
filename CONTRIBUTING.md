@@ -93,6 +93,9 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
+CI builds a pull request on Linux and Windows. macOS runs on `main` and every night;
+add the `macos` label to a pull request that changes Apple-only code to run it there too.
+
 ## Project layout
 
 ```
