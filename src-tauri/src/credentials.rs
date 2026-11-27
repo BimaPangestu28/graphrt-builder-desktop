@@ -761,7 +761,7 @@ fn read_optional_setting(db: &Database, key: &str) -> Option<String> {
 }
 
 /// The configured Ollama base URL, or [`DEFAULT_OLLAMA_BASE_URL`].
-fn ollama_base_url(db: &Database) -> String {
+pub(crate) fn ollama_base_url(db: &Database) -> String {
     read_optional_setting(db, SETTING_OLLAMA_BASE_URL).unwrap_or_else(|| DEFAULT_OLLAMA_BASE_URL.to_owned())
 }
 

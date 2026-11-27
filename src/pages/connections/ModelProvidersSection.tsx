@@ -13,6 +13,7 @@ import { ConnectionsNotice, ConnectionsSection } from './ConnectionsSection'
 import { LocalCliCard } from './LocalCliCard'
 import { MoreLocalCliSection } from './MoreLocalCliSection'
 import { countConnectedModels, type ModelConnection } from './modelConnections'
+import { OllamaCard } from './OllamaCard'
 import { ProviderKeyForm } from './ProviderKeyForm'
 import { messages } from '@/i18n'
 
@@ -134,6 +135,7 @@ export function ModelProvidersSection({ connections, defaultModel, loadError, on
   }
 
   function renderCard(connection: ModelConnection) {
+    if (connection.provider === 'ollama') return <OllamaCard key={connection.id} connection={connection} defaultModel={defaultModel} onChanged={onKeysChanged} />
     if (editingProvider === connection.provider) {
       return (
         <ProviderKeyForm

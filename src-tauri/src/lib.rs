@@ -55,6 +55,7 @@ pub mod local_cli;
 pub mod mcp;
 pub mod model_catalog;
 pub mod node_runtime;
+pub mod ollama_check;
 pub mod plugin_triggers;
 pub mod plugins;
 pub mod problems;
@@ -258,6 +259,7 @@ pub fn run() {
             commands::credentials::set_api_key,
             commands::credentials::delete_api_key,
             commands::credentials::list_provider_statuses,
+            commands::credentials::check_ollama,
             commands::credentials::get_default_model,
             commands::credentials::set_default_model,
             commands::credentials::set_ollama_base_url,

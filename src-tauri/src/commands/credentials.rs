@@ -48,6 +48,25 @@ pub async fn list_available_models(
     state.model_catalog.list(&state.credentials, &state.db, refresh.unwrap_or(false)).await
 }
 
+/// Whether Ollama can be used right now: asks its local server (a two second wait at
+/// most) and, when it does not answer, looks for the installed app. Never fails for a
+/// missing Ollama; that is one of the answers.
+#[tauri::command]
+pub async fn check_ollama(state: State<'_, AppState>) -> AppResult<crate::ollama_check::OllamaCheck> {
+    let db = state.db.clone();
+    let base_url = run_blocking(move || Ok(credentials::ollama_base_url(&db))).await?;
+    let server_models = state.model_catalog.ask_ollama(&base_url).await;
+    // The app is only looked for when the server is silent: a running server settles it.
+    let is_installed = match server_models {
+        Some(_) => true,
+        None => {
+            run_blocking(|| Ok(crate::ollama_check::is_installed(&local_cli::detect::Locator::from_environment())))
+                .await?
+        }
+    };
+    Ok(crate::ollama_check::summarize(&base_url, server_models, is_installed))
+}
+
 /// Every provider's status. The local CLIs' detection is cached for a few minutes;
 /// `refresh` looks for them again ("Detect again").
 #[tauri::command]

@@ -30,6 +30,8 @@ use crate::storage::Database;
 /// How long a fetched list is reused before asking the provider again.
 pub const CACHE_TTL: Duration = Duration::from_secs(10 * 60);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+/// How long the Connections screen waits for the local Ollama server before calling it not running.
+pub const OLLAMA_CHECK_TIMEOUT: Duration = Duration::from_secs(2);
 /// Model lists are small; anything larger is not a model list.
 const MAX_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
 
@@ -139,6 +141,22 @@ impl ModelCatalog {
         let lists = futures::future::join_all(requests).await;
         // A local Ollama that is not running is not worth an error row.
         Ok(lists.into_iter().filter(|list| !(list.provider == ModelProvider::Ollama && list.error.is_some())).collect())
+    }
+
+    /// Asks the Ollama server at `base_url` for its downloaded models, waiting at most
+    /// [`OLLAMA_CHECK_TIMEOUT`]. `None` when it does not answer (not running, wrong
+    /// address, too slow). Never cached: the answer says whether Ollama runs right now.
+    pub async fn ask_ollama(&self, base_url: &str) -> Option<Vec<AvailableModel>> {
+        self.ask_ollama_within(base_url, OLLAMA_CHECK_TIMEOUT).await
+    }
+
+    async fn ask_ollama_within(&self, base_url: &str, wait: Duration) -> Option<Vec<AvailableModel>> {
+        let url = format!("{}/api/tags", base_url.trim_end_matches('/'));
+        let answer = tokio::time::timeout(wait, self.fetcher.get_json(&url, Vec::new())).await;
+        match answer {
+            Ok(Ok(body)) => Some(parse_models(ModelProvider::Ollama, &body)),
+            Ok(Err(_)) | Err(_) => None,
+        }
     }
 
     /// Drops a provider's cached list, e.g. after its key was replaced or removed.

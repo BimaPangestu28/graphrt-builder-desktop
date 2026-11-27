@@ -161,6 +161,16 @@ pub fn find_binary(cli: LocalCli, locator: &Locator) -> Option<PathBuf> {
     find_binaries(cli, locator).into_iter().next()
 }
 
+/// The first executable called `binary_name` in the locator's folders, for a program
+/// that is not one of the local CLIs (e.g. `ollama`).
+pub fn find_named_binary(binary_name: &str, locator: &Locator) -> Option<PathBuf> {
+    let dirs = locator.search_dirs();
+    executable_names(binary_name)
+        .into_iter()
+        .flat_map(|name| dirs.iter().map(move |dir| dir.join(&name)))
+        .find(|candidate| is_executable(candidate))
+}
+
 /// Every executable named like `cli`: each of its names in turn (Cursor's `cursor-agent`
 /// before the generic `agent`), each through the locator's folders in order.
 fn find_binaries(cli: LocalCli, locator: &Locator) -> Vec<PathBuf> {
