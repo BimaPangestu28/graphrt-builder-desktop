@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { getRunInputs } from '@/api/runReview'
 import type { RunInputs } from '@/api/runReviewTypes'
-import { listRuns, startRun } from '@/api/runs'
+import { getRun, listRuns, startRun } from '@/api/runs'
 import { getRunSummary } from '@/api/runSummary'
 import { RunFileList } from '@/components/files/RunFileList'
 import { RunVisualList } from '@/components/visuals/RunVisualList'
@@ -12,6 +12,8 @@ import { AppShell } from '@/components/layout'
 import { useLoadedData } from '@/hooks/useRunData'
 import { agentPath, routePaths, runReviewPath, sampleAgentId } from '@/routes'
 import { buildTableCsvHref } from '@/pages/agent-run/placesCsv'
+import { readRunAnswer } from '@/pages/agent-run/runAnswer'
+import { RunAnswerCard } from '@/pages/agent-run/RunAnswerCard'
 import { RunErrorNotice } from '@/pages/agent-run/RunErrorNotice'
 import { RunFilesCard } from '@/pages/agent-run/RunFilesCard'
 import { RunItemsTable, RunStatTiles } from '@/pages/agent-run/RunResultDetails'
@@ -101,9 +103,21 @@ async function readRunInputsOrNull(runId: string): Promise<RunInputs | null> {
   }
 }
 
+/** The answer only adds a card, so failing to read the run must not hide the rest of the result. */
+async function readRunAnswerOrNull(runId: string): Promise<string | null> {
+  try {
+    return readRunAnswer((await getRun(runId)).outputs)
+  } catch (runError) {
+    console.warn(`Could not read the answer of run ${runId}`, runError)
+    return null
+  }
+}
+
 interface ResultRun {
   summary: RunSummary
   inputs: RunInputs | null
+  /** What the agent answered, when the run gave a text. */
+  answer: string | null
 }
 
 /** Loads the result run's summary and inputs; null when there is no run to show. */
@@ -111,8 +125,8 @@ function useResultRun(agentId: string, runId: string | null) {
   return useLoadedData<ResultRun | null>(async () => {
     const resolvedRunId = await resolveResultRunId(agentId, runId)
     if (!resolvedRunId) return null
-    const [summary, inputs] = await Promise.all([getRunSummary(resolvedRunId), readRunInputsOrNull(resolvedRunId)])
-    return { summary, inputs }
+    const [summary, inputs, answer] = await Promise.all([getRunSummary(resolvedRunId), readRunInputsOrNull(resolvedRunId), readRunAnswerOrNull(resolvedRunId)])
+    return { summary, inputs, answer }
   }, [agentId, runId])
 }
 
@@ -150,7 +164,8 @@ function ResultDetails({ resultRun }: { resultRun: ResultRun }) {
       {view.table ? (
         <RunItemsTable table={view.table} />
       ) : (
-        resultRun.summary.visuals.length === 0 && resultRun.summary.files.length === 0 && <MissingOutputsNotice hasNoCounters={view.hasNoOutputs} />
+        // A run that answered in words did report something: the answer is shown next to this panel.
+        resultRun.summary.visuals.length === 0 && resultRun.summary.files.length === 0 && !resultRun.answer && <MissingOutputsNotice hasNoCounters={view.hasNoOutputs} />
       )}
     </>
   )
@@ -158,7 +173,8 @@ function ResultDetails({ resultRun }: { resultRun: ResultRun }) {
 
 /**
  * Screen 07 · Test run result (`/agents/:agentId/test-result`, optional `?runId=`).
- * Shows one run's summary (`getRunSummary`): its headline, counters as stat tiles, time,
+ * Shows what the agent answered (the run's text output) with "Was this what you wanted?"
+ * right under it, and the run's summary (`getRunSummary`): its headline, counters as stat tiles, time,
  * step and approval counts, and its `items` as a table with a CSV export. Without `runId` it
  * shows the agent's latest finished test run. Only what the run reported is shown; a run
  * without items or counters says so. Asks what to do next: run now or put it on a schedule.
@@ -179,6 +195,7 @@ export function RunResultPage() {
         <BuildChatPanel>
           {resultRun && <UserChatBubble>{inputsSummary ? messages().agentRun.testWith(inputsSummary) : messages().agentRun.testThisAgent}</UserChatBubble>}
           {view && <BuilderReply>{view.builderReply}</BuilderReply>}
+          {resultRun?.answer && <RunAnswerCard answer={resultRun.answer} />}
           {resultRun && finishedStatuses.has(resultRun.summary.status) && <RunFeedbackCard key={resultRun.summary.runId} agentId={agentId} runId={resultRun.summary.runId} />}
           {resultRun && <WhatNextCard agentId={agentId} runInputs={resultRun.inputs} />}
         </BuildChatPanel>

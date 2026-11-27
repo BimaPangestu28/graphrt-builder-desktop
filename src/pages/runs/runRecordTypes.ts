@@ -29,6 +29,8 @@ export interface RunRecord {
   timing: string
   steps: RunStep[]
   output: string
+  /** A finished run of an agent on this computer: "Was this what you wanted?" is offered for it. */
+  canRate?: boolean
   rawLog: string[]
   /** How long a finished run took, e.g. "2m 05s"; absent while it runs or waits. */
   duration?: string

@@ -754,6 +754,37 @@ impl ConversationManager {
     }
 }
 
+/// One reply of the chatbot, with what the customer wrote just before it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BotReply<'a> {
+    pub text: &'a str,
+    /// The customer's latest message before the reply; `None` when the bot wrote first.
+    pub customer_text: Option<&'a str>,
+}
+
+/// The chatbot's reply `message_id` in `detail`, for feedback on it.
+///
+/// # Errors
+/// `NotFound` when the conversation has no such message; `InvalidInput` when the message
+/// is not a reply of the chatbot (the customer, the owner and notices cannot be rated).
+pub fn find_bot_reply<'a>(detail: &'a ConversationDetail, message_id: &str) -> AppResult<BotReply<'a>> {
+    let position = detail
+        .messages
+        .iter()
+        .position(|message| message.id == message_id)
+        .ok_or_else(|| AppError::NotFound("this message".into()))?;
+    let reply = &detail.messages[position];
+    if reply.author != MessageAuthor::Bot {
+        return Err(AppError::InvalidInput("only a reply of the chatbot can be rated".into()));
+    }
+    let customer_text = detail.messages[..position]
+        .iter()
+        .rev()
+        .find(|message| message.author == MessageAuthor::Customer)
+        .map(|message| message.text.as_str());
+    Ok(BotReply { text: &reply.text, customer_text })
+}
+
 /// Plain words for the hand-off reasons the builder guide suggests; other
 /// reasons are shown as the workflow wrote them.
 pub fn describe_handoff_reason(reason: Option<&str>) -> String {

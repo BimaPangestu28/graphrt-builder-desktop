@@ -102,6 +102,27 @@ pub async fn record_run_feedback(
     state.learning.record_feedback(&run_id, &feedback).await
 }
 
+/// Thumbs up or down on one reply the chatbot gave in a conversation. The same path as a
+/// run: a comment becomes a proposal that waits for the owner.
+///
+/// # Errors
+/// `NotFound` for an unknown conversation or message; `InvalidInput` when the message is
+/// not a reply of the chatbot.
+#[tauri::command]
+pub async fn record_reply_feedback(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    message_id: String,
+    feedback: RunFeedback,
+) -> AppResult<FeedbackOutcome> {
+    let detail = state.conversations.get_conversation(&conversation_id)?;
+    let reply = crate::conversations::find_bot_reply(&detail, &message_id)?;
+    state
+        .learning
+        .record_reply_feedback(&detail.conversation.agent_id, &message_id, reply.customer_text, reply.text, &feedback)
+        .await
+}
+
 /// Asks the person's model to read the agent's latest runs and suggest notes. Every
 /// suggestion waits for the owner.
 #[tauri::command]

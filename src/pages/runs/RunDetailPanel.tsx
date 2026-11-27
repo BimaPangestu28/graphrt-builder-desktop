@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { RunRecord } from '@/pages/runs/runRecordTypes'
 import { StepProgressList } from '@/pages/agent-run/StepProgressList'
+import { RunFeedbackCard } from '@/pages/learning/RunFeedbackCard'
 import type { RunStepView } from '@/pages/agent-run/runSteps'
 import { agentPath, routePaths } from '@/routes'
 import { useT } from '@/i18n'
@@ -25,8 +26,10 @@ function buildRunCsvHref(run: RunRecord): string {
 }
 
 /**
- * Side panel on the Runs screen showing one run step by step, its output,
- * and actions to run it again, export it, or read the raw runner log.
+ * Side panel on the Runs screen showing one run step by step, what the agent answered,
+ * "Was this what you wanted?" for a finished run on this computer (a run that ran for real
+ * can be rated like a test run), and actions to run it again, export it, or read the raw
+ * runner log.
  */
 export function RunDetailPanel({ run, stepViews, now, onClose }: RunDetailPanelProps) {
   const t = useT().runs
@@ -50,8 +53,10 @@ export function RunDetailPanel({ run, stepViews, now, onClose }: RunDetailPanelP
 
       <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface p-3.5">
         <span className="text-[12px] font-medium text-muted">{t.output}</span>
-        <span>{run.output}</span>
+        <span className="break-words whitespace-pre-line">{run.output}</span>
       </div>
+
+      {run.canRate && run.agentId && <RunFeedbackCard agentId={run.agentId} runId={run.id} className="bg-surface" />}
 
       <div className="flex flex-wrap gap-2">
         {run.followUp && (

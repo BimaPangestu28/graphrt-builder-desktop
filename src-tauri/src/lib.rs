@@ -420,6 +420,7 @@ pub fn run() {
             commands::learning::set_auto_learn,
             commands::learning::set_agent_uses_learning,
             commands::learning::record_run_feedback,
+            commands::learning::record_reply_feedback,
             commands::learning::suggest_notes_from_runs,
             commands::learning::draft_skill_from_notes,
             commands::skills::list_installed_skills,

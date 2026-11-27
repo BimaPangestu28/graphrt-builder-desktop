@@ -78,6 +78,18 @@ export function recordRunFeedback(runId: string, feedback: RunFeedback): Promise
 }
 
 /**
+ * Records thumbs up or down on one reply the chatbot gave in a conversation. The same path as
+ * a run: a comment becomes a proposal that waits for the owner.
+ *
+ * @throws BackendError - `not_found` for an unknown conversation or message, `invalid_input`
+ *   when the message is not a reply of the chatbot
+ */
+export function recordReplyFeedback(conversationId: string, messageId: string, feedback: RunFeedback): Promise<FeedbackOutcome> {
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleLearningBackend.recordReplyFeedback(conversationId, messageId, feedback)
+  return callBackend('record_reply_feedback', { conversationId, messageId, feedback })
+}
+
+/**
  * Asks the person's default model to read the agent's latest runs and suggest notes. Every
  * suggestion waits for the owner; none is used before they approve it.
  *

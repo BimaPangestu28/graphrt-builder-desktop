@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { resetSampleAgents } from '@/api/sampleBackend/agents'
 import { resetSampleConversations, sampleConversationsBackend } from '@/api/sampleBackend/conversations'
+import { sampleLearningBackend } from '@/api/sampleBackend/learning'
 import { routePaths } from '@/routes'
 import { ChatDetailPage } from '../ChatDetailPage'
 
@@ -52,6 +53,31 @@ describe('ChatDetailPage', () => {
     expect(screen.queryByRole('button', { name: suggestedReply })).not.toBeInTheDocument()
     const detail = await sampleConversationsBackend.getConversation('cafe-4410')
     expect(detail.messages.at(-1)).toMatchObject({ author: 'operator', text: suggestedReply })
+  })
+
+  it('lets a reply of the chatbot be rated, and the comment waits as a note for that chatbot', async () => {
+    const record = vi.spyOn(sampleLearningBackend, 'recordReplyFeedback')
+    renderChatDetail()
+    await screen.findByText('Bot paused · waiting for you')
+    const detail = await sampleConversationsBackend.getConversation('cafe-4410')
+    const botReplies = detail.messages.filter((message) => message.author === 'bot' && message.metadata.sentBy !== 'outreach')
+    // One small button per reply the chatbot wrote: not for the customer, the owner or the outreach agent.
+    const rateButtons = screen.getAllByRole('button', { name: 'Rate this reply' })
+    expect(rateButtons).toHaveLength(botReplies.length)
+    expect(botReplies.length).toBeGreaterThan(0)
+
+    fireEvent.click(rateButtons[0])
+    const feedback = screen.getByRole('group', { name: 'Was this what you wanted?' })
+    fireEvent.click(within(feedback).getByRole('button', { name: 'No, something was off' }))
+    fireEvent.change(within(feedback).getByLabelText('What should it do differently next time?'), { target: { value: 'Ask for the delivery address first' } })
+    await act(async () => {
+      fireEvent.click(within(feedback).getByRole('button', { name: 'Send' }))
+    })
+    expect(record).toHaveBeenCalledWith('cafe-4410', botReplies[0].id, { helpful: false, comment: 'Ask for the delivery address first' })
+    expect(await screen.findByText('Your note is waiting for your approval.')).toBeInTheDocument()
+    const learned = await sampleLearningBackend.getAgentLearning(detail.conversation.agentId)
+    expect(learned.lessons.find((lesson) => lesson.text === 'Ask for the delivery address first')).toMatchObject({ status: 'proposed', trust: 'derived' })
+    record.mockRestore()
   })
 
   it('hands the chat back to the bot and takes it over again', async () => {

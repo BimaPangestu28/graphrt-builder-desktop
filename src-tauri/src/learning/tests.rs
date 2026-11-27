@@ -171,6 +171,65 @@ async fn secrets_are_hidden_before_feedback_is_recorded() {
 }
 
 #[tokio::test]
+async fn a_comment_on_a_run_that_ran_for_real_waits_for_the_owner_like_one_on_a_test() {
+    let world = world();
+    let runs = [(RunTrigger::Manual, "Say when we open again"), (RunTrigger::Schedule, "List the prices too")];
+    for (trigger, comment) in runs {
+        let run = world.db.insert_run(&world.agent_id, 1, trigger).unwrap();
+        let outputs = serde_json::json!({ "result": "We are closed on Sunday." });
+        world.db.finish_run(&run.id, RunStatus::Succeeded, Some(&outputs), None).unwrap();
+        world.learning.set_auto_learn(&world.agent_id, true).unwrap();
+
+        let outcome = world.learning.record_feedback(&run.id, &thumbs_down(comment)).await.unwrap();
+
+        let lesson = outcome.proposed.first().expect("the comment waits as a note");
+        assert_eq!(lesson.status, LessonStatus::Proposed, "never applied by itself, also with learn automatically on");
+        assert_eq!(lesson.trust, Trust::Derived, "nobody is verified in the desktop app");
+        assert_eq!(lesson.run_id.as_deref(), Some(run.id.as_str()));
+    }
+}
+
+#[tokio::test]
+async fn a_comment_on_a_chatbot_reply_takes_the_same_path_as_one_on_a_run() {
+    let world = world();
+    world.credentials.set_api_key(ModelProvider::Openai, "tokoku-kunci-rahasia").unwrap();
+    world.learning.set_auto_learn(&world.agent_id, true).unwrap();
+
+    let outcome = world
+        .learning
+        .record_reply_feedback(
+            &world.agent_id,
+            "message-7",
+            Some("Do you deliver to bob@example.com? My key is tokoku-kunci-rahasia"),
+            "Yes, we deliver everywhere.",
+            &thumbs_down("Ask for the city first, never repeat tokoku-kunci-rahasia"),
+        )
+        .await
+        .unwrap();
+
+    let lesson = outcome.proposed.first().expect("the comment waits as a note");
+    assert_eq!(lesson.status, LessonStatus::Proposed, "never applied by itself, also with learn automatically on");
+    assert_eq!(lesson.trust, Trust::Derived, "nobody is verified in the desktop app");
+    assert_eq!(lesson.signal, Signal::Feedback);
+    assert_eq!(lesson.user, None, "the owner's opinion is not a note about the customer");
+    assert_eq!(lesson.run_id.as_deref(), Some("reply:message-7"));
+    let evidence = lesson.evidence.clone().unwrap_or_default();
+    assert!(evidence.contains("Yes, we deliver everywhere."), "{evidence}");
+    let on_disk = world.everything_on_disk();
+    for secret in ["tokoku-kunci-rahasia", "bob@example.com"] {
+        assert!(!lesson.text.contains(secret), "{secret} in the note: {}", lesson.text);
+        assert!(!evidence.contains(secret), "{secret} in the excerpt: {evidence}");
+        assert!(!on_disk.contains(secret), "{secret} was written to disk");
+    }
+    // Nothing reaches a run before the owner approves it.
+    let used = world.learning.overview(&world.agent_id).unwrap();
+    assert!(used.lessons.iter().all(|lesson| lesson.status != LessonStatus::Approved));
+
+    let unknown = world.learning.record_reply_feedback("no-such-agent", "m", None, "Hi", &thumbs_down("x")).await;
+    assert!(matches!(unknown, Err(AppError::NotFound(_))), "{unknown:?}");
+}
+
+#[tokio::test]
 async fn a_rating_without_a_comment_proposes_nothing() {
     let world = world();
     let run_id = world.finished_run("Hello.");

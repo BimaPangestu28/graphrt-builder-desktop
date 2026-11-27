@@ -1,6 +1,7 @@
 import type { Run, RunEventRecord, RunFilter, RunStatus as BackendRunStatus, RunTrigger } from '@/api/types'
 import type { RunRecord, RunStatus as RunsScreenStatus, RunStep } from '@/pages/runs/runRecordTypes'
 import { agentPath, routePaths, runReviewPath } from '@/routes'
+import { readRunAnswer } from '@/pages/agent-run/runAnswer'
 import { humanizeRunError } from '@/pages/agent-run/runErrorText'
 import { readPauseDeadline, readPauseQuestion } from '@/pages/agent-run/runPauseQuestion'
 import { buildRunStepViews } from '@/pages/agent-run/runSteps'
@@ -61,6 +62,9 @@ export function countRunsForFilter(runs: Run[], statusFilter: RunsStatusFilter):
   if (statusFilter === 'all') return null
   return runs.filter((run) => run.status === backendStatusByFilter[statusFilter]).length
 }
+
+/** Runs that are over: only those can be rated. */
+const ratedStatuses = new Set<BackendRunStatus>(['succeeded', 'failed', 'aborted'])
 
 function readOutputText(run: Run, key: string): string | null {
   const outputValue = run.outputs?.[key]
@@ -131,7 +135,9 @@ export function toRunRecord(run: Run, agentName: string, now: Date = new Date())
     status: toScreenStatus(run.status),
     timing: buildTiming(run, now),
     steps: [],
-    output: readOutputText(run, 'message') ?? run.errorMessage ?? readPauseQuestion(run) ?? result,
+    // What the agent answered, in full; else why it failed, what it asks, or the Result column's words.
+    output: readRunAnswer(run.outputs) ?? run.errorMessage ?? readPauseQuestion(run) ?? result,
+    canRate: ratedStatuses.has(run.status),
     rawLog: [],
     followUp: buildFollowUp(run),
   }

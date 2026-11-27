@@ -243,6 +243,25 @@ async fn bot_replies_and_memory_persists_across_turns() {
 }
 
 #[tokio::test]
+async fn only_a_reply_of_the_chatbot_can_be_rated_and_it_comes_with_what_the_customer_wrote() {
+    let harness = harness_with_answers(&["Halo kak, ada paket nasi box.", "Siap, untuk 50 orang."]);
+    let agent = create_chatbot(&harness.db, MEMORY_FLOW);
+    let conversation = harness.conversations.start_test_conversation(&agent.id).unwrap().conversation;
+    harness.conversations.send_customer_message(&conversation.id, "Ada nasi box?").await.unwrap();
+    let detail = harness.conversations.send_customer_message(&conversation.id, "Untuk 50 orang").await.unwrap();
+
+    let second_reply = find_bot_reply(&detail, &detail.messages[3].id).unwrap();
+    assert_eq!(second_reply.text, "Siap, untuk 50 orang.");
+    assert_eq!(second_reply.customer_text, Some("Untuk 50 orang"), "the message right before it, not an earlier one");
+    let first_reply = find_bot_reply(&detail, &detail.messages[1].id).unwrap();
+    assert_eq!(first_reply.customer_text, Some("Ada nasi box?"));
+
+    let customer_message = find_bot_reply(&detail, &detail.messages[0].id);
+    assert!(matches!(customer_message, Err(AppError::InvalidInput(_))), "{customer_message:?}");
+    assert!(matches!(find_bot_reply(&detail, "no-such-message"), Err(AppError::NotFound(_))));
+}
+
+#[tokio::test]
 async fn handoff_output_moves_the_chat_to_waiting_for_you() {
     let harness = harness_with_answers(&[]);
     let agent = create_chatbot(&harness.db, HANDOFF_FLOW);

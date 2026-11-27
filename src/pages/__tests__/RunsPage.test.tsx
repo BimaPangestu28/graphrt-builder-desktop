@@ -3,6 +3,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { BackendError } from '@/api/client'
 import { startRun } from '@/api/runs'
 import { sampleAgentsBackend } from '@/api/sampleBackend/agents'
+import { sampleLearningBackend } from '@/api/sampleBackend/learning'
 import { resetSampleRuns, sampleRunStepDelayMs, sampleRunsBackend, sampleStepsUntilApproval } from '@/api/sampleBackend/runs'
 import { RunsPage } from '../RunsPage'
 
@@ -85,6 +86,32 @@ describe('RunsPage', () => {
     ])
     fireEvent.click(within(stepList).getByRole('button', { name: /^Write a short message/ }))
     expect(within(stepList).getByLabelText('Final text')).toHaveTextContent(/^Hi \[PLACE NAME\] team/)
+  })
+
+  it('lets a finished run that ran for real be rated, and its comment waits as a note', async () => {
+    const record = vi.spyOn(sampleLearningBackend, 'recordRunFeedback')
+    renderRunsPage()
+    await findRunRows()
+    // The run opened by default was started by a schedule, not by a test.
+    const panel = screen.getByRole('complementary')
+    expect(within(panel).getByRole('heading', { level: 2, name: 'Maps leads to WhatsApp' })).toBeInTheDocument()
+    const feedback = within(panel).getByRole('group', { name: 'Was this what you wanted?' })
+    fireEvent.click(within(feedback).getByRole('button', { name: 'No, something was off' }))
+    fireEvent.change(within(feedback).getByLabelText('What should it do differently next time?'), { target: { value: 'Skip places without a phone number' } })
+    await act(async () => {
+      fireEvent.click(within(feedback).getByRole('button', { name: 'Send' }))
+    })
+    expect(record).toHaveBeenCalledWith(expect.any(String), { helpful: false, comment: 'Skip places without a phone number' })
+    expect(await within(panel).findByText('Your note is waiting for your approval.')).toBeInTheDocument()
+    expect(within(panel).getByRole('link', { name: 'See what it learned' })).toBeInTheDocument()
+  })
+
+  it('does not ask for a rating while a run is still running or waiting', async () => {
+    const run = await startRun('maps-leads', 'manual', { keyword: 'cafe' })
+    renderRunsPage(`/runs?runId=${run.id}`)
+    await findRunRows()
+    expect(screen.getByRole('complementary')).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Was this what you wanted?' })).not.toBeInTheDocument()
   })
 
   it('filters by status through the backend filter', async () => {

@@ -81,6 +81,41 @@ describe('RunResultPage', () => {
     expect(screen.getByText('Places found')).toBeInTheDocument()
   })
 
+  it('shows what the agent answered, with "Was this what you wanted?" right under it', async () => {
+    const runId = await finishSampleRun('approve')
+    const run = await sampleRunsBackend.getRun(runId)
+    vi.spyOn(sampleRunsBackend, 'getRun').mockResolvedValue({ ...run, outputs: { result: 'Shipping to Surabaya is free.\nIt takes 2 to 4 days.', summary: 'Answered 1 question' } })
+    vi.spyOn(sampleRunSummaryBackend, 'getRunSummary').mockResolvedValue(buildSummary({ runId, headline: 'Answered 1 question' }))
+    renderRunResultPage(agentPath('runResult', sampleAgentId, { runId }))
+
+    const answer = await screen.findByRole('region', { name: 'What the agent answered' })
+    expect(answer).toHaveTextContent('Shipping to Surabaya is free. It takes 2 to 4 days.')
+    const feedback = screen.getByRole('group', { name: 'Was this what you wanted?' })
+    expect(answer.compareDocumentPosition(feedback) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(answer.nextElementSibling).toBe(feedback)
+    // The answer is what the run reported: no "did not list the things it handled" next to it.
+    expect(screen.queryByText(/This run did not list the things it handled/)).not.toBeInTheDocument()
+  })
+
+  it('folds a long answer and shows all of it on request, and shows no answer card without a text', async () => {
+    const runId = await finishSampleRun('approve')
+    const run = await sampleRunsBackend.getRun(runId)
+    const longAnswer = `${'A long paragraph of the answer. '.repeat(40)}The very last sentence.`
+    const getRun = vi.spyOn(sampleRunsBackend, 'getRun').mockResolvedValue({ ...run, outputs: { result: longAnswer } })
+    const { unmount } = renderRunResultPage(agentPath('runResult', sampleAgentId, { runId }))
+    const answer = await screen.findByRole('region', { name: 'What the agent answered' })
+    expect(answer).not.toHaveTextContent('The very last sentence.')
+    fireEvent.click(within(answer).getByRole('button', { name: 'Show the whole answer' }))
+    expect(answer).toHaveTextContent('The very last sentence.')
+    expect(within(answer).getByRole('button', { name: 'Show less' })).toHaveAttribute('aria-expanded', 'true')
+    unmount()
+
+    getRun.mockResolvedValue({ ...run, outputs: { summary: 'Sent 3 offers', messages_sent: 3 } })
+    renderRunResultPage(agentPath('runResult', sampleAgentId, { runId }))
+    expect(await screen.findByRole('group', { name: 'Was this what you wanted?' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'What the agent answered' })).not.toBeInTheDocument()
+  })
+
   it('says so when the agent has no finished test', async () => {
     vi.spyOn(sampleRunsBackend, 'listRuns').mockResolvedValue([])
     renderRunResultPage()
