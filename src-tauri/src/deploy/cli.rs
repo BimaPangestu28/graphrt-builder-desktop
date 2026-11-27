@@ -64,7 +64,7 @@ pub struct DeployRequest {
     /// `--secret NAME` (names only; values are environment variables).
     pub secret_names: Vec<String>,
     /// `--image <ref>`: another image running `graphrt serve` (Advanced). `None`: the CLI's
-    /// default, `ghcr.io/bimapangestu28/graphrt:<CLI version>`.
+    /// default, `ghcr.io/graphrt/graphrt:<CLI version>`.
     pub image: Option<String>,
     /// `--rotate-api-key`: replace the deployment's API key (the new one is in the result).
     pub rotate_api_key: bool,

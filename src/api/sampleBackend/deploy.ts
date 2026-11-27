@@ -360,7 +360,7 @@ function ownServerInstructions(agentId: string, requested: OnlineFeatures): OwnS
   if (features.teams) {
     for (const variable of ['TEAMS_APP_ID', 'TEAMS_APP_PASSWORD', 'TEAMS_TENANT_ID']) lines.push(`  -e ${variable}=<from the Teams step> \\`)
   }
-  const image = anyFeature(features) ? '  ghcr.io/graphrt/graphrt:<a version newer than 0.6.2>' : '  ghcr.io/graphrt/graphrt'
+  const image = anyFeature(features) ? '  ghcr.io/graphrt/graphrt:0.6.3' : '  ghcr.io/graphrt/graphrt'
   const channels = [features.whatsapp ? 'whatsapp' : null, features.teams ? 'teams' : null].filter((kind): kind is string => kind !== null)
   lines.push(channels.length > 0 ? `${image} \\\n  serve /workflows --addr 0.0.0.0:8080${channels.map((kind) => ` --channel ${kind}=${name}`).join('')}` : image)
   return {
