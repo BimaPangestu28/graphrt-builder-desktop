@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 
 use super::display_name::resolve_display_name;
 use super::host::PluginState;
-use super::models::{CatalogIndex, InstallRecord, PluginPermissions};
-use super::optional_settings::is_optional_setting;
+use super::models::{CatalogIndex, InstallRecord, PluginConfigStatus, PluginPermissions, SettingDeclaration};
+use super::setting_spec;
 use crate::credentials::CredentialStore;
 use crate::error::AppResult;
 
@@ -36,6 +36,8 @@ pub struct PluginRequirement {
     pub trusted: bool,
     pub trust_not_needed: bool,
     pub missing_config: Vec<String>,
+    /// The settings of `missing_config` with their label, help and kind, for the form.
+    pub missing_settings: Vec<PluginConfigStatus>,
     pub browser_ready: bool,
     /// Runs on Node, so it needs the plugin runtime (true for every catalog plugin).
     pub needs_node_runtime: bool,
@@ -56,9 +58,9 @@ struct NodeScopedSetting {
     needed_by_kinds: &'static [&'static str],
 }
 
-/// Settings that block "ready" only when the agent uses a node kind that needs them. Plugin
-/// manifests and the catalog declare one flat `permissions.env` list with no required/optional
-/// marker, so the known cases are listed here (taken from each plugin's README and operation
+/// Settings that block "ready" only when the agent uses a node kind that needs them. A
+/// setting's declaration (see `setting_spec.rs`) says required or not for the whole plugin,
+/// so the known per-node cases are listed here (taken from each plugin's README and operation
 /// code). Every setting still shows and stays editable in Connections.
 const NODE_SCOPED_SETTINGS: &[NodeScopedSetting] = &[NodeScopedSetting {
     // Sending, media and the business profile use the phone number id; only template
@@ -72,9 +74,10 @@ const NODE_SCOPED_SETTINGS: &[NodeScopedSetting] = &[NodeScopedSetting {
     ],
 }];
 
-/// Whether `variable` must be set before an agent using `used_kinds` can run.
-fn is_required_setting(variable: &str, used_kinds: &[String]) -> bool {
-    if is_optional_setting(variable) {
+/// Whether `variable` must be set before an agent using `used_kinds` can run: its
+/// declaration (else its name) says it is required, and a step that needs it is used.
+fn is_required_setting(variable: &str, used_kinds: &[String], declarations: &[SettingDeclaration]) -> bool {
+    if !setting_spec::profile(variable, declarations).required {
         return false;
     }
     match NODE_SCOPED_SETTINGS.iter().find(|setting| setting.variable == variable) {
@@ -176,7 +179,13 @@ fn requirement(usage: PluginUsage, sources: &RequirementSources<'_>) -> AppResul
         .unwrap_or_default();
     let recorded_browser = sources.install_records.get(name).is_some_and(|record| record.needs_browser);
     let needs_browser = recorded_browser || entry.is_some_and(|entry| entry.needs_browser);
-    let missing_config = missing_settings(name, &permissions.env, &node_kinds, sources.credentials)?;
+    // The installed plugin's own file first, then the catalog's entry for what it leaves out.
+    let declarations = setting_spec::merged(
+        state.map(|state| state.settings.as_slice()).unwrap_or_default(),
+        entry.map(|entry| entry.settings.as_slice()).unwrap_or_default(),
+    );
+    let missing_settings = missing_settings(name, &permissions.env, &node_kinds, &declarations, sources.credentials)?;
+    let missing_config: Vec<String> = missing_settings.iter().map(|setting| setting.name.clone()).collect();
     let installed = state.is_some();
     let trusted = state.is_some_and(|state| state.trusted);
     // Settings and plaintext secrets only reach trusted plugins (see `host.rs`).
@@ -218,6 +227,7 @@ fn requirement(usage: PluginUsage, sources: &RequirementSources<'_>) -> AppResul
         trusted,
         trust_not_needed,
         missing_config,
+        missing_settings,
         browser_ready,
         needs_node_runtime,
         node_runtime_ready,
@@ -232,12 +242,13 @@ fn missing_settings(
     plugin: &str,
     requested: &[String],
     used_kinds: &[String],
+    declarations: &[SettingDeclaration],
     credentials: &CredentialStore,
-) -> AppResult<Vec<String>> {
+) -> AppResult<Vec<PluginConfigStatus>> {
     let mut missing = Vec::new();
-    for variable in requested.iter().filter(|variable| is_required_setting(variable, used_kinds)) {
+    for variable in requested.iter().filter(|variable| is_required_setting(variable, used_kinds, declarations)) {
         if !credentials.has_plugin_config(plugin, variable)? {
-            missing.push(variable.clone());
+            missing.push(setting_spec::profile(variable, declarations).status(variable, None));
         }
     }
     Ok(missing)
@@ -245,7 +256,7 @@ fn missing_settings(
 
 #[cfg(test)]
 mod optional_setting_tests {
-    use super::is_required_setting;
+    use super::{is_required_setting, setting_spec};
 
     fn kinds(names: &[&str]) -> Vec<String> {
         names.iter().map(|name| (*name).to_owned()).collect()
@@ -254,23 +265,43 @@ mod optional_setting_tests {
     #[test]
     fn whatsapp_business_account_id_is_required_only_by_template_and_account_nodes() {
         let sending = kinds(&["whatsapp-api.send_text", "whatsapp-api.send_template", "whatsapp-api.send_media"]);
-        assert!(!is_required_setting("WHATSAPP_BUSINESS_ACCOUNT_ID", &sending));
-        assert!(is_required_setting("WHATSAPP_ACCESS_TOKEN", &sending));
-        assert!(is_required_setting("WHATSAPP_PHONE_NUMBER_ID", &sending));
-        assert!(!is_required_setting("WHATSAPP_GRAPH_VERSION", &sending));
+        assert!(!is_required_setting("WHATSAPP_BUSINESS_ACCOUNT_ID", &sending, &[]));
+        assert!(is_required_setting("WHATSAPP_ACCESS_TOKEN", &sending, &[]));
+        assert!(is_required_setting("WHATSAPP_PHONE_NUMBER_ID", &sending, &[]));
+        assert!(!is_required_setting("WHATSAPP_GRAPH_VERSION", &sending, &[]));
 
         for management in
             ["whatsapp-api.list_templates", "whatsapp-api.create_template", "whatsapp-api.list_phone_numbers"]
         {
             let used = kinds(&["whatsapp-api.send_text", management]);
-            assert!(is_required_setting("WHATSAPP_BUSINESS_ACCOUNT_ID", &used), "{management}");
+            assert!(is_required_setting("WHATSAPP_BUSINESS_ACCOUNT_ID", &used, &[]), "{management}");
         }
     }
 
     #[test]
     fn unlisted_settings_stay_required_whatever_nodes_are_used() {
-        assert!(is_required_setting("META_PAGE_ID", &[]));
-        assert!(is_required_setting("X_CLIENT_SECRET", &kinds(&["x-api.create_post"])));
-        assert!(!is_required_setting("META_GRAPH_VERSION", &[]));
+        assert!(is_required_setting("META_PAGE_ID", &[], &[]));
+        assert!(is_required_setting("X_CLIENT_SECRET", &kinds(&["x-api.create_post"]), &[]));
+        assert!(!is_required_setting("META_GRAPH_VERSION", &[], &[]));
+    }
+
+    /// The report that started this: six limits with defaults blocked the test run while the
+    /// one folder the plugin cannot work without was folded away as optional.
+    #[test]
+    fn a_declaration_decides_over_the_name() {
+        let declarations = setting_spec::parse_declarations(&serde_json::json!([
+            { "name": "DOCUMENT_TEMPLATES_OUTPUT_DIR", "kind": "folder", "required": true },
+            { "name": "DOCUMENT_TEMPLATES_MAX_PAGES", "kind": "number", "required": true, "default": 200 },
+            { "name": "DOCUMENT_TEMPLATES_NEW_THING", "kind": "text" },
+        ]));
+        let used = kinds(&["document-templates.render_pdf"]);
+        // By its name a folder is optional; the plugin says it is needed.
+        assert!(!is_required_setting("DOCUMENT_TEMPLATES_OUTPUT_DIR", &used, &[]));
+        assert!(is_required_setting("DOCUMENT_TEMPLATES_OUTPUT_DIR", &used, &declarations));
+        // A default wins over `required: true`.
+        assert!(!is_required_setting("DOCUMENT_TEMPLATES_MAX_PAGES", &used, &declarations));
+        // Declared without `required`: not asked for, although the name alone would be.
+        assert!(is_required_setting("DOCUMENT_TEMPLATES_NEW_THING", &used, &[]));
+        assert!(!is_required_setting("DOCUMENT_TEMPLATES_NEW_THING", &used, &declarations));
     }
 }

@@ -28,7 +28,8 @@ use std::sync::Arc;
 use graphrt_core::tool::ToolRegistry;
 use graphrt_plugin::{LoadedManifest, PluginHost, Runtime};
 
-use super::models::{PluginNodeInfo, PluginPermissions};
+use super::models::{PluginNodeInfo, PluginPermissions, SettingDeclaration};
+use super::setting_spec;
 use crate::agent_steps::AGENT_TOOL_PROVIDER;
 use crate::credentials::CredentialStore;
 use crate::error::{AppError, AppResult};
@@ -57,6 +58,8 @@ pub(crate) struct PluginState {
     pub mcp_server: Option<PluginMcpServer>,
     /// Starter prompts for the New agent screen.
     pub templates: Vec<graphrt_plugin::PluginTemplate>,
+    /// What the plugin's `graphrt-settings.json` says about its settings (empty without one).
+    pub settings: Vec<SettingDeclaration>,
 }
 
 /// The MCP server of an MCP preset plugin (registered in Connections > MCP servers).
@@ -306,6 +309,7 @@ fn state_from_manifest(manifest: &LoadedManifest, trusted: &BTreeSet<String>) ->
             _ => None,
         },
         templates: plugin.templates.clone(),
+        settings: setting_spec::read_plugin_declarations(&manifest.dir),
     }
 }
 
@@ -351,6 +355,7 @@ fn failed_state(dir: &Path, message: String) -> PluginState {
         warnings: Vec::new(),
         mcp_server: None,
         templates: Vec::new(),
+        settings: Vec::new(),
     }
 }
 

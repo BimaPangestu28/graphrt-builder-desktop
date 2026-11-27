@@ -97,6 +97,21 @@ export async function pickLocalPluginPath(kind: LocalPluginPickKind): Promise<st
 }
 
 /**
+ * Opens the system picker for a plugin setting that is a folder or a file. The folder picker
+ * can make a new folder. The browser preview has no picker and answers with a sample path.
+ *
+ * @param kind - Pick a folder or a file ('folder' | 'file')
+ * @param title - The picker's title, e.g. the setting's label (string)
+ * @returns The absolute path, or null when the picker was closed (string | null)
+ */
+export async function pickPluginSettingPath(kind: 'folder' | 'file', title: string): Promise<string | null> {
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return kind === 'folder' ? '/home/sample/Documents/Invoices' : '/home/sample/Documents/letterhead.pdf'
+  const { open } = await import('@tauri-apps/plugin-dialog')
+  const picked = await open({ title, directory: kind === 'folder', multiple: false, canCreateDirectories: true })
+  return typeof picked === 'string' ? picked : null
+}
+
+/**
  * Installs a plugin from a folder or `.tar.gz` on this computer (Developer mode only). It is
  * checked like a catalog plugin, starts untrusted, is labelled "Local · not reviewed" and is
  * never updated from the catalog.

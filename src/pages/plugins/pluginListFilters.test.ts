@@ -88,6 +88,12 @@ describe('categorizePlugin', () => {
     expect(categorizePlugin('acme', 'Uploads a PDF file')).toBe('files')
     expect(categorizePlugin('acme', 'Does something')).toBe('other')
   })
+
+  it('files a document plugin under files although its description mentions invoices', () => {
+    expect(categorizePlugin('document-templates', 'Invoices and other documents from templates, fully local')).toBe('files')
+    // A plugin that only says "invoice" in its description is still a payments plugin.
+    expect(categorizePlugin('acme-billing', 'Sends an invoice and takes the payment')).toBe('commerce')
+  })
 })
 
 describe('plugin card text', () => {

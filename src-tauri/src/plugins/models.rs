@@ -5,6 +5,7 @@
 use serde::{Deserialize, Serialize};
 
 pub use super::app_requirement::NewerAppNeeded;
+pub use super::setting_spec::{SettingDeclaration, SettingKind};
 pub use super::source::PluginSource;
 
 /// What a plugin asks for: network access (informational), plaintext secrets
@@ -137,6 +138,10 @@ pub struct CatalogPlugin {
     /// reads it, and a value it cannot read counts as "needs a newer app".
     #[serde(default, deserialize_with = "text_of_any_value")]
     pub min_app_version: Option<String>,
+    /// What the plugin says about its settings: required, default, label, help and kind
+    /// (newer catalogs only; see `setting_spec.rs`). Unreadable items are dropped.
+    #[serde(default, deserialize_with = "super::setting_spec::lenient_declarations")]
+    pub settings: Vec<SettingDeclaration>,
 }
 
 /// Reads an optional field as text whatever JSON value it holds: `null` is `None`, a string
@@ -421,15 +426,27 @@ pub struct PluginCatalog {
     pub fetch_error: Option<String>,
 }
 
-/// Whether one requested variable has a value in the keychain.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+/// One setting a plugin requests: what it is (see `setting_spec.rs`) and whether it has a
+/// value in the keychain.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginConfigStatus {
     pub name: String,
     pub configured: bool,
-    /// The plugin has a default for it (tuning such as limits or folders), so it never
+    /// The plugin works without it (it has a default, or it is only tuning), so it never
     /// blocks running; same rule as plugin readiness.
     pub optional: bool,
+    /// What people see instead of the variable name, when the plugin gives one.
+    pub label: Option<String>,
+    /// One or two sentences on what the setting is for, when the plugin gives them.
+    pub help: Option<String>,
+    pub kind: SettingKind,
+    /// What the plugin uses when the setting has no value, as text.
+    pub default_value: Option<String>,
+    /// The value is a comma-separated list (several folders or files).
+    pub multiple: bool,
+    /// The saved value, for settings that are not secrets. Always `None` for a secret.
+    pub value: Option<String>,
 }
 
 /// An installed plugin, loaded or not.

@@ -56,7 +56,21 @@ export interface RunSummary {
   visuals: RunVisual[]
   /** Blocks that failed validation: shown as notices, never rendered. */
   rejectedVisuals: RejectedVisual[]
+  /** Files the run made that are still on this computer (`src-tauri/src/run_files.rs`). */
+  files: RunFile[]
   errorMessage: string | null
+}
+
+/** A file a run made, e.g. the invoice PDF a plugin step saved. */
+export interface RunFile {
+  /** Absolute path; pass it back to {@link openRunFile} / {@link openRunFileFolder}. */
+  path: string
+  /** The file's name, e.g. "INV-2026-0001.pdf". */
+  name: string
+  /** The folder it is in. */
+  folder: string
+  /** The default app may open it (documents, sheets, pictures; not programs or scripts). */
+  canOpen: boolean
 }
 
 /** A validated graphrt UI block (`$ui`: adaptive_card, chart, table or stats). */

@@ -292,7 +292,7 @@ async fn draft_until_valid(
     loop {
         let check_message = if repair_attempts == 0 { "Checking the steps" } else { "Checking it again" };
         report(on_progress, BuildStage::Checking, check_message);
-        let flow_yaml = extract::workflow_yaml(&reply);
+        let flow_yaml = use_available_models(extract::workflow_yaml(&reply), builder);
         let explanation = live::opening_text(&reply);
         let proposed_hosts = extract::proposed_trusted_hosts(&explanation);
         let trust = DraftTrust { trusted_hosts, proposed_hosts: &proposed_hosts };
@@ -313,6 +313,33 @@ async fn draft_until_valid(
         reply =
             ask_model(builder, &messages, on_progress, BuildStage::Repairing, "Fixing a problem in the draft").await?;
     }
+}
+
+/// `flow_yaml` with the model steps that name a provider this computer has not set up moved
+/// to the builder's own model.
+///
+/// The prompt tells the model which provider and model to write, but its worked examples
+/// use others, and a small local model copies those and then fails to correct them in the
+/// repair rounds ("still not valid after 2 fixes: model nodes use provider(s) openai").
+/// Which model runs a step is the app's knowledge, not the drafting model's, so the app
+/// fixes it instead of asking again. Steps on a provider that is set up are left alone.
+fn use_available_models(flow_yaml: String, builder: &BuilderModel) -> String {
+    let Ok(summary) = flow::summarize_flow(&flow_yaml) else { return flow_yaml };
+    let mut document = flow_yaml;
+    for provider in &summary.model_providers {
+        if builder.available_providers.contains(provider) {
+            continue;
+        }
+        let (to_provider, to_model) = (provider_name(builder.choice.provider), builder.choice.name.as_str());
+        match crate::deploy::fixes::switch_model_provider(&document, provider, to_provider, to_model) {
+            Ok((switched, steps)) => {
+                log::info!("the draft used {provider}, which is not set up: moved {steps} step(s) to {to_provider}");
+                document = switched;
+            }
+            Err(error) => log::warn!("could not move the draft's {provider} steps to {to_provider}: {error}"),
+        }
+    }
+    document
 }
 
 /// Which hosts a draft's lookups may use without an approval.

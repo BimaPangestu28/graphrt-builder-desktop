@@ -149,6 +149,8 @@ export function summarizeSampleRun(run: Run, events: GraphrtEvent[]): RunSummary
     items: readItems(run.outputs),
     counters: readCounters(run.outputs),
     ...readSampleVisuals(run.outputs),
+    // The browser preview has no files on disk to point at.
+    files: [],
     errorMessage: run.errorMessage,
   }
 }

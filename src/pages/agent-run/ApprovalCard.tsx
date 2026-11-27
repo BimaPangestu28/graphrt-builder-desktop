@@ -4,6 +4,7 @@ import { useNow } from '@/hooks/useNow'
 import { ApprovalFieldInput } from './ApprovalFieldInput'
 import { describeDeadline, describeToolName, formatToolArguments } from './approvalDisplay'
 import { buildApprovalAnswer, findMissingRequiredFields, initialApprovalValues, splitApprovalPrompt, type ApprovalValues } from './approvalForm'
+import { readablePrompt } from './readablePrompt'
 import { messages } from '@/i18n'
 import { VisualBlock } from '@/components/visuals/VisualBlock'
 import type { UiBlock } from '@/components/visuals/uiBlockTypes'
@@ -68,7 +69,7 @@ export function ApprovalCard({ approval, onAnswer, isSubmitting = false }: Appro
         <h2 id={titleId} className="m-0 text-[18px] font-semibold">
           {heading}
         </h2>
-        {description && <span className="whitespace-pre-line text-[13px] text-body">{description}</span>}
+        {description && <span className="whitespace-pre-wrap text-[13px] text-body">{readablePrompt(description)}</span>}
         {deadline && <span className="text-[12px] font-medium text-amber-strong">{deadline}</span>}
       </div>
       {approval.toolCall && <ToolCallDetails toolCall={approval.toolCall} />}

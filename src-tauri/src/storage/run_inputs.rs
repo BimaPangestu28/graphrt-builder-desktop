@@ -48,16 +48,21 @@ impl Database {
 
     /// Inputs of the agent's most recently started run that has stored inputs.
     pub fn get_last_run_inputs(&self, agent_id: &str) -> AppResult<Option<serde_json::Value>> {
+        Ok(self.get_last_run_inputs_with_version(agent_id)?.map(|(_, inputs)| inputs))
+    }
+
+    /// [`Database::get_last_run_inputs`] with the agent version that run used.
+    pub fn get_last_run_inputs_with_version(&self, agent_id: &str) -> AppResult<Option<(i64, serde_json::Value)>> {
         let connection = self.lock()?;
         let inputs = connection
             .query_row(
-                "SELECT run_inputs.inputs_json FROM run_inputs
+                "SELECT runs.agent_version, run_inputs.inputs_json FROM run_inputs
                  JOIN runs ON runs.id = run_inputs.run_id
                  WHERE runs.agent_id = ?1
                  ORDER BY runs.started_at DESC, runs.rowid DESC
                  LIMIT 1",
                 [agent_id],
-                |row| json_column(row, "inputs_json"),
+                |row| Ok((row.get::<_, i64>(0)?, json_column(row, "inputs_json")?)),
             )
             .optional()?;
         Ok(inputs)

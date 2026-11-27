@@ -1,6 +1,6 @@
 import type { InstalledPlugin } from '@/api/pluginTypes'
 import type { PluginsState } from '@/hooks/usePlugins'
-import { PluginConfigForm, type PluginConfigField } from './PluginConfigForm'
+import { PluginConfigForm, toPluginConfigField, type PluginConfigField } from './PluginConfigForm'
 import { messages } from '@/i18n'
 
 interface PluginSettingsProps {
@@ -20,13 +20,12 @@ function PluginSettingsForm({ installed, plugins, fields }: PluginSettingsProps 
 }
 
 /**
- * An installed plugin's settings: required ones in the open, optional tuning (limits,
- * folders, API version) folded under "Optional settings" since the defaults work.
+ * An installed plugin's settings: the ones it cannot work without in the open, the rest
+ * (limits, extra folders, API version) folded under "Optional settings" since the defaults work.
  */
 export function PluginSettings({ installed, plugins }: PluginSettingsProps) {
-  const toField = (setting: InstalledPlugin['config'][number]): PluginConfigField => ({ variable: setting.name, configured: setting.configured })
-  const requiredFields = installed.config.filter((setting) => !setting.optional).map(toField)
-  const optionalFields = installed.config.filter((setting) => setting.optional).map(toField)
+  const requiredFields = installed.config.filter((setting) => !setting.optional).map(toPluginConfigField)
+  const optionalFields = installed.config.filter((setting) => setting.optional).map(toPluginConfigField)
   return (
     <>
       <PluginSettingsForm installed={installed} plugins={plugins} fields={requiredFields} />

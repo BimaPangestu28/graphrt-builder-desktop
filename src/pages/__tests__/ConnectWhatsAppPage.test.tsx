@@ -29,7 +29,8 @@ async function installAndTrust(pluginLabel: string) {
 
 async function saveSetting(label: RegExp, value: string, variable: string) {
   fireEvent.change(await screen.findByLabelText(label), { target: { value } })
-  fireEvent.click(screen.getByRole('button', { name: `Save ${variable}` }))
+  const form = screen.getByRole('form', { name: `WhatsApp Cloud API setting ${variable}` })
+  fireEvent.click(within(form).getByRole('button', { name: /^Save / }))
   expect(await within(screen.getByRole('form', { name: `WhatsApp Cloud API setting ${variable}` })).findByText('Saved')).toBeInTheDocument()
 }
 
@@ -73,11 +74,11 @@ describe('ConnectWhatsAppPage', () => {
 
       await installAndTrust('WhatsApp Cloud API')
       expect(screen.getByText(/Trusting gives WhatsApp Cloud API its settings and secrets in plain text/)).toBeInTheDocument()
-      expect(screen.getByLabelText(/Access token/)).toHaveAttribute('type', 'password')
-      await saveSetting(/Access token/, '[ACCESS TOKEN]', 'WHATSAPP_ACCESS_TOKEN')
-      await saveSetting(/Phone number ID/, '[PHONE NUMBER ID]', 'WHATSAPP_PHONE_NUMBER_ID')
+      expect(screen.getByLabelText(/^Access token/)).toHaveAttribute('type', 'password')
+      await saveSetting(/^Access token/, '[ACCESS TOKEN]', 'WHATSAPP_ACCESS_TOKEN')
+      await saveSetting(/^Phone number ID/, '[PHONE NUMBER ID]', 'WHATSAPP_PHONE_NUMBER_ID')
       expect(setConfigSpy).toHaveBeenCalledWith('whatsapp-api', 'WHATSAPP_ACCESS_TOKEN', '[ACCESS TOKEN]')
-      expect(screen.getByLabelText(/Access token/)).toHaveValue('')
+      expect(screen.getByLabelText(/^Access token/)).toHaveValue('')
 
       fireEvent.click(screen.getByRole('button', { name: 'Check connection' }))
       expect(await screen.findByText('Connected to WhatsApp Business as [BUSINESS NAME]')).toBeInTheDocument()
@@ -88,8 +89,8 @@ describe('ConnectWhatsAppPage', () => {
       renderConnectWhatsAppPage()
       fireEvent.click(screen.getByRole('radio', { name: /WhatsApp Business/ }))
       await installAndTrust('WhatsApp Cloud API')
-      await saveSetting(/Access token/, '[ACCESS TOKEN]', 'WHATSAPP_ACCESS_TOKEN')
-      await saveSetting(/Phone number ID/, '[PHONE NUMBER ID]', 'WHATSAPP_PHONE_NUMBER_ID')
+      await saveSetting(/^Access token/, '[ACCESS TOKEN]', 'WHATSAPP_ACCESS_TOKEN')
+      await saveSetting(/^Phone number ID/, '[PHONE NUMBER ID]', 'WHATSAPP_PHONE_NUMBER_ID')
       fireEvent.click(screen.getByRole('button', { name: 'Check connection' }))
       expect(await screen.findByRole('alert')).toHaveTextContent('Could not connect: Invalid OAuth access token')
     })

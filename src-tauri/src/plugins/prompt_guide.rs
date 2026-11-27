@@ -21,7 +21,9 @@ const SECTION_HEADER: &str = "\
 fields directly on the node) instead of a raw `http-request` whenever a listed plugin covers the service, \
 installed or not: the app asks the user to install the plugins a draft uses. Their tokens and account settings are configured in the app (Connections > Plugins): never put them in \
 `env` or in the document, and leave fields such as `access_token` out. Plugin steps output `data` (and \
-`next_cursor` when listing); read results as `{{#<node id>.data...#}}`. Plugin steps that send, post, \
+`next_cursor` when listing); read results as `{{#<node id>.data...#}}`. Set only the fields the job needs: \
+leave an optional field out (a folder, a file name, a limit) so the plugin's own default applies, unless the \
+user asks for a specific value. Plugin steps that send, post, \
 create, update or delete follow the approval rule above.";
 
 /// The section for the published plugins and catalog, or an empty string when there are none.

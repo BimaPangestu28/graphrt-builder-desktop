@@ -23,7 +23,9 @@ pub fn get_run_inputs(state: State<'_, AppState>, run_id: String) -> AppResult<O
 }
 
 /// Inputs of the agent's latest run, to prefill the next one (`null` when it never ran).
+/// An input whose default the agent changed since that run is left out, so the form shows
+/// the new default (see [`crate::run_prefill`]).
 #[tauri::command]
 pub fn get_last_run_inputs(state: State<'_, AppState>, agent_id: String) -> AppResult<Option<serde_json::Value>> {
-    state.db.get_last_run_inputs(&agent_id)
+    crate::run_prefill::last_run_inputs_for_form(&state.db, &agent_id)
 }

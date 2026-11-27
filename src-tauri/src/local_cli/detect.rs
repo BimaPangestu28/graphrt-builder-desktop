@@ -192,7 +192,7 @@ fn is_executable(path: &Path) -> bool {
     path.is_file()
 }
 
-fn home_dir() -> Option<PathBuf> {
+pub(crate) fn home_dir() -> Option<PathBuf> {
     std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
         .map(PathBuf::from)
         .filter(|home| home.is_absolute())

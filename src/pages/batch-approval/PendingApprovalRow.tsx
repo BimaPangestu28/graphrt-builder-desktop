@@ -3,6 +3,7 @@ import { joinClassNames } from '@/components/ui'
 import { ApprovalFieldInput } from '@/pages/agent-run/ApprovalFieldInput'
 import { describeDeadline, formatToolArguments, summarizeToolArguments } from '@/pages/agent-run/approvalDisplay'
 import type { ApprovalValues } from '@/pages/agent-run/approvalForm'
+import { readablePrompt } from '@/pages/agent-run/readablePrompt'
 import { buildRowMeta, buildRowTitle } from './runReviewModel'
 import { messages } from '@/i18n'
 
@@ -81,7 +82,7 @@ export function PendingApprovalRow(props: PendingApprovalRowProps) {
           {rowMeta && <span className="text-[12px] text-muted">{rowMeta}</span>}
           {isEditing && approval.fields.length > 0 && <span className="text-[12px] font-medium text-brand-strong">{messages().agentRun.editing}</span>}
         </span>
-        {isEditing && approval.prompt && rowTitle !== approval.prompt && <span className="whitespace-pre-line text-[13px] text-body">{approval.prompt}</span>}
+        {isEditing && approval.prompt && rowTitle !== approval.prompt && <span className="whitespace-pre-wrap text-[13px] text-body">{readablePrompt(approval.prompt)}</span>}
         {isEditing && approval.toolCall?.reason && <span className="text-[13px] text-body">{approval.toolCall.reason}</span>}
         {isEditing && approval.toolCall && (
           <pre aria-label={messages().agentRun.toolArgumentsFor(rowTitle)} className="m-0 max-h-56 overflow-auto rounded-[10px] border border-line bg-surface px-3 py-2 font-mono text-[12px] whitespace-pre-wrap text-ink-2">

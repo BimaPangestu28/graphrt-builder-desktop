@@ -125,6 +125,21 @@ impl Fixture {
     }
 }
 
+/// A secret setting with no label, as an undeclared setting is listed.
+fn setting_status(name: &str, configured: bool, optional: bool) -> PluginConfigStatus {
+    PluginConfigStatus {
+        name: name.into(),
+        configured,
+        optional,
+        label: None,
+        help: None,
+        kind: crate::plugins::models::SettingKind::Secret,
+        default_value: None,
+        multiple: false,
+        value: None,
+    }
+}
+
 fn installed_plugin(name: &str) -> InstalledPlugin {
     InstalledPlugin {
         name: name.into(),
@@ -306,9 +321,9 @@ fn unset_plugin_settings_are_missing_credentials() {
     fixture.agent("Maps leads", PLUGIN_FLOW);
     let mut whatsapp = installed_plugin("whatsapp-api");
     whatsapp.config = vec![
-        PluginConfigStatus { name: "WHATSAPP_TOKEN".into(), configured: false, optional: false },
-        PluginConfigStatus { name: "WHATSAPP_PHONE_ID".into(), configured: true, optional: false },
-        PluginConfigStatus { name: "WHATSAPP_GRAPH_VERSION".into(), configured: false, optional: true },
+        setting_status("WHATSAPP_TOKEN", false, false),
+        setting_status("WHATSAPP_PHONE_ID", true, false),
+        setting_status("WHATSAPP_GRAPH_VERSION", false, true),
     ];
     fixture.plugins = vec![installed_plugin("maps-browser"), whatsapp];
 

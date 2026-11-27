@@ -30,3 +30,16 @@ pub fn open_card_link(url: String) -> AppResult<()> {
     }
     crate::crash_reports::sharing::open_in_browser(&url)
 }
+
+/// Opens a file the run made with its default app, after the person clicked "Open file".
+/// Only a file the run's steps reported and wrote (see [`crate::run_files`]).
+#[tauri::command]
+pub fn open_run_file(state: State<'_, AppState>, run_id: String, path: String) -> AppResult<()> {
+    crate::run_files::open_run_file(&state.db, &run_id, &path)
+}
+
+/// Opens the folder of a file the run made in the file manager.
+#[tauri::command]
+pub fn open_run_file_folder(state: State<'_, AppState>, run_id: String, path: String) -> AppResult<()> {
+    crate::run_files::open_run_file_folder(&state.db, &run_id, &path)
+}

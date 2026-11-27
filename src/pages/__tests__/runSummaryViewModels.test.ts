@@ -40,6 +40,7 @@ function buildSummary(changes: Partial<RunSummary>): RunSummary {
     counters: [],
     visuals: [],
     rejectedVisuals: [],
+    files: [],
     errorMessage: null,
     ...changes,
   }

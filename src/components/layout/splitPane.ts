@@ -11,5 +11,12 @@ export const splitPaneMainClassName = 'flex flex-wrap lg:h-[calc(100vh-1rem)] lg
 /** A column: full height of the main panel so its body can scroll. */
 export const splitPaneColumnClassName = 'lg:h-full lg:min-h-0'
 
-/** The scrolling body of a column, between its fixed header and footer. */
-export const splitPaneScrollClassName = 'lg:min-h-0 lg:flex-1 lg:overflow-y-auto'
+/**
+ * The scrolling body of a column, between its fixed header and footer.
+ *
+ * `relative` keeps absolutely positioned content (every `sr-only` label and hint) inside the
+ * scroller. Without it such an element is laid out against the page at its unscrolled offset,
+ * far below the window once the column is long: the page itself became scrollable, and a
+ * wheel turn at the end of a column slid the whole window up over an empty area.
+ */
+export const splitPaneScrollClassName = 'relative lg:min-h-0 lg:flex-1 lg:overflow-y-auto'

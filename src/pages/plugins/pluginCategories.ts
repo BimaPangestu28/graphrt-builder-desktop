@@ -13,7 +13,11 @@ export const pluginCategoryLabels: Readonly<Record<PluginCategory, string>> = lo
 /** Display order of the category chips. */
 export const pluginCategoryOrder: PluginCategory[] = ['messaging', 'ai', 'data', 'files', 'commerce', 'marketing', 'productivity', 'web', 'developer', 'other']
 
-/** Checked in this order: commerce before marketing (tiktok-shop), messaging before data (gmail vs sheets). */
+/**
+ * Checked in this order: commerce before marketing (tiktok-shop), messaging before data (gmail vs sheets).
+ * A match in the plugin's name wins over one in its description, so `document-templates` is a files plugin
+ * although its description mentions invoices.
+ */
 const categoryRules: Array<{ category: PluginCategory; pattern: RegExp }> = [
   { category: 'commerce', pattern: /stripe|paypal|midtrans|xendit|shopify|woocommerce|shopee|lazada|tiktok-shop|rajaongkir|biteship|shipper|payment|invoice/ },
   {
@@ -30,7 +34,7 @@ const categoryRules: Array<{ category: PluginCategory; pattern: RegExp }> = [
     pattern:
       /postgres|mysql|sqlite|mongodb|redis|bigquery|snowflake|clickhouse|elasticsearch|dynamodb|firestore|supabase|neo4j|pinecone|qdrant|weaviate|chroma|airtable|sheets|excel|csv|state-store|database/,
   },
-  { category: 'files', pattern: /drive|dropbox|onedrive|sftp|\bs3\b|local-files|pdf|ocr|docs|file|image|ffmpeg|video|audio|qr-code/ },
+  { category: 'files', pattern: /drive|dropbox|onedrive|sftp|\bs3\b|local-files|pdf|ocr|docs|document|file|image|ffmpeg|video|audio|qr-code/ },
   {
     category: 'marketing',
     pattern: /hubspot|salesforce|pipedrive|zoho|apollo|hunter|zerobounce|mailchimp|ads\b|analytics|search-console|business-profile|meta-api|x-api|threads|linkedin|tiktok|youtube-api|crm/,
