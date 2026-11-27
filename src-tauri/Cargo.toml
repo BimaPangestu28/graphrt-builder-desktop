@@ -53,6 +53,8 @@ graphrt-ui = { git = "https://github.com/Graphrt/graphrt", rev = "aa3a4eb469a724
 graphrt-skill = { git = "https://github.com/Graphrt/graphrt", rev = "aa3a4eb469a7241d8ec196586df4c5929f57b706" }
 # Self learning: lessons a person approves, read by `agent` nodes; feedback becomes proposals
 graphrt-learn = { git = "https://github.com/Graphrt/graphrt", rev = "aa3a4eb469a7241d8ec196586df4c5929f57b706" }
+# Tests and release checks: graphrt's eval harness (cases, LLM judges, pass rate, comparison with the last check).
+graphrt-eval = { git = "https://github.com/Graphrt/graphrt", rev = "aa3a4eb469a7241d8ec196586df4c5929f57b706" }
 # Files and images for agents that use them (`agent_files`): a workspace per agent with the
 # `files`, `documents` and `image` tools, and the gate every image passes before a model sees it.
 graphrt-files = { git = "https://github.com/Graphrt/graphrt", rev = "aa3a4eb469a7241d8ec196586df4c5929f57b706" }

@@ -17,6 +17,10 @@ const DELETE_ALL_DATA_SQL: &str = "
     DELETE FROM knowledge_documents;
     DELETE FROM knowledge_sources;
     DELETE FROM knowledge_bases;
+    DELETE FROM agent_release_switches;
+    DELETE FROM agent_releases;
+    DELETE FROM agent_checks;
+    DELETE FROM agent_tests;
     DELETE FROM agent_settings;
     DELETE FROM deployments;
     DELETE FROM own_servers;

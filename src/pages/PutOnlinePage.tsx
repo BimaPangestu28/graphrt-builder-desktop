@@ -4,6 +4,7 @@ import { cancelDeploy, checkDeployCompatibility, deployAgent, getAgentDeployment
 import type { CompatibilityReport, DeployAccount, DeployOutcome, DeployProvider, DeployReview } from '@/api/deployTypes'
 import { AppShell, PageFrame, PageTitleBlock } from '@/components/layout'
 import { Button, Icon, joinClassNames } from '@/components/ui'
+import { isBackendErrorWithCode } from '@/api/client'
 import { useAgent } from '@/hooks/useAgent'
 import { agentPath, sampleAgentId } from '@/routes'
 import { CompatibilityChecklist } from './deploy/CompatibilityChecklist'
@@ -12,6 +13,7 @@ import { DeployDoneView, DeployProgressView } from './deploy/DeployProgress'
 import { ProviderList } from './deploy/ProviderList'
 import { ReviewStep, type DeployChoice } from './deploy/ReviewStep'
 import { WhereStep, type RunPlace } from './deploy/WhereStep'
+import { DeployReleaseNotice } from './quality/DeployReleaseNotice'
 import { messages } from '@/i18n'
 import { withLocalizedLabels } from '@/i18n/localized'
 
@@ -127,6 +129,7 @@ export function PutOnlinePage() {
   const [isUpdate, setIsUpdate] = useState(false)
   const [serverCount, setServerCount] = useState(0)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [needsRelease, setNeedsRelease] = useState(false)
   const deployRun = useDeployRun(agentId)
   const lastChoice = useRef<DeployChoice | null>(null)
 
@@ -141,7 +144,12 @@ export function PutOnlinePage() {
       if (!view) return
       setIsUpdate(view.deployment.status !== 'failed')
       setProvider(view.deployment.provider)
-      if (searchParams.get('screen') === 'review') void loadReview(view.deployment.provider)
+      if (searchParams.get('screen') === 'review') {
+        loadReview(view.deployment.provider).catch((error: unknown) => {
+          if (isBackendErrorWithCode(error, 'needs_release')) setNeedsRelease(true)
+          else setLoadError(plainErrorMessage(error))
+        })
+      }
     })
   }, [agentId, loadAccounts, loadReview, searchParams])
 
@@ -152,7 +160,8 @@ export function PutOnlinePage() {
       if (nextScreen === 'review') await loadReview(provider)
       setScreen(nextScreen)
     } catch (error) {
-      setLoadError(plainErrorMessage(error))
+      if (isBackendErrorWithCode(error, 'needs_release')) setNeedsRelease(true)
+      else setLoadError(plainErrorMessage(error))
     }
   }
 
@@ -177,6 +186,7 @@ export function PutOnlinePage() {
       <PageFrame ariaLabel={messages().deploy.putItOnline} className="gap-5">
         <PageTitleBlock title={messages().deploy.putItOnline} subtitle={agentName} />
         {screen !== 'deploying' && screen !== 'done' && <WizardStepper screen={screen} />}
+        {screen !== 'deploying' && screen !== 'done' && <DeployReleaseNotice agentId={agentId} needsRelease={needsRelease} />}
         {loadError && (
           <p role="alert" className="m-0 rounded-[12px] border border-danger-line bg-danger-tint px-4 py-3 text-danger-deep">
             {loadError}

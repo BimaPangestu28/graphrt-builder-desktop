@@ -27,6 +27,8 @@ export const routePaths = {
   settings: '/settings', // 22
   errorStates: '/runs/problems', // 23
   versionHistory: '/agents/maps-leads/history', // 24
+  agentTests: '/agents/maps-leads/tests', // 71, Test & release: Test
+  agentReleases: '/agents/maps-leads/releases', // 72, Test & release: Release
   learned: '/agents/maps-leads/learned', // 70, What this agent learned
   menuBar: '/menu-bar', // 25
   plugins: '/plugins', // 26, moved out of Connections (21) into its own sidebar item
@@ -163,6 +165,8 @@ export const agentRoutePatterns = {
   runResult: '/agents/:agentId/test-result', // 07, ?runId= of the finished run
   scheduleAgent: '/agents/:agentId/schedule', // 08
   versionHistory: '/agents/:agentId/history', // 24
+  agentTests: '/agents/:agentId/tests', // 71
+  agentReleases: '/agents/:agentId/releases', // 72
   learned: '/agents/:agentId/learned', // 70
   putOnline: '/agents/:agentId/online', // 57-64
   ownServer: '/agents/:agentId/own-server', // 67

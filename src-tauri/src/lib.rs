@@ -64,6 +64,7 @@ pub mod phone_access;
 pub mod plugin_triggers;
 pub mod plugins;
 pub mod problems;
+pub mod quality;
 pub mod run_files;
 pub mod run_prefill;
 pub mod run_review;
@@ -201,6 +202,16 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         log::info!("skills: updated how {moved_skills} skill(s) are saved");
     }
     skills.activate();
+    let quality = Arc::new(quality::QualityService::new(
+        quality::target::CheckDependencies {
+            db: db.clone(),
+            credentials: credentials.clone(),
+            model_source: Arc::new(engine::KeychainModelRegistrySource),
+            agent_files: Some(agent_files.clone()),
+        },
+        draft_model.clone(),
+        Arc::new(quality::TauriCheckSink::new(app.handle().clone())),
+    ));
     let learning = Arc::new(learning::LearningService::new(&data_dir, db.clone(), credentials.clone(), draft_model));
     learning.activate();
     mcp::publish_from_database(&db);
@@ -238,6 +249,7 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         learning,
         model_catalog: Arc::new(model_catalog::ModelCatalog::with_http()?),
         deploy,
+        quality,
         agent_files,
         plugin_triggers,
         phone_access,
@@ -391,6 +403,16 @@ pub fn run() {
             commands::conversations::get_bot_enabled,
             commands::versions::compare_agent_versions,
             commands::versions::get_version_flow_summary,
+            commands::quality::get_agent_quality,
+            commands::quality::add_agent_tests,
+            commands::quality::update_agent_test,
+            commands::quality::delete_agent_test,
+            commands::quality::suggest_agent_tests,
+            commands::quality::start_agent_check,
+            commands::quality::get_agent_check,
+            commands::quality::set_agent_quality_settings,
+            commands::quality::create_agent_release,
+            commands::quality::use_agent_release,
             commands::chains::list_chains,
             commands::chains::get_chain,
             commands::chains::create_chain,

@@ -1,0 +1,57 @@
+# Judge of a test without a good answer (see `quality::suite`): does the reply answer at all.
+# MODEL_PROVIDER and MODEL_NAME are replaced with the app's default model before compiling.
+version: "1"
+name: judge-answers-question
+description: Pass when the reply answers the question that was asked.
+graph:
+  nodes:
+    - id: start
+      type: start
+      variables:
+        - { variable: output, type: paragraph, required: true }
+        - { variable: question, type: paragraph, required: true }
+
+    - id: judge
+      type: llm
+      model: { provider: MODEL_PROVIDER, name: MODEL_NAME, completion_params: { temperature: 0 } }
+      prompt_template:
+        - role: system
+          text: |
+            You check one reply of a business's assistant. Decide one thing only: does the
+            REPLY answer the QUESTION that was asked? An evasive, off-topic, empty or
+            generic reply fails. A reply that honestly says it does not know and offers a
+            way to get help passes.
+            - pass: the reply responds to what was asked.
+            - fail: it is about something else, avoids the question or is empty.
+            - unknown: the question itself cannot be understood.
+            Write the reasoning first: one short sentence a shop owner understands. Write it
+            in the language the QUESTION is written in (Indonesian for an Indonesian question,
+            English for an English one), and call them the question, the reply and the good
+            answer in plain words, not the labels in capitals. Then the verdict.
+        - role: user
+          text: |
+            Answer in JSON. The reasoning is in the language of this question.
+
+            QUESTION:
+            {{#start.question#}}
+
+            REPLY:
+            {{#start.output#}}
+      structured_output:
+        schema:
+          type: object
+          required: [reasoning, verdict]
+          additionalProperties: false
+          properties:
+            reasoning: { type: string }
+            verdict: { type: string, enum: [pass, fail, unknown] }
+
+    - id: end
+      type: end
+      outputs:
+        - { variable: verdict, value_selector: [judge, structured_output, verdict] }
+        - { variable: reasoning, value_selector: [judge, structured_output, reasoning] }
+
+  edges:
+    - { source: start, target: judge }
+    - { source: judge, target: end }

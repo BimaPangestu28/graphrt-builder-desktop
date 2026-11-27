@@ -61,7 +61,7 @@ describe('BuilderPage', () => {
     expect(screen.getByRole('link', { name: 'Connect WhatsApp on this computer' })).toHaveAttribute('href', routePaths.connectWhatsApp)
     expect(await screen.findByText('OpenAI · Keychain')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Test with 1 place/ })).toHaveAttribute('href', routePaths.testRun)
-    expect(screen.getByRole('link', { name: 'History' })).toHaveAttribute('href', routePaths.versionHistory)
+    expect(screen.getByRole('link', { name: 'Test & release' })).toHaveAttribute('href', routePaths.agentTests)
     expect(within(screen.getByRole('region', { name: 'Agent' })).getByRole('link', { name: 'Schedule' })).toHaveAttribute('href', routePaths.scheduleAgent)
   })
 
@@ -76,7 +76,7 @@ describe('BuilderPage', () => {
   it('builds header links for the agent in the route', async () => {
     renderBuilderPage('invoice-reminders')
     expect(await screen.findByRole('heading', { name: 'Invoice reminders' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'History' })).toHaveAttribute('href', agentPath('versionHistory', 'invoice-reminders'))
+    expect(screen.getByRole('link', { name: 'Test & release' })).toHaveAttribute('href', agentPath('agentTests', 'invoice-reminders'))
     expect(screen.getByRole('link', { name: 'Put it online' })).toHaveAttribute('href', agentPath('putOnline', 'invoice-reminders'))
     expect(await screen.findByText('On this computer')).toBeInTheDocument()
   })
@@ -343,7 +343,7 @@ describe('BuilderPage', () => {
     expect(screen.queryByRole('link', { name: /Test with 1 place/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Test with 1 place/ })).not.toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: /^Test$/ })).toEqual([within(toolbar).getByRole('button', { name: /^Test$/ })])
-    expect(screen.getByRole('link', { name: 'History' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Test & release' })).toBeInTheDocument()
   })
 
   it('brings the setup card up instead of starting a test while plugins are not ready', async () => {

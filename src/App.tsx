@@ -47,6 +47,8 @@ const ConnectionsTabPage = lazyScreen(() => import('./pages/ConnectionsPage'), '
 const SettingsPage = lazyScreen(() => import('./pages/SettingsPage'), 'SettingsPage')
 const ErrorStatesPage = lazyScreen(() => import('./pages/ErrorStatesPage'), 'ErrorStatesPage')
 const VersionHistoryPage = lazyScreen(() => import('./pages/VersionHistoryPage'), 'VersionHistoryPage')
+const AgentTestsPage = lazyScreen(() => import('./pages/AgentTestsPage'), 'AgentTestsPage')
+const AgentReleasesPage = lazyScreen(() => import('./pages/AgentReleasesPage'), 'AgentReleasesPage')
 const MenuBarPage = lazyScreen(() => import('./pages/MenuBarPage'), 'MenuBarPage')
 const PluginsPage = lazyScreen(() => import('./pages/PluginsPage'), 'PluginsPage')
 const PluginDetailPage = lazyScreen(() => import('./pages/PluginDetailPage'), 'PluginDetailPage')
@@ -101,6 +103,8 @@ const screenRoutes = [
   { path: routePaths.settings, element: <SettingsPage /> },
   { path: routePaths.errorStates, element: <ErrorStatesPage /> },
   { path: agentRoutePatterns.versionHistory, element: <VersionHistoryPage /> },
+  { path: agentRoutePatterns.agentTests, element: <AgentTestsPage /> },
+  { path: agentRoutePatterns.agentReleases, element: <AgentReleasesPage /> },
   { path: routePaths.menuBar, element: <MenuBarPage /> },
   { path: routePaths.plugins, element: <PluginsPage /> },
   { path: pluginDetailPattern, element: <PluginDetailPage /> },

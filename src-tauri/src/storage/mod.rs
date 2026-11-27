@@ -38,6 +38,7 @@ pub mod models;
 pub mod node_layouts;
 #[cfg(feature = "phone-access")]
 pub mod phone_runs;
+pub mod quality;
 pub mod run_inputs;
 pub mod runs;
 pub mod settings;

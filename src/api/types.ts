@@ -319,3 +319,5 @@ export type BackendErrorCode =
   | 'needs_newer_app'
   /** run_plugin_action: the plugin's step failed; `details.kind` is the plugin's error kind (`setup_required`…). */
   | 'plugin_step_failed'
+  /** check / review / deploy / export: only a release goes online, and the agent has none yet. */
+  | 'needs_release'

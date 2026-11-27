@@ -53,6 +53,7 @@ use crate::plugins::download::Downloader;
 use crate::plugins::requirements::PluginRequirement;
 use crate::storage::deployments::{DeployMode, DeploymentRecord, DeploymentStatus, OwnServer};
 use crate::storage::models::Agent;
+use crate::storage::quality::{Release, SwitchReason};
 use crate::storage::{now_rfc3339, Database};
 
 /// Tauri event carrying deploy progress ([`DeployEvent`]).
@@ -80,6 +81,20 @@ const ACCOUNT_SUMMARY_SETTING_PREFIX: &str = "deploy_account_summary:";
 const CLI_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 /// Debug builds only: use this graphrt binary instead of the downloaded one (development).
 const DEV_CLI_PATH_ENV: &str = "GRAPHRT_DEPLOY_CLI";
+
+/// What happened online when another release was put in use.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum OnlineSwitch {
+    /// The agent is not online.
+    NotOnline,
+    /// The online copy already runs this release.
+    AlreadyOnline,
+    /// The online copy went back to it (`label`: the online version).
+    Switched { label: String },
+    /// The provider no longer has it: put it online again to switch.
+    NeedsUpdate,
+}
 
 /// Server locations people pick ("Closest to Asia") and Fly.io's region for each.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -860,7 +875,8 @@ impl DeployService {
             ..options
         };
         let executable = self.require_cli()?;
-        let agent = self.db.get_agent(agent_id)?;
+        // Only the release in use goes online, never an unreleased draft.
+        let agent = self.db.released_agent(agent_id)?;
         let keys = self.keys_for(&agent, requirements)?;
         if let Some(missing) = keys.iter().find(|key| !key.is_saved) {
             return Err(AppError::MissingCredentials(missing.friendly_name.clone()));
@@ -1124,8 +1140,13 @@ impl DeployService {
     pub fn view(&self, agent_id: &str) -> AppResult<Option<DeploymentView>> {
         let Some(deployment) = self.db.get_deployment(agent_id)? else { return Ok(None) };
         let agent = self.db.get_agent(agent_id)?;
+        // "Update the online copy" once another release is in use than the one online.
+        let in_use_version = self.db.release_in_use(agent_id)?.map(|release| release.agent_version);
         Ok(Some(DeploymentView {
-            has_changes: deployment.deployed_agent_version.is_some_and(|version| version != agent.current_version),
+            has_changes: match (deployment.deployed_agent_version, in_use_version) {
+                (Some(deployed), Some(in_use)) => deployed != in_use,
+                _ => false,
+            },
             agent_version: agent.current_version,
             provider_name: deployment.provider.display_name().to_owned(),
             area: deployment.region.as_deref().and_then(ServerArea::from_fly_region),
@@ -1180,6 +1201,9 @@ impl DeployService {
                 updated.deployed_agent_version =
                     history.iter().find(|entry| &entry.label == version).map(|entry| entry.agent_version);
                 self.db.save_deployment(&updated)?;
+                if let Some(agent_version) = updated.deployed_agent_version {
+                    self.follow_online_version(agent_id, agent_version)?;
+                }
             }
             ManageAction::Remove => {
                 self.db.delete_deployment(agent_id)?;
@@ -1193,6 +1217,39 @@ impl DeployService {
             ManageAction::Status | ManageAction::ListVersions => {}
         }
         self.view(agent_id)
+    }
+
+    /// After the online copy went back to `agent_version`, the release of that version is the
+    /// one in use too, so Versions and the online copy say the same.
+    fn follow_online_version(&self, agent_id: &str, agent_version: i64) -> AppResult<()> {
+        let in_use = self.db.release_in_use(agent_id)?;
+        if in_use.as_ref().is_some_and(|release| release.agent_version == agent_version) {
+            return Ok(());
+        }
+        let releases = self.db.list_releases(agent_id)?;
+        if let Some(release) = releases.iter().find(|release| release.agent_version == agent_version) {
+            self.db.switch_release(agent_id, release.number, SwitchReason::RolledBack)?;
+        }
+        Ok(())
+    }
+
+    /// Makes the online copy run `release` after it was put in use on the Versions page: goes
+    /// back to the online version with that agent version when the provider still has it.
+    ///
+    /// # Errors
+    /// The CLI's plain message when the provider refused the roll back.
+    pub async fn use_release_online(&self, agent_id: &str, release: &Release) -> AppResult<OnlineSwitch> {
+        let Some(record) = self.db.get_deployment(agent_id)? else { return Ok(OnlineSwitch::NotOnline) };
+        if record.deployed_agent_version == Some(release.agent_version) {
+            return Ok(OnlineSwitch::AlreadyOnline);
+        }
+        let versions = self.list_versions(agent_id).await?;
+        let Some(online) = versions.iter().find(|entry| entry.agent_version == release.agent_version) else {
+            return Ok(OnlineSwitch::NeedsUpdate);
+        };
+        let label = online.label.clone();
+        self.manage(agent_id, ManageAction::Rollback { version: label.clone() }).await?;
+        Ok(OnlineSwitch::Switched { label })
     }
 
     /// Deployed versions, newest first; the CLI's list (when it answers) drops ones it no longer has.
@@ -1338,10 +1395,10 @@ impl DeployService {
         self.credentials.delete_deploy_secret(&format!("server:{server_id}"))
     }
 
-    /// Writes the agent as a `.grt` bundle (or plain YAML when `path` ends in `.yaml` / `.yml`).
+    /// Writes the agent's release in use as a `.grt` bundle (or plain YAML when `path` ends in `.yaml` / `.yml`).
     /// Keys are never inside: the IT team adds them on the server.
     pub fn export_agent_file(&self, agent_id: &str, path: &Path) -> AppResult<PathBuf> {
-        let agent = self.db.get_agent(agent_id)?;
+        let agent = self.db.released_agent(agent_id)?;
         let extension =
             path.extension().and_then(|extension| extension.to_str()).unwrap_or_default().to_ascii_lowercase();
         let bytes = if extension == "yaml" || extension == "yml" {
