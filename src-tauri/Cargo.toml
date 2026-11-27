@@ -101,6 +101,11 @@ tauri-plugin-process = "=2.4.0"
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+# The Secret Service client `keyring` uses on Linux, to tell its failures apart (no
+# default keyring, no keyring service, locked) when `keyring` reports them all the same.
+[target.'cfg(target_os = "linux")'.dependencies]
+dbus-secret-service = "4"
+
 # "Keep the computer awake while an agent runs" on Windows (SetThreadExecutionState)
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_System_Power"] }
@@ -109,6 +114,10 @@ windows-sys = { version = "0.61", features = ["Win32_System_Power"] }
 minisign = "0.10.0"
 # Tests build .tar.xz fixtures of the Node runtime archive.
 lzma-rust2 = { version = "0.25", default-features = false, features = ["std", "xz", "encoder"] }
+
+# Tests build the D-Bus errors of a missing Secret Service (the version `keyring` uses).
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+dbus = "0.9"
 
 # Release profile, measured on Apple Silicon (see the Performance notes in CHANGELOG.md):
 # size-optimized code (`z`) with fat LTO shrinks the binary from 29.1 to 16.7 MB.

@@ -1,3 +1,4 @@
+import { messages } from '@/i18n'
 import { genericErrorMessage } from '@/lib/errors'
 import type { GraphProblem } from './agentGraphTypes'
 import type { BackendErrorCode } from './types'
@@ -28,8 +29,19 @@ export interface InvalidGraphDetails {
   problems: GraphProblem[]
 }
 
+/** Why the system keyring cannot be used (the backend's `CredentialStoreProblem`). */
+export type CredentialStoreProblemReason = 'no_default_keyring' | 'not_running' | 'locked'
+
+const credentialStoreProblemReasons: readonly string[] = ['no_default_keyring', 'not_running', 'locked'] satisfies CredentialStoreProblemReason[]
+
+/** `credential_store_unavailable`: what is wrong with the system keyring. */
+export interface CredentialStoreUnavailableDetails {
+  reason: CredentialStoreProblemReason
+}
+
 /** Structured data per error code; codes not listed carry none. */
 export interface BackendErrorDetailsByCode {
+  credential_store_unavailable: CredentialStoreUnavailableDetails
   version_conflict: VersionConflictDetails
   invalid_graph: InvalidGraphDetails
   builder_busy: null
@@ -83,13 +95,38 @@ export function parseBackendErrorDetails(code: BackendErrorCode, rawDetails: unk
   if (code === 'invalid_graph') {
     return Array.isArray(rawDetails.problems) ? { problems: rawDetails.problems as GraphProblem[] } : null
   }
+  if (code === 'credential_store_unavailable') {
+    const { reason } = rawDetails
+    return typeof reason === 'string' && credentialStoreProblemReasons.includes(reason) ? { reason: reason as CredentialStoreProblemReason } : null
+  }
   return null
 }
 
-function toBackendError(rawError: unknown): BackendError {
+/**
+ * What is wrong with the system keyring and how to fix it, in the user's language.
+ * Screens show `error.message` as is, so the translation happens where the error is built.
+ */
+function describeCredentialStoreProblem(reason: CredentialStoreProblemReason): string {
+  const t = messages().platform
+  if (reason === 'no_default_keyring') return t.keyringNoDefault
+  if (reason === 'not_running') return t.keyringNotRunning
+  return t.keyringLocked
+}
+
+/**
+ * Turns what a Tauri command rejected with into a {@link BackendError}.
+ *
+ * @example
+ * toBackendError({ code: 'not_found', message: 'agent not found' }).code // 'not_found'
+ * toBackendError('boom').code // 'internal'
+ */
+export function toBackendError(rawError: unknown): BackendError {
   if (isRecord(rawError) && typeof rawError.code === 'string' && typeof rawError.message === 'string') {
     const code = rawError.code as BackendErrorCode
-    return new BackendError(code, rawError.message, parseBackendErrorDetails(code, rawError.details))
+    const details = parseBackendErrorDetails(code, rawError.details)
+    // The backend's own wording (English) stays the fallback for a reason this version does not know.
+    const message = details && 'reason' in details ? describeCredentialStoreProblem(details.reason) : rawError.message
+    return new BackendError(code, message, details)
   }
   return new BackendError('internal', typeof rawError === 'string' ? rawError : genericErrorMessage)
 }
