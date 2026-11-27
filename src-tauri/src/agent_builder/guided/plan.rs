@@ -502,6 +502,24 @@ pub(super) fn normalize(raw: RawPlan, rules: &PlanRules<'_>) -> Result<Plan, Str
         let title = if title.is_empty() { "Write the result".to_owned() } else { title };
         steps.push(PlanStep::Write { title, instruction });
     }
+    // The model says the job needs facts from outside and planned no step that gets them
+    // (it would write them from memory): the best offered operation that reads gets them.
+    let gets_facts = steps.iter().any(|step| matches!(step, PlanStep::Lookup { .. } | PlanStep::Use { .. }));
+    if raw.looks_up_the_web && !gets_facts {
+        if let Some(operation) = rules.operations.iter().find(|operation| !operation.sends) {
+            let instruction = plain_text(&raw.summary);
+            let instruction = if instruction.is_empty() { operation.title.clone() } else { instruction };
+            steps.insert(
+                0,
+                PlanStep::Use {
+                    title: operation.title.clone(),
+                    instruction,
+                    operation: operation.kind.clone(),
+                    fields: BTreeMap::new(),
+                },
+            );
+        }
+    }
     while matches!(steps.last(), Some(PlanStep::Approve { .. }))
         && steps.len() > 1
         && !steps.iter().any(PlanStep::has_result)
@@ -599,6 +617,7 @@ pub(super) fn normalize_fields(
     let mut fields = BTreeMap::new();
     for field in &operation.fields {
         let value = given.get(&field.name).and_then(|value| typed_value(value, field.field_type, plan, step_index));
+        let value = value.map(|value| without_copied_description(value, &field.description));
         let value = if operation.sends { guarded_sending_value(field, value, plan, step_index) } else { value };
         match value {
             Some(value) => {
@@ -640,6 +659,39 @@ fn drop_repeated_recipients(operation: &OfferedOperation, fields: &mut BTreeMap<
         fields.get("html").and_then(serde_json::Value::as_str).is_some_and(|html| html.contains("{step_"));
     if fields.contains_key("html") && (fields.get("html") == fields.get("text") || !html_reads_a_result) {
         fields.remove("html");
+    }
+}
+
+/// `value` without a part in brackets that the field's own description holds: llama3.2
+/// filled `base` with "USD (DEFAULT: EUR)" from "Base currency, e.g. USD (default EUR)".
+fn without_copied_description(value: serde_json::Value, description: &str) -> serde_json::Value {
+    let serde_json::Value::String(text) = &value else { return value };
+    let words_of = |text: &str| -> String {
+        text.to_lowercase()
+            .split(|character: char| !character.is_alphanumeric())
+            .filter(|word| !word.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    let description = words_of(description);
+    let mut kept = String::new();
+    let mut rest = text.as_str();
+    while let Some(open) = rest.find('(') {
+        let Some(close) = rest[open..].find(')') else { break };
+        let bracketed = &rest[open..=open + close];
+        kept.push_str(&rest[..open]);
+        let inside = words_of(bracketed);
+        if inside.is_empty() || !description.contains(&inside) {
+            kept.push_str(bracketed);
+        }
+        rest = &rest[open + close + 1..];
+    }
+    kept.push_str(rest);
+    let kept = kept.trim();
+    if kept.is_empty() {
+        value
+    } else {
+        json!(kept)
     }
 }
 
@@ -1707,6 +1759,33 @@ mod tests {
             normalize_fields(&send_email_operation(), r#"{"subject": "S", "to": "a@b.test"}"#, &no_address_input, 2)
                 .unwrap_err();
         assert!(problem.contains("\"to\" is required"), "{problem}");
+    }
+
+    #[test]
+    fn text_copied_from_a_fields_description_is_left_out() {
+        assert_eq!(
+            without_copied_description(json!("USD (DEFAULT: EUR)"), "Base currency, e.g. USD (default: EUR)"),
+            json!("USD")
+        );
+        assert_eq!(without_copied_description(json!("Rapat (Senin)"), "Subject line"), json!("Rapat (Senin)"));
+        assert_eq!(without_copied_description(json!(5), "Limit (default 10)"), json!(5));
+    }
+
+    #[test]
+    fn a_plan_that_says_it_reads_the_web_but_reads_nothing_gets_the_offered_reading_step() {
+        let operations = [send_email_operation(), list_messages_operation()];
+        let rules = task_rules(&operations);
+        let raw = parse(
+            r#"{"looks_up_the_web": true, "summary": "Sums up the newest mail.", "inputs": [],
+                "steps": [{"kind": "write", "title": "Sum up", "instruction": "Sum up the newest mail.", "url": ""}]}"#,
+        )
+        .unwrap();
+        let plan = normalize(raw, &rules).unwrap();
+        assert!(
+            matches!(&plan.steps[0], PlanStep::Use { operation, .. } if operation == "email.list_messages"),
+            "{plan:?}"
+        );
+        assert_eq!(plan.steps.len(), 2);
     }
 
     #[test]
