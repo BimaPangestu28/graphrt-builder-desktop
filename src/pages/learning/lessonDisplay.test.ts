@@ -1,7 +1,7 @@
 import type { Lesson, LessonHistoryEntry } from '@/api/learningTypes'
 import { setLocale } from '@/i18n'
 import { dictionaries } from '@/i18n/messages'
-import { describeHistoryEntry, describeLessonOrigin, describeLessonScope, describeRiskReason, lessonsOfTab, needsCare, peopleRemembered } from './lessonDisplay'
+import { describeHistoryEntry, describeLessonEvidence, describeLessonOrigin, describeLessonScope, describeRiskReason, lessonsOfTab, needsCare, peopleRemembered } from './lessonDisplay'
 
 function lesson(changes: Partial<Lesson> = {}): Lesson {
   return {
@@ -53,7 +53,12 @@ describe('lesson wording', () => {
     expect(describeLessonOrigin(lesson({ createdAt: null }))).toBe('From feedback on a run')
     expect(describeLessonOrigin(lesson({ createdAt: null, author: '+62 812' }))).toBe('From feedback on a run, by +62 812')
     expect(describeLessonOrigin(lesson({ createdAt: null, signal: 'manual', author: 'owner' }))).toBe('Written by you')
+    expect(describeLessonOrigin(lesson({ createdAt: null, runId: 'reply:message-7' }))).toBe('From feedback on a chat reply')
+    expect(describeLessonOrigin(lesson({ createdAt: null, signal: 'reflection', runId: 'reply:message-7' }))).toBe('Suggested from earlier runs')
     expect(describeLessonOrigin(lesson())).toMatch(/^From feedback on a run · .*2026/)
+    expect(describeLessonEvidence(lesson({ evidence: 'We are closed.' }))).toBe('The agent had said: “We are closed.”')
+    expect(describeLessonEvidence(lesson({ evidence: 'Open? / Yes.', runId: 'reply:m1' }))).toBe('In the chat: “Open? / Yes.”')
+    expect(describeLessonEvidence(lesson({ evidence: null }))).toBeNull()
     expect(describeLessonScope(lesson())).toBe('Applies to everyone')
     expect(describeLessonScope(lesson({ user: '+62 812' }))).toBe('Applies to +62 812 only')
   })

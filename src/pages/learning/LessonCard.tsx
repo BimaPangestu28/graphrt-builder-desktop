@@ -4,7 +4,7 @@ import type { Lesson } from '@/api/learningTypes'
 import { Badge, Button, type BadgeTone } from '@/components/ui'
 import { formatDate, useT } from '@/i18n'
 import { describeError } from '@/lib/agentDisplay'
-import { describeLessonOrigin, describeLessonScope, describeRiskReason } from './lessonDisplay'
+import { describeLessonEvidence, describeLessonOrigin, describeLessonScope, describeRiskReason } from './lessonDisplay'
 
 interface LessonCardProps {
   agentId: string
@@ -111,7 +111,7 @@ export function LessonCard({ agentId, lesson, onChanged }: LessonCardProps) {
         <span>{describeLessonOrigin(lesson)}</span>
         {lesson.evidence && (
           <span className="truncate" title={lesson.evidence}>
-            {t.evidence(lesson.evidence)}
+            {describeLessonEvidence(lesson)}
           </span>
         )}
         {lesson.status === 'proposed' && lesson.expiresAt && <span>{t.lapses(formatDate(new Date(lesson.expiresAt)))}</span>}

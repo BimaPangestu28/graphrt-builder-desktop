@@ -12,6 +12,7 @@ import { buildConversationPath } from './inbox/ConversationTable'
 import { CustomerPanel } from './inbox/CustomerPanel'
 import { formatTimeAgo, getChannelLabel, isOwnerReplying, previewLastMessage } from './inbox/conversationDisplay'
 import { ReplyComposer } from './inbox/ReplyComposer'
+import { ReplyFeedback } from './inbox/ReplyFeedback'
 import { messages as currentMessages, useT } from '@/i18n'
 import { localizedRecord } from '@/i18n/localized'
 
@@ -68,6 +69,11 @@ function ConversationStatusBadge({ conversation }: { conversation: Conversation 
 }
 
 /** The bot's suggestion, until you have replied after the hand-off. */
+/** A reply the chatbot itself wrote (not the outreach agent's opening message): it can be rated. */
+function isChatbotReply(message: ConversationDetail['messages'][number]): boolean {
+  return message.author === 'bot' && message.metadata.sentBy !== 'outreach'
+}
+
 function getSuggestedReply({ conversation, messages }: ConversationDetail): string | null {
   const lastOwnMessage = [...messages].reverse().find((message) => message.author !== 'system')
   return lastOwnMessage?.author === 'operator' ? null : conversation.suggestedReply
@@ -156,6 +162,7 @@ function ConversationWorkspace({ detail }: { detail: ConversationDetail }) {
             <Fragment key={message.id}>
               <ChatMessageBubble message={message} />
               <MessageFiles agentId={conversation.agentId} message={message} side={message.author === 'customer' ? 'start' : 'end'} />
+              {isChatbotReply(message) && <ReplyFeedback agentId={conversation.agentId} conversationId={conversation.id} messageId={message.id} />}
             </Fragment>
           ))}
           {replyDraft !== null && (

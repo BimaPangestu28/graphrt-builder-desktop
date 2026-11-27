@@ -1,5 +1,6 @@
 import { BackendError } from '../client'
 import type { AgentLearning, FeedbackOutcome, LearningUse, Lesson, LessonDecision, LessonHistoryEntry, LessonRiskReason, RunFeedback, RunSuggestions } from '../learningTypes'
+import { sampleConversationsBackend } from './conversations'
 import { sampleRunsBackend } from './runs'
 import { readStoredAgent } from './sampleAgentStore'
 import { respondWith } from './sampleResponse'
@@ -186,6 +187,29 @@ function overview(agentId: string): AgentLearning {
   return { agentId, lessons, autoLearn: learning.autoLearn, canBecomeSkill, history: [...learning.history], usage: { ...learning.usage } }
 }
 
+/** What a thumbs up or down does, for a run or a chatbot reply alike: a comment becomes a note that waits. */
+function proposeFromFeedback(agentId: string, sourceId: string, feedback: RunFeedback): FeedbackOutcome {
+  const comment = feedback.comment?.trim() ?? ''
+  if (comment.length > maxLessonChars) throw new BackendError('invalid_input', `invalid input: the comment is longer than ${maxLessonChars} characters`)
+  if (!comment) return { proposed: [], keptForLater: false, notRecorded: null }
+  lessonCounter += 1
+  const now = new Date().toISOString()
+  const text = cleanText(hideSecrets(comment))
+  const riskReasons = assessRisk(text)
+  // Never from a verified author: it waits for the owner whatever "learn automatically" says.
+  const proposed = lesson(`lesson-feedback-${lessonCounter}`, text, {
+    runId: sourceId,
+    risk: riskReasons.length > 0 ? 'high' : 'low',
+    riskReasons,
+    createdAt: now,
+    updatedAt: now,
+    expiresAt: null,
+  })
+  learningOf(agentId).lessons.push(proposed)
+  record(agentId, 'propose', proposed, 'system')
+  return { proposed: [{ ...proposed }], keptForLater: false, notRecorded: null }
+}
+
 export const sampleLearningBackend = {
   getAgentLearning: (agentId: string): Promise<AgentLearning> => respondWith(() => overview(agentId)),
 
@@ -280,25 +304,17 @@ export const sampleLearningBackend = {
     const run = await sampleRunsBackend.getRun(runId)
     return respondWith(() => {
       if (run.status === 'running' || run.status === 'paused') throw new BackendError('invalid_input', 'invalid input: this run has not finished yet')
-      const comment = feedback.comment?.trim() ?? ''
-      if (comment.length > maxLessonChars) throw new BackendError('invalid_input', `invalid input: the comment is longer than ${maxLessonChars} characters`)
-      if (!comment) return { proposed: [], keptForLater: false, notRecorded: null }
-      lessonCounter += 1
-      const now = new Date().toISOString()
-      const text = cleanText(hideSecrets(comment))
-      const riskReasons = assessRisk(text)
-      // Never from a verified author: it waits for the owner whatever "learn automatically" says.
-      const proposed = lesson(`lesson-feedback-${lessonCounter}`, text, {
-        runId,
-        risk: riskReasons.length > 0 ? 'high' : 'low',
-        riskReasons,
-        createdAt: now,
-        updatedAt: now,
-        expiresAt: null,
-      })
-      learningOf(run.agentId).lessons.push(proposed)
-      record(run.agentId, 'propose', proposed, 'system')
-      return { proposed: [{ ...proposed }], keptForLater: false, notRecorded: null }
+      return proposeFromFeedback(run.agentId, runId, feedback)
+    })
+  },
+
+  recordReplyFeedback: async (conversationId: string, messageId: string, feedback: RunFeedback): Promise<FeedbackOutcome> => {
+    const detail = await sampleConversationsBackend.getConversation(conversationId)
+    return respondWith(() => {
+      const reply = detail.messages.find((message) => message.id === messageId)
+      if (!reply) throw new BackendError('not_found', 'not found: this message')
+      if (reply.author !== 'bot') throw new BackendError('invalid_input', 'invalid input: only a reply of the chatbot can be rated')
+      return proposeFromFeedback(detail.conversation.agentId, `reply:${messageId}`, feedback)
     })
   },
 

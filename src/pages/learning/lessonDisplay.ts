@@ -25,13 +25,31 @@ export function needsCare(lesson: Lesson): boolean {
   return lesson.risk === 'high' || lesson.trust === 'derived'
 }
 
-/** "From feedback on a run · 26 Nov 2026", "Written by you", "From feedback on a run, by +62…". */
+/** Starts `Lesson.runId` when the feedback was on a chatbot reply, not on a run (backend `REPLY_SOURCE_PREFIX`). */
+const replySourcePrefix = 'reply:'
+
+/**
+ * "From feedback on a run · 26 Nov 2026", "From feedback on a chat reply · …", "Written by you",
+ * "From feedback on a run, by +62…".
+ */
 export function describeLessonOrigin(lesson: Lesson): string {
   const t = messages().learning
-  const base = t.origin[lesson.signal]
+  const isReplyFeedback = lesson.signal === 'feedback' && lesson.runId?.startsWith(replySourcePrefix) === true
+  const base = isReplyFeedback ? t.originReplyFeedback : t.origin[lesson.signal]
   const namedAuthor = lesson.author && lesson.author !== 'owner' ? lesson.author : null
   const withAuthor = namedAuthor ? t.originBy(base, namedAuthor) : base
   return lesson.createdAt ? t.originOn(withAuthor, formatDate(new Date(lesson.createdAt))) : withAuthor
+}
+
+/**
+ * The excerpt shown with a note: what the agent had said in the run, or for feedback on a chat
+ * reply what the customer wrote and what the chatbot replied. Null without an excerpt.
+ */
+export function describeLessonEvidence(lesson: Lesson): string | null {
+  if (!lesson.evidence) return null
+  const t = messages().learning
+  const isReplyFeedback = lesson.signal === 'feedback' && lesson.runId?.startsWith(replySourcePrefix) === true
+  return isReplyFeedback ? t.evidenceReply(lesson.evidence) : t.evidence(lesson.evidence)
 }
 
 /** "Applies to everyone" or "Applies to +62… only". */

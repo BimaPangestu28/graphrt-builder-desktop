@@ -1,26 +1,30 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { recordRunFeedback } from '@/api/learning'
-import type { FeedbackOutcome } from '@/api/learningTypes'
-import { Button, Icon } from '@/components/ui'
+import type { FeedbackOutcome, RunFeedback } from '@/api/learningTypes'
+import { Button, Icon, joinClassNames } from '@/components/ui'
 import { describeError } from '@/lib/agentDisplay'
 import { useT } from '@/i18n'
 import { agentPath } from '@/routes'
 
-interface RunFeedbackCardProps {
+interface FeedbackCardProps {
+  /** The agent the feedback is about: its "What this agent learned" screen is linked afterwards. */
   agentId: string
-  /** A finished run. */
-  runId: string
+  /** Records the rating (`recordRunFeedback` for a run, `recordReplyFeedback` for a chatbot reply). */
+  onSend: (feedback: RunFeedback) => Promise<FeedbackOutcome>
+  /** Sizing where it is shown; the chat column of a run by default. */
+  className?: string
 }
 
 const maxCommentChars = 500
+const chatColumnClassNames = 'box-content max-w-[92%]'
 
 /**
- * "Was this what you wanted?" under a finished run. Yes is recorded at once. No opens one
- * question (what should be different next time) whose answer becomes a note that waits for
- * the owner's approval on "What this agent learned"; it is never used by itself.
+ * "Was this what you wanted?" under something an agent answered. Yes is recorded at once. No
+ * opens one question (what should be different next time) whose answer becomes a note that
+ * waits for the owner's approval on "What this agent learned"; it is never used by itself.
  */
-export function RunFeedbackCard({ agentId, runId }: RunFeedbackCardProps) {
+export function FeedbackCard({ agentId, onSend, className = chatColumnClassNames }: FeedbackCardProps) {
   const t = useT().learning.feedback
   const [isAskingWhy, setIsAskingWhy] = useState(false)
   const [comment, setComment] = useState('')
@@ -32,7 +36,7 @@ export function RunFeedbackCard({ agentId, runId }: RunFeedbackCardProps) {
     setIsSending(true)
     setError(null)
     try {
-      setOutcome(await recordRunFeedback(runId, { helpful, comment: helpful ? null : comment.trim() || null }))
+      setOutcome(await onSend({ helpful, comment: helpful ? null : comment.trim() || null }))
     } catch (sendError) {
       setError(t.couldNotSend(describeError(sendError)))
     } finally {
@@ -42,7 +46,7 @@ export function RunFeedbackCard({ agentId, runId }: RunFeedbackCardProps) {
 
   if (outcome) {
     return (
-      <div role="status" className="box-content flex max-w-[92%] flex-col gap-1.5 rounded-[14px] border border-line p-4">
+      <div role="status" className={joinClassNames('flex flex-col gap-1.5 rounded-[14px] border border-line p-4', className)}>
         <span className="font-semibold">{t.thanks}</span>
         {outcome.proposed.length > 0 && (
           <>
@@ -59,7 +63,7 @@ export function RunFeedbackCard({ agentId, runId }: RunFeedbackCardProps) {
   }
 
   return (
-    <div role="group" aria-label={t.heading} className="box-content flex max-w-[92%] flex-col gap-3 rounded-[14px] border border-line p-4">
+    <div role="group" aria-label={t.heading} className={joinClassNames('flex flex-col gap-3 rounded-[14px] border border-line p-4', className)}>
       <span className="font-semibold">{t.heading}</span>
       {!isAskingWhy ? (
         <div className="flex flex-wrap gap-2">
@@ -99,4 +103,16 @@ export function RunFeedbackCard({ agentId, runId }: RunFeedbackCardProps) {
       )}
     </div>
   )
+}
+
+interface RunFeedbackCardProps {
+  agentId: string
+  /** A finished run: a test, or one that ran for real. */
+  runId: string
+  className?: string
+}
+
+/** {@link FeedbackCard} for a finished run. */
+export function RunFeedbackCard({ agentId, runId, className }: RunFeedbackCardProps) {
+  return <FeedbackCard agentId={agentId} className={className} onSend={(feedback) => recordRunFeedback(runId, feedback)} />
 }

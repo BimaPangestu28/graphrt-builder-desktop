@@ -5,8 +5,9 @@
 //!
 //! - [`LearningService::overview`] and the decisions (approve, reject, retire, edit,
 //!   delete, apply to everyone, forget a person) for the "What this agent learned" screen;
-//! - [`LearningService::record_feedback`]: thumbs up or down on a finished run. A comment
-//!   becomes a proposal that waits for the owner;
+//! - [`LearningService::record_feedback`] and [`LearningService::record_reply_feedback`]:
+//!   thumbs up or down on a finished run (a test or a real one) or on a reply the chatbot
+//!   gave in a conversation. A comment becomes a proposal that waits for the owner;
 //! - [`LearningService::suggest_from_runs`]: the owner asks their model to read the
 //!   agent's latest runs and suggest notes. Every suggestion waits for the owner too.
 //!
@@ -64,6 +65,9 @@ const AUTHOR_IS_VERIFIED: bool = false;
 pub(crate) const MAX_COMMENT_CHARS: usize = 500;
 /// Most characters of a run's answer kept as the excerpt shown with a proposal.
 const MAX_EXCERPT_CHARS: usize = 600;
+/// Starts the source of a note that came from feedback on a chatbot reply, before the
+/// message id. A run id never starts with it.
+pub(crate) const REPLY_SOURCE_PREFIX: &str = "reply:";
 /// Most runs the model reads when the owner asks for suggestions (the latest ones).
 const MAX_RUNS_PER_SUGGESTION: i64 = 10;
 /// Agent setting: when the newest run the model has already read started (RFC 3339), so
@@ -202,8 +206,9 @@ impl LearningService {
         Ok(enabled)
     }
 
-    /// Records thumbs up or down on a finished run. A comment becomes a proposal for the
-    /// run's agent that waits for the owner; a rating without a comment proposes nothing.
+    /// Records thumbs up or down on a finished run: a test run, or one that ran for real
+    /// (by hand, on a schedule, from a trigger). A comment becomes a proposal for the run's
+    /// agent that waits for the owner; a rating without a comment proposes nothing.
     ///
     /// # Errors
     /// `NotFound` for an unknown run; `InvalidInput` for a run that has not finished or a
@@ -213,23 +218,68 @@ impl LearningService {
         if matches!(run.status, RunStatus::Running | RunStatus::Paused) {
             return Err(AppError::InvalidInput("this run has not finished yet".into()));
         }
+        let subject = FeedbackSubject { agent_id: &run.agent_id, source_id: &run.id, excerpt: run_excerpt(&run) };
+        self.record_owner_feedback(subject, feedback).await
+    }
+
+    /// Records thumbs up or down on one reply the chatbot `agent_id` gave in a conversation
+    /// (`message_id`), with what the customer wrote before it (`customer_text`) and the
+    /// reply itself as the excerpt. The same path as a run: the comment becomes a proposal
+    /// that waits for the owner.
+    ///
+    /// It is the owner's opinion of the reply, so it is about nobody in particular: the
+    /// customer of the conversation is not recorded as the person the note is about.
+    ///
+    /// # Errors
+    /// `NotFound` for an unknown agent; `InvalidInput` for a comment that is too long.
+    pub async fn record_reply_feedback(
+        &self,
+        agent_id: &str,
+        message_id: &str,
+        customer_text: Option<&str>,
+        reply_text: &str,
+        feedback: &RunFeedback,
+    ) -> AppResult<FeedbackOutcome> {
+        self.db.get_agent(agent_id)?;
+        let excerpt = match customer_text.map(str::trim).filter(|text| !text.is_empty()) {
+            Some(customer) => format!("{customer} / {}", reply_text.trim()),
+            None => reply_text.trim().to_owned(),
+        };
+        let excerpt: String = excerpt.chars().take(MAX_EXCERPT_CHARS).collect();
+        let source_id = format!("{REPLY_SOURCE_PREFIX}{message_id}");
+        let subject = FeedbackSubject {
+            agent_id,
+            source_id: &source_id,
+            excerpt: Some(excerpt).filter(|excerpt| !excerpt.trim().is_empty()),
+        };
+        self.record_owner_feedback(subject, feedback).await
+    }
+
+    /// The one path every thumbs up or down in the app takes. The person is never verified
+    /// ([`AUTHOR_IS_VERIFIED`]), secrets are hidden in the comment and the excerpt before
+    /// anything is recorded, and a comment only ever becomes a proposal.
+    async fn record_owner_feedback(
+        &self,
+        subject: FeedbackSubject<'_>,
+        feedback: &RunFeedback,
+    ) -> AppResult<FeedbackOutcome> {
         let comment = feedback.comment.as_deref().map(str::trim).filter(|comment| !comment.is_empty());
         if comment.is_some_and(|comment| comment.chars().count() > MAX_COMMENT_CHARS) {
             return Err(AppError::InvalidInput(format!("the comment is longer than {MAX_COMMENT_CHARS} characters")));
         }
         let known_secrets = self.known_secrets();
         let observation = Observation {
-            agent: run.agent_id.clone(),
-            // A test run is the owner trying the agent: it is about nobody in particular.
+            agent: subject.agent_id.to_owned(),
+            // The owner judging their agent: it is about nobody in particular.
             user: None,
-            run_id: run.id.clone(),
+            run_id: subject.source_id.to_owned(),
             kind: ObservationKind::Feedback {
                 value: Some(if feedback.helpful { 1.0 } else { -1.0 }),
                 comment: comment.map(|comment| redact::hide_secrets(comment, &known_secrets)),
                 author: None,
                 authenticated: AUTHOR_IS_VERIFIED,
             },
-            excerpt: run_excerpt(&run).map(|excerpt| redact::hide_secrets(&excerpt, &known_secrets)),
+            excerpt: subject.excerpt.map(|excerpt| redact::hide_secrets(&excerpt, &known_secrets)),
             at_ms: 0,
         };
         let recorded = self.learner.observe(observation).map_err(learning_error)?;
@@ -241,7 +291,7 @@ impl LearningService {
             });
         }
         // Without a model this only turns comments into proposals: cheap, and off the run's path.
-        let report = self.learner.distill(&run.agent_id, None).await.map_err(learning_error)?;
+        let report = self.learner.distill(subject.agent_id, None).await.map_err(learning_error)?;
         Ok(FeedbackOutcome {
             proposed: report.lessons.iter().map(LessonView::from).collect(),
             // The runtime keeps a comment it could not record yet and tries again on the
@@ -342,6 +392,15 @@ impl LearningService {
         }
         values
     }
+}
+
+/// What a thumbs up or down is about: a run, or one reply of a chatbot.
+struct FeedbackSubject<'a> {
+    agent_id: &'a str,
+    /// Recorded as the note's source: the run id, or [`REPLY_SOURCE_PREFIX`] and the message id.
+    source_id: &'a str,
+    /// What the agent had answered, shown with the note.
+    excerpt: Option<String>,
 }
 
 /// The model that suggests notes, remembering why it failed. The runtime reports a failing

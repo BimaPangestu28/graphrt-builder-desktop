@@ -74,6 +74,7 @@ export const inbox = defineMessages(
     replyAsYourself: 'Reply as yourself',
     send: 'Send',
     notDelivered: 'Not delivered:',
+    rateReply: 'Rate this reply',
     sources: 'Sources',
     telegram: 'Telegram',
     // en:end
@@ -148,6 +149,7 @@ export const inbox = defineMessages(
     replyAsYourself: 'Balas sebagai diri sendiri',
     send: 'Kirim',
     notDelivered: 'Tidak terkirim.',
+    rateReply: 'Nilai balasan ini',
     sources: 'Sumber',
     telegram: 'Telegram',
     // id:end
