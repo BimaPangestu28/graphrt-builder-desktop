@@ -24,9 +24,9 @@ function ChunkCard({ chunk }: { chunk: KnowledgeChunk }) {
   const isLong = chunk.text.length > PREVIEW_CHARS
   const shownText = isExpanded || !isLong ? chunk.text : `${chunk.text.slice(0, PREVIEW_CHARS).trimEnd()}…`
   return (
-    <li className="flex min-w-0 flex-col gap-2 rounded-xl border border-line bg-surface p-4" aria-label={t.passageLabel(formatNumber(chunk.index + 1))}>
+    <li className="flex min-w-0 flex-col gap-2 rounded-xl border border-line bg-surface p-4" aria-label={t.passageLabel(formatNumber(chunk.position))}>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="rounded-full bg-ink px-2 py-0.5 text-[11px] font-semibold text-inverse">#{formatNumber(chunk.index + 1)}</span>
+        <span className="rounded-full bg-ink px-2 py-0.5 text-[11px] font-semibold text-inverse">#{formatNumber(chunk.position)}</span>
         {chunk.heading && <span className="min-w-0 truncate text-[12px] font-medium text-ink-2" title={chunk.heading}>{chunk.heading}</span>}
         <span className="ml-auto flex flex-wrap gap-1.5">
           {chunkFacts(chunk, t).map((fact) => (

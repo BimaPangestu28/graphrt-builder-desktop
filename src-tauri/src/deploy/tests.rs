@@ -841,10 +841,10 @@ fn own_server_instructions_name_the_agents_keys_and_the_chosen_pages() {
     assert_eq!(harness.service.own_server_instructions(&harness.agent, &[], &bad).unwrap_err().code(), "invalid_input");
 }
 
-#[tokio::test]
-async fn bundles_carry_the_knowledge_the_agent_uses_with_its_chunking() {
+/// A released task agent whose workflow names a knowledge base indexed from `file`
+/// with passages of 60 tokens. Returns the agent and the knowledge base id.
+async fn agent_with_knowledge(harness: &Harness, file: &Path) -> (Agent, String) {
     use crate::knowledge::models::{ChunkingSettings, SourceKind};
-    let harness = harness(FLOW);
     let knowledge = Arc::new(crate::knowledge::KnowledgeService::new(
         harness.db.clone(),
         harness.credentials.clone(),
@@ -852,8 +852,7 @@ async fn bundles_carry_the_knowledge_the_agent_uses_with_its_chunking() {
         Arc::new(crate::knowledge::events::DiscardKnowledgeEvents),
     ));
     let knowledge_base = knowledge.create_knowledge_base("Catering FAQ", "").unwrap();
-    let faq = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/knowledge/catering-faq.md");
-    knowledge.add_source(&knowledge_base.id, SourceKind::File, &faq.display().to_string()).unwrap();
+    knowledge.add_source(&knowledge_base.id, SourceKind::File, &file.display().to_string()).unwrap();
     let chunking = ChunkingSettings { max_tokens: 60, overlap_tokens: 0, ..ChunkingSettings::default() };
     let settings = crate::knowledge::models::KnowledgeSettings { chunking, ..knowledge_base.settings.clone() };
     knowledge.update_settings(&knowledge_base.id, settings).await.unwrap();
@@ -869,13 +868,31 @@ async fn bundles_carry_the_knowledge_the_agent_uses_with_its_chunking() {
         })
         .unwrap();
     release_latest(&harness.db, &agent.id);
+    (harness.db.get_agent(&agent.id).unwrap(), knowledge_base.id)
+}
+
+fn faq_fixture() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/knowledge/catering-faq.md")
+}
+
+/// The knowledge config inside a `.grt` bundle.
+fn bundle_knowledge(bytes: &[u8]) -> (graphrt_bundle::Bundle, serde_json::Value) {
+    let bundle = graphrt_bundle::Bundle::open(bytes, &graphrt_bundle::OpenOptions::default()).unwrap();
+    let (_, config_text) = bundle.knowledge_config().expect("the bundle has a knowledge config");
+    let config = serde_json::from_str(config_text).unwrap();
+    (bundle, config)
+}
+
+#[tokio::test]
+async fn bundles_carry_the_knowledge_the_agent_uses_with_its_chunking() {
+    let harness = harness(FLOW);
+    let (agent, knowledge_base_id) = agent_with_knowledge(&harness, &faq_fixture()).await;
+    let knowledge_base = crate::knowledge::records::get_knowledge_base(&harness.db, &knowledge_base_id).unwrap();
 
     let folder = tempfile::tempdir().unwrap();
     let bytes =
         std::fs::read(harness.service.export_agent_file(&agent.id, &folder.path().join("faq.grt")).unwrap()).unwrap();
-    let bundle = graphrt_bundle::Bundle::open(&bytes, &graphrt_bundle::OpenOptions::default()).unwrap();
-    let (_, config_text) = bundle.knowledge_config().expect("the bundle has a knowledge config");
-    let config: serde_json::Value = serde_json::from_str(config_text).unwrap();
+    let (bundle, config) = bundle_knowledge(&bytes);
     assert_eq!(config["datasets"][0]["id"], knowledge_base.id.as_str());
     assert_eq!(config["datasets"][0]["chunking"]["max_chars"], 240);
     let store_path = config["stores"][knowledge_base.id.as_str()]["path"].as_str().unwrap();
@@ -886,4 +903,70 @@ async fn bundles_carry_the_knowledge_the_agent_uses_with_its_chunking() {
     let plain =
         graphrt_bundle::Bundle::open(&std::fs::read(plain).unwrap(), &graphrt_bundle::OpenOptions::default()).unwrap();
     assert!(plain.knowledge_config().is_none());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn going_online_ships_the_knowledge_bundle_and_refuses_knowledge_too_large() {
+    let mut harness = harness(FLOW);
+    let (agent, knowledge_base_id) = agent_with_knowledge(&harness, &faq_fixture()).await;
+    // Indexed (with local embeddings) before any key exists.
+    let big = harness._temp.path().join("big.md");
+    let mut seed = 7u64;
+    let words: Vec<String> = (0..300_000)
+        .map(|_| {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            format!("w{:x}", seed >> 40)
+        })
+        .collect();
+    std::fs::write(&big, words.join(" ")).unwrap();
+    let (big_agent, big_id) = agent_with_knowledge(&harness, &big).await;
+    let big_sources = crate::knowledge::records::list_sources(&harness.db, &big_id).unwrap();
+    assert!(big_sources[0].passage_count > 1000, "{big_sources:?}");
+    let folder = tempfile::tempdir().unwrap();
+    let shipped = folder.path().join("shipped");
+    let script = format!(
+        r#"for last in "$@"; do :; done
+case "$2" in
+  --help) ;;
+  *)
+    cp "$last" "{shipped}"
+    echo "$last" > "{shipped}.name"
+    echo '{{"type":"result","action":"deploy","url":"https://faq.fly.dev","version":"v1","app":"faq","workflow":"agent","api_key":"grk_once"}}'
+    ;;
+esac"#,
+        shipped = shipped.display()
+    );
+    harness.service = harness.service.with_cli_executable(fake_cli(folder.path(), &script));
+    harness.credentials.set_api_key(ModelProvider::Openai, "sk").unwrap();
+    harness.credentials.set_deploy_secret("account:fly", r#"{"token":"t"}"#).unwrap();
+
+    harness.service.deploy(&agent.id, fly_options(), &[], &ready_report()).await.unwrap();
+    let name = std::fs::read_to_string(folder.path().join("shipped.name")).unwrap();
+    assert!(name.trim().ends_with("agent.grt"), "{name}");
+    let (bundle, config) = bundle_knowledge(&std::fs::read(&shipped).unwrap());
+    assert_eq!(config["datasets"][0]["id"], knowledge_base_id.as_str());
+    assert_eq!(config["datasets"][0]["chunking"]["max_chars"], 240);
+    let store = config["stores"][knowledge_base_id.as_str()]["path"].as_str().unwrap();
+    assert!(bundle.file(store).is_some_and(|bytes| !bytes.is_empty()));
+
+    // "Make a new key" redeploys the same package.
+    std::fs::remove_file(&shipped).unwrap();
+    harness.service.rotate_api_key(&agent.id).await.unwrap();
+    bundle_knowledge(&std::fs::read(&shipped).unwrap());
+
+    // An agent without knowledge still ships plain YAML.
+    release_latest(&harness.db, &harness.agent.id);
+    harness.service.deploy(&harness.agent.id, fly_options(), &[], &ready_report()).await.unwrap();
+    let name = std::fs::read_to_string(folder.path().join("shipped.name")).unwrap();
+    assert!(name.trim().ends_with("agent.yaml"), "{name}");
+
+    // Knowledge larger than a direct deploy carries is refused before anything is sent.
+    std::fs::remove_file(folder.path().join("shipped.name")).unwrap();
+    let error = harness.service.deploy(&big_agent.id, fly_options(), &[], &ready_report()).await.unwrap_err();
+    assert!(
+        matches!(&error, AppError::InvalidInput(message) if message.contains("at most 1 MB") && message.contains("My own server")),
+        "{error}"
+    );
+    assert!(!folder.path().join("shipped.name").exists(), "nothing was sent");
 }

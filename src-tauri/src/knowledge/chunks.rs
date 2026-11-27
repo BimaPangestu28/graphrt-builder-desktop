@@ -53,10 +53,11 @@ fn metadata_u64(chunk: &StoredChunk, key: &str) -> Option<u64> {
     chunk.metadata.get(key).and_then(serde_json::Value::as_u64)
 }
 
-fn to_chunk(chunk: StoredChunk) -> KnowledgeChunk {
+fn to_chunk(position: usize, chunk: StoredChunk) -> KnowledgeChunk {
     let char_count = chunk.text.chars().count();
     KnowledgeChunk {
         index: metadata_u64(&chunk, "chunk_index").unwrap_or(u64::MAX),
+        position: to_u64(position + 1),
         char_count: to_u64(char_count),
         token_count: to_u64(estimate_tokens(&chunk.text)),
         char_start: metadata_u64(&chunk, CHAR_START_KEY),
@@ -82,7 +83,8 @@ fn matches_filter(chunk: &KnowledgeChunk, words: &[String]) -> bool {
     words.iter().all(|word| haystack.contains(word.as_str()))
 }
 
-/// The page of `chunks` (already in document order) at `offset`, filtered.
+/// The page of `chunks` (already in document order) at `offset`, filtered. Positions
+/// count every stored passage, so a filtered passage keeps its number.
 pub(super) fn page_of(
     document: KnowledgeDocument,
     chunks: Vec<StoredChunk>,
@@ -96,7 +98,7 @@ pub(super) fn page_of(
     let mut matching = 0usize;
     let mut page = Vec::new();
     let limit = limit.clamp(1, MAX_CHUNK_PAGE);
-    for chunk in chunks.into_iter().map(to_chunk) {
+    for chunk in chunks.into_iter().enumerate().map(|(position, chunk)| to_chunk(position, chunk)) {
         total_chars = total_chars.saturating_add(chunk.char_count);
         total_tokens = total_tokens.saturating_add(chunk.token_count);
         if !matches_filter(&chunk, &words) {
@@ -221,6 +223,17 @@ mod tests {
         let page = page_of(document(), chunks, "  free delivery ", 0, 10);
         assert_eq!((page.total, page.matching), (3, 2));
         assert_eq!(page.chunks.iter().map(|chunk| chunk.index).collect::<Vec<_>>(), vec![0, 2]);
+    }
+
+    #[test]
+    fn positions_have_no_gaps_when_chunk_indexes_do() {
+        // graphrt drops cuts that only held a page marker, so stored indexes can skip numbers.
+        let chunks = vec![stored_chunk(1, "Pasal 1"), stored_chunk(2, "Pasal 2"), stored_chunk(4, "Pasal 3")];
+        let page = page_of(document(), chunks, "", 0, 10);
+        assert_eq!(page.chunks.iter().map(|chunk| chunk.position).collect::<Vec<_>>(), vec![1, 2, 3]);
+        assert_eq!(page.chunks.iter().map(|chunk| chunk.index).collect::<Vec<_>>(), vec![1, 2, 4]);
+        let filtered = page_of(document(), vec![stored_chunk(1, "a"), stored_chunk(3, "b")], "b", 0, 10);
+        assert_eq!(filtered.chunks[0].position, 2, "a filtered passage keeps its number");
     }
 
     #[test]

@@ -127,8 +127,10 @@ export interface KnowledgeDocument {
 /** One passage of a document. */
 export interface KnowledgeChunk {
   id: string
-  /** Position in the document, from 0. */
+  /** graphrt's cut number, from 0; may skip numbers (cuts holding only a page marker, repeated text). */
   index: number
+  /** Place among the document's stored passages, from 1, without gaps: the number shown. */
+  position: number
   text: string
   charCount: number
   /** Estimated, about 4 characters per token. */

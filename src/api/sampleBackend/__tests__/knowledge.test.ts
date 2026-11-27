@@ -92,6 +92,6 @@ describe('sample knowledge backend', () => {
     expect((await sampleKnowledgeBackend.getKnowledgeBase('menu-and-prices')).knowledgeBase.needsReindex).toBe(false)
     const page = await sampleKnowledgeBackend.listKnowledgeChunks('menu-november', 'menu-november', '', 20, 20)
     expect(page.total).toBe(88)
-    expect(page.chunks.map((chunk) => chunk.index)).toEqual(Array.from({ length: 20 }, (_, index) => index + 20))
+    expect(page.chunks.map((chunk) => chunk.position)).toEqual(Array.from({ length: 20 }, (_, index) => index + 21))
   })
 })

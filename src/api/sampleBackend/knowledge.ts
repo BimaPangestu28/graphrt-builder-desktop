@@ -319,6 +319,7 @@ function sampleChunks(document: KnowledgeDocument, chunking: ChunkingSettings): 
     return {
       id: `${document.documentId}:${index}`,
       index,
+      position: index + 1,
       text,
       charCount: text.length,
       tokenCount: Math.ceil(text.length / 4),
