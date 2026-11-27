@@ -17,6 +17,9 @@
 //! Nothing else changes: a value that does not fit is passed on as it was and the tool
 //! refuses it with its own message. Paths and other text are never touched.
 //!
+//! A tool given a path that does not exist answers with the files that do, so the model can
+//! ask again instead of giving up.
+//!
 //! The same wrapper adds one sentence to the result of a tool that made a file
 //! ([`SHOWN_BY_THE_APP`]). Measured with gpt-4o-mini: without it, five answers out of five
 //! ended in a link such as `[Download](sandbox:/reports/summary.pdf)`, which leads nowhere,
@@ -26,23 +29,46 @@ use std::sync::{Arc, OnceLock};
 
 use futures::future::BoxFuture;
 use graphrt_core::tool::{ToolCallContext, ToolError, ToolOutput, ToolRuntime, ToolSpec};
+use graphrt_files::Workspace;
 use serde_json::{Map, Value as Json};
 
 /// Added to the result of a tool call that made a file, so the model does not invent a link to it.
 pub(super) const SHOWN_BY_THE_APP: &str = "The app shows this file to the person as a download next to your answer. \
     Do not write a link or a path to it; just say what you made.";
 
+/// How graphrt's workspace says a path names no file (`StoreError::NotFound`).
+const NO_SUCH_FILE: &str = "does not exist";
+/// Most files named after "the file does not exist".
+const MAX_FILES_NAMED: usize = 20;
+
 /// A tool provider whose arguments are put into the types its schema asks for.
 #[derive(Debug)]
 pub(super) struct LenientArguments {
     tools: Arc<dyn ToolRuntime>,
+    /// The files the tools work on, to say which exist when a tool is given a path that does not.
+    view: Workspace,
     /// The provider's tools, read once (the built-in providers never change theirs).
     specs: OnceLock<Vec<ToolSpec>>,
 }
 
 impl LenientArguments {
-    pub(super) fn around(tools: Arc<dyn ToolRuntime>) -> Arc<dyn ToolRuntime> {
-        Arc::new(Self { tools, specs: OnceLock::new() })
+    pub(super) fn around(tools: Arc<dyn ToolRuntime>, view: Workspace) -> Arc<dyn ToolRuntime> {
+        Arc::new(Self { tools, view, specs: OnceLock::new() })
+    }
+
+    /// "The files that exist are: ..." for a tool that was given a path that does not exist.
+    /// llama3.2 asked for `photos/cat.jpg`, got "does not exist" and gave up, with the
+    /// attached picture one line away; told which files exist, a model can ask again.
+    async fn existing_files_hint(&self) -> Option<String> {
+        let listing = self.view.list(None, MAX_FILES_NAMED).await.ok()?;
+        if listing.entries.is_empty() {
+            return Some("There are no files yet.".to_owned());
+        }
+        let paths: Vec<String> = listing.entries.iter().map(|entry| entry.path.to_string()).collect();
+        Some(format!(
+            "The files that exist are: {}. Call the tool again with one of these exact paths.",
+            paths.join(", ")
+        ))
     }
 
     async fn parameters_of(&self, name: &str) -> Option<Json> {
@@ -74,6 +100,11 @@ impl ToolRuntime for LenientArguments {
             let mut output = self.tools.call(name, arguments, context).await?;
             if !output.is_error && !graphrt_core::tool::collect_files(&output.data).is_empty() {
                 output.text = format!("{}\n{SHOWN_BY_THE_APP}", output.text.trim_end());
+            }
+            if output.is_error && output.text.contains(NO_SUCH_FILE) {
+                if let Some(hint) = self.existing_files_hint().await {
+                    output.text = format!("{}\n{hint}", output.text.trim_end());
+                }
             }
             Ok(output)
         })

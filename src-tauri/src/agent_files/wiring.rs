@@ -58,14 +58,20 @@ impl FileAccess {
         if file_use.file_tools {
             tools.add(
                 FILES_PROVIDER,
-                LenientArguments::around(Arc::new(FileTools::with_config(view.clone(), file_tools_config()))),
+                LenientArguments::around(
+                    Arc::new(FileTools::with_config(view.clone(), file_tools_config())),
+                    view.clone(),
+                ),
             );
         }
         if file_use.document_tools {
-            tools.add(DOCUMENTS_PROVIDER, LenientArguments::around(Arc::new(DocumentTools::new(view.clone()))));
+            tools.add(
+                DOCUMENTS_PROVIDER,
+                LenientArguments::around(Arc::new(DocumentTools::new(view.clone())), view.clone()),
+            );
         }
         if file_use.image_tools {
-            tools.add(IMAGE_PROVIDER, LenientArguments::around(Arc::new(ImageTools::new(view.clone()))));
+            tools.add(IMAGE_PROVIDER, LenientArguments::around(Arc::new(ImageTools::new(view.clone())), view.clone()));
         }
         Ok(FileWiring { resolver: Some(workspace_resolver(view)), vision: file_use.vision })
     }
