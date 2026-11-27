@@ -399,6 +399,11 @@ pub(super) fn normalize(raw: RawPlan, rules: &PlanRules<'_>) -> Result<Plan, Str
         }
         let wanted_operation = raw_step.operation.trim();
         let operation = rules.operations.iter().find(|offered| offered.kind.eq_ignore_ascii_case(wanted_operation));
+        // "Take my meeting notes …" offers the "Meeting Notes" recorder; when the notes are a
+        // text the person pastes, that input is the material and there is nothing to read.
+        if kind == "use" && operation.is_some_and(|operation| reads_what_an_input_holds(operation, &inputs)) {
+            continue;
+        }
         if let (true, Some(operation)) = (kind == "use", operation) {
             if operation.sends && !rules.allows_approvals {
                 return Err(format!(
@@ -862,6 +867,27 @@ fn with_inputs_for_their_values(template: String, host_length: usize, inputs: &[
     format!("{site}{rest}")
 }
 
+/// Whether `operation` only reads and its plugin is named like a long text input: the
+/// person gives that material, so the step would read it again from somewhere else.
+fn reads_what_an_input_holds(operation: &OfferedOperation, inputs: &[PlanInput]) -> bool {
+    let lowercase_words = |text: &str| -> Vec<String> {
+        text.to_lowercase()
+            .split(|character: char| !character.is_alphanumeric())
+            .filter(|word| word.chars().count() >= 3)
+            .map(str::to_owned)
+            .collect()
+    };
+    let plugin_words = lowercase_words(&operation.plugin);
+    !operation.sends
+        && !plugin_words.is_empty()
+        && inputs.iter().filter(|input| input.long_text).any(|input| {
+            let input_words = lowercase_words(&format!("{} {}", input.name, input.label));
+            plugin_words.iter().all(|word| {
+                input_words.iter().any(|input_word| input_word.trim_end_matches('s') == word.trim_end_matches('s'))
+            })
+        })
+}
+
 /// The input name a lookup address consists of, when it is one placeholder and nothing
 /// else (`{topic}`, `{{topic}}`, `https://{topic}`).
 fn bare_placeholder(raw_url: &str) -> Option<String> {
@@ -1199,6 +1225,26 @@ mod tests {
                 "steps": [{"kind": "lookup", "title": "L", "instruction": "", "url": "https://a.org/x}y"}]}"#,
         );
         assert!(stray.unwrap_err().contains("brace"));
+    }
+
+    #[test]
+    fn a_plugin_named_like_the_pasted_material_is_not_read() {
+        let mut recorder = list_messages_operation();
+        recorder.kind = "meeting-notes.transcribe".into();
+        recorder.plugin = "meeting-notes".into();
+        let operations = [recorder];
+        let rules = task_rules(&operations);
+        let raw = parse(
+            r#"{"looks_up_the_web": false, "inputs": [{"name": "notes", "label": "Meeting notes", "long_text": true, "value": ""}],
+                "steps": [{"kind": "use", "title": "Get the notes", "instruction": "", "url": "", "operation": "meeting-notes.transcribe"},
+                          {"kind": "write", "title": "List action items", "instruction": "List the action items with owners.", "url": "", "operation": ""}]}"#,
+        )
+        .unwrap();
+
+        let plan = normalize(raw, &rules).unwrap();
+
+        assert_eq!(plan.steps.len(), 1, "{plan:?}");
+        assert!(matches!(plan.steps[0], PlanStep::Write { .. }));
     }
 
     #[test]
