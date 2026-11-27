@@ -35,7 +35,7 @@ pub(crate) struct OfferedOperation {
     /// Sends or changes something outside the app: the app asks the user first.
     pub sends: bool,
     /// The plugin needs setting up first: an account or key of the person's (it asks
-    /// for secrets), or a browser it drives (catalog plugins that are not installed).
+    /// for secrets), or a browser it drives (as its catalog entry says).
     pub needs_setup: bool,
     pub fields: Vec<OperationField>,
 }
@@ -94,12 +94,19 @@ pub(crate) fn offered_operations() -> Vec<OfferedOperation> {
 pub(crate) fn operations_of(plugins: &[PluginState], catalog: Option<&CatalogIndex>) -> Vec<OfferedOperation> {
     let loaded: Vec<&PluginState> = plugins.iter().filter(|plugin| plugin.is_loaded()).collect();
     let mut operations = Vec::new();
+    let catalog_entries = catalog.map(|catalog| catalog.plugins.as_slice()).unwrap_or_default();
     for plugin in &loaded {
+        // A plugin that drives a browser needs one set up, installed or not.
+        let needs_browser = catalog_entries.iter().any(|entry| entry.name == plugin.name && entry.needs_browser);
         for descriptor in &plugin.descriptors {
-            operations.extend(offered(descriptor, &plugin.name, &plugin.permissions, true));
+            let operation = offered(descriptor, &plugin.name, &plugin.permissions, true);
+            operations.extend(operation.map(|operation| OfferedOperation {
+                needs_setup: operation.needs_setup || needs_browser,
+                ..operation
+            }));
         }
     }
-    for entry in catalog.map(|catalog| catalog.plugins.as_slice()).unwrap_or_default() {
+    for entry in catalog_entries {
         if loaded.iter().any(|plugin| plugin.name == entry.name) {
             continue;
         }
