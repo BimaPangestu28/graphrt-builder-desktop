@@ -7,16 +7,24 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-27
+
+Agents can now be taught your way of working with Skills, remember what you correct, and chatbot answers show which file and page they came from.
+
 ### Added
 
 - **Skills**: teach your agents how you do things, like your refund rules or your tone of voice. The new **Skills** page shows your skills and the ones in the catalog. A skill is only instructions: it never runs code, and it may use a tool only if you allow it.
 - **Add a skill from the catalog**: a short wizard shows what the skill is for, lets you tick which tools it may use (nothing is ticked for you, and a ticked tool asks you first every time unless you choose otherwise), shows what the safety check found, and then lets you pick the agents that use it. An update shows what changed and asks again what it may use.
 - **Create your own skill**: say what the agent should do in your own words, or paste a conversation that went the way you want. Your AI model writes a draft, you read and change it, and it then goes through the same checks as a catalog skill. Without a model you can write it yourself.
 - **What this agent learned**: every agent has a **Learned** page with the short notes it picked up. After a run you can say it was not what you wanted and what should be different; that becomes a note waiting for you. A note is used only after you approve it. Notes that nobody verified and notes that are high risk (sending, money, approvals) are marked and say why. You can change, stop using or delete a note, add your own, apply one person's note to everyone, and forget a person. Passwords and keys are hidden before anything is saved. "Learn automatically" is off unless you turn it on.
+- **Runs show what a step used**: a step's details say when it used notes the agent learned ("Used 2 notes it learned", with a link to them), and name the skill and the tool in plain words when a skill could not use a tool you allowed, for example because its plugin was removed. The run goes on without that tool.
+- **Sources under chatbot answers, with PDF pages**: when a knowledge base has "Always show the source in answers" on, a bot reply lists the files it used, and for PDFs the pages ("menu.pdf · p3, p12"), in Try it and in the chat view. "Test a question" on the Knowledge page shows the page too. Files added before this update are named without a page until they change and are read again.
 - **Plugins that need a newer app say so**: when a plugin in the catalog needs a newer Graphrt Desktop than yours, its card and page say "Needs Graphrt Desktop 0.3.0 or newer" with a way to update, and Install is off until then. An installed plugin keeps working; only its update waits. Installing such a plugin from a folder or archive gives the same plain message instead of a technical error.
 
 ### Fixed
 
+- **Plugins that are slow to start no longer time out**: the first request to a plugin could fail with "timed out" on a slow computer, because the time the plugin needed to start was counted against the step's time limit. Starting now has its own limit (15 seconds) and the step's time limit begins when the plugin is ready.
+- **Passages per answer now applies**: the chatbot always looked up 4 passages whatever you set on the knowledge base. It now uses your setting.
 - **Linux without a password keyring**: on a computer whose keyring has no default keyring yet (a fresh install) or that runs no keyring at all, every bot reply and run failed with "credential store error: could not read the openai key", even when it only used Ollama. A key that was never saved now simply counts as not set, so Ollama and the AI tools on your computer keep working. Saving a key there now says what is wrong and how to fix it (create a default keyring in "Passwords and Keys", start a keyring, or unlock it) instead of a technical error. Keys are still never written to a plain file.
 
 ### Changed
@@ -761,7 +769,8 @@ connected to the graphrt runtime**, so no agent actually runs.
 - The mobile companion screens from the design are not built.
 - macOS builds are unsigned.
 
-[Unreleased]: https://github.com/Graphrt/graphrt-builder-desktop/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Graphrt/graphrt-builder-desktop/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/Graphrt/graphrt-builder-desktop/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Graphrt/graphrt-builder-desktop/compare/v0.1.8...v0.2.0
 [0.1.8]: https://github.com/Graphrt/graphrt-builder-desktop/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/Graphrt/graphrt-builder-desktop/compare/v0.1.6...v0.1.7
