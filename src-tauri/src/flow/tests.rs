@@ -512,3 +512,63 @@ graph:
     assert_eq!(schema["items"]["properties"]["quantity"]["type"], "number");
     assert_eq!(inputs[1].schema, None, "anything that is not an object is not a schema");
 }
+
+/// The classifier goes straight to the reply, which reads a model step that never runs.
+const SKIPPED_MODEL_STEP: &str = r#"
+version: "1"
+name: bakery
+graph:
+  nodes:
+    - id: start
+      type: start
+      variables:
+        - { variable: message, type: paragraph, required: true }
+    - id: classify
+      type: question-classifier
+      query_variable_selector: [start, message]
+      model: { provider: openai, name: gpt-4o-mini }
+      classes:
+        - { id: hours, name: Opening hours }
+        - { id: other, name: Anything else }
+    - id: answer_hours
+      type: llm
+      model: { provider: openai, name: gpt-4o-mini }
+      prompt_template:
+        - { role: user, text: "{{#start.message#}}" }
+    - id: reply_hours
+      type: answer
+      answer: "{{#answer_hours.text#}}"
+    - id: reply_other
+      type: answer
+      answer: "Please ask the owner"
+    - id: end
+      type: end
+      outputs:
+        - { variable: kind, value_selector: [classify, class_name] }
+  edges:
+    - { source: start, target: classify }
+    - { source: classify, target: reply_hours, handle: hours }
+    - { source: classify, target: reply_other, handle: other }
+    - { source: reply_hours, target: end }
+    - { source: reply_other, target: end }
+"#;
+
+#[test]
+fn finds_a_step_that_reads_a_step_which_never_runs_before_it() {
+    let unrun = find_unrun_references(SKIPPED_MODEL_STEP).unwrap();
+    assert_eq!(unrun, vec![UnrunReference { reader_id: "reply_hours".into(), read_id: "answer_hours".into() }]);
+    assert!(unrun[0].message().contains("`answer_hours` never runs before `reply_hours`"), "{}", unrun[0].message());
+
+    let fixed = SKIPPED_MODEL_STEP
+        .replace("- { source: classify, target: reply_hours, handle: hours }", "- { source: classify, target: answer_hours, handle: hours }\n    - { source: answer_hours, target: reply_hours }")
+        ;
+    assert_eq!(find_unrun_references(&fixed).unwrap(), vec![]);
+}
+
+#[test]
+fn working_flows_read_only_steps_that_ran_before() {
+    let fixtures = [SIMPLE_ANSWER, APPROVAL_LOOP];
+    for fixture in fixtures {
+        assert_eq!(find_unrun_references(fixture).unwrap(), vec![], "{fixture}");
+    }
+}

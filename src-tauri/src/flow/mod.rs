@@ -5,6 +5,7 @@
 mod approval;
 pub mod migration;
 mod placeholders;
+mod references;
 mod sending;
 mod summary;
 #[cfg(test)]
@@ -16,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::{AppError, AppResult};
 pub use approval::UnapprovedStep;
 pub(crate) use approval::{read_timeout_choice, TimeoutChoice, TimeoutSend};
+pub use references::UnrunReference;
 pub use sending::{check_http_request, HttpRequestCheck};
 pub use trusted_hosts::TrustedHosts;
 
@@ -295,6 +297,16 @@ pub(crate) fn timeout_send_message(timeout: &TimeoutSend) -> String {
 pub fn find_placeholder_http_steps(flow_yaml: &str) -> AppResult<Vec<String>> {
     let graph = compile_draft(flow_yaml)?;
     Ok(placeholders::placeholder_http_steps(&graph))
+}
+
+/// Steps that read the output of a top-level step that never runs before them (the
+/// value would be empty at run time), see [`references`].
+///
+/// # Errors
+/// Same as [`compile_flow`]: the document is compiled first.
+pub fn find_unrun_references(flow_yaml: &str) -> AppResult<Vec<UnrunReference>> {
+    let graph = compile_draft(flow_yaml)?;
+    Ok(references::unrun_references(&graph))
 }
 
 /// Steps a local CLI model provider cannot run (a "Run an agent" step with tools,

@@ -146,7 +146,7 @@ export function NewAgentPage() {
   }
 
   return (
-    <AppShell agents={{ kind: 'empty' }} runnerStatus={messages().newAgent.onlineOpenaiConnected} mainClassName="flex flex-col items-center gap-12 px-8 pt-[72px] pb-12">
+    <AppShell agents={{ kind: 'list' }} runnerStatus={messages().newAgent.onlineOpenaiConnected} mainClassName="flex flex-col items-center gap-12 px-8 pt-[72px] pb-12">
       <form onSubmit={handleSubmit} className="flex w-full max-w-[760px] flex-col gap-5">
         <h1 className="m-0 text-center text-[36px] font-semibold tracking-[-0.8px]">{messages().newAgent.whatShouldYourAgentDo}</h1>
         <AgentKindPicker selectedKind={selectedKind} onSelect={setSelectedKind} />

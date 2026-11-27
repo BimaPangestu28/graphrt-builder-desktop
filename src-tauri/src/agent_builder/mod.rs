@@ -409,6 +409,17 @@ fn validate_draft(flow_yaml: &str, builder: &BuilderModel, trust: &DraftTrust<'_
             placeholders.join(", ")
         ));
     }
+    // graphrt accepts reading a step that has not run yet; the value is then empty
+    // (a chatbot built like that answers nothing).
+    let unrun = flow::find_unrun_references(flow_yaml).map_err(|error| error.to_string())?;
+    if !unrun.is_empty() {
+        let problems: Vec<String> = unrun.iter().map(flow::UnrunReference::message).collect();
+        return Err(format!(
+            "{}. Connect the edges so every step you read runs before the step that reads it (for example \
+             classifier -> `llm` step -> `answer` step), or read a step that does",
+            problems.join("; ")
+        ));
+    }
     // The app promises to ask before anything is sent, so a draft that can send
     // without stopping at an approval goes back to the model.
     let unapproved = flow::find_unapproved_steps(flow_yaml, trust.trusted_hosts).map_err(|error| error.to_string())?;

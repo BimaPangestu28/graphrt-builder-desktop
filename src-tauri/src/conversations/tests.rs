@@ -392,6 +392,49 @@ async fn bot_failure_hands_the_chat_over_with_the_reason() {
     assert!(notice.text.starts_with("The bot could not answer"));
 }
 
+/// What the builder once drafted for a bakery: the classifier goes straight to the
+/// `answer` step, which reads a model step that never ran, so the reply is empty.
+const EMPTY_REPLY_FLOW: &str = r#"
+version: "1"
+name: chatbot-empty-reply
+graph:
+  nodes:
+    - id: start
+      type: start
+      variables:
+        - { variable: message, type: paragraph, required: true }
+    - id: answer_hours
+      type: llm
+      model: { provider: openai, name: gpt-4o-mini }
+      prompt_template:
+        - { role: user, text: "{{#start.message#}}" }
+    - id: reply_hours
+      type: answer
+      answer: "{{#answer_hours.text#}}"
+    - id: end
+      type: end
+      outputs: []
+  edges:
+    - { source: start, target: reply_hours }
+    - { source: reply_hours, target: end }
+"#;
+
+#[tokio::test]
+async fn a_bot_that_answers_nothing_hands_the_chat_over_instead_of_staying_silent() {
+    let harness = harness_with_answers(&[]);
+    let agent = create_chatbot(&harness.db, EMPTY_REPLY_FLOW);
+    let conversation = harness.conversations.start_test_conversation(&agent.id).unwrap().conversation;
+
+    let detail = harness.conversations.send_customer_message(&conversation.id, "Buka hari Minggu?").await.unwrap();
+    assert_eq!(detail.conversation.status, ConversationStatus::WaitingForYou);
+    assert_eq!(detail.conversation.handoff_reason.as_deref(), Some(BOT_ERROR_REASON));
+    let notice = detail.messages.last().unwrap();
+    assert_eq!(notice.author, MessageAuthor::System);
+    assert!(notice.text.starts_with("The bot could not answer"), "{}", notice.text);
+    assert!(notice.text.contains("empty"), "{}", notice.text);
+    assert!(detail.messages.iter().all(|message| message.author != MessageAuthor::Bot));
+}
+
 #[tokio::test]
 async fn closing_and_reopening_a_chat() {
     let harness = harness_with_answers(&["Welcome back"]);

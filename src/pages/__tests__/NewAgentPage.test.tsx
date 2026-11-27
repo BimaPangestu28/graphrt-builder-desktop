@@ -57,6 +57,12 @@ describe('NewAgentPage', () => {
     expect(await screen.findByRole('combobox', { name: 'Model for new agents' })).toHaveDisplayValue('gpt-4o-mini')
   })
 
+  it('lists the agents that already exist in the sidebar instead of saying there are none', async () => {
+    renderNewAgentPage()
+    expect(await screen.findByText('Maps leads to WhatsApp')).toBeInTheDocument()
+    expect(screen.queryByText(/No agents yet/)).not.toBeInTheDocument()
+  })
+
   it('shows the real default model on the chip', async () => {
     vi.spyOn(sampleCredentialsBackend, 'getDefaultModel').mockResolvedValue({ provider: 'deepseek', name: 'deepseek-chat' })
     renderNewAgentPage()
