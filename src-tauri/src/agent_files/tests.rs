@@ -979,13 +979,24 @@ async fn a_tool_given_a_path_that_does_not_exist_says_which_files_do() {
     let mut tools = ToolRegistry::new();
     access.wire(FILES_AGENT_FLOW, &mut tools).unwrap();
 
-    // What llama3.2 asked for: the example path of the tool's description, not the attached file.
+    // What llama3.2 asked for: the example path of the tool's description, with one picture
+    // attached. That picture is the one it meant.
+    let arguments = json!({ "path": "photos/cat.jpg", "max_width": 400 });
+    let resized = tools.get(IMAGE_PROVIDER).unwrap().call("resize", arguments, ToolCallContext::empty()).await.unwrap();
+    assert!(!resized.is_error, "{}", resized.text);
+    assert!(
+        resized.text.starts_with("`photos/cat.jpg` does not exist, so the only such file, `uploads/poster.png`, was used."),
+        "{}",
+        resized.text
+    );
+
+    // With two pictures the model is told which exist and asks again.
     let arguments = json!({ "path": "photos/cat.jpg", "max_width": 400 });
     let missing = tools.get(IMAGE_PROVIDER).unwrap().call("resize", arguments, ToolCallContext::empty()).await.unwrap();
     assert!(missing.is_error);
     assert!(
         missing.text.ends_with(
-            "The files that exist are: uploads/poster.png. Call the tool again with one of these exact paths."
+            "The files that exist are: uploads/poster-32x32.png, uploads/poster.png. Call the tool again with one of these exact paths."
         ),
         "{}",
         missing.text

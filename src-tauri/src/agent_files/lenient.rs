@@ -20,8 +20,9 @@
 //! Nothing else changes: a value that does not fit is passed on as it was and the tool
 //! refuses it with its own message. Paths and other text are never touched.
 //!
-//! A tool given a path that does not exist answers with the files that do, so the model can
-//! ask again instead of giving up.
+//! A tool given a path that does not exist uses the one file of that kind when the workspace
+//! holds exactly one (a picture for a picture's name), and otherwise answers with the files
+//! that do exist, so the model can ask again instead of giving up.
 //!
 //! The same wrapper adds one sentence to the result of a tool that made a file
 //! ([`SHOWN_BY_THE_APP`]). Measured with gpt-4o-mini: without it, five answers out of five
@@ -74,6 +75,25 @@ impl LenientArguments {
         ))
     }
 
+    /// The one file in the workspace of the same kind as `given` (a picture for a picture's
+    /// name, any file for a name without a known kind), when there is exactly one.
+    async fn only_file_like(&self, given: &str) -> Option<String> {
+        let listing = self.view.list(None, MAX_FILES_NAMED).await.ok()?;
+        if listing.truncated {
+            return None;
+        }
+        let kind = FileFamily::of(given);
+        let mut fitting = listing
+            .entries
+            .iter()
+            .map(|entry| entry.path.to_string())
+            .filter(|path| kind.is_none() || FileFamily::of(path) == kind);
+        match (fitting.next(), fitting.next()) {
+            (Some(only), None) if only != given => Some(only),
+            _ => None,
+        }
+    }
+
     async fn parameters_of(&self, name: &str) -> Option<Json> {
         if self.specs.get().is_none() {
             let listed = self.tools.list().await.ok()?;
@@ -100,7 +120,28 @@ impl ToolRuntime for LenientArguments {
                 Some(parameters) => fit_to_schema(arguments, &parameters),
                 None => arguments,
             };
-            let mut output = self.tools.call(name, arguments, context).await?;
+            let given_path = arguments.get("path").and_then(Json::as_str).map(str::to_owned);
+            let mut output = self.tools.call(name, arguments.clone(), context).await?;
+            // A path that names no file, with exactly one file of that kind in the workspace: the
+            // model meant that file (llama3.2 copied the description's `photos/cat.jpg` with the
+            // attached poster one line away, then made up a result instead of asking again).
+            if output.is_error && output.text.contains(NO_SUCH_FILE) {
+                if let Some((given, only)) = match &given_path {
+                    Some(given) => self.only_file_like(given).await.map(|only| (given.clone(), only)),
+                    None => None,
+                } {
+                    let mut retried = arguments;
+                    retried["path"] = Json::String(only.clone());
+                    let mut again = self.tools.call(name, retried, context).await?;
+                    if !again.is_error {
+                        again.text = format!(
+                            "`{given}` does not exist, so the only such file, `{only}`, was used.\n{}",
+                            again.text
+                        );
+                    }
+                    output = again;
+                }
+            }
             if !output.is_error && !graphrt_core::tool::collect_files(&output.data).is_empty() {
                 output.text = format!("{}\n{SHOWN_BY_THE_APP}", output.text.trim_end());
             }
@@ -115,6 +156,26 @@ impl ToolRuntime for LenientArguments {
 
     fn accepts_secrets(&self) -> bool {
         self.tools.accepts_secrets()
+    }
+}
+
+/// What kind of file a name is, from its extension: the file a model meant is of the same kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FileFamily {
+    Picture,
+    Document,
+    Sheet,
+}
+
+impl FileFamily {
+    fn of(path: &str) -> Option<Self> {
+        let extension = path.rsplit_once('.')?.1.to_ascii_lowercase();
+        match extension.as_str() {
+            "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp" | "tif" | "tiff" => Some(Self::Picture),
+            "pdf" | "doc" | "docx" | "txt" | "md" | "rtf" | "odt" => Some(Self::Document),
+            "csv" | "xls" | "xlsx" | "ods" | "tsv" => Some(Self::Sheet),
+            _ => None,
+        }
     }
 }
 
