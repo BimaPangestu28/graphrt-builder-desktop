@@ -115,6 +115,24 @@ describe('ChatbotSetupPage', () => {
     expect(testChats[0].lastMessageAuthor).toBe('bot')
   })
 
+  it('draws the card and chart the bot returns, and a card button answers as the customer', async () => {
+    renderChatbotSetup()
+    await screen.findByText('Jumat ini jam berapa dikirimnya kak?')
+    await sendTestMessage('Buat pesanan 50 box')
+    expect(await screen.findByRole('region', { name: 'Pesanan nasi box' })).toBeInTheDocument()
+    expect(await screen.findByRole('region', { name: 'Paket paling sering dipesan' })).toBeInTheDocument()
+    const confirm = await screen.findByRole('button', { name: 'Konfirmasi pesanan' })
+    await act(async () => {
+      fireEvent.click(confirm)
+    })
+    expect(await screen.findByText('Terima kasih kak, pesanannya saya teruskan ke admin untuk dikonfirmasi ya.')).toBeInTheDocument()
+    // The card is history now: its buttons no longer answer.
+    expect(screen.getByRole('button', { name: 'Konfirmasi pesanan' })).toBeDisabled()
+    const [testChat] = await sampleConversationsBackend.listConversations({ channel: 'test' })
+    const { messages: chatMessages } = await sampleConversationsBackend.getConversation(testChat.id)
+    expect(chatMessages.at(-2)).toMatchObject({ author: 'customer', text: 'Konfirmasi pesanan', metadata: { cardAction: { action: 'konfirmasi' } } })
+  })
+
   it('shows the hand-off notice when the bot is not sure', async () => {
     renderChatbotSetup()
     await screen.findByText('Jumat ini jam berapa dikirimnya kak?')

@@ -323,6 +323,7 @@ pub fn run() {
             commands::conversations::get_conversation,
             commands::conversations::start_test_conversation,
             commands::conversations::send_customer_message,
+            commands::conversations::send_customer_card_answer,
             commands::conversations::take_over,
             commands::conversations::hand_back,
             commands::conversations::send_operator_reply,

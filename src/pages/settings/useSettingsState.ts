@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { applyAppearance } from '@/lib/appearance'
 import type { AppearanceKey, ModelFallbackKey } from '@/lib/settings'
 
 /**
@@ -29,6 +30,7 @@ export function useSettingsState() {
   const [settingsValues, setSettingsValues] = useState<SettingsValues>(initialSettingsValues)
   const updateSetting: UpdateSetting = (key, value) => {
     setSettingsValues((previousValues) => ({ ...previousValues, [key]: value }))
+    if (key === 'appearance') applyAppearance(value as SettingsValues['appearance'])
   }
   return { settingsValues, updateSetting }
 }

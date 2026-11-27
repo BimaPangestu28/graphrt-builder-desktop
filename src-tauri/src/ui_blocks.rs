@@ -1,4 +1,4 @@
-//! graphrt UI blocks (Adaptive Cards, charts, tables, KPI tiles) found in runs, checked with
+//! graphrt UI blocks (Adaptive Cards, charts, tables, KPI tiles, diagrams) found in runs, checked with
 //! `graphrt_ui::validate` before the Run result screen or an approval card renders them.
 //!
 //! Which blocks a run shows: the blocks in the run's outputs (the `end` node, in output
@@ -7,6 +7,8 @@
 //! `ui-render` node, an agent's `ui` output). Equal blocks are shown once, at most
 //! [`MAX_VISUALS`] in all. A block that fails validation is never sent to the screen: only
 //! its kind and the reason, so a builder can fix the step.
+//!
+//! Blocks in chatbot replies are handled in `crate::conversations::visuals`.
 
 use graphrt_core::value::Value;
 use serde::Serialize;
@@ -25,7 +27,7 @@ pub struct RunVisual {
     pub id: String,
     /// The step that produced it; `None` for the run's outputs.
     pub node_id: Option<String>,
-    /// `adaptive_card`, `chart`, `table` or `stats`.
+    /// `adaptive_card`, `chart`, `table`, `stats` or `diagram`.
     pub kind: String,
     /// The block as validated (with `$ui` and `version`).
     pub block: Json,

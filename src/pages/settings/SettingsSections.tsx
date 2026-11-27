@@ -235,7 +235,6 @@ export function RemoteRunnerSection({ settingsValues, updateSetting }: SectionPr
   )
 }
 
-/** General group: appearance and language (browser preview only: no dark theme or translations yet). */
 /** Language names stay in their own language, so anyone can find theirs. */
 const languageNames: Record<Locale, string> = { en: 'English', id: 'Bahasa Indonesia' }
 const localeOptions: readonly Locale[] = ['en', 'id']

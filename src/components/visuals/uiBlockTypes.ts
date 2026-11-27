@@ -1,5 +1,6 @@
 /**
- * graphrt UI blocks as the backend sends them (`RunVisual.block`, `PendingApproval.card`): objects whose
+ * graphrt UI blocks as the backend sends them (`RunVisual.block`, `PendingApproval.card`, a chat message's
+ * `metadata.visuals`): objects whose
  * `$ui` names the kind. The backend validated each one with graphrt-ui (`src-tauri/src/ui_blocks.rs`), so
  * these types describe valid blocks; renderers still treat every optional field as possibly absent.
  */
@@ -81,5 +82,12 @@ export interface AdaptiveCardBlock extends BlockEnvelope {
   card: AdaptiveCard
 }
 
-export type UiBlock = ChartBlock | TableBlock | StatsBlock | AdaptiveCardBlock
+/** A diagram as Mermaid text. graphrt-ui allows text only: no HTML, links, callbacks, config or colours. */
+export interface DiagramBlock extends BlockEnvelope {
+  $ui: 'diagram'
+  syntax: 'mermaid'
+  source: string
+}
+
+export type UiBlock = ChartBlock | TableBlock | StatsBlock | AdaptiveCardBlock | DiagramBlock
 export type UiBlockKind = UiBlock['$ui']

@@ -16,7 +16,8 @@ export function listSettingsSections(): Array<{ key: SettingsSectionKey; label: 
 /**
  * Sections whose controls have no backend yet (the remote runner does not exist). The
  * desktop app hides them; the browser preview shows the full design. General holds the
- * language (real everywhere) and the appearance (preview only: there is no dark theme yet).
+ * language (real everywhere) and the appearance (preview only: so far only the UI blocks agents show have
+ * dark colours, see `./appearance`).
  */
 export const previewOnlySettingsSections: readonly SettingsSectionKey[] = ['remote']
 

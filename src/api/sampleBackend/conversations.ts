@@ -1,6 +1,7 @@
 import { BackendError } from '../client'
 import {
   outreachOrigin,
+  type CardAnswer,
   type Conversation,
   type ConversationCounts,
   type ConversationDetail,
@@ -14,6 +15,7 @@ import {
 import { initialTryItMessages } from '@/api/sampleBackend/fixtures/chatbotSetup'
 import { inboxConversations, type ChatMessage, type InboxConversation } from '@/api/sampleBackend/fixtures/inbox'
 import { searchKnowledgePassages } from '@/api/sampleBackend/fixtures/knowledgePassages'
+import { sampleMenuChart, sampleOrderCard, sampleOrderDiagram } from '@/api/sampleBackend/fixtures/sampleChatVisuals'
 import { sampleBotFile, sampleCardsFor } from './agentFiles'
 import { readStoredAgent } from './sampleAgentStore'
 import { requireText, respondWith } from './sampleResponse'
@@ -26,6 +28,8 @@ import { requireText, respondWith } from './sampleResponse'
  * - The sample bot answers from the mock knowledge (`searchKnowledgePassages`) and hands the
  *   chat over (`not_sure`) when nothing matches, like the hand-off outputs of a real workflow.
  * - Every new test conversation starts with the Try it demo exchange.
+ * - "Buat pesanan" gets a card with buttons and a chart, "alur pesanan" (or "diagram") a diagram: what a
+ *   chatbot with `ui-render` tools returns.
  *
  * Every change goes to {@link sampleConversationsBackend.subscribeToConversationEvents}
  * subscribers, like the Tauri `conversation-event`. Call {@link resetSampleConversations} in tests.
@@ -250,8 +254,28 @@ function startTestChat(agentId: string): ConversationDetail {
   return readDetail(conversation.id)
 }
 
+/** The sample bot's replies with UI blocks: an order card plus a chart, or a diagram. */
+function answerWithSampleVisuals(conversationId: string, customerText: string): boolean {
+  if (/\b(alur pesanan|diagram)\b/i.test(customerText)) {
+    addMessage(conversationId, 'bot', 'Begini alur pesanannya kak:', { visuals: [sampleOrderDiagram] })
+    return true
+  }
+  if (/\b(buat pesanan|ringkasan pesanan)\b/i.test(customerText)) {
+    addMessage(conversationId, 'bot', 'Siap kak, ini ringkasan pesanannya. Paket Ayam Bakar memang paling laris:', {
+      visuals: [sampleOrderCard, sampleMenuChart],
+      choices: [
+        { number: 1, title: 'Konfirmasi pesanan', action: 'konfirmasi', values: { catatan: '' } },
+        { number: 2, title: 'Ubah jumlah', action: 'ubah', values: { catatan: '' } },
+      ],
+    })
+    return true
+  }
+  return false
+}
+
 /** The sample bot: answers from the mock knowledge, or hands over when it is not sure. */
 function answerAsSampleBot(conversationId: string, customerText: string): void {
+  if (answerWithSampleVisuals(conversationId, customerText)) return
   const bestPassage = searchKnowledgePassages(customerText)[0]
   if (!bestPassage || bestPassage.score < 0.55) {
     addMessage(conversationId, 'bot', 'Sebentar ya kak, saya sambungkan ke admin kami')
@@ -288,6 +312,17 @@ function receiveCustomerMessage(conversationId: string, text: string, attachment
   } else {
     answerAsSampleBot(conversationId, customerText)
   }
+  return readDetail(conversationId)
+}
+
+/** A card button pressed in Try it: the customer message says what was chosen, then the sample bot confirms. */
+function receiveCardAnswer(conversationId: string, answer: CardAnswer): ConversationDetail {
+  const title = requireText(answer.title, 'a card answer needs a short title')
+  const lastMessage = (messagesByConversationId.get(conversationId) ?? []).filter((message) => message.author !== 'system').at(-1)
+  if (lastMessage?.author !== 'bot' || !Array.isArray(lastMessage.metadata.visuals)) throw new BackendError('invalid_input', 'this card can no longer be answered')
+  const note = typeof answer.values.catatan === 'string' && answer.values.catatan.trim() !== '' ? `\ncatatan: ${answer.values.catatan.trim()}` : ''
+  addMessage(conversationId, 'customer', `${title}${note}`, { cardAction: answer })
+  addMessage(conversationId, 'bot', answer.action === 'konfirmasi' ? 'Terima kasih kak, pesanannya saya teruskan ke admin untuk dikonfirmasi ya.' : 'Baik kak, mau diubah jadi berapa box?')
   return readDetail(conversationId)
 }
 
@@ -337,6 +372,7 @@ export const sampleConversationsBackend = {
   startTestConversation: (agentId: string): Promise<ConversationDetail> => respondWith(() => startTestChat(agentId)),
   sendCustomerMessage: (conversationId: string, text: string, attachments: string[] = []): Promise<ConversationDetail> =>
     respondWith(() => receiveCustomerMessage(conversationId, text, attachments)),
+  sendCustomerCardAnswer: (conversationId: string, answer: CardAnswer): Promise<ConversationDetail> => respondWith(() => receiveCardAnswer(conversationId, answer)),
   takeOver: (conversationId: string): Promise<Conversation> => respondWith(() => takeOverChat(conversationId)),
   handBack: (conversationId: string): Promise<Conversation> => respondWith(() => handBackChat(conversationId)),
   sendOperatorReply: (conversationId: string, text: string): Promise<ConversationMessage> => respondWith(() => replyAsOperator(conversationId, text)),
