@@ -337,7 +337,11 @@ fn parse_gemini_model(model: &Json) -> Option<AvailableModel> {
     if id.contains("embedding") || id.starts_with("aqa") || id.starts_with("imagen") {
         return None;
     }
-    Some(AvailableModel { id: id.to_owned(), display_name: string_field(model, "displayName"), parameter_millions: None })
+    Some(AvailableModel {
+        id: id.to_owned(),
+        display_name: string_field(model, "displayName"),
+        parameter_millions: None,
+    })
 }
 
 /// reqwest-backed fetcher: HTTPS for cloud providers, plain HTTP allowed for a local Ollama.

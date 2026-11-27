@@ -74,7 +74,11 @@ fn anthropic_list_keeps_display_names() {
     let models = parse_models(ModelProvider::Anthropic, &body);
     assert_eq!(
         models[0],
-        AvailableModel { id: "claude-haiku-5-5".into(), display_name: Some("Claude Haiku 5.5".into()), parameter_millions: None }
+        AvailableModel {
+            id: "claude-haiku-5-5".into(),
+            display_name: Some("Claude Haiku 5.5".into()),
+            parameter_millions: None
+        }
     );
     assert_eq!(models.len(), 2);
 }
@@ -90,7 +94,11 @@ fn gemini_list_keeps_generate_content_models_without_prefix() {
     let models = parse_models(ModelProvider::Gemini, &body);
     assert_eq!(
         models,
-        vec![AvailableModel { id: "gemini-2.5-flash".into(), display_name: Some("Gemini 2.5 Flash".into()), parameter_millions: None }]
+        vec![AvailableModel {
+            id: "gemini-2.5-flash".into(),
+            display_name: Some("Gemini 2.5 Flash".into()),
+            parameter_millions: None
+        }]
     );
 }
 

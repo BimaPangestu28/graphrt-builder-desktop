@@ -26,7 +26,9 @@ use graphrt_llm::{ChatDelta, ChatRequest, Message, ResponseFormat};
 
 use super::live::{DraftPreview, MIN_PREVIEW_INTERVAL};
 use super::prompt::AGENT_NAME_PREFIX;
-use super::{model_error, report, validate_draft, BuildProgress, BuildStage, BuilderModel, DraftTrust, ProgressSink, ValidDraft};
+use super::{
+    model_error, report, validate_draft, BuildProgress, BuildStage, BuilderModel, DraftTrust, ProgressSink, ValidDraft,
+};
 use crate::error::AppResult;
 use crate::flow::TrustedHosts;
 use crate::storage::models::AgentKind;

@@ -3,7 +3,7 @@
 //! Not part of the normal test run (`#[ignore]`): it needs Ollama with the model pulled.
 //!
 //! ```sh
-//! GRAPHRT_EVAL_MODEL=llama3.2 GRAPHRT_EVAL_ATTEMPTS=10 \
+//! GRAPHRT_EVAL_OLLAMA=http://127.0.0.1:11434 GRAPHRT_EVAL_MODEL=llama3.2 GRAPHRT_EVAL_ATTEMPTS=10 \
 //!   cargo test --manifest-path src-tauri/Cargo.toml live_eval -- --ignored --nocapture
 //! ```
 //!
@@ -45,8 +45,14 @@ fn env_or(name: &str, default: &str) -> String {
     std::env::var(name).unwrap_or_else(|_| default.to_owned())
 }
 
+/// Address of the Ollama to measure with. Required, so a run never lands on an Ollama
+/// someone else is using by default.
+fn ollama_base_url() -> String {
+    std::env::var("GRAPHRT_EVAL_OLLAMA").expect("set GRAPHRT_EVAL_OLLAMA, e.g. http://127.0.0.1:11500")
+}
+
 fn ollama_builder(model_name: &str) -> BuilderModel {
-    let base_url = env_or("GRAPHRT_EVAL_OLLAMA", "http://localhost:11434");
+    let base_url = ollama_base_url();
     let model = OpenAiModel::new(OpenAiConfig::new(format!("{base_url}/v1"), None)).unwrap();
     BuilderModel {
         model: Arc::new(model),
@@ -147,6 +153,8 @@ async fn live_eval() {
         for attempt in 1..=attempts {
             total += 1;
             let db = Arc::new(Database::open_in_memory().unwrap());
+            // Runs read the Ollama address from the app's settings.
+            db.set_setting(crate::credentials::SETTING_OLLAMA_BASE_URL, &ollama_base_url()).unwrap();
             let credentials = Arc::new(CredentialStore::in_memory());
             let started = Instant::now();
             let request = BuildRequest { description: description.into(), kind: None };
@@ -154,7 +162,10 @@ async fn live_eval() {
                 Ok(agent) => agent,
                 Err(error) => {
                     let seconds = started.elapsed().as_secs();
-                    println!("[{model_name}] r{index} a{attempt} BUILD-FAIL {seconds}s {}", first_line(&error.to_string()));
+                    println!(
+                        "[{model_name}] r{index} a{attempt} BUILD-FAIL {seconds}s {}",
+                        first_line(&error.to_string())
+                    );
                     continue;
                 }
             };
@@ -184,7 +195,10 @@ async fn live_eval() {
                     );
                 }
                 Err(problem) => {
-                    println!("[{model_name}] r{index} a{attempt} RUN-FAIL build {build_seconds}s: {}", first_line(&problem))
+                    println!(
+                        "[{model_name}] r{index} a{attempt} RUN-FAIL build {build_seconds}s: {}",
+                        first_line(&problem)
+                    )
                 }
             }
         }

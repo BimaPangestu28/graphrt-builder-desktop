@@ -279,7 +279,11 @@ fn lookup_url(raw_url: &str, inputs: &mut Vec<PlanInput>, inputs_are_fixed: bool
     Ok(LookupUrl { template, host })
 }
 
-fn resolve_placeholder(written_name: &str, inputs: &mut Vec<PlanInput>, inputs_are_fixed: bool) -> Result<String, String> {
+fn resolve_placeholder(
+    written_name: &str,
+    inputs: &mut Vec<PlanInput>,
+    inputs_are_fixed: bool,
+) -> Result<String, String> {
     let wanted = input_name(written_name);
     if let Some(known) = wanted.as_ref().and_then(|name| inputs.iter().find(|input| &input.name == name)) {
         return Ok(known.name.clone());
@@ -379,7 +383,10 @@ mod tests {
         .unwrap();
         assert_eq!(plan.name, "Complaint Reply");
         assert_eq!(plan.summary, "Writes a polite reply.");
-        assert_eq!(plan.inputs, [PlanInput { name: "complaint".into(), label: "The complaint".into(), long_text: true }]);
+        assert_eq!(
+            plan.inputs,
+            [PlanInput { name: "complaint".into(), label: "The complaint".into(), long_text: true }]
+        );
         assert_eq!(plan.steps, [write_step("Write the reply", "Write a polite reply.")]);
     }
 
@@ -457,7 +464,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(plan.steps.len(), 2);
-        assert_eq!(plan.steps[1], write_step("Write the result", "Using what was looked up, do this: Tells the weather."));
+        assert_eq!(
+            plan.steps[1],
+            write_step("Write the result", "Using what was looked up, do this: Tells the weather.")
+        );
     }
 
     #[test]

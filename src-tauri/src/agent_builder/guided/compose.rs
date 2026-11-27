@@ -176,7 +176,10 @@ pub(super) fn workflow_yaml(plan: &Plan, model: &ModelChoice, kind: AgentKind) -
                     title: Some("Keep the first part of what was found".to_owned()),
                     config: NodeConfig::Shorten {
                         template: format!("{{{{ page[:{MAX_LOOKUP_CHARS}] }}}}"),
-                        variables: vec![TemplateVariable { variable: "page", value_selector: [lookup_id, "body".to_owned()] }],
+                        variables: vec![TemplateVariable {
+                            variable: "page",
+                            value_selector: [lookup_id, "body".to_owned()],
+                        }],
                     },
                 });
                 materials.push(Material {
@@ -197,7 +200,10 @@ pub(super) fn workflow_yaml(plan: &Plan, model: &ModelChoice, kind: AgentKind) -
                             completion_params: CompletionParams { temperature: 0.3 },
                         },
                         prompt_template: vec![
-                            PromptMessage { role: "system", text: if is_chatbot { CHATBOT_ROLE } else { WRITER_ROLE }.to_owned() },
+                            PromptMessage {
+                                role: "system",
+                                text: if is_chatbot { CHATBOT_ROLE } else { WRITER_ROLE }.to_owned(),
+                            },
                             PromptMessage { role: "user", text: writer_request(instruction, &materials) },
                         ],
                     },
@@ -227,10 +233,7 @@ pub(super) fn workflow_yaml(plan: &Plan, model: &ModelChoice, kind: AgentKind) -
             }],
         },
     });
-    let edges = nodes
-        .windows(2)
-        .map(|pair| Edge { source: pair[0].id.clone(), target: pair[1].id.clone() })
-        .collect();
+    let edges = nodes.windows(2).map(|pair| Edge { source: pair[0].id.clone(), target: pair[1].id.clone() }).collect();
     let document = Document {
         version: "1",
         name: document_name(&plan.name),
@@ -269,7 +272,11 @@ fn document_name(display_name: &str) -> String {
         }
     }
     let name = name.trim_end_matches('-');
-    if name.is_empty() { "agent".to_owned() } else { name.to_owned() }
+    if name.is_empty() {
+        "agent".to_owned()
+    } else {
+        name.to_owned()
+    }
 }
 
 #[cfg(test)]
@@ -334,7 +341,8 @@ mod tests {
 
     #[test]
     fn a_chatbot_reads_the_message_and_replies_with_an_answer_step() {
-        let plan = plan_from(r#"{"steps": [{"kind": "write", "title": "Reply", "instruction": "Answer kindly."}]}"#, true);
+        let plan =
+            plan_from(r#"{"steps": [{"kind": "write", "title": "Reply", "instruction": "Answer kindly."}]}"#, true);
         let yaml = workflow_yaml(&plan, &local_model(), AgentKind::Chatbot).unwrap();
         let summary = flow::summarize_flow(&yaml).unwrap_or_else(|error| panic!("{error}\n{yaml}"));
         assert_eq!(summary.inputs[0].name, "message");

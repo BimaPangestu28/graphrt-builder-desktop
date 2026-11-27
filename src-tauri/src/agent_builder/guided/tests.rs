@@ -58,11 +58,16 @@ async fn a_local_model_fills_in_a_plan_and_the_app_writes_the_document() {
     assert!(agent.flow_yaml.contains("name: llama3.2"), "{}", agent.flow_yaml);
     let requests = mock.requests();
     assert_eq!(requests.len(), 1, "one short call, no full-document draft");
-    assert!(matches!(requests[0].response_format, Some(ResponseFormat::JsonSchema { .. })), "the answer is held to the schema");
+    assert!(
+        matches!(requests[0].response_format, Some(ResponseFormat::JsonSchema { .. })),
+        "the answer is held to the schema"
+    );
     let system_prompt = requests[0].messages[0].text();
     assert!(system_prompt.len() < 3200, "the prompt fits a local model: {} bytes", system_prompt.len());
     let history = db.list_builder_messages(&agent.id).unwrap();
-    assert!(history.iter().any(|message| message.explanation.as_deref() == Some("Writes a polite reply to a complaint.")));
+    assert!(history
+        .iter()
+        .any(|message| message.explanation.as_deref() == Some("Writes a polite reply to a complaint.")));
 }
 
 #[tokio::test]
@@ -129,7 +134,8 @@ async fn jobs_that_send_something_and_teams_skip_the_plan() {
 async fn a_chatbot_plan_answers_the_customers_message() {
     let db = Database::open_in_memory().unwrap();
     let (_mock, builder) = local_builder(&[REPLY_PLAN]);
-    let build = BuildRequest { description: "Reply kindly to what the customer writes".into(), kind: Some(AgentKind::Chatbot) };
+    let build =
+        BuildRequest { description: "Reply kindly to what the customer writes".into(), kind: Some(AgentKind::Chatbot) };
 
     let agent = build_agent_with_model(&db, &builder, build, &|_| {}).await.unwrap();
 
