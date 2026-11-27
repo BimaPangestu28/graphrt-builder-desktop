@@ -1,5 +1,5 @@
 import { ModelPickerChip } from '@/pages/new-agent/ModelPickerChip'
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { splitPaneColumnClassName, splitPaneScrollClassName } from '@/components/layout'
 import { useFollowNewContent } from '@/hooks/useFollowNewContent'
 import type { Agent, BuilderMessage, FlowStep } from '@/api/types'
@@ -169,12 +169,23 @@ function ChangeRequestForm({ isBusy, onSubmitRequest, askDraft }: ChangeRequestF
     promptRef.current?.focus()
   }, [askDraft])
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+  function sendRequest() {
     const trimmedRequest = draftRequest.trim()
     if (!trimmedRequest || isBusy) return
     onSubmitRequest(trimmedRequest)
     setDraftRequest('')
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    sendRequest()
+  }
+
+  /** Enter sends, like a chat; Shift+Enter starts a new line. Enter that confirms an input-method word is left alone. */
+  function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== 'Enter' || event.shiftKey || event.altKey || event.nativeEvent.isComposing) return
+    event.preventDefault()
+    sendRequest()
   }
 
   return (
@@ -189,6 +200,7 @@ function ChangeRequestForm({ isBusy, onSubmitRequest, askDraft }: ChangeRequestF
           rows={2}
           value={draftRequest}
           onChange={(event) => setDraftRequest(event.target.value)}
+          onKeyDown={handleKeyDown}
           placeholder={messages().builder.describeAChangeLikeSkipPlaces}
           className="flex-auto resize-none border-0 bg-transparent text-[14px] text-ink outline-none"
         />

@@ -2,7 +2,7 @@ import type { PluginRequirement } from '@/api/pluginRequirementTypes'
 import { Badge, Button, StrokeIcon } from '@/components/ui'
 import { whatsAppWebPluginName } from '../connect-whatsapp/useWhatsAppActions'
 import { WhatsAppWebLinkPanel } from '../connect-whatsapp/WhatsAppWebLinkPanel'
-import { PluginConfigForm } from '../plugins/PluginConfigForm'
+import { PluginConfigForm, toPluginConfigField } from '../plugins/PluginConfigForm'
 import { PluginIcon } from '../plugins/PluginIcon'
 import { pluginInstallTrustNote } from '../plugins/pluginDisplay'
 import { pluginRuntimeInstallNote } from '../plugins/PluginRuntimeCard'
@@ -134,7 +134,7 @@ function RequirementActions({ requirement, setup }: PluginRequirementCardProps) 
       {showsSettings && (
         <PluginConfigForm
           pluginLabel={requirement.displayName}
-          fields={requirement.missingConfig.map((variable) => ({ variable, configured: false }))}
+          fields={requirement.missingSettings?.map(toPluginConfigField) ?? requirement.missingConfig.map((variable) => ({ variable, configured: false }))}
           onSave={(variable, value) => setup.saveSetting(requirement.name, variable, value)}
           onClear={async () => {}}
         />

@@ -409,6 +409,27 @@ describe('BuilderPage', () => {
     })
   })
 
+  it('sends the request on Enter and starts a new line on Shift+Enter', async () => {
+    const reviseAgentSpy = vi.spyOn(sampleBuilderBackend, 'reviseAgent')
+    renderBuilderPage()
+    await screen.findByText('Write a short message')
+    const prompt = screen.getByLabelText('Describe a change')
+    fireEvent.change(prompt, { target: { value: 'Skip places with fewer than 50 reviews' } })
+
+    fireEvent.keyDown(prompt, { key: 'Enter', shiftKey: true })
+    expect(reviseAgentSpy).not.toHaveBeenCalled()
+    // Enter that confirms an input-method word (Japanese, Chinese, Korean) does not send either.
+    fireEvent.keyDown(prompt, { key: 'Enter', isComposing: true })
+    expect(reviseAgentSpy).not.toHaveBeenCalled()
+
+    fireEvent.keyDown(prompt, { key: 'Enter' })
+    expect(reviseAgentSpy).toHaveBeenCalledWith('maps-leads', 'Skip places with fewer than 50 reviews', expect.any(Function))
+    expect(prompt).toHaveValue('')
+    await act(async () => {
+      await reviseAgentSpy.mock.results[0].value
+    })
+  })
+
   it('leaves the chat box empty without an ask param', async () => {
     renderBuilderPage()
     await screen.findByText('Write a short message')

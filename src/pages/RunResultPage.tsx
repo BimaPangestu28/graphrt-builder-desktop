@@ -13,6 +13,7 @@ import { useLoadedData } from '@/hooks/useRunData'
 import { agentPath, routePaths, runReviewPath, sampleAgentId } from '@/routes'
 import { buildTableCsvHref } from '@/pages/agent-run/placesCsv'
 import { RunErrorNotice } from '@/pages/agent-run/RunErrorNotice'
+import { RunFilesCard } from '@/pages/agent-run/RunFilesCard'
 import { RunItemsTable, RunStatTiles } from '@/pages/agent-run/RunResultDetails'
 import { buildRunResultView } from '@/pages/agent-run/runResultSummary'
 import { BuildChatPanel, BuilderReply, RunPanel, RunTitleRow, RunWorkspace, UserChatBubble, runHeaderActionClassNames } from '@/pages/agent-run/RunWorkspace'
@@ -141,6 +142,7 @@ function ResultDetails({ resultRun }: { resultRun: ResultRun }) {
   const view = buildRunResultView(resultRun.summary)
   return (
     <>
+      <RunFilesCard runId={resultRun.summary.runId} files={resultRun.summary.files} />
       <RunStatTiles stats={view.stats} />
       {view.activity && <p className="m-0 text-[13px] text-body">{view.activity}</p>}
       <RunVisualList visuals={resultRun.summary.visuals} rejected={resultRun.summary.rejectedVisuals} />
@@ -148,7 +150,7 @@ function ResultDetails({ resultRun }: { resultRun: ResultRun }) {
       {view.table ? (
         <RunItemsTable table={view.table} />
       ) : (
-        resultRun.summary.visuals.length === 0 && <MissingOutputsNotice hasNoCounters={view.hasNoOutputs} />
+        resultRun.summary.visuals.length === 0 && resultRun.summary.files.length === 0 && <MissingOutputsNotice hasNoCounters={view.hasNoOutputs} />
       )}
     </>
   )

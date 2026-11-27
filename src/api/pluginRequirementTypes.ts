@@ -1,3 +1,4 @@
+import type { PluginConfigStatus } from './pluginTypes'
 /**
  * What an agent's workflow needs from graphrt plugins, shown inside the build chat so the
  * user approves, installs and configures plugins right where the agent is being built.
@@ -28,6 +29,8 @@ export interface PluginRequirement {
   trustNotNeeded: boolean
   /** Requested settings (env vars) that have no value yet. */
   missingConfig: string[]
+  /** The same settings with their label, help and kind, for the form (missing from an older backend). */
+  missingSettings?: PluginConfigStatus[]
   /** Chromium installed (always true when not needed). */
   browserReady: boolean
   /** Runs on Node.js, so it needs the plugin runtime (true for every catalog plugin). */

@@ -139,12 +139,34 @@ export interface PluginCatalog {
   fetchError: string | null
 }
 
-/** Whether a setting the plugin requests has a value in the keychain. Values are never returned. */
+/**
+ * What kind of value a setting holds (declared by the plugin, else guessed from its name).
+ * Only a `secret` is hidden once saved; a `folder` or `file` gets a picker.
+ */
+export type PluginSettingKind = 'text' | 'secret' | 'number' | 'folder' | 'file'
+
+/**
+ * One setting a plugin requests: what it is and whether it has a value in the keychain.
+ * Everything after `optional` comes from the plugin's own description of its settings and is
+ * missing for a setting it says nothing about.
+ */
 export interface PluginConfigStatus {
   name: string
   configured: boolean
-  /** The plugin has a default (limits, folders, API version), so it never blocks running. */
+  /** The plugin works without it (it has a default), so it never blocks running. */
   optional: boolean
+  /** What people see instead of the variable name, e.g. "Folder for finished documents". */
+  label?: string | null
+  /** One or two sentences on what the setting is for. */
+  help?: string | null
+  /** Missing means `secret`: the value is never shown again. */
+  kind?: PluginSettingKind
+  /** What the plugin uses when the setting has no value. */
+  defaultValue?: string | null
+  /** The value is a comma-separated list (several folders or files). */
+  multiple?: boolean
+  /** The saved value of a setting that is not a secret; always null for a secret. */
+  value?: string | null
 }
 
 /** A plugin installed under the app data folder. */

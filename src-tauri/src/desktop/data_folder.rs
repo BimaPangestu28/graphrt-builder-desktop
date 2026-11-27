@@ -17,7 +17,7 @@ pub fn data_folder(app_handle: &AppHandle) -> AppResult<PathBuf> {
         .map_err(|error| AppError::Internal(format!("could not find the data folder: {error}")))
 }
 
-/// The platform's "open this folder" program and its arguments.
+/// The platform's "open this folder or file" program and its arguments.
 fn file_manager_command(folder: &Path) -> (&'static str, Vec<String>) {
     let folder_text = folder.display().to_string();
     if cfg!(target_os = "macos") {
@@ -38,7 +38,25 @@ pub fn open_in_file_manager(folder: &Path) -> AppResult<()> {
     if !folder.is_dir() {
         return Err(AppError::NotFound(format!("the folder {}", folder.display())));
     }
-    let (program, arguments) = file_manager_command(folder);
+    start_opener(folder)
+}
+
+/// Opens `file` with the app the system uses for it (a PDF in the PDF viewer). The
+/// program is started and not waited for.
+///
+/// @throws AppError::NotFound - when the file does not exist
+/// @throws AppError::Internal - when the opener cannot be started
+pub fn open_with_default_app(file: &Path) -> AppResult<()> {
+    if !file.is_file() {
+        return Err(AppError::NotFound(format!("the file {}", file.display())));
+    }
+    start_opener(file)
+}
+
+/// Hands `path` to the platform's opener, which picks the file manager for a folder and
+/// the default app for a file.
+fn start_opener(path: &Path) -> AppResult<()> {
+    let (program, arguments) = file_manager_command(path);
     let mut command = Command::new(program);
     crate::child_env::apply(&mut command);
     command
@@ -48,7 +66,7 @@ pub fn open_in_file_manager(folder: &Path) -> AppResult<()> {
         .map(|mut child| {
             std::thread::spawn(move || child.wait());
         })
-        .map_err(|error| AppError::Internal(format!("could not open {}: {error}", folder.display())))
+        .map_err(|error| AppError::Internal(format!("could not open {}: {error}", path.display())))
 }
 
 #[cfg(test)]

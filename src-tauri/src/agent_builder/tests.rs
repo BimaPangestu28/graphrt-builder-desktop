@@ -212,19 +212,32 @@ async fn still_invalid_after_max_attempts_fails_and_saves_nothing() {
     assert!(!stages.contains(&BuildStage::Done));
 }
 
+/// A small local model copies the provider of the prompt's examples and then fails to fix it
+/// when asked ("still not valid after 2 fixes: model nodes use provider(s) openai"), so the
+/// app moves those steps to the model the user chose instead of asking again.
 #[tokio::test]
-async fn unavailable_model_provider_is_sent_back_for_repair() {
+async fn a_draft_on_a_provider_that_is_not_set_up_is_moved_to_the_chosen_model() {
     let db = test_database();
-    let (mock, mut builder) =
-        mock_builder(&[fenced_reply("Cafe offers", APPROVAL_LOOP), fenced_reply("Quick answers", SIMPLE_ANSWER)]);
+    let (mock, mut builder) = mock_builder(&[fenced_reply("Cafe offers", APPROVAL_LOOP)]);
     builder.available_providers = vec!["openai".into()];
+    assert!(APPROVAL_LOOP.contains("provider: anthropic"), "the fixture drafts on a provider that is not set up");
 
     let agent = build_agent_with_model(&db, &builder, request(CAFE_REQUEST, None), &|_| {}).await.unwrap();
 
-    assert_eq!(agent.name, "Quick Answers");
-    let repair_text = mock.requests()[1].messages[3].text();
-    assert!(repair_text.contains("anthropic"), "{repair_text}");
-    assert!(repair_text.contains("gpt-4o-mini"), "{repair_text}");
+    assert_eq!(agent.name, "Cafe Offers");
+    assert_eq!(mock.requests().len(), 1, "no repair round is spent on it");
+    let summary = flow::summarize_flow(&agent.flow_yaml).unwrap();
+    assert_eq!(summary.model_providers, ["openai"]);
+    assert!(agent.flow_yaml.contains("gpt-4o-mini"), "{}", agent.flow_yaml);
+}
+
+#[test]
+fn a_draft_on_providers_that_are_set_up_is_left_as_written() {
+    let (_, mut builder) = mock_builder(&[]);
+    builder.available_providers = vec!["openai".into(), "anthropic".into()];
+    assert_eq!(use_available_models(APPROVAL_LOOP.to_owned(), &builder), APPROVAL_LOOP);
+    // Not a workflow at all: left for the check that tells the model so.
+    assert_eq!(use_available_models("no yaml here".to_owned(), &builder), "no yaml here");
 }
 
 #[tokio::test]

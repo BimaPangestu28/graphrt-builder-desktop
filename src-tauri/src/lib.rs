@@ -58,6 +58,8 @@ pub mod node_runtime;
 pub mod plugin_triggers;
 pub mod plugins;
 pub mod problems;
+pub mod run_files;
+pub mod run_prefill;
 pub mod run_review;
 pub mod run_summary;
 pub mod scheduler;
@@ -301,6 +303,8 @@ pub fn run() {
             commands::run_summary::get_run_summary,
             commands::run_summary::list_agent_run_stats,
             commands::run_summary::open_card_link,
+            commands::run_summary::open_run_file,
+            commands::run_summary::open_run_file_folder,
             commands::usage_summary::get_usage_summary,
             commands::run_review::get_run_review,
             commands::run_review::get_run_inputs,

@@ -40,7 +40,7 @@ pub mod run_inputs;
 pub mod runs;
 pub mod settings;
 #[cfg(test)]
-mod test_support;
+pub(crate) mod test_support;
 pub mod triggers;
 pub mod trusted_hosts;
 

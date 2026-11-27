@@ -20,6 +20,7 @@ use serde::Serialize;
 use serde_json::Value as Json;
 
 use crate::error::AppResult;
+use crate::run_files::{collect_run_files, RunFile};
 use crate::storage::models::{Run, RunFilter, RunStatus};
 use crate::storage::Database;
 use crate::ui_blocks::{collect_run_visuals, RejectedVisual, RunVisual};
@@ -97,6 +98,8 @@ pub struct RunSummary {
     pub visuals: Vec<RunVisual>,
     /// Blocks that failed validation, shown as notices.
     pub rejected_visuals: Vec<RejectedVisual>,
+    /// Files the run made that are still on this computer (see [`crate::run_files`]).
+    pub files: Vec<RunFile>,
     pub error_message: Option<String>,
 }
 
@@ -155,6 +158,7 @@ pub fn summarize_run(run: &Run, events: &[Json]) -> RunSummary {
         counters: outputs.map(read_counters).unwrap_or_default(),
         visuals: visuals.visuals,
         rejected_visuals: visuals.rejected,
+        files: collect_run_files(run, events),
         error_message: run.error_message.clone(),
     }
 }

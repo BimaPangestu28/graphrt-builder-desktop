@@ -42,6 +42,8 @@ mod prompt_guide;
 pub mod requirements;
 mod sending;
 pub(crate) mod session;
+mod setting_spec;
+mod setting_value;
 mod settings;
 mod sideload;
 mod skill_catalog;
@@ -62,10 +64,10 @@ pub use catalog::DEFAULT_CATALOG_URL;
 use display_name::resolve_display_name;
 use download::{require_https, Downloader, ProgressCallback};
 use events::PluginEventSink;
-use host::{build_snapshot, HostInputs, PluginSnapshot, SharedSnapshot};
+use host::{build_snapshot, HostInputs, PluginSnapshot, PluginState, SharedSnapshot};
 use models::{
-    InstallRecord, InstalledPlugin, McpServerSummary, PluginActionResult, PluginConfigStatus, PluginEvent,
-    PluginInstallStage, PluginPermissions, PluginTemplateInfo,
+    InstallRecord, InstalledPlugin, McpServerSummary, PluginActionResult, PluginEvent, PluginInstallStage,
+    PluginPermissions, PluginTemplateInfo, SettingDeclaration,
 };
 pub use prompt_guide::installed_plugins_guide;
 pub use sending::{is_sending_operation, is_sending_plugin_kind};
@@ -422,10 +424,32 @@ impl PluginService {
             .collect()
     }
 
+    /// What is declared about `plugin`'s settings: its own `graphrt-settings.json`, then the
+    /// known catalog's entry (never for a sideloaded plugin, which is not the catalog's).
+    fn setting_declarations(&self, plugin: &PluginState, is_local: bool) -> Vec<SettingDeclaration> {
+        let catalog = if is_local { None } else { self.known_catalog() };
+        let from_catalog = catalog
+            .as_deref()
+            .and_then(|catalog| catalog.plugins.iter().find(|entry| entry.name == plugin.name))
+            .map(|entry| entry.settings.as_slice())
+            .unwrap_or_default();
+        setting_spec::merged(&plugin.settings, from_catalog)
+    }
+
+    /// The saved value of a setting, for the plugin listing. A keychain that cannot be read
+    /// (locked, say) shows the setting as not set instead of failing the whole listing, which
+    /// would report an install that worked as failed; saving then says what is wrong.
+    fn stored_setting(&self, plugin: &str, variable: &str) -> Option<String> {
+        self.credentials.read_plugin_config(plugin, variable).unwrap_or_else(|error| {
+            log::warn!("could not read the {variable} setting of plugin {plugin}: {error}");
+            None
+        })
+    }
+
     /// Every installed plugin with trust, setting status and load errors.
     ///
     /// # Errors
-    /// `Database` / `Credentials` when the settings or keychain cannot be read.
+    /// `Database` when the settings table cannot be read.
     pub fn list_installed(&self) -> AppResult<Vec<InstalledPlugin>> {
         let snapshot = self.snapshot();
         let records = settings::install_records(&self.db)?;
@@ -435,18 +459,16 @@ impl PluginService {
             .iter()
             .map(|plugin| {
                 let record = records.get(&plugin.name).cloned().unwrap_or_default();
+                let declarations = self.setting_declarations(plugin, record.is_local());
                 let config = plugin
                     .permissions
                     .env
                     .iter()
                     .map(|variable| {
-                        Ok(PluginConfigStatus {
-                            configured: self.credentials.has_plugin_config(&plugin.name, variable)?,
-                            optional: optional_settings::is_optional_setting(variable),
-                            name: variable.clone(),
-                        })
+                        let stored = self.stored_setting(&plugin.name, variable);
+                        setting_spec::profile(variable, &declarations).status(variable, stored)
                     })
-                    .collect::<AppResult<Vec<_>>>()?;
+                    .collect();
                 // A sideloaded plugin never takes a catalog plugin's name, icon or links.
                 let session_display_name = if record.is_local() {
                     None
@@ -869,9 +891,22 @@ impl PluginService {
     pub async fn set_config(&self, name: &str, variable: &str, value: &str) -> AppResult<InstalledPlugin> {
         let _change = self.changes.lock().await;
         self.require_requested(name, variable)?;
-        self.credentials.set_plugin_config(name, variable, value)?;
+        let value = self.checked_setting_value(name, variable, value)?;
+        self.credentials.set_plugin_config(name, variable, &value)?;
         self.reload();
         self.installed(name)
+    }
+
+    /// `value` as it is saved for `variable`: checked by the setting's kind (a folder is
+    /// created when missing, see `setting_value.rs`).
+    fn checked_setting_value(&self, name: &str, variable: &str, value: &str) -> AppResult<String> {
+        let snapshot = self.snapshot();
+        let declarations = snapshot
+            .plugin(name)
+            .map(|plugin| self.setting_declarations(plugin, self.is_local_plugin(name)))
+            .unwrap_or_default();
+        let profile = setting_spec::profile(variable, &declarations);
+        setting_value::prepare_value(&profile, value, crate::local_cli::detect::home_dir().as_deref())
     }
 
     /// Removes a stored setting.

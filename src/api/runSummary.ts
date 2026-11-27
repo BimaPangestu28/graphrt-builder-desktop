@@ -44,3 +44,34 @@ export function openCardLink(url: string): Promise<void> {
   }
   return callBackend('open_card_link', { url })
 }
+
+/**
+ * Opens a file the run made with its default app (a PDF in the PDF viewer). The backend only
+ * opens a file that run reported and wrote.
+ *
+ * @param runId - The run that made the file (string)
+ * @param path - The file's `path` from the run summary (string)
+ * @throws BackendError - `not_found` when the file is gone or was not made by the run
+ */
+export function openRunFile(runId: string, path: string): Promise<void> {
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) {
+    console.info(`Sample backend: would open ${path}`)
+    return Promise.resolve()
+  }
+  return callBackend('open_run_file', { runId, path })
+}
+
+/**
+ * Opens the folder of a file the run made in the file manager.
+ *
+ * @param runId - The run that made the file (string)
+ * @param path - The file's `path` from the run summary (string)
+ * @throws BackendError - `not_found` when the file is gone or was not made by the run
+ */
+export function openRunFileFolder(runId: string, path: string): Promise<void> {
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) {
+    console.info(`Sample backend: would open the folder of ${path}`)
+    return Promise.resolve()
+  }
+  return callBackend('open_run_file_folder', { runId, path })
+}
