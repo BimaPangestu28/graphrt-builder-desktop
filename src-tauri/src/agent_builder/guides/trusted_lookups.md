@@ -9,9 +9,6 @@
   yourself: hosts written into the document are ignored. Outside chatbots you may instead put a `human-input`
   before the lookup. Requests that change data (POST, PUT, PATCH, DELETE) always need a `human-input`, also
   on trusted hosts.
-- Public sites (Wikipedia among them) refuse a request that does not say who is asking. Give every
-  `http-request` to a public site the header `User-Agent: graphrt-desktop`, e.g.
-  `headers: "User-Agent: graphrt-desktop\nAccept: application/json"`. A fixed header keeps a lookup a lookup.
-- A path into a response that does not exist gives an empty value, and the next step then works on nothing.
-  Unless you are sure of the exact shape of a response, hand the whole `{{#<node id>.body#}}` to the `llm` step
-  that reads it and let that step pick out what it needs.
+- An `http-request` also gives `text`: the response as readable text (a web page without its markup). A step
+  that asks a model about a response reads `{{#<node id>.text#}}`, not a path into `json`: you do not know the
+  exact shape of a response, and a path that does not exist gives an empty value.

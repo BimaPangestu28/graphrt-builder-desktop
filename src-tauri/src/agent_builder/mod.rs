@@ -16,6 +16,7 @@
 //! - `history`: saves the builder chat (requests and replies) per agent.
 //! - `edit_lock`: which agents a revision is changing (the Nodes view waits meanwhile).
 //! - `stop`: "Stop the builder" cancels a running chat revision.
+//! - `whole_response`: model steps read a looked-up response whole, not by a guessed path.
 //!
 //! The public functions resolve the model from the user's credentials; the
 //! `*_with_model` functions hold the logic and take any [`ChatModel`], so tests
@@ -35,6 +36,7 @@ mod repair;
 pub mod stop;
 #[cfg(test)]
 mod tests;
+mod whole_response;
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -335,6 +337,8 @@ async fn draft_until_valid(
         let written = extract::workflow_yaml(&reply);
         let written = flow::quote_text_fields(&written).unwrap_or(written);
         let flow_yaml = use_available_models(written, builder);
+        // A model step that reads a guessed path into a response gets the whole response instead.
+        let flow_yaml = whole_response::read_whole_responses(flow_yaml);
         let explanation = live::opening_text(&reply);
         let proposed_hosts = extract::proposed_trusted_hosts(&explanation);
         let trust = DraftTrust { trusted_hosts, proposed_hosts: &proposed_hosts };
