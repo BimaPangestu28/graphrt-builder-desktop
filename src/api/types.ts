@@ -157,6 +157,18 @@ export interface LocalCliCheckResult {
   message: string
 }
 
+/** What `check_ollama` found: the server answered, the app is there but silent, or neither. */
+export type OllamaState = 'running' | 'installed_not_running' | 'not_found'
+
+/** Result of `check_ollama`: an honest look at Ollama on this computer (mirrors the backend's `OllamaCheck`). */
+export interface OllamaCheck {
+  state: OllamaState
+  /** The address that was asked, e.g. "http://localhost:11434". */
+  baseUrl: string
+  /** Downloaded models agents can think with (no embedding models); empty unless Ollama is running. */
+  models: string[]
+}
+
 /** What the user picked on the first-launch Welcome screen. */
 export type WelcomeChoice = LocalCliProvider | 'ollama' | 'api-key' | 'skip'
 

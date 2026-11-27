@@ -169,3 +169,45 @@ async fn nothing_is_fetched_without_keys() {
     // Only Ollama (always "configured") is tried.
     assert_eq!(fetcher.calls.load(Ordering::SeqCst), 1);
 }
+
+/// An Ollama server: answers with `reply`, or never answers when there is none.
+#[derive(Debug)]
+struct OllamaServer {
+    reply: Option<Json>,
+}
+
+impl ModelListFetcher for OllamaServer {
+    fn get_json<'a>(&'a self, url: &'a str, _headers: Vec<(&'static str, String)>) -> BoxFuture<'a, AppResult<Json>> {
+        assert_eq!(url, "http://localhost:11434/api/tags");
+        match self.reply.clone() {
+            Some(reply) => Box::pin(futures::future::ready(Ok(reply))),
+            None => Box::pin(futures::future::pending()),
+        }
+    }
+}
+
+#[tokio::test]
+async fn ask_ollama_lists_the_models_of_a_running_server() {
+    let reply = json!({"models": [{"name": "qwen2.5:14b"}, {"name": "llama3.2:latest"}]});
+    let catalog = ModelCatalog::new(Arc::new(OllamaServer { reply: Some(reply) }));
+    let models = catalog.ask_ollama("http://localhost:11434/").await.unwrap();
+    assert_eq!(models.iter().map(|model| model.id.as_str()).collect::<Vec<_>>(), ["llama3.2:latest", "qwen2.5:14b"]);
+}
+
+#[tokio::test]
+async fn ask_ollama_is_none_when_the_server_cannot_be_reached() {
+    // The scripted fetcher fails every `/api/tags` request, like a closed port.
+    let (_fetcher, catalog, _credentials, _db) = setup(false);
+    assert_eq!(catalog.ask_ollama("http://localhost:11434").await, None);
+}
+
+#[tokio::test]
+async fn ask_ollama_gives_up_on_a_server_that_never_answers() {
+    let catalog = ModelCatalog::new(Arc::new(OllamaServer { reply: None }));
+    assert_eq!(catalog.ask_ollama_within("http://localhost:11434", Duration::from_millis(20)).await, None);
+}
+
+#[test]
+fn the_ollama_check_waits_two_seconds_at_most() {
+    assert!(OLLAMA_CHECK_TIMEOUT <= Duration::from_secs(2));
+}

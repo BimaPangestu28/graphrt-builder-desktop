@@ -3,6 +3,7 @@ import type { NewWorkflowSecret, WorkflowSecretOverview } from './connectionType
 import type { ProviderModels } from './modelCatalogTypes'
 import { sampleCredentialsBackend } from './sampleBackend/credentials'
 import type {
+  OllamaCheck,
   InstallableModelProvider,
   LocalCliCheckResult,
   LocalCliProvider,
@@ -60,6 +61,18 @@ export function setLocalCliEnabled(provider: LocalCliProvider, enabled: boolean)
 export function checkLocalCli(provider: LocalCliProvider): Promise<LocalCliCheckResult> {
   if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleCredentialsBackend.checkLocalCli(provider)
   return callBackend('check_local_cli', { provider })
+}
+
+/**
+ * Looks at Ollama on this computer: asks its local server (the backend waits two seconds at
+ * most) and, when it does not answer, looks for the installed app. A missing Ollama is an
+ * answer, not an error.
+ *
+ * @returns Whether it runs, is only installed, or was not found, with its models (Promise<OllamaCheck>)
+ */
+export function checkOllama(): Promise<OllamaCheck> {
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleCredentialsBackend.checkOllama()
+  return callBackend('check_ollama')
 }
 
 /** What the user picked on the Welcome screen, or null before they picked anything. */

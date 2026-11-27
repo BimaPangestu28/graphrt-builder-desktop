@@ -3,6 +3,7 @@ import type { NewWorkflowSecret, WorkflowSecretOverview } from '../connectionTyp
 import type { ProviderModels } from '../modelCatalogTypes'
 import type { AvailableModel } from '../modelCatalogTypes'
 import type {
+  OllamaCheck,
   InstallableModelProvider,
   LocalCliCheckResult,
   LocalCliProvider,
@@ -390,6 +391,8 @@ export const sampleCredentialsBackend = {
   listProviderStatuses: (_refresh = false): Promise<ProviderStatus[]> => respondWith(listStatuses),
   setLocalCliEnabled: (provider: LocalCliProvider, enabled: boolean): Promise<ProviderStatus> =>
     respondWith(() => storeLocalCliEnabled(provider, enabled)),
+  /** The browser preview shows Ollama as running with two models, like the rest of the sample data. */
+  checkOllama: (): Promise<OllamaCheck> => respondWith(() => ({ state: 'running', baseUrl: credentialsState.ollamaBaseUrl, models: ['llama3.2', 'qwen2.5:14b'] })),
   checkLocalCli: (provider: LocalCliProvider): Promise<LocalCliCheckResult> => respondWith(() => checkSampleLocalCli(provider)),
   getWelcomeChoice: (): Promise<WelcomeChoice | null> => respondWith(() => credentialsState.welcomeChoice),
   setWelcomeChoice: (choice: WelcomeChoice): Promise<void> =>
