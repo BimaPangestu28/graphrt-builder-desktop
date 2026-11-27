@@ -236,7 +236,7 @@ export const channels = defineMessages(
     testTokens: 'Tes token',
     slackFound: (team: string | number) => `Aplikasi kamu di ${team} ditemukan`,
     connectApp: 'Hubungkan aplikasi',
-    slackWorksWhileOpen: 'Menjawab selama aplikasi ini terbuka: pesan langsung, dan mention di channel (setiap thread jadi satu percakapan).',
+    slackWorksWhileOpen: 'Menjawab pesan langsung dan mention di channel selama aplikasi ini terbuka. Setiap thread jadi satu percakapan.',
     slackAnsweringIn: (team: string | number) => `Terhubung · menjawab di ${team}`,
     slackStates: {
       starting: 'Menghubungkan ke Slack…',
