@@ -1,4 +1,5 @@
 import { getAgentQuality } from '@/api/quality'
+import { Link } from 'react-router-dom'
 import { Card, LinkButton } from '@/components/ui'
 import { useAsyncData } from '@/hooks/useAsyncData'
 import { useT } from '@/i18n'
@@ -27,7 +28,14 @@ export function DeployReleaseNotice({ agentId, needsRelease }: { agentId: string
   return (
     <div className="flex flex-col gap-1 text-[13px]">
       <span className="font-medium text-ink-2">{t.deploy.putsOnline(overview.inUse.number, overview.inUse.agentVersion)}</span>
-      {hasNewerDraft && <span className="text-muted">{t.deploy.newerNotReleased(overview.currentVersion)}</span>}
+      {hasNewerDraft && (
+        <span className="text-muted">
+          {t.deploy.newerNotReleased(overview.currentVersion)}{' '}
+          <Link to={agentPath('agentReleases', agentId)} className="font-medium !text-ink underline">
+            {t.deploy.checkAndRelease}
+          </Link>
+        </span>
+      )}
     </div>
   )
 }
