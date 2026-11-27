@@ -4,6 +4,7 @@ import { getRunInputs } from '@/api/runReview'
 import type { RunInputs } from '@/api/runReviewTypes'
 import { listRuns, startRun } from '@/api/runs'
 import { getRunSummary } from '@/api/runSummary'
+import { RunFileList } from '@/components/files/RunFileList'
 import { RunVisualList } from '@/components/visuals/RunVisualList'
 import type { RunSummary } from '@/api/runSummaryTypes'
 import type { Run } from '@/api/types'
@@ -143,6 +144,7 @@ function ResultDetails({ resultRun }: { resultRun: ResultRun }) {
       <RunStatTiles stats={view.stats} />
       {view.activity && <p className="m-0 text-[13px] text-body">{view.activity}</p>}
       <RunVisualList visuals={resultRun.summary.visuals} rejected={resultRun.summary.rejectedVisuals} />
+      <RunFileList agentId={resultRun.summary.agentId} runId={resultRun.summary.runId} />
       {view.table ? (
         <RunItemsTable table={view.table} />
       ) : (

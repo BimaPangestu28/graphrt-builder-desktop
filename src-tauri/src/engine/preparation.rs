@@ -8,6 +8,7 @@ use graphrt_core::tool::ToolRegistry;
 use graphrt_core::{Engine, IndexMap, Services, Value};
 
 use super::ModelRegistrySource;
+use crate::agent_files::{FileAccess, FileWiring};
 use crate::credentials::CredentialStore;
 use crate::desktop::app_settings::AppSettings;
 use crate::error::{AppError, AppResult};
@@ -19,6 +20,7 @@ use crate::storage::Database;
 ///
 /// `tools` is the graphrt tool registry for `tool` / `agent` nodes (the
 /// `agents` provider, see `agent_tools`); other tool providers are added to it.
+/// `files` says whose file workspace the run may use; `None` gives the run none.
 ///
 /// # Errors
 /// `MissingPlugins` when the flow uses plugins that are not installed,
@@ -32,8 +34,15 @@ pub(super) fn build_engine(
     db: &Database,
     model_source: &dyn ModelRegistrySource,
     tools: ToolRegistry,
+    files: Option<&FileAccess>,
 ) -> AppResult<Engine> {
     ensure_plugins_installed(flow_yaml)?;
+    let mut tools = tools;
+    // File and image tools, only for a workflow that uses them (see `agent_files`).
+    let file_wiring = match files {
+        Some(access) => access.wire(flow_yaml, &mut tools)?,
+        None => FileWiring::default(),
+    };
     let summary = flow::summarize_flow(flow_yaml)?;
     ensure_providers_configured(&summary.model_providers, credentials, db)?;
     let graph = flow::compile_flow_with_secret_env(flow_yaml, &keychain_env_names(&summary, credentials)?)?;
@@ -43,8 +52,15 @@ pub(super) fn build_engine(
     let services = Services::new().with(model_source.build_registry(credentials, db)?).with(http_client).with(tools);
     // Knowledge bases for the `knowledge-retrieval` node (stores open on first search).
     let services = services.with(crate::knowledge::knowledge_service_for_runs(db, credentials)?);
-    // Files the user chose for `file` / `file-list` inputs (and data URLs).
-    let services = services.with(super::chosen_files::run_file_resolver());
+    // Files the user chose for `file` / `file-list` inputs (and data URLs), then the
+    // agent's own files when its workflow has a workspace.
+    let file_resolver = super::chosen_files::run_file_resolver(file_wiring.resolver);
+    // Pictures shown to a model go through the image gate first (metadata removed, size bounded).
+    let services = match file_wiring.vision {
+        true => services.with(crate::agent_files::image_gate(file_resolver.clone())),
+        false => services,
+    };
+    let services = services.with(file_resolver);
     // Installed skills for `agent` steps that list `skills` (the store is read on first use).
     let services = match crate::skills::skills_service() {
         Some(skills) => services.with(skills),
@@ -221,8 +237,9 @@ pub(crate) fn prepare_engine_and_env(
     db: &Database,
     model_source: &dyn ModelRegistrySource,
     tools: ToolRegistry,
+    files: Option<&FileAccess>,
 ) -> AppResult<(Engine, IndexMap<String, Value>)> {
-    let engine = build_engine(flow_yaml, trusted_hosts, credentials, db, model_source, tools)?;
+    let engine = build_engine(flow_yaml, trusted_hosts, credentials, db, model_source, tools, files)?;
     let env = workflow_env(flow_yaml, credentials)?;
     Ok((engine, env))
 }

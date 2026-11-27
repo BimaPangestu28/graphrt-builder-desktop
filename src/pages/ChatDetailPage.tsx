@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { closeConversation, handBack, sendOperatorReply, takeOver } from '@/api/conversations'
 import type { Conversation, ConversationDetail } from '@/api/conversationTypes'
+import { MessageFiles } from '@/components/files'
 import { AppShell } from '@/components/layout'
 import { joinClassNames } from '@/components/ui'
 import { useConversationDetail, useConversationList, useReplyDraft } from '@/hooks/useConversations'
@@ -126,7 +127,10 @@ function ConversationWorkspace({ detail }: { detail: ConversationDetail }) {
         </header>
         <div className="flex flex-1 flex-col gap-2.5 bg-subtle p-5" lang="id" aria-live="polite">
           {messages.map((message) => (
-            <ChatMessageBubble key={message.id} message={message} />
+            <Fragment key={message.id}>
+              <ChatMessageBubble message={message} />
+              <MessageFiles agentId={conversation.agentId} message={message} side={message.author === 'customer' ? 'start' : 'end'} />
+            </Fragment>
           ))}
           {replyDraft !== null && (
             <ChatMessageBubble

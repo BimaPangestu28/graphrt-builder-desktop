@@ -67,11 +67,13 @@ pub(crate) fn agent_tools_for(
     db: Arc<Database>,
     credentials: Arc<CredentialStore>,
     model_source: Arc<dyn ModelRegistrySource>,
+    agent_files: Option<Arc<AgentFiles>>,
     agent_id: &str,
 ) -> graphrt_core::tool::ToolRegistry {
-    let dependencies = agent_tools::EngineDependencies { db, credentials, model_source };
+    let dependencies = agent_tools::EngineDependencies { db, credentials, model_source, agent_files };
     agent_tools::agent_tool_registry(&dependencies, vec![agent_id.to_owned()])
 }
+use crate::agent_files::{AgentFiles, FileAccess, FileScope};
 use crate::credentials::CredentialStore;
 use crate::error::{AppError, AppResult};
 use crate::flow::TrustedHosts;
@@ -155,6 +157,8 @@ pub struct RunManager {
     credentials: Arc<CredentialStore>,
     sink: Arc<dyn RunEventSink>,
     model_source: Arc<dyn ModelRegistrySource>,
+    /// The agents' file workspaces; `None` gives runs no file tools (some tests).
+    agent_files: Option<Arc<AgentFiles>>,
     active_runs: Arc<ActiveRuns>,
     chunk_buffer_limits: ChunkBufferLimits,
     /// Wakes the approval expiry task when a run pauses (it may wait on a new deadline).
@@ -172,6 +176,7 @@ impl RunManager {
             credentials,
             sink,
             model_source: Arc::new(KeychainModelRegistrySource),
+            agent_files: None,
             active_runs: Arc::new(ActiveRuns::default()),
             chunk_buffer_limits: ChunkBufferLimits::default(),
             approval_wakeup: Arc::new(tokio::sync::Notify::new()),
@@ -190,6 +195,18 @@ impl RunManager {
     pub fn with_model_registry_source(mut self, model_source: Arc<dyn ModelRegistrySource>) -> Self {
         self.model_source = model_source;
         self
+    }
+
+    /// Gives runs the agents' file workspaces (`crate::agent_files`): an agent whose
+    /// workflow uses file or image tools gets them over its own workspace.
+    pub fn with_agent_files(mut self, agent_files: Arc<AgentFiles>) -> Self {
+        self.agent_files = Some(agent_files);
+        self
+    }
+
+    /// Whose files a top-level run of `agent_id` may use.
+    fn file_access(&self, agent_id: &str) -> Option<FileAccess> {
+        self.agent_files.clone().map(|files| FileAccess { files, scope: FileScope::agent(agent_id) })
     }
 
     /// Starts the agent's current version with workflow inputs (JSON object) and
@@ -241,6 +258,7 @@ impl RunManager {
             &self.db,
             &*self.model_source,
             tools,
+            self.file_access(&agent.id).as_ref(),
         )?;
         let mut run_input = RunInput::new();
         let stored_inputs = inputs.clone();
@@ -287,6 +305,7 @@ impl RunManager {
             &self.db,
             &*self.model_source,
             tools,
+            self.file_access(&agent.id).as_ref(),
         )?;
         let snapshot = Snapshot::from_json(&self.db.get_run_snapshot(run_id)?)?;
         // After a restart the allow-list is empty: the files the run started with are readable again.
@@ -363,6 +382,7 @@ impl RunManager {
             db: self.db.clone(),
             credentials: self.credentials.clone(),
             model_source: self.model_source.clone(),
+            agent_files: self.agent_files.clone(),
         };
         agent_tools::agent_tool_registry(&dependencies, vec![agent_id.to_owned()])
     }

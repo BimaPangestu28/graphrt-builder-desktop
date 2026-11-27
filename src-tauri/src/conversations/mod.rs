@@ -27,8 +27,11 @@
 //!
 //! Every change is sent to the UI as the Tauri event [`CONVERSATION_EVENT`].
 
+pub mod attachments;
 pub mod bot;
 pub mod channel;
+#[cfg(test)]
+mod file_tests;
 pub mod models;
 mod store;
 pub mod tauri_sink;
@@ -41,6 +44,7 @@ use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+use self::attachments::CustomerTurn;
 use self::bot::{run_bot_turn, BotTurn};
 use self::channel::{ChannelAdapter, ChannelRegistry, OutboundMessage, TEST_CHANNEL};
 use self::models::{
@@ -48,6 +52,7 @@ use self::models::{
     MessageAuthor, NewConversation,
 };
 pub use self::store::OUTREACH_ORIGIN;
+use crate::agent_files::{AgentFiles, FileAccess, FileScope};
 use crate::chatbot_setup::reply::prepare_reply;
 use crate::credentials::CredentialStore;
 use crate::engine::{agent_tools_for, prepare_engine_and_env, KeychainModelRegistrySource, ModelRegistrySource};
@@ -110,6 +115,8 @@ pub struct ConversationManager {
     sink: Arc<dyn ConversationEventSink>,
     model_source: Arc<dyn ModelRegistrySource>,
     channels: ChannelRegistry,
+    /// The agents' file workspaces; `None` gives chatbots no file tools (some tests).
+    agent_files: Option<Arc<AgentFiles>>,
     /// One lock per conversation so its bot turns never overlap.
     turn_locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
 }
@@ -122,6 +129,7 @@ impl ConversationManager {
             sink,
             model_source: Arc::new(KeychainModelRegistrySource),
             channels: ChannelRegistry::default(),
+            agent_files: None,
             turn_locks: Mutex::new(HashMap::new()),
         }
     }
@@ -129,6 +137,13 @@ impl ConversationManager {
     /// Replaces where model clients come from (tests use scripted mock models).
     pub fn with_model_registry_source(mut self, model_source: Arc<dyn ModelRegistrySource>) -> Self {
         self.model_source = model_source;
+        self
+    }
+
+    /// Gives chatbots the agents' file workspaces (`crate::agent_files`): customers can
+    /// attach files and the bot can hand files back, each conversation in its own part.
+    pub fn with_agent_files(mut self, agent_files: Arc<AgentFiles>) -> Self {
+        self.agent_files = Some(agent_files);
         self
     }
 
@@ -223,17 +238,46 @@ impl ConversationManager {
     /// # Errors
     /// `NotFound` for an unknown conversation; `InvalidInput` for blank text.
     pub async fn send_customer_message(&self, conversation_id: &str, text: &str) -> AppResult<ConversationDetail> {
+        self.send_customer_message_with_files(conversation_id, text, &[]).await
+    }
+
+    /// [`Self::send_customer_message`] with files the customer attached:
+    /// `attachment_references` name files stored for this conversation
+    /// (`AgentFiles::attach_host_files`). The text may be blank when there are files.
+    ///
+    /// # Errors
+    /// As [`Self::send_customer_message`], plus `InvalidInput` when a reference names no
+    /// file attached to this conversation, or there are too many.
+    pub async fn send_customer_message_with_files(
+        &self,
+        conversation_id: &str,
+        text: &str,
+        attachment_references: &[String],
+    ) -> AppResult<ConversationDetail> {
         let mut conversation = self.db.get_conversation(conversation_id)?;
+        let attached = match (&self.agent_files, attachment_references.is_empty()) {
+            (_, true) => Vec::new(),
+            (Some(agent_files), false) => {
+                let scope = FileScope::conversation(&conversation.agent_id, conversation_id);
+                agent_files.attached_files(&scope, attachment_references).await?
+            }
+            (None, false) => return Err(AppError::InvalidInput("this chat does not take files".into())),
+        };
+        let customer_turn = CustomerTurn::new(text, attached);
         if conversation.status == ConversationStatus::Closed {
             conversation = self.change_status(&conversation, ConversationStatus::BotAnswering, None)?;
         }
-        let message =
-            self.db.insert_conversation_message(conversation_id, MessageAuthor::Customer, text, &json!({}))?;
+        let message = self.db.insert_conversation_message(
+            conversation_id,
+            MessageAuthor::Customer,
+            &customer_turn.stored_text,
+            &customer_turn.metadata,
+        )?;
         self.emit(ConversationEventKind::MessageAdded, &conversation, Some(message.clone()));
 
         if conversation.status == ConversationStatus::BotAnswering {
             if self.bot_answers(&conversation)? {
-                self.answer_as_bot(conversation_id, &message.text).await?;
+                self.answer_as_bot(conversation_id, &customer_turn).await?;
             } else {
                 self.hand_off(&conversation, Some(BOT_PAUSED_REASON), "Bot is paused · waiting for you")?;
             }
@@ -342,7 +386,7 @@ impl ConversationManager {
     }
 
     /// Runs one bot turn and records its reply, memory and hand-off.
-    async fn answer_as_bot(&self, conversation_id: &str, message_text: &str) -> AppResult<()> {
+    async fn answer_as_bot(&self, conversation_id: &str, customer_turn: &CustomerTurn) -> AppResult<()> {
         let turn_lock = self.turn_lock(conversation_id)?;
         let _turn_guard = turn_lock.lock().await;
         // Read again under the lock: the previous turn may have changed variables or status.
@@ -350,7 +394,7 @@ impl ConversationManager {
         if conversation.status != ConversationStatus::BotAnswering {
             return Ok(());
         }
-        let turn = match self.run_turn(&conversation, message_text).await {
+        let turn = match self.run_turn(&conversation, customer_turn).await {
             Ok(turn) => turn,
             Err(error) => {
                 log::warn!("the bot of conversation {conversation_id} could not answer: {error}");
@@ -363,11 +407,18 @@ impl ConversationManager {
 
     /// Runs the chatbot's flow with its saved setup applied (persona, rules,
     /// knowledge; see `crate::chatbot_setup`) and enforces the hand-off rules.
-    async fn run_turn(&self, conversation: &Conversation, message_text: &str) -> AppResult<BotTurn> {
+    async fn run_turn(&self, conversation: &Conversation, customer_turn: &CustomerTurn) -> AppResult<BotTurn> {
         let agent = self.db.get_agent(&conversation.agent_id)?;
-        let prepared = prepare_reply(&self.db, &self.credentials, &agent, message_text).await?;
+        let prepared = prepare_reply(&self.db, &self.credentials, &agent, &customer_turn.knowledge_query).await?;
         // Chatbots can call other agents as tools, like any run of this agent.
-        let tools = agent_tools_for(self.db.clone(), self.credentials.clone(), self.model_source.clone(), &agent.id);
+        let tools = agent_tools_for(
+            self.db.clone(),
+            self.credentials.clone(),
+            self.model_source.clone(),
+            self.agent_files.clone(),
+            &agent.id,
+        );
+        let file_access = self.file_access(conversation);
         let trusted_hosts = self.db.trusted_lookup_hosts(&agent.id)?;
         let (engine, env) = prepare_engine_and_env(
             &prepared.flow_text,
@@ -376,9 +427,19 @@ impl ConversationManager {
             &self.db,
             &*self.model_source,
             tools,
+            file_access.as_ref(),
         )?;
         let on_draft = |draft: &str| self.emit_draft(conversation, draft);
-        let mut turn = run_bot_turn(&engine, env, conversation, message_text, &prepared.sys_values, &on_draft).await?;
+        let mut turn = run_bot_turn(
+            &engine,
+            env,
+            conversation,
+            &customer_turn.model_text,
+            &prepared.sys_values,
+            &customer_turn.files,
+            &on_draft,
+        )
+        .await?;
         turn.citations = prepared.citations(&turn.retrieved_sources);
         if let (Some(rules), Some(handoff)) = (prepared.handoff_rules, turn.handoff.as_ref()) {
             if !rules.allows(handoff.reason.as_deref()) {
@@ -404,9 +465,9 @@ impl ConversationManager {
             log::info!("dropped a bot reply in conversation {}: the owner took over", conversation.id);
             return Ok(());
         }
-        if !turn.reply_text.is_empty() {
-            let metadata = if turn.citations.is_empty() { json!({}) } else { json!({ "citations": turn.citations }) };
-            self.deliver_and_store(&conversation, MessageAuthor::Bot, &turn.reply_text, metadata).await?;
+        let files = self.reply_files(&conversation, &turn.produced_file_references).await;
+        if let Some((text, metadata)) = attachments::bot_reply(&turn.reply_text, &turn.citations, &files) {
+            self.deliver_and_store(&conversation, MessageAuthor::Bot, &text, metadata).await?;
         }
         if let Some(handoff) = turn.handoff {
             let reason = handoff.reason.as_deref();
@@ -414,6 +475,33 @@ impl ConversationManager {
             self.hand_off(&conversation, reason, &notice)?;
         }
         Ok(())
+    }
+
+    /// Whose files a bot turn of `conversation` may use: the conversation's own part of
+    /// the agent's workspace.
+    fn file_access(&self, conversation: &Conversation) -> Option<FileAccess> {
+        self.agent_files
+            .clone()
+            .map(|files| FileAccess { files, scope: FileScope::conversation(&conversation.agent_id, &conversation.id) })
+    }
+
+    /// The cards of the files a bot turn made, looked up in the conversation's part of
+    /// the workspace. A reference that names nothing there is dropped.
+    async fn reply_files(
+        &self,
+        conversation: &Conversation,
+        references: &[String],
+    ) -> Vec<crate::agent_files::FileCard> {
+        let Some(access) = self.file_access(conversation).filter(|_| !references.is_empty()) else {
+            return Vec::new();
+        };
+        match access.files.view(&access.scope) {
+            Ok(view) => crate::agent_files::cards::cards_for_references(&view, references).await,
+            Err(error) => {
+                log::warn!("could not open the files of conversation {}: {error}", conversation.id);
+                Vec::new()
+            }
+        }
     }
 
     /// Sends a bot or owner message on the conversation's channel, then stores it

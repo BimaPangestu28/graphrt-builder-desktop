@@ -31,6 +31,7 @@
 //! - [`commands`]: the Tauri commands the frontend calls
 
 pub mod agent_builder;
+pub mod agent_files;
 pub mod agent_graph;
 pub mod agent_steps;
 pub mod chains;
@@ -116,15 +117,18 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
     let chain_runner = Arc::new(ChainRunner::new(db.clone()));
     let chaining_sink = Arc::new(ChainingSink::new(activity_sink, chain_runner.clone()));
     let sink = Arc::new(live_view::WakeOnRunActivity::new(chaining_sink, live_view_waker));
-    let runs = Arc::new(RunManager::new(db.clone(), credentials.clone(), sink));
+    let agent_files = Arc::new(agent_files::AgentFiles::new(&data_dir));
+    let runs = Arc::new(RunManager::new(db.clone(), credentials.clone(), sink).with_agent_files(agent_files.clone()));
     chain_runner.attach(&runs);
     let conversation_sink = Arc::new(desktop::chat_notify::ChatNotifyingSink::new(
         Arc::new(conversations::tauri_sink::TauriConversationEventSink::new(app.handle().clone())),
         notifier.clone(),
         db.clone(),
     ));
-    let conversations =
-        Arc::new(conversations::ConversationManager::new(db.clone(), credentials.clone(), conversation_sink));
+    let conversations = Arc::new(
+        conversations::ConversationManager::new(db.clone(), credentials.clone(), conversation_sink)
+            .with_agent_files(agent_files.clone()),
+    );
     let knowledge = Arc::new(knowledge::KnowledgeService::new(
         db.clone(),
         credentials.clone(),
@@ -182,6 +186,7 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         learning,
         model_catalog: Arc::new(model_catalog::ModelCatalog::with_http()?),
         deploy,
+        agent_files,
         plugin_triggers,
     })
 }
@@ -206,6 +211,16 @@ fn spawn_deferred_startup(state: &AppState) {
     });
 }
 
+/// `on_window_event` handler: records the files dropped onto a window, so a chat can
+/// attach exactly those by path (`agent_files::AgentFiles::remember_dropped`). The webview
+/// gets the same paths from Tauri, but a path it sends is taken only when it is known here.
+fn remember_dropped_files(window: &tauri::Window, event: &tauri::WindowEvent) {
+    let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event else { return };
+    if let Some(state) = window.app_handle().try_state::<AppState>() {
+        state.agent_files.remember_dropped(paths);
+    }
+}
+
 /// Builds and runs the Tauri application.
 ///
 /// # Panics
@@ -228,6 +243,7 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(desktop::window::handle_window_event)
+        .on_window_event(remember_dropped_files)
         .invoke_handler(tauri::generate_handler![
             commands::agents::list_agents,
             commands::agents::get_agent,
@@ -295,6 +311,13 @@ pub fn run() {
             commands::triggers::set_trigger_enabled,
             commands::triggers::delete_trigger,
             commands::triggers::preview_schedule,
+            commands::agent_files::get_agent_file_abilities,
+            commands::agent_files::pick_chat_attachments,
+            commands::agent_files::attach_dropped_chat_files,
+            commands::agent_files::discard_chat_attachment,
+            commands::agent_files::list_run_files,
+            commands::agent_files::preview_agent_file,
+            commands::agent_files::save_agent_file,
             commands::conversations::list_conversations,
             commands::conversations::count_conversations,
             commands::conversations::get_conversation,

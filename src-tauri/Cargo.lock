@@ -676,6 +676,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "color_quant"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d7b894f5411737b7867f4827955924d7c254fc9f4d91a6aad6b097804b1018b"
+
+[[package]]
 name = "combine"
 version = "4.6.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1082,7 +1088,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -1334,7 +1340,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e35d6e78f4cebb90e51d543db8fe41528851d6deeef6ef21ebd4bfdc1e784776"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -1747,6 +1753,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "gif"
+version = "0.14.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee8cfcc411d9adbbaba82fb72661cc1bcca13e8bba98b364e62b2dba8f960159"
+dependencies = [
+ "color_quant",
+ "weezl",
+]
+
+[[package]]
 name = "gio"
 version = "0.18.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1867,7 +1883,10 @@ dependencies = [
  "getrandom 0.3.4",
  "graphrt-bundle",
  "graphrt-core",
+ "graphrt-docgen",
+ "graphrt-files",
  "graphrt-http",
+ "graphrt-image",
  "graphrt-learn",
  "graphrt-llm",
  "graphrt-mcp",
@@ -1875,6 +1894,7 @@ dependencies = [
  "graphrt-rag",
  "graphrt-skill",
  "graphrt-ui",
+ "image",
  "indexmap 2.14.2",
  "keyring",
  "libc",
@@ -1963,6 +1983,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "graphrt-docgen"
+version = "0.6.2"
+source = "git+https://github.com/Graphrt/graphrt?rev=65ac59887a01cdf2e0244921522b48e526f43d07#65ac59887a01cdf2e0244921522b48e526f43d07"
+dependencies = [
+ "flate2",
+ "futures",
+ "graphrt-core",
+ "graphrt-files",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "zip",
+]
+
+[[package]]
+name = "graphrt-files"
+version = "0.6.2"
+source = "git+https://github.com/Graphrt/graphrt?rev=65ac59887a01cdf2e0244921522b48e526f43d07#65ac59887a01cdf2e0244921522b48e526f43d07"
+dependencies = [
+ "futures",
+ "graphrt-core",
+ "graphrt-doc",
+ "libc",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "thiserror 2.0.21",
+ "tokio",
+]
+
+[[package]]
 name = "graphrt-http"
 version = "0.6.2"
 source = "git+https://github.com/Graphrt/graphrt?rev=65ac59887a01cdf2e0244921522b48e526f43d07#65ac59887a01cdf2e0244921522b48e526f43d07"
@@ -1978,6 +2030,21 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "url",
+]
+
+[[package]]
+name = "graphrt-image"
+version = "0.6.2"
+source = "git+https://github.com/Graphrt/graphrt?rev=65ac59887a01cdf2e0244921522b48e526f43d07#65ac59887a01cdf2e0244921522b48e526f43d07"
+dependencies = [
+ "futures",
+ "graphrt-core",
+ "graphrt-files",
+ "image",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
 ]
 
 [[package]]
@@ -2487,9 +2554,24 @@ checksum = "85ab80394333c02fe689eaf900ab500fbd0c2213da414687ebf995a65d5a6104"
 dependencies = [
  "bytemuck",
  "byteorder-lite",
+ "color_quant",
+ "gif",
+ "image-webp",
  "moxcms",
  "num-traits",
  "png",
+ "zune-core",
+ "zune-jpeg",
+]
+
+[[package]]
+name = "image-webp"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "525e9ff3e1a4be2fbea1fdf0e98686a6d98b4d8f937e1bf7402245af1909e8c3"
+dependencies = [
+ "byteorder-lite",
+ "quick-error",
 ]
 
 [[package]]
@@ -3053,7 +3135,7 @@ dependencies = [
  "png",
  "serde",
  "thiserror 2.0.21",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -3932,6 +4014,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
 
 [[package]]
+name = "quick-error"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a993555f31e5a609f617c12db6250dedcac1b0a85076912c436e6fc9b2c8e6a3"
+
+[[package]]
 name = "quick-xml"
 version = "0.42.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4253,7 +4341,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -4309,7 +4397,7 @@ dependencies = [
  "security-framework 3.7.0",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -4529,7 +4617,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "969cde0349344dbbf58b5f9badbfb8f806db13969364eb8007c057ef687007d9"
 dependencies = [
  "annotate-snippets",
- "base64 0.23.1",
+ "base64 0.21.7",
  "encoding_rs_io",
  "granit-parser",
  "nohash-hasher",
@@ -4805,7 +4893,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -5522,10 +5610,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -5878,7 +5966,7 @@ dependencies = [
  "png",
  "serde",
  "thiserror 2.0.21",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -5928,7 +6016,7 @@ checksum = "f2f6fb2847f6742cd76af783a2a2c49e9375d0a111c7bef6f71cd9e738c72d6e"
 dependencies = [
  "memoffset",
  "tempfile",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -6327,7 +6415,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -6348,7 +6436,7 @@ dependencies = [
  "objc2-foundation",
  "objc2-quartz-core",
  "raw-window-handle",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
  "windows-version",
 ]
 
@@ -6738,7 +6826,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d6f32a0ff4a9f6f01231eb2059cc85479330739333e0e58cadf03b6af2cca10"
 dependencies = [
  "cfg-if",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -7061,7 +7149,7 @@ dependencies = [
  "memchr",
  "nix",
  "typed-path",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
  "zeroize",
  "zopfli",
 ]
@@ -7101,6 +7189,21 @@ dependencies = [
  "rustix",
  "socket2",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "zune-core"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d56377fd46368984a170bc5aac5567e52ca5da874caa60bea39fcbca78fb658b"
+
+[[package]]
+name = "zune-jpeg"
+version = "0.5.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "27bc9d5b815bc103f142aa054f561d9187d191692ec7c2d1e2b4737f8dbd7296"
+dependencies = [
+ "zune-core",
 ]
 
 [[package]]

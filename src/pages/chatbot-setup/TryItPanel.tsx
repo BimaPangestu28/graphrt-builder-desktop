@@ -1,12 +1,17 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { sendCustomerMessage, startTestConversation } from '@/api/conversations'
 import type { ConversationMessage } from '@/api/conversationTypes'
+import { useFileDropZone } from '@/components/fileDrop'
+import { AttachmentTray, MessageFiles, readMessageFiles, useChatAttachments } from '@/components/files'
+import { Icon, joinClassNames } from '@/components/ui'
 import { useConversationDetail, useReplyDraft } from '@/hooks/useConversations'
 import { readCitations } from '@/pages/inbox/conversationDisplay'
 import { toErrorMessage } from '@/lib/errors'
 import { messages } from '@/i18n'
 
 function TryItBubble({ message }: { message: ConversationMessage }) {
+  // A message that is only files shows its cards (MessageFiles), not their names again.
+  if (readMessageFiles(message).isFilesOnly) return null
   if (message.author === 'customer') {
     return <div className="box-content max-w-[80%] self-end rounded-[12px_12px_4px_12px] bg-[#D9FDD3] px-3 py-2.5 leading-[1.45]">{message.text}</div>
   }
@@ -74,6 +79,8 @@ function useTestConversation(agentId: string) {
  * "Try it" panel on the chatbot setup: a WhatsApp-styled chat on the in-app test channel. You write as
  * a customer and the chatbot's real workflow answers (sample answers in the browser preview); hand-offs
  * show as notices. Reset starts a new test conversation, so the bot's memory starts empty again.
+ * When the chatbot reads files or looks at pictures, the paperclip (or a drop on the chat)
+ * attaches them to the next message, and files the bot hands back appear as cards under its reply.
  */
 export function TryItPanel({ agentId }: { agentId: string }) {
   const { conversationId, startError, startNew } = useTestConversation(agentId)
@@ -82,18 +89,38 @@ export function TryItPanel({ agentId }: { agentId: string }) {
   const [testMessage, setTestMessage] = useState('')
   const [isWaitingForBot, setIsWaitingForBot] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
+  const attachments = useChatAttachments(agentId, conversationId)
+  const { zoneRef, dragState, browserDropHandlers } = useFileDropZone({
+    accept: { files: true, folders: false },
+    multiple: true,
+    disabled: !attachments.takesFiles,
+    onDrop: (droppedItems) => attachments.addDropped(droppedItems.map((item) => item.path)),
+  })
+
+  // Keep the newest message, its files and the reply being written in view (file cards are tall).
+  const messageCount = detail?.messages.length ?? 0
+  useEffect(() => {
+    const chatElement = zoneRef.current
+    if (chatElement) chatElement.scrollTop = chatElement.scrollHeight
+  }, [zoneRef, messageCount, replyDraft, isWaitingForBot])
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const customerText = testMessage.trim()
-    if (customerText === '' || !conversationId) return
+    if ((customerText === '' && attachments.pending.length === 0) || !conversationId || attachments.isAttaching) return
+    const sentFiles = attachments.takeForSending()
     setTestMessage('')
     setSendError(null)
     setIsWaitingForBot(true)
     try {
-      await sendCustomerMessage(conversationId, customerText)
+      await sendCustomerMessage(
+        conversationId,
+        customerText,
+        sentFiles.map((card) => card.reference),
+      )
     } catch (rawError) {
       setSendError(toErrorMessage(rawError))
+      attachments.putBack(sentFiles)
     } finally {
       setIsWaitingForBot(false)
     }
@@ -114,13 +141,32 @@ export function TryItPanel({ agentId }: { agentId: string }) {
           {messages().chatbot.reset}
         </button>
       </div>
-      <div lang="id" aria-live="polite" className="box-border flex h-[460px] flex-none flex-col gap-2.5 overflow-y-auto rounded-[14px] bg-[#EFEAE2] p-4">
+      <div
+        ref={zoneRef}
+        {...browserDropHandlers}
+        lang="id"
+        aria-live="polite"
+        className={joinClassNames(
+          'box-border flex h-[460px] flex-none flex-col gap-2.5 overflow-y-auto rounded-[14px] bg-[#EFEAE2] p-4',
+          dragState === 'accepting' && 'outline-2 outline-offset-2 outline-brand',
+        )}
+      >
+        {dragState === 'accepting' && (
+          <span lang="en" className="self-center rounded-full bg-surface px-3 py-1.5 text-[12px] font-medium text-ink-2">
+            {messages().files.dropToAttach}
+          </span>
+        )}
         {detail?.messages.length === 0 && (
           <span lang="en" className="self-center text-[12px] text-ink-2">
             {messages().chatbot.writeAsACustomerToTry}
           </span>
         )}
-        {detail?.messages.map((message) => <TryItBubble key={message.id} message={message} />)}
+        {detail?.messages.map((message) => (
+          <Fragment key={message.id}>
+            <TryItBubble message={message} />
+            <MessageFiles agentId={agentId} message={message} side={message.author === 'customer' ? 'end' : 'start'} />
+          </Fragment>
+        ))}
         {replyDraft !== null && (
           <div data-testid="reply-draft" className="flex box-content max-w-[86%] flex-col gap-2 self-start rounded-[12px_12px_12px_4px] bg-surface px-3 py-2.5 leading-[1.45]">
             {replyDraft.split('\n\n').map((paragraph, index) => (
@@ -139,7 +185,18 @@ export function TryItPanel({ agentId }: { agentId: string }) {
           {errorMessage}
         </p>
       )}
+      <AttachmentTray attachments={attachments} />
       <form onSubmit={(event) => void handleSubmit(event)} className="flex gap-2">
+        <button
+          type="button"
+          onClick={attachments.choose}
+          disabled={!conversationId || attachments.isAttaching}
+          aria-label={messages().files.attachFiles}
+          title={messages().files.attachFiles}
+          className="flex size-10 flex-none cursor-pointer items-center justify-center rounded-[10px] border border-line-strong bg-surface text-ink-2 hover:bg-subtle disabled:cursor-default disabled:opacity-50"
+        >
+          <Icon name="paperclip" size={18} />
+        </button>
         <label htmlFor="try" className="sr-only">
           {messages().chatbot.testMessage}
         </label>
@@ -153,7 +210,7 @@ export function TryItPanel({ agentId }: { agentId: string }) {
         />
         <button
           type="submit"
-          disabled={!conversationId || isWaitingForBot}
+          disabled={!conversationId || isWaitingForBot || attachments.isAttaching}
           className="h-10 cursor-pointer rounded-[10px] border-0 bg-ink px-3.5 text-[14px] font-medium text-white hover:bg-ink-2 disabled:cursor-default disabled:opacity-50"
         >
           {messages().chatbot.send}

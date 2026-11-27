@@ -7,6 +7,12 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ## [Unreleased]
 
+### Added
+
+- **Files and pictures in a chat**: a chatbot can now read the files people send it and hand files back. In **Try it**, the paperclip next to the message box (or dropping a file on the chat) attaches PDF, Word, Excel and text files and pictures, up to 25 MB each and 8 per message. Files the chatbot makes, such as a PDF summary or an Excel sheet, appear as cards under its reply, in Try it and in the Inbox, each with a **Download** button. To turn this on for a chatbot, ask for it in the builder, for example "Let customers send files and pictures". An agent that does not use files is not changed.
+- **Files in run results**: when an agent makes files during a run, the Run result screen lists them as download cards.
+- **Kept private and safe**: every agent has its own folder for files and every conversation its own part of it, so one customer's files never show up in another chat. A file's type is read from its content, not its name; programs, scripts, web pages and archives are refused. Location and camera details are removed from a photo before it is stored or shown to an AI model. Only pictures get a preview; everything else is download only and is never opened inside the app.
+
 ## [0.2.1] - 2026-11-27
 
 Agents can now be taught your way of working with Skills, remember what you correct, and chatbot answers show which file and page they came from.

@@ -22,6 +22,7 @@ import { common } from './locales/common'
 import { shell } from './locales/shell'
 import { welcome } from './locales/welcome'
 import { platform } from './locales/platform'
+import { files } from './locales/files'
 import { visuals } from './locales/visuals'
 
 /**
@@ -53,6 +54,7 @@ const english = {
   welcome: welcome.en,
   platform: platform.en,
   visuals: visuals.en,
+  files: files.en,
 }
 
 export type Messages = Translation<typeof english>
@@ -82,6 +84,7 @@ const indonesian: Messages = {
   welcome: welcome.id,
   platform: platform.id,
   visuals: visuals.id,
+  files: files.id,
 }
 
 export const dictionaries: Record<Locale, Messages> = { en: english, id: indonesian }

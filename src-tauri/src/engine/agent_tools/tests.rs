@@ -302,6 +302,7 @@ async fn unknown_agents_are_a_tool_error() {
         db: db.clone(),
         credentials: Arc::new(CredentialStore::in_memory()),
         model_source: Arc::new(FixedModelSource { model: Arc::new(MockModel::new(Vec::new())) }),
+        agent_files: None,
     };
     let registry = agent_tool_registry(&dependencies, vec!["caller".into()]);
     let runtime = registry.get(AGENT_TOOL_PROVIDER).unwrap();

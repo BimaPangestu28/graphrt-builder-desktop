@@ -274,6 +274,11 @@ fn tool_sends_with(provider: &str, tool_name: &str, mcp_servers: &[crate::mcp::M
     if provider.trim() == AGENT_TOOL_PROVIDER {
         return false;
     }
+    // The file, document and image tools only touch the agent's own workspace
+    // (`crate::agent_files`): nothing leaves the computer and `delete` is never offered.
+    if crate::agent_files::abilities::is_file_tool_provider(provider) {
+        return false;
+    }
     // An MCP server's own approval policy (a plugin's rule, tools the user relaxed).
     if let Some(sends) = crate::mcp::tool_sends_in(mcp_servers, provider, tool_name) {
         return sends;
@@ -367,6 +372,16 @@ mod tests {
 
     fn sends(kind: &str, config: &Map<String, Json>) -> bool {
         is_sending_kind(kind, config, &TrustedHosts::none())
+    }
+
+    #[test]
+    fn the_file_tools_do_not_send() {
+        // They only touch the agent's own workspace, so a chatbot can use them without an approval.
+        let files = config(json!({ "tools": ["files/*", "documents/create_pdf", "image/*"] }));
+        assert_eq!(unapproved_sending_tools_with(&files, &[]), Vec::<String>::new());
+        // A tool of any other provider keeps its rule.
+        let mixed = config(json!({ "tools": ["files/*", "whatsapp/send_text", "filesystem/*"] }));
+        assert_eq!(unapproved_sending_tools_with(&mixed, &[]), ["whatsapp/send_text", "filesystem/*"]);
     }
 
     #[test]

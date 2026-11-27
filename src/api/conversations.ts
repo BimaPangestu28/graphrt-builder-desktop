@@ -37,11 +37,12 @@ export function startTestConversation(agentId: string): Promise<ConversationDeta
 
 /**
  * Writes as the customer (Try it). Resolves after the bot answered, or right away when a person
- * has the chat; the messages also arrive as `conversation-event`s.
+ * has the chat; the messages also arrive as `conversation-event`s. `attachments` are the
+ * `reference`s of files attached to this chat (`pickChatAttachments`); with files the text may be empty.
  */
-export function sendCustomerMessage(conversationId: string, text: string): Promise<ConversationDetail> {
-  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleConversationsBackend.sendCustomerMessage(conversationId, text)
-  return callBackend('send_customer_message', { conversationId, text })
+export function sendCustomerMessage(conversationId: string, text: string, attachments: string[] = []): Promise<ConversationDetail> {
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleConversationsBackend.sendCustomerMessage(conversationId, text, attachments)
+  return callBackend('send_customer_message', { conversationId, text, attachments })
 }
 
 export function takeOver(conversationId: string): Promise<Conversation> {
