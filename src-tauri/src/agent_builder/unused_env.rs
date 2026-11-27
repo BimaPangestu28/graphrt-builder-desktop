@@ -5,8 +5,65 @@
 //! plugin reads them from its settings in the app and no step reads them. A declared secret
 //! must be set before the agent runs, so the run stops at "not set up yet" for a value
 //! nothing uses. A declaration whose name appears nowhere else in the document is removed.
+//!
+//! A plugin step's own fields get the same care first: a field that reads such a secret
+//! (`from: "{{#env.EMAIL_FROM#}}"`) is the plugin's setting, and an empty optional field
+//! (`references: []`, `html: ""`) only fails the plugin's type check, so both are removed.
 
 use serde_json::Value as Json;
+
+/// Keys of a node that are not a plugin's own fields.
+const NODE_KEYS: &[&str] = &["id", "type", "title", "parent", "timeout_ms", "retry", "error_strategy", "description"];
+
+/// `flow_yaml` with the plugin steps' empty fields and fields that read a secret removed.
+/// The document is returned as it is when there are none or it cannot be read.
+pub(super) fn tidy_plugin_fields(flow_yaml: String) -> String {
+    let Ok(Json::Object(mut document)) = serde_saphyr::from_str::<Json>(&flow_yaml) else { return flow_yaml };
+    let Some(nodes) = document.get_mut("graph").and_then(|graph| graph.get_mut("nodes")).and_then(Json::as_array_mut)
+    else {
+        return flow_yaml;
+    };
+    let mut removed = 0;
+    for node in nodes.iter_mut() {
+        let is_plugin_step = node.get("type").and_then(Json::as_str).is_some_and(|kind| kind.contains('.'));
+        let Some(fields) = node.as_object_mut().filter(|_| is_plugin_step) else { continue };
+        let before = fields.len();
+        fields.retain(|key, value| NODE_KEYS.contains(&key.as_str()) || !(is_empty(value) || reads_a_secret(value)));
+        removed += before - fields.len();
+    }
+    if removed == 0 {
+        return flow_yaml;
+    }
+    match serde_saphyr::to_string(&Json::Object(document)) {
+        Ok(yaml) => {
+            log::info!("{removed} empty or secret-reading plugin field(s) were removed");
+            yaml
+        }
+        Err(error) => {
+            log::warn!("could not write the document back after tidying plugin fields: {error}");
+            flow_yaml
+        }
+    }
+}
+
+fn is_empty(value: &Json) -> bool {
+    match value {
+        Json::Null => true,
+        Json::String(text) => text.trim().is_empty(),
+        Json::Array(items) => items.is_empty(),
+        Json::Object(fields) => fields.is_empty(),
+        _ => false,
+    }
+}
+
+fn reads_a_secret(value: &Json) -> bool {
+    match value {
+        Json::String(text) => text.contains("{{#env."),
+        Json::Array(items) => items.iter().any(reads_a_secret),
+        Json::Object(fields) => fields.values().any(reads_a_secret),
+        _ => false,
+    }
+}
 
 /// `flow_yaml` without the `env` entries no step reads. The document is returned as it is
 /// when every entry is read or it cannot be read (compiling reports that).
@@ -102,6 +159,40 @@ graph:
         assert_eq!(drop_unused_env(all_read.clone()), all_read);
         let without_env = all_read.replace("env:\n  - { name: API_TOKEN, type: secret }\n", "");
         assert_eq!(drop_unused_env(without_env.clone()), without_env);
+    }
+
+    #[test]
+    fn a_plugin_steps_empty_and_secret_reading_fields_are_removed() {
+        let draft = r#"version: "1"
+name: thanks
+env:
+  - { name: EMAIL_FROM, type: secret }
+graph:
+  nodes:
+    - { id: start, type: start }
+    - id: send
+      type: email.send_email
+      title: Send it
+      to: a@b.test
+      from: "{{#env.EMAIL_FROM#}}"
+      html: ""
+      references: []
+      attachments: []
+      text: Hello
+    - { id: end, type: end }
+  edges:
+    - { source: start, target: send }
+    - { source: send, target: end }
+"#;
+        let tidy = drop_unused_env(tidy_plugin_fields(draft.to_owned()));
+
+        let document: Json = serde_saphyr::from_str(&tidy).unwrap();
+        let send = &document["graph"]["nodes"][1];
+        let keys: Vec<&str> = send.as_object().unwrap().keys().map(String::as_str).collect();
+        assert_eq!(keys, ["id", "type", "title", "to", "text"], "{tidy}");
+        assert!(document.get("env").is_none(), "{tidy}");
+        let simple = include_str!("../../fixtures/flows/simple_answer.yaml");
+        assert_eq!(tidy_plugin_fields(simple.to_owned()), simple);
     }
 
     #[test]

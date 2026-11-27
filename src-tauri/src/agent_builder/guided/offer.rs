@@ -20,6 +20,9 @@ const COMMON_WORDS: &[&str] = &[
     "kirim", "pesan", "setiap", "jadi", "api", "data", "file", "files", "page", "pages", "day", "daily",
 ];
 
+/// Words that do not tell operations of one plugin apart.
+const UNTELLING_WORDS: &[&str] = &["get", "the", "and", "for", "with", "from", "all", "new"];
+
 /// Verbs of a job description, in the words operation names use (`kirim` → `send`).
 const VERB_MEANINGS: &[(&str, &str)] = &[
     ("kirim", "send"),
@@ -58,7 +61,7 @@ pub(super) fn relevant_operations(operations: Vec<OfferedOperation>, description
         .iter()
         .filter_map(|word| VERB_MEANINGS.iter().find(|(written, _)| written == word).map(|(_, meaning)| *meaning))
         .collect();
-    let mut scored: Vec<(usize, OfferedOperation)> = operations
+    let mut scored: Vec<((usize, usize), OfferedOperation)> = operations
         .into_iter()
         .filter_map(|operation| {
             let plugin_words = words(&operation.plugin);
@@ -76,7 +79,14 @@ pub(super) fn relevant_operations(operations: Vec<OfferedOperation>, description
                 + usize::from(names_operation) * 2
                 + usize::from(verb_matches) * 3
                 + usize::from(operation.installed) * 2;
-            Some((score, operation))
+            // Among equals, the operation whose own words the job uses most ("page summary").
+            let shared_words = own_words
+                .iter()
+                .filter(|word| word.chars().count() >= 3 && !UNTELLING_WORDS.contains(&word.as_str()))
+                .filter(|word| has_word(&description_words, word))
+                .collect::<std::collections::BTreeSet<_>>()
+                .len();
+            Some(((score, shared_words), operation))
         })
         .collect();
     // Stable: operations with the same score keep the plugin's own order.
@@ -153,6 +163,17 @@ mod tests {
         ] {
             assert!(offered(description).is_empty(), "{description}: {:?}", offered(description));
         }
+    }
+
+    #[test]
+    fn among_one_plugins_operations_the_one_the_job_describes_comes_first() {
+        let wikipedia = vec![
+            operation("wikipedia.search_pages", "Search pages", false),
+            operation("wikipedia.get_page_summary", "Get page summary", false),
+            operation("wikipedia.get_page_content", "Get page content", false),
+        ];
+        let offered = relevant_operations(wikipedia, "Look up the Wikipedia page summary for Jakarta");
+        assert_eq!(offered[0].kind, "wikipedia.get_page_summary");
     }
 
     #[test]

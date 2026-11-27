@@ -346,7 +346,7 @@ async fn draft_until_valid(
         // A model step that reads a guessed path into a response gets the whole response instead.
         let flow_yaml = whole_response::read_whole_responses(flow_yaml);
         // Plugin settings declared as the agent's own secrets would stop every run.
-        let flow_yaml = unused_env::drop_unused_env(flow_yaml);
+        let flow_yaml = unused_env::drop_unused_env(unused_env::tidy_plugin_fields(flow_yaml));
         let explanation = live::opening_text(&reply);
         let proposed_hosts = extract::proposed_trusted_hosts(&explanation);
         let trust = DraftTrust { trusted_hosts, proposed_hosts: &proposed_hosts };

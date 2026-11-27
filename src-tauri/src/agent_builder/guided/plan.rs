@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::plugins::operations::{FieldType, OfferedOperation};
+use crate::plugins::operations::{FieldType, OfferedOperation, OperationField};
 
 /// Most steps kept from a plan; a guided agent is a short job.
 pub(super) const MAX_STEPS: usize = 6;
@@ -347,6 +347,20 @@ pub(super) fn normalize(raw: RawPlan, rules: &PlanRules<'_>) -> Result<Plan, Str
             if !raw.looks_up_the_web {
                 continue;
             }
+            // `{topic}` as the address of a Wikipedia lookup: the plugin offered for the job
+            // that reads it is what was meant (a small model rarely writes the address out).
+            if let Some(operation) = reading_operation_for_bare_input(&raw_step.url, &inputs, rules) {
+                let title = if title.is_empty() { operation.title.clone() } else { title };
+                let instruction = if instruction.is_empty() { title.clone() } else { instruction };
+                let placeholder = bare_placeholder(&raw_step.url).unwrap_or_default();
+                steps.push(PlanStep::Use {
+                    title,
+                    instruction: format!("{instruction} (for {{{placeholder}}})"),
+                    operation: operation.kind.clone(),
+                    fields: BTreeMap::new(),
+                });
+                continue;
+            }
             let url = lookup_url(&raw_step.url, &mut inputs, inputs_are_fixed)?;
             let title = match (title.is_empty(), url.host()) {
                 (false, _) => title,
@@ -475,6 +489,7 @@ pub(super) fn normalize_fields(
     let mut fields = BTreeMap::new();
     for field in &operation.fields {
         let value = given.get(&field.name).and_then(|value| typed_value(value, field.field_type, plan, step_index));
+        let value = if operation.sends { guarded_sending_value(field, value, plan, step_index) } else { value };
         match value {
             Some(value) => {
                 fields.insert(field.name.clone(), value);
@@ -488,6 +503,93 @@ pub(super) fn normalize_fields(
         }
     }
     Ok(fields)
+}
+
+/// Field names that say who receives what is sent.
+const RECIPIENT_FIELDS: &[&str] = &[
+    "to",
+    "cc",
+    "bcc",
+    "recipient",
+    "recipients",
+    "email",
+    "email_address",
+    "to_email",
+    "phone",
+    "phone_number",
+    "number",
+    "chat_id",
+];
+
+/// Field names that hold the text that is sent.
+const MESSAGE_FIELDS: &[&str] = &["text", "body", "message", "content"];
+
+/// Words of an input's name or label that say it holds an address or a number to send to.
+const ADDRESS_INPUT_WORDS: &[&str] =
+    &["email", "mail", "address", "recipient", "to", "phone", "number", "chat", "alamat", "penerima", "nomor", "surel"];
+
+/// What the app itself decides in a field of a step that sends, whatever the model wrote:
+///
+/// - A recipient is an input the person fills in. An address the model wrote out (a small
+///   model invents `sari@example.com`) or an earlier step's text there is replaced by the
+///   one input that holds an address, or dropped when there is none (a required field is
+///   then reported missing).
+/// - The text that is sent is the latest earlier written result when the model left the
+///   field out or wrote fixed words: the plan wrote that text to send it.
+fn guarded_sending_value(
+    field: &OperationField,
+    value: Option<serde_json::Value>,
+    plan: &Plan,
+    step_index: usize,
+) -> Option<serde_json::Value> {
+    if field.field_type != FieldType::Text {
+        return value;
+    }
+    let text = value.as_ref().and_then(serde_json::Value::as_str).unwrap_or_default();
+    if RECIPIENT_FIELDS.contains(&field.name.as_str()) {
+        let parts = field_parts(text, plan);
+        let names_only_inputs = !parts.is_empty()
+            && parts.iter().all(|part| match part {
+                FieldPart::Input(_) => true,
+                FieldPart::Text(words) => {
+                    !words.contains('@') && words.chars().filter(char::is_ascii_digit).count() < 6
+                }
+                FieldPart::StepResult(_) => false,
+            })
+            && parts.iter().any(|part| matches!(part, FieldPart::Input(_)));
+        if names_only_inputs {
+            return value;
+        }
+        return address_input(plan).map(|name| json!(format!("{{{name}}}")));
+    }
+    if MESSAGE_FIELDS.contains(&field.name.as_str()) {
+        let reads_a_result = field_parts(text, plan).iter().any(|part| matches!(part, FieldPart::StepResult(_)));
+        if reads_a_result {
+            return value;
+        }
+        let latest_written = (0..step_index.min(plan.steps.len()))
+            .rev()
+            .find(|index| matches!(plan.steps[*index], PlanStep::Write { .. }));
+        return match latest_written {
+            Some(index) => Some(json!(format!("{{step_{}}}", index + 1))),
+            None => value,
+        };
+    }
+    value
+}
+
+/// The one input that holds an address or a number to send to, by its name or label.
+fn address_input(plan: &Plan) -> Option<&str> {
+    let holds_an_address = |input: &&PlanInput| {
+        format!("{} {}", input.name, input.label)
+            .to_lowercase()
+            .split(|character: char| !character.is_alphanumeric())
+            .any(|word| ADDRESS_INPUT_WORDS.contains(&word))
+    };
+    match plan.inputs.iter().filter(holds_an_address).collect::<Vec<_>>().as_slice() {
+        [only] => Some(only.name.as_str()),
+        _ => None,
+    }
 }
 
 /// `value` as the field's type, or `None` when it is empty or not that type.
@@ -650,6 +752,33 @@ fn lookup_url(raw_url: &str, inputs: &mut Vec<PlanInput>, inputs_are_fixed: bool
         }
     }
     Ok(LookupUrl { template, host: Some(host) })
+}
+
+/// The input name a lookup address consists of, when it is one placeholder and nothing
+/// else (`{topic}`, `{{topic}}`, `https://{topic}`).
+fn bare_placeholder(raw_url: &str) -> Option<String> {
+    let trimmed = raw_url.trim().trim_matches(|character| matches!(character, '"' | '\'' | '`' | '<' | '>'));
+    let single_braces = trimmed.replace("{{#start.", "{").replace("#}}", "}").replace("{{", "{").replace("}}", "}");
+    let without_scheme = single_braces.strip_prefix("https://").or_else(|| single_braces.strip_prefix("http://"));
+    match placeholder_parts(without_scheme.unwrap_or(&single_braces)).as_slice() {
+        [UrlPart::Placeholder(name)] => input_name(name),
+        _ => None,
+    }
+}
+
+/// The best offered operation that only reads, when a lookup address is just an input that
+/// holds no link (see [`is_a_link`]). Offered operations come best match first.
+fn reading_operation_for_bare_input<'a>(
+    raw_url: &str,
+    inputs: &[PlanInput],
+    rules: &'a PlanRules<'_>,
+) -> Option<&'a OfferedOperation> {
+    let name = bare_placeholder(raw_url)?;
+    let input = inputs.iter().find(|input| input.name == name).or_else(|| (inputs.len() == 1).then(|| &inputs[0]))?;
+    if is_a_link(input) {
+        return None;
+    }
+    rules.operations.iter().find(|operation| !operation.sends)
 }
 
 /// Words of an input's name or label that say it holds a web address.
@@ -888,6 +1017,24 @@ mod tests {
     }
 
     #[test]
+    fn a_lookup_of_a_name_becomes_the_offered_plugin_step_that_reads_it() {
+        let operations = [send_email_operation(), list_messages_operation()];
+        let rules = task_rules(&operations);
+        let raw = parse(
+            r#"{"looks_up_the_web": true, "inputs": [{"name": "topic", "label": "Topic to look up", "long_text": false, "value": "Jakarta"}],
+                "steps": [{"kind": "lookup", "title": "Get the summary", "instruction": "", "url": "{topic}"}]}"#,
+        )
+        .unwrap();
+
+        let plan = normalize(raw, &rules).unwrap();
+
+        let PlanStep::Use { operation, instruction, .. } = &plan.steps[0] else { panic!("use expected: {plan:?}") };
+        assert_eq!(operation, &list_messages_operation().kind, "the one that only reads");
+        assert!(instruction.contains("{topic}"), "{instruction}");
+        assert!(matches!(plan.steps.last(), Some(PlanStep::Write { .. })), "what it read is written up");
+    }
+
+    #[test]
     fn a_plan_that_ends_on_a_lookup_gets_a_writing_step() {
         let plan = normalized(
             r#"{"looks_up_the_web": true, "summary": "Tells the weather.",
@@ -1117,9 +1264,43 @@ mod tests {
     }
 
     #[test]
+    fn the_recipient_and_the_sent_text_of_a_sending_step_are_the_apps_choice() {
+        // As llama3.2 filled it in the app: an invented address, a step's text as the
+        // recipient, and no message at all.
+        let fields = normalize_fields(
+            &send_email_operation(),
+            r#"{"subject": "Order Confirmation", "to": "{step_1}, Sari W <sari@example.com}"}"#,
+            &sending_plan(),
+            2,
+        )
+        .unwrap();
+        assert_eq!(fields["to"], json!("{address}"));
+        assert_eq!(fields["text"], json!("{step_1}"));
+
+        let fixed_words = normalize_fields(
+            &send_email_operation(),
+            r#"{"subject": "S", "to": "budi@example.test", "text": "Thank you!"}"#,
+            &sending_plan(),
+            2,
+        )
+        .unwrap();
+        assert_eq!((&fixed_words["to"], &fixed_words["text"]), (&json!("{address}"), &json!("{step_1}")));
+
+        let mut no_address_input = sending_plan();
+        no_address_input.inputs = vec![input("notes", "Meeting notes")];
+        let problem =
+            normalize_fields(&send_email_operation(), r#"{"subject": "S", "to": "a@b.test"}"#, &no_address_input, 2)
+                .unwrap_err();
+        assert!(problem.contains("\"to\" is required"), "{problem}");
+    }
+
+    #[test]
     fn a_missing_required_field_is_reported_with_its_description() {
-        let problem = normalize_fields(&send_email_operation(), r#"{"subject": "Hi", "to": " "}"#, &sending_plan(), 2)
-            .unwrap_err();
+        let mut no_address_input = sending_plan();
+        no_address_input.inputs = vec![input("notes", "Notes")];
+        let problem =
+            normalize_fields(&send_email_operation(), r#"{"subject": "Hi", "to": " "}"#, &no_address_input, 2)
+                .unwrap_err();
         assert!(problem.contains("\"to\" is required") && problem.contains("Recipients"), "{problem}");
         assert!(normalize_fields(&send_email_operation(), "not json", &sending_plan(), 2).is_err());
     }
