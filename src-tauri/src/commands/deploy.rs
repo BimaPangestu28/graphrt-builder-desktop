@@ -70,7 +70,7 @@ pub fn read_kubeconfig_contexts(path: String) -> AppResult<Vec<String>> {
 
 #[tauri::command]
 pub fn check_deploy_compatibility(state: State<'_, AppState>, agent_id: String) -> AppResult<CompatibilityReport> {
-    let agent = state.db.get_agent(agent_id.trim())?;
+    let agent = state.db.released_agent(agent_id.trim())?;
     Ok(compatibility_for(&state, &agent)?.0)
 }
 
@@ -86,7 +86,7 @@ pub fn get_deploy_review(
     agent_id: String,
     provider: DeployProvider,
 ) -> AppResult<DeployReview> {
-    let agent = state.db.get_agent(agent_id.trim())?;
+    let agent = state.db.released_agent(agent_id.trim())?;
     let requirements = plugin_requirements(&state, &agent)?;
     state.deploy.review(&agent, &requirements, provider)
 }
@@ -98,7 +98,7 @@ pub async fn deploy_agent(
     agent_id: String,
     options: DeployOptions,
 ) -> AppResult<DeployOutcome> {
-    let agent = state.db.get_agent(agent_id.trim())?;
+    let agent = state.db.released_agent(agent_id.trim())?;
     let (report, requirements) = compatibility_for(&state, &agent)?;
     state.deploy.deploy(&agent.id, options, &requirements, &report).await
 }
@@ -185,7 +185,7 @@ pub fn get_own_server_instructions(
     agent_id: String,
     features: OnlineFeatures,
 ) -> AppResult<OwnServerInstructions> {
-    let agent = state.db.get_agent(agent_id.trim())?;
+    let agent = state.db.released_agent(agent_id.trim())?;
     let requirements = plugin_requirements(&state, &agent)?;
     state.deploy.own_server_instructions(&agent, &requirements, &features)
 }

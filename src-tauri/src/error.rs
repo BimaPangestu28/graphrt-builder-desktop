@@ -69,6 +69,9 @@ pub enum AppError {
     /// the UI language; `message` is the plugin's own English text, shown under it.
     #[error("{message}")]
     PluginStepFailed { kind: String, message: String },
+    /// Only a released version goes online, and this agent has no release yet.
+    #[error("release a checked version of this agent first (Versions > Release); only a release goes online")]
+    NeedsRelease,
 }
 
 /// "This plugin needs Graphrt Desktop 0.3.0 or newer. ..." in plain words; the screens show
@@ -171,6 +174,7 @@ impl AppError {
             Self::Stopped => "stopped",
             Self::NeedsNewerApp { .. } => "needs_newer_app",
             Self::PluginStepFailed { .. } => "plugin_step_failed",
+            Self::NeedsRelease => "needs_release",
         }
     }
 

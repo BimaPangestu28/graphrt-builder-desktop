@@ -282,6 +282,69 @@ const MIGRATIONS: &[&str] = &[
         created_at TEXT NOT NULL
     );
     "#,
+    // Tests and releases (see `quality.rs`): the questions an agent is checked with, each check of
+    // a version, releases (a checked version with notes; never changed once made, so an UPDATE is
+    // refused) and which release is in use (append-only: a roll back is a new row).
+    r#"
+    CREATE TABLE agent_tests (
+        id                    TEXT PRIMARY KEY NOT NULL,
+        agent_id              TEXT NOT NULL REFERENCES agents (id) ON DELETE CASCADE,
+        position              INTEGER NOT NULL,
+        question              TEXT NOT NULL CHECK (length(trim(question)) > 0),
+        good_answer           TEXT NOT NULL,
+        must_include_json     TEXT NOT NULL,
+        must_not_include_json TEXT NOT NULL,
+        suggested             INTEGER NOT NULL CHECK (suggested IN (0, 1)),
+        created_at            TEXT NOT NULL,
+        updated_at            TEXT NOT NULL
+    );
+    CREATE INDEX agent_tests_by_agent ON agent_tests (agent_id, position);
+
+    CREATE TABLE agent_checks (
+        id                TEXT PRIMARY KEY NOT NULL,
+        agent_id          TEXT NOT NULL REFERENCES agents (id) ON DELETE CASCADE,
+        agent_version     INTEGER NOT NULL CHECK (agent_version >= 1),
+        tests_fingerprint TEXT NOT NULL,
+        status            TEXT NOT NULL CHECK (status IN ('running', 'finished', 'failed')),
+        total             INTEGER NOT NULL CHECK (total >= 0),
+        passed            INTEGER NOT NULL CHECK (passed >= 0),
+        required_percent  INTEGER NOT NULL CHECK (required_percent BETWEEN 0 AND 100),
+        report_json       TEXT,
+        error_message     TEXT,
+        started_at        TEXT NOT NULL,
+        finished_at       TEXT
+    );
+    CREATE INDEX agent_checks_by_agent ON agent_checks (agent_id, started_at DESC);
+
+    CREATE TABLE agent_releases (
+        agent_id         TEXT NOT NULL REFERENCES agents (id) ON DELETE CASCADE,
+        number           INTEGER NOT NULL CHECK (number >= 1),
+        agent_version    INTEGER NOT NULL,
+        notes            TEXT NOT NULL,
+        check_id         TEXT,
+        passed           INTEGER,
+        total            INTEGER,
+        required_percent INTEGER NOT NULL CHECK (required_percent BETWEEN 0 AND 100),
+        override_reason  TEXT,
+        created_at       TEXT NOT NULL,
+        PRIMARY KEY (agent_id, number),
+        FOREIGN KEY (agent_id, agent_version) REFERENCES agent_versions (agent_id, version) ON DELETE CASCADE
+    );
+    CREATE TRIGGER agent_releases_never_change BEFORE UPDATE ON agent_releases
+    BEGIN
+        SELECT RAISE(ABORT, 'a release cannot be changed');
+    END;
+
+    CREATE TABLE agent_release_switches (
+        id             INTEGER PRIMARY KEY,
+        agent_id       TEXT NOT NULL REFERENCES agents (id) ON DELETE CASCADE,
+        release_number INTEGER NOT NULL,
+        reason         TEXT NOT NULL CHECK (reason IN ('released', 'rolled_back')),
+        created_at     TEXT NOT NULL,
+        FOREIGN KEY (agent_id, release_number) REFERENCES agent_releases (agent_id, number) ON DELETE CASCADE
+    );
+    CREATE INDEX agent_release_switches_by_agent ON agent_release_switches (agent_id, id DESC);
+    "#,
 ];
 
 /// Applies every migration newer than the database's `user_version`.
@@ -330,7 +393,11 @@ mod tests {
         assert_eq!(
             table_names(&connection),
             [
+                "agent_checks",
+                "agent_release_switches",
+                "agent_releases",
                 "agent_settings",
+                "agent_tests",
                 "agent_versions",
                 "agents",
                 "builder_messages",

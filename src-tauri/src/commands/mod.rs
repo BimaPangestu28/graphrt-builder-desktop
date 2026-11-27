@@ -23,6 +23,7 @@ pub mod phone_access;
 pub mod plugin_triggers;
 pub mod plugins;
 pub mod problems;
+pub mod quality;
 pub mod run_review;
 pub mod run_summary;
 pub mod runs;

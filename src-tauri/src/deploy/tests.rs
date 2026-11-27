@@ -48,6 +48,24 @@ struct Harness {
     _temp: tempfile::TempDir,
 }
 
+/// Releases the agent's latest version: only a release goes online.
+fn release_latest(db: &Database, agent_id: &str) {
+    let version = db.get_agent(agent_id).unwrap().current_version;
+    db.create_release(
+        agent_id,
+        crate::storage::quality::NewRelease {
+            agent_version: version,
+            notes: "Test release".into(),
+            check_id: None,
+            passed: None,
+            total: None,
+            required_percent: 80,
+            override_reason: Some("tests of the deploy service".into()),
+        },
+    )
+    .unwrap();
+}
+
 fn harness(flow_yaml: &str) -> Harness {
     let temp = tempfile::tempdir().unwrap();
     let db = Arc::new(Database::open_in_memory().unwrap());
@@ -62,6 +80,7 @@ fn harness(flow_yaml: &str) -> Harness {
             flow_yaml: flow_yaml.into(),
         })
         .unwrap();
+    release_latest(&db, &agent.id);
     let service = DeployService::new(DeployServiceConfig {
         app_data_dir: temp.path().to_path_buf(),
         db: db.clone(),
@@ -255,6 +274,11 @@ esac"#,
 
     // A change makes the online copy outdated; updating deploys v2 from the new version.
     harness.db.update_agent_flow(&harness.agent.id, &FLOW.replace("hello", "hi there"), "Friendlier").unwrap();
+    assert!(
+        !harness.service.view(&harness.agent.id).unwrap().unwrap().has_changes,
+        "an unreleased draft stays offline"
+    );
+    release_latest(&harness.db, &harness.agent.id);
     assert!(harness.service.view(&harness.agent.id).unwrap().unwrap().has_changes);
     let updated = harness.service.deploy(&harness.agent.id, fly_options(), &[], &ready_report()).await.unwrap();
     assert_eq!(updated.view.deployment.deployed_version_label.as_deref(), Some("v2"));
@@ -281,7 +305,8 @@ esac"#,
         .unwrap()
         .unwrap();
     assert_eq!(rolled_back.deployment.deployed_version_label.as_deref(), Some("v1"));
-    assert!(rolled_back.has_changes, "v1 was made from the older desktop version");
+    assert!(!rolled_back.has_changes, "going back online puts the release of v1 in use too");
+    assert_eq!(harness.db.release_in_use(&harness.agent.id).unwrap().map(|release| release.number), Some(1));
 
     assert_eq!(harness.service.manage(&harness.agent.id, ManageAction::Remove).await.unwrap(), None);
     assert_eq!(harness.db.get_deployment(&harness.agent.id).unwrap(), None);
@@ -341,6 +366,7 @@ esac"#,
     harness.service.deploy(&harness.agent.id, custom, &[], &ready_report()).await.unwrap();
     // A later change is not shipped by a key rotation: it keeps the online version.
     harness.db.update_agent_flow(&harness.agent.id, &FLOW.replace("hello", "changed"), "Changed").unwrap();
+    release_latest(&harness.db, &harness.agent.id);
 
     let rotated = harness.service.rotate_api_key(&harness.agent.id).await.unwrap();
     assert_eq!(rotated.api_key, "grk_rotated");
@@ -509,6 +535,28 @@ fn exports_a_bundle_or_yaml_without_keys() {
     assert!(!String::from_utf8_lossy(&bytes).contains("sk-never-exported"));
     let yaml_path = harness.service.export_agent_file(&harness.agent.id, &folder.path().join("menu.yaml")).unwrap();
     assert_eq!(std::fs::read_to_string(yaml_path).unwrap(), FLOW);
+}
+
+#[test]
+fn only_the_release_in_use_is_exported() {
+    let harness = harness(FLOW);
+    let folder = tempfile::tempdir().unwrap();
+    let draft = FLOW.replace("hello", "not released yet");
+    harness.db.update_agent_flow(&harness.agent.id, &draft, "Draft").unwrap();
+    let yaml_path = harness.service.export_agent_file(&harness.agent.id, &folder.path().join("menu.yaml")).unwrap();
+    assert_eq!(std::fs::read_to_string(&yaml_path).unwrap(), FLOW, "the draft is not exported");
+
+    let unreleased = harness
+        .db
+        .create_agent(NewAgent {
+            name: "Never released".into(),
+            kind: AgentKind::Chatbot,
+            description: String::new(),
+            flow_yaml: FLOW.into(),
+        })
+        .unwrap();
+    let refused = harness.service.export_agent_file(&unreleased.id, &folder.path().join("other.yaml"));
+    assert!(matches!(refused, Err(AppError::NeedsRelease)));
 }
 
 // ---- the chat page, the phone page and paired phones ----
