@@ -220,8 +220,8 @@ fn shorten(text: &str) -> String {
     one_line.chars().take(160).collect()
 }
 
-/// (a) A CSV is attached; the bot is asked for a PDF summary. Right when the PDF names every
-/// customer and every quantity of the CSV.
+/// (a) A CSV is attached; the bot is asked for a PDF summary. Right when the PDF can be
+/// downloaded and names every customer and every quantity of the CSV.
 async fn csv_to_pdf(model: &str) -> Result<(), String> {
     let chat = RealChat::new(tools_flow(model));
     let detail = chat
@@ -232,6 +232,15 @@ async fn csv_to_pdf(model: &str) -> Result<(), String> {
         .iter()
         .find(|card| card.kind == FileCardKind::Pdf)
         .ok_or_else(|| format!("no PDF handed back ({} files); reply: {}", files.len(), shorten(&text)))?;
+    // Downloaded the way the Download button does it: a complete PDF on disk.
+    let saved = chat.home.path().join("downloaded.pdf");
+    chat.agent_files
+        .save_copy(&chat.agent_id, &pdf.reference, &saved)
+        .await
+        .map_err(|error| format!("download failed: {error}"))?;
+    if !std::fs::read(&saved).is_ok_and(|bytes| bytes.starts_with(b"%PDF-")) {
+        return Err("the downloaded file is not a PDF".into());
+    }
     let content = chat.text_of(&detail.conversation.id, pdf).await;
     let missing: Vec<&str> = ["Sinar Laut", "Ratna", "Kelurahan", "50", "30", "120", "80"]
         .into_iter()
