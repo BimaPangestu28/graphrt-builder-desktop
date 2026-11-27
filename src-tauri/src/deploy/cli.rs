@@ -162,6 +162,12 @@ pub fn help_lists_channels(deploy_help: &str) -> bool {
     deploy_help.contains("--channel")
 }
 
+/// Whether `graphrt deploy --help` says agents of any size go online (Graphrt/graphrt: an
+/// agent above 1 MiB is uploaded onto the store volume), so knowledge of any size goes with it.
+pub fn help_lists_large_agents(deploy_help: &str) -> bool {
+    deploy_help.contains("uploaded onto the store volume")
+}
+
 /// What the installed graphrt tools can put online, from one `graphrt deploy --help`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct CliAbilities {
@@ -169,15 +175,19 @@ pub struct CliAbilities {
     pub online_features: bool,
     /// Messaging channels ([`help_lists_channels`]).
     pub channels: bool,
+    /// Agents (with their knowledge) larger than 1 MiB ([`help_lists_large_agents`]).
+    pub large_agents: bool,
 }
 
 /// Runs `graphrt deploy --help` and reads what the tools can do. Nothing when the tools do
 /// not start.
 pub fn abilities(executable: &Path) -> CliAbilities {
     match deploy_help(executable) {
-        Some(help) => {
-            CliAbilities { online_features: help_lists_online_features(&help), channels: help_lists_channels(&help) }
-        }
+        Some(help) => CliAbilities {
+            online_features: help_lists_online_features(&help),
+            channels: help_lists_channels(&help),
+            large_agents: help_lists_large_agents(&help),
+        },
         None => CliAbilities::default(),
     }
 }
@@ -492,6 +502,14 @@ mod tests {
         crate::test_support::write_executable_script(&broken, "exit 3");
         assert!(!knows_online_features(&broken));
         assert!(!knows_online_features(&temp.path().join("missing")));
+    }
+
+    #[test]
+    fn large_agents_are_known_from_the_deploy_help() {
+        assert!(help_lists_large_agents(
+            "a bundle (`.grt`) of any size: above 1 MiB it is uploaded onto the store volume"
+        ));
+        assert!(!help_lists_large_agents("Workflow file the agents serve; with `--direct` also a bundle (`.grt`)."));
     }
 
     #[test]

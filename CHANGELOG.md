@@ -37,6 +37,7 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ### Fixed
 
+- **Knowledge of any size goes online**: with graphrt tools that upload large agents onto a Fly volume (they say so in `graphrt deploy --help`), Put it online sends an agent's knowledge whatever its size instead of refusing above 1 MB. Older tools still refuse it before anything is sent, now saying to update the graphrt tools or use My own server.
 - **Knowledge goes online too**: putting an agent online (and "Make a new key") now ships the same package as "Export agent file" when the agent uses knowledge: its passages and chunking settings travel with it, so the online copy searches and indexes the same way. An online copy carries at most 1 MB; larger knowledge is refused before anything is sent, with a plain message pointing to My own server, whose agent file has no such limit.
 - **Passage numbers have no gaps**: the passage viewer numbered passages by graphrt's internal cut number, which skips numbers when a cut holds only a PDF page marker or repeats text. Passages are now numbered 1, 2, 3 in document order.
 - **A customer message during a take-over is answered after the hand back**: when a customer wrote while you held the chat and you then gave it back to the bot, that message stayed unanswered. The bot now answers the latest such message as soon as you hand back.

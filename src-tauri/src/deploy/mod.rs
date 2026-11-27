@@ -332,17 +332,18 @@ impl std::fmt::Debug for DeployService {
 }
 
 /// `menu-questions-chatbot-1a2b3c`: lowercase letters, digits and dashes, at most 48 characters.
-/// Largest agent file a direct deploy ships (graphrt-provider-fly `MAX_AGENT_FILE_BYTES`:
-/// the file travels inside the Machine's configuration).
+/// Largest agent file graphrt tools that predate large agents ship: the file travels
+/// inside the Machine's configuration. Newer tools upload larger agents onto a Fly volume
+/// ([`cli::help_lists_large_agents`]).
 pub const MAX_DEPLOY_FILE_BYTES: usize = 1024 * 1024;
 
 /// Why an agent whose knowledge is too large cannot go online directly, and what to do.
 fn knowledge_too_large_message(bytes: usize) -> String {
     let megabytes = bytes as f64 / 1_048_576.0;
     format!(
-        "This agent's knowledge is {megabytes:.1} MB with its passages, and an online copy can carry at most 1 MB. \
-         Make the knowledge smaller (fewer or smaller files), or use My own server: its agent file carries \
-         knowledge of any size"
+        "This agent's knowledge is {megabytes:.1} MB with its passages, and the installed graphrt tools put at \
+         most 1 MB online. Update the graphrt tools to put knowledge of any size online, or use My own server: \
+         its agent file carries knowledge of any size"
     )
 }
 
@@ -1452,12 +1453,13 @@ impl DeployService {
     /// otherwise.
     ///
     /// # Errors
-    /// `InvalidInput` with a plain sentence when the knowledge is larger than a direct deploy carries.
+    /// `InvalidInput` with a plain sentence when the knowledge is larger than the installed
+    /// graphrt tools put online (tools that predate large agents).
     fn write_deploy_file(&self, agent: &Agent, work_dir: &Path) -> AppResult<PathBuf> {
         let uses_knowledge = crate::knowledge::bundle::uses_knowledge(&self.db, agent)?;
         let (file_name, bytes) = if uses_knowledge {
             let bytes = self.agent_bundle(agent)?;
-            if bytes.len() > MAX_DEPLOY_FILE_BYTES {
+            if bytes.len() > MAX_DEPLOY_FILE_BYTES && !self.cli_abilities().large_agents {
                 return Err(AppError::InvalidInput(knowledge_too_large_message(bytes.len())));
             }
             ("agent.grt", bytes)

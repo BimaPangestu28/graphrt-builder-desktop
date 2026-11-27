@@ -962,12 +962,28 @@ esac"#,
     let name = std::fs::read_to_string(folder.path().join("shipped.name")).unwrap();
     assert!(name.trim().ends_with("agent.yaml"), "{name}");
 
-    // Knowledge larger than a direct deploy carries is refused before anything is sent.
+    // graphrt tools that predate large agents: knowledge above 1 MB is refused before anything is sent.
     std::fs::remove_file(folder.path().join("shipped.name")).unwrap();
     let error = harness.service.deploy(&big_agent.id, fly_options(), &[], &ready_report()).await.unwrap_err();
     assert!(
-        matches!(&error, AppError::InvalidInput(message) if message.contains("at most 1 MB") && message.contains("My own server")),
+        matches!(&error, AppError::InvalidInput(message) if message.contains("at most 1 MB") && message.contains("Update the graphrt tools")),
         "{error}"
     );
     assert!(!folder.path().join("shipped.name").exists(), "nothing was sent");
+
+    // Tools that upload large agents onto the store volume get the whole knowledge, whatever its size.
+    let newer = tempfile::tempdir().unwrap();
+    let newer_script = script.replacen(
+        "  --help) ;;",
+        "  --help) echo 'Workflow file; with --direct also a bundle (.grt) of any size: above 1 MiB it is uploaded onto the store volume.' ;;",
+        1,
+    );
+    harness.service = harness.service.with_cli_executable(fake_cli(newer.path(), &newer_script));
+    harness.service.deploy(&big_agent.id, fly_options(), &[], &ready_report()).await.unwrap();
+    let shipped_big = std::fs::read(&shipped).unwrap();
+    assert!(shipped_big.len() > MAX_DEPLOY_FILE_BYTES, "{} bytes", shipped_big.len());
+    let (bundle, config) = bundle_knowledge(&shipped_big);
+    let store = config["datasets"][0]["store"].as_str().unwrap();
+    let path = config["stores"][store]["path"].as_str().unwrap();
+    assert!(bundle.file(path).is_some_and(|bytes| bytes.len() > 1024 * 1024), "every passage goes along");
 }
