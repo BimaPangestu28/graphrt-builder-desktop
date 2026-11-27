@@ -1,4 +1,4 @@
-import type { OnlineFeatures } from '@/api/deployTypes'
+import type { OnlineFeatures, OnlineTarget } from '@/api/deployTypes'
 
 /** The server's own limits for chat visitors (graphrt serve defaults, never changed by the app). */
 export const guestMessagesPerMinute = 10
@@ -36,4 +36,10 @@ export function withFeatureChange(features: OnlineFeatures, change: Partial<Onli
 /** A Unix time in milliseconds as an ISO string, for the "time ago" helper. */
 export function isoFromMs(timeMs: number | null): string | null {
   return timeMs === null ? null : new Date(timeMs).toISOString()
+}
+
+/** A stable key of a target, for effects that reload when it changes. */
+export function onlineTargetKey(target: OnlineTarget): string {
+  if (target.kind === 'computer') return 'computer'
+  return target.kind === 'agent' ? `agent:${target.agentId}` : `server:${target.serverId}`
 }

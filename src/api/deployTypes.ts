@@ -112,8 +112,11 @@ export interface OnlineFeatures {
 
 export const noOnlineFeatures: OnlineFeatures = { chat: false, chatAudience: 'guests', embedSite: null, phone: false, notifications: false, notifyEmail: null, answerWhenTimeRunsOut: false }
 
-/** An online agent, or a server connected in "My own server". */
-export type OnlineTarget = { kind: 'agent'; agentId: string } | { kind: 'server'; serverId: string }
+/**
+ * An online agent, a server connected in "My own server", or this computer itself (Settings >
+ * Phone access: only pairing phones applies to it).
+ */
+export type OnlineTarget = { kind: 'agent'; agentId: string } | { kind: 'server'; serverId: string } | { kind: 'computer' }
 
 export interface LiveChat {
   /** `guests`, `key`, `users` (signed-in users) or `open` (a server without an access key). */

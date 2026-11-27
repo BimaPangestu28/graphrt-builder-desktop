@@ -36,4 +36,6 @@ pub struct AppState {
     pub agent_files: Arc<crate::agent_files::AgentFiles>,
     /// Plugin events that start agents (watchers run in the background).
     pub plugin_triggers: Arc<crate::plugin_triggers::PluginTriggerService>,
+    /// Settings > Phone access: paired phones follow and answer this computer's runs.
+    pub phone_access: Arc<crate::phone_access::PhoneAccess>,
 }

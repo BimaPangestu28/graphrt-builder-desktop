@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useId, useState } from 'react'
 import { listPairedDevices, pairDevice, revokePairedDevice, showDevicePairing } from '@/api/deploy'
+import { onPhoneAccessChanged } from '@/api/phoneAccess'
 import type { DevicePairing, OnlineTarget, PairedDevice } from '@/api/deployTypes'
 import { Button } from '@/components/ui'
 import { messages } from '@/i18n'
 import { describeTimeAgo, plainErrorMessage } from './deployDisplay'
-import { isoFromMs } from './onlineFeatures'
+import { isoFromMs, onlineTargetKey } from './onlineFeatures'
 import { QrCode } from './QrCode'
 
 /** The code of one phone: shown because the person just paired it or asked to see it. */
-function PairingCode({ pairing, onHide }: { pairing: DevicePairing; onHide: () => void }) {
+function PairingCode({ pairing, note, onHide }: { pairing: DevicePairing; note: string; onHide: () => void }) {
   const text = messages().deploy.sharing
   const [isCopied, setIsCopied] = useState(false)
   return (
@@ -17,7 +18,7 @@ function PairingCode({ pairing, onHide }: { pairing: DevicePairing; onHide: () =
       <div className="flex min-w-0 flex-[1_1_220px] flex-col gap-2">
         <span className="font-semibold">{text.scanWith(pairing.deviceName)}</span>
         <span className="text-[13px] leading-normal text-body">{text.scanHint}</span>
-        <span className="text-[13px] leading-normal text-amber-strong">{text.codeIsAKey}</span>
+        <span className="text-[13px] leading-normal text-amber-strong">{note}</span>
         <span className="flex flex-wrap gap-2">
           <Button size="sm" variant="secondary" onClick={onHide}>
             {text.hideCode}
@@ -38,13 +39,21 @@ function PairingCode({ pairing, onHide }: { pairing: DevicePairing; onHide: () =
   )
 }
 
+interface PairedPhonesProps {
+  target: OnlineTarget
+  /** What the shown code is, under it (default: the code is the phone's key). */
+  codeNote?: string
+}
+
 /**
- * The phones paired with an online agent or a connected server: pair a new one (its code is
- * shown once it exists and hidden again on request), show a kept code again, and remove a
- * phone after a confirmation. A code is the phone's key, so it is only ever on screen because
- * the person asked for it.
+ * The phones paired with an online agent, a connected server or this computer: pair a new one
+ * (its code is shown once it exists and hidden again on request), show a kept code again, and
+ * remove a phone after a confirmation. A code is the phone's key (or, for this computer, a
+ * code that works once for ten minutes), so it is only ever on screen because the person asked
+ * for it. For this computer the list follows what phones do: a code is hidden once a phone
+ * used it.
  */
-export function PairedPhones({ target }: { target: OnlineTarget }) {
+export function PairedPhones({ target, codeNote }: PairedPhonesProps) {
   const text = messages().deploy.sharing
   const nameId = useId()
   const [devices, setDevices] = useState<PairedDevice[] | null>(null)
@@ -54,7 +63,8 @@ export function PairedPhones({ target }: { target: OnlineTarget }) {
   const [shownCode, setShownCode] = useState<DevicePairing | null>(null)
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const targetKey = target.kind === 'agent' ? `agent:${target.agentId}` : `server:${target.serverId}`
+  const targetKey = onlineTargetKey(target)
+  const [shownAtMs, setShownAtMs] = useState(0)
 
   const load = useCallback(async () => {
     try {
@@ -71,6 +81,25 @@ export function PairedPhones({ target }: { target: OnlineTarget }) {
     void load()
   }, [load])
 
+  // Phones of this computer pair themselves with the code: follow them.
+  useEffect(() => {
+    if (targetKey !== 'computer') return
+    let stop: (() => void) | null = null
+    let isActive = true
+    void onPhoneAccessChanged(() => void load()).then((unsubscribe) => {
+      if (isActive) stop = unsubscribe
+      else unsubscribe()
+    })
+    return () => {
+      isActive = false
+      stop?.()
+    }
+  }, [load, targetKey])
+
+  useEffect(() => {
+    if (targetKey === 'computer' && shownCode && devices?.some((device) => (device.pairedAtMs ?? 0) >= shownAtMs)) setShownCode(null)
+  }, [devices, shownAtMs, shownCode, targetKey])
+
   async function act(label: string, action: () => Promise<void>) {
     setBusy(label)
     setErrorMessage(null)
@@ -83,8 +112,15 @@ export function PairedPhones({ target }: { target: OnlineTarget }) {
     }
   }
 
+  function hideCode(pairing: DevicePairing) {
+    setShownCode(null)
+    // A code of this computer that was not used yet stops working when it is hidden.
+    if (targetKey === 'computer' && pairing.deviceId.startsWith('pairing-')) void revokePairedDevice(target, pairing.deviceId).catch(() => undefined)
+  }
+
   const pair = () =>
     act('pair', async () => {
+      setShownAtMs(Date.now())
       setShownCode(await pairDevice(target, name))
       setIsNaming(false)
       setName('')
@@ -102,7 +138,7 @@ export function PairedPhones({ target }: { target: OnlineTarget }) {
   return (
     <div className="flex flex-col gap-2.5">
       <span className="text-[13px] font-semibold text-ink-2">{text.pairedPhones}</span>
-      {shownCode && <PairingCode pairing={shownCode} onHide={() => setShownCode(null)} />}
+      {shownCode && <PairingCode pairing={shownCode} note={codeNote ?? text.codeIsAKey} onHide={() => hideCode(shownCode)} />}
       {devices !== null && devices.length === 0 && <span className="text-[13px] text-body">{text.noPhonesYet}</span>}
       {devices !== null && devices.length > 0 && (
         <ul className="m-0 flex list-none flex-col gap-1.5 p-0">

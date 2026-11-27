@@ -13,7 +13,7 @@ use super::models::{Run, RunEventRecord, RunFilter, RunStatus, RunTrigger};
 use super::{now_rfc3339, Database};
 use crate::error::{AppError, AppResult};
 
-const RUN_COLUMNS: &str = "id, agent_id, agent_version, \"trigger\", status, started_at, finished_at, \
+pub(super) const RUN_COLUMNS: &str = "id, agent_id, agent_version, \"trigger\", status, started_at, finished_at, \
      outputs_json, error_message, pause_reasons_json";
 
 const DEFAULT_RUN_LIST_LIMIT: i64 = 100;
@@ -355,7 +355,7 @@ fn require_status(
     Err(AppError::InvalidInput(format!("cannot {action} run {run_id}: it is {}", current_status.as_db_text())))
 }
 
-fn map_run_row(row: &Row<'_>) -> rusqlite::Result<Run> {
+pub(super) fn map_run_row(row: &Row<'_>) -> rusqlite::Result<Run> {
     Ok(Run {
         id: row.get("id")?,
         agent_id: row.get("agent_id")?,
@@ -370,7 +370,7 @@ fn map_run_row(row: &Row<'_>) -> rusqlite::Result<Run> {
     })
 }
 
-fn map_event_row(row: &Row<'_>) -> rusqlite::Result<RunEventRecord> {
+pub(super) fn map_event_row(row: &Row<'_>) -> rusqlite::Result<RunEventRecord> {
     Ok(RunEventRecord {
         run_id: row.get("run_id")?,
         seq: row.get("seq")?,

@@ -15,6 +15,7 @@ The UI is implemented from the **graphrt Builder Mockup** design canvas (25 desk
 - Home dashboard, scheduler, runs, inbox with human take-over, knowledge bases
 - Chained agents, agents as steps, agent teams, customer chatbots
 - Connections, settings, error states, version history
+- Phone access: follow and answer the agents on this computer from your phone ([docs/phone-access.md](docs/phone-access.md))
 
 ## Prerequisites
 Running a prebuilt app needs nothing else (it ships its own Node.js). The supported systems:

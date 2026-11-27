@@ -56,6 +56,11 @@ pub mod mcp;
 pub mod model_catalog;
 pub mod node_runtime;
 pub mod ollama_check;
+#[cfg(feature = "phone-access")]
+pub mod phone_access;
+#[cfg(not(feature = "phone-access"))]
+#[path = "phone_access_disabled.rs"]
+pub mod phone_access;
 pub mod plugin_triggers;
 pub mod plugins;
 pub mod problems;
@@ -120,9 +125,20 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
     let chain_runner = Arc::new(ChainRunner::new(db.clone()));
     let chaining_sink = Arc::new(ChainingSink::new(activity_sink, chain_runner.clone()));
     let sink = Arc::new(live_view::WakeOnRunActivity::new(chaining_sink, live_view_waker));
+    #[cfg(feature = "phone-access")]
+    let phone_access = Arc::new(phone_access::PhoneAccess::new(
+        db.clone(),
+        &data_dir,
+        Arc::new(phone_access::TauriPhoneAccessEvents::new(app.handle().clone())),
+    ));
+    #[cfg(feature = "phone-access")]
+    let sink = Arc::new(phone_access::push::PhonePushSink::new(sink, phone_access.clone()));
+    #[cfg(not(feature = "phone-access"))]
+    let phone_access = Arc::new(phone_access::PhoneAccess);
     let agent_files = Arc::new(agent_files::AgentFiles::new(&data_dir));
     let runs = Arc::new(RunManager::new(db.clone(), credentials.clone(), sink).with_agent_files(agent_files.clone()));
     chain_runner.attach(&runs);
+    phone_access.attach(runs.clone());
     let conversation_sink = Arc::new(desktop::chat_notify::ChatNotifyingSink::new(
         Arc::new(conversations::tauri_sink::TauriConversationEventSink::new(app.handle().clone())),
         notifier.clone(),
@@ -180,6 +196,7 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
     let plugin_triggers =
         Arc::new(plugin_triggers::PluginTriggerService::new(db.clone(), plugins.clone(), runs.clone()));
     plugin_triggers.spawn();
+    phone_access.spawn();
     Ok(AppState {
         db,
         credentials,
@@ -196,6 +213,7 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         deploy,
         agent_files,
         plugin_triggers,
+        phone_access,
     })
 }
 
@@ -411,6 +429,9 @@ pub fn run() {
             commands::deploy::pair_device,
             commands::deploy::show_device_pairing,
             commands::deploy::revoke_paired_device,
+            commands::phone_access::phone_access_status,
+            commands::phone_access::save_phone_access,
+            commands::phone_access::phone_access_activity,
             commands::deploy::open_deploy_link,
             commands::node_runtime::node_runtime_info,
             commands::node_runtime::install_browser_runtime,
