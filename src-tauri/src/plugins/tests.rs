@@ -11,7 +11,7 @@ use futures::future::BoxFuture;
 use super::app_requirement::APP_VERSION;
 use super::download::{Downloader, ProgressCallback};
 use super::events::PluginEventSink;
-use super::models::{PluginEvent, PluginInstallStage};
+use super::models::{PluginEvent, PluginInstallStage, SettingKind};
 use super::{PluginService, PluginServiceConfig};
 use crate::credentials::CredentialStore;
 use crate::error::{AppError, AppResult};
@@ -681,6 +681,76 @@ async fn setting_values_never_appear_in_listings_or_debug_output() {
     let listing = serde_json::to_string(&fixture.service.list_installed().unwrap()).unwrap();
     assert!(!listing.contains("very-secret-token"));
     assert!(!format!("{:?}", fixture.service).contains("very-secret-token"));
+}
+
+/// A plugin's `graphrt-settings.json` says what each setting is: the listing carries its
+/// label, help and kind, and a setting that is not a secret shows its saved value.
+#[tokio::test]
+async fn a_plugins_settings_file_decides_what_is_asked_and_what_is_shown() {
+    let fixture = installed_fixture().await;
+    let undeclared = fixture.service.installed(PLUGIN).unwrap().config.remove(0);
+    assert!(!undeclared.optional, "by its name a token is required");
+    assert_eq!((undeclared.kind, undeclared.label), (SettingKind::Secret, None));
+
+    let output_folder = fixture.app_data.path().join("Invoices").join("2026");
+    std::fs::write(
+        fixture.plugins_dir().join(PLUGIN).join("graphrt-settings.json"),
+        r#"{ "settings": [{ "name": "FIXTURE_ECHO_TOKEN", "label": "Folder for finished documents",
+             "help": "Documents are saved here.", "kind": "folder", "required": true }] }"#,
+    )
+    .unwrap();
+    fixture.service.reload();
+    let declared = fixture.service.installed(PLUGIN).unwrap().config.remove(0);
+    assert_eq!(declared.label.as_deref(), Some("Folder for finished documents"));
+    assert_eq!(declared.help.as_deref(), Some("Documents are saved here."));
+    assert_eq!((declared.kind, declared.optional, declared.configured), (SettingKind::Folder, false, false));
+
+    // A folder setting is refused unless it is a full path, and created when it is missing.
+    let relative = fixture.service.set_config(PLUGIN, "FIXTURE_ECHO_TOKEN", "invoices").await;
+    assert!(matches!(relative, Err(AppError::InvalidInput(_))));
+    let saved = fixture.service.set_config(PLUGIN, "FIXTURE_ECHO_TOKEN", &output_folder.to_string_lossy()).await;
+    let saved = saved.unwrap().config.remove(0);
+    assert!(output_folder.is_dir());
+    assert_eq!(saved.value.as_deref(), Some(output_folder.to_string_lossy().as_ref()));
+    assert!(saved.configured);
+
+    // With a default the plugin works without the setting, whatever `required` says.
+    std::fs::write(
+        fixture.plugins_dir().join(PLUGIN).join("graphrt-settings.json"),
+        r#"{ "settings": [{ "name": "FIXTURE_ECHO_TOKEN", "kind": "number", "required": true, "default": 200 }] }"#,
+    )
+    .unwrap();
+    fixture.service.reload();
+    let defaulted = fixture.service.installed(PLUGIN).unwrap().config.remove(0);
+    assert!(defaulted.optional);
+    assert_eq!(defaulted.default_value.as_deref(), Some("200"));
+}
+
+/// The catalog entry's `settings` covers a version released before the file existed, and a
+/// plugin that is not installed yet.
+#[tokio::test]
+async fn the_catalog_entry_describes_the_settings_of_a_plugin_without_its_own_file() {
+    let entry: crate::plugins::models::CatalogPlugin = serde_json::from_value(serde_json::json!({
+        "name": "docs", "version": "1.0.0", "tarball_url": "https://example.test/docs.tar.gz", "sha256": "00",
+        "permissions": { "env": ["DOCS_OUTPUT_DIR", "DOCS_MAX_PAGES"] },
+        "settings": [
+            { "name": "DOCS_OUTPUT_DIR", "label": "Folder for finished documents", "kind": "folder", "required": true },
+            "an item this app cannot read",
+            { "name": "DOCS_MAX_PAGES", "kind": "number", "default": 200 },
+        ],
+    }))
+    .unwrap();
+    assert_eq!(entry.settings.len(), 2, "the odd item is skipped, the entry stays");
+    assert!(crate::plugins::setting_spec::profile("DOCS_OUTPUT_DIR", &entry.settings).required);
+    assert!(!crate::plugins::setting_spec::profile("DOCS_MAX_PAGES", &entry.settings).required);
+
+    // An older catalog has no `settings`; anything that is not a list reads as none.
+    let old: crate::plugins::models::CatalogPlugin = serde_json::from_value(serde_json::json!({
+        "name": "docs", "version": "1.0.0", "tarball_url": "https://example.test/docs.tar.gz", "sha256": "00",
+        "settings": "none",
+    }))
+    .unwrap();
+    assert!(old.settings.is_empty());
 }
 
 #[tokio::test]
