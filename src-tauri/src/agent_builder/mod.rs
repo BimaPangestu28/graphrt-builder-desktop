@@ -9,6 +9,8 @@
 //! Layout:
 //! - `prompt`: system and user prompts (rules, format guide, fixture examples).
 //! - `extract`: pulls the YAML document and the agent name out of a model reply.
+//! - `guided`: the short path for local models: the model fills in a small plan and the app
+//!   writes the document (new agents made of writing and lookup steps).
 //! - `kind`: infers the agent kind when the user did not pick one.
 //! - `diff`: compares two flow summaries for the revision summary.
 //! - `history`: saves the builder chat (requests and replies) per agent.
