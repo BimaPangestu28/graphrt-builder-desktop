@@ -7,7 +7,7 @@ import { isLocalCliProvider, primaryLocalCliProviders } from '@/lib/settings'
 import { useAvailableModels } from '@/hooks/useAvailableModels'
 import { describeError } from '@/lib/agentDisplay'
 import { getCredentialStoreName } from '@/lib/platform'
-import { recommendedModelFor, recommendedOllamaModel } from '@/lib/modelChoices'
+import { recommendedModelFor } from '@/lib/modelChoices'
 import { ConnectionCard } from './ConnectionCard'
 import { ConnectionsNotice, ConnectionsSection } from './ConnectionsSection'
 import { LocalCliCard } from './LocalCliCard'
@@ -106,8 +106,7 @@ export function ModelProvidersSection({ connections, defaultModel, loadError, on
     setDefaultingProvider(connection.provider)
     setRemoveErrorMessage(null)
     try {
-      const isOllama = connection.provider === 'ollama'
-      await setDefaultModel(isOllama ? recommendedOllamaModel(availableModelsState.data) : recommendedModelFor(connection.provider))
+      await setDefaultModel(recommendedModelFor(connection.provider))
       await onKeysChanged()
     } catch (defaultError) {
       setRemoveErrorMessage(messages().connections.couldNotMakeNameTheDefault(connection.name, describeError(defaultError)))
