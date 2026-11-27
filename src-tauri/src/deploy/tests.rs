@@ -313,6 +313,75 @@ esac"#,
     assert_eq!(harness.credentials.read_deploy_secret(&format!("key:{}", harness.agent.id)).unwrap(), None);
 }
 
+/// A fake `graphrt` that deploys, lists v2 (current) and v1 (standby), and fails its roll back
+/// while `{folder}/rollback-fails` exists, the way a Machine that never starts does.
+#[cfg(unix)]
+fn rollback_script(folder: &std::path::Path) -> String {
+    format!(
+        r#"case "$2" in
+  --help) ;;
+  rollback)
+    if [ -f "{fails}" ]; then
+      echo '{{"type":"error","code":"provider","message":"Machine 8edd412fd70918 did not start within 120 s"}}'
+      exit 1
+    fi
+    echo '{{"type":"result","action":"rollback","app":"menu","url":"https://menu.fly.dev","version":"v1","workflow":"agent"}}' ;;
+  list-versions) echo '{{"type":"result","action":"list-versions","app":"menu","url":"https://menu.fly.dev","current_version":"v2","versions":[{{"label":"v2","deployed_at":"2026-11-24T16:00:00.123Z","current":true,"role":"current","mode":"scale-to-zero","workflow":"agent","state":"started"}},{{"label":"v1","deployed_at":"2026-11-23T09:12:00.000Z","current":false,"role":"standby","mode":"scale-to-zero","workflow":"agent","state":"stopped"}}]}}' ;;
+  *)
+    version=$(echo "$*" | sed 's/.*--version \([^ ]*\).*/\1/')
+    echo "{{\"type\":\"result\",\"action\":\"deploy\",\"url\":\"https://menu.fly.dev\",\"version\":\"$version\",\"app\":\"menu\",\"workflow\":\"agent\",\"api_key\":null}}"
+    ;;
+esac"#,
+        fails = folder.join("rollback-fails").display()
+    )
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn going_back_to_a_release_changes_nothing_when_the_online_copy_cannot_switch() {
+    let mut harness = harness(FLOW);
+    let folder = tempfile::tempdir().unwrap();
+    harness.service = harness.service.with_cli_executable(fake_cli(folder.path(), &rollback_script(folder.path())));
+    harness.credentials.set_api_key(ModelProvider::Openai, "sk-openai-secret").unwrap();
+    harness.credentials.set_deploy_secret("account:fly", r#"{"token":"fly-secret"}"#).unwrap();
+    let agent_id = harness.agent.id.clone();
+    harness.service.deploy(&agent_id, fly_options(), &[], &ready_report()).await.unwrap();
+    harness.db.update_agent_flow(&agent_id, &FLOW.replace("hello", "hi there"), "Friendlier").unwrap();
+    release_latest(&harness.db, &agent_id);
+    harness.service.deploy(&agent_id, fly_options(), &[], &ready_report()).await.unwrap();
+    let in_use = |db: &Database| db.release_in_use(&agent_id).unwrap().map(|release| release.number);
+    assert_eq!(in_use(&harness.db), Some(2));
+
+    std::fs::write(folder.path().join("rollback-fails"), "").unwrap();
+    let error = harness.service.put_release_in_use(&agent_id, 1).await.unwrap_err();
+    assert!(matches!(error, AppError::OnlineSwitchFailed { release_number: 1, in_use_number: Some(2) }), "{error:?}");
+    assert_eq!(error.code(), "online_switch_failed");
+    let message = error.to_string();
+    assert!(message.contains("release 2 stays in use here and online"), "{message}");
+    assert!(!message.contains("Machine"), "no provider jargon: {message}");
+    assert_eq!(in_use(&harness.db), Some(2), "the release in use here stays the one online");
+    let view = harness.service.view(&agent_id).unwrap().unwrap();
+    assert_eq!(view.deployment.deployed_version_label.as_deref(), Some("v2"));
+
+    std::fs::remove_file(folder.path().join("rollback-fails")).unwrap();
+    let (release, online) = harness.service.put_release_in_use(&agent_id, 1).await.unwrap();
+    assert_eq!(release.number, 1);
+    assert_eq!(online, OnlineSwitch::Switched { label: "v1".into() });
+    assert_eq!(in_use(&harness.db), Some(1));
+    assert!(harness.service.put_release_in_use(&agent_id, 1).await.is_err(), "already in use");
+}
+
+#[tokio::test]
+async fn going_back_to_a_release_of_an_agent_that_is_not_online_switches_here() {
+    let harness = harness(FLOW);
+    let agent_id = harness.agent.id.clone();
+    harness.db.update_agent_flow(&agent_id, &FLOW.replace("hello", "hi there"), "Friendlier").unwrap();
+    release_latest(&harness.db, &agent_id);
+    let (release, online) = harness.service.put_release_in_use(&agent_id, 1).await.unwrap();
+    assert_eq!((release.number, online), (1, OnlineSwitch::NotOnline));
+    assert_eq!(harness.db.release_in_use(&agent_id).unwrap().map(|release| release.number), Some(1));
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn a_deploy_that_failed_after_storing_its_key_keeps_the_key_and_says_it_exists() {
@@ -557,6 +626,31 @@ fn only_the_release_in_use_is_exported() {
         .unwrap();
     let refused = harness.service.export_agent_file(&unreleased.id, &folder.path().join("other.yaml"));
     assert!(matches!(refused, Err(AppError::NeedsRelease)));
+}
+
+#[test]
+fn a_released_chatbot_setup_goes_into_the_agent_file_and_going_back_takes_it_out() {
+    let harness = harness(FLOW);
+    let folder = tempfile::tempdir().unwrap();
+    let agent_id = harness.agent.id.clone();
+    let mut settings =
+        crate::chatbot_setup::get_chatbot_setup(&harness.db, &agent_id, &|_| Default::default()).unwrap().settings;
+    settings.persona.instructions = "Delivery is free within Bandung.".into();
+    crate::chatbot_setup::save_chatbot_settings(&harness.db, &agent_id, settings, &|_| Default::default()).unwrap();
+    let path = folder.path().join("menu.yaml");
+    let exported = |harness: &Harness| {
+        harness.service.export_agent_file(&agent_id, &path).unwrap();
+        std::fs::read_to_string(&path).unwrap()
+    };
+    assert_eq!(exported(&harness), FLOW, "an unreleased setup stays out, like any draft");
+
+    release_latest(&harness.db, &agent_id);
+    let with_setup = exported(&harness);
+    assert!(with_setup.contains("{{#env.chatbot_brief#}}"), "{with_setup}");
+    assert!(with_setup.contains("Delivery is free within Bandung."), "{with_setup}");
+
+    harness.db.switch_release(&agent_id, 1, SwitchReason::RolledBack).unwrap();
+    assert_eq!(exported(&harness), FLOW, "release 1 had no setup");
 }
 
 // ---- the chat page, the phone page and paired phones ----

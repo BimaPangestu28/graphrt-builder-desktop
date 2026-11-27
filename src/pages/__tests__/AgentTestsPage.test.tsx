@@ -2,7 +2,9 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { resetSampleAgents } from '@/api/sampleBackend/agents'
-import { resetSampleQuality } from '@/api/sampleBackend/quality'
+import { BackendError } from '@/api/client'
+import { resetSampleQuality, sampleQualityBackend } from '@/api/sampleBackend/quality'
+import { readCurrentSteps, saveNewVersion } from '@/api/sampleBackend/sampleAgentStore'
 import { setLocale } from '@/i18n'
 import { agentPath, agentRoutePatterns } from '@/routes'
 import { AgentReleasesPage } from '../AgentReleasesPage'
@@ -77,6 +79,32 @@ describe('Test & release', () => {
     expect(await screen.findByText('Release 1 is now in use.')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Put it online' })).toBeInTheDocument()
     await waitFor(() => expect(screen.getAllByText(/Released without a passing check: Menu demo today/).length).toBeGreaterThan(0))
+  })
+
+  it('keeps the release in use and says so in plain words when the online copy cannot go back', async () => {
+    await sampleQualityBackend.createAgentRelease(agentId, 'First', 'Demo')
+    saveNewVersion(agentId, readCurrentSteps(agentId), 'Free delivery')
+    await sampleQualityBackend.createAgentRelease(agentId, 'Second', 'Demo')
+    const switchRelease = vi.spyOn(sampleQualityBackend, 'switchAgentRelease').mockRejectedValue(
+      new BackendError(
+        'online_switch_failed',
+        'The online copy could not go back to release 1, so nothing changed: release 2 stays in use here and online. Try again in a few minutes.',
+        { releaseNumber: 1, inUseNumber: 2 },
+      ),
+    )
+    const user = userEvent.setup()
+    renderPage('agentReleases')
+    await user.click(await screen.findByRole('button', { name: 'Go back to this release' }))
+    await user.click(screen.getByRole('button', { name: 'Yes, use it' }))
+    expect(
+      await screen.findByText('The online copy could not go back to release 1, so nothing changed: release 2 stays in use here and online. Try again in a few minutes.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/That did not work/)).not.toBeInTheDocument()
+    expect(switchRelease).toHaveBeenCalledWith(agentId, 1)
+    const releases = screen.getByRole('list', { name: 'All releases' })
+    expect(within(releases).getAllByText('In use')).toHaveLength(1)
+    expect(within(releases).getByText('Second').closest('li')).toHaveTextContent('In use')
+    switchRelease.mockRestore()
   })
 
   it('speaks Indonesian', async () => {

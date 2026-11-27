@@ -1268,6 +1268,40 @@ impl DeployService {
         Ok(())
     }
 
+    /// Puts release `number` in use, online first: the release in use here changes only once the
+    /// online copy runs it (or when the agent is not online, or the provider no longer has that
+    /// version and it must be put online again). When the online copy cannot switch, nothing
+    /// changes, so this app and the online copy never disagree about the release in use.
+    ///
+    /// # Errors
+    /// `InvalidInput` when the release is already in use or does not exist;
+    /// `OnlineSwitchFailed` when the provider refused or did not finish the roll back.
+    pub async fn put_release_in_use(&self, agent_id: &str, number: i64) -> AppResult<(Release, OnlineSwitch)> {
+        let releases = self.db.list_releases(agent_id)?;
+        let in_use = self.db.release_in_use(agent_id)?;
+        if !crate::quality::release::can_switch_to(&releases, in_use.as_ref(), number) {
+            return Err(AppError::InvalidInput(format!("release {number} is already in use or does not exist")));
+        }
+        let release = self.db.get_release(agent_id, number)?;
+        let online = match self.use_release_online(agent_id, &release).await {
+            Ok(online) => online,
+            Err(error) => {
+                log::warn!("agent {agent_id}: the online copy could not go back to release {number}: {error}");
+                return Err(AppError::OnlineSwitchFailed {
+                    release_number: number,
+                    in_use_number: in_use.map(|release| release.number),
+                });
+            }
+        };
+        // A roll back online already puts the release of that version in use ([`Self::manage`]).
+        let now_in_use = self.db.release_in_use(agent_id)?;
+        if now_in_use.as_ref().map(|release| release.number) != Some(number) {
+            self.db.switch_release(agent_id, number, SwitchReason::RolledBack)?;
+        }
+        log::info!("agent {agent_id}: release {number} is in use again");
+        Ok((release, online))
+    }
+
     /// Makes the online copy run `release` after it was put in use on the Versions page: goes
     /// back to the online version with that agent version when the provider still has it.
     ///
@@ -1430,6 +1464,15 @@ impl DeployService {
         self.credentials.delete_deploy_secret(&format!("server:{server_id}"))
     }
 
+    /// `agent` as it runs outside this app: a chatbot's setup of its version is part of the
+    /// workflow ([`crate::chatbot_setup::flow_for_online`]), so the online copy and agent files
+    /// answer as the checked and released version did here.
+    fn online_agent(&self, agent: &Agent) -> AppResult<Agent> {
+        let mut online = agent.clone();
+        online.flow_yaml = crate::chatbot_setup::flow_for_online(&self.db, agent)?;
+        Ok(online)
+    }
+
     /// The agent as a `.grt` bundle: its workflow plus, when it uses knowledge, the knowledge
     /// bases (passages and chunking settings), so `graphrt serve` searches and indexes the
     /// same way as this app. Every path that packages an agent goes through here.
@@ -1456,6 +1499,7 @@ impl DeployService {
     /// `InvalidInput` with a plain sentence when the knowledge is larger than the installed
     /// graphrt tools put online (tools that predate large agents).
     fn write_deploy_file(&self, agent: &Agent, work_dir: &Path) -> AppResult<PathBuf> {
+        let agent = &self.online_agent(agent)?;
         let uses_knowledge = crate::knowledge::bundle::uses_knowledge(&self.db, agent)?;
         let (file_name, bytes) = if uses_knowledge {
             let bytes = self.agent_bundle(agent)?;
@@ -1476,7 +1520,7 @@ impl DeployService {
     /// A bundle carries the knowledge bases the agent uses (passages and chunking settings).
     /// Keys are never inside: the IT team adds them on the server.
     pub fn export_agent_file(&self, agent_id: &str, path: &Path) -> AppResult<PathBuf> {
-        let agent = self.db.released_agent(agent_id)?;
+        let agent = self.online_agent(&self.db.released_agent(agent_id)?)?;
         let extension =
             path.extension().and_then(|extension| extension.to_str()).unwrap_or_default().to_ascii_lowercase();
         let bytes = if extension == "yaml" || extension == "yml" {

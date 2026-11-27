@@ -30,6 +30,7 @@ pub mod agents;
 pub mod builder_messages;
 pub mod canvas_notes;
 pub mod chains;
+pub mod chatbot_setups;
 mod codec;
 pub mod deployments;
 mod maintenance;

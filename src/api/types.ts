@@ -321,3 +321,5 @@ export type BackendErrorCode =
   | 'plugin_step_failed'
   /** check / review / deploy / export: only a release goes online, and the agent has none yet. */
   | 'needs_release'
+  /** use_agent_release: the online copy could not switch, so nothing changed (`details.releaseNumber`, `details.inUseNumber`). */
+  | 'online_switch_failed'

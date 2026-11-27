@@ -23,6 +23,7 @@ const DELETE_ALL_DATA_SQL: &str = "
     DELETE FROM agent_checks;
     DELETE FROM agent_tests;
     DELETE FROM agent_settings;
+    DELETE FROM chatbot_setup_versions;
     DELETE FROM deployments;
     DELETE FROM own_servers;
     DELETE FROM node_layouts;

@@ -368,6 +368,28 @@ const MIGRATIONS: &[&str] = &[
     ALTER TABLE knowledge_documents ADD COLUMN chunking_key TEXT;
     ALTER TABLE knowledge_documents ADD COLUMN indexed_at TEXT;
     "#,
+    // Chatbot setups per agent version (see `storage::chatbot_setups`): saving a chatbot's
+    // persona, rules or knowledge makes a new version, so it can be checked, released, put
+    // online and gone back to like any other change. A version without a row uses the
+    // newest row of an earlier version. Setups saved before keep applying to every version.
+    r#"
+    CREATE TABLE chatbot_setup_versions (
+        agent_id      TEXT NOT NULL,
+        agent_version INTEGER NOT NULL,
+        settings_json TEXT NOT NULL,
+        created_at    TEXT NOT NULL,
+        PRIMARY KEY (agent_id, agent_version),
+        FOREIGN KEY (agent_id, agent_version) REFERENCES agent_versions (agent_id, version) ON DELETE CASCADE
+    );
+    INSERT INTO chatbot_setup_versions (agent_id, agent_version, settings_json, created_at)
+    SELECT settings.agent_id,
+           (SELECT MIN(versions.version) FROM agent_versions versions WHERE versions.agent_id = settings.agent_id),
+           settings.value_json,
+           settings.updated_at
+    FROM agent_settings settings
+    WHERE settings.key = 'chatbot_setup'
+      AND EXISTS (SELECT 1 FROM agent_versions versions WHERE versions.agent_id = settings.agent_id);
+    "#,
 ];
 
 /// Applies every migration newer than the database's `user_version`.
@@ -428,6 +450,7 @@ mod tests {
                 "canvas_viewports",
                 "chain_steps",
                 "chains",
+                "chatbot_setup_versions",
                 "conversation_messages",
                 "conversations",
                 "deployments",
@@ -445,6 +468,35 @@ mod tests {
             ]
         );
         assert_eq!(read_schema_version(&connection).unwrap(), MIGRATIONS.len());
+    }
+
+    #[test]
+    fn chatbot_setups_saved_before_keep_applying_to_every_version() {
+        let connection = Connection::open_in_memory().unwrap();
+        let before = MIGRATIONS.len() - 1;
+        for migration in &MIGRATIONS[..before] {
+            connection.execute_batch(migration).unwrap();
+        }
+        connection.pragma_update(None, "user_version", before).unwrap();
+        connection
+            .execute_batch(
+                "INSERT INTO agents (id, name, kind, description, flow_yaml, status, current_version, created_at, updated_at)
+                 VALUES ('bot', 'Bot', 'chatbot', '', 'f', 'draft', 2, 't', 't'), ('task', 'Task', 'task', '', 'f', 'draft', 1, 't', 't');
+                 INSERT INTO agent_versions (agent_id, version, flow_yaml, change_summary, created_at)
+                 VALUES ('bot', 1, 'f', 'Created', 't'), ('bot', 2, 'f', 'Changed', 't'), ('task', 1, 'f', 'Created', 't');
+                 INSERT INTO agent_settings (agent_id, key, value_json, updated_at)
+                 VALUES ('bot', 'chatbot_setup', '{\"persona\":1}', 'saved'), ('task', 'team_guardrails', '{}', 'saved');",
+            )
+            .unwrap();
+        apply(&connection).unwrap();
+        let rows: Vec<(String, i64, String)> = connection
+            .prepare("SELECT agent_id, agent_version, settings_json FROM chatbot_setup_versions")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(rows, [("bot".to_owned(), 1, r#"{"persona":1}"#.to_owned())]);
     }
 
     #[test]

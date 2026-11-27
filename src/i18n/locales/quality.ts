@@ -84,6 +84,10 @@ export const quality = defineMessages(
       percent: (value: number) => `${value} percent`,
     },
     release: {
+      onlineSwitchFailed: (releaseNumber: number, inUseNumber: number | null) =>
+        `The online copy could not go back to release ${releaseNumber}, so nothing changed: ${
+          inUseNumber === null ? 'the release in use stays the same' : `release ${inUseNumber} stays in use`
+        } here and online. Try again in a few minutes.`,
       title: (agent: string) => `Release ${agent}`,
       subtitle: 'A release is a checked version you trust. Only a release goes online, and you can go back to an earlier one at any time.',
       inUseHeading: 'In use now',
@@ -216,6 +220,10 @@ export const quality = defineMessages(
       percent: (value: number) => `${value} persen`,
     },
     release: {
+      onlineSwitchFailed: (releaseNumber: number, inUseNumber: number | null) =>
+        `Salinan online tidak bisa kembali ke rilis ${releaseNumber}, jadi tidak ada yang berubah. ${
+          inUseNumber === null ? 'Rilis yang dipakai tetap sama' : `Rilis ${inUseNumber} tetap dipakai`
+        } di sini dan online. Coba lagi beberapa menit lagi.`,
       title: (agent: string) => `Rilis ${agent}`,
       subtitle: 'Rilis adalah versi yang sudah diuji dan kamu percaya. Hanya rilis yang dipasang online, dan kamu bisa kembali ke rilis sebelumnya kapan saja.',
       inUseHeading: 'Sedang dipakai',

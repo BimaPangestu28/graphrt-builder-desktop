@@ -228,7 +228,12 @@ fn update_agent_column(
 
 /// Records `flow_yaml` as `agent.current_version + 1` and makes it current.
 /// Must run inside the caller's transaction.
-fn append_version(connection: &Connection, agent: &Agent, flow_yaml: &str, change_summary: &str) -> AppResult<()> {
+pub(super) fn append_version(
+    connection: &Connection,
+    agent: &Agent,
+    flow_yaml: &str,
+    change_summary: &str,
+) -> AppResult<()> {
     let next_version = agent.current_version + 1;
     let now = now_rfc3339();
     insert_version(connection, &agent.id, next_version, flow_yaml, change_summary, &now)?;

@@ -94,7 +94,6 @@ pub async fn use_agent_release(
     number: i64,
 ) -> AppResult<ReleaseSwitchOutcome> {
     let agent_id = agent_id.trim();
-    let release = state.quality.switch_release(agent_id, number)?;
-    let online = state.deploy.use_release_online(agent_id, &release).await?;
+    let (release, online) = state.deploy.put_release_in_use(agent_id, number).await?;
     Ok(ReleaseSwitchOutcome { release, online })
 }
