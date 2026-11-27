@@ -71,8 +71,8 @@ function BuilderHeaderActions({ agentId, onTestBlocked, showTest, isOnline }: { 
   const testClassNames = `${headerLinkBaseClassNames} bg-ink !text-inverse hover:bg-ink-2`
   return (
     <div className="flex flex-wrap justify-end gap-2">
-      <Link to={agentPath('versionHistory', agentId)} className={outlineHeaderLinkClassNames}>
-        {messages().builder.history}
+      <Link to={agentPath('agentTests', agentId)} className={outlineHeaderLinkClassNames}>
+        {messages().quality.headerLink}
       </Link>
       <Link to={agentPath('learned', agentId)} className={outlineHeaderLinkClassNames}>
         {messages().learning.headerLink}

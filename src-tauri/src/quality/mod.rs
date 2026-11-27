@@ -17,6 +17,8 @@
 //! keychain through the same path as any run.
 
 pub mod judges;
+#[cfg(test)]
+mod live_check;
 pub mod release;
 pub mod suggest;
 pub mod suite;
@@ -202,11 +204,15 @@ impl QualityService {
         let steps = crate::flow::summarize_flow(&agent.flow_yaml)
             .map(|summary| summary.steps.into_iter().map(|step| step.title).collect())
             .unwrap_or_default();
+        let instructions = crate::flow::compile_draft(&agent.flow_yaml)
+            .map(|graph| suggest::step_instructions(&graph))
+            .unwrap_or_default();
         let brief = match agent.kind {
             AgentKind::Chatbot => chatbot_brief(&self.dependencies, &agent).await,
             AgentKind::Task | AgentKind::Chain | AgentKind::Team => None,
         };
-        let material = SuggestionMaterial { agent_name: agent.name, description: agent.description, steps, brief };
+        let material =
+            SuggestionMaterial { agent_name: agent.name, description: agent.description, steps, instructions, brief };
         let model = self.draft_model.text_model()?;
         suggest::suggest_tests(model.as_ref(), &material).await
     }

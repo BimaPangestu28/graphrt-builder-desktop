@@ -18,7 +18,9 @@ const MAX_MATERIAL_CHARS: usize = 12_000;
 const MAX_REPLY_TOKENS: u32 = 2_000;
 
 const SYSTEM_PROMPT: &str = "You write test questions for a business's AI assistant, so its owner can check \
-the assistant before customers use it. Use only the facts in the material. Write questions real customers or \
+the assistant before customers use it. Use only the facts in the material: never invent hours, prices, places or \
+policies, and do not write a question whose answer is not in the material unless its good answer says the \
+assistant should say it does not know. Write questions real customers or \
 staff would ask, in the language of the material, each with the good answer in one or two plain sentences. \
 Mix easy questions, questions that need a fact from the material, and one question the assistant should \
 politely decline or hand to a person because the material does not cover it (its good answer says so). \
@@ -39,6 +41,9 @@ pub struct SuggestionMaterial {
     pub description: String,
     /// Step titles of the agent, in order.
     pub steps: Vec<String>,
+    /// What the agent's AI steps are told (their system prompts and instructions), where
+    /// most agents keep their facts.
+    pub instructions: Vec<String>,
     /// A chatbot's saved brief: persona, rules and knowledge passages.
     pub brief: Option<String>,
 }
@@ -50,6 +55,11 @@ impl SuggestionMaterial {
         if !self.steps.is_empty() {
             text.push_str(&format!("Its steps: {}\n", self.steps.join(", ")));
         }
+        for instruction in self.instructions.iter().filter(|text| !text.trim().is_empty()) {
+            text.push_str("\nInstructions of one of its AI steps:\n");
+            text.push_str(instruction.trim());
+            text.push('\n');
+        }
         if let Some(brief) = self.brief.as_deref().filter(|brief| !brief.trim().is_empty()) {
             text.push_str("\nWhat it knows and how it should answer:\n");
             text.push_str(brief.trim());
@@ -59,6 +69,28 @@ impl SuggestionMaterial {
         let material: String = scrubbed.chars().take(MAX_MATERIAL_CHARS).collect();
         format!("{material}\nWrite {count} tests.")
     }
+}
+
+/// The texts the AI steps of `graph` are told: system messages of `prompt_template`, and
+/// `instruction` / `instructions` / `system_prompt` of agent steps.
+pub fn step_instructions(graph: &graphrt_core::Graph) -> Vec<String> {
+    let mut texts = Vec::new();
+    for node in &graph.workflow().graph.nodes {
+        let config = &node.config;
+        if let Some(messages) = config.get("prompt_template").and_then(serde_json::Value::as_array) {
+            let system = messages
+                .iter()
+                .filter(|message| message.get("role").and_then(serde_json::Value::as_str) == Some("system"))
+                .filter_map(|message| message.get("text").and_then(serde_json::Value::as_str));
+            texts.extend(system.map(str::to_owned));
+        }
+        for key in ["instruction", "instructions", "system_prompt"] {
+            if let Some(text) = config.get(key).and_then(serde_json::Value::as_str) {
+                texts.push(text.to_owned());
+            }
+        }
+    }
+    texts
 }
 
 /// Asks `model` for [`SUGGESTED_COUNT`] tests about the agent.
@@ -146,12 +178,21 @@ mod tests {
             agent_name: "Shop".into(),
             description: "Answers customers. key sk-proj-abcdefghijklmnopqrstuvwxyz0123456789".into(),
             steps: vec!["Look up".into(), "Answer".into()],
+            instructions: vec!["Open 8 to 5.".into()],
             brief: Some("x".repeat(20_000)),
         };
         let prompt = material.to_prompt(6);
         assert!(!prompt.contains("abcdefghijklmnopqrstuvwxyz0123456789"));
         assert!(prompt.contains("Its steps: Look up, Answer"));
+        assert!(prompt.contains("Open 8 to 5."));
         assert!(prompt.chars().count() < MAX_MATERIAL_CHARS + 100);
+    }
+
+    #[test]
+    fn the_instructions_of_ai_steps_are_read_from_the_flow() {
+        let flow = "version: \"1\"\nname: t\ngraph:\n  nodes:\n    - { id: start, type: start }\n    - id: reply\n      type: llm\n      model: { provider: openai, name: gpt-4o-mini }\n      prompt_template:\n        - { role: system, text: \"Open 8 to 5.\" }\n        - { role: user, text: \"hi\" }\n    - { id: end, type: end }\n  edges:\n    - { source: start, target: reply }\n    - { source: reply, target: end }\n";
+        let graph = crate::flow::compile_draft(flow).unwrap();
+        assert_eq!(step_instructions(&graph), ["Open 8 to 5."]);
     }
 
     #[tokio::test]

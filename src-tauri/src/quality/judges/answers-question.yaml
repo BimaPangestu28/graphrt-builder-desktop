@@ -24,10 +24,14 @@ graph:
             - pass: the reply responds to what was asked.
             - fail: it is about something else, avoids the question or is empty.
             - unknown: the question itself cannot be understood.
-            Write the reasoning first: one short sentence a shop owner understands, in the
-            same language as the QUESTION. Then the verdict.
+            Write the reasoning first: one short sentence a shop owner understands. Write it
+            in the language the QUESTION is written in (Indonesian for an Indonesian question,
+            English for an English one), and call them the question, the reply and the good
+            answer in plain words, not the labels in capitals. Then the verdict.
         - role: user
           text: |
+            Answer in JSON. The reasoning is in the language of this question.
+
             QUESTION:
             {{#start.question#}}
 

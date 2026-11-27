@@ -6,6 +6,7 @@ import { describeError } from '@/lib/agentDisplay'
 import { agentPath, sampleAgentId } from '@/routes'
 import { StepDiffList } from './version-history/StepDiffList'
 import { toStepDiffRows } from './version-history/stepDiffRows'
+import { QualityTabs } from './quality/QualityTabs'
 import { useVersionHistory, type ChangeNotice, type VersionEntry } from './version-history/useVersionHistory'
 import { VersionHistoryList } from './version-history/VersionHistoryList'
 import { messages } from '@/i18n'
@@ -201,6 +202,9 @@ export function VersionHistoryPage() {
 
   return (
     <AppShell agents={{ kind: 'list', activeAgentId: agentId }} mainClassName="flex flex-col">
+      <div className="border-b border-line px-8 py-3">
+        <QualityTabs agentId={agentId} current="history" />
+      </div>
       {renderContent()}
     </AppShell>
   )

@@ -34,6 +34,8 @@ const screenList: Array<{ number: string; title: string; routeKey: RouteKey }> =
   { number: '68', title: 'Skills', routeKey: 'skills' },
   { number: '69', title: 'Create a skill', routeKey: 'skillCreate' },
   { number: '70', title: 'What this agent learned', routeKey: 'learned' },
+  { number: '71', title: 'Test an agent', routeKey: 'agentTests' },
+  { number: '72', title: 'Release an agent', routeKey: 'agentReleases' },
 ]
 
 export function ScreenIndexPage() {
