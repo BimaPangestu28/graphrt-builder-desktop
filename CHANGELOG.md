@@ -30,6 +30,9 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ### Fixed
 
+- **The answer you chose is named in words**: after you answer an "Ask me before continuing" step, the run feed, the step's details in the run history and the review of many questions now say which button you pressed as the button says it ("You chose “Buat invoice”"), not its internal id (`create`). The id appears only when the button has no title.
+- **A file attached right after opening a chat stays attached**: in the Inbox, a file attached in the first moment after a chat opened could disappear from the reply on a busy computer.
+
 - **Files with smaller AI models**: an AI model that wrote a number or a yes/no as text when it used a file tool (for example a size of "400") was refused and gave up; the app now reads it as intended. The model is also told plainly where an attached file is, so it no longer asks the customer for the file's location.
 - **No dead download links in answers**: after making a file, a chatbot often ended its answer with a link that led nowhere, although the file was already shown under the answer. It is now told the file is shown for it, and says what it made instead.
 - **Dead links are removed for good**: when an answer that hands a file back still contains a link or a picture tag pointing at that file, the app now shows only its words. Web links stay as they are.
