@@ -356,6 +356,13 @@ pub(super) fn normalize(raw: RawPlan, rules: &PlanRules<'_>) -> Result<Plan, Str
             if !raw.looks_up_the_web {
                 continue;
             }
+            // "Look up" the email address the person gives: nothing to read there.
+            if bare_placeholder(&raw_step.url)
+                .and_then(|name| inputs.iter().find(|input| input.name == name))
+                .is_some_and(holds_an_address_or_number)
+            {
+                continue;
+            }
             // `{topic}` as the address of a Wikipedia lookup: the plugin offered for the job
             // that reads it is what was meant (a small model rarely writes the address out).
             if let Some(operation) = reading_operation_for_bare_input(&raw_step.url, &inputs, rules) {
@@ -873,16 +880,31 @@ fn reading_operation_for_bare_input<'a>(
 }
 
 /// Words of an input's name or label that say it holds a web address.
-const LINK_WORDS: &[&str] =
-    &["link", "url", "address", "page", "website", "site", "web", "tautan", "alamat", "halaman"];
+/// "address" and "alamat" are left out: they name an email address as often as a web one.
+const LINK_WORDS: &[&str] = &["link", "url", "page", "website", "site", "web", "tautan", "halaman"];
+
+/// Words that say an input holds an email address or a number, never a link.
+const NOT_LINK_WORDS: &[&str] = &["email", "mail", "surel", "phone", "telepon", "nomor", "number"];
 
 /// Whether `input` is a link the person gives: its name or label says so, or its value is one.
-fn is_a_link(input: &PlanInput) -> bool {
-    let named = format!("{} {}", input.name, input.label)
+/// Whether `input` holds an email address or a number (its name or label says so).
+fn holds_an_address_or_number(input: &PlanInput) -> bool {
+    format!("{} {}", input.name, input.label)
         .to_lowercase()
         .split(|character: char| !character.is_alphanumeric())
-        .any(|word| LINK_WORDS.contains(&word));
-    named || input.value.starts_with("http://") || input.value.starts_with("https://")
+        .any(|word| NOT_LINK_WORDS.contains(&word))
+}
+
+fn is_a_link(input: &PlanInput) -> bool {
+    if holds_an_address_or_number(input) {
+        return false;
+    }
+    format!("{} {}", input.name, input.label)
+        .to_lowercase()
+        .split(|character: char| !character.is_alphanumeric())
+        .any(|word| LINK_WORDS.contains(&word))
+        || input.value.starts_with("http://")
+        || input.value.starts_with("https://")
 }
 
 fn resolve_placeholder(
@@ -1105,6 +1127,15 @@ mod tests {
                 "steps": [{"kind": "lookup", "title": "L", "instruction": "", "url": "{source}"}]}"#,
         );
         assert!(page.is_ok(), "{page:?}");
+        // "Alamat email" is an address, not a link: llama3.2 "looked it up" in an Indonesian
+        // sending job. The step is left out.
+        let email = normalized(
+            r#"{"looks_up_the_web": true, "inputs": [{"name": "alamat", "label": "Alamat email", "long_text": false, "value": ""}],
+                "steps": [{"kind": "lookup", "title": "L", "instruction": "", "url": "{alamat}"},
+                          {"kind": "write", "title": "W", "instruction": "Summarize.", "url": ""}]}"#,
+        );
+        let plan = email.unwrap_or_else(|problem| panic!("{problem}"));
+        assert!(!plan.steps.iter().any(|step| matches!(step, PlanStep::Lookup { .. })), "{plan:?}");
     }
 
     /// Every object of `schema` requires all its properties and allows no others.
