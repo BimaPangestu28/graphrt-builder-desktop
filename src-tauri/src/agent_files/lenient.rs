@@ -10,8 +10,18 @@
 //! - text that is JSON, for an `array` or `object`;
 //! - a whole number written as `400.0`, for an `integer`.
 //!
+//! Argument names get the same care, because llama3.2 asked `image/resize` for `width` where
+//! the tool calls it `max_width`: a name the tool does not know is trimmed, and when exactly
+//! one of the tool's own names ends in `_<name>` (and was not given) the value goes there.
+//!
+//! An argument given as "nothing" (`null`, `{}`, `[]`) where the tool wants text, a number or a
+//! yes/no is left out, as the model meant.
+//!
 //! Nothing else changes: a value that does not fit is passed on as it was and the tool
 //! refuses it with its own message. Paths and other text are never touched.
+//!
+//! A tool given a path that does not exist answers with the files that do, so the model can
+//! ask again instead of giving up.
 //!
 //! The same wrapper adds one sentence to the result of a tool that made a file
 //! ([`SHOWN_BY_THE_APP`]). Measured with gpt-4o-mini: without it, five answers out of five
@@ -22,23 +32,46 @@ use std::sync::{Arc, OnceLock};
 
 use futures::future::BoxFuture;
 use graphrt_core::tool::{ToolCallContext, ToolError, ToolOutput, ToolRuntime, ToolSpec};
+use graphrt_files::Workspace;
 use serde_json::{Map, Value as Json};
 
 /// Added to the result of a tool call that made a file, so the model does not invent a link to it.
 pub(super) const SHOWN_BY_THE_APP: &str = "The app shows this file to the person as a download next to your answer. \
     Do not write a link or a path to it; just say what you made.";
 
+/// How graphrt's workspace says a path names no file (`StoreError::NotFound`).
+const NO_SUCH_FILE: &str = "does not exist";
+/// Most files named after "the file does not exist".
+const MAX_FILES_NAMED: usize = 20;
+
 /// A tool provider whose arguments are put into the types its schema asks for.
 #[derive(Debug)]
 pub(super) struct LenientArguments {
     tools: Arc<dyn ToolRuntime>,
+    /// The files the tools work on, to say which exist when a tool is given a path that does not.
+    view: Workspace,
     /// The provider's tools, read once (the built-in providers never change theirs).
     specs: OnceLock<Vec<ToolSpec>>,
 }
 
 impl LenientArguments {
-    pub(super) fn around(tools: Arc<dyn ToolRuntime>) -> Arc<dyn ToolRuntime> {
-        Arc::new(Self { tools, specs: OnceLock::new() })
+    pub(super) fn around(tools: Arc<dyn ToolRuntime>, view: Workspace) -> Arc<dyn ToolRuntime> {
+        Arc::new(Self { tools, view, specs: OnceLock::new() })
+    }
+
+    /// "The files that exist are: ..." for a tool that was given a path that does not exist.
+    /// llama3.2 asked for `photos/cat.jpg`, got "does not exist" and gave up, with the
+    /// attached picture one line away; told which files exist, a model can ask again.
+    async fn existing_files_hint(&self) -> Option<String> {
+        let listing = self.view.list(None, MAX_FILES_NAMED).await.ok()?;
+        if listing.entries.is_empty() {
+            return Some("There are no files yet.".to_owned());
+        }
+        let paths: Vec<String> = listing.entries.iter().map(|entry| entry.path.to_string()).collect();
+        Some(format!(
+            "The files that exist are: {}. Call the tool again with one of these exact paths.",
+            paths.join(", ")
+        ))
     }
 
     async fn parameters_of(&self, name: &str) -> Option<Json> {
@@ -70,6 +103,11 @@ impl ToolRuntime for LenientArguments {
             let mut output = self.tools.call(name, arguments, context).await?;
             if !output.is_error && !graphrt_core::tool::collect_files(&output.data).is_empty() {
                 output.text = format!("{}\n{SHOWN_BY_THE_APP}", output.text.trim_end());
+            }
+            if output.is_error && output.text.contains(NO_SUCH_FILE) {
+                if let Some(hint) = self.existing_files_hint().await {
+                    output.text = format!("{}\n{hint}", output.text.trim_end());
+                }
             }
             Ok(output)
         })
@@ -125,13 +163,50 @@ pub(super) fn fit_to_schema(value: Json, schema: &Json) -> Json {
 
 fn fit_fields(fields: Map<String, Json>, properties: Option<&Map<String, Json>>) -> Map<String, Json> {
     let Some(properties) = properties else { return fields };
+    let given: Vec<String> = fields.keys().map(|name| name.trim().to_owned()).collect();
     fields
         .into_iter()
-        .map(|(name, value)| match properties.get(&name) {
-            Some(schema) => (name, fit_to_schema(value, schema)),
-            None => (name, value),
+        .filter_map(|(name, value)| {
+            let name = known_name(&name, properties, &given);
+            match properties.get(&name) {
+                // "Nothing" written for a plain value (`"output": {}`) means the argument was left out.
+                Some(schema) if is_plain_type(schema) && is_nothing(&value) => None,
+                Some(schema) => Some((name, fit_to_schema(value, schema))),
+                None => Some((name, value)),
+            }
         })
         .collect()
+}
+
+/// Whether `schema` asks for text, a number or a yes/no.
+fn is_plain_type(schema: &Json) -> bool {
+    matches!(schema.get("type").and_then(Json::as_str), Some("string" | "integer" | "number" | "boolean"))
+}
+
+/// `null`, `{}` or `[]`: what a model writes for an argument it does not mean to give.
+fn is_nothing(value: &Json) -> bool {
+    match value {
+        Json::Null => true,
+        Json::Object(fields) => fields.is_empty(),
+        Json::Array(items) => items.is_empty(),
+        _ => false,
+    }
+}
+
+/// The tool's own name for an argument a model called `name`: `name` itself when the tool
+/// knows it (also after trimming spaces), or the one name of the tool that ends in `_<name>`
+/// and was not given as well (`width` for `max_width`). Anything else stays as it was written.
+fn known_name(name: &str, properties: &Map<String, Json>, given: &[String]) -> String {
+    let trimmed = name.trim();
+    if properties.contains_key(trimmed) {
+        return trimmed.to_owned();
+    }
+    let suffix = format!("_{trimmed}");
+    let mut longer = properties.keys().filter(|known| known.ends_with(&suffix) && !given.contains(known));
+    match (longer.next(), longer.next()) {
+        (Some(only), None) if !trimmed.is_empty() => only.clone(),
+        _ => name.to_owned(),
+    }
 }
 
 /// `number` as a JSON integer when it has no fraction and fits one.
@@ -187,5 +262,34 @@ mod tests {
         assert_eq!(fit_to_schema(json!({ "size": 400.5 }), &schema()), json!({ "size": 400.5 }));
         assert_eq!(fit_to_schema(json!("400"), &json!({})), json!("400"));
         assert_eq!(fit_to_schema(json!({ "size": "400" }), &json!({ "type": "object" })), json!({ "size": "400" }));
+    }
+
+    #[test]
+    fn an_argument_name_the_tool_calls_differently_finds_its_place() {
+        let resize = json!({
+            "type": "object",
+            "properties": {
+                "path": { "type": "string" },
+                "max_width": { "type": "integer" },
+                "max_height": { "type": "integer" },
+                "overwrite": { "type": "boolean" }
+            }
+        });
+        // What llama3.2 sent to `image/resize`.
+        let sent = json!({ "path": "uploads/poster.png", "width": "400", " overwrite": "false" });
+        assert_eq!(
+            fit_to_schema(sent, &resize),
+            json!({ "path": "uploads/poster.png", "max_width": 400, "overwrite": false })
+        );
+        // An optional argument written as "nothing" is left out (what llama3.2 sent to `image/thumbnail`).
+        let sent = json!({ "path": "uploads/poster.png", "output": {}, "overwrite": null, "max_width": 400 });
+        let with_output = json!({ "type": "object", "properties": { "path": { "type": "string" }, "output": { "type": "string" }, "overwrite": { "type": "boolean" }, "max_width": { "type": "integer" } } });
+        assert_eq!(fit_to_schema(sent, &with_output), json!({ "path": "uploads/poster.png", "max_width": 400 }));
+        // The tool's own name wins when both are given, and a name that fits two is left alone.
+        let both = json!({ "width": 300, "max_width": 400 });
+        assert_eq!(fit_to_schema(both.clone(), &resize), both);
+        let two_fit = json!({ "type": "object", "properties": { "min_size": { "type": "integer" }, "max_size": { "type": "integer" } } });
+        assert_eq!(fit_to_schema(json!({ "size": "4" }), &two_fit), json!({ "size": "4" }));
+        assert_eq!(fit_to_schema(json!({ "colour": "red" }), &resize), json!({ "colour": "red" }));
     }
 }

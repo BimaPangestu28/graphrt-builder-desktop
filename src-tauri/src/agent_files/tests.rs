@@ -967,3 +967,43 @@ async fn a_tool_reads_arguments_written_as_text_and_says_the_app_shows_the_file(
     let refused = tools.get(IMAGE_PROVIDER).unwrap().call("thumbnail", arguments, ToolCallContext::empty()).await;
     assert!(refused.map(|output| output.is_error).unwrap_or(true), "a size that is not a number is still refused");
 }
+
+#[tokio::test]
+async fn a_tool_given_a_path_that_does_not_exist_says_which_files_do() {
+    let fixture = Fixture::new();
+    let scope = FileScope::conversation("agent-1", "chat-1");
+    let other_chat = FileScope::conversation("agent-1", "chat-2");
+    fixture.attach(&scope, EVERYTHING, fixture.host_file("poster.png", LOGO_PNG)).await.card.unwrap();
+    fixture.attach(&other_chat, EVERYTHING, fixture.host_file("ktp.txt", b"NIK 3174")).await.card.unwrap();
+    let access = FileAccess { files: fixture.files.clone(), scope };
+    let mut tools = ToolRegistry::new();
+    access.wire(FILES_AGENT_FLOW, &mut tools).unwrap();
+
+    // What llama3.2 asked for: the example path of the tool's description, not the attached file.
+    let arguments = json!({ "path": "photos/cat.jpg", "max_width": 400 });
+    let missing = tools.get(IMAGE_PROVIDER).unwrap().call("resize", arguments, ToolCallContext::empty()).await.unwrap();
+    assert!(missing.is_error);
+    assert!(
+        missing.text.ends_with(
+            "The files that exist are: uploads/poster.png. Call the tool again with one of these exact paths."
+        ),
+        "{}",
+        missing.text
+    );
+    assert!(!missing.text.contains("ktp"), "files of another conversation are never named");
+    let read = tools
+        .get(FILES_PROVIDER)
+        .unwrap()
+        .call("read", json!({ "path": "notes.txt" }), ToolCallContext::empty())
+        .await
+        .unwrap();
+    assert!(read.is_error && read.text.contains("uploads/poster.png"), "{}", read.text);
+    // Another kind of error keeps the tool's own message.
+    let refused = tools
+        .get(FILES_PROVIDER)
+        .unwrap()
+        .call("read", json!({ "path": "../x" }), ToolCallContext::empty())
+        .await
+        .unwrap();
+    assert!(refused.is_error && !refused.text.contains("The files that exist"), "{}", refused.text);
+}

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import * as agentFilesApi from '@/api/agentFiles'
 import { resetSampleAgentFiles } from '@/api/sampleBackend/agentFiles'
@@ -18,10 +18,12 @@ async function renderWaitingChat() {
   return rendered
 }
 
+/** Clicks the paperclip and waits until the chosen file was checked and stored ("Adding files…" is gone). */
 async function attachOneFile() {
   await act(async () => {
     fireEvent.click(screen.getByRole('button', { name: 'Attach files' }))
   })
+  await waitFor(() => expect(screen.queryByText(/Adding files/)).not.toBeInTheDocument())
 }
 
 async function clickSend() {
@@ -45,7 +47,7 @@ describe('ChatDetailPage with files', () => {
     await attachOneFile()
     // The owner's files are asked for as the owner's, whatever the chatbot itself reads.
     expect(pickChatAttachments).toHaveBeenCalledWith(expect.any(String), 'Choose files to send', 0, true)
-    expect(within(screen.getByRole('list', { name: 'Attached files' })).getByText('daftar-pesanan-oktober.pdf')).toBeInTheDocument()
+    expect(within(await screen.findByRole('list', { name: 'Attached files' })).getByText('daftar-pesanan-oktober.pdf')).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText('Your reply'), { target: { value: 'Ini daftar pesanannya kak' } })
     await clickSend()
@@ -61,7 +63,7 @@ describe('ChatDetailPage with files', () => {
     await renderWaitingChat()
     expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
     await attachOneFile()
-    expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled())
     await clickSend()
     const sent = await screen.findByRole('region', { name: 'Attached files' })
     expect(within(sent).getByText('daftar-pesanan-oktober.pdf')).toBeInTheDocument()
@@ -74,13 +76,14 @@ describe('ChatDetailPage with files', () => {
     await attachOneFile()
     await clickSend()
     expect(await screen.findByRole('alert')).toHaveTextContent('WhatsApp is not connected')
-    expect(within(screen.getByRole('list', { name: 'Attached files' })).getByText('daftar-pesanan-oktober.pdf')).toBeInTheDocument()
+    expect(within(await screen.findByRole('list', { name: 'Attached files' })).getByText('daftar-pesanan-oktober.pdf')).toBeInTheDocument()
   })
 
   it('removes files that were attached but not sent when the chat is left', async () => {
     const discardChatAttachment = vi.spyOn(agentFilesApi, 'discardChatAttachment')
     const { unmount } = await renderWaitingChat()
     await attachOneFile()
+    await screen.findByRole('list', { name: 'Attached files' })
     expect(discardChatAttachment).not.toHaveBeenCalled()
     unmount()
     expect(discardChatAttachment).toHaveBeenCalledTimes(1)
@@ -91,6 +94,7 @@ describe('ChatDetailPage with files', () => {
     const discardChatAttachment = vi.spyOn(agentFilesApi, 'discardChatAttachment')
     const { unmount } = await renderWaitingChat()
     await attachOneFile()
+    await screen.findByRole('list', { name: 'Attached files' })
     await clickSend()
     await screen.findByRole('region', { name: 'Attached files' })
     unmount()

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import * as agentFilesApi from '@/api/agentFiles'
 import type { AttachOutcome } from '@/api/agentFileTypes'
 import { resetSampleAgentFiles } from '@/api/sampleBackend/agentFiles'
@@ -17,10 +17,12 @@ async function renderTryIt() {
   await act(async () => {})
 }
 
+/** Clicks the paperclip and waits until the chosen file was checked and stored ("Adding files…" is gone). */
 async function attachOneFile() {
   await act(async () => {
     fireEvent.click(screen.getByRole('button', { name: 'Attach files' }))
   })
+  await waitFor(() => expect(screen.queryByText(/Adding files/)).not.toBeInTheDocument())
 }
 
 async function send(text: string) {
@@ -43,7 +45,7 @@ describe('TryItPanel with files', () => {
     await renderTryIt()
     await attachOneFile()
     await attachOneFile()
-    const waiting = screen.getByRole('list', { name: 'Attached files' })
+    const waiting = await screen.findByRole('list', { name: 'Attached files' })
     expect(within(waiting).getByText('daftar-pesanan-oktober.pdf')).toBeInTheDocument()
     expect(within(waiting).getByText('foto-lokasi-acara.jpg')).toBeInTheDocument()
 
@@ -127,7 +129,7 @@ describe('TryItPanel with files', () => {
     await attachOneFile()
     await send('Halo')
     expect(await screen.findByText('the bot is offline')).toBeInTheDocument()
-    expect(within(screen.getByRole('list', { name: 'Attached files' })).getByText('daftar-pesanan-oktober.pdf')).toBeInTheDocument()
+    expect(within(await screen.findByRole('list', { name: 'Attached files' })).getByText('daftar-pesanan-oktober.pdf')).toBeInTheDocument()
   })
 
   it('speaks Indonesian', async () => {
