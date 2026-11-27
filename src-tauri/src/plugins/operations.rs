@@ -203,6 +203,7 @@ pub(crate) mod tests {
                 "to": { "type": "string", "description": "Recipients, separated by commas" },
                 "subject": { "type": "string", "description": "Subject line" },
                 "text": { "type": "string", "description": "Plain-text body" },
+                "cc": { "type": "string", "description": "Copy to" },
                 "attachments": { "type": "array" },
                 "access_token": { "type": "string" }
             },
@@ -231,7 +232,7 @@ pub(crate) mod tests {
         assert!(!operation.installed);
         let fields: Vec<(&str, bool)> =
             operation.fields.iter().map(|field| (field.name.as_str(), field.required)).collect();
-        assert_eq!(fields, [("to", true), ("subject", true), ("text", false)]);
+        assert_eq!(fields, [("to", true), ("subject", true), ("text", false), ("cc", false)]);
         assert_eq!(operation.fields[0].description, "Recipients, separated by commas");
     }
 
