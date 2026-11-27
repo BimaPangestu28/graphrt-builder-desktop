@@ -1,6 +1,6 @@
 import { callBackend, isDesktopApp } from './client'
 import { sampleSkillsBackend } from './sampleBackend/skills'
-import type { AgentSkills, AuthoredSkillInput, InstalledSkill, SkillCatalog, SkillInstallChoices, SkillReview, ToolPermission } from './skillTypes'
+import type { AgentSkills, AuthoredSkillInput, InstalledSkill, SkillCatalog, SkillDraft, SkillDraftSource, SkillInstallChoices, SkillReview, ToolPermission } from './skillTypes'
 
 /**
  * Agent skills: the catalog's, the ones written in the app, what each may use and which
@@ -45,17 +45,28 @@ export function installCatalogSkill(name: string, choices: SkillInstallChoices):
 }
 
 /**
- * Turns the "Create a skill" form into a skill for the confirmation screens. Installs nothing.
- * This is the one call to swap when graphrt can draft a skill from plain language.
+ * Asks the person's default model to draft a skill from plain words or an example
+ * conversation. Installs nothing: the draft is for the person to read and edit.
  *
- * @throws BackendError - `invalid_input` when the form cannot become a skill
+ * @throws BackendError - `missing_credentials` when no model is connected, `model` when the
+ *   model fails or does not answer with a skill, `invalid_input` for an empty source
+ */
+export function draftSkill(source: SkillDraftSource): Promise<SkillDraft> {
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleSkillsBackend.draftSkill(source)
+  return callBackend('draft_skill', { source })
+}
+
+/**
+ * Checks the draft as the person left it, for the confirmation screens. Installs nothing.
+ *
+ * @throws BackendError - `invalid_input` when the draft cannot be a skill
  */
 export function reviewAuthoredSkill(input: AuthoredSkillInput): Promise<SkillReview> {
   if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleSkillsBackend.reviewAuthoredSkill(input)
   return callBackend('review_authored_skill', { input })
 }
 
-/** Installs the skill made from the form, as reviewed. */
+/** Installs the draft, as reviewed. */
 export function installAuthoredSkill(input: AuthoredSkillInput, choices: SkillInstallChoices): Promise<InstalledSkill> {
   if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleSkillsBackend.installAuthoredSkill(input, choices)
   return callBackend('install_authored_skill', { input, ...choices })

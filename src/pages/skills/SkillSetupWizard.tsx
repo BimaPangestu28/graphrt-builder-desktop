@@ -22,8 +22,8 @@ interface SkillSetupWizardProps {
   onInstall: (choices: SkillInstallChoices) => Promise<InstalledSkill>
   /** The review is stale: the person starts over from the first step. */
   onReviewAgain: () => void
-  /** For "Create a skill": the form is the wizard's first step; Back on "What it does" returns to it. */
-  describeStep?: { onBack: () => void }
+  /** For "Create a skill": the steps before the review (describe, check the draft); Back on "What it does" returns to them. */
+  leadingSteps?: { steps: readonly SkillWizardStep[]; onBack: () => void }
 }
 
 /**
@@ -31,9 +31,9 @@ interface SkillSetupWizardProps {
  * update changes), what it may use (nothing ticked), what the safety check found, then, once
  * added, which agents use it. The skill is added only by the button on the safety step.
  */
-export function SkillSetupWizard({ title, review, onInstall, onReviewAgain, describeStep }: SkillSetupWizardProps) {
+export function SkillSetupWizard({ title, review, onInstall, onReviewAgain, leadingSteps }: SkillSetupWizardProps) {
   const t = useT().skills
-  const steps: readonly SkillWizardStep[] = describeStep ? ['describe', ...reviewSteps] : reviewSteps
+  const steps: readonly SkillWizardStep[] = leadingSteps ? [...leadingSteps.steps, ...reviewSteps] : reviewSteps
   const [step, setStep] = useState<SkillWizardStep>('about')
   // Never prefilled, not even on an update: the person ticks what the skill may use now.
   const [permissions, setPermissions] = useState<ToolPermission[]>([])
@@ -64,10 +64,11 @@ export function SkillSetupWizard({ title, review, onInstall, onReviewAgain, desc
   )
   const footers: Record<SkillWizardStep, ReactNode> = {
     describe: null,
+    draft: null,
     about: (
       <>
-        {describeStep ? (
-          <Button variant="secondary" onClick={describeStep.onBack}>
+        {leadingSteps ? (
+          <Button variant="secondary" onClick={leadingSteps.onBack}>
             {t.wizard.back}
           </Button>
         ) : (

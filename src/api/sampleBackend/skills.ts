@@ -5,6 +5,7 @@ import type {
   CatalogSkillEntry,
   InstalledSkill,
   SkillCatalog,
+  SkillDraftSource,
   SkillFinding,
   SkillInstallChoices,
   SkillReview,
@@ -120,6 +121,7 @@ let state = createInitialState()
 /** Restores the sample skills to their seed (use in test `beforeEach`). */
 export function resetSampleSkills(): void {
   state = createInitialState()
+  isSampleModelConnected = true
 }
 
 /** Agents of the sample data that have no step that can use skills. */
@@ -230,20 +232,50 @@ function technicalName(title: string): string {
 
 function draftSeed(input: AuthoredSkillInput): { seed: SampleSkillSeed; instructions: string } {
   const title = input.title.trim().replace(/\s+/g, ' ')
-  const whenToUse = input.whenToUse.trim().replace(/\s+/g, ' ')
-  const steps = input.steps.map((step) => step.trim().replace(/\s+/g, ' ')).filter(Boolean)
+  const description = input.description.trim().replace(/\s+/g, ' ')
+  const instructions = input.instructions.trim()
   if (!title) throw new BackendError('invalid_input', 'invalid input: Give the skill a name')
   const name = technicalName(title)
   if (!name) throw new BackendError('invalid_input', 'invalid input: Use at least one letter (a to z) or digit in the name')
-  if (!whenToUse) throw new BackendError('invalid_input', 'invalid input: Say when the agent should use this skill')
-  if (steps.length === 0) throw new BackendError('invalid_input', 'invalid input: Add at least one step')
-  const instructions = `# ${title}\n\n## When to use\n\n${whenToUse}\n\n## Steps\n\n${steps.map((step, index) => `${index + 1}. ${step}`).join('\n')}\n`
+  if (!description) throw new BackendError('invalid_input', 'invalid input: Say when the agent should use this skill')
+  if (!instructions) throw new BackendError('invalid_input', 'invalid input: Write what the agent should do')
   const findings: SkillFinding[] = /\|\s*(sh|bash)\b/.test(instructions)
     ? [{ severity: 'blocking', code: 'download_and_run', message: 'Tells the reader to download something from the internet and run it.', file: 'SKILL.md', line: null }]
     : []
-  const seed: SampleSkillSeed = { name, displayName: title, description: whenToUse, version: '', requestedTools: [], unsupportedTools: [], hasScripts: false, findings }
-  // Two different forms with the same name must not share a review.
-  return { seed: { ...seed, description: whenToUse, version: String(instructions.length) }, instructions }
+  const requestedTools = [sheetsRead, whatsAppSend, gmailSend].filter((known) => input.requestedTools.includes(known.tool))
+  const seed: SampleSkillSeed = { name, displayName: title, description, version: '', requestedTools, unsupportedTools: [], hasScripts: false, findings }
+  // Two different drafts with the same name must not share a review.
+  return { seed: { ...seed, version: String(instructions.length + description.length) }, instructions }
+}
+
+/** Whether the sample "model" is connected; a test turns it off to see the no-model path. */
+let isSampleModelConnected = true
+
+/** Connects or disconnects the sample drafting model (tests). */
+export function setSampleDraftModelConnected(isConnected: boolean): void {
+  isSampleModelConnected = isConnected
+}
+
+/**
+ * What the sample model "writes": a tidy skill from the first sentence of the source. A source
+ * that mentions a spreadsheet asks for the one tool the sample computer has for it.
+ */
+function sampleDraft(source: SkillDraftSource): AuthoredSkillInput {
+  const text = source.text.trim()
+  if (!text) throw new BackendError('invalid_input', 'invalid input: Describe what the agent should do first')
+  if (!isSampleModelConnected) throw new BackendError('missing_credentials', 'not set up yet: connect an AI model')
+  const isConversation = source.kind === 'conversation'
+  const firstLine = (isConversation ? text.replace(/^[^:\n]{1,24}:\s*/, '') : text).split(/[.\n!?]/)[0].trim()
+  const title = firstLine.split(/\s+/).slice(0, 4).join(' ').replace(/[^A-Za-z0-9 ]/g, '') || 'New skill'
+  const steps = isConversation
+    ? ['Greet the customer and restate what they asked.', 'Answer the way the example conversation did.', 'End with one clear next step.']
+    : ['Check what the customer is asking for.', `Follow this rule: ${firstLine}.`, 'If it is unclear, ask one question before acting.']
+  return {
+    title: title.charAt(0).toUpperCase() + title.slice(1),
+    description: isConversation ? `Use when a conversation goes like the example: ${firstLine}.` : `Use when ${firstLine.charAt(0).toLowerCase()}${firstLine.slice(1)}.`,
+    instructions: `# ${title}\n\n${steps.map((step, index) => `${index + 1}. ${step}`).join('\n')}`,
+    requestedTools: /sheet|spreadsheet/i.test(text) ? [sheetsRead.tool] : [],
+  }
 }
 
 function stepKey(agentId: string, stepId: string): string {
@@ -283,6 +315,8 @@ export const sampleSkillsBackend = {
 
   installCatalogSkill: (name: string, choices: SkillInstallChoices): Promise<InstalledSkill> =>
     respondWith(() => install(requireCatalogSeed(name), 'catalog', choices)),
+
+  draftSkill: (source: SkillDraftSource): Promise<AuthoredSkillInput> => respondWith(() => sampleDraft(source)),
 
   reviewAuthoredSkill: (input: AuthoredSkillInput): Promise<SkillReview> =>
     respondWith(() => {
