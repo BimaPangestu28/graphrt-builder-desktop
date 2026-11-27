@@ -7,6 +7,7 @@
 //!   cargo test --manifest-path src-tauri/Cargo.toml --lib real_models -- --ignored --nocapture --test-threads 1
 //! ```
 //! `GRAPHRT_OLLAMA_URL` (default `http://localhost:11434`) says where Ollama listens,
+//! `GRAPHRT_REAL_STEP_SECONDS` raises the time limit per step (120 by default) for slow machines,
 //! `GRAPHRT_REAL_VISION_MODELS` (default `gemma3`) which models get the picture question.
 //! Each scenario is a real chatbot conversation through [`ConversationManager`], with the
 //! workflow the builder guide (`agent_builder/guides/files.md`) describes. A run counts as
@@ -127,6 +128,10 @@ impl RealChat {
         let db = Arc::new(Database::open_in_memory().unwrap());
         let ollama_url = std::env::var("GRAPHRT_OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".into());
         db.set_setting(SETTING_OLLAMA_BASE_URL, &ollama_url).unwrap();
+        // A model on the processor alone is slow: Settings > Runner's time limit per step, raised when asked.
+        if let Ok(seconds) = std::env::var("GRAPHRT_REAL_STEP_SECONDS") {
+            db.set_setting("app.run_limits.step_timeout_seconds", &seconds).unwrap();
+        }
         let agent_files = Arc::new(AgentFiles::new(&home.path().join("app-data")));
         // The app's own model registry: Ollama through its OpenAI-compatible endpoint, no key.
         let conversations =

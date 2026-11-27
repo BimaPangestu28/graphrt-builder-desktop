@@ -4,6 +4,7 @@
 //! It reads which file features the workflow uses and sets up exactly those:
 //! - `files` tools over the scope's part of the workspace, without `delete`;
 //! - `documents` tools (PDF, Word, Excel) and `image` tools (no image generator);
+//! - every tool behind `lenient::LenientArguments`, so `"400"` for a number is read as 400;
 //! - the workspace as a place other steps read files from (document extractor, vision),
 //!   also for a workflow that has `vision` and no file tools: attached pictures live there.
 //!
@@ -19,6 +20,7 @@ use graphrt_files::{FileTools, FileToolsConfig, Workspace, WorkspaceResolver};
 use graphrt_image::{ImageLimits, ImageTools, VisionPreparer};
 
 use super::abilities::{FlowFileUse, DOCUMENTS_PROVIDER, FILES_PROVIDER, IMAGE_PROVIDER};
+use super::lenient::LenientArguments;
 use super::{AgentFiles, FileScope};
 use crate::error::AppResult;
 
@@ -54,13 +56,16 @@ impl FileAccess {
         // reads them through this resolver.
         let view = self.files.view(&self.scope)?;
         if file_use.file_tools {
-            tools.add(FILES_PROVIDER, Arc::new(FileTools::with_config(view.clone(), file_tools_config())));
+            tools.add(
+                FILES_PROVIDER,
+                LenientArguments::around(Arc::new(FileTools::with_config(view.clone(), file_tools_config()))),
+            );
         }
         if file_use.document_tools {
-            tools.add(DOCUMENTS_PROVIDER, Arc::new(DocumentTools::new(view.clone())));
+            tools.add(DOCUMENTS_PROVIDER, LenientArguments::around(Arc::new(DocumentTools::new(view.clone()))));
         }
         if file_use.image_tools {
-            tools.add(IMAGE_PROVIDER, Arc::new(ImageTools::new(view.clone())));
+            tools.add(IMAGE_PROVIDER, LenientArguments::around(Arc::new(ImageTools::new(view.clone()))));
         }
         Ok(FileWiring { resolver: Some(workspace_resolver(view)), vision: file_use.vision })
     }

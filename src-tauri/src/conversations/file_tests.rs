@@ -180,7 +180,13 @@ async fn a_customer_attaches_files_and_the_bot_hands_a_document_back() {
 
     // The workflow was told where the files are, read the document with its tools...
     let sent = requests_text(&harness.model);
-    assert!(sent.contains("[Files attached to this message: uploads/order.txt, uploads/venue.jpg]"), "{sent}");
+    for told in [
+        "[Attached files, already saved for you. Use these exact paths with your tools:",
+        "- uploads/order.txt (text file, text/plain)",
+        "- uploads/venue.jpg (picture, image/jpeg)]",
+    ] {
+        assert!(sent.contains(told), "the workflow is told: {told}");
+    }
     assert!(sent.contains("CODE-7781"), "the tool result with the document's text reached the model");
     // ...and saw the picture, without the metadata the photo carried.
     let images = images_sent_to_the_model(&harness.model);
