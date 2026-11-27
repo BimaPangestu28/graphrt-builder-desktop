@@ -71,6 +71,11 @@ export function sampleTelegramAccount(agentId: string): string | null {
   return connection?.bot.username ? `@${connection.bot.username}` : null
 }
 
+/** The workspace the sample chatbot answers in on Slack, or null. */
+export function sampleSlackAccount(agentId: string): string | null {
+  return slackByAgent.get(agentId)?.app.team ?? null
+}
+
 /** The chatbot that answers the sample personal WhatsApp. */
 export function sampleWhatsAppWebAgent(): string | null {
   return whatsAppWebAgent

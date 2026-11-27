@@ -382,7 +382,16 @@ fn channels_show_connection_and_the_owners_switch() {
     let setup = get_chatbot_setup(&db, &agent.id, &whatsapp_only).unwrap();
     let states: Vec<(&str, bool, bool)> =
         setup.channels.iter().map(|channel| (channel.id.as_str(), channel.connected, channel.enabled)).collect();
-    assert_eq!(states, [("telegram", false, false), ("whatsapp", true, true), ("whatsapp-web", false, false)]);
+    assert_eq!(
+        states,
+        [
+            ("telegram", false, false),
+            ("whatsapp", true, true),
+            ("whatsapp-web", false, false),
+            ("slack", false, false),
+            ("teams", false, false),
+        ]
+    );
     assert_eq!(setup.channels[1].detail.as_deref(), Some("+62 812-0000-1111"));
     assert_eq!(setup.channels[0].detail, None, "a channel that is not connected names no account");
 
