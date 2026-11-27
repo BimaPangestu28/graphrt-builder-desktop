@@ -3,7 +3,9 @@ import { pickPluginSettingPath } from '@/api/plugins'
 import type { PluginConfigStatus, PluginSettingKind } from '@/api/pluginTypes'
 import { getCredentialStoreName } from '@/lib/platform'
 import { Badge, Button, joinClassNames } from '@/components/ui'
+import { ErrorHelpNotice } from '@/components/errors/ErrorHelpNotice'
 import { describeError } from '@/lib/agentDisplay'
+import { explainBackendError } from '@/lib/errorHelp'
 import { messages } from '@/i18n'
 
 /** One setting a plugin reads (an environment variable), with what it is and whether it has a value. */
@@ -22,6 +24,32 @@ export interface PluginConfigField {
   /** The saved value (never set for a secret). */
   value?: string | null
   configured: boolean
+}
+
+/** A save or clear that failed, with what it rejected with. */
+interface SettingFailure {
+  action: 'saving' | 'clearing'
+  error: unknown
+}
+
+/**
+ * Why a setting was not saved: a known error kind in plain words with the backend's message
+ * under it, else the message in one line.
+ */
+function SettingFailureNotice({ failure, settingName }: { failure: SettingFailure; settingName: string }) {
+  const help = explainBackendError(failure.error)
+  const reason = describeError(failure.error)
+  const t = messages()
+  if (!help) {
+    return (
+      <p role="alert" className="m-0 text-[12px] text-danger">
+        {failure.action === 'saving' ? t.plugins.couldNotSaveSetting(settingName, reason) : t.plugins.couldNotClearSetting(settingName, reason)}
+      </p>
+    )
+  }
+  const title = failure.action === 'saving' ? t.errorHelp.settingNotSaved(settingName) : t.errorHelp.settingNotCleared(settingName)
+  const nextStep = help.family === 'invalidInput' || help.family === 'notFound' ? t.errorHelp.checkTheSetting : undefined
+  return <ErrorHelpNotice help={help} title={title} detail={reason} nextStep={nextStep} hidesRemedy className="text-[13px]" />
 }
 
 /** The form field of a setting as the backend lists it. */
@@ -87,7 +115,7 @@ function PluginConfigRow({ pluginLabel, field, onSave, onClear }: PluginConfigRo
   const savedValue = isSecret ? '' : (field.value ?? '')
   const [value, setValue] = useState(savedValue)
   const [pendingAction, setPendingAction] = useState<'saving' | 'clearing' | null>(null)
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [failure, setFailure] = useState<SettingFailure | null>(null)
   const isBusy = pendingAction !== null
   const t = messages().plugins
   const settingName = field.label ?? field.variable
@@ -97,13 +125,13 @@ function PluginConfigRow({ pluginLabel, field, onSave, onClear }: PluginConfigRo
 
   async function runAction(action: 'saving' | 'clearing', work: () => Promise<void>) {
     setPendingAction(action)
-    setErrorMessage(null)
+    setFailure(null)
     try {
       await work()
       // A secret is never shown again; any other value comes back from the backend as saved.
       if (isSecret || action === 'clearing') setValue('')
     } catch (actionError) {
-      setErrorMessage(action === 'saving' ? t.couldNotSaveSetting(settingName, describeError(actionError)) : t.couldNotClearSetting(settingName, describeError(actionError)))
+      setFailure({ action, error: actionError })
     } finally {
       setPendingAction(null)
     }
@@ -115,7 +143,7 @@ function PluginConfigRow({ pluginLabel, field, onSave, onClear }: PluginConfigRo
   }
 
   async function pickPath(kind: 'folder' | 'file') {
-    setErrorMessage(null)
+    setFailure(null)
     try {
       const pickedPath = await pickPluginSettingPath(kind, settingName)
       if (pickedPath === null) return
@@ -123,7 +151,7 @@ function PluginConfigRow({ pluginLabel, field, onSave, onClear }: PluginConfigRo
       setValue(nextValue)
       await runAction('saving', () => onSave(nextValue))
     } catch (pickError) {
-      setErrorMessage(t.couldNotSaveSetting(settingName, describeError(pickError)))
+      setFailure({ action: 'saving', error: pickError })
     }
   }
 
@@ -179,11 +207,7 @@ function PluginConfigRow({ pluginLabel, field, onSave, onClear }: PluginConfigRo
           </Button>
         )}
       </div>
-      {errorMessage && (
-        <p role="alert" className="m-0 text-[12px] text-danger">
-          {errorMessage}
-        </p>
-      )}
+      {failure && <SettingFailureNotice failure={failure} settingName={settingName} />}
     </form>
   )
 }

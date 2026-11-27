@@ -62,7 +62,8 @@ pub(super) fn action_document(
 }
 
 /// How an action ended: the action node's outputs, plus the error kind the node failed
-/// with (e.g. `auth_error`) so callers can tell why it failed.
+/// with (e.g. `auth_error`) so callers can tell why it failed. A failed node makes
+/// `result` an [`AppError::PluginStepFailed`] with that kind and the plugin's message.
 pub(super) struct ActionOutcome {
     pub result: AppResult<serde_json::Map<String, serde_json::Value>>,
     pub failure_type: Option<String>,
@@ -70,8 +71,9 @@ pub(super) struct ActionOutcome {
 
 /// Compiles and runs the action document with the snapshot's plugins.
 ///
-/// `result` is `Workflow` when graphrt rejects the settings, `Internal` when the
-/// step fails or takes longer than [`ACTION_TIMEOUT`].
+/// `result` is `Workflow` when graphrt rejects the settings, `PluginStepFailed` when
+/// the plugin's step fails, `Internal` when the run fails otherwise or takes longer
+/// than [`ACTION_TIMEOUT`].
 pub(super) async fn run_action(
     snapshot: &PluginSnapshot,
     base_registry: graphrt_core::Registry,
@@ -103,16 +105,18 @@ async fn run_action_graph(
     let mut stream = engine.run(RunInput::new());
     let outcome = tokio::time::timeout(ACTION_TIMEOUT, async move {
         let mut outputs = None;
+        let mut step_failure: Option<(String, String)> = None;
         while let Some(event) = stream.next().await {
             match event {
                 Event::NodeSucceeded { node_id, outputs: node_outputs, .. } if &*node_id == ACTION_NODE_ID => {
                     outputs = Some(node_outputs);
                 }
-                Event::NodeFailed { node_id, error_type, .. } if &*node_id == ACTION_NODE_ID => {
-                    *failure_type = Some(error_type);
+                Event::NodeFailed { node_id, error, error_type, .. } if &*node_id == ACTION_NODE_ID => {
+                    *failure_type = Some(error_type.clone());
+                    step_failure = Some((error_type, error));
                 }
                 Event::RunSucceeded { .. } => break,
-                Event::RunFailed { error, .. } => return Err(AppError::Internal(error)),
+                Event::RunFailed { error, .. } => return Err(run_failure(step_failure, error)),
                 Event::RunAborted { reason, .. } => return Err(AppError::Internal(reason)),
                 Event::RunPaused { .. } => {
                     return Err(AppError::Internal("the action stopped to ask for input".into()));
@@ -128,5 +132,41 @@ async fn run_action_graph(
     match json {
         serde_json::Value::Object(fields) => Ok(fields),
         _ => Ok(serde_json::Map::new()),
+    }
+}
+
+/// The error of a failed action run: the plugin step's own kind and message when the
+/// step failed, else graphrt's run error.
+fn run_failure(step_failure: Option<(String, String)>, run_error: String) -> AppError {
+    match step_failure {
+        Some((kind, message)) if !kind.is_empty() => AppError::PluginStepFailed { kind, message },
+        _ => AppError::Internal(run_error),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_failed_step_reports_the_plugins_kind_and_message() {
+        let error = run_failure(
+            Some(("invalid_input".into(), "`amount` must be a number".into())),
+            "node action failed: `amount` must be a number".into(),
+        );
+
+        assert!(
+            matches!(&error, AppError::PluginStepFailed { kind, message } if kind == "invalid_input" && message == "`amount` must be a number"),
+            "{error:?}"
+        );
+    }
+
+    #[test]
+    fn a_run_error_without_a_failed_step_stays_internal() {
+        let error = run_failure(None, "the run stopped".into());
+        assert!(matches!(&error, AppError::Internal(message) if message == "the run stopped"), "{error:?}");
+
+        let without_kind = run_failure(Some((String::new(), "boom".into())), "the run stopped".into());
+        assert!(matches!(without_kind, AppError::Internal(_)));
     }
 }

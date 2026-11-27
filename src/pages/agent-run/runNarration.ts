@@ -1,4 +1,5 @@
 import type { GraphrtEvent, RunEventRecord } from '@/api/types'
+import { pluginNameFromNodeType } from '@/lib/errorHelp'
 import { humanizeRunError } from './runErrorText'
 import { buildItemFrame, findIterationItems, describeItemShort, parseFrame, readFrame, readIteratorPath, readNumber, readString } from './runEventValues'
 import { collectNodeTracks } from './runNodeTracks'
@@ -21,8 +22,12 @@ export interface NarrationLine {
   tone: NarrationTone
   /** The line stands for the pending approval: it links to the approval card. */
   isApprovalLink: boolean
-  /** Raw error behind a failure line, shown under "Technical details". */
+  /** Raw error behind a failure line: in view under the explanation of a known kind, else under "Technical details". */
   rawError: string | null
+  /** Error kind of the failure (`setup_required`…), explained under the line when known. */
+  errorType: string | null
+  /** The plugin the failing step belongs to, for the button that fixes it. */
+  pluginName: string | null
 }
 
 interface StepInfo {
@@ -36,6 +41,8 @@ interface FailureNote {
   summary: string
   raw: string
   itemTitle: string | null
+  errorType: string | null
+  pluginName: string | null
 }
 
 /** Mutable state while the events are read in order. */
@@ -52,7 +59,7 @@ interface NarrationState {
 }
 
 function setLine(state: NarrationState, key: string, text: string, changes: Partial<NarrationLine> = {}): void {
-  state.lines.set(key, { key, text, tone: 'neutral', isApprovalLink: false, rawError: null, ...changes })
+  state.lines.set(key, { key, text, tone: 'neutral', isApprovalLink: false, rawError: null, errorType: null, pluginName: null, ...changes })
 }
 
 function itemTitleFor(state: NarrationState, frame: string): string | null {
@@ -108,9 +115,11 @@ function answerPause(state: NarrationState, nodeId: string, frame: string, event
 }
 
 function recordFailure(state: NarrationState, step: StepInfo, event: GraphrtEvent, itemTitle: string | null) {
-  const humanized = humanizeRunError(readString(event, 'error') ?? messages().agentRun.thisStepFailed, step.template.detail ?? null)
-  if (!state.firstFailure && event.handled !== true) state.firstFailure = { label: step.template.label, summary: humanized.summary, raw: humanized.raw, itemTitle }
-  return humanized
+  const errorType = readString(event, 'error_type')
+  const pluginName = pluginNameFromNodeType(step.template.nodeType)
+  const humanized = humanizeRunError(readString(event, 'error') ?? messages().agentRun.thisStepFailed, step.template.detail ?? null, errorType)
+  if (!state.firstFailure && event.handled !== true) state.firstFailure = { label: step.template.label, summary: humanized.summary, raw: humanized.raw, itemTitle, errorType, pluginName }
+  return { ...humanized, errorType, pluginName }
 }
 
 /** A step event inside an iteration item: updates that item's line. */
@@ -121,7 +130,8 @@ function handleItemStepEvent(state: NarrationState, step: StepInfo, event: Graph
   if (event.type === 'node_failed') {
     const humanized = recordFailure(state, step, event, itemTitle)
     const text = event.handled === true ? messages().agentRun.itemStepFailedWith(itemTitle, label, humanized.summary) : messages().agentRun.itemStepFailed(itemTitle, label)
-    setLine(state, itemKey, text, { tone: 'danger', rawError: event.handled === true ? humanized.raw : null })
+    const failureDetails = event.handled === true ? { rawError: humanized.raw, errorType: humanized.errorType, pluginName: humanized.pluginName } : {}
+    setLine(state, itemKey, text, { tone: 'danger', ...failureDetails })
     return
   }
   if (state.lines.get(itemKey)?.tone === 'danger' || step.isContainer) return
@@ -147,7 +157,9 @@ function handleTopLevelStepEvent(state: NarrationState, step: StepInfo, event: G
   else if (event.type === 'node_succeeded') setLine(state, stepKey, describeSuccess(step, event))
   else if (event.type === 'node_failed') {
     const humanized = recordFailure(state, step, event, null)
-    if (event.handled === true) setLine(state, stepKey, messages().agentRun.stepFailedWith(label, humanized.summary), { tone: 'danger', rawError: humanized.raw })
+    if (event.handled === true) {
+      setLine(state, stepKey, messages().agentRun.stepFailedWith(label, humanized.summary), { tone: 'danger', rawError: humanized.raw, errorType: humanized.errorType, pluginName: humanized.pluginName })
+    }
     else state.lines.delete(stepKey)
   }
 }
@@ -172,14 +184,15 @@ function handleNodeEvent(state: NarrationState, record: RunEventRecord, step: St
   else handleTopLevelStepEvent(state, step, event, frame)
 }
 
-function describeRunFailure(state: NarrationState, event: GraphrtEvent): Pick<NarrationLine, 'text' | 'rawError'> {
+function describeRunFailure(state: NarrationState, event: GraphrtEvent): Pick<NarrationLine, 'text' | 'rawError' | 'errorType' | 'pluginName'> {
   const failure = state.firstFailure
   if (failure) {
     const where = failure.itemTitle ? `${failure.label} (${failure.itemTitle})` : failure.label
-    return { text: messages().agentRun.failedAt(where, failure.summary), rawError: failure.raw }
+    return { text: messages().agentRun.failedAt(where, failure.summary), rawError: failure.raw, errorType: failure.errorType, pluginName: failure.pluginName }
   }
-  const humanized = humanizeRunError(readString(event, 'error') ?? messages().agentRun.somethingWentWrong)
-  return { text: messages().agentRun.runFailedWith(humanized.summary), rawError: humanized.raw }
+  const errorType = readString(event, 'error_type')
+  const humanized = humanizeRunError(readString(event, 'error') ?? messages().agentRun.somethingWentWrong, null, errorType)
+  return { text: messages().agentRun.runFailedWith(humanized.summary), rawError: humanized.raw, errorType, pluginName: null }
 }
 
 function measureRunMs(state: NarrationState, record: RunEventRecord): number | null {
@@ -197,7 +210,7 @@ function handleRunEvent(state: NarrationState, record: RunEventRecord): void {
     setLine(state, 'run:end', runMs === null ? messages().agentRun.finished : messages().agentRun.finishedIn(formatDurationMs(runMs)), { tone: 'ok' })
   } else if (event.type === 'run_failed') {
     const failure = describeRunFailure(state, event)
-    setLine(state, 'run:end', failure.text, { tone: 'danger', rawError: failure.rawError })
+    setLine(state, 'run:end', failure.text, { tone: 'danger', rawError: failure.rawError, errorType: failure.errorType, pluginName: failure.pluginName })
   } else if (event.type === 'run_aborted') {
     setLine(state, 'run:end', messages().agentRun.stopped)
   } else if (event.type === 'run_paused' && ![...state.lines.values()].some((line) => line.isApprovalLink)) {

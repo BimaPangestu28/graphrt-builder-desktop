@@ -43,6 +43,8 @@ export interface RunStepView {
   outputs: Record<string, unknown> | null
   inputs: unknown
   errorMessage: string | null
+  /** The failure's error kind (`setup_required`, `invalid_input`…), explained under the error. */
+  errorType: string | null
   usage: StepTokenUsage | null
   detail: string | null
   iteration: IterationProgress | null
@@ -190,6 +192,7 @@ function buildEmptyView(step: RunStepTemplate, nodeType: string | null): RunStep
     outputs: null,
     inputs: undefined,
     errorMessage: null,
+    errorType: null,
     usage: null,
     detail: null,
     iteration: null,
@@ -213,6 +216,7 @@ function applyExecution(view: RunStepView, execution: NodeExecution): RunStepVie
     outputs: execution.outputs,
     inputs: execution.inputs,
     errorMessage: execution.errorMessage,
+    errorType: execution.errorType,
     usage: execution.usage,
     detail: execution.detail,
     learnedNoteCount: countLearnedNotes(execution),

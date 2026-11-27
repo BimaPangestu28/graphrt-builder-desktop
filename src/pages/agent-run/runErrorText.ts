@@ -1,5 +1,6 @@
 import { messages } from '@/i18n'
 import { localizedRecord } from '@/i18n/localized'
+import { explainErrorKind, type ErrorHelp } from '@/lib/errorHelp'
 /**
  * Turns graphrt / HTTP client error text into a plain sentence for the run screens. The raw text
  * stays available (shown under "Technical details").
@@ -12,6 +13,8 @@ export interface HumanizedRunError {
   raw: string
   /** 0-based iteration item the error came from ("iteration item 0 failed: …"), if any. */
   itemIndex: number | null
+  /** The explanation of the error kind (what to do next), when the kind is known. */
+  help: ErrorHelp | null
 }
 
 const itemPrefixPattern = /iteration item (\d+) failed:\s*/i
@@ -68,17 +71,20 @@ function capitalize(text: string): string {
  *
  * @param rawError - The error text from `node_failed` / `run_failed` (string)
  * @param stepDetail - The failing step's flow-summary detail, used to name the host (string | null)
- * @returns The sentence, the raw text and the iteration item it came from (HumanizedRunError)
+ * @param errorType - The event's `error_type` (the plugin's or graphrt's error kind), if known (string | null)
+ * @returns The sentence, the raw text, the iteration item it came from and the kind's explanation (HumanizedRunError)
  *
  * @example
  * humanizeRunError('connection: iteration item 0 failed: error sending request: dns error: failed to lookup address information', 'POST promo.example.com')
  * // { summary: "Could not reach promo.example.com: that address doesn't exist", itemIndex: 0, raw: … }
  */
-export function humanizeRunError(rawError: string, stepDetail: string | null = null): HumanizedRunError {
+export function humanizeRunError(rawError: string, stepDetail: string | null = null, errorType: string | null = null): HumanizedRunError {
   const itemMatch = itemPrefixPattern.exec(rawError) ?? loopPrefixPattern.exec(rawError)
   const itemIndex = itemMatch ? Number(itemMatch[1]) : null
   const message = rawError.replace(itemPrefixPattern, '').replace(loopPrefixPattern, '').replace(typePrefixPattern, '').trim()
   const host = extractErrorHost(rawError, stepDetail)
-  const summary = describeKnownProblem(rawError, host) ?? capitalize(message || messages().agentRun.somethingWentWrong)
-  return { summary, raw: rawError, itemIndex }
+  const help = explainErrorKind(errorType)
+  // A known network or HTTP problem names the host, so it beats the kind's general sentence.
+  const summary = describeKnownProblem(rawError, host) ?? help?.headline ?? capitalize(message || messages().agentRun.somethingWentWrong)
+  return { summary, raw: rawError, itemIndex, help }
 }

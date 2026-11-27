@@ -38,6 +38,8 @@ export interface NodeExecution {
   outputs: Record<string, unknown> | null
   inputs: unknown
   errorMessage: string | null
+  /** `error_type` of the failure: the plugin's or graphrt's error kind (`setup_required`, `timeout`…). */
+  errorType: string | null
   usage: StepTokenUsage | null
   /** Display text some events carry (`detail`), e.g. from the sample run. */
   detail: string | null
@@ -69,6 +71,7 @@ function createExecution(frame: string, startedAt: string | null): NodeExecution
     outputs: null,
     inputs: undefined,
     errorMessage: null,
+    errorType: null,
     usage: null,
     detail: null,
     progressReports: [],
@@ -129,6 +132,7 @@ function applyNodeEvent(execution: NodeExecution, record: RunEventRecord): void 
     case 'node_failed':
       finishExecution(execution, record, 'failed')
       execution.errorMessage = readString(event, 'error') ?? messages().agentRun.thisStepFailed
+      execution.errorType = readString(event, 'error_type')
       return
     case 'node_skipped':
       finishExecution(execution, record, 'skipped')

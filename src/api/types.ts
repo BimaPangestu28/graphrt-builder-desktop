@@ -315,3 +315,5 @@ export type BackendErrorCode =
   | 'stopped'
   /** install / update / sideload: the plugin needs a newer version of the app (`details.minVersion`). */
   | 'needs_newer_app'
+  /** run_plugin_action: the plugin's step failed; `details.kind` is the plugin's error kind (`setup_required`…). */
+  | 'plugin_step_failed'

@@ -64,6 +64,11 @@ pub enum AppError {
     /// what its manifest uses that this version does not know (plugins from a folder or archive).
     #[error("{}", newer_app_message(.min_version.as_deref(), .unknown_feature.as_deref()))]
     NeedsNewerApp { min_version: Option<String>, unknown_feature: Option<String> },
+    /// A plugin's own step failed (a one-off action from the UI). `kind` is the plugin's
+    /// stable error kind (`setup_required`, `auth_error`...), which the screens explain in
+    /// the UI language; `message` is the plugin's own English text, shown under it.
+    #[error("{message}")]
+    PluginStepFailed { kind: String, message: String },
 }
 
 /// "This plugin needs Graphrt Desktop 0.3.0 or newer. ..." in plain words; the screens show
@@ -165,6 +170,7 @@ impl AppError {
             Self::InvalidGraph(_) => "invalid_graph",
             Self::Stopped => "stopped",
             Self::NeedsNewerApp { .. } => "needs_newer_app",
+            Self::PluginStepFailed { .. } => "plugin_step_failed",
         }
     }
 
@@ -184,6 +190,7 @@ impl AppError {
                 "appVersion": crate::plugins::app_requirement::APP_VERSION,
                 "unknownFeature": unknown_feature,
             })),
+            Self::PluginStepFailed { kind, .. } => Some(serde_json::json!({ "kind": kind })),
             _ => None,
         }
     }
@@ -223,6 +230,19 @@ mod tests {
         let message = serialized["message"].as_str().unwrap();
         assert!(message.contains("Try again") && message.contains("stronger model"), "{message}");
         assert!(!message.contains("YAML"), "the headline stays in plain words: {message}");
+    }
+
+    #[test]
+    fn a_failed_plugin_step_keeps_the_plugins_kind_and_message() {
+        let error = AppError::PluginStepFailed {
+            kind: "setup_required".into(),
+            message: "DOCUMENT_TEMPLATES_OUTPUT_DIR is not set".into(),
+        };
+        let serialized = serde_json::to_value(&error).unwrap();
+
+        assert_eq!(serialized["code"], "plugin_step_failed");
+        assert_eq!(serialized["details"]["kind"], "setup_required");
+        assert_eq!(serialized["message"], "DOCUMENT_TEMPLATES_OUTPUT_DIR is not set");
     }
 
     #[test]

@@ -72,3 +72,35 @@ describe('what a step used from skills and learning', () => {
     expect(screen.getByRole('note')).toHaveTextContent('Refund Policy tidak bisa memakai Gmail · Send email')
   })
 })
+
+describe('a failed plugin step', () => {
+  function invoiceStep(errorType: string | null, error: string): RunStepView {
+    const steps = buildRunStepViews(
+      [{ id: 'make_pdf', label: 'Make the invoice', nodeType: 'document-templates.render_pdf' }],
+      [
+        { runId: 'run-1', seq: 1, event: { type: 'node_started', node_id: 'make_pdf', frame: '', kind: 'document-templates.render_pdf' }, createdAt: '2026-11-27T03:00:00Z' },
+        { runId: 'run-1', seq: 2, event: { type: 'node_failed', node_id: 'make_pdf', frame: '', error, error_type: errorType, handled: false }, createdAt: '2026-11-27T03:00:01Z' },
+      ],
+    )
+    return steps[0]
+  }
+
+  it('explains the kind in Indonesian, links to the plugin settings and keeps the plugin message in view', () => {
+    setLocale('id')
+    const message = 'DOCUMENT_TEMPLATES_OUTPUT_DIR points to a folder that does not exist'
+    const step = invoiceStep('setup_required', message)
+    expect(step.errorType).toBe('setup_required')
+    renderDetails(step)
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent('Plugin ini belum selesai disiapkan')
+    expect(alert).toHaveTextContent('Pesan dari Document Templates')
+    expect(screen.getByText(message)).toBeVisible()
+    expect(screen.getByRole('link', { name: 'Buka pengaturan Document Templates' })).toHaveAttribute('href', '/plugins/document-templates?section=settings')
+  })
+
+  it('keeps the old explanation for an error without a known kind', () => {
+    renderDetails(invoiceStep(null, 'something odd happened'))
+    expect(screen.getByText('Something odd happened')).toBeInTheDocument()
+    expect(screen.getByText('Technical details')).toBeInTheDocument()
+  })
+})

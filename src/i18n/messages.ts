@@ -25,6 +25,7 @@ import { platform } from './locales/platform'
 import { files } from './locales/files'
 import { visuals } from './locales/visuals'
 import { phoneAccess } from './locales/phoneAccess'
+import { errorHelp } from './locales/errorHelp'
 
 /**
  * Every dictionary of the app, by language. Add an area by importing its `defineMessages` pair
@@ -57,6 +58,7 @@ const english = {
   visuals: visuals.en,
   files: files.en,
   phoneAccess: phoneAccess.en,
+  errorHelp: errorHelp.en,
 }
 
 export type Messages = Translation<typeof english>
@@ -88,6 +90,7 @@ const indonesian: Messages = {
   visuals: visuals.id,
   files: files.id,
   phoneAccess: phoneAccess.id,
+  errorHelp: errorHelp.id,
 }
 
 export const dictionaries: Record<Locale, Messages> = { en: english, id: indonesian }
