@@ -226,6 +226,47 @@ pub(crate) fn not_installed_catalog() -> super::models::CatalogIndex {
     catalog_of_entries(NOT_INSTALLED_ENTRIES)
 }
 
+/// A catalog of `plugins` made-up plugins with `steps` steps each, every step with a few
+/// fields, plus `wikipedia`: for checks that the builder prompt stays small however large
+/// the catalog grows.
+pub(crate) fn large_catalog(plugins: usize, steps: usize) -> super::models::CatalogIndex {
+    let mut entries: Vec<serde_json::Value> = (0..plugins)
+        .map(|index| {
+            let name = format!("service{index}-api");
+            let nodes: Vec<serde_json::Value> = (0..steps)
+                .map(|step| {
+                    serde_json::json!({
+                        "kind": format!("{name}.list_items_{step}"),
+                        "title": format!("List items {step}"),
+                        "description": "Lists the items of the account, newest first, with their owners and labels.",
+                        "config_schema": {
+                            "type": "object",
+                            "properties": {
+                                "query": { "type": "string" }, "limit": { "type": "integer" },
+                                "cursor": { "type": "string" }, "folder": { "type": "string" }
+                            },
+                            "required": ["query"]
+                        },
+                        "outputs": ["data", "next_cursor"],
+                    })
+                })
+                .collect();
+            serde_json::json!({
+                "name": name, "version": "1.0.0", "description": "A service with many steps for many kinds of work.",
+                "tarball_url": format!("https://plugins.example.test/{name}.tgz"), "sha256": "0".repeat(64),
+                "size_bytes": 1, "nodes": nodes,
+            })
+        })
+        .collect();
+    entries.push(serde_json::json!({
+        "name": "wikipedia", "display_name": "Wikipedia", "version": "1.0.0",
+        "description": "Read Wikipedia articles.", "tarball_url": "https://plugins.example.test/wikipedia.tgz",
+        "sha256": "0".repeat(64), "size_bytes": 1,
+        "nodes": [{ "kind": "wikipedia.get_page_summary", "title": "Get page summary" }],
+    }));
+    catalog_of_entries(&serde_json::to_string(&entries).unwrap())
+}
+
 /// A catalog of the real `google-maps-scraper` and `whatsapp-web` entries (node kinds and
 /// fields copied from their manifests in graphrt-plugins), never installed.
 pub(crate) fn maps_whatsapp_catalog() -> super::models::CatalogIndex {
@@ -756,11 +797,11 @@ async fn the_catalog_entry_describes_the_settings_of_a_plugin_without_its_own_fi
 #[tokio::test]
 async fn prompt_guide_lists_installed_plugin_steps() {
     let fixture = Fixture::new();
-    assert_eq!(fixture.service.prompt_guide(), "");
+    assert_eq!(fixture.service.prompt_guide("send mail and scrape a page in the browser"), "");
     fixture.publish("1.0.0", good_tarball());
     fixture.service.install(PLUGIN, &echo_catalog_permissions()).await.unwrap();
 
-    let guide = fixture.service.prompt_guide();
+    let guide = fixture.service.prompt_guide("send mail and scrape a page in the browser");
 
     assert!(guide.contains("`fixture-echo.echo` (Echo text)"), "{guide}");
     assert!(guide.contains("text* (string)"), "{guide}");
@@ -820,7 +861,7 @@ async fn the_published_snapshot_feeds_compiles_tools_and_the_approval_check() {
     let unapproved = crate::flow::find_unapproved_sending_steps(flow, &crate::flow::TrustedHosts::none());
     let mut tools = graphrt_core::tool::ToolRegistry::new();
     super::add_plugin_tools(&mut tools);
-    let guide = super::installed_plugins_guide();
+    let guide = super::installed_plugins_guide("send mail and scrape a page in the browser");
     fixture.service.remove(PLUGIN).await.unwrap();
     let after_remove = crate::flow::node_registry().contains("fixture-echo.echo");
     super::active::publish(None);

@@ -85,7 +85,7 @@ query: [start, message]
 parameters: [{ name: city, type: string, description: Destination city, required: true }]
 ```
 
-`http-request` - outputs `status_code`, `body`, `headers`, `json`:
+`http-request` - outputs `status_code`, `body`, `text` (readable text, a page without markup), `headers`, `json`:
 ```yaml
 method: post                             # get | post | put | patch | delete
 url: "https://api.example.com/items"

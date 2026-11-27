@@ -16,6 +16,8 @@
 //! - `history`: saves the builder chat (requests and replies) per agent.
 //! - `edit_lock`: which agents a revision is changing (the Nodes view waits meanwhile).
 //! - `stop`: "Stop the builder" cancels a running chat revision.
+//! - `whole_response`: model steps read a looked-up response whole, not by a guessed path.
+//! - `unused_env`: secrets a draft declares but no step reads are dropped.
 //!
 //! The public functions resolve the model from the user's credentials; the
 //! `*_with_model` functions hold the logic and take any [`ChatModel`], so tests
@@ -35,6 +37,8 @@ mod repair;
 pub mod stop;
 #[cfg(test)]
 mod tests;
+mod unused_env;
+mod whole_response;
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -196,21 +200,23 @@ pub(crate) async fn build_agent_with_model(
     log::info!("building a {kind:?} agent with {}/{}", provider_name(builder.choice.provider), builder.choice.name);
     // A local model fills in a small plan and the app writes the document; anything
     // that path does not cover, or does not get a usable plan for, is drafted in full.
-    let guided_draft = if guided::takes_guided_path(&builder.choice, kind, description) {
+    let guided_draft = if guided::takes_guided_path(&builder.choice, kind) {
         guided::draft(builder, description, kind, on_progress).await?
     } else {
         None
     };
-    let draft = match guided_draft {
-        Some(draft) => draft,
+    let (draft, schedule) = match guided_draft {
+        Some(guided) => (guided.draft, guided.schedule),
         None => {
             let messages = vec![
-                Message::system(prompt::build_system_prompt(&builder.choice, &saved_secret_names(db))),
+                Message::system(prompt::build_system_prompt(&builder.choice, &saved_secret_names(db), description)),
                 Message::user(prompt::build_request(description, kind)),
             ];
             report(on_progress, BuildStage::Drafting, "Drafting the steps");
             let trusted_hosts = TrustedHosts::none();
-            draft_until_valid(builder, messages, on_progress, "Drafting the steps", &trusted_hosts).await?
+            let draft = draft_until_valid(builder, messages, on_progress, "Drafting the steps", &trusted_hosts).await?;
+            // A workflow document has no schedule; the job's own words can still ask for one.
+            (draft, guided::schedule_in_words(description))
         }
     };
     let name = extract::agent_name(&draft.reply)
@@ -220,9 +226,25 @@ pub(crate) async fn build_agent_with_model(
     let done_message = with_plugin_note("Your agent is ready", &draft.flow_yaml);
     let agent =
         db.create_agent(NewAgent { name, kind, description: description.to_owned(), flow_yaml: draft.flow_yaml })?;
-    history::record_build(db, &agent, &draft.explanation);
+    // A schedule the job asks for is saved turned off, and the person is told so.
+    let schedule_note = schedule.and_then(|schedule| guided::save_paused_schedule(db, &agent, &schedule));
+    let explanation = match schedule_note {
+        Some(note) => format!("{} {note}", as_sentence(&draft.explanation)).trim().to_owned(),
+        None => draft.explanation,
+    };
+    history::record_build(db, &agent, &explanation);
     report(on_progress, BuildStage::Done, &done_message);
     Ok(agent)
+}
+
+/// `text` ending in a full stop, so another sentence can follow it ("Daily note on Jakarta").
+fn as_sentence(text: &str) -> String {
+    let text = text.trim_end();
+    if text.is_empty() || text.ends_with(['.', '!', '?', ':']) {
+        text.to_owned()
+    } else {
+        format!("{text}.")
+    }
 }
 
 /// [`revise_agent`] with an explicit model.
@@ -244,12 +266,30 @@ pub(crate) async fn revise_agent_with_model(
     let before = current_summary(&agent);
     // Read from the database, never from the draft: the model cannot trust a host.
     let trusted_hosts = db.trusted_lookup_hosts(agent_id)?;
-    let messages = vec![
-        Message::system(prompt::revision_system_prompt(&builder.choice, &saved_secret_names(db), &trusted_hosts)),
-        Message::user(prompt::revision_request(&agent.flow_yaml, instruction)),
-    ];
-    report(on_progress, BuildStage::Drafting, "Updating the steps");
-    let draft = draft_until_valid(builder, messages, on_progress, "Updating the steps", &trusted_hosts).await?;
+    // An agent drafted from a plan is changed by changing the plan; anything else, and a
+    // change that gets no usable plan, is revised as a whole document.
+    let guided_draft = if guided::takes_guided_path(&builder.choice, agent.kind) {
+        guided::revise(builder, &agent, instruction, &trusted_hosts, on_progress).await?
+    } else {
+        None
+    };
+    let draft = match guided_draft {
+        Some(draft) => draft,
+        None => {
+            let messages = vec![
+                Message::system(prompt::revision_system_prompt(
+                    &builder.choice,
+                    &saved_secret_names(db),
+                    &trusted_hosts,
+                    &format!("{}\n{instruction}", agent.description),
+                    &agent.flow_yaml,
+                )),
+                Message::user(prompt::revision_request(&agent.flow_yaml, instruction)),
+            ];
+            report(on_progress, BuildStage::Drafting, "Updating the steps");
+            draft_until_valid(builder, messages, on_progress, "Updating the steps", &trusted_hosts).await?
+        }
+    };
     if extract::same_document(&draft.flow_yaml, &agent.flow_yaml) {
         return Err(AppError::InvalidInput("No changes were needed".into()));
     }
@@ -313,6 +353,10 @@ async fn draft_until_valid(
         let written = extract::workflow_yaml(&reply);
         let written = flow::quote_text_fields(&written).unwrap_or(written);
         let flow_yaml = use_available_models(written, builder);
+        // A model step that reads a guessed path into a response gets the whole response instead.
+        let flow_yaml = whole_response::read_whole_responses(flow_yaml);
+        // Plugin settings declared as the agent's own secrets would stop every run.
+        let flow_yaml = unused_env::drop_unused_env(unused_env::tidy_plugin_fields(flow_yaml));
         let explanation = live::opening_text(&reply);
         let proposed_hosts = extract::proposed_trusted_hosts(&explanation);
         let trust = DraftTrust { trusted_hosts, proposed_hosts: &proposed_hosts };

@@ -63,7 +63,7 @@ fn compile_with(registry: &graphrt_core::Registry, flow: &str) -> Result<graphrt
 async fn prompt_guide_lists_catalog_plugins_that_are_not_installed() {
     let fixture = fixture_with_catalog().await;
 
-    let guide = fixture.service.prompt_guide();
+    let guide = fixture.service.prompt_guide("send mail and scrape a page in the browser");
 
     assert!(guide.contains("`fixture-echo.echo` (Echo text)"), "{guide}");
     assert!(!guide.contains("`fixture-echo` (not installed yet)"), "{guide}");
@@ -85,7 +85,7 @@ async fn the_saved_catalog_is_used_offline() {
     let restarted = fixture.restarted();
     restarted.refresh_catalog_for_builder().await;
 
-    assert!(restarted.prompt_guide().contains("fixture-mail.send_mail"));
+    assert!(restarted.prompt_guide("send mail and scrape a page in the browser").contains("fixture-mail.send_mail"));
     assert!(restarted.draft_node_registry().contains("fixture-mail.send_mail"));
 }
 
@@ -98,7 +98,7 @@ async fn without_any_catalog_only_installed_plugins_are_listed() {
     let restarted = fixture.restarted();
     restarted.refresh_catalog_for_builder().await;
 
-    let guide = restarted.prompt_guide();
+    let guide = restarted.prompt_guide("send mail and scrape a page in the browser");
     assert!(guide.contains("fixture-echo.echo"), "{guide}");
     assert!(!guide.contains("not installed yet"), "{guide}");
 }
@@ -140,7 +140,7 @@ async fn the_published_catalog_feeds_summaries_approval_checks_and_missing_plugi
     let unapproved = crate::flow::find_unapproved_sending_steps(MAIL_FLOW, &crate::flow::TrustedHosts::none());
     let compiled_for_run = crate::flow::compile_flow(MAIL_FLOW);
     let missing = crate::flow::find_missing_plugins(MAIL_FLOW);
-    let guide = crate::plugins::installed_plugins_guide();
+    let guide = crate::plugins::installed_plugins_guide("send mail and scrape a page in the browser");
     crate::plugins::active::publish(None);
     crate::plugins::active::publish_catalog(None);
 

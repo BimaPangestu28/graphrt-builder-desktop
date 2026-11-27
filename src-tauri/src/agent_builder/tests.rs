@@ -50,7 +50,8 @@ fn mock_builder(replies: &[String]) -> (Arc<MockModel>, BuilderModel) {
     let mock = Arc::new(MockModel::new(replies.iter().map(|reply| MockModel::text(reply)).collect()));
     let builder = BuilderModel {
         model: mock.clone(),
-        choice: ModelChoice { provider: ModelProvider::Openai, name: "gpt-4o-mini".into() },
+        // A provider whose builds are drafted in full: these tests are about that path.
+        choice: ModelChoice { provider: ModelProvider::Anthropic, name: "claude-haiku-4-5".into() },
         available_providers: vec!["openai".into(), "anthropic".into()],
     };
     (mock, builder)
@@ -69,9 +70,29 @@ fn message_text(request: &ChatRequest, index: usize) -> String {
 }
 
 #[tokio::test]
+async fn a_full_draft_of_a_job_that_runs_every_morning_gets_a_paused_schedule() {
+    let db = test_database();
+    let (_mock, builder) = mock_builder(&[fenced_reply("Morning answer", SIMPLE_ANSWER)]);
+
+    let agent = build_agent_with_model(&db, &builder, request("Every morning answer my question", None), &|_| {})
+        .await
+        .unwrap();
+
+    let [trigger] = db.list_triggers(Some(&agent.id)).unwrap().try_into().expect("one schedule");
+    assert_eq!(trigger.cron_expression, "0 0 8 * * *");
+    assert!(!trigger.enabled);
+    let (_mock, builder) = mock_builder(&[fenced_reply("Answer", SIMPLE_ANSWER)]);
+    let unscheduled =
+        build_agent_with_model(&db, &builder, request("Answer my question", None), &|_| {}).await.unwrap();
+    assert!(db.list_triggers(Some(&unscheduled.id)).unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn valid_first_draft_is_saved_with_name_kind_and_progress() {
     let db = test_database();
-    let (mock, builder) = mock_builder(&[fenced_reply("Cafe WhatsApp offers", APPROVAL_LOOP)]);
+    let (mock, mut builder) = mock_builder(&[fenced_reply("Cafe WhatsApp offers", APPROVAL_LOOP)]);
+    // An OpenAI model plans most jobs; one that repeats over a list is drafted in full.
+    builder.choice = ModelChoice { provider: ModelProvider::Openai, name: "gpt-4o-mini".into() };
     let progress = ProgressLog::default();
 
     let agent = build_agent_with_model(&db, &builder, request(CAFE_REQUEST, None), &|update| progress.record(update))
@@ -126,8 +147,9 @@ async fn system_prompt_offers_saved_secret_names_but_never_values() {
 #[test]
 fn system_prompt_has_no_saved_secrets_section_without_saved_secrets() {
     let choice = ModelChoice { provider: ModelProvider::Openai, name: "gpt-4o-mini".into() };
-    assert!(!prompt::build_system_prompt(&choice, &[]).contains("Secrets the user already saved"));
-    let revision_prompt = prompt::revision_system_prompt(&choice, &["DB_PASSWORD".into()], &TrustedHosts::none());
+    assert!(!prompt::build_system_prompt(&choice, &[], "").contains("Secrets the user already saved"));
+    let revision_prompt =
+        prompt::revision_system_prompt(&choice, &["DB_PASSWORD".into()], &TrustedHosts::none(), "", "");
     assert!(revision_prompt.contains("`DB_PASSWORD`"));
 }
 
@@ -219,6 +241,7 @@ async fn still_invalid_after_max_attempts_fails_and_saves_nothing() {
 async fn a_draft_on_a_provider_that_is_not_set_up_is_moved_to_the_chosen_model() {
     let db = test_database();
     let (mock, mut builder) = mock_builder(&[fenced_reply("Cafe offers", APPROVAL_LOOP)]);
+    builder.choice = ModelChoice { provider: ModelProvider::Openai, name: "gpt-4o-mini".into() };
     builder.available_providers = vec!["openai".into()];
     assert!(APPROVAL_LOOP.contains("provider: anthropic"), "the fixture drafts on a provider that is not set up");
 
@@ -410,9 +433,10 @@ async fn draft_that_sends_without_approval_is_sent_back_for_repair() {
 #[test]
 fn system_prompt_includes_the_chatbot_guide() {
     let choice = ModelChoice { provider: ModelProvider::Openai, name: "gpt-4o-mini".into() };
-    for system_prompt in
-        [prompt::build_system_prompt(&choice, &[]), prompt::revision_system_prompt(&choice, &[], &TrustedHosts::none())]
-    {
+    for system_prompt in [
+        prompt::build_system_prompt(&choice, &[], ""),
+        prompt::revision_system_prompt(&choice, &[], &TrustedHosts::none(), "", ""),
+    ] {
         assert!(system_prompt.contains("variable: handoff_reason"), "{system_prompt}");
         assert!(system_prompt.contains("{{#conversation.notes#}}"));
     }
@@ -424,10 +448,10 @@ async fn system_prompt_lists_installed_plugin_steps() {
     let _lock = crate::plugins::tests::ACTIVE_SNAPSHOT_LOCK.lock().await;
     fixture.service.activate();
     let choice = ModelChoice { provider: ModelProvider::Openai, name: "gpt-4o-mini".into() };
-    let with_plugin = prompt::build_system_prompt(&choice, &[]);
+    let with_plugin = prompt::build_system_prompt(&choice, &[], "");
     crate::plugins::active::publish(None);
     crate::plugins::active::publish_catalog(None);
-    let without_plugin = prompt::build_system_prompt(&choice, &[]);
+    let without_plugin = prompt::build_system_prompt(&choice, &[], "");
 
     assert!(with_plugin.contains("`fixture-echo.echo` (Echo text)"), "{with_plugin}");
     assert!(with_plugin.contains("instead of a raw `http-request`"));
@@ -542,12 +566,37 @@ graph:
     - { source: send_offer, target: end }
 "#;
 
+/// About four bytes a token; the smallest cloud context window the builder meets is
+/// 128,000 tokens, and the prompt must leave most of it for the job and the reply.
+const MAX_FULL_PROMPT_BYTES: usize = 160_000;
+
+#[tokio::test]
+async fn the_full_drafting_prompt_stays_small_however_large_the_catalog_grows() {
+    let _lock = crate::plugins::tests::ACTIVE_SNAPSHOT_LOCK.lock().await;
+    let choice = ModelChoice { provider: ModelProvider::Openai, name: "gpt-4o-mini".into() };
+    // Today's catalog is 150 plugins with ~1,900 steps; ten times that, with longer steps.
+    crate::plugins::active::publish_catalog(Some(Arc::new(crate::plugins::tests::large_catalog(1_500, 13))));
+    let named_one = prompt::build_system_prompt(&choice, &[], "Look up the Wikipedia summary of Jakarta");
+    let names_many = prompt::build_system_prompt(
+        &choice,
+        &[],
+        &(0..200).map(|index| format!("service{index}")).collect::<Vec<_>>().join(" "),
+    );
+    let revision = prompt::revision_system_prompt(&choice, &[], &TrustedHosts::none(), "Send it by email", "");
+    crate::plugins::active::publish_catalog(None);
+
+    assert!(named_one.contains("`wikipedia.get_page_summary`"), "the plugin the job names is listed");
+    for prompt in [&named_one, &names_many, &revision] {
+        assert!(prompt.len() < MAX_FULL_PROMPT_BYTES, "{} bytes", prompt.len());
+    }
+}
+
 #[tokio::test]
 async fn drafts_may_use_catalog_plugins_that_are_not_installed() {
     let _lock = crate::plugins::tests::ACTIVE_SNAPSHOT_LOCK.lock().await;
     crate::plugins::active::publish_catalog(Some(Arc::new(crate::plugins::tests::not_installed_catalog())));
     let choice = ModelChoice { provider: ModelProvider::Openai, name: "gpt-4o-mini".into() };
-    let system_prompt = prompt::build_system_prompt(&choice, &[]);
+    let system_prompt = prompt::build_system_prompt(&choice, &[], "Send an offer by mail");
     let unknown_kind = CATALOG_PLUGIN_DRAFT.replace("fixture-mail.send_mail", "fixture-mail.format_disk");
     let db = test_database();
     let (mock, builder) =
@@ -838,7 +887,9 @@ async fn an_injected_draft_using_any_bypass_trick_is_repaired_before_it_is_saved
         .await
         .unwrap_or_else(|error| panic!("{trick}: {error}"));
 
-        assert_eq!(agent.flow_yaml.trim(), repaired.trim(), "{trick}");
+        // The repaired draft as it is saved: a secret no step reads is dropped.
+        let saved = super::unused_env::drop_unused_env(repaired.clone());
+        assert_eq!(agent.flow_yaml.trim(), saved.trim(), "{trick}");
         let repair_text = mock.requests()[1].messages[3].text();
         assert!(repair_text.contains(expected_problem_part(trick)), "{trick}: {repair_text}");
         assert!(progress.stages().contains(&BuildStage::Repairing), "{trick}");

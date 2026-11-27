@@ -96,6 +96,8 @@ keyring = { version = "3", features = ["apple-native", "windows-native", "sync-s
 cron = "0.17"
 chrono = { version = "0.4", features = ["serde"] }
 chrono-tz = "0.10"
+# The computer's time zone, for a schedule the builder saves (chrono already depends on it).
+iana-time-zone = "0.1"
 uuid = { version = "1", features = ["v4"] }
 # Plugin catalog and tarball downloads (HTTPS only), checksum and safe extraction.
 # Same reqwest / rustls setup as graphrt-http (ring provider, no default features).
