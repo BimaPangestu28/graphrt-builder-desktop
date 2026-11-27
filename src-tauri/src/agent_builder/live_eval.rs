@@ -65,10 +65,11 @@ fn sample_inputs(flow_yaml: &str) -> serde_json::Value {
             "checkbox" => json!(true),
             "select" => json!(input.options.first().cloned().unwrap_or_default()),
             "json" => json!({"text": "Jakarta"}),
-            _ => json!(
-                "Jakarta. Our order of 20 lunch boxes arrived two hours late and cold. Rina will call the \
-                 customer by Friday and Budi will refund the delivery fee."
+            "paragraph" => json!(
+                "Our order of 20 lunch boxes arrived two hours late and cold. Rina will call the customer by \
+                 Friday and Budi will refund the delivery fee."
             ),
+            _ => json!("Jakarta"),
         };
         inputs.insert(input.name, value);
     }
@@ -166,6 +167,11 @@ async fn live_eval() {
             if !with_runs {
                 println!("[{model_name}] r{index} a{attempt} BUILT {build_seconds}s");
                 continue;
+            }
+            // The user's click on "Trust <host> for lookups".
+            let lookups = flow::find_unapproved_steps(&agent.flow_yaml, &TrustedHosts::none()).unwrap_or_default();
+            for host in lookups.iter().filter_map(|step| step.trustable_host.as_ref()) {
+                db.add_trusted_lookup_host(&agent.id, host).unwrap();
             }
             let runs = RunManager::new(db.clone(), credentials, Arc::new(QuietSink));
             match run_to_end(&db, &runs, &agent).await {
