@@ -34,6 +34,8 @@ pub(crate) struct OfferedOperation {
     pub installed: bool,
     /// Sends or changes something outside the app: the app asks the user first.
     pub sends: bool,
+    /// The plugin needs an account or key of the person's (it asks for secrets).
+    pub needs_account: bool,
     pub fields: Vec<OperationField>,
 }
 
@@ -93,7 +95,7 @@ pub(crate) fn operations_of(plugins: &[PluginState], catalog: Option<&CatalogInd
     let mut operations = Vec::new();
     for plugin in &loaded {
         for descriptor in &plugin.descriptors {
-            operations.extend(offered(descriptor, &plugin.name, &plugin.permissions.env, true));
+            operations.extend(offered(descriptor, &plugin.name, &plugin.permissions, true));
         }
     }
     for entry in catalog.map(|catalog| catalog.plugins.as_slice()).unwrap_or_default() {
@@ -102,7 +104,8 @@ pub(crate) fn operations_of(plugins: &[PluginState], catalog: Option<&CatalogInd
         }
         for node in &entry.nodes {
             let descriptor = catalog_descriptor(node, &entry.name);
-            operations.extend(offered(&descriptor, &entry.name, &entry.permissions.env, false));
+            let permissions = super::models::PluginPermissions::from(&entry.permissions);
+            operations.extend(offered(&descriptor, &entry.name, &permissions, false));
         }
     }
     operations
@@ -111,9 +114,10 @@ pub(crate) fn operations_of(plugins: &[PluginState], catalog: Option<&CatalogInd
 fn offered(
     descriptor: &NodeDescriptor,
     plugin: &str,
-    configured_env: &[String],
+    permissions: &super::models::PluginPermissions,
     installed: bool,
 ) -> Option<OfferedOperation> {
+    let configured_env = permissions.env.as_slice();
     let (_, operation) = descriptor.kind.split_once('.')?;
     if UNOFFERED_OPERATIONS.contains(&operation) {
         return None;
@@ -157,6 +161,7 @@ fn offered(
         description: one_line(&descriptor.description),
         installed,
         sends: is_sending_plugin_kind(&descriptor.kind),
+        needs_account: permissions.secrets,
         fields,
     })
 }
@@ -188,6 +193,9 @@ pub(crate) mod tests {
     use graphrt_core::catalog::NodeCategory;
     use serde_json::json;
 
+    static NO_PERMISSIONS: std::sync::LazyLock<super::super::models::PluginPermissions> =
+        std::sync::LazyLock::new(Default::default);
+
     fn descriptor(kind: &str, title: &str, schema: serde_json::Value) -> NodeDescriptor {
         let mut descriptor = NodeDescriptor::new(kind.to_owned(), title.to_owned(), NodeCategory::Other);
         descriptor.description = format!("{title} for a test");
@@ -209,7 +217,7 @@ pub(crate) mod tests {
             },
             "required": ["to", "subject"]
         });
-        offered(&descriptor("email.send_email", "Send email", schema), "email", &[], false).unwrap()
+        offered(&descriptor("email.send_email", "Send email", schema), "email", &NO_PERMISSIONS, false).unwrap()
     }
 
     /// A reading operation with typed optional fields.
@@ -221,7 +229,8 @@ pub(crate) mod tests {
                 "unseen_only": { "type": "boolean", "description": "Only unread messages" }
             }
         });
-        offered(&descriptor("email.list_messages", "List email messages", schema), "email", &[], false).unwrap()
+        offered(&descriptor("email.list_messages", "List email messages", schema), "email", &NO_PERMISSIONS, false)
+            .unwrap()
     }
 
     #[test]
@@ -239,21 +248,30 @@ pub(crate) mod tests {
     #[test]
     fn fields_named_like_a_plugin_setting_are_the_apps() {
         let schema = json!({"type": "object", "properties": {"phone_number_id": {"type": "string"}, "body": {"type": "string"}}});
-        let env = ["WHATSAPP_PHONE_NUMBER_ID".to_owned()];
+        let permissions = super::super::models::PluginPermissions {
+            network: true,
+            secrets: true,
+            env: vec!["WHATSAPP_PHONE_NUMBER_ID".to_owned()],
+        };
         let operation =
-            offered(&descriptor("whatsapp.send_text", "Send text", schema), "whatsapp", &env, true).unwrap();
+            offered(&descriptor("whatsapp.send_text", "Send text", schema), "whatsapp", &permissions, true).unwrap();
+        assert!(operation.needs_account);
         assert_eq!(operation.fields.iter().map(|field| field.name.as_str()).collect::<Vec<_>>(), ["body"]);
     }
 
     #[test]
     fn operations_a_plan_cannot_fill_in_are_not_offered() {
         let needs_a_list = json!({"type": "object", "properties": {"uids": {"type": "array"}}, "required": ["uids"]});
-        assert!(offered(&descriptor("email.mark_seen", "Mark seen", needs_a_list), "email", &[], true).is_none());
+        assert!(offered(&descriptor("email.mark_seen", "Mark seen", needs_a_list), "email", &NO_PERMISSIONS, true)
+            .is_none());
         let undescribed = json!({"type": "object", "properties": {}, "required": ["id"]});
-        assert!(offered(&descriptor("crm.get_contact", "Get contact", undescribed), "crm", &[], true).is_none());
+        assert!(
+            offered(&descriptor("crm.get_contact", "Get contact", undescribed), "crm", &NO_PERMISSIONS, true).is_none()
+        );
         let raw_call = json!({"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]});
-        assert!(offered(&descriptor("slack.api_request", "API request", raw_call), "slack", &[], true).is_none());
-        assert!(offered(&descriptor("not-a-plugin-kind", "Odd", json!({})), "odd", &[], true).is_none());
+        assert!(offered(&descriptor("slack.api_request", "API request", raw_call), "slack", &NO_PERMISSIONS, true)
+            .is_none());
+        assert!(offered(&descriptor("not-a-plugin-kind", "Odd", json!({})), "odd", &NO_PERMISSIONS, true).is_none());
     }
 
     #[test]

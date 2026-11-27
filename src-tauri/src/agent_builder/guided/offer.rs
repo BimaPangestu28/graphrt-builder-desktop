@@ -71,7 +71,10 @@ pub(super) fn relevant_operations(operations: Vec<OfferedOperation>, description
                 plugin_words.iter().filter(|word| is_telling(word)).any(|word| has_word(&description_words, word));
             let names_operation =
                 own_words.iter().filter(|word| is_telling(word)).any(|word| has_word(&description_words, word));
-            if !(names_plugin || names_operation) {
+            // A word of the operation alone ("rate", "items", "translate") is enough only for a
+            // plugin that needs no account: a plain writing job must not end up needing a
+            // HubSpot token because its notes have "action items".
+            if !(names_plugin || (names_operation && !operation.needs_account)) {
                 return None;
             }
             let verb_matches = verbs.iter().any(|verb| own_words.iter().any(|word| word == verb));
@@ -125,6 +128,7 @@ mod tests {
             description: String::new(),
             installed,
             sends: kind.contains("send") || kind.contains("post"),
+            needs_account: !kind.starts_with("currency-rates"),
             fields: Vec::<OperationField>::new(),
         }
     }
@@ -174,6 +178,15 @@ mod tests {
         ];
         let offered = relevant_operations(wikipedia, "Look up the Wikipedia page summary for Jakarta");
         assert_eq!(offered[0].kind, "wikipedia.get_page_summary");
+    }
+
+    #[test]
+    fn a_word_of_an_operation_that_needs_an_account_is_not_enough() {
+        let hubspot = vec![operation("hubspot.get_item_list", "Get item list", false)];
+        let deepl = vec![operation("deepl.translate_text", "Translate text", false)];
+        assert!(relevant_operations(hubspot, "Turn my meeting notes into a list of action items").is_empty());
+        assert!(relevant_operations(deepl.clone(), "Translate the text I give into Indonesian").is_empty());
+        assert_eq!(relevant_operations(deepl, "Translate it with DeepL").len(), 1);
     }
 
     #[test]
