@@ -82,6 +82,9 @@ pub const CONVERSATION_EVENT: &str = "conversation-event";
 
 /// Hand-off reason recorded when the bot could not run.
 pub const BOT_ERROR_REASON: &str = "bot_error";
+/// Notice shown to the owner when a bot turn finished without any reply.
+const EMPTY_REPLY_NOTICE: &str =
+    "The bot could not answer · its reply was empty. Check the steps that write the answer";
 /// Hand-off reason recorded when a customer writes while the Inbox switch has the bot paused.
 pub const BOT_PAUSED_REASON: &str = "bot_paused";
 /// Hand-off reason recorded when the bot's steps stopped to wait for an approval.
@@ -690,8 +693,19 @@ impl ConversationManager {
             None if !blocks.is_empty() => Some((String::new(), json!({}))),
             None => None,
         };
-        if let Some((text, metadata)) = reply {
-            self.deliver_and_store(&conversation, MessageAuthor::Bot, &text, metadata, &blocks).await?;
+        match reply {
+            Some((text, metadata)) => {
+                self.deliver_and_store(&conversation, MessageAuthor::Bot, &text, metadata, &blocks).await?;
+            }
+            // Nothing to say and no hand-off: the customer would wait for an answer that
+            // never comes, so the owner gets the chat (e.g. an `answer` step reading a step
+            // that did not run).
+            None if turn.handoff.is_none() => {
+                log::warn!("the bot of conversation {} answered nothing", conversation.id);
+                self.hand_off(&conversation, Some(BOT_ERROR_REASON), EMPTY_REPLY_NOTICE)?;
+                return self.tell_customer_to_wait(&conversation).await;
+            }
+            None => {}
         }
         if let Some(handoff) = turn.handoff {
             let reason = handoff.reason.as_deref();

@@ -14,7 +14,7 @@ export type MainNavKey = 'home' | 'inbox' | 'runs' | 'schedule' | 'knowledge' | 
 
 /**
  * What the "Agents" section of the sidebar shows:
- * - empty: before the first agent exists (02)
+ * - empty: no agents to list (the sidebar's own tests)
  * - draft: one highlighted agent being built or tested (03 to 08)
  * - list: all agents, optionally with one marked current (09 onward)
  */

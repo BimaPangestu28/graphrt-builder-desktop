@@ -107,7 +107,7 @@ fn value_reads_from_any(value: &Json, node_ids: &HashSet<String>) -> bool {
 }
 
 /// The node ids of the `{{#node.field#}}` references in `text`.
-fn referenced_node_ids(text: &str) -> impl Iterator<Item = &str> {
+pub(super) fn referenced_node_ids(text: &str) -> impl Iterator<Item = &str> {
     text.split(REFERENCE_OPENING).skip(1).filter_map(|rest| {
         let selector = rest.split("#}}").next()?;
         selector.split('.').next().map(str::trim).filter(|node_id| !node_id.is_empty())

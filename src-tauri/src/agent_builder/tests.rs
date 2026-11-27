@@ -967,3 +967,51 @@ async fn an_injected_draft_cannot_trust_a_host() {
     let unapproved = flow::find_unapproved_steps(&result.agent.flow_yaml, &stored_hosts).unwrap();
     assert_eq!(unapproved.len(), 1, "the saved lookup still needs the user's trust");
 }
+
+/// A draft whose reply reads a model step that nothing runs first (what gpt-4.1-mini once
+/// wrote for a bakery chatbot): it compiles, but the chatbot would answer nothing.
+const REPLY_READS_A_SKIPPED_STEP: &str = r#"
+version: "1"
+name: bakery
+graph:
+  nodes:
+    - id: start
+      type: start
+      variables:
+        - { variable: message, type: paragraph, required: true }
+    - id: answer_hours
+      type: llm
+      model: { provider: openai, name: gpt-4o-mini }
+      prompt_template:
+        - { role: user, text: "{{#start.message#}}" }
+    - id: reply_hours
+      type: answer
+      answer: "{{#answer_hours.text#}}"
+    - id: end
+      type: end
+      outputs: []
+  edges:
+    - { source: start, target: reply_hours }
+    - { source: reply_hours, target: end }
+"#;
+
+#[tokio::test]
+async fn a_draft_reading_a_step_that_never_ran_is_repaired_before_it_is_saved() {
+    let db = test_database();
+    let (mock, builder) = mock_builder(&[
+        fenced_reply("Bakery assistant", REPLY_READS_A_SKIPPED_STEP),
+        fenced_reply("Bakery assistant", SIMPLE_ANSWER),
+    ]);
+    let progress = ProgressLog::default();
+
+    let agent = build_agent_with_model(&db, &builder, request("Answer questions about our hours", None), &|update| {
+        progress.record(update)
+    })
+    .await
+    .unwrap();
+
+    assert_eq!(agent.flow_yaml.trim(), SIMPLE_ANSWER.trim());
+    let repair_text = mock.requests()[1].messages[3].text();
+    assert!(repair_text.contains("`answer_hours` never runs before `reply_hours`"), "{repair_text}");
+    assert!(progress.stages().contains(&BuildStage::Repairing));
+}
