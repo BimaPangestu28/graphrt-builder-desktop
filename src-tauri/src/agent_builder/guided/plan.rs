@@ -867,8 +867,9 @@ fn with_inputs_for_their_values(template: String, host_length: usize, inputs: &[
     format!("{site}{rest}")
 }
 
-/// Whether `operation` only reads and its plugin is named like a long text input: the
-/// person gives that material, so the step would read it again from somewhere else.
+/// Whether the plugin of `operation` is named like a long text input: the person gives that
+/// material, so a step of that plugin would fetch it again from somewhere else. (Its name
+/// alone, "wait_for_meeting", counts as sending, so it is not asked whether it reads.)
 fn reads_what_an_input_holds(operation: &OfferedOperation, inputs: &[PlanInput]) -> bool {
     let lowercase_words = |text: &str| -> Vec<String> {
         text.to_lowercase()
@@ -878,8 +879,7 @@ fn reads_what_an_input_holds(operation: &OfferedOperation, inputs: &[PlanInput])
             .collect()
     };
     let plugin_words = lowercase_words(&operation.plugin);
-    !operation.sends
-        && !plugin_words.is_empty()
+    !plugin_words.is_empty()
         && inputs.iter().filter(|input| input.long_text).any(|input| {
             let input_words = lowercase_words(&format!("{} {}", input.name, input.label));
             plugin_words.iter().all(|word| {
@@ -1230,13 +1230,14 @@ mod tests {
     #[test]
     fn a_plugin_named_like_the_pasted_material_is_not_read() {
         let mut recorder = list_messages_operation();
-        recorder.kind = "meeting-notes.transcribe".into();
+        recorder.kind = "meeting-notes.wait_for_meeting".into();
+        recorder.sends = true;
         recorder.plugin = "meeting-notes".into();
         let operations = [recorder];
         let rules = task_rules(&operations);
         let raw = parse(
             r#"{"looks_up_the_web": false, "inputs": [{"name": "notes", "label": "Meeting notes", "long_text": true, "value": ""}],
-                "steps": [{"kind": "use", "title": "Get the notes", "instruction": "", "url": "", "operation": "meeting-notes.transcribe"},
+                "steps": [{"kind": "use", "title": "Get the notes", "instruction": "", "url": "", "operation": "meeting-notes.wait_for_meeting"},
                           {"kind": "write", "title": "List action items", "instruction": "List the action items with owners.", "url": "", "operation": ""}]}"#,
         )
         .unwrap();
