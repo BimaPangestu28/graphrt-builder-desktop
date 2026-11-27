@@ -1,6 +1,6 @@
 import type { ConversationMessage } from '@/api/conversationTypes'
 import { joinClassNames } from '@/components/ui'
-import { formatClockTime } from './conversationDisplay'
+import { formatClockTime, readCitations } from './conversationDisplay'
 import { messages } from '@/i18n'
 
 interface BubbleStyle {
@@ -58,6 +58,7 @@ export function ChatMessageBubble({ message }: { message: ConversationMessage })
 
   const bubbleStyle = getBubbleStyle(message)
   const deliveryError = typeof message.metadata.deliveryError === 'string' ? message.metadata.deliveryError : null
+  const citations = readCitations(message)
   return (
     <div className={joinClassNames('flex box-content max-w-[72%] flex-col gap-1 px-3 py-2.5 leading-[1.45] whitespace-pre-line', bubbleStyle.bubbleClassNames)}>
       {bubbleStyle.authorLabel && (
@@ -66,6 +67,15 @@ export function ChatMessageBubble({ message }: { message: ConversationMessage })
         </span>
       )}
       {message.text}
+      {citations.length > 0 && (
+        <span lang="en" aria-label={messages().inbox.sources} className="flex flex-wrap gap-1.5 whitespace-normal">
+          {citations.map((citation) => (
+            <span key={citation} className="rounded-md bg-surface px-2 py-0.5 text-[11px] text-ink-2">
+              {citation}
+            </span>
+          ))}
+        </span>
+      )}
       {deliveryError && (
         <span lang="en" className="text-[11px] font-medium text-amber-strong">
           {messages().inbox.notDelivered}{' '}{deliveryError}

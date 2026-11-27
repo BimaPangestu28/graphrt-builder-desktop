@@ -8,7 +8,7 @@ use crate::conversations::bot::RetrievedSource;
 use crate::credentials::CredentialStore;
 use crate::error::AppResult;
 use crate::knowledge::records::{self, StoredKnowledgeBase};
-use crate::knowledge::retrieval::knowledge_service_for_runs;
+use crate::knowledge::retrieval::{knowledge_service_for_runs, passage_pages, source_label};
 use crate::storage::models::Agent;
 use crate::storage::Database;
 
@@ -31,21 +31,30 @@ pub struct PreparedReply {
 }
 
 impl PreparedReply {
-    /// Source names to show under the reply: the passages the bot was given
-    /// (by the host or by the flow's retrieval steps), from knowledge bases that
-    /// show their sources, without repeats, best first.
+    /// Sources to show under the reply, e.g. `menu.pdf · p3, p12`: the files of
+    /// the passages the bot was given (by the host or by the flow's retrieval
+    /// steps) from knowledge bases that show their sources, best file first,
+    /// with the pages of all its passages.
     pub fn citations(&self, retrieved_sources: &[RetrievedSource]) -> Vec<String> {
-        let mut citations: Vec<String> = Vec::new();
+        let mut files: Vec<(&str, Vec<u32>)> = Vec::new();
         for source in self.host_sources.iter().chain(retrieved_sources) {
-            if citations.len() == MAX_CITATIONS {
-                break;
+            if !self.cited_knowledge_base_ids.contains(&source.knowledge_base_id) {
+                continue;
             }
-            let shows_sources = self.cited_knowledge_base_ids.contains(&source.knowledge_base_id);
-            if shows_sources && !citations.contains(&source.source_name) {
-                citations.push(source.source_name.clone());
+            if let Some((_, pages)) = files.iter_mut().find(|(name, _)| *name == source.source_name) {
+                pages.extend(&source.pages);
+            } else if files.len() < MAX_CITATIONS {
+                files.push((&source.source_name, source.pages.clone()));
             }
         }
-        citations
+        files
+            .into_iter()
+            .map(|(name, mut pages)| {
+                pages.sort_unstable();
+                pages.dedup();
+                source_label(name, &pages)
+            })
+            .collect()
     }
 }
 
@@ -83,6 +92,7 @@ pub async fn prepare_reply(
         .map(|(knowledge_base_id, passage)| RetrievedSource {
             knowledge_base_id: knowledge_base_id.clone(),
             source_name: passage.source_name.clone(),
+            pages: passage.pages.clone(),
         })
         .collect();
     let passages: Option<Vec<BriefPassage>> =
@@ -145,7 +155,8 @@ async fn lookup_passages(
                     .get("source_name")
                     .and_then(serde_json::Value::as_str)
                     .map_or_else(|| hit.title.clone(), str::to_owned);
-                (hit.dataset_id, BriefPassage { source_name, text: hit.content })
+                let pages = passage_pages(&hit.metadata);
+                (hit.dataset_id, BriefPassage { source_name, pages, text: hit.content })
             })
             .collect(),
         Err(error) => {

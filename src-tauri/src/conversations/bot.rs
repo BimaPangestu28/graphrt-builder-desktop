@@ -21,7 +21,7 @@ use serde_json::{Map, Value as Json};
 
 use super::models::Conversation;
 use crate::error::{AppError, AppResult};
-use crate::knowledge::retrieval::KNOWLEDGE_RETRIEVAL_KIND;
+use crate::knowledge::retrieval::{passage_pages, KNOWLEDGE_RETRIEVAL_KIND};
 
 /// Start input carrying the customer's message.
 pub const MESSAGE_INPUT: &str = "message";
@@ -65,20 +65,23 @@ pub struct RetrievedSource {
     pub knowledge_base_id: String,
     /// File or page name, e.g. `menu.pdf`.
     pub source_name: String,
+    /// PDF pages of the passage (ascending), empty when unknown.
+    pub pages: Vec<u32>,
 }
 
 impl RetrievedSource {
     /// Reads one hit of a `knowledge-retrieval` step's `result` output.
     fn from_result_item(item: &Json) -> Option<Self> {
         let knowledge_base_id = item.get("dataset_id")?.as_str()?.to_owned();
-        let source_name = item
-            .get("metadata")
+        let metadata = item.get("metadata").and_then(Json::as_object);
+        let source_name = metadata
             .and_then(|metadata| metadata.get("source_name"))
             .and_then(Json::as_str)
             .or_else(|| item.get("title").and_then(Json::as_str))
             .filter(|name| !name.trim().is_empty())?
             .to_owned();
-        Some(Self { knowledge_base_id, source_name })
+        let pages = metadata.map(passage_pages).unwrap_or_default();
+        Some(Self { knowledge_base_id, source_name, pages })
     }
 }
 
