@@ -14,6 +14,8 @@
  * Text that is not JSON is left exactly as written.
  */
 
+import { fieldName } from './fieldNames'
+
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
 
 const listIndent = '  '
@@ -23,9 +25,9 @@ function isRecord(value: JsonValue): value is { [key: string]: JsonValue } {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-/** "unit_price" → "unit price". */
+/** "unit_price" → "unit price", in the app's language for common keys (see `fieldNames.ts`). */
 function readableKey(key: string): string {
-  return key.replace(/[_-]+/g, ' ').trim()
+  return fieldName(key)
 }
 
 function capitalize(text: string): string {

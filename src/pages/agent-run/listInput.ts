@@ -9,6 +9,8 @@
  * stays a JSON text box.
  */
 
+import { fieldName } from './fieldNames'
+
 export type ListColumnKind = 'text' | 'number' | 'checkbox'
 
 export interface ListColumn {
@@ -42,9 +44,9 @@ function isFlatRecord(value: unknown): value is FlatRecord {
   return isPlainObject(value) && Object.values(value).every(isScalar)
 }
 
-/** "unit_price" → "Unit price". */
+/** "unit_price" → "Unit price", in the app's language for common keys (see `fieldNames.ts`). */
 export function columnLabel(key: string): string {
-  const words = key.replace(/[_-]+/g, ' ').trim()
+  const words = fieldName(key)
   return words.charAt(0).toUpperCase() + words.slice(1)
 }
 
