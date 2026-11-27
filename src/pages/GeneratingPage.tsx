@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { BackendError, isBackendErrorWithCode } from '@/api/client'
-import type { BuildRequest, BuildStage, DraftPreview } from '@/api/types'
+import type { Agent, BuildRequest, BuildStage, DraftPreview } from '@/api/types'
 import { AppShell, splitPaneColumnClassName, splitPaneMainClassName, splitPaneScrollClassName } from '@/components/layout'
 import { Button, joinClassNames } from '@/components/ui'
 import { useFlowSummary } from '@/hooks/useFlowSummary'
 import { useFollowNewContent } from '@/hooks/useFollowNewContent'
 import { describeError } from '@/lib/agentDisplay'
-import { agentPath, connectionsTabPath, routePaths } from '@/routes'
+import { builtAgentPath, connectionsTabPath, routePaths } from '@/routes'
 import { BuildProgressChecklist, type BuildChecklistItem } from './agent-builder/BuildProgressChecklist'
 import { readBuildRequest } from './agent-builder/buildRequestState'
 import { PanelHeader, UserChatBubble } from './agent-builder/ChatBubbles'
@@ -135,46 +135,49 @@ function BuildErrorNotice({ buildError, onRetry }: { buildError: Error; onRetry:
 }
 
 /**
- * Opens the builder for the saved agent shortly after the build finishes, unless a plugin
- * it needs is not ready: then the chat holds on the setup cards until the user continues.
- * If the requirements cannot be read, the builder opens as before.
+ * Opens the saved agent shortly after the build finishes (a chatbot its setup, other kinds
+ * the builder), unless a plugin it needs is not ready: then the chat holds on the setup cards
+ * until the user continues. If the requirements cannot be read, it opens as before.
  *
  * @returns Whether the screen holds for plugin setup (boolean)
  */
-function useOpenBuilderWhenReady(builtAgentId: string | null, pluginSetup: PluginSetupState): boolean {
+function useOpenBuiltAgentWhenReady(builtAgent: Agent | null, pluginSetup: PluginSetupState): boolean {
   const navigate = useNavigate()
   const [isHeldForPlugins, setIsHeldForPlugins] = useState(false)
   const { isReady, loadError } = pluginSetup
-  const opensAtOnce = builtAgentId !== null && !isHeldForPlugins && (isReady === true || loadError !== null)
+  const openPath = builtAgent ? builtAgentPath(builtAgent.id, builtAgent.kind) : null
+  const opensAtOnce = openPath !== null && !isHeldForPlugins && (isReady === true || loadError !== null)
 
   useEffect(() => {
-    if (builtAgentId && isReady === false) setIsHeldForPlugins(true)
-  }, [builtAgentId, isReady])
+    if (openPath && isReady === false) setIsHeldForPlugins(true)
+  }, [openPath, isReady])
 
   useEffect(() => {
-    if (!opensAtOnce || !builtAgentId) return
-    const timeoutId = window.setTimeout(() => navigate(agentPath('builder', builtAgentId)), openBuilderDelayMs)
+    if (!opensAtOnce || !openPath) return
+    const timeoutId = window.setTimeout(() => navigate(openPath), openBuilderDelayMs)
     return () => window.clearTimeout(timeoutId)
-  }, [opensAtOnce, builtAgentId, navigate])
+  }, [opensAtOnce, openPath, navigate])
 
   return isHeldForPlugins
 }
 
-/** Under the setup cards on screen 03: always lets the user go on to the steps. */
-function ContinueToStepsButton({ agentId, isReady }: { agentId: string; isReady: boolean }) {
+/** Under the setup cards on screen 03: always lets the user go on (to the steps, or a chatbot's setup). */
+function ContinueButton({ agent, isReady }: { agent: Agent; isReady: boolean }) {
   const navigate = useNavigate()
+  const continueLabel = agent.kind === 'chatbot' ? messages().newAgent.continueToChatbotSetup : messages().newAgent.continueToSteps
   return (
     <div className="flex">
-      <Button size="sm" variant={isReady ? 'primary' : 'secondary'} onClick={() => navigate(agentPath('builder', agentId))}>
-        {isReady ? messages().newAgent.continueToSteps : messages().newAgent.continueWithoutThem}
+      <Button size="sm" variant={isReady ? 'primary' : 'secondary'} onClick={() => navigate(builtAgentPath(agent.id, agent.kind))}>
+        {isReady ? continueLabel : messages().newAgent.continueWithoutThem}
       </Button>
     </div>
   )
 }
 
-function describeAgentColumnStatus(isBuilt: boolean, isHeldForPlugins: boolean): string {
-  if (!isBuilt) return messages().newAgent.stepsAppearHereAsTheyAre
-  return isHeldForPlugins ? messages().newAgent.allStepsReadySetUpIts : messages().newAgent.allStepsReadyOpeningTheBuilder
+function describeAgentColumnStatus(builtAgent: Agent | null, isHeldForPlugins: boolean): string {
+  if (!builtAgent) return messages().newAgent.stepsAppearHereAsTheyAre
+  if (isHeldForPlugins) return messages().newAgent.allStepsReadySetUpIts
+  return builtAgent.kind === 'chatbot' ? messages().newAgent.chatbotReadyOpeningItsSetup : messages().newAgent.allStepsReadyOpeningTheBuilder
 }
 
 /** Screen 03 opened without a request (screen index, reload): nothing to build, so point back to 02. */
@@ -203,7 +206,7 @@ function AgentBuildScreen({ buildRequest }: { buildRequest: BuildRequest }) {
     <DraftStepCards stepTitles={buildState.draft?.stepTitles ?? []} minimumCardCount={placeholderStepCount} isWriting={readActiveDraft(buildState) !== null} />
   )
   const pluginSetup = usePluginSetup(builtAgent?.id ?? null)
-  const isHeldForPlugins = useOpenBuilderWhenReady(builtAgent?.id ?? null, pluginSetup)
+  const isHeldForPlugins = useOpenBuiltAgentWhenReady(builtAgent, pluginSetup)
   const sidebarStatus = buildError ? messages().newAgent.buildStopped : builtAgent ? messages().newAgent.ready : messages().newAgent.building
 
   return (
@@ -220,7 +223,7 @@ function AgentBuildScreen({ buildRequest }: { buildRequest: BuildRequest }) {
           {builtAgent && (
             <PluginRequirementsMessage
               setup={pluginSetup}
-              footer={isHeldForPlugins && <ContinueToStepsButton agentId={builtAgent.id} isReady={pluginSetup.isReady === true} />}
+              footer={isHeldForPlugins && <ContinueButton agent={builtAgent} isReady={pluginSetup.isReady === true} />}
             />
           )}
         </div>
@@ -228,7 +231,7 @@ function AgentBuildScreen({ buildRequest }: { buildRequest: BuildRequest }) {
 
       <section aria-label={messages().newAgent.agent} className={`box-border flex min-w-0 flex-[1_1_440px] flex-col bg-subtle ${splitPaneColumnClassName}`}>
         <PanelHeader>
-          <span className="text-body">{describeAgentColumnStatus(builtAgent !== null, isHeldForPlugins)}</span>
+          <span className="text-body">{describeAgentColumnStatus(builtAgent, isHeldForPlugins)}</span>
         </PanelHeader>
         <div className={`flex flex-col gap-6 p-6 ${splitPaneScrollClassName}`}>
           <h1 className="m-0 text-[22px] font-semibold">{builtAgent?.name ?? messages().newAgent.newAgent}</h1>
@@ -243,7 +246,8 @@ function AgentBuildScreen({ buildRequest }: { buildRequest: BuildRequest }) {
  * Screen 03 · Generating. Shown right after "Build agent": the chat column replays the job
  * and a live checklist driven by `buildAgent` progress, while the agent column fills in
  * once the agent is saved. Then the chat shows the plugins the agent needs with their
- * approvals, downloads and settings; when they are all ready it opens the builder (04),
+ * approvals, downloads and settings; when they are all ready it opens the builder (04), or
+ * a chatbot's setup (14) where a business owner sets its persona, knowledge and channels,
  * otherwise it waits for "Continue to steps" / "Continue without them". A missing key
  * links to Connections; other failures offer Try again. Opened without a build request
  * (`{ buildRequest }` router state), it builds nothing and links back to New agent.

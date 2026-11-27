@@ -15,8 +15,10 @@ import { createStoppedError, runStoppableSampleRevision, stopSampleRevisions, ty
  * desktop builder: the explanation word by word, then the step titles one by one.
  */
 
-/** The agent every sample build resolves to. */
+/** The agent every sample build of a non-chatbot kind resolves to. */
 export const sampleBuiltAgentId = 'maps-leads'
+/** What the sample builder returns for a chatbot request: the sample "Catering assistant". */
+export const sampleBuiltChatbotId = 'catering-assistant'
 
 /** Pause between progress stages. Tests advance fake timers by these amounts. */
 export const sampleBuildTiming = {
@@ -117,7 +119,7 @@ async function buildSampleAgent(request: BuildRequest, onProgress: (progress: Bu
   for (const progress of sampleBuildStages) {
     await reportStage(progress, sampleBuildDrafts[progress.stage], timing, onProgress)
   }
-  return readStoredAgent(sampleBuiltAgentId)
+  return readStoredAgent(request.kind === 'chatbot' ? sampleBuiltChatbotId : sampleBuiltAgentId)
 }
 
 function joinTitles(titles: string[]): string {

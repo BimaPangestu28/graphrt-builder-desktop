@@ -167,7 +167,7 @@ describe('NewAgentPage', () => {
     expect(screen.getByText(/Generating screen/)).toHaveTextContent(JSON.stringify({ buildRequest: { description: 'Send invoice reminders', kind: 'task' } }))
   })
 
-  it('sends "Answer customers" to chatbot setup and needs a description', () => {
+  it('builds a new chatbot from "Answer customers" instead of opening the sample chatbot, and needs a description', () => {
     renderNewAgentPage()
     fireEvent.click(screen.getByRole('radio', { name: 'Answer customers' }))
     expect(screen.getByRole('radio', { name: 'Answer customers' })).toBeChecked()
@@ -175,7 +175,19 @@ describe('NewAgentPage', () => {
     expect(screen.getByRole('button', { name: 'Build agent' })).toBeDisabled()
     fireEvent.change(screen.getByLabelText('Describe the job'), { target: { value: 'Answer menu questions' } })
     fireEvent.click(screen.getByRole('button', { name: 'Build agent' }))
-    expect(screen.getByText(/Chatbot setup screen/)).toBeInTheDocument()
+    expect(screen.queryByText(/Chatbot setup screen/)).not.toBeInTheDocument()
+    expect(screen.getByText(/Generating screen/)).toHaveTextContent(JSON.stringify({ buildRequest: { description: 'Answer menu questions', kind: 'chatbot' } }))
+  })
+
+  it.each([
+    ['Chain agents', 'chain'],
+    ['Agent team', 'team'],
+  ])('builds a new agent for "%s" instead of opening a sample screen', (kindLabel, kind) => {
+    renderNewAgentPage()
+    fireEvent.click(screen.getByRole('radio', { name: kindLabel }))
+    fireEvent.change(screen.getByLabelText('Describe the job'), { target: { value: 'Research, then write a summary' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Build agent' }))
+    expect(screen.getByText(/Generating screen/)).toHaveTextContent(JSON.stringify({ buildRequest: { description: 'Research, then write a summary', kind } }))
   })
 
   it('lists the Maps → WhatsApp template first, with what it needs', () => {

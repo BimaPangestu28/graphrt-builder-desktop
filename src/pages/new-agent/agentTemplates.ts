@@ -108,14 +108,6 @@ export function newAgentTemplatePath(templateId: string): string {
   return `${routePaths.newAgent}?${new URLSearchParams({ template: templateId })}`
 }
 
-/** Where "Build agent" goes for each kind: task agents get generated, the rest open their own setup screen. */
-export const buildPathByAgentKind: Record<AgentKind, string> = {
-  task: routePaths.generating,
-  chatbot: routePaths.chatbotSetup,
-  chain: routePaths.chain,
-  team: routePaths.team,
-}
-
 /**
  * Example shown greyed out in the empty prompt (never submitted): the Maps leads job used
  * across screens 02 to 08.

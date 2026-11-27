@@ -1,8 +1,9 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { BackendError, toBackendError } from '@/api/client'
 import { resetSampleAgents } from '@/api/sampleBackend/agents'
-import { resetSampleBuilder, sampleBuildDrafts, sampleBuilderBackend, sampleBuildTiming } from '@/api/sampleBackend/builder'
+import { readStoredAgent } from '@/api/sampleBackend/sampleAgentStore'
+import { resetSampleBuilder, sampleBuildDrafts, sampleBuilderBackend, sampleBuildTiming, sampleBuiltChatbotId } from '@/api/sampleBackend/builder'
 import { setSampleDelayScale } from '@/api/sampleBackend/sampleResponse'
 import { resetSampleCredentials, sampleCredentialsBackend } from '@/api/sampleBackend/credentials'
 import { resetSamplePlugins, samplePluginsBackend, setSampleAgentPluginNeeds } from '@/api/sampleBackend/plugins'
@@ -12,12 +13,19 @@ import { GeneratingPage } from '../GeneratingPage'
 
 const buildRequestState = { buildRequest: { description: 'Find cafes and message them', kind: 'task' } }
 
+/** Stand-in for chatbot setup (14) that shows which chatbot it was asked to open. */
+function ChatbotSetupStandIn() {
+  const { search } = useLocation()
+  return <p>Chatbot setup of {new URLSearchParams(search).get('agentId') ?? 'no agent'}</p>
+}
+
 function renderGeneratingPage(locationState: unknown = buildRequestState) {
   return render(
     <MemoryRouter initialEntries={[{ pathname: routePaths.generating, state: locationState }]}>
       <Routes>
         <Route path={routePaths.generating} element={<GeneratingPage />} />
         <Route path={agentPath('builder', 'maps-leads')} element={<p>Builder screen</p>} />
+        <Route path={routePaths.chatbotSetup} element={<ChatbotSetupStandIn />} />
         <Route path={connectionsTabPath('models')} element={<p>Connections screen</p>} />
         <Route path={routePaths.newAgent} element={<p>New agent screen</p>} />
       </Routes>
@@ -128,6 +136,29 @@ describe('GeneratingPage', () => {
     expect(screen.getByText('Send WhatsApp')).toBeInTheDocument()
     await advanceBy(openBuilderDelayMs)
     expect(screen.getByText('Builder screen')).toBeInTheDocument()
+  })
+
+  it('builds a new chatbot and opens its own setup, not the builder or the sample chatbot', async () => {
+    const buildAgentSpy = vi.spyOn(sampleBuilderBackend, 'buildAgent')
+    setSampleAgentPluginNeeds(sampleBuiltChatbotId, [])
+    renderGeneratingPage({ buildRequest: { description: 'Answer menu questions', kind: 'chatbot' } })
+    await advanceBy(0)
+    expect(buildAgentSpy).toHaveBeenCalledWith({ description: 'Answer menu questions', kind: 'chatbot' }, expect.any(Function))
+    await advanceBy(sampleBuildTiming.buildStageDelayMs * 5)
+    expect(screen.getByText('Chatbot ready. Opening its setup')).toBeInTheDocument()
+    await advanceBy(openBuilderDelayMs)
+    expect(screen.queryByText('Builder screen')).not.toBeInTheDocument()
+    expect(screen.getByText(`Chatbot setup of ${sampleBuiltChatbotId}`)).toBeInTheDocument()
+  })
+
+  it('opens the setup of whichever chatbot the backend built', async () => {
+    const builtChatbot = { ...readStoredAgent(sampleBuiltChatbotId), id: 'fresh-bot' }
+    vi.spyOn(sampleBuilderBackend, 'buildAgent').mockResolvedValue(builtChatbot)
+    setSampleAgentPluginNeeds('fresh-bot', [])
+    renderGeneratingPage({ buildRequest: { description: 'Answer menu questions', kind: 'chatbot' } })
+    await advanceBy(0)
+    await advanceBy(openBuilderDelayMs)
+    expect(screen.getByText('Chatbot setup of fresh-bot')).toBeInTheDocument()
   })
 
   it('holds on the plugin cards in the chat while plugins are not ready, until the user continues', async () => {
