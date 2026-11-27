@@ -366,7 +366,7 @@ impl Planning<'_> {
     fn checked_plan(&self, reply: &str, rules: &PlanRules<'_>) -> Result<Plan, PlanProblem> {
         let mut plan = plan::normalize(plan::parse(reply)?, rules)?;
         coverage::verify_job_words(&mut plan.job_words, self.request);
-        prefer_offered_reading(&mut plan, &self.operations, self.request);
+        prefer_offered_reading(&mut plan, &self.operations, self.request, self.kind == AgentKind::Chatbot);
         // The fixed message of a chatbot is its given text already.
         if rules.fixed_input.is_none() {
             if let Some(input) = coverage::input_for_given_text(&plan) {
@@ -582,33 +582,54 @@ impl Planning<'_> {
 /// Replaces each lookup on a site the job does not name with the best offered operation that
 /// only reads: the job matched that plugin, and a small model otherwise copies an example
 /// address (a Wikipedia summary for an exchange rate) or guesses an API.
-fn prefer_offered_reading(plan: &mut Plan, operations: &[OfferedOperation], job: &str) {
-    let Some(operation) = operations.iter().find(|operation| !operation.sends) else { return };
+fn prefer_offered_reading(plan: &mut Plan, operations: &[OfferedOperation], job: &str, is_chatbot: bool) {
     let job_words: Vec<String> = job
         .to_lowercase()
         .split(|character: char| !character.is_alphanumeric())
         .filter(|word| !word.is_empty())
         .map(str::to_owned)
         .collect();
+    // Services the catalog has a plugin for: a raw lookup on their API (`api.whatsapp.com`)
+    // needs the account the plugin holds, so it never works as a lookup.
+    let plugin_names: std::collections::BTreeSet<String> =
+        crate::plugins::operations::offered_operations().into_iter().map(|operation| operation.plugin).collect();
+    let reading = operations.iter().find(|operation| !operation.sends);
     let summary = plan.summary.clone();
-    for step in &mut plan.steps {
-        let PlanStep::Lookup { title, url } = step else { continue };
-        let Some(host) = url.host() else { continue };
-        let named = host
+    let has_other_result = |steps: &[PlanStep], index: usize| {
+        steps.iter().enumerate().any(|(other, step)| other != index && step.has_result())
+    };
+    let mut index = 0;
+    while index < plan.steps.len() {
+        let PlanStep::Lookup { title, url } = &plan.steps[index] else {
+            index += 1;
+            continue;
+        };
+        let Some(host) = url.host().map(str::to_owned) else {
+            index += 1;
+            continue;
+        };
+        let labels: Vec<&str> = host
             .split(['.', '-'])
             .filter(|label| label.len() >= 4 && !matches!(*label, "www" | "api" | "apis"))
-            .any(|label| job_words.iter().any(|word| word == label));
-        if named {
+            .collect();
+        let named = labels.iter().any(|label| job_words.iter().any(|word| word == label));
+        let plugin_service = labels.iter().any(|label| plugin_names.contains(*label));
+        if let Some(operation) = reading.filter(|_| !is_chatbot && (!named || plugin_service)) {
+            log::info!("the lookup on {host} becomes the offered operation {}", operation.kind);
+            let instruction = if summary.is_empty() { title.clone() } else { summary.clone() };
+            plan.steps[index] = PlanStep::Use {
+                title: title.clone(),
+                instruction,
+                operation: operation.kind.clone(),
+                fields: std::collections::BTreeMap::new(),
+            };
+        } else if (plugin_service || (is_chatbot && !named)) && has_other_result(&plan.steps, index) {
+            // A chatbot answers from what the job says; a guessed API only fails the chat.
+            log::info!("the lookup on {host} is left out: nothing the job names lives there");
+            plan.steps.remove(index);
             continue;
         }
-        log::info!("the lookup on {host} becomes the offered operation {}", operation.kind);
-        let instruction = if summary.is_empty() { title.clone() } else { summary.clone() };
-        *step = PlanStep::Use {
-            title: title.clone(),
-            instruction,
-            operation: operation.kind.clone(),
-            fields: std::collections::BTreeMap::new(),
-        };
+        index += 1;
     }
 }
 

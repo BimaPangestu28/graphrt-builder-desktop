@@ -538,3 +538,24 @@ async fn a_chatbot_whose_job_says_when_the_owner_takes_over_hands_over() {
     let agent = build_agent_with_model(&db, &builder, plain, &|_| {}).await.unwrap();
     assert!(!agent.flow_yaml.contains("decide_handoff"));
 }
+
+#[tokio::test]
+async fn a_chatbot_does_not_look_up_a_site_its_job_never_names() {
+    let db = Database::open_in_memory().unwrap();
+    // As llama3.2 planned a catering bot reached over WhatsApp: a guessed chat API.
+    let guessed = format!(
+        r#"{{"looks_up_the_web": true, "summary": "Answers menu questions.", "name": "Menu bot", "inputs": [],
+            "steps": [{{"kind": "lookup", "title": "Get the chat", "instruction": "", "url": "https://api.sendbird.com/v3/messages"}},
+                      {{"kind": "write", "title": "Answer", "instruction": "Answer with the menu prices.", "url": ""}}], {NO_SCHEDULE}}}"#
+    );
+    let (_mock, builder) = local_builder(&[&guessed]);
+    let build = BuildRequest {
+        description: "Answer WhatsApp questions about our catering menu (nasi box 25k)".into(),
+        kind: Some(AgentKind::Chatbot),
+    };
+
+    let agent = build_agent_with_model(&db, &builder, build, &|_| {}).await.unwrap();
+
+    assert!(!agent.flow_yaml.contains("sendbird"), "{}", agent.flow_yaml);
+    assert!(!agent.flow_yaml.contains("type: http-request"), "{}", agent.flow_yaml);
+}
