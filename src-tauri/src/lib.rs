@@ -37,6 +37,7 @@ pub mod agent_steps;
 pub mod chains;
 pub mod chatbot_setup;
 pub mod child_env;
+pub mod collab;
 pub mod commands;
 pub mod conversations;
 pub mod crash_reports;
@@ -236,7 +237,15 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         Arc::new(plugin_triggers::PluginTriggerService::new(db.clone(), plugins.clone(), runs.clone()));
     plugin_triggers.spawn();
     phone_access.spawn();
+    let collab = Arc::new(collab::Collab::new(
+        db.clone(),
+        credentials.clone(),
+        Arc::new(collab::TauriCollabEvents::new(app.handle().clone())),
+    ));
+    // Shared agents sync again (only when this computer is signed in to a team server).
+    collab.start_shared();
     Ok(AppState {
+        collab,
         db,
         credentials,
         runs,
@@ -499,6 +508,23 @@ pub fn run() {
             commands::deploy::pair_device,
             commands::deploy::show_device_pairing,
             commands::deploy::revoke_paired_device,
+            commands::collab::collab_status,
+            commands::collab::collab_check_server,
+            commands::collab::collab_set_server,
+            commands::collab::collab_sign_in,
+            commands::collab::collab_sign_out,
+            commands::collab::collab_preview_invite,
+            commands::collab::collab_join,
+            commands::collab::collab_workspaces,
+            commands::collab::collab_create_workspace,
+            commands::collab::collab_workspace,
+            commands::collab::collab_invite,
+            commands::collab::collab_set_member,
+            commands::collab::collab_share_agent,
+            commands::collab::collab_open_project,
+            commands::collab::collab_stop_sharing,
+            commands::collab::collab_agent,
+            commands::collab::collab_set_focus,
             commands::phone_access::phone_access_status,
             commands::phone_access::save_phone_access,
             commands::phone_access::phone_access_activity,
