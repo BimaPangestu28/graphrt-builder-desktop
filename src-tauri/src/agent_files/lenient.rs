@@ -14,6 +14,9 @@
 //! the tool calls it `max_width`: a name the tool does not know is trimmed, and when exactly
 //! one of the tool's own names ends in `_<name>` (and was not given) the value goes there.
 //!
+//! An argument given as "nothing" (`null`, `{}`, `[]`) where the tool wants text, a number or a
+//! yes/no is left out, as the model meant.
+//!
 //! Nothing else changes: a value that does not fit is passed on as it was and the tool
 //! refuses it with its own message. Paths and other text are never touched.
 //!
@@ -163,14 +166,31 @@ fn fit_fields(fields: Map<String, Json>, properties: Option<&Map<String, Json>>)
     let given: Vec<String> = fields.keys().map(|name| name.trim().to_owned()).collect();
     fields
         .into_iter()
-        .map(|(name, value)| {
+        .filter_map(|(name, value)| {
             let name = known_name(&name, properties, &given);
             match properties.get(&name) {
-                Some(schema) => (name, fit_to_schema(value, schema)),
-                None => (name, value),
+                // "Nothing" written for a plain value (`"output": {}`) means the argument was left out.
+                Some(schema) if is_plain_type(schema) && is_nothing(&value) => None,
+                Some(schema) => Some((name, fit_to_schema(value, schema))),
+                None => Some((name, value)),
             }
         })
         .collect()
+}
+
+/// Whether `schema` asks for text, a number or a yes/no.
+fn is_plain_type(schema: &Json) -> bool {
+    matches!(schema.get("type").and_then(Json::as_str), Some("string" | "integer" | "number" | "boolean"))
+}
+
+/// `null`, `{}` or `[]`: what a model writes for an argument it does not mean to give.
+fn is_nothing(value: &Json) -> bool {
+    match value {
+        Json::Null => true,
+        Json::Object(fields) => fields.is_empty(),
+        Json::Array(items) => items.is_empty(),
+        _ => false,
+    }
 }
 
 /// The tool's own name for an argument a model called `name`: `name` itself when the tool
@@ -261,6 +281,10 @@ mod tests {
             fit_to_schema(sent, &resize),
             json!({ "path": "uploads/poster.png", "max_width": 400, "overwrite": false })
         );
+        // An optional argument written as "nothing" is left out (what llama3.2 sent to `image/thumbnail`).
+        let sent = json!({ "path": "uploads/poster.png", "output": {}, "overwrite": null, "max_width": 400 });
+        let with_output = json!({ "type": "object", "properties": { "path": { "type": "string" }, "output": { "type": "string" }, "overwrite": { "type": "boolean" }, "max_width": { "type": "integer" } } });
+        assert_eq!(fit_to_schema(sent, &with_output), json!({ "path": "uploads/poster.png", "max_width": 400 }));
         // The tool's own name wins when both are given, and a name that fits two is left alone.
         let both = json!({ "width": 300, "max_width": 400 });
         assert_eq!(fit_to_schema(both.clone(), &resize), both);
