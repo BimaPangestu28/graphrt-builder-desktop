@@ -368,3 +368,26 @@ async fn an_unchanged_plan_changes_nothing() {
 
     assert!(matches!(&result, Err(AppError::InvalidInput(message)) if message.contains("No changes")), "{result:?}");
 }
+
+#[tokio::test]
+async fn an_openai_model_plans_a_job_within_reach_and_the_steps_run_on_it() {
+    let db = Database::open_in_memory().unwrap();
+    let mock = Arc::new(MockModel::new(vec![MockModel::text(&reply_plan())]));
+    let builder = BuilderModel {
+        model: mock.clone(),
+        choice: ModelChoice { provider: ModelProvider::Openai, name: "gpt-4o-mini".into() },
+        available_providers: vec!["openai".into()],
+    };
+
+    let agent = build_agent_with_model(&db, &builder, request("Write a polite reply to a complaint I paste"), &|_| {})
+        .await
+        .unwrap();
+
+    let requests = mock.requests();
+    assert_eq!(requests.len(), 1);
+    assert!(
+        matches!(&requests[0].response_format, Some(ResponseFormat::JsonSchema { name, strict: true, .. }) if name == "agent_plan"),
+        "the plan is asked for with a strict schema"
+    );
+    assert!(agent.flow_yaml.contains("provider: openai") && agent.flow_yaml.contains("name: gpt-4o-mini"));
+}

@@ -34,8 +34,9 @@ pub(crate) struct OfferedOperation {
     pub installed: bool,
     /// Sends or changes something outside the app: the app asks the user first.
     pub sends: bool,
-    /// The plugin needs an account or key of the person's (it asks for secrets).
-    pub needs_account: bool,
+    /// The plugin needs setting up first: an account or key of the person's (it asks
+    /// for secrets), or a browser it drives (catalog plugins that are not installed).
+    pub needs_setup: bool,
     pub fields: Vec<OperationField>,
 }
 
@@ -105,7 +106,11 @@ pub(crate) fn operations_of(plugins: &[PluginState], catalog: Option<&CatalogInd
         for node in &entry.nodes {
             let descriptor = catalog_descriptor(node, &entry.name);
             let permissions = super::models::PluginPermissions::from(&entry.permissions);
-            operations.extend(offered(&descriptor, &entry.name, &permissions, false));
+            let operation = offered(&descriptor, &entry.name, &permissions, false);
+            operations.extend(operation.map(|operation| OfferedOperation {
+                needs_setup: operation.needs_setup || entry.needs_browser,
+                ..operation
+            }));
         }
     }
     operations
@@ -161,7 +166,7 @@ fn offered(
         description: one_line(&descriptor.description),
         installed,
         sends: is_sending_plugin_kind(&descriptor.kind),
-        needs_account: permissions.secrets,
+        needs_setup: permissions.secrets,
         fields,
     })
 }
@@ -246,6 +251,22 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn catalog_plugins_that_need_an_account_or_a_browser_need_setting_up() {
+        let operations = operations_of(&[], Some(&crate::plugins::tests::not_installed_catalog()));
+        let setup_of = |plugin: &str| {
+            operations
+                .iter()
+                .filter(|operation| operation.plugin == plugin)
+                .map(|operation| operation.needs_setup)
+                .collect::<Vec<_>>()
+        };
+        let mail = setup_of("fixture-mail");
+        let browser = setup_of("fixture-browser");
+        assert!(!mail.is_empty() && mail.iter().all(|needs| *needs), "secrets: {mail:?}");
+        assert!(!browser.is_empty() && browser.iter().all(|needs| *needs), "a browser: {browser:?}");
+    }
+
+    #[test]
     fn fields_named_like_a_plugin_setting_are_the_apps() {
         let schema = json!({"type": "object", "properties": {"phone_number_id": {"type": "string"}, "body": {"type": "string"}}});
         let permissions = super::super::models::PluginPermissions {
@@ -255,7 +276,7 @@ pub(crate) mod tests {
         };
         let operation =
             offered(&descriptor("whatsapp.send_text", "Send text", schema), "whatsapp", &permissions, true).unwrap();
-        assert!(operation.needs_account);
+        assert!(operation.needs_setup);
         assert_eq!(operation.fields.iter().map(|field| field.name.as_str()).collect::<Vec<_>>(), ["body"]);
     }
 

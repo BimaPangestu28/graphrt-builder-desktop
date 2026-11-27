@@ -72,9 +72,9 @@ pub(super) fn relevant_operations(operations: Vec<OfferedOperation>, description
             let names_operation =
                 own_words.iter().filter(|word| is_telling(word)).any(|word| has_word(&description_words, word));
             // A word of the operation alone ("rate", "items", "translate") is enough only for a
-            // plugin that needs no account: a plain writing job must not end up needing a
-            // HubSpot token because its notes have "action items".
-            if !(names_plugin || (names_operation && !operation.needs_account)) {
+            // plugin that needs no setting up: a plain writing job must not end up needing a
+            // HubSpot token because its notes have "action items", nor a web page a browser.
+            if !(names_plugin || (names_operation && !operation.needs_setup)) {
                 return None;
             }
             let verb_matches = verbs.iter().any(|verb| own_words.iter().any(|word| word == verb));
@@ -128,7 +128,7 @@ mod tests {
             description: String::new(),
             installed,
             sends: kind.contains("send") || kind.contains("post"),
-            needs_account: !kind.starts_with("currency-rates"),
+            needs_setup: !kind.starts_with("currency-rates"),
             fields: Vec::<OperationField>::new(),
         }
     }

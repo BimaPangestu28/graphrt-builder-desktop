@@ -50,7 +50,8 @@ fn mock_builder(replies: &[String]) -> (Arc<MockModel>, BuilderModel) {
     let mock = Arc::new(MockModel::new(replies.iter().map(|reply| MockModel::text(reply)).collect()));
     let builder = BuilderModel {
         model: mock.clone(),
-        choice: ModelChoice { provider: ModelProvider::Openai, name: "gpt-4o-mini".into() },
+        // A provider whose builds are drafted in full: these tests are about that path.
+        choice: ModelChoice { provider: ModelProvider::Anthropic, name: "claude-haiku-4-5".into() },
         available_providers: vec!["openai".into(), "anthropic".into()],
     };
     (mock, builder)
@@ -89,7 +90,9 @@ async fn a_full_draft_of_a_job_that_runs_every_morning_gets_a_paused_schedule() 
 #[tokio::test]
 async fn valid_first_draft_is_saved_with_name_kind_and_progress() {
     let db = test_database();
-    let (mock, builder) = mock_builder(&[fenced_reply("Cafe WhatsApp offers", APPROVAL_LOOP)]);
+    let (mock, mut builder) = mock_builder(&[fenced_reply("Cafe WhatsApp offers", APPROVAL_LOOP)]);
+    // An OpenAI model plans most jobs; one that repeats over a list is drafted in full.
+    builder.choice = ModelChoice { provider: ModelProvider::Openai, name: "gpt-4o-mini".into() };
     let progress = ProgressLog::default();
 
     let agent = build_agent_with_model(&db, &builder, request(CAFE_REQUEST, None), &|update| progress.record(update))
@@ -238,6 +241,7 @@ async fn still_invalid_after_max_attempts_fails_and_saves_nothing() {
 async fn a_draft_on_a_provider_that_is_not_set_up_is_moved_to_the_chosen_model() {
     let db = test_database();
     let (mock, mut builder) = mock_builder(&[fenced_reply("Cafe offers", APPROVAL_LOOP)]);
+    builder.choice = ModelChoice { provider: ModelProvider::Openai, name: "gpt-4o-mini".into() };
     builder.available_providers = vec!["openai".into()];
     assert!(APPROVAL_LOOP.contains("provider: anthropic"), "the fixture drafts on a provider that is not set up");
 
