@@ -613,7 +613,10 @@ fn prefer_offered_reading(plan: &mut Plan, operations: &[OfferedOperation], job:
             .filter(|label| label.len() >= 4 && !matches!(*label, "www" | "api" | "apis"))
             .collect();
         let named = labels.iter().any(|label| job_words.iter().any(|word| word == label));
-        let plugin_service = labels.iter().any(|label| plugin_names.contains(*label));
+        // `whatsapp` for the `whatsapp-api` plugin as well as for one named `whatsapp`.
+        let plugin_service = labels
+            .iter()
+            .any(|label| plugin_names.iter().any(|plugin| plugin == label || plugin.starts_with(&format!("{label}-"))));
         if let Some(operation) = reading.filter(|_| !is_chatbot && (!named || plugin_service)) {
             log::info!("the lookup on {host} becomes the offered operation {}", operation.kind);
             let instruction = if summary.is_empty() { title.clone() } else { summary.clone() };

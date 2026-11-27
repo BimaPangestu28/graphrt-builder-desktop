@@ -40,8 +40,8 @@ const HANDOFF_REASON: &str = "handoff_reason";
 
 /// The language sentence is the one the chatbot guide asks for, word for word: shorter
 /// wordings ("in the customer's language") made gpt-4o-mini answer English in Spanish.
-const CHATBOT_ROLE: &str = "You answer a customer's chat message for a business. Do exactly what the task says. \
-Reply with only the message to send to the customer. Write your reply in the same language as the customer's \
+const CHATBOT_ROLE: &str = "You answer a customer's chat message for a business. Answer exactly what the customer's \
+message asks, using the business's own facts. Do what the task says. Reply with only the message to send to the customer. Write your reply in the same language as the customer's \
 message: English if they write English, Indonesian if they write Indonesian, and so on.";
 
 /// The input every chatbot has: the customer's message.
