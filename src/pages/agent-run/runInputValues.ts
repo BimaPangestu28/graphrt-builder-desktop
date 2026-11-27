@@ -79,12 +79,12 @@ export function controlForInput(input: FlowInput): RunInputControl {
 const saysOptionalPattern = /\((optional|opsional)\)/i
 
 /**
- * The label shown above an input: "(optional)" is added to an input that may stay empty,
- * unless the workflow's own label already says so ("Client address (optional)").
+ * The label shown above an input: "(optional)" in the app's language is added to an input
+ * that may stay empty, unless the workflow's own label already says so ("Client address (optional)").
  */
 export function runInputLabel(input: FlowInput): string {
   if (input.required || saysOptionalPattern.test(input.label)) return input.label
-  return `${input.label} (optional)`
+  return messages().agentRun.optionalInput(input.label)
 }
 
 function toFileListValue(rawValue: unknown): string[] {
