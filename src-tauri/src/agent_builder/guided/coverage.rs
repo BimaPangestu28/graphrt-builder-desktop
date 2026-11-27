@@ -148,9 +148,16 @@ const SCHEDULE_WORDS: &[&str] = &[
 ];
 
 /// Whether a new agent of `kind` (or a change to one) is planned on the guided path when
-/// `model` drafts it: for the [`GUIDED_PROVIDERS`], every kind but a team, whose `agent`
-/// steps a plan does not have. A job the plan cannot express ([`is_out_of_reach`]) and a
-/// job that gets no usable plan are still drafted in full.
+/// `model` drafts it. A job the plan cannot express ([`is_out_of_reach`]) and a job that
+/// gets no usable plan are still drafted in full.
+///
+/// - Ollama, every kind but a team (whose `agent` steps a plan does not have): a local
+///   model reads about 4,000 tokens, less than the full drafting prompt.
+/// - OpenAI, task agents: measured on the same jobs with gpt-4o-mini and gpt-4o
+///   (`live_eval`), the guided path built as many or more working agents for every kind of
+///   job. Chatbots and chains were not measured and stay on the full path.
+/// - Other providers stay on the full path until they are measured: Anthropic and Gemini
+///   take a schema differently, DeepSeek's API may not take one, local CLI models answer text.
 pub(in crate::agent_builder) fn takes_guided_path(model: &ModelChoice, kind: AgentKind) -> bool {
     #[cfg(test)]
     match eval_path::forced() {
@@ -158,19 +165,13 @@ pub(in crate::agent_builder) fn takes_guided_path(model: &ModelChoice, kind: Age
         Some(eval_path::Forced::Full) => return false,
         None => {}
     }
-    GUIDED_PROVIDERS.contains(&model.provider) && kind != AgentKind::Team
+    match model.provider {
+        ModelProvider::Ollama => kind != AgentKind::Team,
+        // Measured on task agents only; chatbots and chains stay on the full path until measured.
+        ModelProvider::Openai => kind == AgentKind::Task,
+        _ => false,
+    }
 }
-
-/// The providers whose builds start on the guided path.
-///
-/// - Ollama: a local model reads about 4,000 tokens, less than the full drafting prompt.
-/// - OpenAI: measured on the same jobs with gpt-4o-mini and gpt-4o (`live_eval`), the guided
-///   path built as many or more working agents for every kind of job, and the app's own
-///   composition keeps sending steps, recipients and response paths right.
-///
-/// Others stay on the full path until they are measured: Anthropic and Gemini take a
-/// schema differently, DeepSeek's API may not take one, and local CLI models answer text.
-const GUIDED_PROVIDERS: &[ModelProvider] = &[ModelProvider::Ollama, ModelProvider::Openai];
 
 /// The measuring harness (`live_eval`) compares both paths on the same model: it forces one.
 #[cfg(test)]
@@ -389,13 +390,16 @@ mod tests {
     }
 
     #[test]
-    fn ollama_and_openai_models_plan_every_kind_but_a_team() {
-        for provider in [ModelProvider::Ollama, ModelProvider::Openai] {
-            let model = ModelChoice { provider, name: "m".into() };
-            for kind in [AgentKind::Task, AgentKind::Chatbot, AgentKind::Chain] {
-                assert!(takes_guided_path(&model, kind), "{provider:?} {kind:?}");
-            }
-            assert!(!takes_guided_path(&model, AgentKind::Team), "{provider:?}");
+    fn ollama_plans_every_kind_but_a_team_and_openai_plans_tasks() {
+        let local = ModelChoice { provider: ModelProvider::Ollama, name: "llama3.2".into() };
+        for kind in [AgentKind::Task, AgentKind::Chatbot, AgentKind::Chain] {
+            assert!(takes_guided_path(&local, kind), "{kind:?}");
+        }
+        assert!(!takes_guided_path(&local, AgentKind::Team));
+        let cloud = ModelChoice { provider: ModelProvider::Openai, name: "gpt-4o-mini".into() };
+        assert!(takes_guided_path(&cloud, AgentKind::Task));
+        for kind in [AgentKind::Chatbot, AgentKind::Chain, AgentKind::Team] {
+            assert!(!takes_guided_path(&cloud, kind), "{kind:?}");
         }
     }
 
