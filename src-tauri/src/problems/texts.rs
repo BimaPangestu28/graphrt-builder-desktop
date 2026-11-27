@@ -230,6 +230,36 @@ impl ProblemTexts {
             "Minta chat di builder supaya agent mengerjakan lebih sedikit per run",
         )
     }
+    pub(super) fn plugin_setup_title(self) -> String {
+        self.word("A plugin is not fully set up yet", "Ada plugin yang belum selesai disiapkan")
+    }
+    pub(super) fn plugin_setup_fix(self) -> String {
+        self.word(
+            "Open the plugin's settings and fill in or fix what its message asks for",
+            "Buka pengaturan plugin, lalu isi atau perbaiki yang diminta pesannya",
+        )
+    }
+    pub(super) fn plugin_refused_title(self) -> String {
+        self.word(
+            "A plugin could not find or may not use what the step asked for",
+            "Plugin tidak menemukan atau tidak boleh memakai yang diminta langkah ini",
+        )
+    }
+    pub(super) fn plugin_refused_fix(self) -> String {
+        self.word(
+            "Check the file or name in its message, and the folders the plugin may use in its settings",
+            "Cek file atau nama di pesannya, dan folder yang boleh dipakai plugin di pengaturannya",
+        )
+    }
+    pub(super) fn rate_limited_title(self) -> String {
+        self.word("A service got too many requests", "Layanan menerima terlalu banyak permintaan")
+    }
+    pub(super) fn rate_limited_fix(self) -> String {
+        self.word(
+            "Wait a few minutes, or ask chat in the builder to send fewer requests at once",
+            "Tunggu beberapa menit, atau minta chat di builder mengirim lebih sedikit permintaan sekaligus",
+        )
+    }
     pub(super) fn invalid_input_title(self) -> String {
         self.word("The run started with missing or wrong details", "Run dimulai dengan data yang kurang atau salah")
     }
