@@ -171,7 +171,7 @@ pub fn parse_opencode_models(stdout: &str) -> Vec<AvailableModel> {
         .map(str::trim)
         .filter(|line| line.contains('/') && !line.contains(char::is_whitespace) && is_valid_model_name(line))
         .take(MAX_LISTED_MODELS)
-        .map(|line| AvailableModel { id: line.to_owned(), display_name: None })
+        .map(|line| AvailableModel { id: line.to_owned(), display_name: None, parameter_millions: None })
         .collect()
 }
 

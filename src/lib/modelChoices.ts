@@ -54,8 +54,30 @@ export function listDefaultModelChoices(statuses: ProviderStatus[], defaultModel
   return [defaultModel, ...configuredRecommendations.filter((choice) => !isDefault(choice))]
 }
 
-/** Model picked when a provider is made the default; Ollama's matches the Welcome screen. */
+/** Ollama model picked when the installed models are not known (the one the Welcome screen tells people to pull). */
 const ollamaDefaultModel: ModelChoice = { provider: 'ollama', name: 'llama3.2' }
+
+/**
+ * The Ollama model to make the default: the largest installed one, since a larger model
+ * drafts and runs agents more reliably. Models of unknown size count as the smallest; ties
+ * keep the catalog's order. Falls back to `llama3.2` when the list is empty or unknown.
+ *
+ * @param catalog - The model lists of the connected providers, or null when not loaded (ProviderModels[] | null)
+ * @returns The Ollama model for new agents (ModelChoice)
+ *
+ * @example
+ * // installed: llama3.2 (3.2B), qwen2.5:14b (14.8B)
+ * recommendedOllamaModel(catalog) // { provider: 'ollama', name: 'qwen2.5:14b' }
+ */
+export function recommendedOllamaModel(catalog: ProviderModels[] | null): ModelChoice {
+  const installedModels = catalog?.find((list) => list.provider === 'ollama' && !list.error)?.models ?? []
+  let strongest: { id: string; size: number } | null = null
+  for (const model of installedModels) {
+    const size = model.parameterMillions ?? 0
+    if (strongest === null || size > strongest.size) strongest = { id: model.id, size }
+  }
+  return strongest ? { provider: 'ollama', name: strongest.id } : ollamaDefaultModel
+}
 
 /**
  * The recommended model of one provider, e.g. `deepseek` → deepseek-chat, a local CLI → `default`.

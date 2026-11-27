@@ -47,6 +47,11 @@ export interface NeedsNewerAppDetails {
   appVersion: string | null
 }
 
+/** `draft_not_valid`: the last technical problem of the draft, for a "details" line. */
+export interface DraftNotValidDetails {
+  problem: string
+}
+
 /** Structured data per error code; codes not listed carry none. */
 export interface BackendErrorDetailsByCode {
   credential_store_unavailable: CredentialStoreUnavailableDetails
@@ -54,6 +59,7 @@ export interface BackendErrorDetailsByCode {
   invalid_graph: InvalidGraphDetails
   builder_busy: null
   needs_newer_app: NeedsNewerAppDetails
+  draft_not_valid: DraftNotValidDetails
 }
 
 /** The details a code carries: its entry in {@link BackendErrorDetailsByCode}, else null. */
@@ -108,6 +114,9 @@ export function parseBackendErrorDetails(code: BackendErrorCode, rawDetails: unk
     const { reason } = rawDetails
     return typeof reason === 'string' && credentialStoreProblemReasons.includes(reason) ? { reason: reason as CredentialStoreProblemReason } : null
   }
+  if (code === 'draft_not_valid') {
+    return typeof rawDetails.problem === 'string' ? { problem: rawDetails.problem } : null
+  }
   if (code === 'needs_newer_app') {
     const { minVersion, appVersion } = rawDetails
     return { minVersion: typeof minVersion === 'string' ? minVersion : null, appVersion: typeof appVersion === 'string' ? appVersion : null }
@@ -136,6 +145,7 @@ function localizedBackendMessage(code: BackendErrorCode, backendMessage: string,
     const reason = (details as CredentialStoreUnavailableDetails | null)?.reason
     return reason ? describeCredentialStoreProblem(reason) : backendMessage
   }
+  if (code === 'draft_not_valid') return messages().newAgent.modelCouldNotWriteAgent
   if (code !== 'needs_newer_app') return backendMessage
   const { minVersion = null, appVersion = null } = (details as NeedsNewerAppDetails | null) ?? {}
   if (appVersion === null) return backendMessage

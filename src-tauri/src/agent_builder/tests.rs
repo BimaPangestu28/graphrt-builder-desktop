@@ -202,8 +202,8 @@ async fn still_invalid_after_max_attempts_fails_and_saves_nothing() {
             .await;
 
     match result {
-        Err(AppError::Workflow(message)) => assert!(message.contains("search"), "{message}"),
-        other => panic!("expected a workflow error, got {other:?}"),
+        Err(AppError::DraftNotValid { problem }) => assert!(problem.contains("search"), "{problem}"),
+        other => panic!("expected a draft that stays invalid, got {other:?}"),
     }
     assert!(db.list_agents().unwrap().is_empty());
     assert_eq!(mock.requests().len(), MAX_REPAIR_ATTEMPTS + 1);
@@ -869,7 +869,10 @@ async fn an_injected_draft_that_never_stops_bypassing_is_not_saved() {
 
     let result = build_agent_with_model(&db, &builder, request("Answer my question", None), &|_| {}).await;
 
-    assert!(matches!(&result, Err(AppError::Workflow(message)) if message.contains("without asking")), "{result:?}");
+    assert!(
+        matches!(&result, Err(AppError::DraftNotValid { problem }) if problem.contains("without asking")),
+        "{result:?}"
+    );
     assert!(db.list_agents().unwrap().is_empty());
 }
 
@@ -950,7 +953,7 @@ async fn an_injected_draft_cannot_trust_a_host() {
     let (_mock, builder) = mock_builder(&[reply.clone(), reply.clone(), reply]);
 
     let refused = revise_agent_with_model(&db, &builder, &agent.id, "Look up the weather", &|_| {}).await;
-    assert!(matches!(refused, Err(AppError::Workflow(_))), "{refused:?}");
+    assert!(matches!(refused, Err(AppError::DraftNotValid { .. })), "{refused:?}");
     assert!(db.trusted_lookup_hosts(&agent.id).unwrap().is_empty());
 
     // A proposal is saved with the draft, but trusts nothing until the user clicks.

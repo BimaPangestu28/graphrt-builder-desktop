@@ -9,6 +9,8 @@
 //! Layout:
 //! - `prompt`: system and user prompts (rules, format guide, fixture examples).
 //! - `extract`: pulls the YAML document and the agent name out of a model reply.
+//! - `guided`: the short path for local models: the model fills in a small plan and the app
+//!   writes the document (new agents made of writing and lookup steps).
 //! - `kind`: infers the agent kind when the user did not pick one.
 //! - `diff`: compares two flow summaries for the revision summary.
 //! - `history`: saves the builder chat (requests and replies) per agent.
@@ -22,9 +24,12 @@
 pub(crate) mod diff;
 pub mod edit_lock;
 mod extract;
+mod guided;
 pub mod history;
 mod kind;
 mod live;
+#[cfg(test)]
+mod live_eval;
 mod prompt;
 pub mod stop;
 #[cfg(test)]
@@ -188,13 +193,25 @@ pub(crate) async fn build_agent_with_model(
     report(on_progress, BuildStage::Understanding, "Understanding the job");
     let kind = request.kind.unwrap_or_else(|| kind::infer_kind(description));
     log::info!("building a {kind:?} agent with {}/{}", provider_name(builder.choice.provider), builder.choice.name);
-    let messages = vec![
-        Message::system(prompt::build_system_prompt(&builder.choice, &saved_secret_names(db))),
-        Message::user(prompt::build_request(description, kind)),
-    ];
-    report(on_progress, BuildStage::Drafting, "Drafting the steps");
-    let trusted_hosts = TrustedHosts::none();
-    let draft = draft_until_valid(builder, messages, on_progress, "Drafting the steps", &trusted_hosts).await?;
+    // A local model fills in a small plan and the app writes the document; anything
+    // that path does not cover, or does not get a usable plan for, is drafted in full.
+    let guided_draft = if guided::takes_guided_path(&builder.choice, kind, description) {
+        guided::draft(builder, description, kind, on_progress).await?
+    } else {
+        None
+    };
+    let draft = match guided_draft {
+        Some(draft) => draft,
+        None => {
+            let messages = vec![
+                Message::system(prompt::build_system_prompt(&builder.choice, &saved_secret_names(db))),
+                Message::user(prompt::build_request(description, kind)),
+            ];
+            report(on_progress, BuildStage::Drafting, "Drafting the steps");
+            let trusted_hosts = TrustedHosts::none();
+            draft_until_valid(builder, messages, on_progress, "Drafting the steps", &trusted_hosts).await?
+        }
+    };
     let name = extract::agent_name(&draft.reply)
         .or_else(|| extract::document_name(&draft.flow_yaml))
         .unwrap_or_else(|| extract::name_from_description(description));
@@ -278,7 +295,7 @@ struct ValidDraft {
 /// back for a fix, up to [`MAX_REPAIR_ATTEMPTS`] times.
 ///
 /// # Errors
-/// `Model` when a model call fails; `Workflow` with the last problem when the
+/// `Model` when a model call fails; `DraftNotValid` with the last problem when the
 /// document is still invalid after every repair attempt.
 async fn draft_until_valid(
     builder: &BuilderModel,
@@ -302,9 +319,7 @@ async fn draft_until_valid(
         };
         log::info!("drafted workflow is invalid (attempt {}): {problem}", repair_attempts + 1);
         if repair_attempts >= MAX_REPAIR_ATTEMPTS {
-            return Err(AppError::Workflow(format!(
-                "the drafted agent is still not valid after {MAX_REPAIR_ATTEMPTS} fixes: {problem}"
-            )));
+            return Err(AppError::DraftNotValid { problem });
         }
         repair_attempts += 1;
         report(on_progress, BuildStage::Repairing, "Fixing a problem in the draft");

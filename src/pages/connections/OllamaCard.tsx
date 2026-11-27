@@ -46,19 +46,19 @@ export function describeOllamaStatus(check: OllamaCheck | null, checkError: Erro
 }
 
 /**
- * The model "Use by default" picks: the recommended one when Ollama has it (Ollama lists it
- * with a tag, e.g. "llama3.2:latest"), otherwise the first model it has.
+ * The model "Use by default" picks: the first one Ollama has. The check lists the largest
+ * model first, and a larger model builds and runs agents more reliably. Without any model
+ * it is the one the app tells people to download.
  *
- * @param models - Model names from the check, not empty (string[])
+ * @param models - Model names from the check, largest first (string[])
  * @returns The model to make the default (ModelChoice)
  *
  * @example
- * pickOllamaModel(['qwen2.5:14b', 'llama3.2:latest']) // { provider: 'ollama', name: 'llama3.2:latest' }
+ * pickOllamaModel(['qwen2.5:14b', 'llama3.2:latest']) // { provider: 'ollama', name: 'qwen2.5:14b' }
  */
 export function pickOllamaModel(models: string[]): ModelChoice {
-  const recommended = recommendedModelFor('ollama')
-  const downloadedName = models.find((name) => name === recommended.name || name.startsWith(`${recommended.name}:`)) ?? models[0]
-  return downloadedName ? { provider: 'ollama', name: downloadedName } : recommended
+  const [strongest] = models
+  return strongest ? { provider: 'ollama', name: strongest } : recommendedModelFor('ollama')
 }
 
 interface OllamaCardProps {

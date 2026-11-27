@@ -6,6 +6,8 @@ export interface AvailableModel {
   id: string
   /** Provider's display name, when it has one (Anthropic, Gemini). */
   displayName: string | null
+  /** Size of a local Ollama model in millions of parameters (3.2B is 3200), when Ollama reports it. */
+  parameterMillions?: number | null
 }
 
 /** The models of one connected provider, or why they could not be listed. */

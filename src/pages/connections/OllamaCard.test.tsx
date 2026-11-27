@@ -37,13 +37,13 @@ describe('describeOllamaStatus', () => {
 })
 
 describe('pickOllamaModel', () => {
-  it('prefers the recommended model when Ollama has it, with or without a tag', () => {
-    expect(pickOllamaModel(['qwen2.5:14b', 'llama3.2:latest'])).toEqual({ provider: 'ollama', name: 'llama3.2:latest' })
+  it('takes the first model, which the check lists largest first', () => {
+    expect(pickOllamaModel(['qwen2.5:14b', 'llama3.2:latest'])).toEqual({ provider: 'ollama', name: 'qwen2.5:14b' })
     expect(pickOllamaModel(['llama3.2'])).toEqual({ provider: 'ollama', name: 'llama3.2' })
   })
 
-  it('takes the first downloaded model otherwise', () => {
-    expect(pickOllamaModel(['qwen2.5:14b', 'mistral:7b'])).toEqual({ provider: 'ollama', name: 'qwen2.5:14b' })
+  it('falls back to the model the app tells people to download', () => {
+    expect(pickOllamaModel([])).toEqual({ provider: 'ollama', name: 'llama3.2' })
   })
 })
 

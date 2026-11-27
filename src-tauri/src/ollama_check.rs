@@ -32,7 +32,8 @@ pub struct OllamaCheck {
     /// The address that was asked, e.g. `http://localhost:11434`.
     pub base_url: String,
     /// Models already downloaded in Ollama that agents can think with (embedding models
-    /// are left out); empty unless it is running.
+    /// are left out), the largest first: a larger model drafts and runs agents more
+    /// reliably, so "Use by default" takes the first. Empty unless it is running.
     pub models: Vec<String>,
 }
 
@@ -42,8 +43,11 @@ pub struct OllamaCheck {
 pub fn summarize(base_url: &str, server_models: Option<Vec<AvailableModel>>, is_installed: bool) -> OllamaCheck {
     let (state, models) = match server_models {
         Some(models) => {
-            let chat_models = models.into_iter().map(|model| model.id).filter(|id| !is_embedding_model(id)).collect();
-            (OllamaState::Running, chat_models)
+            let mut chat_models: Vec<AvailableModel> =
+                models.into_iter().filter(|model| !is_embedding_model(&model.id)).collect();
+            // Stable: models of the same or unknown size keep the server's order.
+            chat_models.sort_by_key(|model| std::cmp::Reverse(model.parameter_millions.unwrap_or(0)));
+            (OllamaState::Running, chat_models.into_iter().map(|model| model.id).collect())
         }
         None if is_installed => (OllamaState::InstalledNotRunning, Vec::new()),
         None => (OllamaState::NotFound, Vec::new()),
@@ -142,7 +146,7 @@ mod tests {
     const BASE_URL: &str = "http://localhost:11434";
 
     fn model(id: &str) -> AvailableModel {
-        AvailableModel { id: id.to_owned(), display_name: None }
+        AvailableModel { id: id.to_owned(), display_name: None, parameter_millions: None }
     }
 
     #[test]
@@ -151,6 +155,19 @@ mod tests {
         assert_eq!(check.state, OllamaState::Running);
         assert_eq!(check.models, ["llama3.2:latest", "qwen2.5:14b"]);
         assert_eq!(check.base_url, BASE_URL);
+    }
+
+    #[test]
+    fn the_largest_model_comes_first() {
+        let sized = |id: &str, millions: Option<u32>| AvailableModel { parameter_millions: millions, ..model(id) };
+        let models = vec![
+            sized("custom:latest", None),
+            sized("llama3.2:latest", Some(3200)),
+            sized("qwen2.5:14b", Some(14800)),
+            sized("qwen2.5:7b", Some(7600)),
+        ];
+        let check = summarize(BASE_URL, Some(models), false);
+        assert_eq!(check.models, ["qwen2.5:14b", "qwen2.5:7b", "llama3.2:latest", "custom:latest"]);
     }
 
     #[test]

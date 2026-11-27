@@ -19,6 +19,9 @@ export const newAgent = defineMessages(
     useClaudeCodeOrCodexOn: 'Use Claude Code or Codex on this computer, a local model with Ollama, or an API key',
     chooseAModelInConnections: 'Choose a model in Connections',
     tryAgain: 'Try again',
+    modelCouldNotWriteAgent:
+      'The AI model could not write a working agent for this job. Try again, describe the job in fewer steps, or choose a stronger model in Connections',
+    technicalDetails: 'Technical details',
     continueToSteps: 'Continue to steps',
     continueWithoutThem: 'Continue without them',
     stepsAppearHereAsTheyAre: 'Steps appear here as they are ready',
@@ -69,6 +72,9 @@ export const newAgent = defineMessages(
     useClaudeCodeOrCodexOn: 'Pakai Claude Code atau Codex di komputer ini, model lokal dengan Ollama, atau API key',
     chooseAModelInConnections: 'Pilih model di Koneksi',
     tryAgain: 'Coba lagi',
+    modelCouldNotWriteAgent:
+      'Model AI belum berhasil menyusun agent yang bisa jalan untuk pekerjaan ini. Coba lagi, jelaskan pekerjaannya dengan langkah yang lebih sedikit, atau pilih model yang lebih kuat di Koneksi',
+    technicalDetails: 'Detail teknis',
     continueToSteps: 'Lanjut ke langkah',
     continueWithoutThem: 'Lanjut tanpa itu',
     stepsAppearHereAsTheyAre: 'Langkah muncul di sini begitu siap',

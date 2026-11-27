@@ -151,6 +151,7 @@ pub fn named_models(models: &[(&str, &str)]) -> Vec<AvailableModel> {
         .map(|(id, display_name)| AvailableModel {
             id: (*id).to_owned(),
             display_name: Some((*display_name).to_owned()),
+            parameter_millions: None,
         })
         .collect()
 }

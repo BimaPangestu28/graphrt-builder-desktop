@@ -23,6 +23,13 @@ pub enum AppError {
     MissingCredentials(String),
     #[error("workflow error: {0}")]
     Workflow(String),
+    /// The builder's model did not produce a working agent after every repair round.
+    /// `problem` is the last technical problem (for a "details" line, not the headline).
+    #[error(
+        "the AI model could not write a working agent for this request. Try again, describe the job in fewer \
+         steps, or choose a stronger model in Connections > AI models"
+    )]
+    DraftNotValid { problem: String },
     #[error("model error: {0}")]
     Model(String),
     #[error("schedule error: {0}")]
@@ -146,6 +153,7 @@ impl AppError {
             Self::CredentialStoreUnavailable(_) => "credential_store_unavailable",
             Self::MissingCredentials(_) => "missing_credentials",
             Self::Workflow(_) => "workflow",
+            Self::DraftNotValid { .. } => "draft_not_valid",
             Self::Model(_) => "model",
             Self::Schedule(_) => "schedule",
             Self::Serialization(_) => "serialization",
@@ -167,6 +175,7 @@ impl AppError {
                 Some(serde_json::json!({ "baseVersion": base_version, "latestVersion": latest_version }))
             }
             Self::CredentialStoreUnavailable(problem) => Some(serde_json::json!({ "reason": problem.reason() })),
+            Self::DraftNotValid { problem } => Some(serde_json::json!({ "problem": problem })),
             Self::InvalidGraph(problems) => {
                 serde_json::to_value(problems).ok().map(|problems| serde_json::json!({ "problems": problems }))
             }
@@ -203,6 +212,18 @@ pub type AppResult<T> = Result<T, AppError>;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_draft_that_stays_invalid_says_what_to_do_and_keeps_the_technical_problem_apart() {
+        let error = AppError::DraftNotValid { problem: "invalid YAML workflow document: line 3".into() };
+        let serialized = serde_json::to_value(&error).unwrap();
+
+        assert_eq!(serialized["code"], "draft_not_valid");
+        assert_eq!(serialized["details"]["problem"], "invalid YAML workflow document: line 3");
+        let message = serialized["message"].as_str().unwrap();
+        assert!(message.contains("Try again") && message.contains("stronger model"), "{message}");
+        assert!(!message.contains("YAML"), "the headline stays in plain words: {message}");
+    }
 
     #[test]
     fn credential_store_problem_serializes_its_reason_and_fix() {

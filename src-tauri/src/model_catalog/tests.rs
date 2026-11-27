@@ -74,7 +74,11 @@ fn anthropic_list_keeps_display_names() {
     let models = parse_models(ModelProvider::Anthropic, &body);
     assert_eq!(
         models[0],
-        AvailableModel { id: "claude-haiku-5-5".into(), display_name: Some("Claude Haiku 5.5".into()) }
+        AvailableModel {
+            id: "claude-haiku-5-5".into(),
+            display_name: Some("Claude Haiku 5.5".into()),
+            parameter_millions: None
+        }
     );
     assert_eq!(models.len(), 2);
 }
@@ -90,7 +94,11 @@ fn gemini_list_keeps_generate_content_models_without_prefix() {
     let models = parse_models(ModelProvider::Gemini, &body);
     assert_eq!(
         models,
-        vec![AvailableModel { id: "gemini-2.5-flash".into(), display_name: Some("Gemini 2.5 Flash".into()) }]
+        vec![AvailableModel {
+            id: "gemini-2.5-flash".into(),
+            display_name: Some("Gemini 2.5 Flash".into()),
+            parameter_millions: None
+        }]
     );
 }
 
@@ -107,6 +115,32 @@ fn deepseek_and_ollama_lists() {
         &json!({"models": [{"name": "llama3.2:latest"}, {"name": "nomic-embed-text:latest"}, {"name": "qwen2.5:14b"}]}),
     );
     assert_eq!(ollama.iter().map(|model| model.id.as_str()).collect::<Vec<_>>(), ["llama3.2:latest", "qwen2.5:14b"]);
+}
+
+#[test]
+fn ollama_models_carry_their_size_when_reported() {
+    let ollama = parse_models(
+        ModelProvider::Ollama,
+        &json!({"models": [
+            {"name": "llama3.2:latest", "details": {"parameter_size": "3.2B"}},
+            {"name": "qwen2.5:14b", "details": {"parameter_size": "14.8B"}},
+            {"name": "smollm:360m", "details": {"parameter_size": "361.82M"}},
+            {"name": "custom:latest", "details": {"parameter_size": "big"}},
+            {"name": "bare:latest"}
+        ]}),
+    );
+    let sizes: Vec<(&str, Option<u32>)> =
+        ollama.iter().map(|model| (model.id.as_str(), model.parameter_millions)).collect();
+    assert_eq!(
+        sizes,
+        [
+            ("bare:latest", None),
+            ("custom:latest", None),
+            ("llama3.2:latest", Some(3200)),
+            ("qwen2.5:14b", Some(14800)),
+            ("smollm:360m", Some(362))
+        ]
+    );
 }
 
 #[test]

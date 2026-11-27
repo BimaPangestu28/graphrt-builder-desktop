@@ -231,7 +231,7 @@ pub fn parse_codex_catalog(stdout: &str) -> Vec<AvailableModel> {
         .filter_map(|entry| {
             let slug = entry.get("slug").and_then(Json::as_str)?.trim();
             let display_name = entry.get("display_name").and_then(Json::as_str).map(str::to_owned);
-            (!slug.is_empty()).then(|| AvailableModel { id: slug.to_owned(), display_name })
+            (!slug.is_empty()).then(|| AvailableModel { id: slug.to_owned(), display_name, parameter_millions: None })
         })
         .collect()
 }
