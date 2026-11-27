@@ -215,6 +215,16 @@ fn bot_reply(detail: &ConversationDetail) -> Result<(String, Vec<FileCard>), Str
     }
 }
 
+/// A reply must not point at a file with a link or a path: the app shows each file as a card,
+/// and a link such as `[Download](sandbox:/reports/x.pdf)` leads nowhere.
+fn no_dead_link(text: &str) -> Result<(), String> {
+    if text.contains("](") || text.contains("sandbox:") {
+        Err(format!("the answer writes a link to the file, which leads nowhere: {}", shorten(text)))
+    } else {
+        Ok(())
+    }
+}
+
 fn shorten(text: &str) -> String {
     let one_line: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
     one_line.chars().take(160).collect()
@@ -247,7 +257,7 @@ async fn csv_to_pdf(model: &str) -> Result<(), String> {
         .filter(|fact| !content.contains(fact))
         .collect();
     if missing.is_empty() {
-        Ok(())
+        no_dead_link(&text)
     } else {
         Err(format!("the PDF lacks {missing:?}; it says: {}", shorten(&content)))
     }
@@ -281,7 +291,7 @@ async fn resize_picture(model: &str) -> Result<(), String> {
         widths.extend(graphrt_image::probe(&bytes).map(|info| info.width));
     }
     if widths.contains(&400) {
-        Ok(())
+        no_dead_link(&text)
     } else {
         Err(format!("no picture 400 px wide handed back (widths {widths:?}); reply: {}", shorten(&text)))
     }

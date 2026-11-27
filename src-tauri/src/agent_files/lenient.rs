@@ -12,12 +12,21 @@
 //!
 //! Nothing else changes: a value that does not fit is passed on as it was and the tool
 //! refuses it with its own message. Paths and other text are never touched.
+//!
+//! The same wrapper adds one sentence to the result of a tool that made a file
+//! ([`SHOWN_BY_THE_APP`]). Measured with gpt-4o-mini: without it, five answers out of five
+//! ended in a link such as `[Download](sandbox:/reports/summary.pdf)`, which leads nowhere,
+//! although the file was already shown as a card under the answer.
 
 use std::sync::{Arc, OnceLock};
 
 use futures::future::BoxFuture;
 use graphrt_core::tool::{ToolCallContext, ToolError, ToolOutput, ToolRuntime, ToolSpec};
 use serde_json::{Map, Value as Json};
+
+/// Added to the result of a tool call that made a file, so the model does not invent a link to it.
+pub(super) const SHOWN_BY_THE_APP: &str = "The app shows this file to the person as a download next to your answer. \
+    Do not write a link or a path to it; just say what you made.";
 
 /// A tool provider whose arguments are put into the types its schema asks for.
 #[derive(Debug)]
@@ -58,7 +67,11 @@ impl ToolRuntime for LenientArguments {
                 Some(parameters) => fit_to_schema(arguments, &parameters),
                 None => arguments,
             };
-            self.tools.call(name, arguments, context).await
+            let mut output = self.tools.call(name, arguments, context).await?;
+            if !output.is_error && !graphrt_core::tool::collect_files(&output.data).is_empty() {
+                output.text = format!("{}\n{SHOWN_BY_THE_APP}", output.text.trim_end());
+            }
+            Ok(output)
         })
     }
 

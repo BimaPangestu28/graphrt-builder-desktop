@@ -941,3 +941,29 @@ async fn cleaning_an_agent_without_files_creates_nothing() {
     assert!(fixture.files.remove_folders_of_missing_agents(&[]).await.is_empty());
     assert!(!fixture.workspace_root().exists());
 }
+
+// --- Tools as real models use them ---
+
+#[tokio::test]
+async fn a_tool_reads_arguments_written_as_text_and_says_the_app_shows_the_file() {
+    let fixture = Fixture::new();
+    let scope = FileScope::conversation("agent-1", "chat-1");
+    fixture.attach(&scope, EVERYTHING, fixture.host_file("logo.png", LOGO_PNG)).await.card.unwrap();
+    let access = FileAccess { files: fixture.files.clone(), scope: scope.clone() };
+    let mut tools = ToolRegistry::new();
+    access.wire(FILES_AGENT_FLOW, &mut tools).unwrap();
+
+    // What a small model sent: the size and the yes/no as text.
+    let arguments = json!({ "path": "uploads/logo.png", "size": "16", "overwrite": "false" });
+    let made = tools.get(IMAGE_PROVIDER).unwrap().call("thumbnail", arguments, ToolCallContext::empty()).await.unwrap();
+    assert!(!made.is_error, "{}", made.text);
+    assert!(made.text.ends_with(lenient::SHOWN_BY_THE_APP), "{}", made.text);
+    assert_eq!(paths_in(&fixture, &scope).await.len(), 2, "the thumbnail was written");
+
+    // A tool that makes no file says nothing about downloads, and an error stays the tool's own.
+    let listed = tools.get(FILES_PROVIDER).unwrap().call("list", json!({}), ToolCallContext::empty()).await.unwrap();
+    assert!(!listed.text.contains(lenient::SHOWN_BY_THE_APP));
+    let arguments = json!({ "path": "uploads/logo.png", "size": "big" });
+    let refused = tools.get(IMAGE_PROVIDER).unwrap().call("thumbnail", arguments, ToolCallContext::empty()).await;
+    assert!(refused.map(|output| output.is_error).unwrap_or(true), "a size that is not a number is still refused");
+}
