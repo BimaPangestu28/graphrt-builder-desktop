@@ -194,6 +194,20 @@ pub(super) fn input_for_given_text(plan: &Plan) -> Option<PlanInput> {
     if plan.job_words.given.is_empty() || plan.inputs.iter().any(|input| input.long_text) {
         return None;
     }
+    // "a short thank-you note" quoted as given when a step writes that very note: it is
+    // what the agent makes, not what the person hands it.
+    let quoted = comparable(&plan.job_words.given);
+    let quoted_words: Vec<&str> = quoted.split(' ').collect();
+    let is_what_a_step_writes = plan.steps.iter().any(|step| {
+        let PlanStep::Write { instruction, .. } = step else { return false };
+        let written = comparable(instruction);
+        let written_words: Vec<&str> = written.split(' ').collect();
+        let shared = quoted_words.iter().filter(|word| written_words.contains(word)).count();
+        shared * 10 >= quoted_words.len() * 7
+    });
+    if is_what_a_step_writes {
+        return None;
+    }
     let mut name = "text".to_owned();
     while plan.inputs.iter().any(|input| input.name == name) {
         name.push('_');
@@ -315,6 +329,14 @@ mod tests {
         );
         plan.inputs.push(input);
         assert_eq!(input_for_given_text(&plan), None, "one is enough");
+
+        // gpt-4o-mini quoted the note it is asked to write as "given".
+        let mut writes_it = plan_with(vec![PlanStep::Write {
+            title: "Write".into(),
+            instruction: "Write a short thank-you note to the customer.".into(),
+        }]);
+        writes_it.job_words.given = "a short thank-you note to a customer".into();
+        assert_eq!(input_for_given_text(&writes_it), None);
     }
 
     #[test]
