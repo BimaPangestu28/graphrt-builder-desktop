@@ -62,6 +62,8 @@ struct Scenario {
     /// A change asked for in the builder chat before the run, and the words the output
     /// must then also contain one of.
     change: Option<(&'static str, &'static [&'static str])>,
+    /// The kind the person picked on the New agent screen; `None` lets the builder infer it.
+    kind: Option<AgentKind>,
 }
 
 const NO_NEEDS: Needs = Needs { asks_first: false, plugin_step: None, paused_schedule: false };
@@ -74,6 +76,7 @@ const SCENARIOS: &[Scenario] = &[
         expected_words: &["jakarta"],
         needs: NO_NEEDS,
         change: None,
+        kind: None,
     },
     Scenario {
         job: "writing",
@@ -82,6 +85,7 @@ const SCENARIOS: &[Scenario] = &[
         expected_words: &["apolog", "sorry", "maaf", "regret"],
         needs: NO_NEEDS,
         change: None,
+        kind: None,
     },
     Scenario {
         job: "writing",
@@ -90,6 +94,7 @@ const SCENARIOS: &[Scenario] = &[
         expected_words: &["pesanan", "kami", "pelanggan", "terlambat"],
         needs: NO_NEEDS,
         change: None,
+        kind: None,
     },
     Scenario {
         job: "writing",
@@ -98,6 +103,7 @@ const SCENARIOS: &[Scenario] = &[
         expected_words: &["rina", "budi"],
         needs: NO_NEEDS,
         change: None,
+        kind: None,
     },
     Scenario {
         job: "writing",
@@ -106,6 +112,7 @@ const SCENARIOS: &[Scenario] = &[
         expected_words: &["wallet", "leather", "dompet"],
         needs: NO_NEEDS,
         change: None,
+        kind: None,
     },
     Scenario {
         job: "lookup (web page)",
@@ -114,6 +121,7 @@ const SCENARIOS: &[Scenario] = &[
         expected_words: &["rice", "nasi"],
         needs: NO_NEEDS,
         change: None,
+        kind: None,
     },
     Scenario {
         job: "send (email plugin)",
@@ -122,6 +130,7 @@ const SCENARIOS: &[Scenario] = &[
         expected_words: &["thank"],
         needs: Needs { plugin_step: Some("email.send_email"), ..NO_NEEDS },
         change: None,
+        kind: None,
     },
     Scenario {
         job: "send (email plugin)",
@@ -131,6 +140,7 @@ const SCENARIOS: &[Scenario] = &[
         expected_words: &["rina", "budi"],
         needs: Needs { plugin_step: Some("email.send_email"), ..NO_NEEDS },
         change: None,
+        kind: None,
     },
     Scenario {
         job: "approval",
@@ -139,6 +149,7 @@ const SCENARIOS: &[Scenario] = &[
         expected_words: &["apolog", "sorry", "maaf", "regret"],
         needs: Needs { asks_first: true, ..NO_NEEDS },
         change: None,
+        kind: None,
     },
     Scenario {
         job: "schedule",
@@ -148,6 +159,7 @@ const SCENARIOS: &[Scenario] = &[
         expected_words: &["jakarta"],
         needs: Needs { paused_schedule: true, ..NO_NEEDS },
         change: None,
+        kind: None,
     },
     Scenario {
         job: "plugin that reads",
@@ -156,6 +168,7 @@ const SCENARIOS: &[Scenario] = &[
         expected_words: &["rupiah", "idr"],
         needs: Needs { plugin_step: Some("currency-rates."), ..NO_NEEDS },
         change: None,
+        kind: None,
     },
     Scenario {
         job: "change in the chat",
@@ -167,6 +180,7 @@ const SCENARIOS: &[Scenario] = &[
             "Write the reply in Indonesian and offer a 10% discount on the next order",
             &["10%", "10 %", "diskon"],
         )),
+        kind: None,
     },
     Scenario {
         job: "change in the chat",
@@ -175,6 +189,25 @@ const SCENARIOS: &[Scenario] = &[
         expected_words: &["jakarta"],
         needs: Needs { asks_first: true, ..NO_NEEDS },
         change: Some(("Ask me to approve the summary before finishing", &["jakarta"])),
+        kind: None,
+    },
+    Scenario {
+        job: "chain",
+        description: "First summarize the meeting notes I paste, then translate the summary into Indonesian",
+        sample_text: NOTES,
+        expected_words: &["pesanan", "terlambat", "pelanggan", "biaya"],
+        needs: NO_NEEDS,
+        change: None,
+        kind: Some(AgentKind::Chain),
+    },
+    Scenario {
+        job: "chain",
+        description: "Draft a reply to a customer complaint I paste, then review the draft for a kind tone and give the final reply",
+        sample_text: NOTES,
+        expected_words: &["apolog", "sorry", "maaf", "regret"],
+        needs: NO_NEEDS,
+        change: None,
+        kind: Some(AgentKind::Chain),
     },
 ];
 
@@ -510,7 +543,7 @@ async fn live_eval() {
             // Runs read the Ollama address from the app's settings.
             db.set_setting(crate::credentials::SETTING_OLLAMA_BASE_URL, &ollama_base_url).unwrap();
             let started = Instant::now();
-            let request = BuildRequest { description: scenario.description.into(), kind: None };
+            let request = BuildRequest { description: scenario.description.into(), kind: scenario.kind };
             let mut build_result = if full_document_only {
                 full_document_build(&db, &builder, request).await
             } else {
