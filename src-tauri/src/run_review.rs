@@ -153,6 +153,9 @@ pub struct AnsweredApproval {
     pub node_id: String,
     pub frame: String,
     pub action: String,
+    /// The button's title from the question that was answered ("Buat invoice"); `None` when
+    /// the question gave none, and the screen shows `action`.
+    pub action_title: Option<String>,
     /// Item index when the node runs in a container.
     pub index: Option<u64>,
     pub answered_at: String,
@@ -468,11 +471,21 @@ fn container_resume_state<'a>(frame: &'a Json, owner: &str) -> Option<&'a Json> 
 }
 
 fn read_answered(records: &[RunEventRecord], steps: &HashMap<String, FlowStep>) -> Vec<AnsweredApproval> {
+    // The latest question asked per (node, frame): its buttons name the answer given later.
+    let mut asked: HashMap<(String, String), &Json> = HashMap::new();
     records
         .iter()
-        .filter(|record| text_field(&record.event, "type") == Some("node_succeeded"))
         .filter_map(|record| {
             let event = &record.event;
+            if text_field(event, "type") == Some("node_paused") {
+                if let (Some(node_id), Some(data)) = (text_field(event, "node_id"), event.pointer("/reason/data")) {
+                    asked.insert((node_id.to_owned(), text_field(event, "frame").unwrap_or_default().to_owned()), data);
+                }
+                return None;
+            }
+            if text_field(event, "type") != Some("node_succeeded") {
+                return None;
+            }
             let node_id = text_field(event, "node_id")?;
             let is_human_input = steps.get(node_id).is_some_and(|step| step.node_type == HUMAN_INPUT_NODE_KIND);
             if !is_human_input {
@@ -480,10 +493,16 @@ fn read_answered(records: &[RunEventRecord], steps: &HashMap<String, FlowStep>) 
             }
             let action = event.get("outputs").and_then(|outputs| text_field(outputs, "action"))?;
             let frame = text_field(event, "frame").unwrap_or_default();
+            let action_title = asked
+                .get(&(node_id.to_owned(), frame.to_owned()))
+                .and_then(|data| read_actions(data).into_iter().find(|known| known.id == action))
+                .map(|known| known.title)
+                .filter(|title| !title.trim().is_empty() && title != action);
             Some(AnsweredApproval {
                 node_id: node_id.to_owned(),
                 frame: frame.to_owned(),
                 action: action.to_owned(),
+                action_title,
                 index: parse_frame(frame).and_then(|segments| segments.last().map(|segment| segment.index)),
                 answered_at: record.created_at.clone(),
             })
