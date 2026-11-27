@@ -84,17 +84,45 @@ it atomically as `<app data>/runtime/node-<version>/node`, after running `node -
 
 ## Before opening a pull request
 
+**Run `scripts/check.sh` before every push.** It runs the checks CI runs on Linux, in
+the same order, and stops at the first one that fails:
+
 ```sh
-pnpm typecheck
-pnpm test
-pnpm build
-cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
-cargo test --manifest-path src-tauri/Cargo.toml
+scripts/check.sh            # everything below
+scripts/check.sh --bundle   # also compile the release app, like the "desktop bundle" job
 ```
 
-CI builds a pull request on Linux and Windows. macOS runs on `main` and every night;
-add the `macos` label to a pull request that changes Apple-only code to run it there too.
+| Step | Command |
+| --- | --- |
+| Versions agree | `scripts/check-version.sh` |
+| Dependencies | `pnpm install --frozen-lockfile` |
+| Types | `pnpm typecheck` |
+| Frontend tests | `pnpm test` |
+| Frontend build (clippy needs `dist/`) | `pnpm build` |
+| Rust format | `cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check` |
+| Rust lints | `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings` |
+| Rust tests | `cargo test --manifest-path src-tauri/Cargo.toml` |
+
+A push that fails one of these costs a CI run of about ten minutes to tell you what the
+script tells you locally. On Windows, run it from Git Bash.
+
+CI checks a pull request on Linux and Windows: clippy and the tests run on both, the
+app is bundled on Linux. Two slower parts are optional and run on `main` after the merge:
+
+- **Windows bundle**: add the `windows-bundle` label to a pull request that changes how
+  the Windows app is built (`tauri.conf.json`, `build.rs`, bundled resources, the
+  installer). The bundle then also has to pass before the pull request can be queued.
+  It does not run again in the merge queue.
+- **macOS**: add the `macos` label to a pull request that changes Apple-only code. It
+  also runs every night.
+
+Adding any label to an open pull request restarts its CI run, so add labels when you
+open it.
+
+Pull requests reach `main` through the merge queue: once the `ci-ok` check is green, a
+maintainer queues the pull request (`gh pr merge --squash --auto`). The queue runs CI
+again on top of `main` and of the pull requests queued before it, and merges only when
+that run is green.
 
 ## Project layout
 

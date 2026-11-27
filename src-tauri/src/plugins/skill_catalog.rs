@@ -40,6 +40,12 @@ impl PluginService {
         }
     }
 
+    /// The skills of the catalog the app already knows (fetched this session, else the
+    /// saved and verified copy), without fetching. Empty when no catalog is known.
+    pub(crate) fn known_catalog_skills(&self) -> Vec<CatalogSkill> {
+        self.known_catalog().map(|index| index.skills.clone()).unwrap_or_default()
+    }
+
     /// Downloads the archive of catalog skill `name` and checks it against the checksum of
     /// the signed index. Returns the catalog entry and the verified bytes.
     ///

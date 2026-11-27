@@ -297,3 +297,5 @@ export type BackendErrorCode =
   | 'invalid_graph'
   /** revise_agent: the user stopped the change ("Stop the builder"); nothing was saved. */
   | 'stopped'
+  /** install / update / sideload: the plugin needs a newer version of the app (`details.minVersion`). */
+  | 'needs_newer_app'

@@ -5,7 +5,7 @@ import { Card, Icon } from '@/components/ui'
 import { useT } from '@/i18n'
 import { routePaths } from '@/routes'
 
-export type SkillWizardStep = 'describe' | 'about' | 'tools' | 'safety' | 'agents'
+export type SkillWizardStep = 'describe' | 'draft' | 'about' | 'tools' | 'safety' | 'agents'
 
 interface WizardFrameProps {
   title: string

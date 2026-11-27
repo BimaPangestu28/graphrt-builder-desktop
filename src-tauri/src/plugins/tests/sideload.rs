@@ -254,7 +254,7 @@ async fn local_plugins_are_never_matched_against_catalog_updates() {
     let entry = catalog.plugins.iter().find(|entry| entry.name == PLUGIN).unwrap();
     assert!(!entry.update_available && entry.installed_version.is_none(), "{entry:?}");
     let index = fixture.service.cached_catalog().unwrap();
-    assert_eq!(plan_updates(&index, &fixture.service.catalog_matched_plugins()), Default::default());
+    assert_eq!(plan_updates(&index, &fixture.service.catalog_matched_plugins(), APP_VERSION), Default::default());
     assert!(fixture.service.update_all_ready().await.unwrap().updated.is_empty());
 
     let outcome = fixture.service.run_auto_update_cycle().await;

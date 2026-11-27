@@ -155,7 +155,8 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         events: Arc::new(plugins::events::TauriPluginEventSink::new(app.handle().clone())),
     }));
     plugins.activate_installed();
-    let skills = Arc::new(skills::SkillService::new(&data_dir, plugins.clone()));
+    let draft_model = Arc::new(skills::DefaultDraftModel { db: db.clone(), credentials: credentials.clone() });
+    let skills = Arc::new(skills::SkillService::new(&data_dir, plugins.clone(), draft_model));
     skills.activate();
     let learning = Arc::new(learning::LearningService::new(&data_dir, db.clone(), credentials.clone()));
     learning.activate();
@@ -388,6 +389,7 @@ pub fn run() {
             commands::skills::list_skill_catalog,
             commands::skills::review_catalog_skill,
             commands::skills::install_catalog_skill,
+            commands::skills::draft_skill,
             commands::skills::review_authored_skill,
             commands::skills::install_authored_skill,
             commands::skills::set_skill_permissions,

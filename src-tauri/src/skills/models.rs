@@ -179,14 +179,37 @@ pub struct SkillCatalog {
     pub from_cache: bool,
 }
 
-/// "Create a skill": what the person typed.
+/// "Create a skill": the draft as the person left it after reading and editing it.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthoredSkillInput {
     /// The skill's name as people say it, e.g. "Refund policy".
     pub title: String,
     /// When the agent should use it, in one or two sentences.
-    pub when_to_use: String,
-    /// What to do, one step per entry.
-    pub steps: Vec<String>,
+    pub description: String,
+    /// What the agent should do (Markdown).
+    pub instructions: String,
+    /// Tools the draft asks for; each must be one this computer has. Asking allows nothing.
+    #[serde(default)]
+    pub requested_tools: Vec<String>,
+}
+
+/// What a draft is written from.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SkillDraftSource {
+    /// What the agent should do, in the person's own words.
+    Description { text: String },
+    /// A pasted conversation that shows how it should go.
+    Conversation { text: String },
+}
+
+/// A draft the model wrote, for the person to read and edit.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillDraftView {
+    pub title: String,
+    pub description: String,
+    pub instructions: String,
+    pub requested_tools: Vec<String>,
 }

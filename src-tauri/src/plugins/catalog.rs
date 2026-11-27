@@ -435,6 +435,13 @@ pub(crate) fn is_newer_version(candidate: &str, installed: &str) -> bool {
     }
 }
 
+/// Whether `version` is `minimum` or newer, by the rules of [`is_newer_version`].
+/// `None` when `minimum` is not a version; a `version` that is not one is never new enough.
+pub(crate) fn version_is_at_least(version: &str, minimum: &str) -> Option<bool> {
+    let minimum = parse_version(minimum)?;
+    Some(parse_version(version).is_some_and(|version| version >= minimum))
+}
+
 /// `1.2.3` → ([1, 2, 3], is_release); `1.2.3-beta.1` → ([1, 2, 3], false).
 fn parse_version(version: &str) -> Option<(Vec<u64>, bool)> {
     let version = version.trim().trim_start_matches('v');
@@ -497,7 +504,15 @@ pub(super) struct CatalogOrigin {
 
 /// The catalog with each plugin's install state. `index` must already be resolved
 /// (v2 nodes filled from details, see `details::resolve_catalog`).
-pub(super) fn catalog_view(index: &CatalogIndex, installed: &[PluginState], origin: CatalogOrigin) -> PluginCatalog {
+///
+/// `app_version` is this app's version: an entry that needs a newer one says so in
+/// `needs_newer_app` (see `app_requirement`).
+pub(super) fn catalog_view(
+    index: &CatalogIndex,
+    installed: &[PluginState],
+    origin: CatalogOrigin,
+    app_version: &str,
+) -> PluginCatalog {
     let plugins = index
         .plugins
         .iter()
@@ -529,6 +544,10 @@ pub(super) fn catalog_view(index: &CatalogIndex, installed: &[PluginState], orig
                 publisher: plugin.publisher.clone(),
                 repository_url: plugin.repository_url.clone(),
                 mcp_server: plugin.mcp_server.clone(),
+                needs_newer_app: super::app_requirement::newer_app_needed(
+                    plugin.min_app_version.as_deref(),
+                    app_version,
+                ),
             }
         })
         .collect();

@@ -93,7 +93,7 @@ async fn the_plan_holds_back_updates_asking_for_more_permissions() {
     fixture.publish_with_env("1.1.0", tarball_at("1.1.0", false), &["FIXTURE_ECHO_TOKEN"]);
     let same_permissions = fixture.service.catalog(true).await.unwrap();
     assert!(!same_permissions.plugins[0].update_needs_approval);
-    let plan = plan_updates(&fixture.service.cached_catalog().unwrap(), &installed);
+    let plan = plan_updates(&fixture.service.cached_catalog().unwrap(), &installed, APP_VERSION);
     assert_eq!(plan.ready.len(), 1);
     assert_eq!(plan.ready[0].change.from_version, "1.0.0");
     assert_eq!(plan.ready[0].change.to_version, "1.1.0");
@@ -102,13 +102,13 @@ async fn the_plan_holds_back_updates_asking_for_more_permissions() {
     fixture.publish_with_env("1.1.0", tarball_at("1.1.0", true), &["FIXTURE_ECHO_TOKEN", EXTRA_SETTING]);
     let more_permissions = fixture.service.catalog(true).await.unwrap();
     assert!(more_permissions.plugins[0].update_available && more_permissions.plugins[0].update_needs_approval);
-    let plan = plan_updates(&fixture.service.cached_catalog().unwrap(), &installed);
+    let plan = plan_updates(&fixture.service.cached_catalog().unwrap(), &installed, APP_VERSION);
     assert!(plan.ready.is_empty());
     assert_eq!(plan.needs_approval, vec![PLUGIN.to_owned()]);
 
     fixture.publish_with_env("1.0.0", good_tarball(), &["FIXTURE_ECHO_TOKEN"]);
     fixture.service.catalog(true).await.unwrap();
-    assert_eq!(plan_updates(&fixture.service.cached_catalog().unwrap(), &installed), Default::default());
+    assert_eq!(plan_updates(&fixture.service.cached_catalog().unwrap(), &installed, APP_VERSION), Default::default());
 }
 
 #[tokio::test]

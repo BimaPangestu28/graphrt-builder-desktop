@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+    # `labeled` starts a run when the `windows-bundle` label is added to an open pull
+    # request. Any other label restarts the run too: a run that skipped its jobs for an
+    # unrelated label would report a green `ci-ok` for a commit nobody tested.
+    types: [opened, synchronize, reopened, labeled]
   # The merge queue tests each pull request on top of main and of the ones queued before
   # it, so two pull requests that are green on their own cannot turn main red together.
   merge_group:
@@ -44,6 +48,15 @@ jobs:
       pull-requests: read # dorny/paths-filter lists the PR's files through the API
     outputs:
       code: ${{ github.event_name != 'pull_request' || steps.filter.outputs.code == 'true' }}
+      # The systems the `bundle` job builds for. The Windows bundle is the slowest job
+      # (about 7.5 minutes), so pull requests and the merge queue leave it out: the `rust`
+      # job still compiles, lints and tests the Windows code there. It runs on pushes to
+      # main, on manual runs and on a pull request labelled `windows-bundle` (for changes
+      # to the Windows build itself: tauri.conf.json, build.rs, bundled resources).
+      bundle-platforms: >-
+        ${{ ((github.event_name != 'pull_request' && github.event_name != 'merge_group')
+        || contains(github.event.pull_request.labels.*.name, 'windows-bundle'))
+        && '["windows-latest", "ubuntu-22.04"]' || '["ubuntu-22.04"]' }}
     steps:
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
@@ -155,7 +168,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [windows-latest, ubuntu-22.04]
+        # Linux always; Windows only where `changes` adds it (see `bundle-platforms`).
+        platform: ${{ fromJSON(needs.changes.outputs.bundle-platforms) }}
     # macOS is not built here: its runners are slow to start and made every pull request
     # wait. The same steps run on macOS in macos.yml (main, nightly, manual runs and pull
     # requests labelled `macos`), and nothing here waits for them.
@@ -193,6 +207,8 @@ jobs:
   # The one check to require in the branch ruleset (and so in the merge queue). It always
   # runs, fails when a job above failed or was cancelled, and passes when each one
   # succeeded or was skipped (a docs-only pull request skips the jobs gated on `code`).
+  # A matrix entry that was left out (the Windows bundle on a pull request) creates no job,
+  # so `bundle` then reports the result of the Linux bundle alone.
   # It does not depend on macOS (macos.yml): a red macOS run is reported, it blocks no merge.
   ci-ok:
     name: ci-ok

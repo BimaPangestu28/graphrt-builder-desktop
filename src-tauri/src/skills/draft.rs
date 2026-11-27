@@ -1,39 +1,112 @@
-//! Turning "Create a skill" into a `SKILL.md`.
+//! "Create a skill": drafting one with a model, and checking what the person then edited.
 //!
-//! This is the whole of drafting for now: a form (name, when to use it, steps) becomes
-//! the file the runtime reads. The result then goes through the same check and install
-//! as any other skill. When the runtime can draft a skill from plain language or example
-//! conversations, [`draft_skill`] is the one function to replace: everything after it
-//! only sees a [`SkillDraft`].
+//! The runtime does the drafting (`graphrt_skill::draft_skill`): a description in plain
+//! words, or an example conversation, goes to the person's own model as quoted material
+//! and comes back as a draft. The person reads and edits it, and what they send back is
+//! checked again from scratch ([`checked_draft`], through `SkillDraft::new`) before the
+//! usual review and install. A draft has no special standing: the same safety check runs
+//! on it, it may only ask for tools this computer has, and asking allows nothing.
+//!
+//! Without a model the person can write the draft themselves; it takes the same path.
 
-use super::models::AuthoredSkillInput;
+use graphrt_core::text_model::TextModel;
+use graphrt_skill::{DraftRequest, DraftSource, SkillDraft, Turn};
+
+use super::models::{AuthoredSkillInput, SkillDraftSource, SkillDraftView};
+use crate::crash_reports::scrub::Scrubber;
 use crate::error::{AppError, AppResult};
+use crate::plugins::display_name::humanize_plugin_name;
 
-/// Longest title accepted, in characters.
+/// Longest name accepted, in characters.
 pub(crate) const MAX_TITLE_CHARS: usize = 60;
-/// Longest "when to use it" text, in characters (it becomes the skill's description).
-pub(crate) const MAX_WHEN_TO_USE_CHARS: usize = 600;
-/// Most steps, and the longest one in characters.
-pub(crate) const MAX_STEPS: usize = 30;
-pub(crate) const MAX_STEP_CHARS: usize = 1_000;
+/// Longest source text (description or conversation) accepted, in characters.
+pub(crate) const MAX_SOURCE_CHARS: usize = 24_000;
+/// A line of a pasted conversation starts a new turn when it begins with a short
+/// speaker label before a colon ("Customer: ...").
+const LONGEST_SPEAKER_LABEL_CHARS: usize = 24;
+/// Who a line without a speaker label is attributed to.
+const UNLABELLED_SPEAKER: &str = "user";
 const MAX_NAME_CHARS: usize = 64;
 
-/// A drafted skill: its technical name and the text of its `SKILL.md`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SkillDraft {
-    pub name: String,
+/// A draft the person approved the wording of: checked by the runtime, with the name
+/// people see.
+#[derive(Debug, Clone)]
+pub(crate) struct CheckedDraft {
     pub title: String,
-    pub skill_file: String,
-    /// The instructions part of the file, for the review screen.
-    pub instructions: String,
+    pub draft: SkillDraft,
 }
 
-/// Drafts a skill from the form.
+/// Asks `model` to draft a skill from `source`. The draft may ask only for tools in
+/// `available_tools`. Secret-looking text is removed from the source first.
 ///
 /// # Errors
-/// `InvalidInput` when the title has no letter or digit to name the skill with, a field
-/// is empty or too long, or there is no step.
-pub(crate) fn draft_skill(input: &AuthoredSkillInput) -> AppResult<SkillDraft> {
+/// `InvalidInput` for an empty or too long source; `Model` when the model fails or its
+/// answer is not a skill.
+pub(crate) async fn draft_from_source(
+    model: &dyn TextModel,
+    source: &SkillDraftSource,
+    available_tools: Vec<String>,
+) -> AppResult<SkillDraftView> {
+    let text = match source {
+        SkillDraftSource::Description { text } | SkillDraftSource::Conversation { text } => text.trim(),
+    };
+    if text.is_empty() {
+        return Err(invalid("Describe what the agent should do first"));
+    }
+    if text.chars().count() > MAX_SOURCE_CHARS {
+        return Err(invalid(&format!("That is longer than {MAX_SOURCE_CHARS} characters; shorten it")));
+    }
+    let text = Scrubber::new(None).scrub(text);
+    let draft_source = match source {
+        SkillDraftSource::Description { .. } => DraftSource::Description(text),
+        SkillDraftSource::Conversation { .. } => DraftSource::Conversation(conversation_turns(&text)),
+    };
+    let request = DraftRequest { source: draft_source, available_tools };
+    let draft = graphrt_skill::draft_skill(model, &request).await.map_err(|error| match error {
+        graphrt_skill::Error::Draft(message) => AppError::Model(message),
+        other => AppError::Model(other.to_string()),
+    })?;
+    Ok(SkillDraftView {
+        title: humanize_plugin_name(&draft.name),
+        description: draft.description,
+        instructions: draft.body,
+        requested_tools: draft.requested_tools,
+    })
+}
+
+/// The turns of a pasted conversation. A line that starts with a short label and a colon
+/// ("Customer: hello") starts a turn of that speaker; other lines continue the turn before.
+pub(crate) fn conversation_turns(text: &str) -> Vec<Turn> {
+    let mut turns: Vec<Turn> = Vec::new();
+    for line in text.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        let labelled = line.split_once(':').filter(|(label, said)| {
+            let label = label.trim();
+            !label.is_empty()
+                && label.chars().count() <= LONGEST_SPEAKER_LABEL_CHARS
+                // "https://..." is a link, not a speaker called "https".
+                && !said.starts_with("//")
+                && !said.trim().is_empty()
+        });
+        match (labelled, turns.last_mut()) {
+            (Some((label, said)), _) => {
+                turns.push(Turn { role: label.trim().to_owned(), text: said.trim().to_owned() })
+            }
+            (None, Some(previous)) => {
+                previous.text.push('\n');
+                previous.text.push_str(line);
+            }
+            (None, None) => turns.push(Turn { role: UNLABELLED_SPEAKER.to_owned(), text: line.to_owned() }),
+        }
+    }
+    turns
+}
+
+/// Checks a draft as the person left it: a usable name, a line saying when to use it,
+/// instructions, and everything the runtime checks in a skill file.
+///
+/// # Errors
+/// `InvalidInput` naming what is missing or not allowed.
+pub(crate) fn checked_draft(input: &AuthoredSkillInput) -> AppResult<CheckedDraft> {
     let title = single_line(&input.title);
     if title.is_empty() {
         return Err(invalid("Give the skill a name"));
@@ -42,32 +115,16 @@ pub(crate) fn draft_skill(input: &AuthoredSkillInput) -> AppResult<SkillDraft> {
         return Err(invalid(&format!("The name is longer than {MAX_TITLE_CHARS} characters")));
     }
     let name = skill_name(&title).ok_or_else(|| invalid("Use at least one letter (a to z) or digit in the name"))?;
-    let when_to_use = single_line(&input.when_to_use);
-    if when_to_use.is_empty() {
+    let description = single_line(&input.description);
+    if description.is_empty() {
         return Err(invalid("Say when the agent should use this skill"));
     }
-    if when_to_use.chars().count() > MAX_WHEN_TO_USE_CHARS {
-        return Err(invalid(&format!("\"When to use it\" is longer than {MAX_WHEN_TO_USE_CHARS} characters")));
+    if input.instructions.trim().is_empty() {
+        return Err(invalid("Write what the agent should do"));
     }
-    let steps: Vec<String> = input.steps.iter().map(|step| single_line(step)).filter(|step| !step.is_empty()).collect();
-    if steps.is_empty() {
-        return Err(invalid("Add at least one step"));
-    }
-    if steps.len() > MAX_STEPS {
-        return Err(invalid(&format!("A skill can have at most {MAX_STEPS} steps")));
-    }
-    if steps.iter().any(|step| step.chars().count() > MAX_STEP_CHARS) {
-        return Err(invalid(&format!("A step is longer than {MAX_STEP_CHARS} characters")));
-    }
-    let numbered: Vec<String> =
-        steps.iter().enumerate().map(|(index, step)| format!("{}. {step}", index + 1)).collect();
-    let instructions = format!("# {title}\n\n## When to use\n\n{when_to_use}\n\n## Steps\n\n{}\n", numbered.join("\n"));
-    let skill_file = format!(
-        "---\nname: {name}\ndescription: {}\nmetadata:\n  title: {}\n---\n\n{instructions}",
-        yaml_string(&when_to_use),
-        yaml_string(&title),
-    );
-    Ok(SkillDraft { name, title, skill_file, instructions })
+    let draft = SkillDraft::new(&name, &description, input.instructions.trim(), &input.requested_tools)
+        .map_err(|error| AppError::InvalidInput(error.to_string()))?;
+    Ok(CheckedDraft { title, draft })
 }
 
 fn invalid(message: &str) -> AppError {
@@ -77,11 +134,6 @@ fn invalid(message: &str) -> AppError {
 /// `text` on one line: line breaks and runs of white space become single spaces.
 fn single_line(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-/// A double-quoted YAML scalar (JSON string escaping is valid YAML).
-fn yaml_string(text: &str) -> String {
-    serde_json::Value::String(text.to_owned()).to_string()
 }
 
 /// The technical name for `title`: lowercase letters and digits, other characters as

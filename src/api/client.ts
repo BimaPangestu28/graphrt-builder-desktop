@@ -39,12 +39,21 @@ export interface CredentialStoreUnavailableDetails {
   reason: CredentialStoreProblemReason
 }
 
+/** `needs_newer_app`: the plugin needs a newer version of the app; nothing was installed. */
+export interface NeedsNewerAppDetails {
+  /** The oldest app version that can use the plugin, or null when only "a newer one" is known. */
+  minVersion: string | null
+  /** The version of the app that refused. */
+  appVersion: string | null
+}
+
 /** Structured data per error code; codes not listed carry none. */
 export interface BackendErrorDetailsByCode {
   credential_store_unavailable: CredentialStoreUnavailableDetails
   version_conflict: VersionConflictDetails
   invalid_graph: InvalidGraphDetails
   builder_busy: null
+  needs_newer_app: NeedsNewerAppDetails
 }
 
 /** The details a code carries: its entry in {@link BackendErrorDetailsByCode}, else null. */
@@ -99,18 +108,39 @@ export function parseBackendErrorDetails(code: BackendErrorCode, rawDetails: unk
     const { reason } = rawDetails
     return typeof reason === 'string' && credentialStoreProblemReasons.includes(reason) ? { reason: reason as CredentialStoreProblemReason } : null
   }
+  if (code === 'needs_newer_app') {
+    const { minVersion, appVersion } = rawDetails
+    return { minVersion: typeof minVersion === 'string' ? minVersion : null, appVersion: typeof appVersion === 'string' ? appVersion : null }
+  }
   return null
 }
 
 /**
  * What is wrong with the system keyring and how to fix it, in the user's language.
- * Screens show `error.message` as is, so the translation happens where the error is built.
  */
 function describeCredentialStoreProblem(reason: CredentialStoreProblemReason): string {
   const t = messages().platform
   if (reason === 'no_default_keyring') return t.keyringNoDefault
   if (reason === 'not_running') return t.keyringNotRunning
   return t.keyringLocked
+}
+
+/**
+ * What a backend error says on screen. The backend writes English; an error people can act
+ * on without reading a technical reason is said in the app's language instead. Screens show
+ * `error.message` as is, so the translation happens where the error is built.
+ */
+function localizedBackendMessage(code: BackendErrorCode, backendMessage: string, details: BackendErrorDetails): string {
+  if (code === 'credential_store_unavailable') {
+    // The backend's own wording stays the fallback for a reason this version does not know.
+    const reason = (details as CredentialStoreUnavailableDetails | null)?.reason
+    return reason ? describeCredentialStoreProblem(reason) : backendMessage
+  }
+  if (code !== 'needs_newer_app') return backendMessage
+  const { minVersion = null, appVersion = null } = (details as NeedsNewerAppDetails | null) ?? {}
+  if (appVersion === null) return backendMessage
+  const t = messages().plugins
+  return minVersion === null ? t.errorNeedsNewerApp(appVersion) : t.errorNeedsAppVersion(minVersion, appVersion)
 }
 
 /**
@@ -124,9 +154,7 @@ export function toBackendError(rawError: unknown): BackendError {
   if (isRecord(rawError) && typeof rawError.code === 'string' && typeof rawError.message === 'string') {
     const code = rawError.code as BackendErrorCode
     const details = parseBackendErrorDetails(code, rawError.details)
-    // The backend's own wording (English) stays the fallback for a reason this version does not know.
-    const message = details && 'reason' in details ? describeCredentialStoreProblem(details.reason) : rawError.message
-    return new BackendError(code, message, details)
+    return new BackendError(code, localizedBackendMessage(code, rawError.message, details), details)
   }
   return new BackendError('internal', typeof rawError === 'string' ? rawError : genericErrorMessage)
 }

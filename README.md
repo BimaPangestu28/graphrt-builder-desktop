@@ -123,6 +123,7 @@ Open `#/screens` to jump to any screen from the design.
 | `pnpm build` | Typecheck and build the web UI into `dist/` |
 | `pnpm test` | Run the Vitest suite |
 | `pnpm typecheck` | TypeScript only |
+| `scripts/check.sh` | Run every check CI runs on Linux (types, tests, build, `cargo fmt`, clippy, `cargo test`). Run it before every push |
 
 ## Project structure
 ```

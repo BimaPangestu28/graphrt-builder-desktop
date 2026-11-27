@@ -121,8 +121,11 @@ pub(super) fn stage_local_plugin(plugins_dir: &Path, source: &LocalPluginSource)
 
 /// The plugin name from a staged folder's manifest.
 fn manifest_name(dir: &Path) -> AppResult<String> {
-    let manifest = LoadedManifest::from_dir(dir)
-        .map_err(|error| AppError::InvalidInput(format!("the folder is not a graphrt plugin: {error}")))?;
+    let manifest = LoadedManifest::from_dir(dir).map_err(|error| {
+        super::app_requirement::manifest_refusal(error.to_string(), |refusal| {
+            format!("the folder is not a graphrt plugin: {refusal}")
+        })
+    })?;
     let name = manifest.manifest.name;
     if !graphrt_plugin::is_valid_name(&name) {
         return Err(AppError::InvalidInput(format!("`{name}` is not a valid plugin name")));
