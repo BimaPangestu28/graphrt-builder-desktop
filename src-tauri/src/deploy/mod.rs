@@ -71,6 +71,10 @@ pub const NOT_AVAILABLE_MESSAGE: &str = "Online deploy is not available yet. It 
 pub const ONLINE_FEATURES_NEED_NEWER_TOOLS: &str = "The chat page and following an agent from your phone need newer \
      graphrt tools than this version of the app can download. They come with an app update. Turn them off to put \
      the agent online now.";
+/// Why WhatsApp Business cannot be put online with the installed graphrt tools.
+pub const WHATSAPP_NEEDS_NEWER_TOOLS: &str = "Answering customers on WhatsApp Business online needs newer graphrt \
+     tools than this version of the app can download. It comes with an app update. Turn WhatsApp Business off to put \
+     the agent online now.";
 /// Settings key prefix of an account's non-secret summary.
 const ACCOUNT_SUMMARY_SETTING_PREFIX: &str = "deploy_account_summary:";
 const CLI_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(15 * 60);
@@ -303,7 +307,7 @@ pub struct DeployService {
     /// One cancel signal per agent with a deploy running.
     running_deploys: Mutex<HashMap<String, Arc<tokio::sync::Notify>>>,
     /// Whether each graphrt executable asked so far knows the chat and phone flags.
-    cli_features: Mutex<HashMap<PathBuf, bool>>,
+    cli_features: Mutex<HashMap<PathBuf, cli::CliAbilities>>,
 }
 
 impl std::fmt::Debug for DeployService {
@@ -392,15 +396,51 @@ impl DeployService {
     /// Whether the installed graphrt tools know the flags of the chat page and the phone page
     /// (asked once per executable with `graphrt deploy --help`).
     fn cli_knows_online_features(&self) -> bool {
-        let Some(executable) = self.installed_cli() else { return false };
+        self.cli_abilities().online_features
+    }
+
+    /// What the installed graphrt tools can put online (asked once per executable).
+    fn cli_abilities(&self) -> cli::CliAbilities {
+        let Some(executable) = self.installed_cli() else { return cli::CliAbilities::default() };
         if let Some(known) = self.cli_features.lock().ok().and_then(|cache| cache.get(&executable).copied()) {
             return known;
         }
-        let knows = cli::knows_online_features(&executable);
+        let abilities = cli::abilities(&executable);
         if let Ok(mut cache) = self.cli_features.lock() {
-            cache.insert(executable, knows);
+            cache.insert(executable, abilities);
         }
-        knows
+        abilities
+    }
+
+    /// Whether the installed graphrt tools can put a chatbot online with WhatsApp Business.
+    pub fn cli_knows_channels(&self) -> bool {
+        self.cli_abilities().channels
+    }
+
+    /// The chatbots whose online copy answers on WhatsApp Business: put online with it on,
+    /// and not failed.
+    pub fn whatsapp_online_agents(&self) -> Vec<String> {
+        let agents = self.db.agents_with_setting(ONLINE_FEATURES_KEY).unwrap_or_default();
+        agents
+            .into_iter()
+            .filter(|agent_id| self.online_features(agent_id).is_ok_and(|features| features.whatsapp))
+            .filter(|agent_id| {
+                self.db.get_deployment(agent_id).ok().flatten().is_some_and(|record| {
+                    record.url.is_some()
+                        && !matches!(record.status, DeploymentStatus::Failed | DeploymentStatus::Deploying)
+                })
+            })
+            .collect()
+    }
+
+    /// The address and access key of the online copy of `agent_id`, for the Inbox to show
+    /// its WhatsApp Business chats.
+    ///
+    /// # Errors
+    /// `NotFound` / `InvalidInput` when the agent is not online; `MissingCredentials`
+    /// without its access key.
+    pub fn online_access(&self, agent_id: &str) -> AppResult<(String, String)> {
+        self.target_access(&OnlineTarget::Agent { agent_id: agent_id.to_owned() })
     }
 
     pub fn cli_info(&self) -> CliInfo {
@@ -700,6 +740,9 @@ impl DeployService {
     /// # Errors
     /// `InvalidInput` when something is turned on and the installed tools are too old for it.
     fn feature_arguments(&self, features: &OnlineFeatures) -> AppResult<Vec<String>> {
+        if features.whatsapp && !self.cli_knows_channels() {
+            return Err(AppError::InvalidInput(WHATSAPP_NEEDS_NEWER_TOOLS.into()));
+        }
         if self.cli_knows_online_features() {
             return Ok(features.deploy_arguments());
         }
@@ -827,6 +870,15 @@ impl DeployService {
             let value = plan::read_key_value(&self.credentials, key)?
                 .ok_or_else(|| AppError::MissingCredentials(key.friendly_name.clone()))?;
             environment_extra.push((key.env_name.clone(), value));
+        }
+        let mut keys = keys;
+        if options.features.whatsapp {
+            // The four WhatsApp Business values become Fly secrets, like the model keys.
+            let secrets = crate::conversations::channels::whatsapp_online::deploy_secrets(&self.credentials, agent_id)?;
+            for (env_name, credential_name, value) in secrets {
+                keys.push(KeyToCopy::channel_secret(env_name, &credential_name));
+                environment_extra.push((env_name.to_owned(), value));
+            }
         }
         let environment = cli::compose_environment(|name| std::env::var(name).ok(), &environment_extra);
 

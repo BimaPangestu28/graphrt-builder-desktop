@@ -1,4 +1,7 @@
-import { useId, type ReactNode } from 'react'
+import { useEffect, useId, useState, type ReactNode } from 'react'
+import { useParams } from 'react-router-dom'
+import { getAgent } from '@/api/agents'
+import { getWhatsAppBusinessSetup } from '@/api/channels'
 import type { ChatAudience, OnlineFeatures } from '@/api/deployTypes'
 import { joinClassNames } from '@/components/ui'
 import { messages } from '@/i18n'
@@ -12,6 +15,33 @@ interface OnlineFeaturesFormProps {
   availability?: FeaturesAvailability
   /** The phone page was on in the online copy: say what turning it off removes. */
   phoneWasOn?: boolean
+}
+
+/** Whether WhatsApp Business can be offered: only for a chatbot, and ready once its values are saved. */
+type WhatsAppOffer = 'ready' | 'needs_values' | null
+
+/** The WhatsApp Business offer for the chatbot in the route (`null` for other agents). */
+function useWhatsAppOffer(): WhatsAppOffer {
+  const { agentId } = useParams()
+  const [offer, setOffer] = useState<WhatsAppOffer>(null)
+  useEffect(() => {
+    if (!agentId) return
+    let isCurrent = true
+    getAgent(agentId)
+      .then(async (agent) => {
+        if (agent.kind !== 'chatbot') return null
+        const setup = await getWhatsAppBusinessSetup(agentId)
+        return setup.saved ? 'ready' : 'needs_values'
+      })
+      .then(
+        (next: WhatsAppOffer) => isCurrent && setOffer(next),
+        () => isCurrent && setOffer(null),
+      )
+    return () => {
+      isCurrent = false
+    }
+  }, [agentId])
+  return offer
 }
 
 const fieldClassName = 'box-border h-9 w-full rounded-lg border border-line-strong bg-surface px-3 text-[14px] text-ink disabled:opacity-60'
@@ -57,6 +87,8 @@ export function OnlineFeaturesForm({ value, onChange, providerName, availability
   const emailId = useId()
   const isDisabled = availability !== 'ready'
   const change = (next: Partial<OnlineFeatures>) => onChange(withFeatureChange(value, next))
+  const whatsAppOffer = useWhatsAppOffer()
+  const channels = messages().channels
   const audiences: Array<{ audience: ChatAudience; title: string; detail: string }> = [
     { audience: 'guests', title: text.audienceGuestsTitle, detail: text.audienceGuestsDetail(guestMessagesPerMinute, allGuestsMessagesPerMinute) },
     { audience: 'key', title: text.audienceKeyTitle, detail: text.audienceKeyDetail },
@@ -136,6 +168,18 @@ export function OnlineFeaturesForm({ value, onChange, providerName, availability
             <RadioOption name={expiryName} title={text.expiryAct} detail={text.expiryActDetail} checked={value.answerWhenTimeRunsOut} disabled={isDisabled} onSelect={() => change({ answerWhenTimeRunsOut: true })} />
           </div>
         </div>
+        {whatsAppOffer !== null && (
+          <div className="flex flex-col gap-2">
+            <FeatureCard
+              title={channels.onlineWhatsAppTitle}
+              detail={channels.onlineWhatsAppDetail}
+              checked={value.whatsapp}
+              disabled={isDisabled || (whatsAppOffer === 'needs_values' && !value.whatsapp)}
+              onToggle={(whatsapp) => change({ whatsapp })}
+            />
+            {whatsAppOffer === 'needs_values' && <span className="px-1 text-[12px] leading-normal text-muted">{channels.onlineWhatsAppNeedsValues}</span>}
+          </div>
+        )}
       </div>
     </section>
   )

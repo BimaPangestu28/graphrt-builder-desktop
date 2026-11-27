@@ -1,6 +1,7 @@
 import type { ChatbotChannel, ChatbotSettings, ChatbotSetup } from '../chatbotSetupTypes'
 import { sampleChatbotPersona, sampleHandoffRules } from '@/api/sampleBackend/fixtures/chatbotSetup'
 import { sampleKnowledgeBackend } from './knowledge'
+import { sampleTelegramAccount, sampleWhatsAppWebAgent } from './channels'
 import { respondWith } from './sampleResponse'
 
 /**
@@ -33,11 +34,14 @@ export function resetSampleChatbotSetups(): void {
   storedSettings = buildSeedSettings()
 }
 
-function describeChannels(settings: ChatbotSettings): ChatbotChannel[] {
-  const isWhatsAppOn = !settings.disabledChannels.includes('whatsapp')
+function describeChannels(agentId: string, settings: ChatbotSettings): ChatbotChannel[] {
+  const isOn = (channel: string) => !settings.disabledChannels.includes(channel)
+  const telegram = sampleTelegramAccount(agentId)
+  const answersPersonal = sampleWhatsAppWebAgent() === agentId
   return [
-    { id: 'whatsapp', name: 'WhatsApp', connected: true, enabled: isWhatsAppOn, detail: '+62 8•• •••• 1204 · same number as outreach' },
-    { id: 'telegram', name: 'Telegram', connected: false, enabled: false, detail: null },
+    { id: 'telegram', name: 'Telegram', connected: telegram !== null, enabled: telegram !== null && isOn('telegram'), detail: telegram },
+    { id: 'whatsapp', name: 'WhatsApp Business', connected: true, enabled: isOn('whatsapp'), detail: '+62 8•• •••• 1204 · same number as outreach' },
+    { id: 'whatsapp-web', name: 'Personal WhatsApp', connected: answersPersonal, enabled: answersPersonal && isOn('whatsapp-web'), detail: null },
   ]
 }
 
@@ -57,7 +61,7 @@ function cloneSettings(settings: ChatbotSettings): ChatbotSettings {
 function readSetup(agentId: string): ChatbotSetup {
   const saved = storedSettings.get(agentId)
   const settings = cloneSettings(saved ?? defaultSettings())
-  return { agentId, settings, isSaved: saved !== undefined, channels: describeChannels(settings) }
+  return { agentId, settings, isSaved: saved !== undefined, channels: describeChannels(agentId, settings) }
 }
 
 function saveSetup(agentId: string, settings: ChatbotSettings): ChatbotSetup {

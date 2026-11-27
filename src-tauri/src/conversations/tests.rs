@@ -163,7 +163,7 @@ impl ChannelAdapter for RecordingChannel {
         })
     }
 
-    fn send<'a>(&'a self, outbound: OutboundMessage<'a>) -> BoxFuture<'a, AppResult<()>> {
+    fn send<'a>(&'a self, outbound: OutboundMessage<'a>) -> BoxFuture<'a, Result<(), super::channel::DeliveryFailure>> {
         self.sent.lock().unwrap().push((outbound.author, outbound.text.to_owned()));
         self.images.lock().unwrap().extend(outbound.images.iter().cloned());
         Box::pin(async { Ok(()) })

@@ -9,6 +9,7 @@ pub mod agents;
 pub mod app_settings;
 pub mod builder;
 pub mod chains;
+pub mod channels;
 pub mod chatbot_setup;
 pub mod conversations;
 pub mod crash_reports;

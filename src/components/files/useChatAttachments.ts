@@ -83,10 +83,17 @@ export function useChatAttachments(agentId: string, conversationId: string | nul
     }
   }, [agentId, asOwner])
 
+  const shownConversationIdRef = useRef(conversationId)
+
   useEffect(() => {
-    setPending([])
-    setNotices([])
-    setIsAttaching(false)
+    // Another chat: its files and notices are not this one's. Not on mount: the state starts
+    // empty, and a reset that ran after a quick first attach finished would drop that file.
+    if (shownConversationIdRef.current !== conversationId) {
+      shownConversationIdRef.current = conversationId
+      setPending([])
+      setNotices([])
+      setIsAttaching(false)
+    }
     // Leaving the chat (another chat, Reset, another screen) with files still waiting: they
     // will not be sent, so they are removed instead of staying behind.
     return () => {

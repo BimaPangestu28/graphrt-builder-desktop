@@ -15,7 +15,12 @@ use crate::flow::FlowEnvVar;
 pub enum KeySource {
     ProviderKey(ModelProvider),
     WorkflowSecret(String),
-    PluginConfig { plugin: String, variable: String },
+    PluginConfig {
+        plugin: String,
+        variable: String,
+    },
+    /// A chatbot channel credential (`CredentialStore::set_channel_secret`), by its name.
+    ChannelSecret(String),
 }
 
 /// One key to copy.
@@ -42,6 +47,17 @@ pub struct KeyToCopyView {
 }
 
 impl KeyToCopy {
+    /// A channel credential the online copy reads as `env_name` (WhatsApp Business).
+    pub fn channel_secret(env_name: &str, credential_name: &str) -> Self {
+        Self {
+            env_name: env_name.to_owned(),
+            friendly_name: "WhatsApp Business".to_owned(),
+            purpose: "So it can answer customers on WhatsApp".to_owned(),
+            source: KeySource::ChannelSecret(credential_name.to_owned()),
+            is_saved: true,
+        }
+    }
+
     pub fn view(&self) -> KeyToCopyView {
         KeyToCopyView {
             friendly_name: self.friendly_name.clone(),
@@ -146,6 +162,7 @@ pub fn read_key_value(credentials: &CredentialStore, key: &KeyToCopy) -> AppResu
         KeySource::ProviderKey(provider) => credentials.read_provider_key_for_deploy(*provider),
         KeySource::WorkflowSecret(name) => credentials.read_workflow_secret(name),
         KeySource::PluginConfig { plugin, variable } => credentials.read_plugin_config(plugin, variable),
+        KeySource::ChannelSecret(name) => credentials.read_channel_secret(name),
     }
 }
 

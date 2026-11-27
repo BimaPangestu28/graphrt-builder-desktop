@@ -153,6 +153,36 @@ impl AgentFiles {
         Ok(outcomes)
     }
 
+    /// Stores a file a customer sent on a messaging channel (Telegram, WhatsApp) for
+    /// `scope`, with the same checks as a chosen file: the type is read from the bytes,
+    /// pictures are cleaned, programs are refused. `name` is the channel's (untrusted) name.
+    ///
+    /// # Errors
+    /// The [`AttachProblem`] that refused it.
+    pub async fn attach_channel_file(
+        &self,
+        scope: &FileScope,
+        abilities: FileAbilities,
+        name: &str,
+        bytes: Vec<u8>,
+    ) -> Result<FileCard, AttachProblem> {
+        let view = self.view(scope).map_err(|_| AttachProblem::NotStored)?;
+        if bytes.is_empty() {
+            return Err(AttachProblem::Empty);
+        }
+        if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_ATTACHMENT_BYTES {
+            return Err(AttachProblem::TooLarge);
+        }
+        // Only the last part of the name, never a folder the customer chose.
+        let name = display_name(Path::new(name));
+        let name = if name.trim().is_empty() { "file".to_owned() } else { name };
+        let checked = graphrt_files::blocking(move || check_content(HostFile { name, bytes }, abilities))
+            .await
+            .map_err(|_| AttachProblem::NotStored)??;
+        let stored = store_upload(&view, &checked.name, checked.bytes).await?;
+        Ok(card_of(&view, &stored))
+    }
+
     /// Removes an attached file that was not sent (the person took it off the message).
     /// Only files below `uploads/` of `scope` can be removed this way.
     ///

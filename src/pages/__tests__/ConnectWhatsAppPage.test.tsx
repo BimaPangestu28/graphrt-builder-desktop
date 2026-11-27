@@ -41,7 +41,8 @@ describe('ConnectWhatsAppPage', () => {
   it('offers the official API and a personal number, and focuses Close', async () => {
     renderConnectWhatsAppPage()
     await settleLoads()
-    expect(screen.getByRole('dialog', { name: 'Connect WhatsApp' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Connect a channel' })).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: /Telegram/ })).not.toBeChecked()
     expect(screen.getByRole('radio', { name: /WhatsApp Business \(official API\)/ })).not.toBeChecked()
     expect(screen.getByRole('radio', { name: /Personal WhatsApp \(QR\)/ })).not.toBeChecked()
     expect(screen.queryByRole('img', { name: 'QR code to link WhatsApp' })).not.toBeInTheDocument()

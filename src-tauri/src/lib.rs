@@ -144,10 +144,7 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         notifier.clone(),
         db.clone(),
     ));
-    let conversations = Arc::new(
-        conversations::ConversationManager::new(db.clone(), credentials.clone(), conversation_sink)
-            .with_agent_files(agent_files.clone()),
-    );
+    let telegram = Arc::new(conversations::channels::telegram::TelegramService::new(db.clone(), credentials.clone())?);
     let knowledge = Arc::new(knowledge::KnowledgeService::new(
         db.clone(),
         credentials.clone(),
@@ -178,6 +175,25 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         events: Arc::new(plugins::events::TauriPluginEventSink::new(app.handle().clone())),
     }));
     plugins.activate_installed();
+    let whatsapp_web =
+        Arc::new(conversations::channels::whatsapp_web::WhatsAppWebService::new(db.clone(), plugins.clone()));
+    let whatsapp_online = Arc::new(conversations::channels::whatsapp_online::WhatsAppOnlineService::new(
+        db.clone(),
+        credentials.clone(),
+        deploy.clone(),
+        Arc::new(deploy::http::ReqwestDeployHttp::new()?),
+    )?);
+    // Customer channels: messages land in the Inbox, the bot answers, the owner takes over.
+    let conversations = Arc::new(
+        conversations::ConversationManager::new(db.clone(), credentials.clone(), conversation_sink)
+            .with_agent_files(agent_files.clone())
+            .with_channel(telegram.adapter())
+            .with_channel(whatsapp_web.adapter())
+            .with_channel(whatsapp_online.adapter()),
+    );
+    telegram.attach(&conversations);
+    whatsapp_web.attach(&conversations);
+    whatsapp_online.attach(&conversations);
     let draft_model = Arc::new(skills::DefaultDraftModel { db: db.clone(), credentials: credentials.clone() });
     let skills = Arc::new(skills::SkillService::new(&data_dir, plugins.clone(), draft_model.clone()));
     let moved_skills = skills.migrate_legacy_origins();
@@ -189,6 +205,17 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
     learning.activate();
     mcp::publish_from_database(&db);
     conversations::file_cleanup::spawn(conversations.clone());
+    telegram.start_saved();
+    whatsapp_web.spawn();
+    whatsapp_online.spawn();
+    let unanswered = conversations.clone();
+    tauri::async_runtime::spawn(async move {
+        match unanswered.answer_unanswered_channel_messages().await {
+            Ok(0) => {}
+            Ok(count) => log::info!("answered {count} customer message(s) left unanswered at the last stop"),
+            Err(error) => log::warn!("could not answer customer messages left unanswered: {error}"),
+        }
+    });
     engine::spawn_approval_expiry(runs.clone());
     let scheduler = scheduler::spawn(db.clone(), runs.clone());
     desktop::daily_summary::spawn(db.clone(), notifier.clone());
@@ -214,6 +241,9 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         agent_files,
         plugin_triggers,
         phone_access,
+        telegram,
+        whatsapp_web,
+        whatsapp_online,
     })
 }
 
@@ -381,6 +411,16 @@ pub fn run() {
             commands::trusted_hosts::add_trusted_lookup_host,
             commands::trusted_hosts::remove_trusted_lookup_host,
             commands::chatbot_setup::get_chatbot_setup,
+            commands::channels::check_telegram_token,
+            commands::channels::connect_telegram,
+            commands::channels::disconnect_telegram,
+            commands::channels::get_telegram_connection,
+            commands::channels::get_whatsapp_web_channel,
+            commands::channels::set_whatsapp_web_chatbot,
+            commands::channels::get_whatsapp_business_setup,
+            commands::channels::save_whatsapp_business,
+            commands::channels::reveal_whatsapp_verify_token,
+            commands::channels::forget_whatsapp_business,
             commands::chatbot_setup::save_chatbot_settings,
             commands::chatbot_setup::attach_chatbot_knowledge,
             commands::chatbot_setup::detach_chatbot_knowledge,

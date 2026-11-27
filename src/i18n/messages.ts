@@ -3,6 +3,7 @@ import { lib } from './locales/lib'
 import { misc } from './locales/misc'
 import { team } from './locales/team'
 import { chatbot } from './locales/chatbot'
+import { channels } from './locales/channels'
 import { newAgent } from './locales/newAgent'
 import { nodes } from './locales/nodes'
 import { builder } from './locales/builder'
@@ -35,6 +36,7 @@ const english = {
   misc: misc.en,
   team: team.en,
   chatbot: chatbot.en,
+  channels: channels.en,
   newAgent: newAgent.en,
   nodes: nodes.en,
   builder: builder.en,
@@ -66,6 +68,7 @@ const indonesian: Messages = {
   misc: misc.id,
   team: team.id,
   chatbot: chatbot.id,
+  channels: channels.id,
   newAgent: newAgent.id,
   nodes: nodes.id,
   builder: builder.id,

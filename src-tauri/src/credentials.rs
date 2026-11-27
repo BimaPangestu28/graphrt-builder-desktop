@@ -592,6 +592,58 @@ impl CredentialStore {
     }
 }
 
+/// Chatbot channel credentials (`channel:<name>`): a Telegram bot token
+/// (`channel:telegram:<agent id>`) and the WhatsApp Business values an online chatbot needs
+/// (`channel:whatsapp:<agent id>:<part>`). Their own prefix keeps them apart from workflow
+/// secrets and plugin settings, so no workflow can read them; they never reach SQLite,
+/// logs or the webview after saving.
+impl CredentialStore {
+    /// Saves or replaces a channel credential under `channel:<name>`. Rejects empty values.
+    pub fn set_channel_secret(&self, name: &str, value: &str) -> AppResult<()> {
+        let account = channel_secret_account(name)?;
+        if value.trim().is_empty() {
+            return Err(AppError::InvalidInput("the value is empty".into()));
+        }
+        match &self.backend {
+            CredentialBackend::Keychain(keychain) => {
+                keychain.save(&account, value).map_err(|error| secret_keychain_error("save", name, &error))
+            }
+            CredentialBackend::InMemory(_) => {
+                lock_secrets(&self.in_memory_workflow_secrets)?.insert(account, value.to_owned());
+                Ok(())
+            }
+        }
+    }
+
+    /// Removes a channel credential; succeeds if none was stored.
+    pub fn delete_channel_secret(&self, name: &str) -> AppResult<()> {
+        let account = channel_secret_account(name)?;
+        match &self.backend {
+            CredentialBackend::Keychain(keychain) => {
+                keychain.delete(&account).map_err(|error| secret_keychain_error("delete", name, &error))
+            }
+            CredentialBackend::InMemory(_) => {
+                lock_secrets(&self.in_memory_workflow_secrets)?.remove(&account);
+                Ok(())
+            }
+        }
+    }
+
+    /// Backend-only access to a channel credential (used for a request to the channel, or
+    /// handed to the graphrt process as an environment variable). Never expose through a command.
+    pub(crate) fn read_channel_secret(&self, name: &str) -> AppResult<Option<String>> {
+        let account = channel_secret_account(name)?;
+        match &self.backend {
+            CredentialBackend::Keychain(keychain) => {
+                keychain.read(&account).map_err(|error| secret_keychain_error("read", name, &error))
+            }
+            CredentialBackend::InMemory(_) => {
+                Ok(lock_secrets(&self.in_memory_workflow_secrets)?.get(&account).cloned())
+            }
+        }
+    }
+}
+
 /// MCP OAuth sign-ins (`mcp-oauth:<server>:<part>`): the sign-in session (endpoints and
 /// client id, no secret), the access token and the refresh token of each MCP server the user
 /// signed in to. Their own prefix keeps them apart from workflow secrets, so no workflow can
@@ -691,6 +743,20 @@ fn deploy_secret_account(name: &str) -> AppResult<String> {
         return Err(AppError::InvalidInput(format!("`{name}` is not a valid credential name")));
     }
     Ok(format!("{DEPLOY_SECRET_ACCOUNT_PREFIX}{name}"))
+}
+
+/// Keychain account prefix of chatbot channel credentials.
+const CHANNEL_SECRET_ACCOUNT_PREFIX: &str = "channel:";
+
+/// `channel:<name>`; `name` is lowercase letters, digits and `:_-` (a channel and an agent id).
+fn channel_secret_account(name: &str) -> AppResult<String> {
+    let valid = !name.is_empty()
+        && name.len() <= 128
+        && name.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || b":_-".contains(&byte));
+    if !valid {
+        return Err(AppError::InvalidInput(format!("`{name}` is not a valid credential name")));
+    }
+    Ok(format!("{CHANNEL_SECRET_ACCOUNT_PREFIX}{name}"))
 }
 
 /// Keychain account prefix of plugin settings (`plugin:<plugin>:<VARIABLE>`).

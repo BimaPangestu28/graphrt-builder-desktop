@@ -181,7 +181,7 @@ fn refusal(what: &str, reply: &HttpReply) -> AppError {
 
 impl DeployService {
     /// The address and access key of a target.
-    fn target_access(&self, target: &OnlineTarget) -> AppResult<(String, String)> {
+    pub(super) fn target_access(&self, target: &OnlineTarget) -> AppResult<(String, String)> {
         let (url, secret_name) = match target {
             OnlineTarget::Agent { agent_id } => {
                 let record = self.require_deployment(agent_id.trim())?;

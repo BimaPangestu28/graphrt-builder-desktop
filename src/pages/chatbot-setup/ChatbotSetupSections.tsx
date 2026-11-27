@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import type { ChatbotChannel, ChatbotPersona, HandoffRules } from '@/api/chatbotSetupTypes'
 import { joinClassNames } from '@/components/ui'
 import { chatbotToneOptions, describeTone, handoffRuleOptions } from '@/pages/chatbot-setup/chatbotSetupOptions'
-import { routePaths } from '@/routes'
+import { agentPath } from '@/routes'
 import { CheckboxRow, LabeledField, SectionHeading, fieldControlClassNames } from '../knowledge/FormControls'
 import { messages } from '@/i18n'
 
@@ -53,12 +53,25 @@ export function PersonaSection({ persona, onChange }: { persona: ChatbotPersona;
 }
 
 interface ChannelsSectionProps {
+  agentId: string
   channels: ChatbotChannel[]
   disabledChannels: string[]
   onToggle: (channelId: string, isEnabled: boolean) => void
 }
 
-function ChannelRow({ channel, isEnabled, onToggle }: { channel: ChatbotChannel; isEnabled: boolean; onToggle: (isEnabled: boolean) => void }) {
+/** The connect step (screen 05) with this channel's card chosen. */
+function connectPath(agentId: string, channelId: string): string {
+  return `${agentPath('connectWhatsApp', agentId)}?channel=${encodeURIComponent(channelId)}`
+}
+
+interface ChannelRowProps {
+  agentId: string
+  channel: ChatbotChannel
+  isEnabled: boolean
+  onToggle: (isEnabled: boolean) => void
+}
+
+function ChannelRow({ agentId, channel, isEnabled, onToggle }: ChannelRowProps) {
   if (!channel.connected) {
     return (
       <div className={joinClassNames(listRowClassNames, 'border-b border-chip')}>
@@ -67,7 +80,7 @@ function ChannelRow({ channel, isEnabled, onToggle }: { channel: ChatbotChannel;
           <span className="text-[12px] text-muted">{messages().chatbot.notConnected}</span>
         </span>
         <Link
-          to={routePaths.plugins}
+          to={connectPath(agentId, channel.id)}
           aria-label={messages().chatbot.connectName(channel.name)}
           className="inline-flex h-8 items-center rounded-lg border border-line-strong bg-surface px-3 text-[13px] font-medium no-underline !text-ink hover:bg-subtle"
         >
@@ -87,7 +100,7 @@ function ChannelRow({ channel, isEnabled, onToggle }: { channel: ChatbotChannel;
   )
 }
 
-export function ChannelsSection({ channels, disabledChannels, onToggle }: ChannelsSectionProps) {
+export function ChannelsSection({ agentId, channels, disabledChannels, onToggle }: ChannelsSectionProps) {
   return (
     <section aria-labelledby="c-h" className="flex flex-col gap-3">
       <SectionHeading id="c-h">{messages().chatbot.whereItAnswers}</SectionHeading>
@@ -95,6 +108,7 @@ export function ChannelsSection({ channels, disabledChannels, onToggle }: Channe
         {channels.map((channel) => (
           <ChannelRow
             key={channel.id}
+            agentId={agentId}
             channel={channel}
             isEnabled={!disabledChannels.includes(channel.id)}
             onToggle={(isEnabled) => onToggle(channel.id, isEnabled)}

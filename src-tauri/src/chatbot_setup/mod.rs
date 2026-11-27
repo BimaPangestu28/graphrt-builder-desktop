@@ -37,7 +37,25 @@ use crate::storage::Database;
 /// `agent_settings` key of the chatbot setup.
 pub const SETTINGS_KEY: &str = "chatbot_setup";
 /// Channels a chatbot can answer on besides the in-app test channel, in display order.
-pub const CUSTOMER_CHANNELS: &[(&str, &str)] = &[("whatsapp", "WhatsApp"), ("telegram", "Telegram")];
+pub const CUSTOMER_CHANNELS: &[(&str, &str)] =
+    &[("telegram", "Telegram"), ("whatsapp", "WhatsApp Business"), ("whatsapp-web", "Personal WhatsApp")];
+
+/// Whether a channel is connected for a chatbot, and the account it answers as.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ChannelLink {
+    pub connected: bool,
+    /// E.g. `@toko_kue_bot` or a phone number.
+    pub account: Option<String>,
+}
+
+impl From<bool> for ChannelLink {
+    fn from(connected: bool) -> Self {
+        Self { connected, account: None }
+    }
+}
+
+/// Tells, for a channel id, how it is connected for the chatbot being described.
+pub type ChannelLinks<'a> = &'a dyn Fn(&str) -> ChannelLink;
 
 const MAX_DISPLAY_NAME_CHARS: usize = 80;
 const MAX_TONE_CHARS: usize = 120;
@@ -114,11 +132,11 @@ pub struct ChatbotSettings {
 pub struct ChatbotChannel {
     pub id: String,
     pub name: String,
-    /// A channel adapter is registered (e.g. a WhatsApp plugin connected).
+    /// The channel is connected for this chatbot (its Telegram bot, its online copy...).
     pub connected: bool,
     /// Connected and not switched off for this chatbot.
     pub enabled: bool,
-    /// The account the channel answers as, when its adapter reports one (none do yet).
+    /// The account the channel answers as, e.g. `@toko_kue_bot`.
     pub detail: Option<String>,
 }
 
@@ -148,11 +166,7 @@ pub fn load_saved_settings(db: &Database, agent_id: &str) -> AppResult<Option<Ch
 ///
 /// # Errors
 /// `NotFound` for an unknown agent; `InvalidInput` when it is not a chatbot.
-pub fn get_chatbot_setup(
-    db: &Database,
-    agent_id: &str,
-    is_connected: &dyn Fn(&str) -> bool,
-) -> AppResult<ChatbotSetup> {
+pub fn get_chatbot_setup(db: &Database, agent_id: &str, is_connected: ChannelLinks<'_>) -> AppResult<ChatbotSetup> {
     let agent = ensure_chatbot(db, agent_id)?;
     let saved = load_saved_settings(db, agent_id)?;
     let is_saved = saved.is_some();
@@ -173,7 +187,7 @@ pub fn save_chatbot_settings(
     db: &Database,
     agent_id: &str,
     settings: ChatbotSettings,
-    is_connected: &dyn Fn(&str) -> bool,
+    is_connected: ChannelLinks<'_>,
 ) -> AppResult<ChatbotSetup> {
     ensure_chatbot(db, agent_id)?;
     let settings = normalize_settings(db, settings)?;
@@ -189,7 +203,7 @@ pub fn attach_knowledge_base(
     db: &Database,
     agent_id: &str,
     knowledge_base_id: &str,
-    is_connected: &dyn Fn(&str) -> bool,
+    is_connected: ChannelLinks<'_>,
 ) -> AppResult<ChatbotSetup> {
     let mut settings = get_chatbot_setup(db, agent_id, is_connected)?.settings;
     if !settings.knowledge_base_ids.iter().any(|attached| attached == knowledge_base_id) {
@@ -206,7 +220,7 @@ pub fn detach_knowledge_base(
     db: &Database,
     agent_id: &str,
     knowledge_base_id: &str,
-    is_connected: &dyn Fn(&str) -> bool,
+    is_connected: ChannelLinks<'_>,
 ) -> AppResult<ChatbotSetup> {
     let mut settings = get_chatbot_setup(db, agent_id, is_connected)?.settings;
     settings.knowledge_base_ids.retain(|attached| attached != knowledge_base_id);
@@ -277,18 +291,19 @@ fn bounded_text(text: &str, max_chars: usize, what: &str) -> AppResult<String> {
     Ok(trimmed.to_owned())
 }
 
-fn describe_channels(settings: &ChatbotSettings, is_connected: &dyn Fn(&str) -> bool) -> Vec<ChatbotChannel> {
+fn describe_channels(settings: &ChatbotSettings, is_connected: ChannelLinks<'_>) -> Vec<ChatbotChannel> {
     CUSTOMER_CHANNELS
         .iter()
         .map(|(id, name)| {
-            let connected = is_connected(id);
+            let link = is_connected(id);
+            let connected = link.connected;
             let switched_off = settings.disabled_channels.iter().any(|disabled| disabled == id);
             ChatbotChannel {
                 id: (*id).to_owned(),
                 name: (*name).to_owned(),
                 connected,
                 enabled: connected && !switched_off,
-                detail: None,
+                detail: link.account.filter(|_| connected),
             }
         })
         .collect()

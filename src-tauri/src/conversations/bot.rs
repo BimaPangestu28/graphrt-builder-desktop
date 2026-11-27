@@ -32,6 +32,10 @@ use crate::agent_files::cards::workspace_references_in;
 use crate::error::{AppError, AppResult};
 use crate::knowledge::retrieval::{passage_pages, KNOWLEDGE_RETRIEVAL_KIND};
 
+/// The error of a bot turn whose steps stopped to wait for an approval (or a person's
+/// input): the conversation is handed to the owner, who answers in the Inbox.
+pub const PAUSED_RUN_MESSAGE: &str = "the chatbot's steps wait for an approval, which a chat cannot give";
+
 /// Output of `agent`, `tool` and `answer` steps holding the files they made.
 const STEP_FILES_OUTPUT: &str = "files";
 /// Start input carrying the customer's message.
@@ -194,11 +198,7 @@ pub async fn run_bot_turn(
             Event::RunAborted { reason, .. } => {
                 return Err(AppError::Workflow(format!("the bot was stopped: {reason}")))
             }
-            Event::RunPaused { .. } => {
-                return Err(AppError::Workflow(
-                    "the chatbot's steps wait for an approval, which a chat cannot give".into(),
-                ))
-            }
+            Event::RunPaused { .. } => return Err(AppError::Workflow(PAUSED_RUN_MESSAGE.into())),
             _ => {}
         }
     }

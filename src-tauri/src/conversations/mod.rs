@@ -7,8 +7,10 @@
 //! - [`models`]: conversations and messages as stored and sent to the UI.
 //! - `store`: SQLite tables `conversations` and `conversation_messages`.
 //! - [`bot`]: one bot turn on graphrt (reply, memory, hand-off outputs).
-//! - [`channel`]: the [`channel::ChannelAdapter`] trait; only the in-app
-//!   `test` channel exists so far.
+//! - [`channel`]: the [`channel::ChannelAdapter`] trait and the in-app `test` channel.
+//! - [`channels`]: Telegram (long polling), personal WhatsApp (the `whatsapp-web`
+//!   plugin, polled) and WhatsApp Business of an online chatbot (mirrored from it).
+//! - [`inbound`]: messages a channel delivered: deduplicated, files taken, then answered.
 //! - [`visuals`]: UI blocks in replies: shown by the app, written out as text (or
 //!   PNG charts) for channels that cannot draw them, and numbered choices read back
 //!   as card buttons.
@@ -22,6 +24,8 @@
 //! ```
 //! The bot answers only in `bot_answering`. Turns of one conversation run one
 //! at a time, and a reply that finishes after the owner took over is dropped.
+//! On a customer channel a hand-off because the bot failed or its steps wait for an
+//! approval also tells the customer, once, that a person will answer here.
 //!
 //! Bot turns are not stored as runs: a chat produces one run per message,
 //! which would bury the Runs screen, and the messages already keep what the
@@ -33,9 +37,11 @@
 pub mod attachments;
 pub mod bot;
 pub mod channel;
+pub mod channels;
 pub mod file_cleanup;
 #[cfg(test)]
 mod file_tests;
+pub mod inbound;
 pub mod models;
 #[cfg(test)]
 mod real_model_tests;
@@ -53,7 +59,9 @@ use serde_json::json;
 
 use self::attachments::CustomerTurn;
 use self::bot::{run_bot_turn, BotTurn};
-use self::channel::{ChannelAdapter, ChannelRegistry, OutboundMessage, TEST_CHANNEL};
+use self::channel::{
+    ChannelAdapter, ChannelRegistry, DeliveryFailure, OutboundButton, OutboundFile, OutboundMessage, TEST_CHANNEL,
+};
 use self::models::{
     Conversation, ConversationCounts, ConversationDetail, ConversationFilter, ConversationStatus, Message,
     MessageAuthor, NewConversation,
@@ -76,6 +84,10 @@ pub const CONVERSATION_EVENT: &str = "conversation-event";
 pub const BOT_ERROR_REASON: &str = "bot_error";
 /// Hand-off reason recorded when a customer writes while the Inbox switch has the bot paused.
 pub const BOT_PAUSED_REASON: &str = "bot_paused";
+/// Hand-off reason recorded when the bot's steps stopped to wait for an approval.
+pub const BOT_NEEDS_APPROVAL_REASON: &str = "bot_needs_approval";
+/// Seconds between two "typing" signs while the bot works (Telegram shows one for five).
+const TYPING_INTERVAL: std::time::Duration = std::time::Duration::from_secs(4);
 
 const TEST_CUSTOMER_NAME: &str = "Test customer";
 
@@ -165,6 +177,17 @@ impl ConversationManager {
     /// Whether a channel adapter is registered under `channel_name` (the test channel always is).
     pub fn is_channel_connected(&self, channel_name: &str) -> bool {
         self.channels.contains(channel_name)
+    }
+
+    /// Whether `channel_name` is connected for the chatbot `agent_id` (its Telegram bot,
+    /// the personal WhatsApp linked to it...).
+    pub fn is_channel_connected_for(&self, channel_name: &str, agent_id: &str) -> bool {
+        self.channels.find(channel_name).is_some_and(|adapter| adapter.is_connected_for(agent_id))
+    }
+
+    /// The account `agent_id` answers as on `channel_name`, e.g. `@toko_kue_bot`.
+    pub fn channel_account(&self, channel_name: &str, agent_id: &str) -> Option<String> {
+        self.channels.find(channel_name).and_then(|adapter| adapter.account_label(agent_id))
     }
 
     /// # Errors
@@ -315,32 +338,64 @@ impl ConversationManager {
         attachment_references: &[String],
         answer: Option<CardAnswer>,
     ) -> AppResult<ConversationDetail> {
-        let mut conversation = self.db.get_conversation(conversation_id)?;
+        let conversation = self.db.get_conversation(conversation_id)?;
         let attached = self.attached_files(&conversation, attachment_references).await?;
         let customer_turn = CustomerTurn::new(text, attached);
+        let conversation = self.store_customer_turn(conversation, &customer_turn, answer.as_ref(), json!({}))?;
+        self.answer_customer_turn(&conversation, &customer_turn, answer.as_ref()).await?;
+        self.get_conversation(conversation_id)
+    }
+
+    /// Stores a customer message (`extra_metadata` merged into its metadata) and reopens a
+    /// closed chat with the bot answering. Returns the conversation as it is now.
+    fn store_customer_turn(
+        &self,
+        mut conversation: Conversation,
+        customer_turn: &CustomerTurn,
+        answer: Option<&CardAnswer>,
+        extra_metadata: serde_json::Value,
+    ) -> AppResult<Conversation> {
         if conversation.status == ConversationStatus::Closed {
             conversation = self.change_status(&conversation, ConversationStatus::BotAnswering, None)?;
         }
         let mut metadata = customer_turn.metadata.clone();
-        if let (Some(answer), Some(fields)) = (&answer, metadata.as_object_mut()) {
-            fields.insert(visuals::CARD_ACTION_KEY.into(), json!(answer));
+        if let Some(fields) = metadata.as_object_mut() {
+            if let Some(answer) = answer {
+                fields.insert(visuals::CARD_ACTION_KEY.into(), json!(answer));
+            }
+            if let serde_json::Value::Object(extra) = extra_metadata {
+                fields.extend(extra);
+            }
         }
         let message = self.db.insert_conversation_message(
-            conversation_id,
+            &conversation.id,
             MessageAuthor::Customer,
             &customer_turn.stored_text,
             &metadata,
         )?;
-        self.emit(ConversationEventKind::MessageAdded, &conversation, Some(message.clone()));
+        self.emit(ConversationEventKind::MessageAdded, &conversation, Some(message));
+        Ok(conversation)
+    }
 
-        if conversation.status == ConversationStatus::BotAnswering {
-            if self.bot_answers(&conversation)? {
-                self.answer_as_bot(conversation_id, &customer_turn, answer.as_ref()).await?;
-            } else {
-                self.hand_off(&conversation, Some(BOT_PAUSED_REASON), "Bot is paused · waiting for you")?;
-            }
+    /// The bot's answer to a stored customer message, while the bot is answering. A
+    /// channel whose chats another program answers (an online chatbot) gets none here.
+    async fn answer_customer_turn(
+        &self,
+        conversation: &Conversation,
+        customer_turn: &CustomerTurn,
+        answer: Option<&CardAnswer>,
+    ) -> AppResult<()> {
+        if conversation.status != ConversationStatus::BotAnswering {
+            return Ok(());
         }
-        self.get_conversation(conversation_id)
+        if self.channels.find(&conversation.channel).is_some_and(|adapter| adapter.answers_remotely()) {
+            return Ok(());
+        }
+        if self.bot_answers(conversation)? {
+            self.answer_as_bot(&conversation.id, customer_turn, answer).await
+        } else {
+            self.hand_off(conversation, Some(BOT_PAUSED_REASON), "Bot is paused · waiting for you")
+        }
     }
 
     /// The owner takes the chat: the bot stops answering it.
@@ -355,6 +410,7 @@ impl ConversationManager {
             ConversationStatus::BotAnswering | ConversationStatus::WaitingForYou => {
                 let conversation = self.change_status(&conversation, ConversationStatus::YouReplying, None)?;
                 self.add_system_message(&conversation, "You took over · bot paused", json!({}))?;
+                self.tell_channel_about_status(&conversation);
                 Ok(conversation)
             }
         }
@@ -371,6 +427,7 @@ impl ConversationManager {
             ConversationStatus::WaitingForYou | ConversationStatus::YouReplying => {
                 let conversation = self.change_status(&conversation, ConversationStatus::BotAnswering, None)?;
                 self.add_system_message(&conversation, "You handed this back to the bot", json!({}))?;
+                self.tell_channel_about_status(&conversation);
                 Ok(conversation)
             }
             ConversationStatus::BotAnswering => Err(AppError::InvalidInput("the bot is already answering".into())),
@@ -437,6 +494,7 @@ impl ConversationManager {
         }
         let conversation = self.change_status(&conversation, ConversationStatus::Closed, None)?;
         self.add_system_message(&conversation, "Chat closed", json!({}))?;
+        self.tell_channel_about_status(&conversation);
         self.clean_closed_conversation_soon(conversation_id);
         if let Ok(mut turn_locks) = self.turn_locks.lock() {
             turn_locks.remove(conversation_id);
@@ -536,12 +594,24 @@ impl ConversationManager {
         if conversation.status != ConversationStatus::BotAnswering {
             return Ok(());
         }
-        let turn = match self.run_turn(&conversation, customer_turn, answer).await {
+        let typing = self.keep_typing(&conversation).await;
+        let result = self.run_turn(&conversation, customer_turn, answer).await;
+        if let Some(typing) = typing {
+            typing.abort();
+        }
+        let turn = match result {
             Ok(turn) => turn,
+            Err(AppError::Workflow(message)) if message == bot::PAUSED_RUN_MESSAGE => {
+                log::info!("the bot of conversation {conversation_id} waits for an approval");
+                let notice = "The bot's steps wait for an approval · reply to the customer yourself";
+                self.hand_off(&conversation, Some(BOT_NEEDS_APPROVAL_REASON), notice)?;
+                return self.tell_customer_to_wait(&conversation).await;
+            }
             Err(error) => {
                 log::warn!("the bot of conversation {conversation_id} could not answer: {error}");
                 let notice = format!("The bot could not answer · {error}");
-                return self.hand_off(&conversation, Some(BOT_ERROR_REASON), &notice);
+                self.hand_off(&conversation, Some(BOT_ERROR_REASON), &notice)?;
+                return self.tell_customer_to_wait(&conversation).await;
             }
         };
         self.record_turn(&conversation, turn).await
@@ -680,27 +750,128 @@ impl ConversationManager {
         let reply = compose_reply(text, blocks, capabilities, language);
         let delivery_error = match adapter {
             Ok(adapter) => {
-                let outbound =
-                    OutboundMessage { conversation, author, text: &reply.outbound_text, images: &reply.images };
+                let buttons = if capabilities.blocks { Vec::new() } else { reply_buttons(&reply.metadata) };
+                let files =
+                    if capabilities.blocks { Vec::new() } else { self.outbound_files(conversation, &metadata).await };
+                let outbound = OutboundMessage {
+                    conversation,
+                    author,
+                    text: &reply.outbound_text,
+                    images: &reply.images,
+                    buttons: &buttons,
+                    files: &files,
+                };
                 match adapter.send(outbound).await {
                     Ok(()) => None,
-                    Err(error) => {
-                        log::warn!("could not deliver a message in conversation {}: {error}", conversation.id);
-                        Some(error.to_string())
+                    Err(failure) => {
+                        log::warn!("could not deliver a message in conversation {}: {failure}", conversation.id);
+                        Some(failure)
                     }
                 }
             }
-            Err(error) => Some(error.to_string()),
+            Err(error) => Some(DeliveryFailure::new(channel::DeliveryProblem::NotConnected, error.to_string())),
         };
         if let Some(fields) = metadata.as_object_mut() {
             fields.extend(reply.metadata);
-            if let Some(error) = delivery_error {
-                fields.insert("deliveryError".into(), json!(error));
+            if let Some(failure) = delivery_error {
+                fields.insert("deliveryError".into(), json!(failure.message));
+                fields.insert("deliveryProblem".into(), json!(failure.problem));
             }
         }
         let message = self.db.insert_conversation_message(&conversation.id, author, &reply.stored_text, &metadata)?;
         self.emit(ConversationEventKind::MessageAdded, conversation, Some(message.clone()));
         Ok(message)
+    }
+
+    /// The files a message's cards name (`files` of a bot reply, `attachments` of the
+    /// owner's reply), read from the conversation's part of the workspace. A file that
+    /// cannot be read is left out (the text still names it).
+    async fn outbound_files(&self, conversation: &Conversation, metadata: &serde_json::Value) -> Vec<OutboundFile> {
+        let Some(access) = self.file_access(conversation) else { return Vec::new() };
+        let cards: Vec<crate::agent_files::FileCard> = [attachments::FILES_KEY, attachments::ATTACHMENTS_KEY]
+            .iter()
+            .filter_map(|key| metadata.get(*key).cloned())
+            .filter_map(|cards| serde_json::from_value::<Vec<crate::agent_files::FileCard>>(cards).ok())
+            .flatten()
+            .collect();
+        if cards.is_empty() {
+            return Vec::new();
+        }
+        let view = match access.files.view(&access.scope) {
+            Ok(view) => view,
+            Err(error) => {
+                log::warn!("could not open the files of conversation {}: {error}", conversation.id);
+                return Vec::new();
+            }
+        };
+        let mut files = Vec::with_capacity(cards.len());
+        for card in cards {
+            let Some(path) = view.path_of_reference(&card.reference) else { continue };
+            match view.read(&path, 0, crate::agent_files::MAX_ATTACHMENT_BYTES).await {
+                Ok(bytes) => files.push(OutboundFile { name: card.name, mime_type: card.mime_type, bytes }),
+                Err(error) => log::warn!("could not read {} to send it: {error}", card.name),
+            }
+        }
+        files
+    }
+
+    /// Shows "typing" on the customer's channel at once, and again every few seconds until
+    /// the returned task is aborted.
+    async fn keep_typing(&self, conversation: &Conversation) -> Option<tauri::async_runtime::JoinHandle<()>> {
+        if conversation.channel == TEST_CHANNEL {
+            return None;
+        }
+        let adapter = self.channels.find(&conversation.channel)?;
+        adapter.typing(conversation).await;
+        let conversation = conversation.clone();
+        Some(tauri::async_runtime::spawn(async move {
+            loop {
+                tokio::time::sleep(TYPING_INTERVAL).await;
+                adapter.typing(&conversation).await;
+            }
+        }))
+    }
+
+    /// Tells a customer on a real channel that a person will answer, after a hand-off the
+    /// bot did not explain itself (it failed, or its steps wait for an approval).
+    async fn tell_customer_to_wait(&self, conversation: &Conversation) -> AppResult<()> {
+        if conversation.channel == TEST_CHANNEL {
+            return Ok(());
+        }
+        let conversation = self.db.get_conversation(&conversation.id)?;
+        let language = AppSettings::load_or_default(&self.db).language.unwrap_or_default();
+        let text = channels::waiting_message(language);
+        self.deliver_and_store(&conversation, MessageAuthor::Bot, text, json!({ "automatic": true }), &[]).await?;
+        Ok(())
+    }
+
+    /// Lets the conversation's channel know that the owner took over, handed back or
+    /// closed it (an online chatbot stops or starts answering). Runs in the background; a
+    /// failure is shown in the chat.
+    fn tell_channel_about_status(&self, conversation: &Conversation) {
+        let Some(adapter) = self.channels.find(&conversation.channel).filter(|adapter| adapter.answers_remotely())
+        else {
+            return;
+        };
+        let (db, sink, conversation) = (self.db.clone(), self.sink.clone(), conversation.clone());
+        tauri::async_runtime::spawn(async move {
+            if let Err(error) = adapter.status_changed(&conversation).await {
+                log::warn!("could not tell the channel of conversation {} about its status: {error}", conversation.id);
+                let text = format!("The online chatbot was not told about this · {error}");
+                if let Ok(message) =
+                    db.insert_conversation_message(&conversation.id, MessageAuthor::System, &text, &json!({}))
+                {
+                    sink.send(ConversationEventPayload {
+                        kind: ConversationEventKind::MessageAdded,
+                        conversation_id: conversation.id.clone(),
+                        agent_id: conversation.agent_id.clone(),
+                        status: conversation.status,
+                        message: Some(message),
+                        draft: None,
+                    });
+                }
+            }
+        });
     }
 
     fn hand_off(&self, conversation: &Conversation, reason: Option<&str>, notice: &str) -> AppResult<()> {
@@ -785,6 +956,24 @@ pub fn find_bot_reply<'a>(detail: &'a ConversationDetail, message_id: &str) -> A
     Ok(BotReply { text: &reply.text, customer_text })
 }
 
+/// The buttons of a reply's numbered choices (`metadata.choices`).
+fn reply_buttons(metadata: &serde_json::Map<String, serde_json::Value>) -> Vec<OutboundButton> {
+    metadata
+        .get(visuals::CHOICES_KEY)
+        .and_then(serde_json::Value::as_array)
+        .map(|choices| {
+            choices
+                .iter()
+                .filter_map(|choice| {
+                    let number = choice.get("number").and_then(serde_json::Value::as_u64)?;
+                    let title = choice.get("title").and_then(serde_json::Value::as_str)?;
+                    Some(OutboundButton { id: number.to_string(), title: title.to_owned() })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Plain words for the hand-off reasons the builder guide suggests; other
 /// reasons are shown as the workflow wrote them.
 pub fn describe_handoff_reason(reason: Option<&str>) -> String {
@@ -795,6 +984,7 @@ pub fn describe_handoff_reason(reason: Option<&str>) -> String {
         Some("sounds_upset") => "customer sounds upset".into(),
         Some(BOT_ERROR_REASON) => "the bot could not answer".into(),
         Some(BOT_PAUSED_REASON) => "the bot is paused".into(),
+        Some(BOT_NEEDS_APPROVAL_REASON) => "the bot needs an approval".into(),
         Some(other) => other.replace('_', " "),
         None => "needs your reply".into(),
     }

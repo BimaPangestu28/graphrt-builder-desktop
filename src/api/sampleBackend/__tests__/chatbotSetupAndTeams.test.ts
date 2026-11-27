@@ -14,8 +14,9 @@ describe('sample chatbot setup backend', () => {
     expect(catering.isSaved).toBe(true)
     expect(catering.settings.knowledgeBaseIds).toEqual(['menu-and-prices'])
     expect(catering.channels.map((channel) => [channel.id, channel.connected])).toEqual([
-      ['whatsapp', true],
       ['telegram', false],
+      ['whatsapp', true],
+      ['whatsapp-web', false],
     ])
     const other = await sampleChatbotSetupBackend.getChatbotSetup('other-bot')
     expect(other.isSaved).toBe(false)

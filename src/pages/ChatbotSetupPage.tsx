@@ -83,7 +83,7 @@ function ChatbotSetupFormView({ form }: { form: ChatbotSetupForm }) {
         onAttach={(knowledgeBaseId) => void form.attach(knowledgeBaseId)}
         onDetach={(knowledgeBaseId) => void form.detach(knowledgeBaseId)}
       />
-      <ChannelsSection channels={savedSetup.channels} disabledChannels={draft.disabledChannels} onToggle={toggleChannel} />
+      <ChannelsSection agentId={savedSetup.agentId} channels={savedSetup.channels} disabledChannels={draft.disabledChannels} onToggle={toggleChannel} />
       <HandoffRulesSection
         handoffRules={draft.handoffRules}
         onToggle={(ruleKey, isEnabled) => form.setDraft({ ...draft, handoffRules: { ...draft.handoffRules, [ruleKey]: isEnabled } })}

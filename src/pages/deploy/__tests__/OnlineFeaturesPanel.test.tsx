@@ -8,7 +8,7 @@ import { resetSampleDeploy, seedSampleDeployment, setSampleServerFeatures } from
 import { sampleAgentId } from '@/routes'
 import { OnlineFeaturesPanel } from '../OnlineFeaturesPanel'
 
-const everything: OnlineFeatures = { chat: true, chatAudience: 'guests', embedSite: 'https://www.toko-kue.example', phone: true, notifications: true, notifyEmail: 'ana@example.com', answerWhenTimeRunsOut: true }
+const everything: OnlineFeatures = { chat: true, chatAudience: 'guests', embedSite: 'https://www.toko-kue.example', phone: true, notifications: true, notifyEmail: 'ana@example.com', answerWhenTimeRunsOut: true, whatsapp: false }
 
 function renderAgentPanel(features: OnlineFeatures) {
   seedSampleDeployment(sampleAgentId, {}, false, features)

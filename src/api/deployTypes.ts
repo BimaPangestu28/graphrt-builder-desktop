@@ -108,9 +108,11 @@ export interface OnlineFeatures {
   notifyEmail: string | null
   /** Requests whose time ran out answer themselves as the agent says. */
   answerWhenTimeRunsOut: boolean
+  /** Customers talk to the chatbot on WhatsApp Business (its values come from the WhatsApp step). */
+  whatsapp: boolean
 }
 
-export const noOnlineFeatures: OnlineFeatures = { chat: false, chatAudience: 'guests', embedSite: null, phone: false, notifications: false, notifyEmail: null, answerWhenTimeRunsOut: false }
+export const noOnlineFeatures: OnlineFeatures = { chat: false, chatAudience: 'guests', embedSite: null, phone: false, notifications: false, notifyEmail: null, answerWhenTimeRunsOut: false, whatsapp: false }
 
 /**
  * An online agent, a server connected in "My own server", or this computer itself (Settings >
@@ -166,6 +168,8 @@ export interface OwnServerInstructions {
   needsGraphrtNewerThan: string | null
   chatAddress: string | null
   phoneAddress: string | null
+  /** The callback URL to enter in the Meta app, for a chatbot on WhatsApp Business. */
+  whatsappWebhook: string | null
 }
 
 export interface DeployReview {
