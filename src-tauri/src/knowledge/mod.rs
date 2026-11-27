@@ -16,6 +16,11 @@
 //! falls back to keywords only when the OpenAI key is removed or unreachable,
 //! so knowledge works without any key.
 
+pub mod connector_oauth;
+pub mod connector_schedule;
+#[cfg(test)]
+mod connector_tests;
+pub mod connectors;
 pub mod events;
 pub mod models;
 pub mod records;
@@ -200,11 +205,13 @@ impl KnowledgeService {
             source_count: u32::try_from(sources.len()).unwrap_or(u32::MAX),
             file_count: sources
                 .iter()
-                .filter(|source| source.kind != SourceKind::Url)
+                .filter(|source| source.kind != SourceKind::Url || source.connector.is_some())
                 .map(|source| source.document_count)
                 .sum(),
-            website_count: u32::try_from(sources.iter().filter(|source| source.kind == SourceKind::Url).count())
-                .unwrap_or(u32::MAX),
+            website_count: u32::try_from(
+                sources.iter().filter(|source| source.kind == SourceKind::Url && source.connector.is_none()).count(),
+            )
+            .unwrap_or(u32::MAX),
             passage_count: sources.iter().map(|source| source.passage_count).sum(),
             storage_bytes: stores::store_size_bytes(Path::new(&stored.store_path)),
             used_by: usages_of(stored, agents, &self.db),
@@ -285,7 +292,15 @@ impl KnowledgeService {
     /// `NotFound` for an unknown id, `Internal` when the store file cannot be removed.
     pub fn delete_knowledge_base(&self, knowledge_base_id: &str) -> AppResult<()> {
         let stored = records::get_knowledge_base(&self.db, knowledge_base_id)?;
+        let connector_sources: Vec<String> = records::list_sources(&self.db, knowledge_base_id)?
+            .into_iter()
+            .filter(|source| source.connector.is_some())
+            .map(|source| source.id)
+            .collect();
         records::delete_knowledge_base(&self.db, knowledge_base_id)?;
+        for source_id in &connector_sources {
+            self.forget_credentials(source_id);
+        }
         stores::delete_store(Path::new(&stored.store_path))
     }
 
@@ -310,6 +325,7 @@ impl KnowledgeService {
             passage_count: 0,
             last_synced_at: None,
             created_at: now_rfc3339(),
+            connector: None,
         };
         records::insert_source(&self.db, &source)?;
         Ok(source)
@@ -328,7 +344,11 @@ impl KnowledgeService {
                 .await
                 .map_err(|error| AppError::Internal(format!("could not remove passages: {error}")))?;
         }
-        records::delete_source(&self.db, source_id)
+        records::delete_source(&self.db, source_id)?;
+        if source.connector.is_some() {
+            self.forget_credentials(source_id);
+        }
+        Ok(())
     }
 
     /// Saves settings. Changing the embedding model clears the passages; the

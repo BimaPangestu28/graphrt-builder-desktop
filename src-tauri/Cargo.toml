@@ -35,37 +35,40 @@ tauri-plugin-notification = "2.8.1"
 
 # graphrt runtime, pinned to a commit until the crates are published on crates.io
 # (a commit of graphrt main; all graphrt crates share the same rev)
-graphrt-core = { git = "https://github.com/Graphrt/graphrt", rev = "aa3a4eb469a7241d8ec196586df4c5929f57b706" }
-graphrt-llm = { git = "https://github.com/Graphrt/graphrt", rev = "aa3a4eb469a7241d8ec196586df4c5929f57b706", default-features = false, features = ["openai", "anthropic", "gemini", "mock", "skills", "learning", "text-model", "tool-files", "vision-preparer"] }
-graphrt-http = { git = "https://github.com/Graphrt/graphrt", rev = "aa3a4eb469a7241d8ec196586df4c5929f57b706" }
+graphrt-core = { git = "https://github.com/Graphrt/graphrt", rev = "9ea3018cc09af91bf66f3ee2fbe787c92b4eb028" }
+graphrt-llm = { git = "https://github.com/Graphrt/graphrt", rev = "9ea3018cc09af91bf66f3ee2fbe787c92b4eb028", default-features = false, features = ["openai", "anthropic", "gemini", "mock", "skills", "learning", "text-model", "tool-files", "vision-preparer"] }
+graphrt-http = { git = "https://github.com/Graphrt/graphrt", rev = "9ea3018cc09af91bf66f3ee2fbe787c92b4eb028" }
 # Knowledge bases: SQLite vector store, document extractors and OpenAI-compatible embeddings
-graphrt-rag = { git = "https://github.com/Graphrt/graphrt", rev = "aa3a4eb469a7241d8ec196586df4c5929f57b706", default-features = false, features = ["sqlite", "doc", "http"] }
+graphrt-rag = { git = "https://github.com/Graphrt/graphrt", rev = "9ea3018cc09af91bf66f3ee2fbe787c92b4eb028", default-features = false, features = ["sqlite", "doc", "http"] }
+# Knowledge connectors: web sites, REST APIs, Google Drive, Notion and SharePoint, synced on a schedule
+# (sync state and lock shared with `graphrt serve`). Documents go through the app's own indexing.
+graphrt-connect = { git = "https://github.com/Graphrt/graphrt", rev = "9ea3018cc09af91bf66f3ee2fbe787c92b4eb028", default-features = false, features = ["web", "api", "google-drive", "notion", "sharepoint", "sqlite"] }
 # Plugins: node kinds and tools from external processes (graphrt-plugins catalog)
-graphrt-plugin = { git = "https://github.com/Graphrt/graphrt", rev = "aa3a4eb469a7241d8ec196586df4c5929f57b706", default-features = false, features = ["process", "http", "yaml", "mcp-presets"] }
+graphrt-plugin = { git = "https://github.com/Graphrt/graphrt", rev = "9ea3018cc09af91bf66f3ee2fbe787c92b4eb028", default-features = false, features = ["process", "http", "yaml", "mcp-presets"] }
 # MCP servers configured in Connections > Advanced: their tools for `tool` / `agent` nodes (stdio and Streamable HTTP)
-graphrt-mcp = { git = "https://github.com/Graphrt/graphrt", rev = "aa3a4eb469a7241d8ec196586df4c5929f57b706" }
+graphrt-mcp = { git = "https://github.com/Graphrt/graphrt", rev = "9ea3018cc09af91bf66f3ee2fbe787c92b4eb028" }
 # "My own server": exporting an agent as a portable .grt bundle for `graphrt serve` (no WebAssembly plugins)
-graphrt-bundle = { git = "https://github.com/Graphrt/graphrt", rev = "aa3a4eb469a7241d8ec196586df4c5929f57b706", default-features = false }
+graphrt-bundle = { git = "https://github.com/Graphrt/graphrt", rev = "9ea3018cc09af91bf66f3ee2fbe787c92b4eb028", default-features = false }
 # UI blocks (cards, charts, tables, KPI tiles, diagrams): validation before a screen renders them, and their
 # text / PNG form for chat channels that cannot draw them (`png`: charts as images)
-graphrt-ui = { git = "https://github.com/Graphrt/graphrt", rev = "aa3a4eb469a7241d8ec196586df4c5929f57b706", features = ["png"] }
+graphrt-ui = { git = "https://github.com/Graphrt/graphrt", rev = "9ea3018cc09af91bf66f3ee2fbe787c92b4eb028", features = ["png"] }
 # Agent skills: SKILL.md packages pinned and checked at install, loaded by `agent` nodes on demand
-graphrt-skill = { git = "https://github.com/Graphrt/graphrt", rev = "aa3a4eb469a7241d8ec196586df4c5929f57b706" }
+graphrt-skill = { git = "https://github.com/Graphrt/graphrt", rev = "9ea3018cc09af91bf66f3ee2fbe787c92b4eb028" }
 # Self learning: lessons a person approves, read by `agent` nodes; feedback becomes proposals
-graphrt-learn = { git = "https://github.com/Graphrt/graphrt", rev = "aa3a4eb469a7241d8ec196586df4c5929f57b706" }
+graphrt-learn = { git = "https://github.com/Graphrt/graphrt", rev = "9ea3018cc09af91bf66f3ee2fbe787c92b4eb028" }
 # Tests and release checks: graphrt's eval harness (cases, LLM judges, pass rate, comparison with the last check).
-graphrt-eval = { git = "https://github.com/Graphrt/graphrt", rev = "aa3a4eb469a7241d8ec196586df4c5929f57b706" }
+graphrt-eval = { git = "https://github.com/Graphrt/graphrt", rev = "9ea3018cc09af91bf66f3ee2fbe787c92b4eb028" }
 # Files and images for agents that use them (`agent_files`): a workspace per agent with the
 # `files`, `documents` and `image` tools, and the gate every image passes before a model sees it.
-graphrt-files = { git = "https://github.com/Graphrt/graphrt", rev = "aa3a4eb469a7241d8ec196586df4c5929f57b706" }
-graphrt-image = { git = "https://github.com/Graphrt/graphrt", rev = "aa3a4eb469a7241d8ec196586df4c5929f57b706" }
-graphrt-docgen = { git = "https://github.com/Graphrt/graphrt", rev = "aa3a4eb469a7241d8ec196586df4c5929f57b706" }
+graphrt-files = { git = "https://github.com/Graphrt/graphrt", rev = "9ea3018cc09af91bf66f3ee2fbe787c92b4eb028" }
+graphrt-image = { git = "https://github.com/Graphrt/graphrt", rev = "9ea3018cc09af91bf66f3ee2fbe787c92b4eb028" }
+graphrt-docgen = { git = "https://github.com/Graphrt/graphrt", rev = "9ea3018cc09af91bf66f3ee2fbe787c92b4eb028" }
 # Telegram (Bot API) and WhatsApp (Cloud API) for chatbots: parsing, signatures, sending (docs/channels.md of graphrt).
-graphrt-channel = { git = "https://github.com/Graphrt/graphrt", rev = "aa3a4eb469a7241d8ec196586df4c5929f57b706", features = ["telegram", "whatsapp", "client"] }
+graphrt-channel = { git = "https://github.com/Graphrt/graphrt", rev = "9ea3018cc09af91bf66f3ee2fbe787c92b4eb028", features = ["telegram", "whatsapp", "client"] }
 # Phone access (feature `phone-access`): the device tokens, the approvals inbox and the Web Push
 # notifier of `graphrt serve` (graphrt#136), reused for agents that run on this computer. Only
 # those features: no workflow runner of the CLI and none of its `serve` routes are used.
-graphrt-cli = { git = "https://github.com/Graphrt/graphrt", rev = "aa3a4eb469a7241d8ec196586df4c5929f57b706", default-features = false, features = ["web-push", "approvals"], optional = true }
+graphrt-cli = { git = "https://github.com/Graphrt/graphrt", rev = "9ea3018cc09af91bf66f3ee2fbe787c92b4eb028", default-features = false, features = ["web-push", "approvals"], optional = true }
 # The small HTTP server of Phone access (the same axum version graphrt serve uses).
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"], optional = true }
 # The computer's network addresses, to serve Phone access on the Wi-Fi / cable one only.

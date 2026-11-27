@@ -100,6 +100,7 @@ fn source_from_row(row: &Row<'_>) -> rusqlite::Result<KnowledgeSource> {
         passage_count: to_u64(row.get(9)?),
         last_synced_at: row.get(10)?,
         created_at: row.get(11)?,
+        connector: None,
     })
 }
 
@@ -234,15 +235,21 @@ pub fn insert_source(db: &Database, source: &KnowledgeSource) -> AppResult<()> {
 /// # Errors
 /// `NotFound` when no source has this id.
 pub fn get_source(db: &Database, source_id: &str) -> AppResult<KnowledgeSource> {
-    let connection = db.lock()?;
-    connection
-        .query_row(
-            &format!("SELECT {SOURCE_COLUMNS} FROM knowledge_sources WHERE id = ?1"),
-            [source_id],
-            source_from_row,
-        )
-        .optional()?
-        .ok_or_else(|| AppError::NotFound(format!("knowledge source {source_id}")))
+    let source = {
+        let connection = db.lock()?;
+        connection
+            .query_row(
+                &format!("SELECT {SOURCE_COLUMNS} FROM knowledge_sources WHERE id = ?1"),
+                [source_id],
+                source_from_row,
+            )
+            .optional()?
+            .ok_or_else(|| AppError::NotFound(format!("knowledge source {source_id}")))?
+    };
+    let mut sources = [source];
+    super::connectors::attach(db, &mut sources)?;
+    let [source] = sources;
+    Ok(source)
 }
 
 /// Sources of one knowledge base, oldest first.
@@ -252,7 +259,11 @@ pub fn list_sources(db: &Database, knowledge_base_id: &str) -> AppResult<Vec<Kno
         "SELECT {SOURCE_COLUMNS} FROM knowledge_sources WHERE knowledge_base_id = ?1 ORDER BY created_at, id"
     ))?;
     let rows = statement.query_map([knowledge_base_id], source_from_row)?;
-    Ok(rows.collect::<Result<_, _>>()?)
+    let mut sources: Vec<KnowledgeSource> = rows.collect::<Result<_, _>>()?;
+    drop(statement);
+    drop(connection);
+    super::connectors::attach(db, &mut sources)?;
+    Ok(sources)
 }
 
 pub fn set_source_status(db: &Database, source_id: &str, status: SourceStatus) -> AppResult<()> {

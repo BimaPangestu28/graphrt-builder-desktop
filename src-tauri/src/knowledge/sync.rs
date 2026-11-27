@@ -22,6 +22,8 @@ use super::KnowledgeService;
 use crate::error::{AppError, AppResult};
 use crate::storage::now_rfc3339;
 
+mod connector_sync;
+
 const MISSING_OPENAI_KEY: &str =
     "add an OpenAI key in Settings, or switch this knowledge base to embeddings on this computer";
 
@@ -163,6 +165,9 @@ impl KnowledgeService {
     }
 
     async fn sync_source(&self, context: &SyncContext<'_>, source: &KnowledgeSource) -> AppResult<SyncReport> {
+        if source.connector.is_some() {
+            return self.sync_connector_source(context, source).await;
+        }
         records::set_source_status(&self.db, &source.id, SourceStatus::Reading)?;
         self.send_source_updated(&source.id, Some(0));
         let listed_source = source.clone();

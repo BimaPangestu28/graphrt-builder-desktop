@@ -229,6 +229,7 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
     });
     engine::spawn_approval_expiry(runs.clone());
     let scheduler = scheduler::spawn(db.clone(), runs.clone());
+    knowledge::connector_schedule::spawn(knowledge.clone());
     desktop::daily_summary::spawn(db.clone(), notifier.clone());
     plugins::auto_update::spawn(plugins.clone());
     let plugin_triggers =
@@ -456,6 +457,11 @@ pub fn run() {
             commands::knowledge::sync_knowledge_base,
             commands::knowledge::update_knowledge_settings,
             commands::knowledge::search_knowledge,
+            commands::knowledge::add_knowledge_connector_source,
+            commands::knowledge::set_knowledge_source_schedule,
+            commands::knowledge::sync_knowledge_source,
+            commands::knowledge::knowledge_connector_sign_in_setup,
+            commands::knowledge::sign_in_knowledge_connector,
             commands::app_settings::get_app_settings,
             commands::app_settings::update_app_settings,
             commands::app_settings::export_agents,

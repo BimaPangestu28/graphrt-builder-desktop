@@ -190,7 +190,7 @@ pub struct KnowledgeBase {
 }
 
 /// One source inside a knowledge base.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KnowledgeSource {
     pub id: String,
@@ -210,6 +210,10 @@ pub struct KnowledgeSource {
     pub passage_count: u64,
     pub last_synced_at: Option<String>,
     pub created_at: String,
+    /// Set for sources that sync from a web site, an API, Google Drive, Notion
+    /// or SharePoint (see `knowledge::connectors`).
+    #[serde(default)]
+    pub connector: Option<Box<super::connectors::ConnectorView>>,
 }
 
 /// A knowledge base with its sources (screen 18).

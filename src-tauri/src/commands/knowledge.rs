@@ -95,3 +95,73 @@ pub async fn search_knowledge(
 ) -> AppResult<Vec<KnowledgePassage>> {
     state.knowledge.search(&query, knowledge_base_ids, limit.unwrap_or(DEFAULT_SEARCH_LIMIT)).await
 }
+
+/// Adds a source that syncs from a web site, an API, Google Drive, Notion or
+/// SharePoint, and starts its first sync in the background. Credentials go to
+/// the keychain and are never sent back.
+#[tauri::command]
+pub fn add_knowledge_connector_source(
+    state: State<'_, AppState>,
+    knowledge_base_id: String,
+    source: crate::knowledge::connectors::NewConnectorSource,
+) -> AppResult<KnowledgeSource> {
+    let added = state.knowledge.add_connector_source(&knowledge_base_id, source)?;
+    let knowledge = state.knowledge.clone();
+    let source_id = added.id.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(error) = knowledge.sync_sources(&knowledge_base_id, &[source_id]).await {
+            log::warn!("first sync of a knowledge connector failed: {error}");
+        }
+    });
+    Ok(added)
+}
+
+/// Changes when a connector source syncs by itself.
+#[tauri::command]
+pub fn set_knowledge_source_schedule(
+    state: State<'_, AppState>,
+    source_id: String,
+    schedule: graphrt_connect::SyncSchedule,
+) -> AppResult<KnowledgeSource> {
+    state.knowledge.set_connector_schedule(&source_id, schedule)
+}
+
+/// "Sync now" on one source, in the background (progress arrives as `knowledge-event`s).
+#[tauri::command]
+pub fn sync_knowledge_source(state: State<'_, AppState>, source_id: String) -> AppResult<KnowledgeSource> {
+    let source = state.knowledge.source(&source_id)?;
+    let knowledge = state.knowledge.clone();
+    let (knowledge_base_id, id) = (source.knowledge_base_id.clone(), source.id.clone());
+    tauri::async_runtime::spawn(async move {
+        if let Err(error) = knowledge.sync_sources(&knowledge_base_id, &[id]).await {
+            log::warn!("knowledge source sync failed: {error}");
+        }
+    });
+    Ok(source)
+}
+
+/// Whether Google Drive or SharePoint can be signed in to with the app's own
+/// registration, and what an own registration needs.
+#[tauri::command]
+pub fn knowledge_connector_sign_in_setup(
+    provider: crate::knowledge::connectors::OAuthProvider,
+) -> crate::knowledge::connector_oauth::ProviderSetup {
+    crate::knowledge::connector_oauth::provider_setup(provider)
+}
+
+/// Signs in to Google Drive or SharePoint / OneDrive in the browser (read only
+/// access). Returns an id to pass with the new source; tokens stay in the backend.
+#[tauri::command]
+pub async fn sign_in_knowledge_connector(
+    provider: crate::knowledge::connectors::OAuthProvider,
+    client: Option<crate::knowledge::connector_oauth::ClientChoice>,
+) -> AppResult<crate::knowledge::connector_oauth::SignInResult> {
+    let open_browser = |url: &str| crate::crash_reports::sharing::open_in_browser(url).map_err(|e| e.to_string());
+    crate::knowledge::connector_oauth::sign_in(
+        provider,
+        client.unwrap_or_default(),
+        &open_browser,
+        crate::knowledge::connector_oauth::SIGN_IN_TIMEOUT,
+    )
+    .await
+}

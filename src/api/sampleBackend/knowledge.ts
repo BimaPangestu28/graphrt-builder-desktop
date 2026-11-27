@@ -10,6 +10,7 @@ import type {
 } from '../knowledgeTypes'
 import { knowledgePassages, searchKnowledgePassages, type KnowledgePassage as SamplePassage } from '@/api/sampleBackend/fixtures/knowledgePassages'
 import { requireText, respondWith } from './sampleResponse'
+import { seedConnectorSources } from './knowledgeConnectorSeeds'
 
 /**
  * Sample knowledge bases for the browser preview and tests, kept in memory and
@@ -22,6 +23,8 @@ import { requireText, respondWith } from './sampleResponse'
 
 export const SAMPLE_INDEXING_DELAY_MS = 800
 const sampleKnowledgeBaseId = 'menu-and-prices'
+/** A sample knowledge base filled by connectors (Notion, a crawled site, Google Drive). */
+export const sampleConnectedKnowledgeBaseId = 'team-wiki'
 const sampleFolder = '/Users/you/Documents'
 const seedCreatedAt = '2026-10-01T02:00:00Z'
 /** 13:02 on the sample day in the viewer's time zone, as on the mockup. */
@@ -88,6 +91,16 @@ function buildSeedKnowledgeBases(): KnowledgeBase[] {
       usedBy: [{ agentId: 'ask-documents', agentName: 'Ask your documents' }],
     }),
     seedKnowledgeBase({
+      id: sampleConnectedKnowledgeBaseId,
+      name: 'Team wiki and website',
+      status: 'needs_attention',
+      sourceCount: 3,
+      fileCount: 51,
+      passageCount: 429,
+      storageBytes: 3_100_000,
+      usedBy: [{ agentId: 'catering-assistant', agentName: 'Catering assistant' }],
+    }),
+    seedKnowledgeBase({
       id: 'past-orders',
       name: 'Past orders',
       fileCount: 1,
@@ -114,6 +127,7 @@ function buildSeedSources(): KnowledgeSource[] {
       statusMessage: '1 page failed',
       passageCount: 84,
     }),
+    ...seedConnectorSources(sampleConnectedKnowledgeBaseId, seedLastSyncedAt),
     seedSource({ id: 'kantor-folder', knowledgeBaseId: 'company-documents', kind: 'folder', name: 'Kantor', location: `${sampleFolder}/Kantor`, documentCount: 138, status: 'reading', passageCount: 2310 }),
     seedSource({ id: 'orders-csv', knowledgeBaseId: 'past-orders', name: 'Orders.csv', passageCount: 96 }),
   ]
@@ -321,5 +335,25 @@ export const sampleKnowledgeBackend = {
     return Promise.resolve(() => {
       listeners.delete(onKnowledgeEvent)
     })
+  },
+}
+
+/** Lets the connector sample backend (`knowledgeConnectors.ts`) add and update sources. */
+export const sampleKnowledgeInternals = {
+  findKnowledgeBase,
+  findSource(sourceId: string): KnowledgeSource {
+    const source = storedSources.find((candidate) => candidate.id === sourceId)
+    if (!source) throw new BackendError('not_found', `knowledge source ${sourceId} not found`)
+    return source
+  },
+  insertSource(source: KnowledgeSource): void {
+    storedSources = [...storedSources, source]
+    refreshTotals(source.knowledgeBaseId, true)
+  },
+  replaceSource,
+  pretendToIndex,
+  nextId(): number {
+    createdCount += 1
+    return createdCount
   },
 }

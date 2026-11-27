@@ -2,6 +2,7 @@ import { Icon, joinClassNames } from '@/components/ui'
 import type { KnowledgeSource } from '@/api/knowledgeTypes'
 import { SourceTypeTile } from './SourceTypeTile'
 import { sourceDetailText, sourceTileType, sourceUpdateText } from './knowledgeDisplay'
+import { connectorErrorText } from './connectors/connectorDisplay'
 import { formatNumber, messages, useT } from '@/i18n'
 
 type StatusTone = 'ready' | 'warning' | 'reading' | 'failed' | 'pending'
@@ -30,10 +31,17 @@ function describeStatus(source: KnowledgeSource, readingPercent: number | undefi
 
 function SourceStatusPill({ source, readingPercent }: { source: KnowledgeSource; readingPercent?: number }) {
   const { tone, label } = describeStatus(source, readingPercent)
+  // Connector errors come with a stable kind, explained in the app's language.
+  const connectorProblem = source.connector ? connectorErrorText(source.connector.lastErrorKind) : null
+  const problem = connectorProblem ?? (source.status === 'failed' ? source.statusMessage : null)
   return (
     <span className="flex flex-col items-start gap-1">
       <span className={joinClassNames('rounded-full px-2 py-[3px] font-medium whitespace-nowrap', statusToneClassNames[tone])}>{label}</span>
-      {source.status === 'failed' && source.statusMessage && <span className="max-w-[260px] text-[12px] text-danger">{source.statusMessage}</span>}
+      {problem && (
+        <span className={joinClassNames('max-w-[260px] text-[12px]', source.status === 'failed' ? 'text-danger' : 'text-amber-strong')} title={source.statusMessage ?? undefined}>
+          {problem}
+        </span>
+      )}
     </span>
   )
 }
@@ -45,11 +53,14 @@ interface KnowledgeSourcesTableProps {
   /** Live reading progress by source id, from `knowledge-event`s. */
   readingPercents?: Record<string, number>
   onRemove: (source: KnowledgeSource) => void
+  /** "Sync now" on one connector source. */
+  onSyncSource?: (source: KnowledgeSource) => void
 }
 
 /** Table of the files, folders and websites inside a knowledge base (screen 18). */
-export function KnowledgeSourcesTable({ sources, readingPercents = {}, onRemove }: KnowledgeSourcesTableProps) {
+export function KnowledgeSourcesTable({ sources, readingPercents = {}, onRemove, onSyncSource }: KnowledgeSourcesTableProps) {
   const t = useT().knowledge
+  const c = useT().knowledgeConnectors
   if (sources.length === 0) {
     return <p className="m-0 rounded-xl border border-dashed border-line-heavy bg-subtle px-4 py-6 text-center text-[13px] text-muted">{t.noSourcesHint}</p>
   }
@@ -90,7 +101,19 @@ export function KnowledgeSourcesTable({ sources, readingPercents = {}, onRemove 
                 <td className={cellClassNames}>
                   <SourceStatusPill source={source} readingPercent={readingPercents[source.id]} />
                 </td>
-                <td className={joinClassNames(cellClassNames, 'text-right')}>
+                <td className={joinClassNames(cellClassNames, 'text-right whitespace-nowrap')}>
+                  {source.connector && onSyncSource && (
+                    <button
+                      type="button"
+                      aria-label={c.syncSource(source.name)}
+                      title={c.syncSourceShort}
+                      disabled={isBusy}
+                      onClick={() => onSyncSource(source)}
+                      className="inline-flex size-8 cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent text-muted hover:bg-subtle hover:text-ink disabled:cursor-default disabled:opacity-50"
+                    >
+                      <Icon name="refresh" size={14} />
+                    </button>
+                  )}
                   <button
                     type="button"
                     aria-label={t.removeSource(source.name)}

@@ -644,6 +644,58 @@ impl CredentialStore {
     }
 }
 
+/// Knowledge connector credentials (`knowledge:<source id>:<name>`): the access token,
+/// API key, password, OAuth refresh token or client secret of one knowledge source
+/// (Notion, an API, Google Drive, SharePoint). Their own prefix keeps them apart from
+/// workflow secrets, so no workflow can read them; they never reach SQLite, logs or the
+/// webview after saving.
+impl CredentialStore {
+    /// Saves or replaces one credential of a knowledge source. Rejects empty values.
+    pub fn set_knowledge_secret(&self, source_id: &str, name: &str, value: &str) -> AppResult<()> {
+        let account = knowledge_secret_account(source_id, name)?;
+        if value.trim().is_empty() {
+            return Err(AppError::InvalidInput("the value is empty".into()));
+        }
+        match &self.backend {
+            CredentialBackend::Keychain(keychain) => {
+                keychain.save(&account, value).map_err(|error| secret_keychain_error("save", &account, &error))
+            }
+            CredentialBackend::InMemory(_) => {
+                lock_secrets(&self.in_memory_workflow_secrets)?.insert(account, value.to_owned());
+                Ok(())
+            }
+        }
+    }
+
+    /// Removes one credential of a knowledge source; succeeds if none was stored.
+    pub fn delete_knowledge_secret(&self, source_id: &str, name: &str) -> AppResult<()> {
+        let account = knowledge_secret_account(source_id, name)?;
+        match &self.backend {
+            CredentialBackend::Keychain(keychain) => {
+                keychain.delete(&account).map_err(|error| secret_keychain_error("delete", &account, &error))
+            }
+            CredentialBackend::InMemory(_) => {
+                lock_secrets(&self.in_memory_workflow_secrets)?.remove(&account);
+                Ok(())
+            }
+        }
+    }
+
+    /// Backend-only access to a knowledge source credential (used by its connector).
+    /// Never expose through a command.
+    pub(crate) fn read_knowledge_secret(&self, source_id: &str, name: &str) -> AppResult<Option<String>> {
+        let account = knowledge_secret_account(source_id, name)?;
+        match &self.backend {
+            CredentialBackend::Keychain(keychain) => {
+                keychain.read(&account).map_err(|error| secret_keychain_error("read", &account, &error))
+            }
+            CredentialBackend::InMemory(_) => {
+                Ok(lock_secrets(&self.in_memory_workflow_secrets)?.get(&account).cloned())
+            }
+        }
+    }
+}
+
 /// MCP OAuth sign-ins (`mcp-oauth:<server>:<part>`): the sign-in session (endpoints and
 /// client id, no secret), the access token and the refresh token of each MCP server the user
 /// signed in to. Their own prefix keeps them apart from workflow secrets, so no workflow can
@@ -743,6 +795,22 @@ fn deploy_secret_account(name: &str) -> AppResult<String> {
         return Err(AppError::InvalidInput(format!("`{name}` is not a valid credential name")));
     }
     Ok(format!("{DEPLOY_SECRET_ACCOUNT_PREFIX}{name}"))
+}
+
+/// Keychain account prefix of knowledge connector credentials.
+const KNOWLEDGE_SECRET_ACCOUNT_PREFIX: &str = "knowledge:";
+
+/// `knowledge:<source id>:<name>`; both are lowercase letters, digits and `_-`.
+fn knowledge_secret_account(source_id: &str, name: &str) -> AppResult<String> {
+    let valid = |text: &str| {
+        !text.is_empty()
+            && text.len() <= 64
+            && text.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || b"_-".contains(&byte))
+    };
+    if !valid(source_id) || !valid(name) {
+        return Err(AppError::InvalidInput(format!("`{source_id}:{name}` is not a valid credential name")));
+    }
+    Ok(format!("{KNOWLEDGE_SECRET_ACCOUNT_PREFIX}{source_id}:{name}"))
 }
 
 /// Keychain account prefix of chatbot channel credentials.
