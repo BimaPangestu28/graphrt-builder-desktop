@@ -123,7 +123,7 @@ pub async fn run_bot_turn(
         .graph()
         .nodes()
         .iter()
-        .filter(|node| node.parent.is_none() && node.kind == KNOWLEDGE_RETRIEVAL_KIND)
+        .filter(|node| node.parent.is_none() && &*node.kind == KNOWLEDGE_RETRIEVAL_KIND)
         .map(|node| &*node.id)
         .collect();
     let mut retrieved_sources = Vec::new();
@@ -149,9 +149,7 @@ pub async fn run_bot_turn(
             Event::VariableUpdated { selector, value, .. } if selector.namespace() == "conversation" => {
                 apply_variable_update(&mut variables, &selector, value.to_json());
             }
-            Event::NodeSucceeded { node_id, outputs: step_outputs, .. }
-                if retrieval_steps.contains(&node_id.as_str()) =>
-            {
+            Event::NodeSucceeded { node_id, outputs: step_outputs, .. } if retrieval_steps.contains(&&*node_id) => {
                 if let Some(Json::Array(items)) = step_outputs.get("result").map(Value::to_json) {
                     retrieved_sources.extend(items.iter().filter_map(RetrievedSource::from_result_item));
                 }

@@ -25,7 +25,7 @@ fn placeholder_http_nodes(graph: &Graph) -> Vec<(&GraphNode, String)> {
     graph
         .nodes()
         .iter()
-        .filter(|node| node.kind == "http-request")
+        .filter(|node| &*node.kind == "http-request")
         .filter_map(|node| {
             let host = url_host(node.doc.config.get("url").and_then(Json::as_str)?)?;
             is_placeholder_host(&host).then_some((node, host))

@@ -89,6 +89,7 @@ impl Database {
         // waits for a lock instead of failing at once with SQLITE_BUSY.
         connection.busy_timeout(BUSY_TIMEOUT)?;
         migrations::apply(&connection)?;
+        agents::upgrade_stored_flows(&connection)?;
         Ok(Self { connection: Mutex::new(connection) })
     }
 

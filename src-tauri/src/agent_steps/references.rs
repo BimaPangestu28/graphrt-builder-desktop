@@ -50,7 +50,7 @@ pub fn flow_references(graph: &Graph) -> AgentReferences {
 pub fn node_references(node: &GraphNode) -> AgentReferences {
     let config = &node.doc.config;
     let mut references = AgentReferences::default();
-    match node.kind.as_str() {
+    match &*node.kind {
         "tool" => {
             let provider = ["provider_id", "provider", "provider_name"]
                 .iter()

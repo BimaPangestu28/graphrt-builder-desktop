@@ -130,13 +130,16 @@ describe('NodeInspector', () => {
     expect(currentNode('for_each_place').config.error_handle_mode).toBe('remove-abnormal-output')
   })
 
-  it('sets the approval time limit (timeout_ms) and the on-timeout answer', async () => {
+  it('sets the approval time limit (expire_after_ms) and the on-expire answer', async () => {
     await renderInspector('approve_message')
     openSection('Time limit')
     commitNumber('Hours', '2')
-    expect(currentNode('approve_message').timeoutMs).toBe(7_200_000)
+    expect(currentNode('approve_message').config.expire_after_ms).toBe(7_200_000)
+    expect(currentNode('approve_message').timeoutMs, 'the per-attempt timeout is not the time limit').toBeNull()
     fireEvent.change(screen.getByRole('combobox', { name: 'When it expires' }), { target: { value: 'action:skip' } })
-    expect(currentNode('approve_message').config.on_timeout).toEqual({ action: 'skip' })
+    expect(currentNode('approve_message').config.on_expire).toEqual({ action: 'skip' })
+    commitNumber('Hours', '')
+    expect(currentNode('approve_message').config.expire_after_ms).toBeUndefined()
   })
 
   it('maps HTTP request controls to method, headers and body', async () => {

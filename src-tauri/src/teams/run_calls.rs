@@ -48,7 +48,7 @@ pub fn tool_node_agents(flow_yaml: &str) -> HashMap<String, String> {
     graph
         .nodes()
         .iter()
-        .filter(|node| node.kind == "tool")
+        .filter(|node| &*node.kind == "tool")
         .filter_map(|node| {
             let references = node_references(node);
             match references.agent_ids.as_slice() {

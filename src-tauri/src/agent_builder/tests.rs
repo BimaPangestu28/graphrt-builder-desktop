@@ -907,8 +907,9 @@ fn proposing_a_host_never_excuses_a_write_to_it() {
 #[test]
 fn a_host_written_into_the_draft_is_not_trusted() {
     let (_, builder) = mock_builder(&[]);
+    // Trusted hosts live in the app database, never in the document: graphrt refuses the key.
     let problem = validate_draft(&lookup_trusting_itself(), &builder, &no_trust()).unwrap_err();
-    assert!(problem.contains(&format!("Trust {WEATHER_HOST} for lookups")), "{problem}");
+    assert!(problem.contains("trusted_hosts"), "{problem}");
 }
 
 #[tokio::test]
@@ -940,7 +941,8 @@ async fn an_injected_draft_cannot_trust_a_host() {
     assert!(db.trusted_lookup_hosts(&agent.id).unwrap().is_empty());
 
     // A proposal is saved with the draft, but trusts nothing until the user clicks.
-    let proposing = format!("I look up the weather. Trust {WEATHER_HOST} for lookups\n```yaml\n{injected}```");
+    let lookup = flow::test_fixtures::trusted_weather_lookup();
+    let proposing = format!("I look up the weather. Trust {WEATHER_HOST} for lookups\n```yaml\n{lookup}```");
     let (_mock, builder) = mock_builder(&[proposing]);
     let result = revise_agent_with_model(&db, &builder, &agent.id, "Look up the weather", &|_| {}).await.unwrap();
     assert!(result.explanation.contains(&format!("Trust {WEATHER_HOST} for lookups")), "{}", result.explanation);

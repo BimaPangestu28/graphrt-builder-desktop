@@ -10,7 +10,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use futures::future::BoxFuture;
-use graphrt_core::tool::{ToolError, ToolOutput, ToolRuntime, ToolSpec};
+use graphrt_core::tool::{ToolCallContext, ToolError, ToolOutput, ToolRuntime, ToolSpec};
 use graphrt_mcp::McpToolRuntime;
 use tokio::sync::OnceCell;
 
@@ -48,8 +48,13 @@ impl LazyMcpRuntime {
         self.connection().await?.list().await
     }
 
-    async fn call_tool(&self, name: &str, arguments: serde_json::Value) -> Result<ToolOutput, ToolError> {
-        self.connection().await?.call(name, arguments).await
+    async fn call_tool(
+        &self,
+        name: &str,
+        arguments: serde_json::Value,
+        context: &ToolCallContext,
+    ) -> Result<ToolOutput, ToolError> {
+        self.connection().await?.call(name, arguments, context).await
     }
 }
 
@@ -69,7 +74,12 @@ impl ToolRuntime for LazyMcpRuntime {
         Box::pin(self.list_tools())
     }
 
-    fn call<'a>(&'a self, name: &'a str, arguments: serde_json::Value) -> BoxFuture<'a, Result<ToolOutput, ToolError>> {
-        Box::pin(self.call_tool(name, arguments))
+    fn call<'a>(
+        &'a self,
+        name: &'a str,
+        arguments: serde_json::Value,
+        context: &'a ToolCallContext,
+    ) -> BoxFuture<'a, Result<ToolOutput, ToolError>> {
+        Box::pin(self.call_tool(name, arguments, context))
     }
 }

@@ -20,22 +20,18 @@ use serde_json::{Map, Value as Json};
 use super::model::{EdgeEdit, GraphEdit, NodeEdit, OnErrorStrategy, OnErrorView, RetryView};
 use crate::error::{AppError, AppResult};
 
-/// Node keys that are not part of `config` (graphrt reads them itself).
-const RESERVED_CONFIG_KEYS: &[&str] = &[
-    "id",
-    "type",
-    "title",
-    "parent",
-    "parentId",
-    "data",
-    "on_error",
-    "error_strategy",
-    "default_value",
-    "retry",
-    "retry_config",
-    "timeout_ms",
-    "timeout",
-];
+/// Node keys graphrt reads itself besides [`graphrt_core::dsl::COMMON_NODE_FIELDS`]
+/// (`id`, `type`, `title`, `parent`, `retry`, `timeout_ms`, `on_error`): their
+/// deprecated aliases and the import layout's `data` wrapper. Everything else is
+/// node config, including `http-request`'s own `timeout: {connect, read}`.
+const LEGACY_NODE_FIELDS: &[&str] = &["parentId", "data", "error_strategy", "default_value", "retry_config"];
+
+/// Whether `key` is set through its own field of a node edit rather than its config.
+fn is_reserved_config_key(key: &str) -> bool {
+    graphrt_core::dsl::COMMON_NODE_FIELDS.contains(&key)
+        || LEGACY_NODE_FIELDS.contains(&key)
+        || graphrt_core::dsl::RESERVED_NODE_FIELDS.contains(&key)
+}
 
 /// Container kind → the body marker kind graphrt expects inside it.
 const BODY_MARKERS: &[(&str, &str)] = &[("iteration", "iteration-start"), ("loop", "loop-start")];
@@ -104,8 +100,9 @@ impl EditableDocument {
             Some(Json::Object(graph)) => graph,
             _ => Map::new(),
         };
-        let nodes =
+        let mut nodes =
             serde_json::to_value(&workflow.graph.nodes).map_err(|error| AppError::Workflow(error.to_string()))?;
+        keep_tool_keys(&mut nodes, graph.get("nodes"));
         graph.insert("nodes".into(), nodes);
         graph.insert("edges".into(), Json::Array(workflow.graph.edges.iter().map(edge_json).collect()));
         document.insert("graph".into(), Json::Object(graph));
@@ -113,6 +110,27 @@ impl EditableDocument {
         let yaml = serde_saphyr::to_string(&Json::Object(document))
             .map_err(|error| AppError::Workflow(format!("could not write the workflow document: {error}")))?;
         Ok(format!("{}{yaml}", self.leading_comments))
+    }
+}
+
+/// Copies each node's `x-` keys from the document as read into the written node with
+/// the same id. graphrt leaves them out of the node it parses (they are free for
+/// tools), so without this an edit would drop another tool's metadata.
+fn keep_tool_keys(written_nodes: &mut Json, read_nodes: Option<&Json>) {
+    let Some(read_nodes) = read_nodes.and_then(Json::as_array) else { return };
+    let Some(written_nodes) = written_nodes.as_array_mut() else { return };
+    for written in written_nodes.iter_mut().filter_map(Json::as_object_mut) {
+        let Some(id) = written.get("id").and_then(Json::as_str).map(str::to_owned) else { continue };
+        let Some(read) = read_nodes
+            .iter()
+            .filter_map(Json::as_object)
+            .find(|read| read.get("id").and_then(Json::as_str) == Some(&id))
+        else {
+            continue;
+        };
+        for (key, value) in read.iter().filter(|(key, _)| key.starts_with("x-")) {
+            written.entry(key.clone()).or_insert_with(|| value.clone());
+        }
     }
 }
 
@@ -222,7 +240,7 @@ fn node_doc_from_edit(edit: &NodeEdit) -> AppResult<NodeDoc> {
     if id.is_empty() || kind.is_empty() {
         return Err(AppError::InvalidInput("every node needs an id and a kind".into()));
     }
-    if let Some(key) = edit.config.keys().find(|key| RESERVED_CONFIG_KEYS.contains(&key.as_str())) {
+    if let Some(key) = edit.config.keys().find(|key| is_reserved_config_key(key)) {
         return Err(AppError::InvalidInput(format!(
             "node `{id}`: `{key}` is set through its own field, not in config"
         )));
@@ -238,7 +256,16 @@ fn node_doc_from_edit(edit: &NodeEdit) -> AppResult<NodeDoc> {
         },
         timeout_ms: edit.timeout_ms,
     };
-    Ok(NodeDoc { id: id.to_owned(), kind: kind.to_owned(), title, parent, policy, config: edit.config.clone() })
+    // `strict`: unknown config fields are errors, as for any node the app writes itself.
+    Ok(NodeDoc {
+        id: id.to_owned(),
+        kind: kind.to_owned(),
+        title,
+        parent,
+        policy,
+        config: edit.config.clone(),
+        strict: true,
+    })
 }
 
 fn error_strategy(view: &OnErrorView) -> ErrorStrategy {

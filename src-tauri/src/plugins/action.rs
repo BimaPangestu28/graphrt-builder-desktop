@@ -105,10 +105,10 @@ async fn run_action_graph(
         let mut outputs = None;
         while let Some(event) = stream.next().await {
             match event {
-                Event::NodeSucceeded { node_id, outputs: node_outputs, .. } if node_id == ACTION_NODE_ID => {
+                Event::NodeSucceeded { node_id, outputs: node_outputs, .. } if &*node_id == ACTION_NODE_ID => {
                     outputs = Some(node_outputs);
                 }
-                Event::NodeFailed { node_id, error_type, .. } if node_id == ACTION_NODE_ID => {
+                Event::NodeFailed { node_id, error_type, .. } if &*node_id == ACTION_NODE_ID => {
                     *failure_type = Some(error_type);
                 }
                 Event::RunSucceeded { .. } => break,

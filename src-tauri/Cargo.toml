@@ -29,23 +29,23 @@ tauri-plugin-notification = "2.8.1"
 # graphrt runtime, pinned to a commit until the crates are published on crates.io
 # (branch backport/skill-drafts-pdf-pages: backport/ui-blocks plus agent skills, self learning,
 # PDF page markers and skill drafts: Graphrt/graphrt#101, #107, #96 and #108)
-graphrt-core = { git = "https://github.com/Graphrt/graphrt", rev = "9ac099dd1633f408e94adc5ae81c320dfd7b46c9" }
-graphrt-llm = { git = "https://github.com/Graphrt/graphrt", rev = "9ac099dd1633f408e94adc5ae81c320dfd7b46c9", default-features = false, features = ["openai", "anthropic", "gemini", "mock", "skills", "learning", "text-model"] }
-graphrt-http = { git = "https://github.com/Graphrt/graphrt", rev = "9ac099dd1633f408e94adc5ae81c320dfd7b46c9" }
+graphrt-core = { git = "https://github.com/Graphrt/graphrt", rev = "65ac59887a01cdf2e0244921522b48e526f43d07" }
+graphrt-llm = { git = "https://github.com/Graphrt/graphrt", rev = "65ac59887a01cdf2e0244921522b48e526f43d07", default-features = false, features = ["openai", "anthropic", "gemini", "mock", "skills", "learning", "text-model"] }
+graphrt-http = { git = "https://github.com/Graphrt/graphrt", rev = "65ac59887a01cdf2e0244921522b48e526f43d07" }
 # Knowledge bases: SQLite vector store, document extractors and OpenAI-compatible embeddings
-graphrt-rag = { git = "https://github.com/Graphrt/graphrt", rev = "9ac099dd1633f408e94adc5ae81c320dfd7b46c9", default-features = false, features = ["sqlite", "doc", "http"] }
+graphrt-rag = { git = "https://github.com/Graphrt/graphrt", rev = "65ac59887a01cdf2e0244921522b48e526f43d07", default-features = false, features = ["sqlite", "doc", "http"] }
 # Plugins: node kinds and tools from external processes (graphrt-plugins catalog)
-graphrt-plugin = { git = "https://github.com/Graphrt/graphrt", rev = "9ac099dd1633f408e94adc5ae81c320dfd7b46c9", default-features = false, features = ["process", "http", "yaml", "mcp-presets"] }
+graphrt-plugin = { git = "https://github.com/Graphrt/graphrt", rev = "65ac59887a01cdf2e0244921522b48e526f43d07", default-features = false, features = ["process", "http", "yaml", "mcp-presets"] }
 # MCP servers configured in Connections > Advanced: their tools for `tool` / `agent` nodes (stdio and Streamable HTTP)
-graphrt-mcp = { git = "https://github.com/Graphrt/graphrt", rev = "9ac099dd1633f408e94adc5ae81c320dfd7b46c9" }
+graphrt-mcp = { git = "https://github.com/Graphrt/graphrt", rev = "65ac59887a01cdf2e0244921522b48e526f43d07" }
 # "My own server": exporting an agent as a portable .grt bundle for `graphrt serve` (no WebAssembly plugins)
-graphrt-bundle = { git = "https://github.com/Graphrt/graphrt", rev = "9ac099dd1633f408e94adc5ae81c320dfd7b46c9", default-features = false }
+graphrt-bundle = { git = "https://github.com/Graphrt/graphrt", rev = "65ac59887a01cdf2e0244921522b48e526f43d07", default-features = false }
 # UI blocks (cards, charts, tables, KPI tiles): validation before the Run result screen renders them
-graphrt-ui = { git = "https://github.com/Graphrt/graphrt", rev = "9ac099dd1633f408e94adc5ae81c320dfd7b46c9" }
+graphrt-ui = { git = "https://github.com/Graphrt/graphrt", rev = "65ac59887a01cdf2e0244921522b48e526f43d07" }
 # Agent skills: SKILL.md packages pinned and checked at install, loaded by `agent` nodes on demand
-graphrt-skill = { git = "https://github.com/Graphrt/graphrt", rev = "9ac099dd1633f408e94adc5ae81c320dfd7b46c9" }
+graphrt-skill = { git = "https://github.com/Graphrt/graphrt", rev = "65ac59887a01cdf2e0244921522b48e526f43d07" }
 # Self learning: lessons a person approves, read by `agent` nodes; feedback becomes proposals
-graphrt-learn = { git = "https://github.com/Graphrt/graphrt", rev = "9ac099dd1633f408e94adc5ae81c320dfd7b46c9" }
+graphrt-learn = { git = "https://github.com/Graphrt/graphrt", rev = "65ac59887a01cdf2e0244921522b48e526f43d07" }
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "process", "io-util"] }
 futures = "0.3"
@@ -55,7 +55,7 @@ serde-saphyr = "2"
 thiserror = "2"
 # Same version as graphrt-rag's SqliteStore: a binary can link only one bundled SQLite.
 # `fallible_uint` keeps `usize`/`u64` parameters working as they did in 0.32.
-rusqlite = { version = "0.40", features = ["bundled", "fallible_uint"] }
+rusqlite = { version = "0.43", features = ["bundled", "fallible_uint"] }
 # OS credential stores: macOS Keychain, Windows Credential Manager, and the
 # Secret Service on Linux (GNOME Keyring / KWallet over D-Bus; needs libdbus-1 to build).
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }

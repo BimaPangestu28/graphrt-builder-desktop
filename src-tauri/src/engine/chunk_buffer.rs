@@ -127,9 +127,9 @@ impl ChunkBuffer {
         };
         let key = ChunkStreamKey {
             frame: frame.to_string(),
-            node_id: node_id.clone(),
-            exec_id: exec_id.clone(),
-            field: field.clone(),
+            node_id: node_id.to_string(),
+            exec_id: exec_id.to_string(),
+            field: field.to_string(),
         };
         let index = self.append(key, chunk, event_json, now);
         let size_reached = self.pending[index].text.len() >= self.limits.max_bytes;
@@ -188,7 +188,7 @@ mod tests {
         Event::NodeChunk {
             frame: "".into(),
             node_id: node_id.into(),
-            exec_id: format!("{node_id}-1"),
+            exec_id: format!("{node_id}-1").into(),
             field: field.into(),
             chunk: text.into(),
         }

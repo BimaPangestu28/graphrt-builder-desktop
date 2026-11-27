@@ -305,12 +305,6 @@ checksum = "9d297deb1925b89f2ccc13d7635fa0714f12c87adce1c75356b39ca9b7178567"
 
 [[package]]
 name = "base64"
-version = "0.22.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
-
-[[package]]
-name = "base64"
 version = "0.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
@@ -1088,7 +1082,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1340,7 +1334,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e35d6e78f4cebb90e51d543db8fe41528851d6deeef6ef21ebd4bfdc1e784776"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1917,15 +1911,14 @@ dependencies = [
 
 [[package]]
 name = "graphrt-bundle"
-version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=9ac099dd1633f408e94adc5ae81c320dfd7b46c9#9ac099dd1633f408e94adc5ae81c320dfd7b46c9"
+version = "0.6.2"
+source = "git+https://github.com/Graphrt/graphrt?rev=65ac59887a01cdf2e0244921522b48e526f43d07#65ac59887a01cdf2e0244921522b48e526f43d07"
 dependencies = [
  "ed25519-dalek",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "graphrt-core",
  "semver",
  "serde",
- "serde-saphyr",
  "serde_json",
  "sha2 0.11.1",
  "thiserror 2.0.21",
@@ -1934,8 +1927,8 @@ dependencies = [
 
 [[package]]
 name = "graphrt-core"
-version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=9ac099dd1633f408e94adc5ae81c320dfd7b46c9#9ac099dd1633f408e94adc5ae81c320dfd7b46c9"
+version = "0.6.2"
+source = "git+https://github.com/Graphrt/graphrt?rev=65ac59887a01cdf2e0244921522b48e526f43d07#65ac59887a01cdf2e0244921522b48e526f43d07"
 dependencies = [
  "futures",
  "indexmap 2.14.2",
@@ -1943,14 +1936,15 @@ dependencies = [
  "serde",
  "serde-saphyr",
  "serde_json",
+ "smallvec",
  "thiserror 2.0.21",
  "tokio",
 ]
 
 [[package]]
 name = "graphrt-doc"
-version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=9ac099dd1633f408e94adc5ae81c320dfd7b46c9#9ac099dd1633f408e94adc5ae81c320dfd7b46c9"
+version = "0.6.2"
+source = "git+https://github.com/Graphrt/graphrt?rev=65ac59887a01cdf2e0244921522b48e526f43d07#65ac59887a01cdf2e0244921522b48e526f43d07"
 dependencies = [
  "calamine",
  "encoding_rs",
@@ -1964,15 +1958,16 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
+ "weezl",
  "zip",
 ]
 
 [[package]]
 name = "graphrt-http"
-version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=9ac099dd1633f408e94adc5ae81c320dfd7b46c9#9ac099dd1633f408e94adc5ae81c320dfd7b46c9"
+version = "0.6.2"
+source = "git+https://github.com/Graphrt/graphrt?rev=65ac59887a01cdf2e0244921522b48e526f43d07#65ac59887a01cdf2e0244921522b48e526f43d07"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "futures",
  "graphrt-core",
  "indexmap 2.14.2",
@@ -1987,8 +1982,8 @@ dependencies = [
 
 [[package]]
 name = "graphrt-learn"
-version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=9ac099dd1633f408e94adc5ae81c320dfd7b46c9#9ac099dd1633f408e94adc5ae81c320dfd7b46c9"
+version = "0.6.2"
+source = "git+https://github.com/Graphrt/graphrt?rev=65ac59887a01cdf2e0244921522b48e526f43d07#65ac59887a01cdf2e0244921522b48e526f43d07"
 dependencies = [
  "futures",
  "graphrt-core",
@@ -2001,8 +1996,8 @@ dependencies = [
 
 [[package]]
 name = "graphrt-llm"
-version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=9ac099dd1633f408e94adc5ae81c320dfd7b46c9#9ac099dd1633f408e94adc5ae81c320dfd7b46c9"
+version = "0.6.2"
+source = "git+https://github.com/Graphrt/graphrt?rev=65ac59887a01cdf2e0244921522b48e526f43d07#65ac59887a01cdf2e0244921522b48e526f43d07"
 dependencies = [
  "futures",
  "graphrt-core",
@@ -2017,8 +2012,8 @@ dependencies = [
 
 [[package]]
 name = "graphrt-mcp"
-version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=9ac099dd1633f408e94adc5ae81c320dfd7b46c9#9ac099dd1633f408e94adc5ae81c320dfd7b46c9"
+version = "0.6.2"
+source = "git+https://github.com/Graphrt/graphrt?rev=65ac59887a01cdf2e0244921522b48e526f43d07#65ac59887a01cdf2e0244921522b48e526f43d07"
 dependencies = [
  "futures",
  "graphrt-core",
@@ -2036,8 +2031,8 @@ dependencies = [
 
 [[package]]
 name = "graphrt-plugin"
-version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=9ac099dd1633f408e94adc5ae81c320dfd7b46c9#9ac099dd1633f408e94adc5ae81c320dfd7b46c9"
+version = "0.6.2"
+source = "git+https://github.com/Graphrt/graphrt?rev=65ac59887a01cdf2e0244921522b48e526f43d07#65ac59887a01cdf2e0244921522b48e526f43d07"
 dependencies = [
  "futures",
  "graphrt-core",
@@ -2045,7 +2040,6 @@ dependencies = [
  "reqwest",
  "rustls",
  "serde",
- "serde-saphyr",
  "serde_json",
  "sha2 0.11.1",
  "thiserror 2.0.21",
@@ -2054,8 +2048,8 @@ dependencies = [
 
 [[package]]
 name = "graphrt-rag"
-version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=9ac099dd1633f408e94adc5ae81c320dfd7b46c9#9ac099dd1633f408e94adc5ae81c320dfd7b46c9"
+version = "0.6.2"
+source = "git+https://github.com/Graphrt/graphrt?rev=65ac59887a01cdf2e0244921522b48e526f43d07#65ac59887a01cdf2e0244921522b48e526f43d07"
 dependencies = [
  "futures",
  "graphrt-core",
@@ -2071,13 +2065,12 @@ dependencies = [
 
 [[package]]
 name = "graphrt-skill"
-version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=9ac099dd1633f408e94adc5ae81c320dfd7b46c9#9ac099dd1633f408e94adc5ae81c320dfd7b46c9"
+version = "0.6.2"
+source = "git+https://github.com/Graphrt/graphrt?rev=65ac59887a01cdf2e0244921522b48e526f43d07#65ac59887a01cdf2e0244921522b48e526f43d07"
 dependencies = [
  "futures",
  "graphrt-core",
  "serde",
- "serde-saphyr",
  "serde_json",
  "sha2 0.11.1",
  "thiserror 2.0.21",
@@ -2085,8 +2078,8 @@ dependencies = [
 
 [[package]]
 name = "graphrt-ui"
-version = "0.1.0"
-source = "git+https://github.com/Graphrt/graphrt?rev=9ac099dd1633f408e94adc5ae81c320dfd7b46c9#9ac099dd1633f408e94adc5ae81c320dfd7b46c9"
+version = "0.6.2"
+source = "git+https://github.com/Graphrt/graphrt?rev=65ac59887a01cdf2e0244921522b48e526f43d07#65ac59887a01cdf2e0244921522b48e526f43d07"
 dependencies = [
  "graphrt-core",
  "serde",
@@ -2151,15 +2144,6 @@ name = "hashbrown"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
-
-[[package]]
-name = "hashbrown"
-version = "0.16.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100"
-dependencies = [
- "foldhash",
-]
 
 [[package]]
 name = "hashbrown"
@@ -2829,9 +2813,9 @@ dependencies = [
 
 [[package]]
 name = "libsqlite3-sys"
-version = "0.38.2"
+version = "0.40.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1d20bef17f513b9b3004532233187769cd072d790971f4e4da0e346eb6401e8"
+checksum = "b06e69070b7e12262b0cd90832f0a7396f142a2b330181255562decf9f0c6215"
 dependencies = [
  "cc",
  "pkg-config",
@@ -3069,7 +3053,7 @@ dependencies = [
  "png",
  "serde",
  "thiserror 2.0.21",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4212,11 +4196,10 @@ dependencies = [
 
 [[package]]
 name = "rsqlite-vfs"
-version = "0.1.1"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c51c9ae4df8a7fba42103df5c621fa3c37eccf3a3c650879e90fc48b11cc192c"
+checksum = "353b74f9810d5b085b6c42c9d86a5f0fdb795553235cdd48753b32e3809d18a7"
 dependencies = [
- "hashbrown 0.16.1",
  "thiserror 2.0.21",
 ]
 
@@ -4232,9 +4215,9 @@ dependencies = [
 
 [[package]]
 name = "rusqlite"
-version = "0.40.2"
+version = "0.43.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23f2a97da3e3873c73cb2a2e71b35c40ff95e0b1eefa8d72d8499a6928c3b5b3"
+checksum = "f172c4812a19b26d1c23cdb0070e69db335503dfa378b910eb857386e5b8beba"
 dependencies = [
  "bitflags 2.13.2",
  "fallible-iterator",
@@ -4270,7 +4253,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4326,7 +4309,7 @@ dependencies = [
  "security-framework 3.7.0",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4546,7 +4529,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "969cde0349344dbbf58b5f9badbfb8f806db13969364eb8007c057ef687007d9"
 dependencies = [
  "annotate-snippets",
- "base64 0.21.7",
+ "base64 0.23.1",
  "encoding_rs_io",
  "granit-parser",
  "nohash-hasher",
@@ -4822,7 +4805,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4885,14 +4868,12 @@ dependencies = [
 
 [[package]]
 name = "sqlite-wasm-rs"
-version = "0.5.5"
+version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc3efc0da82635d7e1ced0053bbbfa8c7ab9645d0bf36ceb4f7127bb85315d75"
+checksum = "a6cd504cecbfe7eef649988840f9a6cb768d11085efec138f8e99f160632d867"
 dependencies = [
  "cc",
- "js-sys",
  "rsqlite-vfs",
- "wasm-bindgen",
 ]
 
 [[package]]
@@ -5544,7 +5525,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5897,7 +5878,7 @@ dependencies = [
  "png",
  "serde",
  "thiserror 2.0.21",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5947,7 +5928,7 @@ checksum = "f2f6fb2847f6742cd76af783a2a2c49e9375d0a111c7bef6f71cd9e738c72d6e"
 dependencies = [
  "memoffset",
  "tempfile",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6346,7 +6327,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6367,7 +6348,7 @@ dependencies = [
  "objc2-foundation",
  "objc2-quartz-core",
  "raw-window-handle",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
  "windows-version",
 ]
 
@@ -6757,7 +6738,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d6f32a0ff4a9f6f01231eb2059cc85479330739333e0e58cadf03b6af2cca10"
 dependencies = [
  "cfg-if",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -7080,7 +7061,7 @@ dependencies = [
  "memchr",
  "nix",
  "typed-path",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
  "zeroize",
  "zopfli",
 ]

@@ -63,7 +63,7 @@ graph:
 fn timed_approval_flow(on_timeout: &str) -> String {
     DRAFT_AND_APPROVE.replace(
         "      prompt: \"Send this?",
-        &format!("      timeout_ms: 7200000\n{on_timeout}      prompt: \"Send this?"),
+        &format!("      expire_after_ms: 7200000\n{on_timeout}      prompt: \"Send this?"),
     )
 }
 
@@ -142,7 +142,7 @@ async fn an_approval_without_time_limit_never_expires() {
 #[tokio::test]
 async fn an_expired_approval_answers_with_the_chosen_button() {
     let harness = harness_with_answers(&["Hello"]);
-    let agent = create_agent(&harness.db, &timed_approval_flow("      on_timeout: { action: approve }\n"));
+    let agent = create_agent(&harness.db, &timed_approval_flow("      on_expire: { action: approve }\n"));
     let run = harness.runs.start_run(&agent.id, RunTrigger::Manual, json!({"topic": "x"})).await.unwrap();
     wait_for_status(&harness.sink, &run.id, RunStatus::Paused).await;
 
@@ -174,7 +174,7 @@ async fn an_expired_approval_answers_with_the_chosen_button() {
 #[tokio::test]
 async fn a_pause_wakes_the_expiry_task_which_then_sleeps_until_the_deadline() {
     let harness = harness_with_answers(&["Hello"]);
-    let agent = create_agent(&harness.db, &timed_approval_flow("      on_timeout: { action: approve }\n"));
+    let agent = create_agent(&harness.db, &timed_approval_flow("      on_expire: { action: approve }\n"));
     let now = chrono::Utc::now();
     assert_eq!(harness.runs.next_approval_check_delay(now), std::time::Duration::from_secs(60), "nothing waits");
 
@@ -200,7 +200,7 @@ async fn a_pause_wakes_the_expiry_task_which_then_sleeps_until_the_deadline() {
 
 #[tokio::test]
 async fn an_expired_approval_stops_the_run_by_default() {
-    for on_timeout in ["", "      on_timeout: stop\n"] {
+    for on_timeout in ["", "      on_expire: stop\n"] {
         let harness = harness_with_answers(&["Hello"]);
         let agent = create_agent(&harness.db, &timed_approval_flow(on_timeout));
         let run = harness.runs.start_run(&agent.id, RunTrigger::Manual, json!({"topic": "x"})).await.unwrap();
