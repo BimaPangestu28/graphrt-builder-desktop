@@ -75,7 +75,10 @@ done
 
 gh release upload "$tag" --repo "$repository" --clobber \
   "$work_dir/out/latest.json" "$work_dir/out/SHA256SUMS"
-gh api -X PATCH "repos/$repository/releases/$release_id" -F body=@"$work_dir/body.md" --silent
+# tag_name is sent on purpose: GitHub renames the tag of a draft to "untagged-..." when a
+# draft is updated without it.
+gh api -X PATCH "repos/$repository/releases/$release_id" \
+  -f tag_name="$tag" -F body=@"$work_dir/body.md" --silent
 
 echo "Draft release $tag now has:"
 cat "$work_dir/out/SHA256SUMS"
