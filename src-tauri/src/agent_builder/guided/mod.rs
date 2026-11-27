@@ -525,26 +525,49 @@ impl Planning<'_> {
         stage: BuildStage,
         stage_message: &str,
     ) -> AppResult<String> {
-        let request = ChatRequest::new(self.builder.choice.name.clone(), messages.to_vec())
-            .with_max_tokens(MAX_PLAN_TOKENS)
-            .with_temperature(PLAN_TEMPERATURE)
-            .with_response_format(ResponseFormat::JsonSchema { name: schema_name.to_owned(), schema, strict });
-        let stream = self.builder.model.chat(request).await.map_err(|error| model_error(&error))?;
-        let mut written_bytes = 0;
-        let mut last_sent: Option<Instant> = None;
-        let response = graphrt_llm::collect(stream, |delta| {
-            let ChatDelta::Text(text) = &delta else { return };
-            written_bytes += text.len();
-            let now = Instant::now();
-            if last_sent.is_some_and(|sent| now.duration_since(sent) < MIN_PREVIEW_INTERVAL) {
-                return;
+        let mut retried = false;
+        let response = loop {
+            let request = ChatRequest::new(self.builder.choice.name.clone(), messages.to_vec())
+                .with_max_tokens(MAX_PLAN_TOKENS)
+                .with_temperature(PLAN_TEMPERATURE)
+                .with_response_format(ResponseFormat::JsonSchema {
+                    name: schema_name.to_owned(),
+                    schema: schema.clone(),
+                    strict,
+                });
+            let mut written_bytes = 0;
+            let mut last_sent: Option<Instant> = None;
+            let answer = match self.builder.model.chat(request).await {
+                Ok(stream) => {
+                    graphrt_llm::collect(stream, |delta| {
+                        let ChatDelta::Text(text) = &delta else { return };
+                        written_bytes += text.len();
+                        let now = Instant::now();
+                        if last_sent.is_some_and(|sent| now.duration_since(sent) < MIN_PREVIEW_INTERVAL) {
+                            return;
+                        }
+                        last_sent = Some(now);
+                        let draft =
+                            DraftPreview { output_tokens: estimate_tokens(written_bytes), ..DraftPreview::default() };
+                        (self.on_progress)(BuildProgress {
+                            stage,
+                            message: stage_message.to_owned(),
+                            draft: Some(draft),
+                        });
+                    })
+                    .await
+                }
+                Err(error) => Err(error),
+            };
+            match answer {
+                Ok(response) => break response,
+                Err(error) if !retried && super::is_dropped_connection(&error) => {
+                    log::info!("the model call was cut off ({error}); asking once more");
+                    retried = true;
+                }
+                Err(error) => return Err(model_error(&error)),
             }
-            last_sent = Some(now);
-            let draft = DraftPreview { output_tokens: estimate_tokens(written_bytes), ..DraftPreview::default() };
-            (self.on_progress)(BuildProgress { stage, message: stage_message.to_owned(), draft: Some(draft) });
-        })
-        .await
-        .map_err(|error| model_error(&error))?;
+        };
         log::debug!("builder model {schema_name} ({} chars):\n{}", response.text.len(), response.text);
         Ok(response.text)
     }

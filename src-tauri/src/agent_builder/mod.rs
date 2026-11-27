@@ -525,22 +525,44 @@ async fn ask_model(
     stage: BuildStage,
     message: &str,
 ) -> AppResult<String> {
-    let request = ChatRequest::new(builder.choice.name.clone(), messages.to_vec()).with_max_tokens(MAX_REPLY_TOKENS);
-    let stream = builder.model.chat(request).await.map_err(|error| model_error(&error))?;
-    let mut watcher = live::DraftWatcher::new();
     let send_preview = |draft: DraftPreview| {
         on_progress(BuildProgress { stage, message: message.to_owned(), draft: Some(draft) });
     };
-    let response = graphrt_llm::collect(stream, |delta| {
-        if let Some(preview) = watcher.push(&delta, Instant::now()) {
-            send_preview(preview);
+    let mut retried = false;
+    loop {
+        let request =
+            ChatRequest::new(builder.choice.name.clone(), messages.to_vec()).with_max_tokens(MAX_REPLY_TOKENS);
+        let mut watcher = live::DraftWatcher::new();
+        let answer = match builder.model.chat(request).await {
+            Ok(stream) => {
+                graphrt_llm::collect(stream, |delta| {
+                    if let Some(preview) = watcher.push(&delta, Instant::now()) {
+                        send_preview(preview);
+                    }
+                })
+                .await
+            }
+            Err(error) => Err(error),
+        };
+        match answer {
+            Ok(response) => {
+                send_preview(watcher.preview());
+                log::debug!("builder model reply ({} chars):\n{}", response.text.len(), response.text);
+                return Ok(response.text);
+            }
+            Err(error) if !retried && is_dropped_connection(&error) => {
+                log::info!("the model call was cut off ({error}); asking once more");
+                retried = true;
+            }
+            Err(error) => return Err(model_error(&error)),
         }
-    })
-    .await
-    .map_err(|error| model_error(&error))?;
-    send_preview(watcher.preview());
-    log::debug!("builder model reply ({} chars):\n{}", response.text.len(), response.text);
-    Ok(response.text)
+    }
+}
+
+/// A connection that dropped while the model answered (`error decoding response body`):
+/// the same call is worth one more try. Anything else is reported at once.
+pub(super) fn is_dropped_connection(error: &LlmError) -> bool {
+    matches!(error, LlmError::Network(_))
 }
 
 fn model_error(error: &LlmError) -> AppError {

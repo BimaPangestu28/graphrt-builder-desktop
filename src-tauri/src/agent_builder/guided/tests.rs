@@ -486,3 +486,25 @@ async fn a_lookup_on_a_site_the_job_does_not_name_reads_with_the_offered_plugin(
         .unwrap();
     assert!(wiki.flow_yaml.contains("type: http-request"), "{}", wiki.flow_yaml);
 }
+
+#[tokio::test]
+async fn a_model_call_cut_off_once_is_asked_again() {
+    let db = Database::open_in_memory().unwrap();
+    let (mock, builder) = local_builder(&[]);
+    mock.push_error(graphrt_llm::LlmError::Network("error decoding response body".into()));
+    mock.push(MockModel::text(&reply_plan()));
+
+    let agent = build_agent_with_model(&db, &builder, request("Write a polite reply to a complaint I paste"), &|_| {})
+        .await
+        .unwrap();
+
+    assert_eq!(mock.requests().len(), 2);
+    assert_eq!(agent.name, "Complaint Reply");
+    // Twice in a row is reported.
+    let (mock, builder) = local_builder(&[]);
+    mock.push_error(graphrt_llm::LlmError::Network("reset".into()));
+    mock.push_error(graphrt_llm::LlmError::Network("reset".into()));
+    let failed = build_agent_with_model(&db, &builder, request("Write a reply"), &|_| {}).await;
+    assert!(matches!(failed, Err(AppError::Model(_))), "{failed:?}");
+    assert_eq!(mock.requests().len(), 2);
+}
