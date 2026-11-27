@@ -55,7 +55,7 @@ describe('Connect a channel', () => {
     expect(tokenInput).toHaveAttribute('type', 'password')
     fireEvent.change(tokenInput, { target: { value: 'hello' } })
     fireEvent.click(screen.getByRole('button', { name: 'Test token' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('this is not a Telegram bot token')
+    expect(await screen.findByRole('alert')).toHaveTextContent('This is not a Telegram bot token')
 
     fireEvent.change(tokenInput, { target: { value: '000000:revoked' } })
     fireEvent.click(screen.getByRole('button', { name: 'Test token' }))
@@ -164,5 +164,13 @@ describe('Connect a channel', () => {
     fireEvent.click(toggle)
     expect(await within(section).findByText('Answering new chats')).toBeInTheDocument()
     expect(toggle).toBeChecked()
+  })
+})
+
+describe('plainError', () => {
+  it('drops the technical prefix of a backend error', async () => {
+    const { plainError } = await import('../connect-whatsapp/plainError')
+    expect(plainError(new Error('invalid input: Telegram does not know this token'))).toBe('Telegram does not know this token')
+    expect(plainError(new Error('Meta cannot be reached'))).toBe('Meta cannot be reached')
   })
 })

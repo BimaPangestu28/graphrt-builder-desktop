@@ -9,7 +9,7 @@ import {
 } from '@/api/channels'
 import type { WhatsAppBusinessInput, WhatsAppBusinessSetup, WhatsAppWebChannel } from '@/api/channelTypes'
 import { Button, LinkButton } from '@/components/ui'
-import { describeError } from '@/lib/agentDisplay'
+import { plainError } from './plainError'
 import { getCredentialStoreName } from '@/lib/platform'
 import { agentPath } from '@/routes'
 import { messages } from '@/i18n'
@@ -73,7 +73,7 @@ export function WhatsAppBusinessChannel({ agentId }: { agentId: string }) {
     try {
       setSetup(await getWhatsAppBusinessSetup(agentId))
     } catch (loadError) {
-      setError(describeError(loadError))
+      setError(plainError(loadError))
     }
   }, [agentId])
 
@@ -90,7 +90,7 @@ export function WhatsAppBusinessChannel({ agentId }: { agentId: string }) {
       setInput(emptyInput)
       await load()
     } catch (saveError) {
-      setError(describeError(saveError))
+      setError(plainError(saveError))
     } finally {
       setIsSaving(false)
     }
@@ -100,7 +100,7 @@ export function WhatsAppBusinessChannel({ agentId }: { agentId: string }) {
     try {
       setVerifyToken(await revealWhatsAppVerifyToken(agentId))
     } catch (revealError) {
-      setError(describeError(revealError))
+      setError(plainError(revealError))
     }
   }
 
@@ -110,7 +110,7 @@ export function WhatsAppBusinessChannel({ agentId }: { agentId: string }) {
       setVerifyToken(null)
       await load()
     } catch (forgetError) {
-      setError(describeError(forgetError))
+      setError(plainError(forgetError))
     }
   }
 
@@ -208,7 +208,7 @@ export function PersonalWhatsAppChannel({ agentId }: { agentId: string }) {
     let isCurrent = true
     getWhatsAppWebChannel().then(
       (loaded) => isCurrent && setChannel(loaded),
-      (loadError: unknown) => isCurrent && setError(describeError(loadError)),
+      (loadError: unknown) => isCurrent && setError(plainError(loadError)),
     )
     return () => {
       isCurrent = false
@@ -220,7 +220,7 @@ export function PersonalWhatsAppChannel({ agentId }: { agentId: string }) {
     try {
       setChannel(await setWhatsAppWebChatbot(isOn ? agentId : null))
     } catch (toggleError) {
-      setError(describeError(toggleError))
+      setError(plainError(toggleError))
     }
   }
 

@@ -47,7 +47,10 @@ describe('ChatDetailPage with files', () => {
     await attachOneFile()
     // The owner's files are asked for as the owner's, whatever the chatbot itself reads.
     expect(pickChatAttachments).toHaveBeenCalledWith(expect.any(String), 'Choose files to send', 0, true)
-    expect(within(await screen.findByRole('list', { name: 'Attached files' })).getByText('daftar-pesanan-oktober.pdf')).toBeInTheDocument()
+    // The first test of this file renders the chat and its file cards cold: on a busy CI runner
+    // that took 5 s (Graphrt/graphrt-builder-desktop runs of 2026-11-27), past the 1 s default.
+    const attachedList = await screen.findByRole('list', { name: 'Attached files' }, { timeout: 8000 })
+    expect(within(attachedList).getByText('daftar-pesanan-oktober.pdf')).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText('Your reply'), { target: { value: 'Ini daftar pesanannya kak' } })
     await clickSend()

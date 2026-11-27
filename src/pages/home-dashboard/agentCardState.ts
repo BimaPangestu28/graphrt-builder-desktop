@@ -121,6 +121,8 @@ export function describeAgentCardState(agent: Agent, agentTriggers: Trigger[], l
     primaryAction: choosePrimaryAction(stage, agent, latestRun),
     secondaryLinks: [
       { label: t.editSteps, path: agentPath('builder', agent.id) },
+      // An answering chatbot's card opens the Inbox: its channels and persona are one click away.
+      ...(agent.kind === 'chatbot' && stage === 'active' ? [{ label: t.channels, path: chatbotSetupPath(agent.id) }] : []),
       { label: t.runs, path: routePaths.runs },
     ],
   }

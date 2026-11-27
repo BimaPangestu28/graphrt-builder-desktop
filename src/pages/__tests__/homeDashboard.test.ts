@@ -229,6 +229,8 @@ describe('Agent card state', () => {
   it('sends active chatbots to Inbox instead of running them', () => {
     const chatbot = describeAgentCardState(buildAgent({ kind: 'chatbot', status: 'active' }), [], undefined, now)
     expect(chatbot).toMatchObject({ chipLabel: 'Active · answering chats', primaryAction: { label: 'Open Inbox', path: routePaths.inbox } })
+    expect(chatbot.secondaryLinks.map((link) => link.label)).toEqual(['Edit steps', 'Channels', 'Runs'])
+    expect(chatbot.secondaryLinks[1].path).toBe(`${routePaths.chatbotSetup}?agentId=promo`)
   })
 
   it('runs now with the last inputs, else the schedule\'s, else asks', () => {

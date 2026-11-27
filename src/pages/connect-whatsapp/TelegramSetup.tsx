@@ -3,7 +3,7 @@ import { checkTelegramToken, connectTelegram, disconnectTelegram, getTelegramCon
 import type { TelegramConnection, TelegramTokenCheck } from '@/api/channelTypes'
 import { openCardLink } from '@/api/runSummary'
 import { Button } from '@/components/ui'
-import { describeError } from '@/lib/agentDisplay'
+import { plainError } from './plainError'
 import { getCredentialStoreName } from '@/lib/platform'
 import { messages } from '@/i18n'
 import { SetupStep } from './SetupStep'
@@ -57,7 +57,7 @@ export function TelegramSetup({ agentId }: { agentId: string }) {
     try {
       setConnection(await getTelegramConnection(agentId))
     } catch (loadError) {
-      setError(describeError(loadError))
+      setError(plainError(loadError))
     }
   }, [agentId])
 
@@ -75,7 +75,7 @@ export function TelegramSetup({ agentId }: { agentId: string }) {
     try {
       setChecked(await checkTelegramToken(token))
     } catch (checkError) {
-      setError(describeError(checkError))
+      setError(plainError(checkError))
     } finally {
       setPending(null)
     }
@@ -89,7 +89,7 @@ export function TelegramSetup({ agentId }: { agentId: string }) {
       setToken('')
       setChecked(null)
     } catch (connectError) {
-      setError(describeError(connectError))
+      setError(plainError(connectError))
     } finally {
       setPending(null)
     }
@@ -102,7 +102,7 @@ export function TelegramSetup({ agentId }: { agentId: string }) {
       await disconnectTelegram(agentId)
       setConnection(null)
     } catch (disconnectError) {
-      setError(describeError(disconnectError))
+      setError(plainError(disconnectError))
     } finally {
       setPending(null)
     }
