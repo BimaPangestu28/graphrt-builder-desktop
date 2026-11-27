@@ -13,7 +13,13 @@ pub(super) fn describe_changes(before: &Plan, after: &Plan, request: &str) -> Ve
     for (index, step) in after.steps.iter().enumerate() {
         let number = index + 1;
         match before.steps.get(index) {
-            Some(old) if old == step => {}
+            // A plugin step's fixed values that stayed (a subject) are named, so a change that
+            // went into another step instead is plain to see.
+            Some(old) if old == step => {
+                if let Some(values) = fixed_values(step) {
+                    sentences.push(format!("Step {number} ({}) unchanged: {values}", step.title()));
+                }
+            }
             Some(old) if std::mem::discriminant(old) == std::mem::discriminant(step) => {
                 sentences.push(format!("Step {number} ({}) now: {}", step.title(), what_it_does(step)));
             }
@@ -49,20 +55,23 @@ fn what_it_does(step: &PlanStep) -> String {
         PlanStep::Write { instruction, .. } => instruction.clone(),
         PlanStep::Lookup { url, .. } => format!("reads {}", url.as_written()),
         PlanStep::Approve { question, .. } => format!("asks \"{question}\""),
-        PlanStep::Use { instruction, operation, fields, .. } => {
-            let fixed: Vec<String> = fields
-                .iter()
-                .filter_map(|(name, value)| {
-                    value.as_str().filter(|text| !text.contains('{')).map(|text| format!("{name}: {text}"))
-                })
-                .collect();
-            if fixed.is_empty() {
-                format!("{instruction} ({operation})")
-            } else {
-                format!("{instruction} ({operation}; {})", fixed.join(", "))
-            }
-        }
+        PlanStep::Use { instruction, operation, .. } => match fixed_values(step) {
+            Some(values) => format!("{instruction} ({operation}; {values})"),
+            None => format!("{instruction} ({operation})"),
+        },
     }
+}
+
+/// A plugin step's fields that hold fixed text ("subject: Thank you"), if any.
+fn fixed_values(step: &PlanStep) -> Option<String> {
+    let PlanStep::Use { fields, .. } = step else { return None };
+    let fixed: Vec<String> = fields
+        .iter()
+        .filter_map(|(name, value)| {
+            value.as_str().filter(|text| !text.contains('{')).map(|text| format!("{name}: {text}"))
+        })
+        .collect();
+    (!fixed.is_empty()).then(|| fixed.join(", "))
 }
 
 /// Text in double quotes in `request` ("…" or “…”, more than one character). Single quotes
@@ -140,6 +149,14 @@ mod tests {
                 "Step 2 (Send email) now: Send the note (email.send_email; subject: Terima kasih)",
             ]
         );
+    }
+
+    #[test]
+    fn a_plugin_step_that_stayed_names_its_fixed_values() {
+        let before = plan(vec![write("Write a short thank-you note."), send("Thank you")]);
+        let after = plan(vec![write("Write it in Indonesian with the subject Terima kasih."), send("Thank you")]);
+        let sentences = describe_changes(&before, &after, "Use the subject \"Terima kasih\"");
+        assert_eq!(sentences[1], "Step 2 (Send email) unchanged: subject: Thank you");
     }
 
     #[test]
