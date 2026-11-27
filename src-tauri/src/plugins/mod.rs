@@ -36,6 +36,7 @@ pub(crate) mod host;
 mod icons;
 mod install;
 pub mod models;
+pub(crate) mod operations;
 mod optional_settings;
 mod placeholder;
 mod prompt_guide;

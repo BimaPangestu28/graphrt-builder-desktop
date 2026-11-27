@@ -196,13 +196,13 @@ pub(crate) async fn build_agent_with_model(
     log::info!("building a {kind:?} agent with {}/{}", provider_name(builder.choice.provider), builder.choice.name);
     // A local model fills in a small plan and the app writes the document; anything
     // that path does not cover, or does not get a usable plan for, is drafted in full.
-    let guided_draft = if guided::takes_guided_path(&builder.choice, kind, description) {
+    let guided_draft = if guided::takes_guided_path(&builder.choice, kind) {
         guided::draft(builder, description, kind, on_progress).await?
     } else {
         None
     };
-    let draft = match guided_draft {
-        Some(draft) => draft,
+    let (draft, schedule) = match guided_draft {
+        Some(guided) => (guided.draft, guided.schedule),
         None => {
             let messages = vec![
                 Message::system(prompt::build_system_prompt(&builder.choice, &saved_secret_names(db))),
@@ -210,7 +210,7 @@ pub(crate) async fn build_agent_with_model(
             ];
             report(on_progress, BuildStage::Drafting, "Drafting the steps");
             let trusted_hosts = TrustedHosts::none();
-            draft_until_valid(builder, messages, on_progress, "Drafting the steps", &trusted_hosts).await?
+            (draft_until_valid(builder, messages, on_progress, "Drafting the steps", &trusted_hosts).await?, None)
         }
     };
     let name = extract::agent_name(&draft.reply)
@@ -220,7 +220,13 @@ pub(crate) async fn build_agent_with_model(
     let done_message = with_plugin_note("Your agent is ready", &draft.flow_yaml);
     let agent =
         db.create_agent(NewAgent { name, kind, description: description.to_owned(), flow_yaml: draft.flow_yaml })?;
-    history::record_build(db, &agent, &draft.explanation);
+    // A schedule the job asks for is saved turned off, and the person is told so.
+    let schedule_note = schedule.and_then(|schedule| guided::save_paused_schedule(db, &agent, &schedule));
+    let explanation = match schedule_note {
+        Some(note) => format!("{} {note}", draft.explanation).trim().to_owned(),
+        None => draft.explanation,
+    };
+    history::record_build(db, &agent, &explanation);
     report(on_progress, BuildStage::Done, &done_message);
     Ok(agent)
 }
@@ -244,12 +250,24 @@ pub(crate) async fn revise_agent_with_model(
     let before = current_summary(&agent);
     // Read from the database, never from the draft: the model cannot trust a host.
     let trusted_hosts = db.trusted_lookup_hosts(agent_id)?;
-    let messages = vec![
-        Message::system(prompt::revision_system_prompt(&builder.choice, &saved_secret_names(db), &trusted_hosts)),
-        Message::user(prompt::revision_request(&agent.flow_yaml, instruction)),
-    ];
-    report(on_progress, BuildStage::Drafting, "Updating the steps");
-    let draft = draft_until_valid(builder, messages, on_progress, "Updating the steps", &trusted_hosts).await?;
+    // An agent drafted from a plan is changed by changing the plan; anything else, and a
+    // change that gets no usable plan, is revised as a whole document.
+    let guided_draft = if guided::takes_guided_path(&builder.choice, agent.kind) {
+        guided::revise(builder, &agent, instruction, &trusted_hosts, on_progress).await?
+    } else {
+        None
+    };
+    let draft = match guided_draft {
+        Some(draft) => draft,
+        None => {
+            let messages = vec![
+                Message::system(prompt::revision_system_prompt(&builder.choice, &saved_secret_names(db), &trusted_hosts)),
+                Message::user(prompt::revision_request(&agent.flow_yaml, instruction)),
+            ];
+            report(on_progress, BuildStage::Drafting, "Updating the steps");
+            draft_until_valid(builder, messages, on_progress, "Updating the steps", &trusted_hosts).await?
+        }
+    };
     if extract::same_document(&draft.flow_yaml, &agent.flow_yaml) {
         return Err(AppError::InvalidInput("No changes were needed".into()));
     }

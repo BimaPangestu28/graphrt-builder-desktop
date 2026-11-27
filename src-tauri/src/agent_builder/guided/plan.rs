@@ -5,16 +5,25 @@
 //! spaces, `{{topic}}` instead of `{topic}`, an address that uses an input it never
 //! declared, a plan that ends on a lookup. [`normalize`] repairs everything that has one
 //! obvious fix and reports the rest as a short sentence for the model.
+//!
+//! A plan is also what a later change in the builder chat works on: it is saved with the
+//! document ([`super::compose`]) and the model edits the plan, not the YAML.
 
-use serde::Deserialize;
+use std::collections::BTreeMap;
+
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+use crate::plugins::operations::{FieldType, OfferedOperation};
+
 /// Most steps kept from a plan; a guided agent is a short job.
-pub(super) const MAX_STEPS: usize = 5;
+pub(super) const MAX_STEPS: usize = 6;
 /// Most inputs kept from a plan.
 const MAX_INPUTS: usize = 5;
 /// Longest input name kept.
 const MAX_INPUT_NAME_CHARS: usize = 32;
+/// Hour a schedule runs at when the plan gives none that makes sense.
+const DEFAULT_SCHEDULE_HOUR: u8 = 8;
 
 /// Node ids graphrt reserves, plus the ids the composed document uses itself.
 const RESERVED_INPUT_NAMES: &[&str] = &["sys", "env", "conversation", "start", "end", "item", "index"];
@@ -32,6 +41,8 @@ pub(super) struct RawPlan {
     inputs: Vec<RawInput>,
     #[serde(default)]
     steps: Vec<RawStep>,
+    #[serde(default)]
+    schedule: RawSchedule,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -42,6 +53,8 @@ struct RawInput {
     label: String,
     #[serde(default)]
     long_text: bool,
+    #[serde(default)]
+    value: String,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -54,47 +67,97 @@ struct RawStep {
     instruction: String,
     #[serde(default)]
     url: String,
+    #[serde(default)]
+    operation: String,
 }
 
-/// A checked plan: every name is a valid id and every address only reads declared inputs.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Deserialize)]
+struct RawSchedule {
+    #[serde(default)]
+    repeat: String,
+    #[serde(default)]
+    hour: i64,
+}
+
+/// A checked plan: every name is a valid id, every address only reads declared inputs,
+/// every plugin step names an offered operation, and some step produces a result.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(super) struct Plan {
     /// One plain sentence about the agent; may be empty.
     pub summary: String,
     /// The agent's display name; may be empty (the builder then derives one).
     pub name: String,
     pub inputs: Vec<PlanInput>,
-    /// At least one step, and the last one writes.
     pub steps: Vec<PlanStep>,
+    /// When the agent should run by itself, if the job says so.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schedule: Option<Schedule>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(super) struct PlanInput {
     /// A graphrt variable name: lowercase letters, digits and `_`.
     pub name: String,
     pub label: String,
     pub long_text: bool,
+    /// The value the job itself names ("Jakarta"); empty when the person types it each run.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub value: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub(super) enum PlanStep {
     /// A model step: `instruction` says what to produce.
     Write { title: String, instruction: String },
-    /// A read-only lookup of a public address.
+    /// A read-only lookup of a web address.
     Lookup { title: String, url: LookupUrl },
+    /// The run stops and asks the person; only "approve" continues.
+    Approve { title: String, question: String },
+    /// A plugin step. `fields` are the operation's own fields; text values may hold
+    /// `{input}` and `{step_2}` placeholders. Empty until the model filled them in.
+    Use {
+        title: String,
+        instruction: String,
+        operation: String,
+        #[serde(default)]
+        fields: BTreeMap<String, serde_json::Value>,
+    },
 }
 
-/// An `https` address whose host is written out; `{name}` parts read inputs.
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl PlanStep {
+    pub(super) fn title(&self) -> &str {
+        match self {
+            Self::Write { title, .. } | Self::Lookup { title, .. } | Self::Approve { title, .. } | Self::Use { title, .. } => {
+                title
+            }
+        }
+    }
+
+    /// Whether later steps can read something this step produced.
+    pub(super) fn has_result(&self) -> bool {
+        !matches!(self, Self::Approve { .. })
+    }
+}
+
+/// An `https` address. `{name}` parts read inputs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(super) struct LookupUrl {
     /// The address with `{name}` placeholders, e.g. `https://host/page/{topic}`.
     template: String,
-    host: String,
+    /// The site, written out in the address; `None` when the whole address is an input
+    /// (a link the person pastes), which the app asks about before reading.
+    host: Option<String>,
 }
 
 impl LookupUrl {
-    pub(super) fn host(&self) -> &str {
-        &self.host
+    pub(super) fn host(&self) -> Option<&str> {
+        self.host.as_deref()
+    }
+
+    /// The address as a plan writes it, with `{name}` placeholders.
+    pub(super) fn as_written(&self) -> &str {
+        &self.template
     }
 
     /// The address as a graphrt template: `{topic}` becomes `{{#start.topic#}}`.
@@ -110,8 +173,84 @@ impl LookupUrl {
     }
 }
 
-/// The JSON schema the model's answer must follow.
-pub(super) fn schema() -> serde_json::Value {
+/// When a scheduled agent runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub(super) struct Schedule {
+    pub repeat: Repeat,
+    /// Hour of the day, 0 to 23 (not used by `Hourly`).
+    pub hour: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum Repeat {
+    Hourly,
+    Daily,
+    Weekdays,
+    Weekly,
+}
+
+impl Schedule {
+    /// A daily schedule at the default hour, for a job that says "every day" in words the
+    /// plan did not turn into a schedule.
+    pub(super) fn daily() -> Self {
+        Self { repeat: Repeat::Daily, hour: DEFAULT_SCHEDULE_HOUR }
+    }
+
+    /// The cron expression (with seconds) the scheduler stores. `Weekly` runs on Monday.
+    pub(super) fn cron_expression(self) -> String {
+        match self.repeat {
+            Repeat::Hourly => "0 0 * * * *".to_owned(),
+            Repeat::Daily => format!("0 0 {} * * *", self.hour),
+            Repeat::Weekdays => format!("0 0 {} * * Mon-Fri", self.hour),
+            Repeat::Weekly => format!("0 0 {} * * Mon", self.hour),
+        }
+    }
+
+    /// "every day at 08:00", for the sentence that tells the person about the schedule.
+    pub(super) fn in_words(self) -> String {
+        match self.repeat {
+            Repeat::Hourly => "every hour".to_owned(),
+            Repeat::Daily => format!("every day at {:02}:00", self.hour),
+            Repeat::Weekdays => format!("Monday to Friday at {:02}:00", self.hour),
+            Repeat::Weekly => format!("every Monday at {:02}:00", self.hour),
+        }
+    }
+}
+
+/// What a plan may contain, beyond writing and lookups.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct PlanRules<'a> {
+    /// An input the agent has whatever the model wrote (a chatbot's `message`); the model's
+    /// own inputs are then ignored.
+    pub fixed_input: Option<&'a PlanInput>,
+    /// The plugin operations offered for this job; a `use` step must name one of them.
+    pub operations: &'a [OfferedOperation],
+    /// Whether the agent may stop and ask the person (a chatbot cannot).
+    pub allows_approvals: bool,
+}
+
+/// The JSON schema the model's answer must follow. `operations` are the plugin operations
+/// offered for this job; without any, the plan has no `use` step.
+pub(super) fn schema(rules: &PlanRules<'_>) -> serde_json::Value {
+    let mut kinds = vec!["write", "lookup"];
+    if rules.allows_approvals {
+        kinds.push("approve");
+    }
+    let mut step_properties = json!({
+        "kind": { "type": "string", "enum": kinds },
+        "title": { "type": "string" },
+        "instruction": { "type": "string" },
+        "url": { "type": "string" }
+    });
+    let mut required_in_step = vec!["kind", "title", "instruction", "url"];
+    if !rules.operations.is_empty() {
+        let mut operation_names: Vec<&str> = vec![""];
+        operation_names.extend(rules.operations.iter().map(|operation| operation.kind.as_str()));
+        step_properties["kind"]["enum"].as_array_mut().into_iter().for_each(|kinds| kinds.push(json!("use")));
+        step_properties["operation"] = json!({ "type": "string", "enum": operation_names });
+        required_in_step.push("operation");
+    }
     json!({
         "type": "object",
         "properties": {
@@ -125,85 +264,119 @@ pub(super) fn schema() -> serde_json::Value {
                     "properties": {
                         "name": { "type": "string" },
                         "label": { "type": "string" },
-                        "long_text": { "type": "boolean" }
+                        "long_text": { "type": "boolean" },
+                        "value": { "type": "string" }
                     },
-                    "required": ["name", "label", "long_text"]
+                    "required": ["name", "label", "long_text", "value"]
                 }
             },
             "steps": {
                 "type": "array",
                 "minItems": 1,
                 "maxItems": MAX_STEPS,
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "kind": { "type": "string", "enum": ["write", "lookup"] },
-                        "title": { "type": "string" },
-                        "instruction": { "type": "string" },
-                        "url": { "type": "string" }
-                    },
-                    "required": ["kind", "title", "instruction", "url"]
-                }
+                "items": { "type": "object", "properties": step_properties, "required": required_in_step }
+            },
+            "schedule": {
+                "type": "object",
+                "properties": {
+                    "repeat": { "type": "string", "enum": ["never", "hourly", "daily", "weekdays", "weekly"] },
+                    "hour": { "type": "integer" }
+                },
+                "required": ["repeat", "hour"]
             }
         },
-        "required": ["looks_up_the_web", "summary", "name", "inputs", "steps"]
+        "required": ["looks_up_the_web", "summary", "name", "inputs", "steps", "schedule"]
     })
 }
 
-/// Reads the model's answer. Text around the JSON object (a code fence, a sentence) is ignored.
+/// The JSON object in a model reply. Text around it (a code fence, a sentence) is ignored.
 ///
 /// # Errors
 /// A sentence for the model when the answer holds no JSON object.
+fn json_object(reply: &str) -> Result<&str, String> {
+    match (reply.find('{'), reply.rfind('}')) {
+        (Some(start), Some(end)) if start < end => Ok(&reply[start..=end]),
+        _ => Err("the reply was not a JSON object".to_owned()),
+    }
+}
+
+/// Reads the model's plan.
+///
+/// # Errors
+/// A sentence for the model when the answer is not a JSON object.
 pub(super) fn parse(reply: &str) -> Result<RawPlan, String> {
-    let object = match (reply.find('{'), reply.rfind('}')) {
-        (Some(start), Some(end)) if start < end => &reply[start..=end],
-        _ => return Err("the reply was not a JSON object".to_owned()),
-    };
-    serde_json::from_str(object).map_err(|error| format!("the reply was not valid JSON ({error})"))
+    serde_json::from_str(json_object(reply)?).map_err(|error| format!("the reply was not valid JSON ({error})"))
 }
 
 /// Checks and repairs a raw plan.
 ///
-/// `must_have_input` names an input the agent needs whatever the model wrote (a chatbot's
-/// `message`). Lookup steps are dropped when the plan says the job does not read the web:
-/// small models add them to plain writing jobs.
+/// Lookup steps are dropped when the plan says the job does not read the web (small
+/// models add them to plain writing jobs), a `use` step must name an offered operation,
+/// and a plan whose last result is not text for the person gets a closing writing step
+/// where the kind of agent needs one.
 ///
 /// # Errors
 /// One sentence for the model when something has no obvious fix: no usable step, or an
 /// address that is not a public `https` address.
-pub(super) fn normalize(raw: RawPlan, must_have_input: Option<&PlanInput>) -> Result<Plan, String> {
-    let mut inputs: Vec<PlanInput> = Vec::new();
-    if let Some(required) = must_have_input {
-        inputs.push(required.clone());
-    }
-    for raw_input in raw.inputs.into_iter().take(MAX_INPUTS) {
-        // A chatbot reads only the customer's message.
-        if must_have_input.is_some() {
-            break;
+pub(super) fn normalize(raw: RawPlan, rules: &PlanRules<'_>) -> Result<Plan, String> {
+    let inputs_are_fixed = rules.fixed_input.is_some();
+    let mut inputs: Vec<PlanInput> = rules.fixed_input.into_iter().cloned().collect();
+    if !inputs_are_fixed {
+        for raw_input in raw.inputs.into_iter().take(MAX_INPUTS) {
+            let Some(name) = input_name(&raw_input.name).or_else(|| input_name(&raw_input.label)) else { continue };
+            if inputs.iter().any(|input| input.name == name) {
+                continue;
+            }
+            let label = plain_text(&raw_input.label);
+            let label = if label.is_empty() { label_from_name(&name) } else { label };
+            inputs.push(PlanInput { name, label, long_text: raw_input.long_text, value: plain_text(&raw_input.value) });
         }
-        let Some(name) = input_name(&raw_input.name).or_else(|| input_name(&raw_input.label)) else { continue };
-        if inputs.iter().any(|input| input.name == name) {
-            continue;
-        }
-        let label = plain_text(&raw_input.label);
-        let label = if label.is_empty() { label_from_name(&name) } else { label };
-        inputs.push(PlanInput { name, label, long_text: raw_input.long_text });
     }
 
     let mut steps: Vec<PlanStep> = Vec::new();
     for raw_step in raw.steps.into_iter().take(MAX_STEPS) {
         let title = plain_text(&raw_step.title);
         let instruction = plain_text(&raw_step.instruction);
-        let is_lookup = raw_step.kind.trim().eq_ignore_ascii_case("lookup") && !raw_step.url.trim().is_empty();
-        if is_lookup {
+        let kind = raw_step.kind.trim().to_ascii_lowercase();
+        if kind == "lookup" && !raw_step.url.trim().is_empty() {
             if !raw.looks_up_the_web {
                 continue;
             }
-            let url = lookup_url(&raw_step.url, &mut inputs, must_have_input.is_some())?;
-            let title = if title.is_empty() { format!("Look up on {}", url.host()) } else { title };
+            let url = lookup_url(&raw_step.url, &mut inputs, inputs_are_fixed)?;
+            let title = match (title.is_empty(), url.host()) {
+                (false, _) => title,
+                (true, Some(host)) => format!("Look up on {host}"),
+                (true, None) => "Read the page".to_owned(),
+            };
             steps.push(PlanStep::Lookup { title, url });
             continue;
         }
+        if kind == "approve" {
+            let asks_twice = matches!(steps.last(), Some(PlanStep::Approve { .. }));
+            if !rules.allows_approvals || asks_twice {
+                continue;
+            }
+            let question = if instruction.is_empty() { title.clone() } else { instruction };
+            let question = if question.is_empty() { "Continue?".to_owned() } else { question };
+            let title = if title.is_empty() { "Ask before continuing".to_owned() } else { title };
+            steps.push(PlanStep::Approve { title, question });
+            continue;
+        }
+        let wanted_operation = raw_step.operation.trim();
+        let operation = rules.operations.iter().find(|offered| offered.kind.eq_ignore_ascii_case(wanted_operation));
+        if let (true, Some(operation)) = (kind == "use", operation) {
+            if operation.sends && !rules.allows_approvals {
+                return Err(format!(
+                    "`{}` sends something, and this agent cannot ask the person first; leave that step out",
+                    operation.kind
+                ));
+            }
+            let title = if title.is_empty() { operation.title.clone() } else { title };
+            let instruction = if instruction.is_empty() { operation.title.clone() } else { instruction };
+            steps.push(PlanStep::Use { title, instruction, operation: operation.kind.clone(), fields: BTreeMap::new() });
+            continue;
+        }
+        // A step that names no offered operation (or no address) is a writing step if it says what to write.
         let instruction = if instruction.is_empty() { title.clone() } else { instruction };
         if instruction.is_empty() {
             continue;
@@ -211,30 +384,202 @@ pub(super) fn normalize(raw: RawPlan, must_have_input: Option<&PlanInput>) -> Re
         let title = if title.is_empty() { "Write the result".to_owned() } else { title };
         steps.push(PlanStep::Write { title, instruction });
     }
-    if steps.is_empty() {
+    while matches!(steps.last(), Some(PlanStep::Approve { .. })) && steps.len() > 1 && !steps.iter().any(PlanStep::has_result) {
+        steps.pop();
+    }
+    if !steps.iter().any(PlanStep::has_result) {
         return Err("the plan has no step with an instruction; give at least one \"write\" step".to_owned());
     }
     let summary = plain_text(&raw.summary);
-    if matches!(steps.last(), Some(PlanStep::Lookup { .. })) {
+    if needs_closing_write(&steps, rules) {
         let instruction = if summary.is_empty() {
-            "Write the result the person asked for from what was looked up, in a few clear sentences.".to_owned()
+            "Write the result the person asked for from what was found, in a few clear sentences.".to_owned()
         } else {
-            format!("Using what was looked up, do this: {summary}")
+            format!("Using what was found, do this: {summary}")
         };
         steps.push(PlanStep::Write { title: "Write the result".to_owned(), instruction });
     }
-    Ok(Plan { summary, name: plain_text(&raw.name), inputs, steps })
+    Ok(Plan { summary, name: plain_text(&raw.name), inputs, steps, schedule: schedule(&raw.schedule) })
+}
+
+/// Whether the plan must end on a writing step it does not have: when what it found last
+/// is raw material (a looked-up page, data a plugin read), or when the agent is a chatbot,
+/// whose reply is always written.
+fn needs_closing_write(steps: &[PlanStep], rules: &PlanRules<'_>) -> bool {
+    let has_write = steps.iter().any(|step| matches!(step, PlanStep::Write { .. }));
+    if rules.fixed_input.is_some() && !has_write {
+        return true;
+    }
+    match steps.iter().rev().find(|step| step.has_result()) {
+        Some(PlanStep::Lookup { .. }) => true,
+        Some(PlanStep::Use { operation, .. }) => {
+            !has_write && rules.operations.iter().any(|offered| &offered.kind == operation && !offered.sends)
+        }
+        _ => false,
+    }
+}
+
+fn schedule(raw: &RawSchedule) -> Option<Schedule> {
+    let repeat = match raw.repeat.trim().to_ascii_lowercase().as_str() {
+        "hourly" => Repeat::Hourly,
+        "daily" => Repeat::Daily,
+        "weekdays" => Repeat::Weekdays,
+        "weekly" => Repeat::Weekly,
+        _ => return None,
+    };
+    let hour = u8::try_from(raw.hour).ok().filter(|hour| *hour <= 23).unwrap_or(DEFAULT_SCHEDULE_HOUR);
+    Some(Schedule { repeat, hour })
+}
+
+/// The JSON schema for the fields of one plugin step: the operation's own simple fields.
+pub(super) fn fields_schema(operation: &OfferedOperation) -> serde_json::Value {
+    let mut properties = serde_json::Map::new();
+    for field in &operation.fields {
+        properties.insert(field.name.clone(), json!({ "type": field.field_type.json_schema_type() }));
+    }
+    let required: Vec<&str> =
+        operation.fields.iter().filter(|field| field.required).map(|field| field.name.as_str()).collect();
+    json!({ "type": "object", "properties": properties, "required": required })
+}
+
+/// Checks the fields the model gave for the plugin step at `step_index` of `plan`.
+///
+/// Only the operation's own fields are kept, each with its declared type. In text,
+/// `{{name}}` is read as `{name}`; a placeholder that names neither an input nor an
+/// earlier step becomes the latest earlier result when there is exactly one to mean, and
+/// plain words otherwise.
+///
+/// # Errors
+/// One sentence for the model when a required field is missing or empty.
+pub(super) fn normalize_fields(
+    operation: &OfferedOperation,
+    reply: &str,
+    plan: &Plan,
+    step_index: usize,
+) -> Result<BTreeMap<String, serde_json::Value>, String> {
+    let given: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(json_object(reply)?).map_err(|error| format!("the reply was not valid JSON ({error})"))?;
+    let mut fields = BTreeMap::new();
+    for field in &operation.fields {
+        let value = given.get(&field.name).and_then(|value| typed_value(value, field.field_type, plan, step_index));
+        match value {
+            Some(value) => {
+                fields.insert(field.name.clone(), value);
+            }
+            None if field.required => {
+                let hint = if field.description.is_empty() { String::new() } else { format!(" ({})", field.description) };
+                return Err(format!("the field \"{}\" is required{hint}; give it a value", field.name));
+            }
+            None => {}
+        }
+    }
+    Ok(fields)
+}
+
+/// `value` as the field's type, or `None` when it is empty or not that type.
+fn typed_value(value: &serde_json::Value, field_type: FieldType, plan: &Plan, step_index: usize) -> Option<serde_json::Value> {
+    match field_type {
+        FieldType::Text => {
+            let text = match value {
+                serde_json::Value::String(text) => text.clone(),
+                serde_json::Value::Number(number) => number.to_string(),
+                _ => return None,
+            };
+            let text = repair_placeholders(text.trim(), plan, step_index);
+            (!text.is_empty()).then(|| json!(text))
+        }
+        FieldType::Boolean => match value {
+            serde_json::Value::Bool(_) => Some(value.clone()),
+            serde_json::Value::String(text) if text.eq_ignore_ascii_case("true") => Some(json!(true)),
+            serde_json::Value::String(text) if text.eq_ignore_ascii_case("false") => Some(json!(false)),
+            _ => None,
+        },
+        FieldType::Integer => match value {
+            serde_json::Value::Number(number) => number.as_i64().map(|integer| json!(integer)),
+            serde_json::Value::String(text) => text.trim().parse::<i64>().ok().map(|integer| json!(integer)),
+            _ => None,
+        },
+        FieldType::Number => match value {
+            serde_json::Value::Number(_) => Some(value.clone()),
+            serde_json::Value::String(text) => text.trim().parse::<f64>().ok().map(|number| json!(number)),
+            _ => None,
+        },
+    }
+}
+
+/// What a `{placeholder}` in a plugin field stands for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum FieldPart<'a> {
+    Text(&'a str),
+    /// An input, by its variable name.
+    Input(&'a str),
+    /// The result of the step at this index of the plan.
+    StepResult(usize),
+}
+
+/// Splits a field's text into words and the placeholders [`repair_placeholders`] left in it.
+pub(super) fn field_parts<'a>(text: &'a str, plan: &'a Plan) -> Vec<FieldPart<'a>> {
+    placeholder_parts(text)
+        .into_iter()
+        .map(|part| match part {
+            UrlPart::Text(text) => FieldPart::Text(text),
+            UrlPart::Placeholder(name) => match step_number(name) {
+                Some(number) if number >= 1 && number <= plan.steps.len() => FieldPart::StepResult(number - 1),
+                _ if plan.inputs.iter().any(|input| input.name == name) => FieldPart::Input(name),
+                // Never left by `repair_placeholders`; a plan edited by hand could hold one.
+                _ => FieldPart::Text(name),
+            },
+        })
+        .collect()
+}
+
+/// `step_2` (also `step2`, `step 2`) is 2.
+fn step_number(placeholder: &str) -> Option<usize> {
+    let rest = placeholder.trim().to_ascii_lowercase();
+    let digits = rest.strip_prefix("step")?.trim_start_matches(['_', ' ', '-']);
+    digits.parse().ok()
+}
+
+/// Makes every `{placeholder}` of a field name an input or an earlier step with a result.
+fn repair_placeholders(text: &str, plan: &Plan, step_index: usize) -> String {
+    let single_braces = text.replace("{{#start.", "{").replace("#}}", "}").replace("{{", "{").replace("}}", "}");
+    let earlier_results: Vec<usize> =
+        (0..step_index.min(plan.steps.len())).filter(|index| plan.steps[*index].has_result()).collect();
+    let mut repaired = String::new();
+    for part in placeholder_parts(&single_braces) {
+        match part {
+            UrlPart::Text(text) => repaired.push_str(text),
+            UrlPart::Placeholder(written) => {
+                let as_input = input_name(written).filter(|name| plan.inputs.iter().any(|input| &input.name == name));
+                let as_step = step_number(written).filter(|number| earlier_results.contains(&number.wrapping_sub(1)));
+                match (as_step, as_input, earlier_results.as_slice()) {
+                    (Some(number), _, _) => repaired.push_str(&format!("{{step_{number}}}")),
+                    (None, Some(name), _) => repaired.push_str(&format!("{{{name}}}")),
+                    // "{result}", "{summary}", "{step_9}": the one earlier result is what is meant.
+                    (None, None, [only]) => repaired.push_str(&format!("{{step_{}}}", only + 1)),
+                    (None, None, _) => repaired.push_str(written),
+                }
+            }
+        }
+    }
+    repaired
 }
 
 /// Checks a lookup address and makes its placeholders name declared inputs.
 ///
 /// A placeholder that names no input becomes the only input when there is exactly one,
 /// and otherwise a new input (unless `inputs_are_fixed`, as for a chatbot, where it
-/// becomes the first input).
+/// becomes the first input). An address that is one placeholder and nothing else is a
+/// link the person gives.
 fn lookup_url(raw_url: &str, inputs: &mut Vec<PlanInput>, inputs_are_fixed: bool) -> Result<LookupUrl, String> {
     let trimmed = raw_url.trim().trim_matches(|character| matches!(character, '"' | '\'' | '`' | '<' | '>'));
     // `{{topic}}` and `{{#start.topic#}}` mean `{topic}`.
     let single_braces = trimmed.replace("{{#start.", "{").replace("#}}", "}").replace("{{", "{").replace("}}", "}");
+    let without_scheme = single_braces.strip_prefix("https://").or_else(|| single_braces.strip_prefix("http://"));
+    if let [UrlPart::Placeholder(written_name)] = placeholder_parts(without_scheme.unwrap_or(&single_braces)).as_slice() {
+        let name = resolve_placeholder(written_name, inputs, inputs_are_fixed)?;
+        return Ok(LookupUrl { template: format!("{{{name}}}"), host: None });
+    }
     let with_scheme = match single_braces.split_once("://") {
         Some(("https", _)) => single_braces.clone(),
         Some(("http", rest)) => format!("https://{rest}"),
@@ -276,14 +621,10 @@ fn lookup_url(raw_url: &str, inputs: &mut Vec<PlanInput>, inputs_are_fixed: bool
             }
         }
     }
-    Ok(LookupUrl { template, host })
+    Ok(LookupUrl { template, host: Some(host) })
 }
 
-fn resolve_placeholder(
-    written_name: &str,
-    inputs: &mut Vec<PlanInput>,
-    inputs_are_fixed: bool,
-) -> Result<String, String> {
+fn resolve_placeholder(written_name: &str, inputs: &mut Vec<PlanInput>, inputs_are_fixed: bool) -> Result<String, String> {
     let wanted = input_name(written_name);
     if let Some(known) = wanted.as_ref().and_then(|name| inputs.iter().find(|input| &input.name == name)) {
         return Ok(known.name.clone());
@@ -294,7 +635,7 @@ fn resolve_placeholder(
     let Some(name) = wanted else {
         return Err(format!("the lookup address uses `{{{written_name}}}`, which is not the name of an input"));
     };
-    inputs.push(PlanInput { label: label_from_name(&name), name: name.clone(), long_text: false });
+    inputs.push(PlanInput { label: label_from_name(&name), name: name.clone(), long_text: false, value: String::new() });
     Ok(name)
 }
 
@@ -361,157 +702,3 @@ fn plain_text(written: &str) -> String {
     single_braces.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn normalized(json_text: &str) -> Result<Plan, String> {
-        normalize(parse(json_text)?, None)
-    }
-
-    fn write_step(title: &str, instruction: &str) -> PlanStep {
-        PlanStep::Write { title: title.into(), instruction: instruction.into() }
-    }
-
-    #[test]
-    fn a_tidy_plan_is_kept_as_written() {
-        let plan = normalized(
-            r#"{"looks_up_the_web": false, "summary": "Writes a polite reply.", "name": "Complaint Reply",
-                "inputs": [{"name": "complaint", "label": "The complaint", "long_text": true}],
-                "steps": [{"kind": "write", "title": "Write the reply", "instruction": "Write a polite reply.", "url": ""}]}"#,
-        )
-        .unwrap();
-        assert_eq!(plan.name, "Complaint Reply");
-        assert_eq!(plan.summary, "Writes a polite reply.");
-        assert_eq!(
-            plan.inputs,
-            [PlanInput { name: "complaint".into(), label: "The complaint".into(), long_text: true }]
-        );
-        assert_eq!(plan.steps, [write_step("Write the reply", "Write a polite reply.")]);
-    }
-
-    #[test]
-    fn text_around_the_json_is_ignored() {
-        let reply = "Here is the plan:\n```json\n{\"steps\": [{\"kind\": \"write\", \"instruction\": \"Do it\"}]}\n```";
-        assert_eq!(normalized(reply).unwrap().steps, [write_step("Write the result", "Do it")]);
-        assert!(parse("no plan here").is_err());
-        assert!(parse("{ broken").is_err());
-    }
-
-    #[test]
-    fn input_names_become_variable_names_and_stay_unique() {
-        let plan = normalized(
-            r#"{"inputs": [{"name": "Product Description", "label": "", "long_text": false},
-                           {"name": "product-description", "label": "Again", "long_text": false},
-                           {"name": "2nd", "label": "Second", "long_text": false},
-                           {"name": "start", "label": "Reserved", "long_text": false},
-                           {"name": "???", "label": "", "long_text": false}],
-                "steps": [{"kind": "write", "title": "T", "instruction": "I"}]}"#,
-        )
-        .unwrap();
-        let names: Vec<&str> = plan.inputs.iter().map(|input| input.name.as_str()).collect();
-        assert_eq!(names, ["product_description", "input_2nd", "start_text"]);
-        assert_eq!(plan.inputs[0].label, "Product description");
-    }
-
-    #[test]
-    fn references_written_by_the_model_are_defused() {
-        let plan = normalized(
-            r#"{"steps": [{"kind": "write", "title": "Use {{#start.topic#}}", "instruction": "Summarize {{topic}}\nin two   lines"}]}"#,
-        )
-        .unwrap();
-        assert_eq!(plan.steps, [write_step("Use {start.topic}", "Summarize {topic} in two lines")]);
-    }
-
-    #[test]
-    fn lookup_placeholders_are_matched_to_inputs() {
-        let plan = normalized(
-            r#"{"looks_up_the_web": true, "inputs": [{"name": "topic", "label": "Topic", "long_text": false}],
-                "steps": [{"kind": "lookup", "title": "Get the page", "instruction": "x",
-                           "url": "http://en.wikipedia.org/api/rest_v1/page/summary/{{Topic}}"},
-                          {"kind": "write", "title": "Summarize", "instruction": "Two sentences."}]}"#,
-        )
-        .unwrap();
-        let PlanStep::Lookup { url, .. } = &plan.steps[0] else { panic!("lookup expected: {:?}", plan.steps) };
-        assert_eq!(url.host(), "en.wikipedia.org");
-        assert_eq!(url.to_graphrt_template(), "https://en.wikipedia.org/api/rest_v1/page/summary/{{#start.topic#}}");
-    }
-
-    #[test]
-    fn an_unknown_placeholder_uses_the_only_input_or_becomes_a_new_one() {
-        let one_input = normalized(
-            r#"{"looks_up_the_web": true, "inputs": [{"name": "city", "label": "City", "long_text": false}],
-                "steps": [{"kind": "lookup", "title": "", "instruction": "", "url": "https://wttr.in/{place}?format=3"}]}"#,
-        )
-        .unwrap();
-        let PlanStep::Lookup { url, title } = &one_input.steps[0] else { panic!("lookup expected") };
-        assert_eq!(url.to_graphrt_template(), "https://wttr.in/{{#start.city#}}?format=3");
-        assert_eq!(title, "Look up on wttr.in");
-
-        let no_input = normalized(
-            r#"{"looks_up_the_web": true, "inputs": [],
-                "steps": [{"kind": "lookup", "title": "L", "instruction": "", "url": "wttr.in/{place}"}]}"#,
-        )
-        .unwrap();
-        assert_eq!(no_input.inputs, [PlanInput { name: "place".into(), label: "Place".into(), long_text: false }]);
-    }
-
-    #[test]
-    fn a_plan_that_ends_on_a_lookup_gets_a_writing_step() {
-        let plan = normalized(
-            r#"{"looks_up_the_web": true, "summary": "Tells the weather.",
-                "steps": [{"kind": "lookup", "title": "L", "instruction": "", "url": "https://wttr.in/Jakarta"}]}"#,
-        )
-        .unwrap();
-        assert_eq!(plan.steps.len(), 2);
-        assert_eq!(
-            plan.steps[1],
-            write_step("Write the result", "Using what was looked up, do this: Tells the weather.")
-        );
-    }
-
-    #[test]
-    fn lookups_are_dropped_when_the_job_does_not_read_the_web() {
-        let plan = normalized(
-            r#"{"looks_up_the_web": false,
-                "steps": [{"kind": "write", "title": "Write", "instruction": "Write it."},
-                          {"kind": "lookup", "title": "Check grammar", "instruction": "x", "url": "https://www.example.com/g"}]}"#,
-        )
-        .unwrap();
-        assert_eq!(plan.steps, [write_step("Write", "Write it.")]);
-    }
-
-    #[test]
-    fn addresses_without_an_obvious_fix_are_reported_in_plain_words() {
-        let with_url = |url: &str| {
-            normalized(&format!(
-                r#"{{"looks_up_the_web": true, "steps": [{{"kind": "lookup", "title": "L", "instruction": "", "url": "{url}"}}]}}"#
-            ))
-        };
-        assert!(with_url("https://{site}/page").unwrap_err().contains("real site"));
-        assert!(with_url("ftp://files.example.org/a").unwrap_err().contains("https address"));
-        assert!(with_url("https://api.weather.com/v1?appid=YOUR_API_KEY").unwrap_err().contains("needs a key"));
-        assert!(with_url("https://a.org/x y").unwrap_err().contains("spaces"));
-    }
-
-    #[test]
-    fn a_plan_without_usable_steps_is_reported() {
-        assert!(normalized(r#"{"steps": []}"#).unwrap_err().contains("no step"));
-        assert!(normalized(r#"{"steps": [{"kind": "write", "title": "", "instruction": " "}]}"#).is_err());
-    }
-
-    #[test]
-    fn a_chatbot_reads_only_the_message() {
-        let message = PlanInput { name: "message".into(), label: "Customer message".into(), long_text: true };
-        let raw = parse(
-            r#"{"looks_up_the_web": true, "inputs": [{"name": "question", "label": "Q", "long_text": false}],
-                "steps": [{"kind": "lookup", "title": "L", "instruction": "", "url": "https://wttr.in/{city}"},
-                          {"kind": "write", "title": "Reply", "instruction": "Answer."}]}"#,
-        )
-        .unwrap();
-        let plan = normalize(raw, Some(&message)).unwrap();
-        assert_eq!(plan.inputs, [message]);
-        let PlanStep::Lookup { url, .. } = &plan.steps[0] else { panic!("lookup expected") };
-        assert_eq!(url.to_graphrt_template(), "https://wttr.in/{{#start.message#}}");
-    }
-}
