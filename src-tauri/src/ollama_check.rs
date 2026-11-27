@@ -5,7 +5,7 @@
 //! server (a short wait, see [`crate::model_catalog::ModelCatalog::ask_ollama`]) and, when
 //! it does not answer, looks for the installed app.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
@@ -60,28 +60,83 @@ fn is_embedding_model(model_id: &str) -> bool {
 /// Whether the Ollama app is on this computer: the `ollama` command in the usual folders,
 /// or the desktop app where its installer puts it.
 pub fn is_installed(locator: &Locator) -> bool {
-    find_named_binary("ollama", locator).is_some() || app_install_paths().iter().any(|path| path.exists())
+    find_named_binary("ollama", locator).is_some() || AppFolders::from_environment().has_ollama_app()
 }
 
-/// Where the desktop installers put Ollama when it is not on `PATH`.
-fn app_install_paths() -> Vec<PathBuf> {
-    let mut paths = Vec::new();
-    if cfg!(target_os = "macos") {
-        paths.push(PathBuf::from("/Applications/Ollama.app"));
-        if let Some(home) = std::env::var_os("HOME") {
-            paths.push(Path::new(&home).join("Applications").join("Ollama.app"));
+/// The desktop system whose Ollama installer decides where the app lands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DesktopSystem {
+    MacOs,
+    Windows,
+    /// Linux and the rest: Ollama is only a command there, found through `PATH`.
+    Other,
+}
+
+impl DesktopSystem {
+    fn current() -> Self {
+        if cfg!(target_os = "macos") {
+            Self::MacOs
+        } else if cfg!(windows) {
+            Self::Windows
+        } else {
+            Self::Other
         }
     }
-    if cfg!(windows) {
-        if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
-            paths.push(Path::new(&local_app_data).join("Programs").join("Ollama").join("ollama.exe"));
+}
+
+/// The folders the desktop installers put Ollama in when it is not on `PATH`. The folders
+/// are fields, not read from the environment where they are used, so the lookup of every
+/// system can be tested on any system with folders in a temporary directory.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AppFolders {
+    system: DesktopSystem,
+    /// macOS: the Applications folder of the whole computer (`/Applications`).
+    shared_applications: PathBuf,
+    /// The user's home folder, for the macOS `~/Applications`.
+    home: Option<PathBuf>,
+    /// Windows: `%LOCALAPPDATA%`, where per-user installers put programs.
+    local_app_data: Option<PathBuf>,
+}
+
+impl AppFolders {
+    fn from_environment() -> Self {
+        Self {
+            system: DesktopSystem::current(),
+            shared_applications: PathBuf::from("/Applications"),
+            home: std::env::var_os("HOME").map(PathBuf::from),
+            local_app_data: std::env::var_os("LOCALAPPDATA").map(PathBuf::from),
         }
     }
-    paths
+
+    /// Every place the Ollama desktop app may be on this system; empty on [`DesktopSystem::Other`].
+    fn ollama_app_paths(&self) -> Vec<PathBuf> {
+        match self.system {
+            DesktopSystem::MacOs => {
+                let user_applications = self.home.as_deref().map(|home| home.join("Applications"));
+                std::iter::once(self.shared_applications.clone())
+                    .chain(user_applications)
+                    .map(|applications| applications.join("Ollama.app"))
+                    .collect()
+            }
+            DesktopSystem::Windows => self
+                .local_app_data
+                .as_deref()
+                .map(|local_app_data| local_app_data.join("Programs").join("Ollama").join("ollama.exe"))
+                .into_iter()
+                .collect(),
+            DesktopSystem::Other => Vec::new(),
+        }
+    }
+
+    fn has_ollama_app(&self) -> bool {
+        self.ollama_app_paths().iter().any(|path| path.exists())
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::*;
 
     const BASE_URL: &str = "http://localhost:11434";
@@ -142,5 +197,83 @@ mod tests {
         std::fs::write(&binary, "#!/bin/sh\n").unwrap();
         std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).unwrap();
         assert_eq!(find_named_binary("ollama", &empty), Some(binary));
+    }
+
+    /// App folders of `system` inside `root`, a temporary directory standing in for the disk.
+    fn app_folders(system: DesktopSystem, root: &Path) -> AppFolders {
+        AppFolders {
+            system,
+            shared_applications: root.join("Applications"),
+            home: Some(root.join("home")),
+            local_app_data: Some(root.join("AppData").join("Local")),
+        }
+    }
+
+    #[test]
+    fn macos_looks_in_the_shared_and_the_user_applications_folders() {
+        let root = Path::new("disk");
+        assert_eq!(
+            app_folders(DesktopSystem::MacOs, root).ollama_app_paths(),
+            [root.join("Applications").join("Ollama.app"), root.join("home").join("Applications").join("Ollama.app")]
+        );
+    }
+
+    #[test]
+    fn macos_finds_the_app_in_the_shared_applications_folder() {
+        let disk = tempfile::tempdir().unwrap();
+        let folders = app_folders(DesktopSystem::MacOs, disk.path());
+        assert!(!folders.has_ollama_app());
+        std::fs::create_dir_all(disk.path().join("Applications").join("Ollama.app")).unwrap();
+        assert!(folders.has_ollama_app());
+    }
+
+    #[test]
+    fn macos_finds_the_app_in_the_user_applications_folder() {
+        let disk = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(disk.path().join("home").join("Applications").join("Ollama.app")).unwrap();
+        assert!(app_folders(DesktopSystem::MacOs, disk.path()).has_ollama_app());
+    }
+
+    #[test]
+    fn macos_without_a_home_folder_still_looks_in_the_shared_one() {
+        let disk = tempfile::tempdir().unwrap();
+        let folders = AppFolders { home: None, ..app_folders(DesktopSystem::MacOs, disk.path()) };
+        assert_eq!(folders.ollama_app_paths(), [disk.path().join("Applications").join("Ollama.app")]);
+    }
+
+    #[test]
+    fn windows_finds_the_app_under_local_app_data() {
+        let disk = tempfile::tempdir().unwrap();
+        let folders = app_folders(DesktopSystem::Windows, disk.path());
+        let program_folder = disk.path().join("AppData").join("Local").join("Programs").join("Ollama");
+        assert_eq!(folders.ollama_app_paths(), [program_folder.join("ollama.exe")]);
+        assert!(!folders.has_ollama_app());
+
+        // The folder alone (a removed app leaves it behind) is not the app.
+        std::fs::create_dir_all(&program_folder).unwrap();
+        assert!(!folders.has_ollama_app());
+        std::fs::write(program_folder.join("ollama.exe"), "").unwrap();
+        assert!(folders.has_ollama_app());
+    }
+
+    #[test]
+    fn windows_without_local_app_data_has_nowhere_to_look() {
+        let disk = tempfile::tempdir().unwrap();
+        let folders = AppFolders { local_app_data: None, ..app_folders(DesktopSystem::Windows, disk.path()) };
+        assert!(folders.ollama_app_paths().is_empty());
+        assert!(!folders.has_ollama_app());
+    }
+
+    #[test]
+    fn each_system_ignores_the_folders_of_the_others() {
+        let disk = tempfile::tempdir().unwrap();
+        let program_folder = disk.path().join("AppData").join("Local").join("Programs").join("Ollama");
+        std::fs::create_dir_all(&program_folder).unwrap();
+        std::fs::write(program_folder.join("ollama.exe"), "").unwrap();
+        assert!(!app_folders(DesktopSystem::MacOs, disk.path()).has_ollama_app());
+
+        std::fs::create_dir_all(disk.path().join("Applications").join("Ollama.app")).unwrap();
+        assert!(app_folders(DesktopSystem::Other, disk.path()).ollama_app_paths().is_empty());
+        assert!(!app_folders(DesktopSystem::Other, disk.path()).has_ollama_app());
     }
 }
