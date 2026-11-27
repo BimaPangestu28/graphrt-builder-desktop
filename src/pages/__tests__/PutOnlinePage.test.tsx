@@ -2,7 +2,8 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { resetSampleAgents } from '@/api/sampleBackend/agents'
-import { resetSampleDeploy, setSampleCliStatus, setSampleCompatibility } from '@/api/sampleBackend/deploy'
+import { getAgentDeployment } from '@/api/deploy'
+import { resetSampleDeploy, setSampleCliStatus, setSampleCompatibility, setSampleToolsKnowOnlineFeatures } from '@/api/sampleBackend/deploy'
 import { agentRoutePatterns, routePaths, sampleAgentId } from '@/routes'
 import { PutOnlinePage } from '../PutOnlinePage'
 
@@ -113,8 +114,48 @@ describe('PutOnlinePage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('is not an image name')
   })
 
+  async function openReview() {
+    renderWizard()
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Continue' }))
+    await connectFlyInPopup()
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }))
+    await screen.findByRole('heading', { name: 'Review' })
+  }
+
+  it('puts the chat page and the phone page online with the agent, once the tools are there', async () => {
+    await openReview()
+    // Before the tools are downloaded nothing can be chosen, and the page says what to do.
+    expect(screen.getByText('Download the graphrt tools first to choose these.')).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: /Chat page/ })).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: 'Allow download' }))
+    await screen.findByRole('button', { name: 'Put it online' })
+
+    await userEvent.click(screen.getByRole('checkbox', { name: /Chat page/ }))
+    await userEvent.type(screen.getByLabelText(/Your website/), 'www.toko-kue.example/menu')
+    await userEvent.click(screen.getByRole('checkbox', { name: /Follow it from your phone/ }))
+    await userEvent.click(screen.getByRole('checkbox', { name: /bills me/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Put it online' }))
+    await screen.findByRole('heading', { name: /is online/ }, { timeout: 5000 })
+
+    const view = await getAgentDeployment(sampleAgentId)
+    expect(view?.features).toMatchObject({ chat: true, chatAudience: 'guests', embedSite: 'https://www.toko-kue.example', phone: true, notifications: false })
+  })
+
+  it('says honestly that the chat page and the phone page need an app update when the tools are too old', async () => {
+    setSampleToolsKnowOnlineFeatures(false)
+    await openReview()
+    await userEvent.click(screen.getByRole('button', { name: 'Allow download' }))
+    await screen.findByRole('button', { name: 'Put it online' })
+    expect(screen.getByText(/need newer graphrt tools than this version of the app can download\. They come with an app update\./)).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: /Chat page/ })).toBeDisabled()
+    // The agent itself still goes online.
+    await userEvent.click(screen.getByRole('checkbox', { name: /bills me/ }))
+    expect(screen.getByRole('button', { name: 'Put it online' })).toBeEnabled()
+  })
+
   it('says online deploy is not available yet when no graphrt release is pinned', async () => {
-    setSampleCliStatus({ status: 'not_available', version: null, downloadSizeBytes: null })
+    setSampleCliStatus({ status: 'not_available', version: null, downloadSizeBytes: null, onlineFeatures: false })
     renderWizard()
     await userEvent.click(screen.getByRole('button', { name: 'Next' }))
     await userEvent.click(await screen.findByRole('button', { name: 'Continue' }))

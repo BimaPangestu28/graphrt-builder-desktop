@@ -5,6 +5,7 @@ import { Badge, Button, LinkButton, StatusDot } from '@/components/ui'
 import { agentPath } from '@/routes'
 import { DevelopersDetails } from './DeployDialog'
 import { NewAccessKey } from './NewAccessKey'
+import { OnlineFeaturesPanel } from './OnlineFeaturesPanel'
 import { deployModeLabels, describeDeploymentStatus, describeTimeAgo, plainErrorMessage, serverAreaLabels } from './deployDisplay'
 import { messages } from '@/i18n'
 
@@ -199,6 +200,7 @@ export function AgentOnlinePanel({ agentId, agentName, view, onViewChange }: Age
           </p>
         )}
       </div>
+      {deployment.url && !isPaused && <OnlineFeaturesPanel target={{ kind: 'agent', agentId }} chosen={view.features} changeTo={agentPath('putOnline', agentId, { screen: 'review' })} />}
       <DeployHistory versions={versions} isBusy={busyAction !== null} onRollback={(version) => void run({ action: 'rollback', version }, 'rollback')} />
       <DevelopersDetails>
         <span>
