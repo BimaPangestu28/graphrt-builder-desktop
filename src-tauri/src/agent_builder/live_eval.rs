@@ -492,6 +492,13 @@ async fn live_eval() {
     };
     let EvalSetup { builder, credentials, ollama_base_url } = eval_setup(&model_name);
     let full_document_only = env_or("GRAPHRT_EVAL_FULL_DOCUMENT", "0") == "1";
+    // `GRAPHRT_EVAL_PATH=guided|full` forces the path the app would choose (both fall back
+    // to the full path when no plan is usable, as the app does).
+    match env_or("GRAPHRT_EVAL_PATH", "auto").as_str() {
+        "guided" => guided::eval_path::force(Some(guided::eval_path::Forced::Guided)),
+        "full" => guided::eval_path::force(Some(guided::eval_path::Forced::Full)),
+        _ => guided::eval_path::force(None),
+    }
     let (plugins, _plugin_dir) = install_plugins(credentials.clone()).await;
     let (mut total, mut built, mut worked) = (0, 0, 0);
     for index in chosen {

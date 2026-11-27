@@ -236,7 +236,8 @@ pub(super) struct PlanRules<'a> {
 }
 
 /// The JSON schema the model's answer must follow. `operations` are the plugin operations
-/// offered for this job; without any, the plan has no `use` step.
+/// offered for this job; without any, the plan has no `use` step. Every object lists all
+/// its properties as required and allows no others, as OpenAI's strict mode asks.
 pub(super) fn schema(rules: &PlanRules<'_>) -> serde_json::Value {
     let mut kinds = vec!["write", "lookup"];
     if rules.allows_approvals {
@@ -272,14 +273,20 @@ pub(super) fn schema(rules: &PlanRules<'_>) -> serde_json::Value {
                         "long_text": { "type": "boolean" },
                         "value": { "type": "string" }
                     },
-                    "required": ["name", "label", "long_text", "value"]
+                    "required": ["name", "label", "long_text", "value"],
+                    "additionalProperties": false
                 }
             },
             "steps": {
                 "type": "array",
                 "minItems": 1,
                 "maxItems": MAX_STEPS,
-                "items": { "type": "object", "properties": step_properties, "required": required_in_step }
+                "items": {
+                    "type": "object",
+                    "properties": step_properties,
+                    "required": required_in_step,
+                    "additionalProperties": false
+                }
             },
             "schedule": {
                 "type": "object",
@@ -287,10 +294,12 @@ pub(super) fn schema(rules: &PlanRules<'_>) -> serde_json::Value {
                     "repeat": { "type": "string", "enum": ["never", "hourly", "daily", "weekdays", "weekly"] },
                     "hour": { "type": "integer" }
                 },
-                "required": ["repeat", "hour"]
+                "required": ["repeat", "hour"],
+                "additionalProperties": false
             }
         },
-        "required": ["looks_up_the_web", "summary", "name", "inputs", "steps", "schedule"]
+        "required": ["looks_up_the_web", "summary", "name", "inputs", "steps", "schedule"],
+        "additionalProperties": false
     })
 }
 
@@ -1039,6 +1048,33 @@ mod tests {
                 "steps": [{"kind": "lookup", "title": "L", "instruction": "", "url": "{source}"}]}"#,
         );
         assert!(page.is_ok(), "{page:?}");
+    }
+
+    /// Every object of `schema` requires all its properties and allows no others.
+    fn assert_strict(schema: &serde_json::Value, path: &str) {
+        if schema.get("type").and_then(serde_json::Value::as_str) == Some("object") {
+            let properties = schema["properties"].as_object().unwrap_or_else(|| panic!("{path}: no properties"));
+            let mut required: Vec<&str> =
+                schema["required"].as_array().unwrap().iter().filter_map(serde_json::Value::as_str).collect();
+            let mut names: Vec<&str> = properties.keys().map(String::as_str).collect();
+            required.sort_unstable();
+            names.sort_unstable();
+            assert_eq!(required, names, "{path}");
+            assert_eq!(schema["additionalProperties"], json!(false), "{path}");
+            for (name, property) in properties {
+                assert_strict(property, &format!("{path}.{name}"));
+            }
+        }
+        if let Some(items) = schema.get("items") {
+            assert_strict(items, &format!("{path}[]"));
+        }
+    }
+
+    #[test]
+    fn the_plan_schema_is_valid_for_openai_strict_mode() {
+        let operations = [send_email_operation()];
+        assert_strict(&schema(&task_rules(&[])), "plan");
+        assert_strict(&schema(&task_rules(&operations)), "plan with operations");
     }
 
     #[test]

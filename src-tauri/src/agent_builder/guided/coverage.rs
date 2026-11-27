@@ -153,7 +153,44 @@ const SCHEDULE_WORDS: &[&str] = &[
 /// prompt, so the full path reaches them cut off. Teams need `agent` steps a plan does
 /// not have.
 pub(in crate::agent_builder) fn takes_guided_path(model: &ModelChoice, kind: AgentKind) -> bool {
+    #[cfg(test)]
+    match eval_path::forced() {
+        Some(eval_path::Forced::Guided) => return kind != AgentKind::Team,
+        Some(eval_path::Forced::Full) => return false,
+        None => {}
+    }
     model.provider == ModelProvider::Ollama && kind != AgentKind::Team
+}
+
+/// The measuring harness (`live_eval`) compares both paths on the same model: it forces one.
+#[cfg(test)]
+pub(in crate::agent_builder) mod eval_path {
+    use std::sync::atomic::{AtomicU8, Ordering};
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Forced {
+        Guided,
+        Full,
+    }
+
+    static FORCED: AtomicU8 = AtomicU8::new(0);
+
+    pub fn force(path: Option<Forced>) {
+        let value = match path {
+            None => 0,
+            Some(Forced::Guided) => 1,
+            Some(Forced::Full) => 2,
+        };
+        FORCED.store(value, Ordering::SeqCst);
+    }
+
+    pub fn forced() -> Option<Forced> {
+        match FORCED.load(Ordering::SeqCst) {
+            1 => Some(Forced::Guided),
+            2 => Some(Forced::Full),
+            _ => None,
+        }
+    }
 }
 
 /// Whether the description asks for something no plan can express: repeating over a

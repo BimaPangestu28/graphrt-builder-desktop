@@ -226,6 +226,47 @@ pub(crate) fn not_installed_catalog() -> super::models::CatalogIndex {
     catalog_of_entries(NOT_INSTALLED_ENTRIES)
 }
 
+/// A catalog of `plugins` made-up plugins with `steps` steps each, every step with a few
+/// fields, plus `wikipedia`: for checks that the builder prompt stays small however large
+/// the catalog grows.
+pub(crate) fn large_catalog(plugins: usize, steps: usize) -> super::models::CatalogIndex {
+    let mut entries: Vec<serde_json::Value> = (0..plugins)
+        .map(|index| {
+            let name = format!("service{index}-api");
+            let nodes: Vec<serde_json::Value> = (0..steps)
+                .map(|step| {
+                    serde_json::json!({
+                        "kind": format!("{name}.list_items_{step}"),
+                        "title": format!("List items {step}"),
+                        "description": "Lists the items of the account, newest first, with their owners and labels.",
+                        "config_schema": {
+                            "type": "object",
+                            "properties": {
+                                "query": { "type": "string" }, "limit": { "type": "integer" },
+                                "cursor": { "type": "string" }, "folder": { "type": "string" }
+                            },
+                            "required": ["query"]
+                        },
+                        "outputs": ["data", "next_cursor"],
+                    })
+                })
+                .collect();
+            serde_json::json!({
+                "name": name, "version": "1.0.0", "description": "A service with many steps for many kinds of work.",
+                "tarball_url": format!("https://plugins.example.test/{name}.tgz"), "sha256": "0".repeat(64),
+                "size_bytes": 1, "nodes": nodes,
+            })
+        })
+        .collect();
+    entries.push(serde_json::json!({
+        "name": "wikipedia", "display_name": "Wikipedia", "version": "1.0.0",
+        "description": "Read Wikipedia articles.", "tarball_url": "https://plugins.example.test/wikipedia.tgz",
+        "sha256": "0".repeat(64), "size_bytes": 1,
+        "nodes": [{ "kind": "wikipedia.get_page_summary", "title": "Get page summary" }],
+    }));
+    catalog_of_entries(&serde_json::to_string(&entries).unwrap())
+}
+
 /// A catalog of the real `google-maps-scraper` and `whatsapp-web` entries (node kinds and
 /// fields copied from their manifests in graphrt-plugins), never installed.
 pub(crate) fn maps_whatsapp_catalog() -> super::models::CatalogIndex {

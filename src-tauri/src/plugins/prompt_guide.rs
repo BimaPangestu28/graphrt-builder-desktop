@@ -21,6 +21,8 @@ const MAX_CATALOG_DESCRIPTION_CHARS: usize = 110;
 const MAX_JOB_CATALOG_PLUGINS: usize = 6;
 /// Most steps listed per catalog plugin; the job's own words pick them first.
 const MAX_CATALOG_NODES_PER_PLUGIN: usize = 30;
+/// Most other catalog plugins listed by name; the catalog grows, the prompt must not.
+const MAX_OTHER_PLUGIN_NAMES: usize = 300;
 /// Words of plugin names that say nothing about the service.
 const GENERIC_NAME_WORDS: &[&str] = &["api", "app", "web", "mcp", "the", "and", "for", "with", "tool", "tools", "data"];
 
@@ -107,9 +109,13 @@ pub(crate) fn plugin_guide(plugins: &[PluginState], catalog: Option<&CatalogInde
         }
     }
     if !others.is_empty() {
-        let names: Vec<&str> = others.iter().map(|entry| entry.name.as_str()).collect();
+        let names: Vec<&str> = others.iter().take(MAX_OTHER_PLUGIN_NAMES).map(|entry| entry.name.as_str()).collect();
+        let more = match others.len().saturating_sub(MAX_OTHER_PLUGIN_NAMES) {
+            0 => String::new(),
+            count => format!(" and {count} more"),
+        };
         section.push_str(&format!(
-            "\n  Other plugins in the catalog, not installed (their steps are not listed here, so do not use them): {}.",
+            "\n  Other plugins in the catalog, not installed (their steps are not listed here, so do not use them): {}{more}.",
             names.join(", ")
         ));
     }

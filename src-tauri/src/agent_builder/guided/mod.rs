@@ -42,6 +42,8 @@ use crate::plugins::operations::OfferedOperation;
 use crate::storage::models::{Agent, AgentKind, MissedRunPolicy, NewTrigger};
 use crate::storage::Database;
 
+#[cfg(test)]
+pub(super) use coverage::eval_path;
 pub(super) use coverage::takes_guided_path;
 
 /// Times the model is asked for a plan: the first answer and two corrections.
@@ -313,7 +315,7 @@ impl Planning<'_> {
                 (BuildStage::Repairing, "Fixing a problem in the draft")
             };
             report(self.on_progress, stage, stage_message);
-            let reply = self.ask_for_json(&messages, "agent_plan", schema.clone(), stage, stage_message).await?;
+            let reply = self.ask_for_json(&messages, "agent_plan", schema.clone(), true, stage, stage_message).await?;
             let check_message = if attempt == 1 { "Checking the steps" } else { "Checking it again" };
             report(self.on_progress, BuildStage::Checking, check_message);
             let checked = match self.checked_plan(&reply, &rules) {
@@ -422,7 +424,9 @@ impl Planning<'_> {
         ];
         let mut last_problem = String::new();
         for _ in 0..MAX_FIELDS_ATTEMPTS {
-            let reply = self.ask_for_json(&messages, "step_fields", schema.clone(), stage, stage_message).await?;
+            // Not strict: an operation's optional fields may be left out, which strict mode forbids.
+            let reply =
+                self.ask_for_json(&messages, "step_fields", schema.clone(), false, stage, stage_message).await?;
             match plan::normalize_fields(operation, &reply, plan, step_index) {
                 Ok(fields) => return Ok(Ok(fields)),
                 Err(problem) => {
@@ -472,13 +476,14 @@ impl Planning<'_> {
         messages: &[Message],
         schema_name: &str,
         schema: serde_json::Value,
+        strict: bool,
         stage: BuildStage,
         stage_message: &str,
     ) -> AppResult<String> {
         let request = ChatRequest::new(self.builder.choice.name.clone(), messages.to_vec())
             .with_max_tokens(MAX_PLAN_TOKENS)
             .with_temperature(PLAN_TEMPERATURE)
-            .with_response_format(ResponseFormat::JsonSchema { name: schema_name.to_owned(), schema, strict: true });
+            .with_response_format(ResponseFormat::JsonSchema { name: schema_name.to_owned(), schema, strict });
         let stream = self.builder.model.chat(request).await.map_err(|error| model_error(&error))?;
         let mut written_bytes = 0;
         let mut last_sent: Option<Instant> = None;

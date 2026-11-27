@@ -562,6 +562,31 @@ graph:
     - { source: send_offer, target: end }
 "#;
 
+/// About four bytes a token; the smallest cloud context window the builder meets is
+/// 128,000 tokens, and the prompt must leave most of it for the job and the reply.
+const MAX_FULL_PROMPT_BYTES: usize = 160_000;
+
+#[tokio::test]
+async fn the_full_drafting_prompt_stays_small_however_large_the_catalog_grows() {
+    let _lock = crate::plugins::tests::ACTIVE_SNAPSHOT_LOCK.lock().await;
+    let choice = ModelChoice { provider: ModelProvider::Openai, name: "gpt-4o-mini".into() };
+    // Today's catalog is 150 plugins with ~1,900 steps; ten times that, with longer steps.
+    crate::plugins::active::publish_catalog(Some(Arc::new(crate::plugins::tests::large_catalog(1_500, 13))));
+    let named_one = prompt::build_system_prompt(&choice, &[], "Look up the Wikipedia summary of Jakarta");
+    let names_many = prompt::build_system_prompt(
+        &choice,
+        &[],
+        &(0..200).map(|index| format!("service{index}")).collect::<Vec<_>>().join(" "),
+    );
+    let revision = prompt::revision_system_prompt(&choice, &[], &TrustedHosts::none(), "Send it by email", "");
+    crate::plugins::active::publish_catalog(None);
+
+    assert!(named_one.contains("`wikipedia.get_page_summary`"), "the plugin the job names is listed");
+    for prompt in [&named_one, &names_many, &revision] {
+        assert!(prompt.len() < MAX_FULL_PROMPT_BYTES, "{} bytes", prompt.len());
+    }
+}
+
 #[tokio::test]
 async fn drafts_may_use_catalog_plugins_that_are_not_installed() {
     let _lock = crate::plugins::tests::ACTIVE_SNAPSHOT_LOCK.lock().await;
