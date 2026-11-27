@@ -17,7 +17,8 @@ const COMMON_WORDS: &[&str] = &[
     "list", "read", "find", "send", "create", "add", "new", "all", "each", "every", "text", "message", "messages",
     "about", "what", "when", "them", "their", "your", "you", "our", "its", "one", "two", "three", "short", "summary",
     "yang", "dan", "untuk", "dengan", "dari", "ini", "itu", "saya", "kami", "buat", "buatkan", "tulis", "lalu",
-    "kirim", "pesan", "setiap", "jadi", "api", "data", "file", "files", "page", "pages", "day", "daily",
+    "kirim", "pesan", "setiap", "jadi", "api", "data", "file", "files", "page", "pages", "day", "daily", "web",
+    "online", "internet", "link",
 ];
 
 /// Words that do not tell operations of one plugin apart.
@@ -187,6 +188,12 @@ mod tests {
         assert!(relevant_operations(hubspot, "Turn my meeting notes into a list of action items").is_empty());
         assert!(relevant_operations(deepl.clone(), "Translate the text I give into Indonesian").is_empty());
         assert_eq!(relevant_operations(deepl, "Translate it with DeepL").len(), 1);
+    }
+
+    #[test]
+    fn a_web_page_names_no_web_plugin() {
+        let web_search = vec![operation("web-search.search", "Search the web", false)];
+        assert!(relevant_operations(web_search, "Read the web page at a link I give and summarize it").is_empty());
     }
 
     #[test]
