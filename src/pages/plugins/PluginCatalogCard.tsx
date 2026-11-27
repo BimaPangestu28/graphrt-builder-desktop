@@ -21,7 +21,7 @@ interface PluginCatalogCardProps {
 }
 
 function describeCardMeta(item: PluginListItem): string {
-  const versionText = item.installed && item.updateAvailable ? `v${item.installed.version} installed` : `v${item.version}`
+  const versionText = item.installed && item.updateAvailable ? messages().plugins.versionInstalled(item.installed.version) : `v${item.version}`
   return [pluginCategoryLabels[item.category], versionText, describeMaturity(item.maturity)].filter(Boolean).join(' · ')
 }
 
