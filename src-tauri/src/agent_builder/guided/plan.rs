@@ -730,6 +730,7 @@ fn lookup_url(raw_url: &str, inputs: &mut Vec<PlanInput>, inputs_are_fixed: bool
     let trimmed = raw_url.trim().trim_matches(|character| matches!(character, '"' | '\'' | '`' | '<' | '>'));
     // `{{topic}}` and `{{#start.topic#}}` mean `{topic}`.
     let single_braces = trimmed.replace("{{#start.", "{").replace("#}}", "}").replace("{{", "{").replace("}}", "}");
+    let single_braces = without_trailing_junk(&single_braces);
     let without_scheme = single_braces.strip_prefix("https://").or_else(|| single_braces.strip_prefix("http://"));
     if let [UrlPart::Placeholder(written_name)] = placeholder_parts(without_scheme.unwrap_or(&single_braces)).as_slice()
     {
@@ -778,6 +779,12 @@ fn lookup_url(raw_url: &str, inputs: &mut Vec<PlanInput>, inputs_are_fixed: bool
     let mut template = String::new();
     for part in placeholder_parts(&with_scheme) {
         match part {
+            UrlPart::Text(text) if text.contains(['{', '}']) => {
+                return Err(format!(
+                    "the lookup address `{trimmed}` has a brace that is not around an input name; write it as one \
+                     https address with inputs as {{name}}"
+                ));
+            }
             UrlPart::Text(text) => template.push_str(text),
             UrlPart::Placeholder(written_name) => {
                 let name = resolve_placeholder(written_name, inputs, inputs_are_fixed)?;
@@ -785,7 +792,57 @@ fn lookup_url(raw_url: &str, inputs: &mut Vec<PlanInput>, inputs_are_fixed: bool
             }
         }
     }
+    let template = with_inputs_for_their_values(template, host.len(), inputs);
     Ok(LookupUrl { template, host: Some(host) })
+}
+
+/// `url` without what a model sometimes leaves after it: a comma, an opening brace or
+/// bracket, or a closing brace that closes nothing (`…/summary/Jakarta},{`).
+fn without_trailing_junk(url: &str) -> String {
+    let mut url = url.trim_end().to_owned();
+    loop {
+        let unmatched_close = url.ends_with('}') && url.matches('}').count() > url.matches('{').count();
+        if url.ends_with([',', '{', '[', ']', ' ']) || unmatched_close {
+            url.pop();
+        } else {
+            return url;
+        }
+    }
+}
+
+/// `template` with a path segment or query value that is exactly the value of an input
+/// (`…/summary/Jakarta` when the input `topic` holds "Jakarta") as that input, so the agent
+/// looks up what the person types and not only what the job named. `host_length` is the
+/// length of the site's name.
+fn with_inputs_for_their_values(template: String, host_length: usize, inputs: &[PlanInput]) -> String {
+    let after_host = "https://".len() + host_length;
+    let (site, rest) = template.split_at(after_host.min(template.len()));
+    let mut rest = rest.to_owned();
+    for input in inputs {
+        let value = input.value.trim();
+        let is_url_safe = !value.is_empty()
+            && value.chars().all(|character| character.is_alphanumeric() || matches!(character, '_' | '-' | '.'));
+        if !is_url_safe {
+            continue;
+        }
+        let mut replaced = String::new();
+        let mut remaining = rest.as_str();
+        while let Some(position) = remaining.find(value) {
+            let before = remaining[..position].chars().next_back();
+            let after = remaining[position + value.len()..].chars().next();
+            let whole = matches!(before, Some('/' | '=')) && matches!(after, None | Some('/' | '?' | '&' | '#'));
+            replaced.push_str(&remaining[..position]);
+            if whole {
+                replaced.push_str(&format!("{{{}}}", input.name));
+            } else {
+                replaced.push_str(value);
+            }
+            remaining = &remaining[position + value.len()..];
+        }
+        replaced.push_str(remaining);
+        rest = replaced;
+    }
+    format!("{site}{rest}")
 }
 
 /// The input name a lookup address consists of, when it is one placeholder and nothing
@@ -1075,6 +1132,32 @@ mod tests {
         let operations = [send_email_operation()];
         assert_strict(&schema(&task_rules(&[])), "plan");
         assert_strict(&schema(&task_rules(&operations)), "plan with operations");
+    }
+
+    #[test]
+    fn a_lookup_address_loses_trailing_junk_and_reads_the_input_the_job_named() {
+        // As gpt-4o-mini wrote it in a guided plan.
+        let plan = normalized(
+            r#"{"looks_up_the_web": true, "inputs": [{"name": "topic", "label": "Topic to look up", "long_text": false, "value": "Jakarta"}],
+                "steps": [{"kind": "lookup", "title": "L", "instruction": "", "url": "https://en.wikipedia.org/api/rest_v1/page/summary/Jakarta},{"}]}"#,
+        )
+        .unwrap();
+        let PlanStep::Lookup { url, .. } = &plan.steps[0] else { panic!("lookup expected") };
+        assert_eq!(url.to_graphrt_template(), "https://en.wikipedia.org/api/rest_v1/page/summary/{{#start.topic#}}");
+
+        let in_a_word = normalized(
+            r#"{"looks_up_the_web": true, "inputs": [{"name": "city", "label": "City", "long_text": false, "value": "Jakarta"}],
+                "steps": [{"kind": "lookup", "title": "L", "instruction": "", "url": "https://wttr.in/NotJakarta?q=Jakarta&format=3"}]}"#,
+        )
+        .unwrap();
+        let PlanStep::Lookup { url, .. } = &in_a_word.steps[0] else { panic!("lookup expected") };
+        assert_eq!(url.to_graphrt_template(), "https://wttr.in/NotJakarta?q={{#start.city#}}&format=3");
+
+        let stray = normalized(
+            r#"{"looks_up_the_web": true, "inputs": [],
+                "steps": [{"kind": "lookup", "title": "L", "instruction": "", "url": "https://a.org/x}y"}]}"#,
+        );
+        assert!(stray.unwrap_err().contains("brace"));
     }
 
     #[test]
