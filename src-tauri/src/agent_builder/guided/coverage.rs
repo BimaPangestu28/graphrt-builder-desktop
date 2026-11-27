@@ -15,7 +15,7 @@
 //! One word list is left, for the full path, which has no plan: the schedule words a
 //! drafted document cannot carry ([`schedule_in_words`]).
 
-use super::plan::{JobWords, Plan, PlanStep, Repeat, Schedule};
+use super::plan::{JobWords, Plan, PlanInput, PlanStep, Repeat, Schedule};
 use crate::credentials::{ModelChoice, ModelProvider};
 use crate::storage::models::AgentKind;
 
@@ -133,7 +133,7 @@ pub(in crate::agent_builder) mod eval_path {
 /// @example a "send" quote "send it by email" stays for the job "Write a note and send it by email."
 pub(super) fn verify_job_words(words: &mut JobWords, job: &str) {
     let job = comparable(job);
-    for quote in [&mut words.send, &mut words.when, &mut words.for_each, &mut words.files] {
+    for quote in [&mut words.send, &mut words.when, &mut words.for_each, &mut words.files, &mut words.given] {
         let wanted = comparable(quote);
         let holds_it =
             wanted.chars().filter(|character| character.is_alphanumeric()).count() >= 3 && job.contains(&wanted);
@@ -179,6 +179,20 @@ pub(super) fn checked_schedule(plan: &Plan) -> Option<Schedule> {
         return None;
     }
     Some(plan.schedule.unwrap_or_else(Schedule::daily))
+}
+
+/// The input for the text the person gives, added to a plan whose own words say the person
+/// gives one ("the notes I paste") but that has no long-text input to receive it.
+pub(super) fn input_for_given_text(plan: &Plan) -> Option<PlanInput> {
+    if plan.job_words.given.is_empty() || plan.inputs.iter().any(|input| input.long_text) {
+        return None;
+    }
+    let mut name = "text".to_owned();
+    while plan.inputs.iter().any(|input| input.name == name) {
+        name.push('_');
+    }
+    let label = plan.job_words.given.clone();
+    Some(PlanInput { name, label, long_text: true, value: String::new() })
 }
 
 /// Lowercase words of `text` joined by single spaces, without punctuation.
@@ -270,7 +284,29 @@ mod tests {
     }
 
     fn job_words(send: &str, when: &str, for_each: &str, files: &str) -> JobWords {
-        JobWords { send: send.into(), when: when.into(), for_each: for_each.into(), files: files.into() }
+        JobWords {
+            send: send.into(),
+            when: when.into(),
+            for_each: for_each.into(),
+            files: files.into(),
+            given: String::new(),
+        }
+    }
+
+    #[test]
+    fn a_text_the_job_says_the_person_gives_gets_an_input() {
+        let mut plan = plan_with(vec![write_step()]);
+        plan.inputs =
+            vec![PlanInput { name: "text".into(), label: "Email".into(), long_text: false, value: String::new() }];
+        assert_eq!(input_for_given_text(&plan), None);
+        plan.job_words.given = "catatan rapat yang saya tempel".into();
+        let input = input_for_given_text(&plan).unwrap();
+        assert_eq!(
+            (input.name.as_str(), input.label.as_str(), input.long_text),
+            ("text_", "catatan rapat yang saya tempel", true)
+        );
+        plan.inputs.push(input);
+        assert_eq!(input_for_given_text(&plan), None, "one is enough");
     }
 
     #[test]

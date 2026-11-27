@@ -61,11 +61,18 @@ pub(super) struct JobWords {
     pub for_each: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub files: String,
+    /// The words that say the person gives the text to work on ("the notes I paste").
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub given: String,
 }
 
 impl JobWords {
     pub(super) fn is_empty(&self) -> bool {
-        self.send.is_empty() && self.when.is_empty() && self.for_each.is_empty() && self.files.is_empty()
+        self.send.is_empty()
+            && self.when.is_empty()
+            && self.for_each.is_empty()
+            && self.files.is_empty()
+            && self.given.is_empty()
     }
 }
 
@@ -334,9 +341,10 @@ pub(super) fn schema(rules: &PlanRules<'_>) -> serde_json::Value {
                     "send": { "type": "string" },
                     "when": { "type": "string" },
                     "for_each": { "type": "string" },
-                    "files": { "type": "string" }
+                    "files": { "type": "string" },
+                    "given": { "type": "string" }
                 },
-                "required": ["send", "when", "for_each", "files"],
+                "required": ["send", "when", "for_each", "files", "given"],
                 "additionalProperties": false
             }
         },
@@ -512,6 +520,7 @@ pub(super) fn normalize(raw: RawPlan, rules: &PlanRules<'_>) -> Result<Plan, Str
         when: plain_text(&raw.job_words.when),
         for_each: plain_text(&raw.job_words.for_each),
         files: plain_text(&raw.job_words.files),
+        given: plain_text(&raw.job_words.given),
     };
     Ok(Plan {
         summary,

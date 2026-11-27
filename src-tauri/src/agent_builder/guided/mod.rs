@@ -294,7 +294,7 @@ fn plan_for_the_model(plan: &Plan) -> serde_json::Value {
         })).collect::<Vec<_>>(),
         "steps": steps,
         "schedule": {"repeat": repeat, "hour": hour},
-        "job_words": {"send": "", "when": "", "for_each": "", "files": ""},
+        "job_words": {"send": "", "when": "", "for_each": "", "files": "", "given": ""},
     })
 }
 
@@ -367,6 +367,12 @@ impl Planning<'_> {
         let mut plan = plan::normalize(plan::parse(reply)?, rules)?;
         coverage::verify_job_words(&mut plan.job_words, self.request);
         prefer_offered_reading(&mut plan, &self.operations, self.request);
+        // The fixed message of a chatbot is its given text already.
+        if rules.fixed_input.is_none() {
+            if let Some(input) = coverage::input_for_given_text(&plan) {
+                plan.inputs.push(input);
+            }
+        }
         if let Some(reason) = coverage::out_of_reach(&plan.job_words, !self.operations.is_empty()) {
             return Err(PlanProblem::OutOfReach(reason));
         }
