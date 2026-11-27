@@ -215,6 +215,27 @@ describe('run narration', () => {
       rawError,
     })
   })
+  it('explains a plugin failure by its kind, with the plugin message and the plugin to fix it', () => {
+    const message = '`amount` must be a plain number such as 150000, not "seratus ribu"'
+    const events = buildEventLog([
+      { type: 'run_started' },
+      node('node_started', 'send_promotion', '', { kind: 'document-templates.render_pdf' }),
+      node('node_failed', 'send_promotion', '', { error: message, error_type: 'invalid_input', handled: false }),
+      { type: 'run_failed', error: `node send_promotion failed: ${message}`, error_type: 'invalid_input' },
+    ])
+    const pluginTemplate = template.map((step) => (step.id === 'send_promotion' ? { ...step, nodeType: 'document-templates.render_pdf' } : step))
+    expect(buildRunNarration(pluginTemplate, events).at(-1)).toMatchObject({
+      text: 'Failed at Send the promotion message: A value cannot be used',
+      rawError: message,
+      errorType: 'invalid_input',
+      pluginName: 'document-templates',
+    })
+  })
+
+  it('explains a run failure without a failed step by the run error type', () => {
+    const events = buildEventLog([{ type: 'run_started' }, { type: 'run_failed', error: 'run exceeded 500 steps', error_type: 'limit_exceeded' }])
+    expect(buildRunNarration(template, events).at(-1)).toMatchObject({ text: expect.stringContaining('The run reached its limit'), errorType: 'limit_exceeded', pluginName: null })
+  })
 })
 
 describe('run error text', () => {
@@ -230,6 +251,16 @@ describe('run error text', () => {
     expect(humanizeRunError('http: server returned status 503', 'POST api.example.com').summary).toBe('api.example.com had a problem on its side (503). Try again later')
     expect(humanizeRunError('model: the prompt is too long').summary).toBe('The prompt is too long')
   })
+
+  it('explains a plugin error by its kind, while a known network problem still names the host', () => {
+    const lockError = humanizeRunError('Could not lock the numbering file: EEXIST', null, 'plugin_error')
+    expect(lockError).toMatchObject({ summary: 'The plugin ran into a problem', raw: 'Could not lock the numbering file: EEXIST' })
+    expect(lockError.help?.remedy).toBe('pluginPage')
+    expect(humanizeRunError('dns error: failed to lookup address information', 'GET api.example.com', 'network_error').summary).toBe(
+      "Could not reach api.example.com: that address doesn't exist",
+    )
+    expect(humanizeRunError('something new', null, 'brand_new_kind')).toMatchObject({ summary: 'Something new', help: null })
+  })
 })
 
 describe('run header and value summaries', () => {
@@ -243,6 +274,7 @@ describe('run header and value summaries', () => {
     finishedAt: null,
     outputs: null,
     errorMessage: null,
+    errorType: null,
     pauseReasons: null,
   }
 

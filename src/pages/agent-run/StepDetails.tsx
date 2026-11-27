@@ -1,4 +1,6 @@
 import { Link } from 'react-router-dom'
+import { ErrorHelpNotice } from '@/components/errors/ErrorHelpNotice'
+import { pluginNameFromNodeType } from '@/lib/errorHelp'
 import { buildFixStepPath } from './fixStepRequest'
 import { humanizeRunError } from './runErrorText'
 import type { RunStepView } from './runSteps'
@@ -51,9 +53,34 @@ function ModelText({ step }: { step: RunStepView }) {
   )
 }
 
-/** The error in plain words, the raw text one click away. */
-export function ErrorExplanation({ rawError, stepDetail, fixStepPath }: { rawError: string; stepDetail: string | null; fixStepPath?: string | null }) {
-  const { summary } = humanizeRunError(rawError, stepDetail)
+interface ErrorExplanationProps {
+  rawError: string
+  stepDetail: string | null
+  fixStepPath?: string | null
+  /** The failure's error kind; a known one adds what to do next and keeps the message in view. */
+  errorType?: string | null
+  /** The step's node type, to name the plugin the error came from. */
+  nodeType?: string | null
+}
+
+/**
+ * The error in plain words. With a known error kind: what to do next, a button to the fix and
+ * the original message in view; otherwise the raw text one click away.
+ */
+export function ErrorExplanation({ rawError, stepDetail, fixStepPath, errorType = null, nodeType = null }: ErrorExplanationProps) {
+  const { summary, help } = humanizeRunError(rawError, stepDetail, errorType)
+  const fixLink = fixStepPath && (
+    <Link to={fixStepPath} className="text-[13px] font-medium">
+      {messages().agentRun.askTheBuilderToFixThis}
+    </Link>
+  )
+  if (help) {
+    return (
+      <ErrorHelpNotice help={help} headline={summary} detail={rawError} pluginName={pluginNameFromNodeType(nodeType)}>
+        {fixLink}
+      </ErrorHelpNotice>
+    )
+  }
   return (
     <div className="flex flex-col gap-1.5 rounded-lg border border-danger-line bg-danger-tint px-3 py-2">
       <span className="font-medium text-danger">{summary}</span>
@@ -61,11 +88,7 @@ export function ErrorExplanation({ rawError, stepDetail, fixStepPath }: { rawErr
         <summary className="cursor-pointer">{messages().agentRun.technicalDetails}</summary>
         <pre className="m-0 mt-1 whitespace-pre-wrap break-words font-mono">{rawError}</pre>
       </details>
-      {fixStepPath && (
-        <Link to={fixStepPath} className="text-[13px] font-medium">
-          {messages().agentRun.askTheBuilderToFixThis}
-        </Link>
-      )}
+      {fixLink}
     </div>
   )
 }
@@ -159,7 +182,7 @@ export function StepDetails({ step, id, fixAgentId, agentId }: StepDetailsProps)
       )}
       <SkillAndLearningNotes step={step} agentId={agentId} />
       {step.isModelStep && <ModelText step={step} />}
-      {step.errorMessage && step.iteration === null && <ErrorExplanation rawError={step.errorMessage} stepDetail={step.stepDetail} fixStepPath={fixAgentId ? buildFixStepPath(fixAgentId, step) : null} />}
+      {step.errorMessage && step.iteration === null && <ErrorExplanation rawError={step.errorMessage} stepDetail={step.stepDetail} errorType={step.errorType} nodeType={step.nodeType} fixStepPath={fixAgentId ? buildFixStepPath(fixAgentId, step) : null} />}
       {step.retryCount > 0 && (
         <span className="text-[13px] text-body">
           {messages().agentRun.retried}{' '}{step.retryCount === 1 ? messages().agentRun.retriedOnce : messages().agentRun.retriedTimes(step.retryCount)}

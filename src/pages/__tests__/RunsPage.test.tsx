@@ -159,7 +159,7 @@ describe('RunsPage', () => {
 
   it('shows plain-language errors, stopped runs and paused questions in the table', async () => {
     const rawError = 'connection: iteration item 0 failed: error sending request: dns error: failed to lookup address information: nodename nor servname provided, or not known'
-    const run = { agentId: 'maps-leads', agentVersion: 1, trigger: 'manual', startedAt: new Date().toISOString(), finishedAt: null, outputs: null, errorMessage: null, pauseReasons: null } as const
+    const run = { agentId: 'maps-leads', agentVersion: 1, trigger: 'manual', startedAt: new Date().toISOString(), finishedAt: null, outputs: null, errorMessage: null, errorType: null, pauseReasons: null } as const
     vi.spyOn(sampleRunsBackend, 'listRuns').mockResolvedValue([
       { ...run, id: 'failed-run', status: 'failed', errorMessage: rawError },
       { ...run, id: 'stopped-run', status: 'aborted' },

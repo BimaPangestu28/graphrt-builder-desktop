@@ -86,6 +86,19 @@ export function pluginDetailPath(pluginName: string): string {
   return pluginDetailPattern.replace(':pluginName', encodeURIComponent(pluginName))
 }
 
+/** Search param of a plugin's page that scrolls to a section on arrival (`settings`). */
+export const pluginSectionParam = 'section'
+
+/**
+ * Builds the URL of a plugin's page scrolled to its settings ("Set up").
+ *
+ * @example
+ * pluginSettingsPath('document-templates') // "/plugins/document-templates?section=settings"
+ */
+export function pluginSettingsPath(pluginName: string): string {
+  return `${pluginDetailPath(pluginName)}?${pluginSectionParam}=settings`
+}
+
 /** The add / update wizard of a catalog skill. */
 export const skillAddPattern = '/skills/add/:skillName'
 

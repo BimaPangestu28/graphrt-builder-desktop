@@ -321,6 +321,7 @@ function createSampleRun(agentId: string, changes: Partial<Run> = {}): Run {
     finishedAt: null,
     outputs: null,
     errorMessage: null,
+    errorType: null,
     pauseReasons: null,
     ...changes,
   }
@@ -368,6 +369,7 @@ export const sampleRunsBackend = {
         finishedAt: null,
         outputs: null,
         errorMessage: null,
+        errorType: null,
         pauseReasons: null,
       }
       storedRuns = [run, ...storedRuns]

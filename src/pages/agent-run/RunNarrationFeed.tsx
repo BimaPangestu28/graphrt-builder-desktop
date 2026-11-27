@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react'
+import { ErrorHelpNotice } from '@/components/errors/ErrorHelpNotice'
 import { joinClassNames } from '@/components/ui'
+import { explainErrorKind } from '@/lib/errorHelp'
 import type { NarrationLine, NarrationTone } from './runNarration'
 import { messages } from '@/i18n'
 
@@ -19,6 +21,18 @@ function NarrationText({ line, onOpenApproval }: { line: NarrationLine; onOpenAp
     <button type="button" onClick={onOpenApproval} className="cursor-pointer border-0 bg-transparent p-0 text-left font-medium text-amber-strong underline">
       {line.text}
     </button>
+  )
+}
+
+/** Under a failure line: what to do next and the original message for a known kind, else the raw text folded. */
+function FailureDetails({ line, rawError }: { line: NarrationLine; rawError: string }) {
+  const help = explainErrorKind(line.errorType)
+  if (help) return <ErrorHelpNotice help={help} detail={rawError} pluginName={line.pluginName} showsHeadline={false} className="max-w-[92%]" />
+  return (
+    <details className="text-[12px] text-body">
+      <summary className="cursor-pointer">{messages().agentRun.technicalDetails}</summary>
+      <pre className="m-0 mt-1 whitespace-pre-wrap break-words font-mono">{rawError}</pre>
+    </details>
   )
 }
 
@@ -57,12 +71,7 @@ export function RunNarrationFeed({ lines, placeholder, onOpenApproval }: RunNarr
           <p className={joinClassNames('m-0 max-w-[92%] leading-[1.6]', toneClassNames[line.tone])}>
             <NarrationText line={line} onOpenApproval={onOpenApproval} />
           </p>
-          {line.rawError && (
-            <details className="text-[12px] text-body">
-              <summary className="cursor-pointer">{messages().agentRun.technicalDetails}</summary>
-              <pre className="m-0 mt-1 whitespace-pre-wrap break-words font-mono">{line.rawError}</pre>
-            </details>
-          )}
+          {line.rawError && <FailureDetails line={line} rawError={line.rawError} />}
         </div>
       ))}
     </div>

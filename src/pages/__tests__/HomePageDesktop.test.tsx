@@ -86,6 +86,7 @@ const pausedRun: Run = {
   finishedAt: null,
   outputs: null,
   errorMessage: null,
+  errorType: null,
   pauseReasons: [{ node_id: 'approve', kind: 'human_input', data: { prompt: 'Send the digest?' } }],
 }
 

@@ -18,6 +18,7 @@ const baseRun: Run = {
   finishedAt: null,
   outputs: null,
   errorMessage: null,
+  errorType: null,
   pauseReasons: [{ node_id: 'approve', kind: 'human_input', data: { draft: 'Hello' } }],
 }
 

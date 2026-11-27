@@ -104,7 +104,7 @@ function buildFollowUp(run: Run): RunRecord['followUp'] {
 export function describeRunResult(run: Run): Pick<RunRecord, 'result' | 'resultTitle'> {
   const summary = readOutputText(run, 'summary')
   if (summary) return { result: summary, resultTitle: summary }
-  if (run.status === 'failed' && run.errorMessage) return { result: humanizeRunError(run.errorMessage).summary, resultTitle: run.errorMessage }
+  if (run.status === 'failed' && run.errorMessage) return { result: humanizeRunError(run.errorMessage, null, run.errorType).summary, resultTitle: run.errorMessage }
   const question = run.status === 'paused' ? readPauseQuestion(run) : null
   const deadline = run.status === 'paused' ? readPauseDeadline(run, Date.now()) : null
   if (question) return { result: deadline ? `${question} · ${deadline}` : question, resultTitle: question }

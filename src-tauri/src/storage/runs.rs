@@ -13,8 +13,15 @@ use super::models::{Run, RunEventRecord, RunFilter, RunStatus, RunTrigger};
 use super::{now_rfc3339, Database};
 use crate::error::{AppError, AppResult};
 
+/// `error_type` is not stored: it is read from the failed run's own `run_failed` event (the
+/// failing step's error kind, e.g. `setup_required`), newest first, so it costs one index
+/// lookup per failed run and nothing for the others.
 pub(super) const RUN_COLUMNS: &str = "id, agent_id, agent_version, \"trigger\", status, started_at, finished_at, \
-     outputs_json, error_message, pause_reasons_json";
+     outputs_json, error_message, pause_reasons_json, \
+     CASE WHEN status = 'failed' THEN (SELECT json_extract(failure.event_json, '$.error_type') \
+         FROM run_events AS failure \
+         WHERE failure.run_id = runs.id AND json_extract(failure.event_json, '$.type') = 'run_failed' \
+         ORDER BY failure.seq DESC LIMIT 1) END AS error_type";
 
 const DEFAULT_RUN_LIST_LIMIT: i64 = 100;
 const MAX_RUN_LIST_LIMIT: i64 = 1000;
@@ -36,6 +43,7 @@ impl Database {
             finished_at: None,
             outputs: None,
             error_message: None,
+            error_type: None,
             pause_reasons: None,
         };
         let connection = self.lock()?;
@@ -366,6 +374,7 @@ pub(super) fn map_run_row(row: &Row<'_>) -> rusqlite::Result<Run> {
         finished_at: row.get("finished_at")?,
         outputs: optional_json_column(row, "outputs_json")?,
         error_message: row.get("error_message")?,
+        error_type: row.get::<_, Option<String>>("error_type")?.filter(|error_type| !error_type.is_empty()),
         pause_reasons: optional_json_column(row, "pause_reasons_json")?,
     })
 }
@@ -565,6 +574,34 @@ mod tests {
         let failed = database.get_run(&run.id).unwrap();
         assert_eq!(failed.error_message.as_deref(), Some("model timed out"));
         assert!(failed.outputs.is_none());
+    }
+
+    #[test]
+    fn a_failed_run_reads_its_error_kind_from_the_run_failed_event() {
+        let database = test_database();
+        let run = start_run(&database);
+        database
+            .append_run_event(&run.id, &json!({"type": "node_failed", "node_id": "pdf", "error_type": "invalid_input"}))
+            .unwrap();
+        database
+            .append_run_event(
+                &run.id,
+                &json!({"type": "run_failed", "error": "amount", "error_type": "setup_required"}),
+            )
+            .unwrap();
+        database.finish_run(&run.id, RunStatus::Failed, None, Some("amount")).unwrap();
+        assert_eq!(database.get_run(&run.id).unwrap().error_type.as_deref(), Some("setup_required"));
+        let listed = database.list_runs(&RunFilter::default()).unwrap();
+        assert_eq!(listed[0].error_type.as_deref(), Some("setup_required"));
+
+        let without_event = start_run(&database);
+        database.finish_run(&without_event.id, RunStatus::Failed, None, Some("lost")).unwrap();
+        assert!(database.get_run(&without_event.id).unwrap().error_type.is_none());
+
+        let succeeded = start_run(&database);
+        database.append_run_event(&succeeded.id, &json!({"type": "run_failed", "error_type": "timeout"})).unwrap();
+        database.finish_run(&succeeded.id, RunStatus::Succeeded, None, None).unwrap();
+        assert!(database.get_run(&succeeded.id).unwrap().error_type.is_none(), "only failed runs carry a kind");
     }
 
     #[test]

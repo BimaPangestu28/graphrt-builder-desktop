@@ -56,7 +56,7 @@ function sendMessage(teamAgentId: string, message: string): Run {
     { runId, sentAt: now, message: goal, status: 'succeeded', replyText: coordinatorAcknowledgement, errorMessage: null, memberCalls: [], note: null },
   ]
   const outputs = { text: coordinatorAcknowledgement }
-  return { id: runId, agentId: teamAgentId, agentVersion: 1, trigger: 'manual', status: 'succeeded', startedAt: now, finishedAt: now, outputs, errorMessage: null, pauseReasons: null }
+  return { id: runId, agentId: teamAgentId, agentVersion: 1, trigger: 'manual', status: 'succeeded', startedAt: now, finishedAt: now, outputs, errorMessage: null, errorType: null, pauseReasons: null }
 }
 
 export const sampleTeamsBackend = {

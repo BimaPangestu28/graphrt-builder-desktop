@@ -47,6 +47,10 @@ const SIGNED_OUT_MARKERS: &[&str] = &[
     "not authenticated",
 ];
 const TIMEOUT_MARKERS: &[&str] = &["timed out", "timeout", "deadline"];
+
+/// Error kinds of a key or sign-in the service refused (plugins' `auth_error`, the model
+/// providers' `model_auth`), whatever their message says.
+const SIGNED_OUT_ERROR_TYPES: &[&str] = &["auth_error", "model_auth"];
 const RETRY_NOTE: &str = "graphrt keeps no snapshot of a failed run, so it cannot resume from the failed step";
 
 /// What the event log says about the failure.
@@ -187,7 +191,7 @@ pub(super) fn explain_failure(texts: ProblemTexts, run: &Run, facts: &FailureFac
             )),
         };
     }
-    if contains_any(&lowered, SIGNED_OUT_MARKERS) {
+    if SIGNED_OUT_ERROR_TYPES.contains(&error_type) || contains_any(&lowered, SIGNED_OUT_MARKERS) {
         return FailureExplanation {
             title: texts.signed_out_title(),
             explanation: texts.signed_out_detail(&step, nothing_after),
@@ -222,6 +226,21 @@ pub(super) fn explain_failure(texts: ProblemTexts, run: &Run, facts: &FailureFac
             texts.limit_title(),
             texts.limit_fix(),
             Some(ProblemAction::for_agent(ProblemActionKind::OpenBuilder, &texts.open_builder(), &run.agent_id)),
+        ),
+        "setup_required" => (
+            texts.plugin_setup_title(),
+            texts.plugin_setup_fix(),
+            Some(ProblemAction::new(ProblemActionKind::OpenPlugins, &texts.open_plugin_settings())),
+        ),
+        "not_found" | "permission_denied" => (
+            texts.plugin_refused_title(),
+            texts.plugin_refused_fix(),
+            Some(ProblemAction::new(ProblemActionKind::OpenPlugins, &texts.open_plugin_settings())),
+        ),
+        "rate_limited" | "model_rate_limit" => (
+            texts.rate_limited_title(),
+            texts.rate_limited_fix(),
+            Some(ProblemAction::for_agent(ProblemActionKind::OpenBuilder, &texts.open_step(), &run.agent_id)),
         ),
         "invalid_input" => (
             texts.invalid_input_title(),

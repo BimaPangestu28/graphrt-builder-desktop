@@ -62,11 +62,19 @@ async function installPluginWithRuntime(name: string, approvedPermissions: Plugi
   }
 }
 
+/** A failed install / update / remove / trust: "Could not install X" and the error behind it. */
+export interface PluginOperationFailure {
+  title: string
+  error: unknown
+}
+
 export interface PluginsState extends AsyncDataState<PluginInventory> {
   progressByName: Record<string, PluginInstallProgress>
   operationByName: Record<string, PluginOperation>
   /** Last failed install / update / remove / trust per plugin, as text to show. */
   errorByName: Record<string, string>
+  /** The same failures with what they rejected with, to explain a known error kind. */
+  failureByName: Record<string, PluginOperationFailure>
   /** Installs with what the screen showed as the limit: a plugin asking for more is refused. */
   install: (name: string, approvedPermissions: PluginPermissions, options?: PluginInstallOptions) => Promise<void>
   update: (name: string) => Promise<void>
@@ -154,16 +162,20 @@ export function usePlugins(): PluginsState {
   const { saveConfig, clearConfig } = usePluginConfigActions(reload)
   const [operationByName, setOperationByName] = useState<Record<string, PluginOperation>>({})
   const [errorByName, setErrorByName] = useState<Record<string, string>>({})
+  const [failureByName, setFailureByName] = useState<Record<string, PluginOperationFailure>>({})
 
   const runOperation = useCallback(
     async (name: string, operation: PluginOperation, work: () => Promise<unknown>) => {
       setOperationByName((previous) => ({ ...previous, [name]: operation }))
       setErrorByName((previous) => withoutKey(previous, name))
+      setFailureByName((previous) => withoutKey(previous, name))
       try {
         await work()
         await reload()
       } catch (operationError) {
-        setErrorByName((previous) => ({ ...previous, [name]: messages().plugins.couldNotOperate(operationVerbs[operation], findInventoryDisplayName(inventory, name), describeError(operationError)) }))
+        const pluginLabel = findInventoryDisplayName(inventory, name)
+        setErrorByName((previous) => ({ ...previous, [name]: messages().plugins.couldNotOperate(operationVerbs[operation], pluginLabel, describeError(operationError)) }))
+        setFailureByName((previous) => ({ ...previous, [name]: { title: messages().errorHelp.operationFailed(operationVerbs[operation], pluginLabel), error: operationError } }))
       } finally {
         setOperationByName((previous) => withoutKey(previous, name))
         clearProgress(name)
@@ -177,6 +189,7 @@ export function usePlugins(): PluginsState {
     progressByName,
     operationByName,
     errorByName,
+    failureByName,
     install: (name, approvedPermissions, options) => runOperation(name, 'installing', () => installPluginWithRuntime(name, approvedPermissions, options)),
     update: (name) => runOperation(name, 'updating', () => updatePlugin(name)),
     remove: (name) => runOperation(name, 'removing', () => removePlugin(name)),

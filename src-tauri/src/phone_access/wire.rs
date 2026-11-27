@@ -198,6 +198,7 @@ mod tests {
             finished_at: None,
             outputs: None,
             error_message: None,
+            error_type: None,
             pause_reasons: None,
         }
     }

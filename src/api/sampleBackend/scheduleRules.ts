@@ -23,6 +23,7 @@ function buildScheduledRun(id: string, agentId: string, startedAt: string, statu
     finishedAt: status === 'paused' ? null : startedAt,
     outputs,
     errorMessage: status === 'failed' ? 'HTTP 401: invalid_grant' : null,
+    errorType: null,
     pauseReasons: null,
   }
 }

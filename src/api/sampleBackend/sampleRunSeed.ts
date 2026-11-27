@@ -148,6 +148,7 @@ function buildSeededRun(record: RunRecord, nowMs: number): SeededRun {
       ...(timing.aiCostUsd === undefined ? {} : { aiCostUsd: timing.aiCostUsd }),
     },
     errorMessage: status === 'failed' ? record.output : null,
+    errorType: null,
     pauseReasons:
       status === 'paused' && pausedStep
         ? [{ node_id: toNodeId(pausedStep.label), kind: 'human_input', data: { question: record.output } }]

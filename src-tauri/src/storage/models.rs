@@ -94,6 +94,9 @@ pub struct Run {
     /// Final outputs of a succeeded run (JSON object).
     pub outputs: Option<serde_json::Value>,
     pub error_message: Option<String>,
+    /// The error kind a failed run stopped with (`run_failed.error_type`: `setup_required`,
+    /// `timeout`...), so lists can explain it in the UI language. Read from the run's events.
+    pub error_type: Option<String>,
     /// Why the run is paused (graphrt `PauseReason`s as JSON), when `status == Paused`.
     pub pause_reasons: Option<serde_json::Value>,
 }

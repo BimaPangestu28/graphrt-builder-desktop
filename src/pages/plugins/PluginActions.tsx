@@ -1,5 +1,8 @@
+import { ErrorHelpNotice } from '@/components/errors/ErrorHelpNotice'
 import { Button, type ButtonSize } from '@/components/ui'
 import type { PluginsState } from '@/hooks/usePlugins'
+import { describeError } from '@/lib/agentDisplay'
+import { explainBackendError } from '@/lib/errorHelp'
 import { describeInstallProgress, type PluginListItem } from './pluginDisplay'
 import { useT } from '@/i18n'
 
@@ -76,6 +79,8 @@ export function PluginRemoveButton({ item, plugins, size = 'sm' }: PluginActionP
 export function PluginOperationFeedback({ pluginName, plugins }: { pluginName: string; plugins: PluginsState }) {
   const progress = plugins.progressByName[pluginName]
   const errorMessage = plugins.errorByName[pluginName]
+  const failure = plugins.failureByName[pluginName]
+  const help = failure ? explainBackendError(failure.error) : null
   if (!progress && !errorMessage) return null
   return (
     <div className="flex flex-col gap-1">
@@ -84,10 +89,14 @@ export function PluginOperationFeedback({ pluginName, plugins }: { pluginName: s
           {describeInstallProgress(progress)}
         </span>
       )}
-      {errorMessage && (
-        <p role="alert" className="m-0 text-[13px] leading-normal text-danger">
-          {errorMessage}
-        </p>
+      {failure && help ? (
+        <ErrorHelpNotice help={help} title={failure.title} detail={describeError(failure.error)} pluginName={pluginName} hidesRemedy />
+      ) : (
+        errorMessage && (
+          <p role="alert" className="m-0 text-[13px] leading-normal text-danger">
+            {errorMessage}
+          </p>
+        )
       )}
     </div>
   )

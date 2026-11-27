@@ -41,6 +41,8 @@ export interface Run {
   finishedAt: string | null
   outputs: Record<string, unknown> | null
   errorMessage: string | null
+  /** The error kind a failed run stopped with (`setup_required`, `timeout`…), null otherwise. */
+  errorType: string | null
   /** graphrt PauseReason[] when paused: { frame, node_id, kind, data } */
   pauseReasons: GraphrtPauseReason[] | null
 }
@@ -315,3 +317,5 @@ export type BackendErrorCode =
   | 'stopped'
   /** install / update / sideload: the plugin needs a newer version of the app (`details.minVersion`). */
   | 'needs_newer_app'
+  /** run_plugin_action: the plugin's step failed; `details.kind` is the plugin's error kind (`setup_required`…). */
+  | 'plugin_step_failed'

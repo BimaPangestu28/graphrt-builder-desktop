@@ -52,6 +52,11 @@ export interface DraftNotValidDetails {
   problem: string
 }
 
+/** `plugin_step_failed`: the error kind the plugin reported (`setup_required`, `auth_error`…). */
+export interface PluginStepFailedDetails {
+  kind: string
+}
+
 /** Structured data per error code; codes not listed carry none. */
 export interface BackendErrorDetailsByCode {
   credential_store_unavailable: CredentialStoreUnavailableDetails
@@ -60,6 +65,7 @@ export interface BackendErrorDetailsByCode {
   builder_busy: null
   needs_newer_app: NeedsNewerAppDetails
   draft_not_valid: DraftNotValidDetails
+  plugin_step_failed: PluginStepFailedDetails
 }
 
 /** The details a code carries: its entry in {@link BackendErrorDetailsByCode}, else null. */
@@ -116,6 +122,9 @@ export function parseBackendErrorDetails(code: BackendErrorCode, rawDetails: unk
   }
   if (code === 'draft_not_valid') {
     return typeof rawDetails.problem === 'string' ? { problem: rawDetails.problem } : null
+  }
+  if (code === 'plugin_step_failed') {
+    return typeof rawDetails.kind === 'string' && rawDetails.kind ? { kind: rawDetails.kind } : null
   }
   if (code === 'needs_newer_app') {
     const { minVersion, appVersion } = rawDetails

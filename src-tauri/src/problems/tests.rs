@@ -5,7 +5,7 @@ use graphrt_llm::mock::MockModel;
 use graphrt_llm::{ChatModel, ModelRegistry};
 use serde_json::{json, Value as Json};
 
-use super::models::{FailedRunStepState, ProblemActionKind, ProblemKind};
+use super::models::{FailedRunReport, FailedRunStepState, ProblemActionKind, ProblemKind};
 use super::*;
 use crate::credentials::ModelProvider;
 use crate::engine::{ModelRegistrySource, RunEventPayload, RunEventSink, RunManager};
@@ -259,6 +259,41 @@ fn signed_out_and_interrupted_runs_get_their_own_explanation() {
     let report = failed_run_report(&fixture.db, &interrupted.id).unwrap();
     assert_eq!(report.title, "The app closed during this run");
     assert_eq!(report.failed_step_id.as_deref(), Some("answer_question"));
+}
+
+/// A failed run whose plugin step `search` failed with `error_type`.
+fn plugin_step_failure(fixture: &Fixture, agent: &Agent, error_type: &str, error: &str) -> FailedRunReport {
+    let run = fixture.db.insert_run(&agent.id, 1, RunTrigger::Manual).unwrap();
+    for event in [
+        json!({"type": "run_started", "run_id": "r", "resumed": false}),
+        json!({"type": "node_started", "node_id": "search", "kind": "maps-browser.search_places", "title": "Search Google Maps", "exec_id": "1", "attempt": 1}),
+        json!({"type": "node_failed", "node_id": "search", "exec_id": "1", "error": error, "error_type": error_type, "handled": false, "elapsed_ms": 5}),
+        json!({"type": "run_failed", "error": format!("node search failed: {error}"), "error_type": error_type, "elapsed_ms": 6}),
+    ] {
+        fixture.db.append_run_event(&run.id, &event).unwrap();
+    }
+    fixture.db.finish_run(&run.id, RunStatus::Failed, None, Some(error)).unwrap();
+    failed_run_report(&fixture.db, &run.id).unwrap()
+}
+
+#[test]
+fn plugin_error_kinds_get_their_own_explanation_and_keep_the_plugins_message() {
+    let fixture = Fixture::new();
+    let agent = fixture.agent("Leads", PLUGIN_FLOW);
+
+    let setup = plugin_step_failure(&fixture, &agent, "setup_required", "MAPS_BROWSER_PROFILE is not set");
+    assert_eq!(setup.title, "A plugin is not fully set up yet");
+    assert_eq!(setup.fix_action.map(|action| action.kind), Some(ProblemActionKind::OpenPlugins));
+    assert!(setup.explanation.contains("MAPS_BROWSER_PROFILE is not set"), "{}", setup.explanation);
+
+    let missing = plugin_step_failure(&fixture, &agent, "not_found", "the file is outside the allowed folders");
+    assert_eq!(missing.title, "A plugin could not find or may not use what the step asked for");
+
+    let refused = plugin_step_failure(&fixture, &agent, "auth_error", "the API key was rejected");
+    assert_eq!(refused.title, "A connected account was signed out");
+
+    let busy = plugin_step_failure(&fixture, &agent, "rate_limited", "slow down");
+    assert_eq!(busy.title, "A service got too many requests");
 }
 
 #[test]

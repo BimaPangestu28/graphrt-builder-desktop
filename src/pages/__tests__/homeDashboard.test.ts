@@ -30,6 +30,7 @@ function buildRun(changes: Partial<Run>): Run {
     finishedAt: null,
     outputs: null,
     errorMessage: null,
+    errorType: null,
     pauseReasons: null,
     ...changes,
   }

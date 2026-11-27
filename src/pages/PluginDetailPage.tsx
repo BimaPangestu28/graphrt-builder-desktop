@@ -1,5 +1,5 @@
-import { useId } from 'react'
-import { Link, useLocation, useParams } from 'react-router-dom'
+import { useEffect, useId, useRef } from 'react'
+import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
 import { AppShell, PageFrame, pageTitleClassName } from '@/components/layout'
 import { listPluginCatalogSteps } from '@/api/plugins'
 import type { PluginMaturity, PluginNodeInfo } from '@/api/pluginTypes'
@@ -10,7 +10,7 @@ import { usePlugins, type PluginsState } from '@/hooks/usePlugins'
 import { isPluginRuntimeMissing, usePluginRuntime, type PluginRuntimeState } from '@/hooks/usePluginRuntime'
 import { describeError } from '@/lib/agentDisplay'
 import { humanizePluginName } from '@/lib/pluginDisplayName'
-import { routePaths } from '@/routes'
+import { pluginSectionParam, routePaths } from '@/routes'
 import { PluginInstallButton, PluginOperationFeedback, PluginRemoveButton, PluginUpdateButton } from './plugins/PluginActions'
 import { pluginCategoryLabels } from './plugins/pluginCategories'
 import {
@@ -128,6 +128,20 @@ function usePluginSteps(item: PluginListItem): PluginNodeInfo[] {
   return !isInstalled && catalogSteps.data && catalogSteps.data.length > 0 ? catalogSteps.data : item.nodes
 }
 
+/**
+ * Scrolls to the settings ("Set up") once they are on screen when the page was opened with
+ * `?section=settings` (the button under a `setup_required` error, for example).
+ */
+function useScrollToSettings(isShown: boolean) {
+  const [searchParams] = useSearchParams()
+  const settingsRef = useRef<HTMLDivElement>(null)
+  const wantsSettings = searchParams.get(pluginSectionParam) === 'settings'
+  useEffect(() => {
+    if (wantsSettings && isShown) settingsRef.current?.scrollIntoView({ block: 'start' })
+  }, [wantsSettings, isShown])
+  return settingsRef
+}
+
 function PluginDetailBody({ item, plugins }: { item: PluginListItem; plugins: PluginsState }) {
   const browserRuntime = useBrowserRuntime()
   const pluginRuntime = usePluginRuntime()
@@ -135,6 +149,7 @@ function PluginDetailBody({ item, plugins }: { item: PluginListItem; plugins: Pl
   const { installed } = item
   const refreshKey = installed ? `${installed.version}:${installed.trusted}:${installed.config.filter((setting) => setting.configured).length}` : 'not-installed'
   const users = usePluginUsers(item.name, refreshKey)
+  const settingsRef = useScrollToSettings(installed !== null)
   return (
     <>
       <PluginHeader item={item} plugins={plugins} pluginRuntime={pluginRuntime} />
@@ -144,7 +159,11 @@ function PluginDetailBody({ item, plugins }: { item: PluginListItem; plugins: Pl
       {installed && <PluginLoadNotes installed={installed} />}
       <div className="@container grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="flex min-w-0 flex-col gap-5">
-          {installed && <PluginSetupSection installed={installed} plugins={plugins} browserRuntime={browserRuntime} pluginRuntime={pluginRuntime} />}
+          {installed && (
+            <div ref={settingsRef} className="scroll-mt-4">
+              <PluginSetupSection installed={installed} plugins={plugins} browserRuntime={browserRuntime} pluginRuntime={pluginRuntime} />
+            </div>
+          )}
           <PluginStepsSection pluginLabel={item.displayName} nodes={steps} />
         </div>
         <aside aria-label={messages().plugins.aboutPlugin(item.displayName)} className="grid min-w-0 grid-cols-1 items-start gap-5 max-lg:@2xl:grid-cols-2">
