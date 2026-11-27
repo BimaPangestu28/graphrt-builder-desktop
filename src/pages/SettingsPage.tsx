@@ -17,6 +17,7 @@ import {
   RunnerSection,
 } from './settings/SettingsSections'
 import { PhoneAccessSection } from './settings/PhoneAccessSection'
+import { TeamServerSection } from './settings/TeamServerSection'
 import { PluginRuntimeSection } from './settings/PluginRuntimeSection'
 import { RunLimitsPanel } from './settings/RunLimitsPanel'
 import { UpdatesSection } from './settings/UpdatesSection'
@@ -105,6 +106,8 @@ function SettingsSectionContent({ activeSection, onSelectSection, appSettingsSta
       return <NotificationsSection {...sectionProps} appSettings={appSettings} updateAppSetting={updateAppSetting} />
     case 'phone':
       return <PhoneAccessSection />
+    case 'team':
+      return <TeamServerSection />
     case 'privacy':
       return privacySection
     case 'remote':

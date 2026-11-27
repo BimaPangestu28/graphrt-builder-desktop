@@ -592,6 +592,55 @@ impl CredentialStore {
     }
 }
 
+/// Team server sign ins (`collab:<server key>`): the refresh token of the sign in on a
+/// collaboration server (see `crate::collab`). Their own prefix keeps them apart from every
+/// other credential, so no workflow can read them, and they never reach SQLite, logs or the webview.
+impl CredentialStore {
+    /// Saves or replaces a team server credential. Rejects empty values.
+    pub(crate) fn set_collab_secret(&self, name: &str, value: &str) -> AppResult<()> {
+        let account = collab_secret_account(name)?;
+        if value.trim().is_empty() {
+            return Err(AppError::InvalidInput("the value is empty".into()));
+        }
+        match &self.backend {
+            CredentialBackend::Keychain(keychain) => {
+                keychain.save(&account, value).map_err(|error| secret_keychain_error("save", name, &error))
+            }
+            CredentialBackend::InMemory(_) => {
+                lock_secrets(&self.in_memory_workflow_secrets)?.insert(account, value.to_owned());
+                Ok(())
+            }
+        }
+    }
+
+    /// Removes a team server credential; succeeds if none was stored.
+    pub(crate) fn delete_collab_secret(&self, name: &str) -> AppResult<()> {
+        let account = collab_secret_account(name)?;
+        match &self.backend {
+            CredentialBackend::Keychain(keychain) => {
+                keychain.delete(&account).map_err(|error| secret_keychain_error("delete", name, &error))
+            }
+            CredentialBackend::InMemory(_) => {
+                lock_secrets(&self.in_memory_workflow_secrets)?.remove(&account);
+                Ok(())
+            }
+        }
+    }
+
+    /// Backend-only: a team server credential. Never expose through a command.
+    pub(crate) fn read_collab_secret(&self, name: &str) -> AppResult<Option<String>> {
+        let account = collab_secret_account(name)?;
+        match &self.backend {
+            CredentialBackend::Keychain(keychain) => {
+                keychain.read(&account).map_err(|error| secret_keychain_error("read", name, &error))
+            }
+            CredentialBackend::InMemory(_) => {
+                Ok(lock_secrets(&self.in_memory_workflow_secrets)?.get(&account).cloned())
+            }
+        }
+    }
+}
+
 /// Chatbot channel credentials (`channel:<name>`): a Telegram bot token
 /// (`channel:telegram:<agent id>`) and the WhatsApp Business values an online chatbot needs
 /// (`channel:whatsapp:<agent id>:<part>`). Their own prefix keeps them apart from workflow
@@ -811,6 +860,20 @@ fn knowledge_secret_account(source_id: &str, name: &str) -> AppResult<String> {
         return Err(AppError::InvalidInput(format!("`{source_id}:{name}` is not a valid credential name")));
     }
     Ok(format!("{KNOWLEDGE_SECRET_ACCOUNT_PREFIX}{source_id}:{name}"))
+}
+
+/// Keychain account prefix of team server sign ins (`collab:<server key>`).
+const COLLAB_SECRET_ACCOUNT_PREFIX: &str = "collab:";
+
+/// `collab:<name>`; `name` is lowercase letters, digits and `:_-` (a key of the server address).
+fn collab_secret_account(name: &str) -> AppResult<String> {
+    let valid = !name.is_empty()
+        && name.len() <= 128
+        && name.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || b":_-".contains(&byte));
+    if !valid {
+        return Err(AppError::InvalidInput(format!("`{name}` is not a valid credential name")));
+    }
+    Ok(format!("{COLLAB_SECRET_ACCOUNT_PREFIX}{name}"))
 }
 
 /// Keychain account prefix of chatbot channel credentials.

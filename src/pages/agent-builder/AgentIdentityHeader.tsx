@@ -8,6 +8,7 @@ import { notifyAgentsChanged } from '@/hooks/useAgents'
 import { describeError } from '@/lib/agentDisplay'
 import { routePaths } from '@/routes'
 import { messages } from '@/i18n'
+import { ShareControl } from './ShareControl'
 
 interface AgentIdentityHeaderProps {
   agent: Agent
@@ -41,10 +42,13 @@ export function AgentIdentityHeader({ agent, onRenamed }: AgentIdentityHeaderPro
           </button>
         )}
         {!isEditing && !isConfirmingDelete && (
-          <Button variant="ghost" size="sm" onClick={() => setIsConfirmingDelete(true)} className="text-danger hover:bg-danger-tint">
-            <Icon name="trash" size={14} />
-            {messages().builder.deleteAgent}
-          </Button>
+          <span className="flex flex-wrap items-center gap-2">
+            <ShareControl agent={agent} onRemoteChange={onRenamed} />
+            <Button variant="ghost" size="sm" onClick={() => setIsConfirmingDelete(true)} className="text-danger hover:bg-danger-tint">
+              <Icon name="trash" size={14} />
+              {messages().builder.deleteAgent}
+            </Button>
+          </span>
         )}
       </div>
       {isConfirmingDelete && <DeleteConfirmation agent={agent} onCancel={() => setIsConfirmingDelete(false)} />}

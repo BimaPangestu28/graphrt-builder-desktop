@@ -3,9 +3,9 @@
 import type { LocalCliProvider, ModelChoice, ModelProvider } from '@/api/types'
 import { messages } from '@/i18n'
 
-export type SettingsSectionKey = 'general' | 'runner' | 'notifications' | 'phone' | 'privacy' | 'remote' | 'updates' | 'about'
+export type SettingsSectionKey = 'general' | 'runner' | 'notifications' | 'phone' | 'team' | 'privacy' | 'remote' | 'updates' | 'about'
 
-export const settingsSectionKeys: readonly SettingsSectionKey[] = ['general', 'runner', 'notifications', 'phone', 'privacy', 'remote', 'updates', 'about']
+export const settingsSectionKeys: readonly SettingsSectionKey[] = ['general', 'runner', 'notifications', 'phone', 'team', 'privacy', 'remote', 'updates', 'about']
 
 /** The Settings sub-nav entries with their labels in the current language. */
 export function listSettingsSections(): Array<{ key: SettingsSectionKey; label: string }> {

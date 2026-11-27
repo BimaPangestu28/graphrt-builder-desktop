@@ -29,6 +29,7 @@ import { platform } from './locales/platform'
 import { files } from './locales/files'
 import { visuals } from './locales/visuals'
 import { phoneAccess } from './locales/phoneAccess'
+import { collab } from './locales/collab'
 import { errorHelp } from './locales/errorHelp'
 
 /**
@@ -66,6 +67,7 @@ const english = {
   visuals: visuals.en,
   files: files.en,
   phoneAccess: phoneAccess.en,
+  collab: collab.en,
   errorHelp: errorHelp.en,
 }
 
@@ -102,6 +104,7 @@ const indonesian: Messages = {
   visuals: visuals.id,
   files: files.id,
   phoneAccess: phoneAccess.id,
+  collab: collab.id,
   errorHelp: errorHelp.id,
 }
 

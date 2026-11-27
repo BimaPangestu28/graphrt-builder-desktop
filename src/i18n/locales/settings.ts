@@ -1,6 +1,6 @@
 import { defineMessages } from '../types'
 
-type SectionKey = 'general' | 'runner' | 'notifications' | 'phone' | 'privacy' | 'remote' | 'updates' | 'about'
+type SectionKey = 'general' | 'runner' | 'notifications' | 'phone' | 'team' | 'privacy' | 'remote' | 'updates' | 'about'
 type RunLimitKey = 'stepTimeoutSeconds' | 'runDurationMinutes' | 'maxStepAttempts' | 'maxNestingDepth' | 'maxParallelSteps'
 type RunLimitText = { title: string; description: string; unit: string }
 
@@ -15,6 +15,7 @@ export const settings = defineMessages(
       runner: 'Runner',
       notifications: 'Notifications',
       phone: 'Phone access',
+      team: 'Team server',
       privacy: 'Privacy and data',
       remote: 'Remote runner',
       updates: 'Updates',
@@ -190,6 +191,7 @@ export const settings = defineMessages(
       runner: 'Runner',
       notifications: 'Notifikasi',
       phone: 'Akses ponsel',
+      team: 'Server tim',
       privacy: 'Privasi dan data',
       remote: 'Runner jarak jauh',
       updates: 'Pembaruan',
