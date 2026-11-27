@@ -12,7 +12,8 @@
 //! runs each built agent once with sample inputs, approving every question. An attempt
 //! counts as working when the run succeeds with an output that is not empty. Set
 //! `GRAPHRT_EVAL_REQUESTS=0,3` to use only some requests and `GRAPHRT_EVAL_RUN=0` to skip
-//! the runs.
+//! the runs. `GRAPHRT_EVAL_FULL_DOCUMENT=1` builds on the full-document path only (the
+//! number before the guided path existed).
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -31,6 +32,22 @@ const REQUESTS: &[&str] = &[
     "Translate the text I give into Indonesian and make it sound formal",
     "Take my meeting notes and turn them into a list of action items with owners",
     "Write three Instagram caption ideas for a product I describe",
+];
+
+const NOTES: &str = "Our order of 20 lunch boxes arrived two hours late and cold. Rina will call the customer by \
+                     Friday and Budi will refund the delivery fee.";
+
+/// Per request: what the person types into every text input.
+const SAMPLE_TEXTS: &[&str] = &["Jakarta", NOTES, NOTES, NOTES, "Handmade leather wallet"];
+
+/// Per request: words of which the output must contain at least one (lowercase) to count as
+/// a real result for the sample input, so "I have no text to summarize" does not pass.
+const EXPECTED_WORDS: &[&[&str]] = &[
+    &["jakarta"],
+    &["apolog", "sorry", "maaf", "regret"],
+    &["pesanan", "kami", "pelanggan", "terlambat"],
+    &["rina", "budi"],
+    &["wallet", "leather", "dompet"],
 ];
 
 const RUN_TIMEOUT: Duration = Duration::from_secs(300);
@@ -87,8 +104,25 @@ fn eval_setup(model_name: &str) -> EvalSetup {
     EvalSetup { builder, credentials, ollama_base_url: base_url }
 }
 
-/// A plausible value for each start input, by its type.
-fn sample_inputs(flow_yaml: &str) -> serde_json::Value {
+/// Builds on the full-document path only, as every model did before the guided path
+/// (`GRAPHRT_EVAL_FULL_DOCUMENT=1`): the "before" number for a local model.
+async fn full_document_build(db: &Database, builder: &BuilderModel, request: BuildRequest) -> AppResult<Agent> {
+    let kind = kind::infer_kind(&request.description);
+    let messages = vec![
+        Message::system(prompt::build_system_prompt(&builder.choice, &[])),
+        Message::user(prompt::build_request(&request.description, kind)),
+    ];
+    let draft = draft_until_valid(builder, messages, &|_| {}, "Drafting the steps", &TrustedHosts::none()).await?;
+    db.create_agent(NewAgent {
+        name: "Eval".into(),
+        kind,
+        description: request.description,
+        flow_yaml: draft.flow_yaml,
+    })
+}
+
+/// A value for each start input: `sample_text` for every text input, whatever type the draft gave it.
+fn sample_inputs(flow_yaml: &str, sample_text: &str) -> serde_json::Value {
     let mut inputs = serde_json::Map::new();
     let Ok(summary) = flow::summarize_flow(flow_yaml) else { return json!({}) };
     for input in summary.inputs {
@@ -96,12 +130,8 @@ fn sample_inputs(flow_yaml: &str) -> serde_json::Value {
             "number" => json!(3),
             "checkbox" => json!(true),
             "select" => json!(input.options.first().cloned().unwrap_or_default()),
-            "json" => json!({"text": "Jakarta"}),
-            "paragraph" => json!(
-                "Our order of 20 lunch boxes arrived two hours late and cold. Rina will call the customer by \
-                 Friday and Budi will refund the delivery fee."
-            ),
-            _ => json!("Jakarta"),
+            "json" => json!({"text": sample_text}),
+            _ => json!(sample_text),
         };
         inputs.insert(input.name, value);
     }
@@ -109,8 +139,14 @@ fn sample_inputs(flow_yaml: &str) -> serde_json::Value {
 }
 
 /// Runs the agent to its end, approving every question with its first action.
-async fn run_to_end(db: &Arc<Database>, runs: &RunManager, agent: &Agent) -> Result<serde_json::Value, String> {
-    let inputs = sample_inputs(&agent.flow_yaml);
+async fn run_to_end(
+    db: &Arc<Database>,
+    runs: &RunManager,
+    agent: &Agent,
+    sample_text: &str,
+    expected_words: &[&str],
+) -> Result<serde_json::Value, String> {
+    let inputs = sample_inputs(&agent.flow_yaml, sample_text);
     let run = runs.start_run(&agent.id, RunTrigger::Test, inputs).await.map_err(|error| format!("start: {error}"))?;
     let started = Instant::now();
     loop {
@@ -128,7 +164,14 @@ async fn run_to_end(db: &Arc<Database>, runs: &RunManager, agent: &Agent) -> Res
                         _ => true,
                     })
                 });
-                return if has_text { Ok(outputs) } else { Err(format!("empty outputs: {outputs}")) };
+                let lowered = outputs.to_string().to_lowercase();
+                if !has_text {
+                    return Err(format!("empty outputs: {outputs}"));
+                }
+                if !expected_words.iter().any(|word| lowered.contains(word)) {
+                    return Err(format!("the output is not about the input: {outputs}"));
+                }
+                return Ok(outputs);
             }
             RunStatus::Failed | RunStatus::Aborted => {
                 return Err(format!("run failed: {}", current.error_message.unwrap_or_default()));
@@ -172,6 +215,7 @@ async fn live_eval() {
         Err(_) => (0..REQUESTS.len()).collect(),
     };
     let EvalSetup { builder, credentials, ollama_base_url } = eval_setup(&model_name);
+    let full_document_only = env_or("GRAPHRT_EVAL_FULL_DOCUMENT", "0") == "1";
     let (mut total, mut built, mut worked) = (0, 0, 0);
     for index in chosen {
         let description = REQUESTS[index];
@@ -183,7 +227,12 @@ async fn live_eval() {
             db.set_setting(crate::credentials::SETTING_OLLAMA_BASE_URL, &ollama_base_url).unwrap();
             let started = Instant::now();
             let request = BuildRequest { description: description.into(), kind: None };
-            let agent = match build_agent_with_model(&db, &builder, request, &|_| {}).await {
+            let build_result = if full_document_only {
+                full_document_build(&db, &builder, request).await
+            } else {
+                build_agent_with_model(&db, &builder, request, &|_| {}).await
+            };
+            let agent = match build_result {
                 Ok(agent) => agent,
                 Err(error) => {
                     let seconds = started.elapsed().as_secs();
@@ -210,7 +259,7 @@ async fn live_eval() {
                 db.add_trusted_lookup_host(&agent.id, host).unwrap();
             }
             let runs = RunManager::new(db.clone(), credentials.clone(), Arc::new(QuietSink));
-            match run_to_end(&db, &runs, &agent).await {
+            match run_to_end(&db, &runs, &agent, SAMPLE_TEXTS[index], EXPECTED_WORDS[index]).await {
                 Ok(outputs) => {
                     worked += 1;
                     request_worked += 1;
