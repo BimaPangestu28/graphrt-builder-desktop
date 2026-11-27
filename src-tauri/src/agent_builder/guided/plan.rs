@@ -562,6 +562,9 @@ const RECIPIENT_FIELDS: &[&str] = &[
     "chat_id",
 ];
 
+/// Field names whose value must be one line.
+const SINGLE_LINE_FIELDS: &[&str] = &["subject", "title"];
+
 /// Field names that hold the text that is sent.
 const MESSAGE_FIELDS: &[&str] = &["text", "body", "message", "content"];
 
@@ -602,6 +605,13 @@ fn guarded_sending_value(
             return value;
         }
         return address_input(plan).map(|name| json!(format!("{{{name}}}")));
+    }
+    if SINGLE_LINE_FIELDS.contains(&field.name.as_str()) {
+        // A subject is one line; a model's step result or its own text may hold several.
+        return value.map(|value| match value {
+            serde_json::Value::String(text) => json!(text.split_whitespace().collect::<Vec<_>>().join(" ")),
+            other => other,
+        });
     }
     if MESSAGE_FIELDS.contains(&field.name.as_str()) {
         let reads_a_result = field_parts(text, plan).iter().any(|part| matches!(part, FieldPart::StepResult(_)));
@@ -1483,6 +1493,14 @@ mod tests {
         )
         .unwrap();
         assert_eq!((&fixed_words["to"], &fixed_words["text"]), (&json!("{address}"), &json!("{step_1}")));
+        let two_lines = normalize_fields(
+            &send_email_operation(),
+            r#"{"subject": "Ringkasan\nrapat", "to": "{address}"}"#,
+            &sending_plan(),
+            2,
+        )
+        .unwrap();
+        assert_eq!(two_lines["subject"], json!("Ringkasan rapat"));
 
         let mut no_address_input = sending_plan();
         no_address_input.inputs = vec![input("notes", "Meeting notes")];
