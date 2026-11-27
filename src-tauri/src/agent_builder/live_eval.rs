@@ -284,6 +284,26 @@ async fn install_plugins(credentials: Arc<CredentialStore>) -> (PluginService, O
     (service, kept_alive)
 }
 
+/// Installs catalog plugins a drafted agent uses, accepting their permissions as the
+/// person's click on "Install" does.
+async fn install_from_catalog(plugins: &PluginService, names: &[String]) -> Result<(), String> {
+    let catalog = plugins.catalog(false).await.map_err(|error| format!("catalog: {error}"))?;
+    for name in names {
+        let entry = catalog
+            .plugins
+            .iter()
+            .find(|entry| &entry.name == name)
+            .ok_or_else(|| format!("the agent needs `{name}`, which is not in the catalog"))?;
+        let installed =
+            plugins.install(name, &entry.permissions).await.map_err(|error| format!("install {name}: {error}"))?;
+        if let Some(problem) = installed.load_error {
+            return Err(format!("{name} does not load: {problem}"));
+        }
+    }
+    plugins.activate();
+    Ok(())
+}
+
 /// A value for each start input: an address, a link or a place where the input's name or
 /// label asks for one, else the scenario's sample text, whatever type the draft gave it.
 fn sample_inputs(flow_yaml: &str, sample_text: &str) -> serde_json::Value {
@@ -326,11 +346,20 @@ struct RunReport {
 async fn run_to_end(
     db: &Arc<Database>,
     runs: &RunManager,
+    plugins: &PluginService,
     agent: &Agent,
     sample_text: &str,
 ) -> Result<RunReport, String> {
     let inputs = sample_inputs(&agent.flow_yaml, sample_text);
-    let run = runs.start_run(&agent.id, RunTrigger::Test, inputs).await.map_err(|error| format!("start: {error}"))?;
+    let run = match runs.start_run(&agent.id, RunTrigger::Test, inputs.clone()).await {
+        Ok(run) => run,
+        // The person clicks "Install" on the plugins a drafted agent uses, then runs it.
+        Err(crate::error::AppError::MissingPlugins(names)) => {
+            install_from_catalog(plugins, &names).await?;
+            runs.start_run(&agent.id, RunTrigger::Test, inputs).await.map_err(|error| format!("start: {error}"))?
+        }
+        Err(error) => return Err(format!("start: {error}")),
+    };
     let started = Instant::now();
     let mut questions = Vec::new();
     loop {
@@ -431,7 +460,7 @@ fn judge(scenario: &Scenario, agent: &Agent, report: &RunReport, db: &Database) 
 async fn full_document_build(db: &Database, builder: &BuilderModel, request: BuildRequest) -> AppResult<Agent> {
     let kind = kind::infer_kind(&request.description);
     let messages = vec![
-        Message::system(prompt::build_system_prompt(&builder.choice, &[])),
+        Message::system(prompt::build_system_prompt(&builder.choice, &[], &request.description)),
         Message::user(prompt::build_request(&request.description, kind)),
     ];
     let draft = draft_until_valid(builder, messages, &|_| {}, "Drafting the steps", &TrustedHosts::none()).await?;
@@ -460,7 +489,7 @@ async fn live_eval() {
     };
     let EvalSetup { builder, credentials, ollama_base_url } = eval_setup(&model_name);
     let full_document_only = env_or("GRAPHRT_EVAL_FULL_DOCUMENT", "0") == "1";
-    let (_plugins, _plugin_dir) = install_plugins(credentials.clone()).await;
+    let (plugins, _plugin_dir) = install_plugins(credentials.clone()).await;
     let (mut total, mut built, mut worked) = (0, 0, 0);
     for index in chosen {
         let scenario = &SCENARIOS[index];
@@ -509,7 +538,7 @@ async fn live_eval() {
                 db.add_trusted_lookup_host(&agent.id, host).unwrap();
             }
             let runs = RunManager::new(db.clone(), credentials.clone(), Arc::new(QuietSink));
-            let outcome = match run_to_end(&db, &runs, &agent, scenario.sample_text).await {
+            let outcome = match run_to_end(&db, &runs, &plugins, &agent, scenario.sample_text).await {
                 Ok(report) => judge(scenario, &agent, &report, &db),
                 Err(problem) => Err(problem),
             };

@@ -294,10 +294,10 @@ impl PluginService {
         registry
     }
 
-    /// The builder prompt section for this service's plugins (installed ones,
-    /// then catalog plugins not installed yet).
-    pub fn prompt_guide(&self) -> String {
-        prompt_guide::plugin_guide(&self.snapshot().plugins, self.known_catalog().as_deref())
+    /// The builder prompt section for this service's plugins (installed ones, then
+    /// catalog plugins not installed yet: with their steps when `job` names them).
+    pub fn prompt_guide(&self, job: &str) -> String {
+        prompt_guide::plugin_guide(&self.snapshot().plugins, self.known_catalog().as_deref(), job)
     }
 
     /// What `flow_yaml` needs from plugins (see [`requirements`]).

@@ -83,17 +83,41 @@ the request is about the model; new model nodes follow the model rule above.";
 
 /// System prompt for drafting a new agent. `saved_secret_names` are the secrets the
 /// user saved in the app (names only, never values). A new agent trusts no hosts yet.
-pub(super) fn build_system_prompt(model: &ModelChoice, saved_secret_names: &[String]) -> String {
-    system_prompt(model, BUILD_REPLY_FORMAT, saved_secret_names, &TrustedHosts::none())
+///
+/// `description` is the job: the catalog plugins it names are listed with their steps.
+pub(super) fn build_system_prompt(model: &ModelChoice, saved_secret_names: &[String], description: &str) -> String {
+    system_prompt(model, BUILD_REPLY_FORMAT, saved_secret_names, &TrustedHosts::none(), description)
 }
 
 /// System prompt for revising an existing agent; `trusted_hosts` are the agent's trusted lookup hosts.
+///
+/// The catalog plugins named by `job` (the agent's description and the change) or used by
+/// `flow_yaml` are listed with their steps.
 pub(super) fn revision_system_prompt(
     model: &ModelChoice,
     saved_secret_names: &[String],
     trusted_hosts: &TrustedHosts,
+    job: &str,
+    flow_yaml: &str,
 ) -> String {
-    system_prompt(model, REVISION_REPLY_FORMAT, saved_secret_names, trusted_hosts)
+    let job = format!("{job} {}", plugin_names_in(flow_yaml).join(" "));
+    system_prompt(model, REVISION_REPLY_FORMAT, saved_secret_names, trusted_hosts, &job)
+}
+
+/// The plugins whose steps a workflow document uses (`email` for `type: email.send_email`).
+fn plugin_names_in(flow_yaml: &str) -> Vec<String> {
+    let Ok(document) = serde_saphyr::from_str::<serde_json::Value>(flow_yaml) else { return Vec::new() };
+    let Some(nodes) = document.pointer("/graph/nodes").and_then(serde_json::Value::as_array) else {
+        return Vec::new();
+    };
+    let mut names: Vec<String> = nodes
+        .iter()
+        .filter_map(|node| node.get("type").and_then(serde_json::Value::as_str))
+        .filter_map(|kind| kind.split_once('.').map(|(plugin, _)| plugin.to_owned()))
+        .collect();
+    names.sort();
+    names.dedup();
+    names
 }
 
 fn system_prompt(
@@ -101,10 +125,11 @@ fn system_prompt(
     reply_format: &str,
     saved_secret_names: &[String],
     trusted_hosts: &TrustedHosts,
+    job: &str,
 ) -> String {
     let rules = SHARED_RULES.replace("{provider}", provider_name(model.provider)).replace("{model}", &model.name);
     let rules = append_domain_guides(rules);
-    let rules = append_plugin_guide(rules);
+    let rules = append_plugin_guide(rules, job);
     let rules = append_mcp_guide(rules);
     let rules = append_saved_secrets_guide(rules, saved_secret_names);
     let rules = append_trusted_hosts_guide(rules, trusted_hosts);
@@ -142,8 +167,8 @@ fn append_domain_guides(rules: String) -> String {
 }
 
 /// Adds the plugins' step types, installed and from the catalog (dynamic, unlike [`DOMAIN_GUIDES`]).
-fn append_plugin_guide(rules: String) -> String {
-    let guide = crate::plugins::installed_plugins_guide();
+fn append_plugin_guide(rules: String, job: &str) -> String {
+    let guide = crate::plugins::installed_plugins_guide(job);
     if guide.is_empty() {
         rules
     } else {

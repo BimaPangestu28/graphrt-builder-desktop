@@ -756,11 +756,11 @@ async fn the_catalog_entry_describes_the_settings_of_a_plugin_without_its_own_fi
 #[tokio::test]
 async fn prompt_guide_lists_installed_plugin_steps() {
     let fixture = Fixture::new();
-    assert_eq!(fixture.service.prompt_guide(), "");
+    assert_eq!(fixture.service.prompt_guide("send mail and scrape a page in the browser"), "");
     fixture.publish("1.0.0", good_tarball());
     fixture.service.install(PLUGIN, &echo_catalog_permissions()).await.unwrap();
 
-    let guide = fixture.service.prompt_guide();
+    let guide = fixture.service.prompt_guide("send mail and scrape a page in the browser");
 
     assert!(guide.contains("`fixture-echo.echo` (Echo text)"), "{guide}");
     assert!(guide.contains("text* (string)"), "{guide}");
@@ -820,7 +820,7 @@ async fn the_published_snapshot_feeds_compiles_tools_and_the_approval_check() {
     let unapproved = crate::flow::find_unapproved_sending_steps(flow, &crate::flow::TrustedHosts::none());
     let mut tools = graphrt_core::tool::ToolRegistry::new();
     super::add_plugin_tools(&mut tools);
-    let guide = super::installed_plugins_guide();
+    let guide = super::installed_plugins_guide("send mail and scrape a page in the browser");
     fixture.service.remove(PLUGIN).await.unwrap();
     let after_remove = crate::flow::node_registry().contains("fixture-echo.echo");
     super::active::publish(None);

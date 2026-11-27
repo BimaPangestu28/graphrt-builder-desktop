@@ -135,7 +135,7 @@ async fn the_builder_reads_config_schemas_from_the_details() {
     fixture.service.catalog(true).await.unwrap();
     fixture.service.wait_for_detail_sync().await;
 
-    let guide = fixture.service.prompt_guide();
+    let guide = fixture.service.prompt_guide("send mail and scrape a page in the browser");
 
     assert!(guide.contains("`fixture-mail.send_mail` (Send mail): Sends one email."), "{guide}");
     assert!(guide.contains("Fields (* required): to* (string), body* (string)"), "{guide}");
@@ -169,7 +169,7 @@ async fn before_its_detail_arrives_a_plugin_is_listed_by_its_node_kinds() {
     let send_mail = mail_send_node(&index);
     assert_eq!(send_mail.title, "Send mail");
     assert_eq!(send_mail.config_schema, None);
-    let guide = fixture.service.prompt_guide();
+    let guide = fixture.service.prompt_guide("send mail and scrape a page in the browser");
     assert!(guide.contains("`fixture-mail.send_mail` (Send mail)"), "{guide}");
     assert!(!guide.contains("to* (string)"), "{guide}");
     // Requirements still know which plugin owns the kind.
@@ -276,7 +276,9 @@ async fn details_are_saved_and_used_offline_after_a_restart() {
     let index = restarted.known_catalog().unwrap();
     assert_eq!(index.schema, 2);
     assert!(mail_send_node(&index).config_schema.is_some());
-    assert!(restarted.prompt_guide().contains("to* (string), body* (string)"));
+    assert!(restarted
+        .prompt_guide("send mail and scrape a page in the browser")
+        .contains("to* (string), body* (string)"));
     let offline_catalog = restarted.catalog(false).await.unwrap();
     assert!(offline_catalog.from_cache);
     assert_eq!(offline_catalog.fetched_at, None);

@@ -207,7 +207,7 @@ pub(crate) async fn build_agent_with_model(
         Some(guided) => (guided.draft, guided.schedule),
         None => {
             let messages = vec![
-                Message::system(prompt::build_system_prompt(&builder.choice, &saved_secret_names(db))),
+                Message::system(prompt::build_system_prompt(&builder.choice, &saved_secret_names(db), description)),
                 Message::user(prompt::build_request(description, kind)),
             ];
             report(on_progress, BuildStage::Drafting, "Drafting the steps");
@@ -267,6 +267,8 @@ pub(crate) async fn revise_agent_with_model(
                     &builder.choice,
                     &saved_secret_names(db),
                     &trusted_hosts,
+                    &format!("{}\n{instruction}", agent.description),
+                    &agent.flow_yaml,
                 )),
                 Message::user(prompt::revision_request(&agent.flow_yaml, instruction)),
             ];

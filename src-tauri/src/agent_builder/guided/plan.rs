@@ -594,6 +594,14 @@ fn lookup_url(raw_url: &str, inputs: &mut Vec<PlanInput>, inputs_are_fixed: bool
     if let [UrlPart::Placeholder(written_name)] = placeholder_parts(without_scheme.unwrap_or(&single_braces)).as_slice()
     {
         let name = resolve_placeholder(written_name, inputs, inputs_are_fixed)?;
+        // `{topic}` holding "Jakarta" is no address: only a link the person gives can be one.
+        if !inputs.iter().any(|input| input.name == name && is_a_link(input)) {
+            return Err(format!(
+                "the lookup address is only {{{name}}}, and {name} is not a link the person gives; write the \
+                 site's full address with {{{name}}} in it, for example \
+                 https://en.wikipedia.org/api/rest_v1/page/summary/{{{name}}} for a Wikipedia summary"
+            ));
+        }
         return Ok(LookupUrl { template: format!("{{{name}}}"), host: None });
     }
     let with_scheme = match single_braces.split_once("://") {
@@ -638,6 +646,19 @@ fn lookup_url(raw_url: &str, inputs: &mut Vec<PlanInput>, inputs_are_fixed: bool
         }
     }
     Ok(LookupUrl { template, host: Some(host) })
+}
+
+/// Words of an input's name or label that say it holds a web address.
+const LINK_WORDS: &[&str] =
+    &["link", "url", "address", "page", "website", "site", "web", "tautan", "alamat", "halaman"];
+
+/// Whether `input` is a link the person gives: its name or label says so, or its value is one.
+fn is_a_link(input: &PlanInput) -> bool {
+    let named = format!("{} {}", input.name, input.label)
+        .to_lowercase()
+        .split(|character: char| !character.is_alphanumeric())
+        .any(|word| LINK_WORDS.contains(&word));
+    named || input.value.starts_with("http://") || input.value.starts_with("https://")
 }
 
 fn resolve_placeholder(
@@ -845,6 +866,21 @@ mod tests {
             assert_eq!((url.host(), url.to_graphrt_template().as_str()), (None, "{{#start.link#}}"), "{written}");
             assert_eq!(title, "Read the page");
         }
+    }
+
+    #[test]
+    fn an_address_that_is_only_an_input_holding_a_name_is_sent_back() {
+        let problem = normalized(
+            r#"{"looks_up_the_web": true, "inputs": [{"name": "topic", "label": "Topic to look up", "long_text": false, "value": "Jakarta"}],
+                "steps": [{"kind": "lookup", "title": "L", "instruction": "", "url": "{topic}"}]}"#,
+        )
+        .unwrap_err();
+        assert!(problem.contains("not a link") && problem.contains("summary/{topic}"), "{problem}");
+        let page = normalized(
+            r#"{"looks_up_the_web": true, "inputs": [{"name": "source", "label": "Source", "long_text": false, "value": "https://example.org/a"}],
+                "steps": [{"kind": "lookup", "title": "L", "instruction": "", "url": "{source}"}]}"#,
+        );
+        assert!(page.is_ok(), "{page:?}");
     }
 
     #[test]
