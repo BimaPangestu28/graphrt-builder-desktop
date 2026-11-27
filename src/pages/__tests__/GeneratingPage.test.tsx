@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { BackendError } from '@/api/client'
+import { BackendError, toBackendError } from '@/api/client'
 import { resetSampleAgents } from '@/api/sampleBackend/agents'
 import { resetSampleBuilder, sampleBuildDrafts, sampleBuilderBackend, sampleBuildTiming } from '@/api/sampleBackend/builder'
 import { setSampleDelayScale } from '@/api/sampleBackend/sampleResponse'
@@ -188,6 +188,26 @@ describe('GeneratingPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
     await advanceBy(0)
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(buildAgentSpy).toHaveBeenCalledTimes(2)
+  })
+
+  it('says in plain words what to do when the model could not write a working agent', async () => {
+    const backendError = toBackendError({
+      code: 'draft_not_valid',
+      message: 'the AI model could not write a working agent for this request.',
+      details: { problem: 'invalid YAML workflow document: line 3 column 8' },
+    })
+    const buildAgentSpy = vi.spyOn(sampleBuilderBackend, 'buildAgent').mockRejectedValueOnce(backendError)
+    renderGeneratingPage()
+    await advanceBy(0)
+    const notice = screen.getByRole('alert')
+    expect(notice).toHaveTextContent('The AI model could not write a working agent for this job. Try again, describe the job in fewer steps, or choose a stronger model in Connections')
+    // The technical reason is there for support, folded away.
+    expect(screen.getByText('Technical details').closest('details')).not.toHaveAttribute('open')
+    expect(notice).toHaveTextContent('invalid YAML workflow document: line 3 column 8')
+    expect(screen.getByRole('link', { name: 'Choose a model in Connections' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    await advanceBy(0)
     expect(buildAgentSpy).toHaveBeenCalledTimes(2)
   })
 })
