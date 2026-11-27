@@ -255,15 +255,24 @@ async fn a_restart_in_the_middle_of_a_poll_loses_and_repeats_nothing() {
     assert!(eventually(5, || rig.fake.offsets().contains(&Some(301))).await);
     rig.telegram.stop_all();
 
-    // While it is closed, a customer writes; a message stored before the stop was never
-    // answered (the app stopped right after storing it).
+    // While it is closed, a customer writes. Another customer's message was stored before the
+    // stop and never answered (the app stopped right after storing it).
     rig.fake.push(text_update(301, 11, "Kedua"));
-    let unanswered =
-        rig.base.db.find_open_conversation(&rig.base.agent.id, TELEGRAM_CHANNEL, &CHAT.to_string()).unwrap().unwrap();
+    let other = rig
+        .base
+        .db
+        .insert_conversation(&NewConversation {
+            agent_id: rig.base.agent.id.clone(),
+            channel: TELEGRAM_CHANNEL.into(),
+            customer_name: "Budi".into(),
+            customer_handle: "888".into(),
+            origin: None,
+        })
+        .unwrap();
     rig.base
         .db
         .insert_conversation_message(
-            &unanswered.id,
+            &other.id,
             MessageAuthor::Customer,
             "Masih buka?",
             &json!({ CHANNEL_MESSAGE_ID_KEY: "9" }),
@@ -277,17 +286,33 @@ async fn a_restart_in_the_middle_of_a_poll_loses_and_repeats_nothing() {
     rig.base.model.push(MockModel::text("Jawaban kedua"));
     telegram.start_saved();
     assert_eq!(manager.answer_unanswered_channel_messages().await.unwrap(), 1);
-    assert!(eventually(10, || rig.fake.sent_texts().len() == 3).await, "{:?}", rig.fake.sent_texts());
+    let all_texts = || -> Vec<String> {
+        rig.fake
+            .server
+            .requests_to("/sendMessage")
+            .iter()
+            .map(|r| r.json()["text"].as_str().unwrap_or_default().to_owned())
+            .collect()
+    };
+    assert!(eventually(10, || all_texts().len() == 3).await, "{:?}", all_texts());
     telegram.stop_all();
 
-    let texts = rig.fake.sent_texts();
+    // Each reply went to its own customer, whichever the model wrote first.
+    assert_eq!(rig.fake.sent_texts().len(), 2, "{:?}", rig.fake.sent_texts());
+    let to_other: Vec<FakeRequest> =
+        rig.fake.server.requests_to("/sendMessage").into_iter().filter(|r| r.json()["chat_id"] == "888").collect();
+    assert_eq!(to_other.len(), 1);
+    let texts = all_texts();
     assert!(texts.iter().any(|text| text.contains("Masih buka sampai jam 9")), "{texts:?}");
     assert!(texts.iter().any(|text| text.contains("Jawaban kedua")), "{texts:?}");
     let restarted_offsets: Vec<Option<i64>> = rig.fake.offsets();
     assert!(restarted_offsets.iter().all(|offset| offset.is_none_or(|offset| offset >= 301)), "{restarted_offsets:?}");
     assert_eq!(rig.cursor(), Some(301));
-    let customers = rig.messages().iter().filter(|(author, _)| *author == MessageAuthor::Customer).count();
-    assert_eq!(customers, 3);
+    let first =
+        rig.base.db.find_open_conversation(&rig.base.agent.id, TELEGRAM_CHANNEL, &CHAT.to_string()).unwrap().unwrap();
+    let messages = rig.base.db.list_conversation_messages(&first.id).unwrap();
+    let customers = messages.iter().filter(|message| message.author == MessageAuthor::Customer).count();
+    assert_eq!(customers, 2, "Pertama and Kedua, each once");
 }
 
 #[tokio::test]
