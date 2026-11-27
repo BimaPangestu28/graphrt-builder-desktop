@@ -1,3 +1,5 @@
+import type { AgentKind } from '@/api/types'
+
 /**
  * Every screen in the graphrt desktop flow, keyed by its number on the design canvas.
  * Pages link to each other through these paths, so change them here only.
@@ -197,6 +199,29 @@ export function agentPath(routeKey: AgentRouteKey, agentId: string, query?: Reco
   const path = agentRoutePatterns[routeKey].replace(':agentId', encodeURIComponent(agentId))
   const queryString = query ? new URLSearchParams(query).toString() : ''
   return queryString ? `${path}?${queryString}` : path
+}
+
+/**
+ * Chatbot setup (14) of one chatbot. `routePaths.chatbotSetup` alone opens the sample chatbot,
+ * which only exists in the browser preview.
+ *
+ * @example
+ * chatbotSetupPath(agent.id) // "/agents/catering-assistant?agentId=abc"
+ */
+export function chatbotSetupPath(agentId: string): string {
+  return `${routePaths.chatbotSetup}?${new URLSearchParams({ agentId })}`
+}
+
+/**
+ * Where an agent opens right after it is built (03): a chatbot opens its setup (persona,
+ * knowledge, channels and "Try it"), every other kind opens the builder (04).
+ *
+ * @example
+ * builtAgentPath(agent.id, 'chatbot') // "/agents/catering-assistant?agentId=abc"
+ * builtAgentPath(agent.id, 'task') // "/agents/abc/steps"
+ */
+export function builtAgentPath(agentId: string, kind: AgentKind): string {
+  return kind === 'chatbot' ? chatbotSetupPath(agentId) : agentPath('builder', agentId)
 }
 
 /**

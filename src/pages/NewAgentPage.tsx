@@ -5,7 +5,6 @@ import { Icon, joinClassNames } from '@/components/ui'
 import {
   agentKindOptions,
   agentTemplates,
-  buildPathByAgentKind,
   findAgentTemplate,
   jobDescriptionPlaceholder,
   templatePromptText,
@@ -17,7 +16,7 @@ import { ModelPickerChip } from './new-agent/ModelPickerChip'
 import { messages, useLocale } from '@/i18n'
 import { createAgentFromPluginTemplate, listPluginTemplates } from '@/api/plugins'
 import { describeError } from '@/lib/agentDisplay'
-import { agentPath } from '@/routes'
+import { agentPath, routePaths } from '@/routes'
 import { useAsyncData } from '@/hooks/useAsyncData'
 import { pluginTemplateCards } from './new-agent/pluginTemplates'
 
@@ -97,7 +96,8 @@ function TemplateCard({ template, isDisabled, onPick }: { template: AgentTemplat
  * or pick a template below to fill in the description and kind as a starting point
  * (`?template=<id>` opens it with that template already picked, e.g. from Home).
  * The chip under the prompt shows the real default model. "Build agent" hands the request
- * (`{ buildRequest }` router state) to the screen that builds it. A "Ready to use" card of an
+ * (`{ buildRequest }` router state) to Generating (03), whatever the kind: the backend builds a
+ * new agent of that kind, and a chatbot then opens its own setup (14). A "Ready to use" card of an
  * installed plugin skips all of that: the agent is made from the plugin's workflow and its
  * test form opens, with no model involved.
  */
@@ -142,7 +142,7 @@ export function NewAgentPage() {
     event.preventDefault()
     if (!canBuild) return
     const locationState: BuildRequestLocationState = { buildRequest: { description: jobDescription.trim(), kind: selectedKind } }
-    navigate(buildPathByAgentKind[selectedKind], { state: locationState })
+    navigate(routePaths.generating, { state: locationState })
   }
 
   return (

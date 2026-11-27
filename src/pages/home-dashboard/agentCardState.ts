@@ -1,7 +1,7 @@
 import type { Agent, Run, Trigger } from '@/api/types'
 import { formatClockTime } from '@/pages/agent-run/runResultSummary'
 import type { StatusPillTone } from '@/pages/agent-run/StatusPill'
-import { agentPath, routePaths } from '@/routes'
+import { agentPath, chatbotSetupPath, routePaths } from '@/routes'
 import { failedRunPath } from './homeLinks'
 import { formatMonthShort, formatWeekdayShort, messages } from '@/i18n'
 
@@ -84,10 +84,6 @@ function describeChip(stage: AgentCardStage, agent: Agent, agentTriggers: Trigge
   const nextFireAt = findNextFireAt(agentTriggers)
   if (nextFireAt) return { chipLabel: t.activeNext(formatNextRunTime(nextFireAt, now)), chipTone: 'ok' }
   return { chipLabel: agent.kind === 'chatbot' ? t.activeChats : t.active, chipTone: 'ok' }
-}
-
-function chatbotSetupPath(agentId: string): string {
-  return `${routePaths.chatbotSetup}?${new URLSearchParams({ agentId })}`
 }
 
 function choosePrimaryAction(stage: AgentCardStage, agent: Agent, latestRun: Run | undefined): AgentCardAction {
