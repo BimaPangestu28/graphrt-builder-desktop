@@ -1,8 +1,9 @@
 import { getAppSettings, updateAppSettings } from '@/api/appSettings'
-import { setApiKey, setDefaultModel, setLocalCliEnabled, setOllamaBaseUrl, setWelcomeChoice } from '@/api/credentials'
+import { listAvailableModels, setApiKey, setDefaultModel, setLocalCliEnabled, setOllamaBaseUrl, setWelcomeChoice } from '@/api/credentials'
+import type { ProviderModels } from '@/api/modelCatalogTypes'
 import type { ModelProvider, WelcomeChoice } from '@/api/types'
 import { isLocalCliProvider } from '@/lib/settings'
-import { recommendedModelFor } from '@/lib/modelChoices'
+import { recommendedModelFor, recommendedOllamaModel } from '@/lib/modelChoices'
 import { routePaths } from '@/routes'
 
 /** The key-based providers the Welcome "Add an API key" choice offers, with their names. */
@@ -45,13 +46,22 @@ export async function saveWelcomeSetup({ choice, apiKeyProvider, apiKey, keepRun
     await setDefaultModel(recommendedModelFor(choice))
   } else if (choice === 'ollama') {
     await setOllamaBaseUrl(defaultOllamaBaseUrl)
-    await setDefaultModel(recommendedModelFor('ollama'))
+    await setDefaultModel(recommendedOllamaModel(await installedModels()))
   } else if (choice === 'api-key') {
     await setApiKey(apiKeyProvider, apiKey.trim())
     await setDefaultModel(recommendedModelFor(apiKeyProvider))
   }
   if (keepRunningInBackground !== undefined) await saveKeepRunningInBackground(keepRunningInBackground)
   await setWelcomeChoice(choice)
+}
+
+/** The model lists for picking the Ollama default; an unreadable list only means the fallback model is used. */
+async function installedModels(): Promise<ProviderModels[] | null> {
+  try {
+    return await listAvailableModels()
+  } catch {
+    return null
+  }
 }
 
 /** Turns the menu bar / tray icon (which keeps graphrt running after its window closes) on or off. */

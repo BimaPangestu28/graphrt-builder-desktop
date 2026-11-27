@@ -65,6 +65,10 @@ pub struct AvailableModel {
     pub id: String,
     /// The provider's display name, when it has one (Anthropic, Gemini).
     pub display_name: Option<String>,
+    /// Size of a local Ollama model in millions of parameters (`3.2B` → 3200), when
+    /// Ollama reports it. The Welcome wizard picks the largest installed model with it.
+    #[serde(default)]
+    pub parameter_millions: Option<u32>,
 }
 
 /// The models of one provider, or why they could not be listed.
@@ -258,12 +262,20 @@ pub fn parse_models(provider: ModelProvider, body: &Json) -> Vec<AvailableModel>
         ModelProvider::Anthropic => array_field(body, "data")
             .filter_map(|model| {
                 let id = model.get("id")?.as_str()?;
-                Some(AvailableModel { id: id.to_owned(), display_name: string_field(model, "display_name") })
+                Some(AvailableModel {
+                    id: id.to_owned(),
+                    display_name: string_field(model, "display_name"),
+                    parameter_millions: None,
+                })
             })
             .collect(),
         ModelProvider::Gemini => array_field(body, "models").filter_map(parse_gemini_model).collect(),
         ModelProvider::Ollama => array_field(body, "models")
-            .filter_map(|model| model.get("name")?.as_str().map(plain_model))
+            .filter_map(|model| {
+                let reported_size = model.pointer("/details/parameter_size").and_then(Json::as_str);
+                let parameter_millions = reported_size.and_then(parse_parameter_millions);
+                Some(AvailableModel { parameter_millions, ..plain_model(model.get("name")?.as_str()?) })
+            })
             .filter(|model| !model.id.contains("embed"))
             .collect(),
         _ => Vec::new(),
@@ -286,7 +298,23 @@ fn openai_style_ids(body: &Json) -> impl Iterator<Item = &str> {
 }
 
 fn plain_model(id: &str) -> AvailableModel {
-    AvailableModel { id: id.to_owned(), display_name: None }
+    AvailableModel { id: id.to_owned(), display_name: None, parameter_millions: None }
+}
+
+/// Ollama's `details.parameter_size` in millions of parameters.
+///
+/// @example `parse_parameter_millions("3.2B") == Some(3200)`, `parse_parameter_millions("494.03M") == Some(494)`
+fn parse_parameter_millions(reported: &str) -> Option<u32> {
+    let reported = reported.trim();
+    let (number, millions_per_unit) = match reported.chars().last()?.to_ascii_uppercase() {
+        'B' => (&reported[..reported.len() - 1], 1000.0),
+        'M' => (&reported[..reported.len() - 1], 1.0),
+        'K' => (&reported[..reported.len() - 1], 0.001),
+        _ => return None,
+    };
+    let millions = number.trim().parse::<f64>().ok()? * millions_per_unit;
+    // `as` saturates; sizes are far below `u32::MAX` millions.
+    (millions.is_finite() && millions >= 0.0).then_some(millions.round() as u32)
 }
 
 /// OpenAI lists every model the key can use; keep the ones that answer chat requests.
@@ -309,7 +337,7 @@ fn parse_gemini_model(model: &Json) -> Option<AvailableModel> {
     if id.contains("embedding") || id.starts_with("aqa") || id.starts_with("imagen") {
         return None;
     }
-    Some(AvailableModel { id: id.to_owned(), display_name: string_field(model, "displayName") })
+    Some(AvailableModel { id: id.to_owned(), display_name: string_field(model, "displayName"), parameter_millions: None })
 }
 
 /// reqwest-backed fetcher: HTTPS for cloud providers, plain HTTP allowed for a local Ollama.

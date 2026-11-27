@@ -145,7 +145,7 @@ pub fn claude_models(help_aliases: &[String]) -> Vec<AvailableModel> {
     }
     aliases
         .into_iter()
-        .map(|alias| AvailableModel { display_name: Some(alias_display_name(&alias)), id: alias })
+        .map(|alias| AvailableModel { display_name: Some(alias_display_name(&alias)), id: alias, parameter_millions: None })
         .collect()
 }
 

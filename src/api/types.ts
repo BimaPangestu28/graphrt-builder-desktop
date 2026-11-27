@@ -297,6 +297,8 @@ export type BackendErrorCode =
   /** start_run: the workflow uses plugins that are not installed, trusted or set up yet. */
   | 'missing_plugins'
   | 'workflow'
+  /** build_agent / revise_agent: the model did not write a working agent after every repair (`details.problem`). */
+  | 'draft_not_valid'
   | 'model'
   | 'schedule'
   | 'serialization'

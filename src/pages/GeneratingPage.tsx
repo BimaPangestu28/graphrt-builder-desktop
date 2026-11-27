@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { BackendError } from '@/api/client'
+import { BackendError, isBackendErrorWithCode } from '@/api/client'
 import type { BuildRequest, BuildStage, DraftPreview } from '@/api/types'
 import { AppShell, splitPaneColumnClassName, splitPaneMainClassName, splitPaneScrollClassName } from '@/components/layout'
 import { Button, joinClassNames } from '@/components/ui'
@@ -98,12 +98,24 @@ function BuiltStepsPreview({ agentId, loadingFallback }: { agentId: string; load
 /** What went wrong, with the way out: Connections for a missing key, otherwise Try again. */
 function BuildErrorNotice({ buildError, onRetry }: { buildError: Error; onRetry: () => void }) {
   const isMissingCredentials = buildError instanceof BackendError && buildError.code === 'missing_credentials'
+  const draftProblem = isBackendErrorWithCode(buildError, 'draft_not_valid') ? (buildError.details?.problem ?? null) : null
   return (
     <div role="alert" className="flex max-w-[92%] flex-col items-start gap-2.5 rounded-[14px] border border-danger-line bg-danger-tint p-[18px]">
       <span className="font-semibold">{isMissingCredentials ? messages().newAgent.connectAModelToBuildAgents : messages().newAgent.couldNotBuildTheAgent}</span>
       <span className="leading-normal text-danger-deep">{describeError(buildError)}</span>
       {isMissingCredentials && (
         <span className="leading-normal text-body">{messages().newAgent.useClaudeCodeOrCodexOn}</span>
+      )}
+      {draftProblem !== null && (
+        <>
+          <details className="max-w-full text-[12.5px] text-muted">
+            <summary className="cursor-pointer">{messages().newAgent.technicalDetails}</summary>
+            <p className="mt-1.5 break-words leading-normal">{draftProblem}</p>
+          </details>
+          <Link to={connectionsTabPath('models')} className="font-medium">
+            {messages().newAgent.chooseAModelInConnections}
+          </Link>
+        </>
       )}
       {isMissingCredentials ? (
         <Link to={connectionsTabPath('models')} className="font-medium">

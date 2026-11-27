@@ -1,6 +1,6 @@
 import type { ProviderModels } from '@/api/modelCatalogTypes'
 import type { ProviderStatus } from '@/api/types'
-import { buildModelOptionGroups, describeCompactModelChoice, describeModelChoice, describeModelName, recommendedModelFor } from './modelChoices'
+import { buildModelOptionGroups, describeCompactModelChoice, describeModelChoice, describeModelName, recommendedModelFor, recommendedOllamaModel } from './modelChoices'
 
 const statuses: ProviderStatus[] = [
   { provider: 'openai', configured: true, baseUrl: null, localCli: null },
@@ -99,5 +99,38 @@ describe('local CLI models in pickers', () => {
     expect(groupsWhenOn.map((group) => group.provider)).not.toContain('cursor-cli')
     expect(describeCompactModelChoice({ provider: 'opencode-cli', name: 'anthropic/claude-sonnet-5-5' })).toBe('OpenCode · anthropic/claude-sonnet-5-5')
     expect(recommendedModelFor('qwen-code-cli')).toEqual({ provider: 'qwen-code-cli', name: 'default' })
+  })
+})
+
+describe('recommendedOllamaModel', () => {
+  const ollamaList = (models: ProviderModels['models'], error: string | null = null): ProviderModels[] => [
+    { provider: 'openai', models: [{ id: 'gpt-4o', displayName: null, parameterMillions: 999999 }], error: null },
+    { provider: 'ollama', models, error },
+  ]
+
+  it('picks the largest installed model', () => {
+    const catalog = ollamaList([
+      { id: 'llama3.2:latest', displayName: null, parameterMillions: 3200 },
+      { id: 'qwen2.5:14b', displayName: null, parameterMillions: 14800 },
+      { id: 'qwen2.5:7b', displayName: null, parameterMillions: 7600 },
+    ])
+    expect(recommendedOllamaModel(catalog)).toEqual({ provider: 'ollama', name: 'qwen2.5:14b' })
+  })
+
+  it('uses an installed model even when its size is unknown, rather than one that is not installed', () => {
+    expect(recommendedOllamaModel(ollamaList([{ id: 'gemma3:latest', displayName: null }]))).toEqual({ provider: 'ollama', name: 'gemma3:latest' })
+    const mixed = ollamaList([
+      { id: 'custom:latest', displayName: null, parameterMillions: null },
+      { id: 'llama3.2:latest', displayName: null, parameterMillions: 3200 },
+    ])
+    expect(recommendedOllamaModel(mixed)).toEqual({ provider: 'ollama', name: 'llama3.2:latest' })
+  })
+
+  it('falls back to llama3.2 when nothing is installed or the list is unknown', () => {
+    const fallback = { provider: 'ollama', name: 'llama3.2' }
+    expect(recommendedOllamaModel(null)).toEqual(fallback)
+    expect(recommendedOllamaModel([])).toEqual(fallback)
+    expect(recommendedOllamaModel(ollamaList([]))).toEqual(fallback)
+    expect(recommendedOllamaModel(ollamaList([{ id: 'qwen2.5:14b', displayName: null, parameterMillions: 14800 }], 'offline'))).toEqual(fallback)
   })
 })
