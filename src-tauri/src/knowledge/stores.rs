@@ -23,10 +23,10 @@ use crate::credentials::{CredentialStore, ModelProvider};
 use crate::error::{AppError, AppResult};
 
 /// Dimensions of the offline hashing embedder.
-const LOCAL_EMBEDDING_DIMENSIONS: usize = 512;
+pub(super) const LOCAL_EMBEDDING_DIMENSIONS: usize = 512;
 /// OpenAI embedding model used when a knowledge base chooses OpenAI.
 pub const OPENAI_EMBEDDING_MODEL: &str = "text-embedding-3-small";
-const OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
+pub(super) const OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
 
 /// Process-wide cache of open stores, keyed by file path.
 fn open_stores() -> &'static Mutex<HashMap<PathBuf, Arc<SqliteStore>>> {

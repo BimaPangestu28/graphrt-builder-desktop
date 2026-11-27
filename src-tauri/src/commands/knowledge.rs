@@ -5,12 +5,15 @@ use tauri::State;
 
 use crate::error::AppResult;
 use crate::knowledge::models::{
-    KnowledgeBase, KnowledgeBaseDetail, KnowledgePassage, KnowledgeSettings, KnowledgeSource, SourceKind,
+    KnowledgeBase, KnowledgeBaseDetail, KnowledgeChunkPage, KnowledgeDocument, KnowledgePassage, KnowledgeSettings,
+    KnowledgeSource, SourceKind,
 };
 use crate::state::AppState;
 
 /// Passages returned when the caller does not say.
 const DEFAULT_SEARCH_LIMIT: usize = 8;
+/// Passages per page of the passage viewer when the caller does not say.
+const DEFAULT_CHUNK_PAGE: usize = 20;
 
 #[tauri::command]
 pub fn list_knowledge_bases(state: State<'_, AppState>) -> AppResult<Vec<KnowledgeBase>> {
@@ -164,4 +167,32 @@ pub async fn sign_in_knowledge_connector(
         crate::knowledge::connector_oauth::SIGN_IN_TIMEOUT,
     )
     .await
+}
+
+/// The indexed documents of a source (one for a file or link, every file of a folder).
+#[tauri::command]
+pub fn list_knowledge_documents(state: State<'_, AppState>, source_id: String) -> AppResult<Vec<KnowledgeDocument>> {
+    state.knowledge.list_source_documents(&source_id)
+}
+
+/// One page of a document's passages in document order, optionally filtered by words.
+#[tauri::command]
+pub async fn list_knowledge_chunks(
+    state: State<'_, AppState>,
+    source_id: String,
+    document_id: String,
+    filter: Option<String>,
+    offset: Option<usize>,
+    limit: Option<usize>,
+) -> AppResult<KnowledgeChunkPage> {
+    state
+        .knowledge
+        .list_document_chunks(
+            &source_id,
+            &document_id,
+            filter.as_deref().unwrap_or_default(),
+            offset.unwrap_or(0),
+            limit.unwrap_or(DEFAULT_CHUNK_PAGE),
+        )
+        .await
 }

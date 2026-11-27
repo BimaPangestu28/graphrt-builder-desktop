@@ -7,7 +7,11 @@ import { useT } from '@/i18n'
 
 function KnowledgeBaseStatusPill({ knowledgeBase }: { knowledgeBase: KnowledgeBase }) {
   const t = useT().knowledge
+  const indexingMessages = useT().knowledgeIndexing
   const { status } = knowledgeBase
+  if (status === 'up_to_date' && knowledgeBase.needsReindex) {
+    return <span className="shrink-0 rounded-full bg-amber-soft px-2 py-[3px] text-[12px] font-medium whitespace-nowrap text-amber-strong">{indexingMessages.statusNeedsReindex}</span>
+  }
   const label =
     status === 'up_to_date' ? t.statusUpToDate : status === 'syncing' ? t.statusSyncing(syncPercent(knowledgeBase)) : status === 'empty' ? t.statusEmpty : t.statusNeedsAttention
   const toneClassNames =

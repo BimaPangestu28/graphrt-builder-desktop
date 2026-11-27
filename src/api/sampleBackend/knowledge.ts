@@ -1,7 +1,11 @@
 import { BackendError } from '../client'
 import type {
+  ChunkingSettings,
   KnowledgeBase,
   KnowledgeBaseDetail,
+  KnowledgeChunk,
+  KnowledgeChunkPage,
+  KnowledgeDocument,
   KnowledgeEvent,
   KnowledgePassage,
   KnowledgeSettings,
@@ -30,12 +34,24 @@ const seedCreatedAt = '2026-10-01T02:00:00Z'
 /** 13:02 on the sample day in the viewer's time zone, as on the mockup. */
 const seedLastSyncedAt = new Date(2026, 10, 18, 13, 2).toISOString()
 
-const defaultSettings: KnowledgeSettings = { embedding: 'local', passagesPerAnswer: 4, minScore: 0.55, showSources: true }
+function defaultChunking(): ChunkingSettings {
+  return {
+    maxTokens: 250,
+    overlapTokens: 25,
+    minTokens: 0,
+    separators: [{ kind: 'paragraph' }, { kind: 'line' }, { kind: 'sentence' }, { kind: 'clause' }, { kind: 'word' }],
+    respectHeadings: true,
+    splitPages: false,
+  }
+}
+
+const defaultSettings: KnowledgeSettings = { embedding: 'local', passagesPerAnswer: 4, minScore: 0.55, showSources: true, chunking: defaultChunking() }
 
 function seedKnowledgeBase(fields: Partial<KnowledgeBase> & Pick<KnowledgeBase, 'id' | 'name'>): KnowledgeBase {
   return {
     description: '',
-    settings: { ...defaultSettings },
+    settings: { ...defaultSettings, chunking: defaultChunking() },
+    needsReindex: false,
     status: 'up_to_date',
     syncProgress: null,
     sourceCount: 1,
@@ -135,6 +151,8 @@ function buildSeedSources(): KnowledgeSource[] {
 
 let storedKnowledgeBases: KnowledgeBase[] = []
 let storedSources: KnowledgeSource[] = []
+/** Chunking each knowledge base was last indexed with (JSON), by id; missing means the defaults. */
+let indexedChunking = new Map<string, string>()
 let createdCount = 0
 const listeners = new Set<(event: KnowledgeEvent) => void>()
 const pendingTimers = new Set<ReturnType<typeof setTimeout>>()
@@ -143,6 +161,7 @@ const pendingTimers = new Set<ReturnType<typeof setTimeout>>()
 export function resetSampleKnowledge(): void {
   storedKnowledgeBases = buildSeedKnowledgeBases()
   storedSources = buildSeedSources()
+  indexedChunking = new Map()
   createdCount = 0
   pendingTimers.forEach((timer) => clearTimeout(timer))
   pendingTimers.clear()
@@ -210,6 +229,107 @@ function pretendToIndex(source: KnowledgeSource): void {
   pendingTimers.add(timer)
 }
 
+function chunkingKey(chunking: ChunkingSettings): string {
+  return JSON.stringify(chunking)
+}
+
+function needsReindex(knowledgeBase: KnowledgeBase): boolean {
+  const indexed = indexedChunking.get(knowledgeBase.id) ?? chunkingKey(defaultChunking())
+  const hasPassages = storedSources.some((source) => source.knowledgeBaseId === knowledgeBase.id && source.passageCount > 0)
+  return hasPassages && indexed !== chunkingKey(knowledgeBase.settings.chunking)
+}
+
+function step(settings: ChunkingSettings): number {
+  return Math.max(settings.maxTokens - settings.overlapTokens, 1)
+}
+
+/** "Pretends to index again": every source turns `reading`, then gets passages for the new chunking. */
+function pretendToReindex(knowledgeBaseId: string): void {
+  const knowledgeBase = findKnowledgeBase(knowledgeBaseId)
+  const previousKey = indexedChunking.get(knowledgeBaseId) ?? chunkingKey(defaultChunking())
+  const previous = JSON.parse(previousKey) as ChunkingSettings
+  const sources = storedSources
+    .filter((source) => source.knowledgeBaseId === knowledgeBaseId)
+    .map((source) => replaceSource({ ...source, status: 'reading' }))
+  refreshTotals(knowledgeBaseId, true)
+  emit({ type: 'sync_started', knowledgeBaseId })
+  sources.forEach((source, index) => {
+    const timer = setTimeout(() => {
+      pendingTimers.delete(timer)
+      if (!storedSources.some((candidate) => candidate.id === source.id)) return
+      // Same text, other passage size: the count scales with the step between passage starts.
+      const passageCount = Math.max(1, Math.round((source.passageCount * step(previous)) / step(knowledgeBase.settings.chunking)))
+      const indexed = replaceSource({ ...source, status: 'indexed', passageCount, lastSyncedAt: new Date().toISOString() })
+      emit({ type: 'source_updated', knowledgeBaseId, source: indexed, progressPercent: null })
+      if (index === sources.length - 1) {
+        indexedChunking.set(knowledgeBaseId, chunkingKey(findKnowledgeBase(knowledgeBaseId).settings.chunking))
+        const finished = replaceKnowledgeBase({ ...refreshTotals(knowledgeBaseId, false), lastSyncedAt: new Date().toISOString() })
+        emit({ type: 'sync_finished', knowledgeBaseId, knowledgeBase: finished })
+      }
+    }, SAMPLE_INDEXING_DELAY_MS * (index + 1))
+    pendingTimers.add(timer)
+  })
+}
+
+/** Sample documents of a source: the file itself, the pages of a site or a few files of a folder. */
+function documentsOf(source: KnowledgeSource): KnowledgeDocument[] {
+  const knowledgeBase = findKnowledgeBase(source.knowledgeBaseId)
+  const base = { sourceId: source.id, indexedAt: source.lastSyncedAt, needsReindex: needsReindex(knowledgeBase) }
+  if (source.passageCount === 0) return []
+  if (source.kind === 'file') return [{ ...base, documentId: source.id, name: source.name, passageCount: source.passageCount }]
+  const names =
+    source.kind === 'url'
+      ? ['', 'menu', 'delivery', 'contact', 'about', 'faq'].slice(0, Math.max(source.documentCount, 1)).map((path) => `${source.name}/${path}`)
+      : ['Kontrak sewa.pdf', 'SOP pengiriman.docx', 'Daftar harga 2026.xlsx', 'Notulen rapat.md']
+  const each = Math.max(1, Math.floor(source.passageCount / names.length))
+  return names.map((name, index) => ({
+    ...base,
+    documentId: `${source.id}/${index}`,
+    name,
+    passageCount: index === names.length - 1 ? Math.max(1, source.passageCount - each * (names.length - 1)) : each,
+  }))
+}
+
+const sampleSentences = [
+  'Paket Hemat berisi nasi, ayam goreng, sayur, sambal dan kerupuk.',
+  'Paket Komplit menambah buah potong, puding dan air mineral.',
+  'Free delivery inside Bandar Lampung for orders of 30 boxes or more.',
+  'Orders under 30 boxes pay delivery based on distance.',
+  'Pesanan dikonfirmasi setelah uang muka 50 persen ditransfer.',
+  'Order at least two days ahead; same-day orders are accepted below 20 boxes.',
+  'Menu vegetarian tersedia untuk semua paket tanpa biaya tambahan.',
+  'Kitchen hours are 06:00 to 18:00, Monday to Saturday.',
+]
+const sampleHeadings = ['Menu > Paket', 'Menu > Harga', 'Delivery', 'Payment', 'FAQ']
+
+/** Deterministic passages for a sample document cut with `chunking`. */
+function sampleChunks(document: KnowledgeDocument, chunking: ChunkingSettings): KnowledgeChunk[] {
+  const targetChars = Math.min(chunking.maxTokens * 4, 1400) * 0.8
+  let position = 0
+  return Array.from({ length: document.passageCount }, (_, index) => {
+    const sentences: string[] = []
+    let sentenceIndex = index
+    while (sentences.join(' ').length < targetChars) {
+      sentences.push(sampleSentences[sentenceIndex % sampleSentences.length] ?? '')
+      sentenceIndex += 3
+    }
+    const text = sentences.join(' ')
+    const charStart = position
+    position += text.length + 2
+    return {
+      id: `${document.documentId}:${index}`,
+      index,
+      text,
+      charCount: text.length,
+      tokenCount: Math.ceil(text.length / 4),
+      charStart,
+      charEnd: charStart + text.length,
+      heading: chunking.respectHeadings ? (sampleHeadings[Math.floor(index / 4) % sampleHeadings.length] ?? null) : null,
+      pages: document.name.toLowerCase().endsWith('.pdf') ? [Math.floor(index / 3) + 1] : [],
+    }
+  })
+}
+
 /** "Delivery and FAQ · page 11 · Catering menu and prices" -> source, location and base. */
 function toPassage(samplePassage: SamplePassage): KnowledgePassage {
   const citationParts = samplePassage.citation.split(' · ')
@@ -222,17 +342,20 @@ function toPassage(samplePassage: SamplePassage): KnowledgePassage {
     sourceId: null,
     sourceName,
     location,
+    chunkIndex: null,
+    page: null,
     text: samplePassage.text,
     score: samplePassage.score,
   }
 }
 
 export const sampleKnowledgeBackend = {
-  listKnowledgeBases: (): Promise<KnowledgeBase[]> => respondWith(() => storedKnowledgeBases.map((knowledgeBase) => ({ ...knowledgeBase }))),
+  listKnowledgeBases: (): Promise<KnowledgeBase[]> =>
+    respondWith(() => storedKnowledgeBases.map((knowledgeBase) => ({ ...knowledgeBase, needsReindex: needsReindex(knowledgeBase) }))),
 
   getKnowledgeBase: (knowledgeBaseId: string): Promise<KnowledgeBaseDetail> =>
     respondWith(() => ({
-      knowledgeBase: { ...findKnowledgeBase(knowledgeBaseId) },
+      knowledgeBase: { ...findKnowledgeBase(knowledgeBaseId), needsReindex: needsReindex(findKnowledgeBase(knowledgeBaseId)) },
       sources: storedSources.filter((source) => source.knowledgeBaseId === knowledgeBaseId).map((source) => ({ ...source })),
     })),
 
@@ -305,7 +428,11 @@ export const sampleKnowledgeBackend = {
 
   syncKnowledgeBase: (knowledgeBaseId: string): Promise<KnowledgeBase> =>
     respondWith(() => {
-      findKnowledgeBase(knowledgeBaseId)
+      const current = findKnowledgeBase(knowledgeBaseId)
+      if (needsReindex(current)) {
+        pretendToReindex(knowledgeBaseId)
+        return { ...refreshTotals(knowledgeBaseId, true), needsReindex: true }
+      }
       const knowledgeBase = replaceKnowledgeBase({ ...refreshTotals(knowledgeBaseId, false), lastSyncedAt: new Date().toISOString() })
       emit({ type: 'sync_finished', knowledgeBaseId, knowledgeBase })
       return knowledgeBase
@@ -319,7 +446,44 @@ export const sampleKnowledgeBackend = {
       if (!(settings.minScore >= 0 && settings.minScore <= 1)) {
         throw new BackendError('invalid_input', 'invalid input: the minimum score must be between 0 and 1')
       }
-      return replaceKnowledgeBase({ ...findKnowledgeBase(knowledgeBaseId), settings: { ...settings } })
+      const chunking = settings.chunking
+      if (chunking.maxTokens < 50 || chunking.maxTokens > 2000) {
+        throw new BackendError('invalid_input', 'invalid input: the passage size must be between 50 and 2000 tokens')
+      }
+      if (chunking.overlapTokens > Math.floor(chunking.maxTokens / 2)) {
+        throw new BackendError('invalid_input', 'invalid input: the overlap can be at most half of the passage size')
+      }
+      const saved = replaceKnowledgeBase({ ...findKnowledgeBase(knowledgeBaseId), settings: { ...settings, chunking: { ...chunking, separators: [...chunking.separators] } } })
+      return { ...saved, needsReindex: needsReindex(saved) }
+    }),
+
+  listKnowledgeDocuments: (sourceId: string): Promise<KnowledgeDocument[]> =>
+    respondWith(() => {
+      const source = storedSources.find((candidate) => candidate.id === sourceId)
+      if (!source) throw new BackendError('not_found', `knowledge source ${sourceId} not found`)
+      return documentsOf(source)
+    }),
+
+  listKnowledgeChunks: (sourceId: string, documentId: string, filter: string, offset: number, limit: number): Promise<KnowledgeChunkPage> =>
+    respondWith(() => {
+      const source = storedSources.find((candidate) => candidate.id === sourceId)
+      const document = source ? documentsOf(source).find((candidate) => candidate.documentId === documentId) : undefined
+      if (!source || !document) throw new BackendError('not_found', `document ${documentId} not found`)
+      const indexedWith = indexedChunking.get(source.knowledgeBaseId)
+      const chunking = indexedWith ? (JSON.parse(indexedWith) as ChunkingSettings) : defaultChunking()
+      const chunks = sampleChunks(document, chunking)
+      const words = filter.toLowerCase().split(/\s+/).filter(Boolean)
+      const matching = chunks.filter((chunk) => words.every((word) => `${chunk.heading ?? ''} ${chunk.text}`.toLowerCase().includes(word)))
+      const pageSize = Math.min(Math.max(limit, 1), 100)
+      return {
+        document,
+        total: chunks.length,
+        matching: matching.length,
+        offset: Math.min(offset, matching.length),
+        chunks: matching.slice(offset, offset + pageSize),
+        totalChars: chunks.reduce((total, chunk) => total + chunk.charCount, 0),
+        totalTokens: chunks.reduce((total, chunk) => total + chunk.tokenCount, 0),
+      }
     }),
 
   searchKnowledge: (query: string, knowledgeBaseIds: string[] | undefined, limit: number): Promise<KnowledgePassage[]> =>
@@ -331,9 +495,12 @@ export const sampleKnowledgeBackend = {
     }),
 
   subscribeToKnowledgeEvents: (onKnowledgeEvent: (event: KnowledgeEvent) => void): Promise<() => void> => {
-    listeners.add(onKnowledgeEvent)
+    // One wrapper per subscription: React's strict mode subscribes the same callback twice, and
+    // ending the first subscription must not end the second.
+    const listener = (event: KnowledgeEvent) => onKnowledgeEvent(event)
+    listeners.add(listener)
     return Promise.resolve(() => {
-      listeners.delete(onKnowledgeEvent)
+      listeners.delete(listener)
     })
   },
 }

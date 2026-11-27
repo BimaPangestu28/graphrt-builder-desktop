@@ -840,3 +840,50 @@ fn own_server_instructions_name_the_agents_keys_and_the_chosen_pages() {
     let bad = OnlineFeatures { embed_site: Some("nope".into()), ..chat_and_phone() };
     assert_eq!(harness.service.own_server_instructions(&harness.agent, &[], &bad).unwrap_err().code(), "invalid_input");
 }
+
+#[tokio::test]
+async fn bundles_carry_the_knowledge_the_agent_uses_with_its_chunking() {
+    use crate::knowledge::models::{ChunkingSettings, SourceKind};
+    let harness = harness(FLOW);
+    let knowledge = Arc::new(crate::knowledge::KnowledgeService::new(
+        harness.db.clone(),
+        harness.credentials.clone(),
+        harness._temp.path().join("knowledge"),
+        Arc::new(crate::knowledge::events::DiscardKnowledgeEvents),
+    ));
+    let knowledge_base = knowledge.create_knowledge_base("Catering FAQ", "").unwrap();
+    let faq = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/knowledge/catering-faq.md");
+    knowledge.add_source(&knowledge_base.id, SourceKind::File, &faq.display().to_string()).unwrap();
+    let chunking = ChunkingSettings { max_tokens: 60, overlap_tokens: 0, ..ChunkingSettings::default() };
+    let settings = crate::knowledge::models::KnowledgeSettings { chunking, ..knowledge_base.settings.clone() };
+    knowledge.update_settings(&knowledge_base.id, settings).await.unwrap();
+    knowledge.sync_knowledge_base(&knowledge_base.id).await.unwrap();
+    let flow = format!("{FLOW}\n# knowledge: {}\n", knowledge_base.id);
+    let agent = harness
+        .db
+        .create_agent(NewAgent {
+            name: "Uses FAQ".into(),
+            kind: AgentKind::Task,
+            description: String::new(),
+            flow_yaml: flow,
+        })
+        .unwrap();
+    release_latest(&harness.db, &agent.id);
+
+    let folder = tempfile::tempdir().unwrap();
+    let bytes =
+        std::fs::read(harness.service.export_agent_file(&agent.id, &folder.path().join("faq.grt")).unwrap()).unwrap();
+    let bundle = graphrt_bundle::Bundle::open(&bytes, &graphrt_bundle::OpenOptions::default()).unwrap();
+    let (_, config_text) = bundle.knowledge_config().expect("the bundle has a knowledge config");
+    let config: serde_json::Value = serde_json::from_str(config_text).unwrap();
+    assert_eq!(config["datasets"][0]["id"], knowledge_base.id.as_str());
+    assert_eq!(config["datasets"][0]["chunking"]["max_chars"], 240);
+    let store_path = config["stores"][knowledge_base.id.as_str()]["path"].as_str().unwrap();
+    assert!(bundle.file(store_path).is_some_and(|store| !store.is_empty()), "the passages ship with it");
+
+    // The agent without knowledge gets no knowledge config.
+    let plain = harness.service.export_agent_file(&harness.agent.id, &folder.path().join("menu.grt")).unwrap();
+    let plain =
+        graphrt_bundle::Bundle::open(&std::fs::read(plain).unwrap(), &graphrt_bundle::OpenOptions::default()).unwrap();
+    assert!(plain.knowledge_config().is_none());
+}

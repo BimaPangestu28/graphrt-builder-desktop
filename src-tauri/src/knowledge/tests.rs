@@ -4,7 +4,9 @@ use std::sync::{Arc, Mutex};
 use graphrt_core::{Engine, Event, RunInput, Services};
 
 use super::events::{KnowledgeEvent, KnowledgeEventSink};
-use super::models::{EmbeddingChoice, KnowledgeBaseStatus, SourceKind, SourceStatus};
+use super::models::{
+    ChunkingSettings, EmbeddingChoice, KnowledgeBaseStatus, SeparatorSetting, SourceKind, SourceStatus,
+};
 use super::*;
 use crate::credentials::{CredentialStore, ModelProvider};
 use crate::storage::models::{AgentKind, NewAgent};
@@ -263,7 +265,7 @@ fn validates_names_and_settings() {
 async fn openai_embeddings_need_a_key_and_new_bases_use_it_when_present() {
     let harness = harness();
     let knowledge_base = harness.service.create_knowledge_base("Docs", "").unwrap();
-    let openai = KnowledgeSettings { embedding: EmbeddingChoice::Openai, ..knowledge_base.settings };
+    let openai = KnowledgeSettings { embedding: EmbeddingChoice::Openai, ..knowledge_base.settings.clone() };
     let refused = harness.service.update_settings(&knowledge_base.id, openai).await;
     assert!(matches!(refused, Err(AppError::InvalidInput(_))));
 
@@ -366,4 +368,72 @@ async fn workflows_retrieve_from_knowledge_bases_by_id_or_name() {
 
     let by_name = run_retrieval_flow(&harness, "Catering menu and prices", "cash on delivery").await;
     assert!(by_name[0]["content"].as_str().unwrap_or_default().contains("cash on delivery"), "{by_name}");
+}
+
+#[tokio::test]
+async fn new_chunking_is_saved_flagged_and_applied_by_the_next_sync() {
+    let harness = harness();
+    let (knowledge_base_id, source_id) = knowledge_base_with_faq(&harness).await;
+    let before = harness.service.knowledge_base_summary(&knowledge_base_id).unwrap();
+    assert!(!before.needs_reindex, "default chunking matches what was indexed");
+
+    let small = ChunkingSettings {
+        max_tokens: 50,
+        overlap_tokens: 0,
+        respect_headings: false,
+        separators: vec![SeparatorSetting::Sentence, SeparatorSetting::Word],
+        ..ChunkingSettings::default()
+    };
+    let settings = KnowledgeSettings { chunking: small.clone(), ..before.settings.clone() };
+    let (saved, needs_sync) = harness.service.update_settings(&knowledge_base_id, settings).await.unwrap();
+    assert!(!needs_sync, "chunking waits for the person to index again");
+    assert!(saved.needs_reindex);
+    assert_eq!(saved.passage_count, before.passage_count, "passages stay searchable meanwhile");
+    assert_eq!(records::get_knowledge_base(&harness.db, &knowledge_base_id).unwrap().settings.chunking, small);
+    let documents = harness.service.list_source_documents(&source_id).unwrap();
+    assert!(documents[0].needs_reindex);
+
+    // The file did not change, but the next sync cuts it again.
+    let report = harness.service.sync_knowledge_base(&knowledge_base_id).await.unwrap();
+    assert_eq!(report.documents_indexed, 1);
+    let after = harness.service.knowledge_base_summary(&knowledge_base_id).unwrap();
+    assert!(!after.needs_reindex);
+    // Without headings the small sections are cut by size instead (415 characters, 200 per passage).
+    assert_eq!((before.passage_count, after.passage_count), (4, 3));
+
+    let documents = harness.service.list_source_documents(&source_id).unwrap();
+    assert!(documents[0].indexed_at.is_some() && !documents[0].needs_reindex);
+    let page = harness.service.list_document_chunks(&source_id, &documents[0].document_id, "", 0, 20).await.unwrap();
+    assert_eq!(page.total, after.passage_count);
+    assert_eq!(page.chunks.len(), 3);
+    assert!(page.chunks.iter().all(|chunk| chunk.char_count <= 200 && chunk.heading.is_none()));
+    assert!(page.chunks.windows(2).all(|pair| pair[0].index < pair[1].index));
+    assert!(page.chunks.iter().all(|chunk| chunk.char_start.is_some() && chunk.char_end.is_some()));
+
+    let filtered = harness
+        .service
+        .list_document_chunks(&source_id, &documents[0].document_id, "BANK transfer", 0, 50)
+        .await
+        .unwrap();
+    assert!(filtered.matching >= 1 && filtered.matching < filtered.total);
+    assert!(filtered.chunks.iter().all(|chunk| chunk.text.to_lowercase().contains("bank")));
+
+    // A sync with the same settings again changes nothing.
+    let again = harness.service.sync_knowledge_base(&knowledge_base_id).await.unwrap();
+    assert_eq!((again.documents_indexed, again.documents_unchanged), (0, 1));
+}
+
+#[tokio::test]
+async fn unusable_chunking_is_refused() {
+    let harness = harness();
+    let knowledge_base = harness.service.create_knowledge_base("Docs", "").unwrap();
+    let chunking = ChunkingSettings {
+        separators: vec![SeparatorSetting::Pattern { value: "(unclosed".into() }],
+        ..ChunkingSettings::default()
+    };
+    let settings = KnowledgeSettings { chunking, ..knowledge_base.settings.clone() };
+    let refused = harness.service.update_settings(&knowledge_base.id, settings).await;
+    assert!(matches!(refused, Err(AppError::InvalidInput(_))), "{refused:?}");
+    let unknown = harness.service.list_document_chunks("src_missing", "doc", "", 0, 10).await;
+    assert!(matches!(unknown, Err(AppError::NotFound(_))));
 }

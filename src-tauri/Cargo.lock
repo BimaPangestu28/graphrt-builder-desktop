@@ -2328,6 +2328,7 @@ dependencies = [
  "graphrt-core",
  "graphrt-doc",
  "indexmap 2.14.2",
+ "regex",
  "reqwest",
  "rusqlite",
  "rustls",

@@ -3,6 +3,8 @@ import { sampleKnowledgeBackend } from './sampleBackend/knowledge'
 import type {
   KnowledgeBase,
   KnowledgeBaseDetail,
+  KnowledgeChunkPage,
+  KnowledgeDocument,
   KnowledgeEvent,
   KnowledgePassage,
   KnowledgeSettings,
@@ -88,6 +90,27 @@ export function updateKnowledgeSettings(knowledgeBaseId: string, settings: Knowl
 export function searchKnowledge(query: string, knowledgeBaseIds?: string[], limit = 8): Promise<KnowledgePassage[]> {
   if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleKnowledgeBackend.searchKnowledge(query, knowledgeBaseIds, limit)
   return callBackend('search_knowledge', { query, knowledgeBaseIds: knowledgeBaseIds ?? null, limit })
+}
+
+/** The indexed documents of a source (one for a file or link, every file of a folder). */
+export function listKnowledgeDocuments(sourceId: string): Promise<KnowledgeDocument[]> {
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleKnowledgeBackend.listKnowledgeDocuments(sourceId)
+  return callBackend('list_knowledge_documents', { sourceId })
+}
+
+/** Passages per page of the passage viewer. */
+export const KNOWLEDGE_CHUNK_PAGE_SIZE = 20
+
+/**
+ * One page of a document's passages, in document order.
+ *
+ * @param filter - Only passages containing every word (case-insensitive); empty for all
+ * @param offset - Index among the matching passages of the first one returned
+ * @param limit - Passages per page (1 to 100)
+ */
+export function listKnowledgeChunks(sourceId: string, documentId: string, filter = '', offset = 0, limit = KNOWLEDGE_CHUNK_PAGE_SIZE): Promise<KnowledgeChunkPage> {
+  if (__SAMPLE_BACKEND__ && !isDesktopApp()) return sampleKnowledgeBackend.listKnowledgeChunks(sourceId, documentId, filter, offset, limit)
+  return callBackend('list_knowledge_chunks', { sourceId, documentId, filter, offset, limit })
 }
 
 /** Listens to sync progress. Returns an unsubscribe function. */

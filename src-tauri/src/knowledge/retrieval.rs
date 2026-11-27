@@ -187,6 +187,8 @@ pub fn passage_from_hit(hit: Hit, knowledge_bases: &[StoredKnowledgeBase]) -> Kn
         .unwrap_or_default();
     KnowledgePassage {
         location: passage_location(&hit),
+        chunk_index: hit.metadata.get("chunk_index").and_then(serde_json::Value::as_u64),
+        page: passage_pages(&hit.metadata).first().copied(),
         source_id: metadata_text(&hit, METADATA_SOURCE_ID),
         source_name: metadata_text(&hit, METADATA_SOURCE_NAME).unwrap_or_else(|| hit.title.clone()),
         knowledge_base_name,

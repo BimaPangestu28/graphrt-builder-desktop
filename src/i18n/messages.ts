@@ -19,6 +19,7 @@ import { learning } from './locales/learning'
 import { quality } from './locales/quality'
 import { knowledge } from './locales/knowledge'
 import { knowledgeConnectors } from './locales/knowledgeConnectors'
+import { knowledgeIndexing } from './locales/knowledgeIndexing'
 import { home } from './locales/home'
 import { settings } from './locales/settings'
 import { common } from './locales/common'
@@ -55,6 +56,7 @@ const english = {
   quality: quality.en,
   knowledge: knowledge.en,
   knowledgeConnectors: knowledgeConnectors.en,
+  knowledgeIndexing: knowledgeIndexing.en,
   home: home.en,
   settings: settings.en,
   common: common.en,
@@ -90,6 +92,7 @@ const indonesian: Messages = {
   quality: quality.id,
   knowledge: knowledge.id,
   knowledgeConnectors: knowledgeConnectors.id,
+  knowledgeIndexing: knowledgeIndexing.id,
   home: home.id,
   settings: settings.id,
   common: common.id,

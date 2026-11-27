@@ -14,6 +14,37 @@ export type EmbeddingChoice = 'local' | 'openai'
 
 export type KnowledgeBaseStatus = 'empty' | 'syncing' | 'up_to_date' | 'needs_attention'
 
+/**
+ * One place where a document may be cut, tried in order (`src-tauri/src/knowledge/chunking.rs`).
+ * `text` splits after each occurrence (`\n` and `\t` typed literally mean a line break and a tab);
+ * `pattern` is a regular expression and splits before each match.
+ */
+export type SeparatorSetting =
+  | { kind: 'paragraph' }
+  | { kind: 'line' }
+  | { kind: 'sentence' }
+  | { kind: 'clause' }
+  | { kind: 'word' }
+  | { kind: 'text'; value: string }
+  | { kind: 'pattern'; value: string }
+
+export type SeparatorKind = SeparatorSetting['kind']
+
+/** How documents are cut into passages. Sizes are tokens (about 4 characters each). */
+export interface ChunkingSettings {
+  /** 50 to 2000. */
+  maxTokens: number
+  /** At most half of `maxTokens`. */
+  overlapTokens: number
+  /** 0 (off) to `maxTokens`: shorter pieces are joined with a neighbour when they fit. */
+  minTokens: number
+  /** Coarse to fine, at most 12. Cutting inside a word is always the last resort. */
+  separators: SeparatorSetting[]
+  respectHeadings: boolean
+  /** Never let a passage span two PDF pages. */
+  splitPages: boolean
+}
+
 export interface KnowledgeSettings {
   embedding: EmbeddingChoice
   /** 1 to 20 passages given to an agent per question. */
@@ -21,6 +52,8 @@ export interface KnowledgeSettings {
   /** Passages scoring below this (0 to 1) are not given to agents. */
   minScore: number
   showSources: boolean
+  /** Takes effect when the knowledge base is indexed again. */
+  chunking: ChunkingSettings
 }
 
 export interface SyncProgress {
@@ -46,6 +79,8 @@ export interface KnowledgeBase {
   fileCount: number
   websiteCount: number
   passageCount: number
+  /** Some documents were indexed with other chunking settings: indexing again applies them. */
+  needsReindex: boolean
   storageBytes: number
   usedBy: KnowledgeUsage[]
   /** RFC 3339. */
@@ -78,6 +113,46 @@ export interface KnowledgeBaseDetail {
   sources: KnowledgeSource[]
 }
 
+/** One indexed document of a source: the file itself, or one file of a folder. */
+export interface KnowledgeDocument {
+  sourceId: string
+  documentId: string
+  name: string
+  passageCount: number
+  /** RFC 3339; null for documents indexed by older versions. */
+  indexedAt: string | null
+  needsReindex: boolean
+}
+
+/** One passage of a document. */
+export interface KnowledgeChunk {
+  id: string
+  /** Position in the document, from 0. */
+  index: number
+  text: string
+  charCount: number
+  /** Estimated, about 4 characters per token. */
+  tokenCount: number
+  /** Character range of the passage's own text (without the repeated overlap); null when unknown. */
+  charStart: number | null
+  charEnd: number | null
+  heading: string | null
+  /** PDF pages, ascending; empty when unknown. */
+  pages: number[]
+}
+
+/** One page of a document's passages, in document order. */
+export interface KnowledgeChunkPage {
+  document: KnowledgeDocument
+  total: number
+  /** Passages matching the filter (equal to `total` without one). */
+  matching: number
+  offset: number
+  chunks: KnowledgeChunk[]
+  totalChars: number
+  totalTokens: number
+}
+
 /** One search result. */
 export interface KnowledgePassage {
   id: string
@@ -87,6 +162,10 @@ export interface KnowledgePassage {
   sourceName: string
   /** Section heading ("Menu > Delivery") or "Passage 3". */
   location: string | null
+  /** Position of the passage in its document, from 0, when known. */
+  chunkIndex: number | null
+  /** First PDF page, when known. */
+  page: number | null
   text: string
   /** 0 to 1, higher is better. */
   score: number
