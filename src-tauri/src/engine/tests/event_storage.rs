@@ -45,6 +45,13 @@ struct PacedModel {
     pieces: Vec<String>,
     gap: Duration,
     hang_after_pieces: bool,
+    /// Calls that wait for each other before their first piece and before they finish,
+    /// so parallel streams overlap from start to end whatever the scheduler does.
+    together: Option<Arc<tokio::sync::Barrier>>,
+    /// The gap of every call after the first one, when it differs: one parallel stream
+    /// slower than the other, as on a busy machine.
+    later_gap: Option<Duration>,
+    calls: std::sync::atomic::AtomicUsize,
 }
 
 impl ChatModel for PacedModel {
@@ -53,12 +60,21 @@ impl ChatModel for PacedModel {
         if !self.hang_after_pieces {
             deltas.push_back(ChatDelta::Finish(FinishReason::Stop));
         }
-        let gap = self.gap;
+        let call = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let gap = if call == 0 { self.gap } else { self.later_gap.unwrap_or(self.gap) };
         let hang_after_pieces = self.hang_after_pieces;
-        let paced = futures::stream::unfold(deltas, move |mut remaining| async move {
-            let delta = remaining.pop_front()?;
-            tokio::time::sleep(gap).await;
-            Some((Ok(delta), remaining))
+        let together = self.together.clone();
+        let paced = futures::stream::unfold((deltas, true), move |(mut remaining, is_first)| {
+            let together = together.clone();
+            async move {
+                let delta = remaining.pop_front()?;
+                let is_finish = matches!(delta, ChatDelta::Finish(_));
+                if let Some(barrier) = together.as_ref().filter(|_| is_first || is_finish) {
+                    barrier.wait().await;
+                }
+                tokio::time::sleep(gap).await;
+                Some((Ok(delta), (remaining, false)))
+            }
         });
         let stream: ChatStream = if hang_after_pieces {
             Box::pin(futures::StreamExt::chain(paced, futures::stream::pending()))
@@ -203,16 +219,35 @@ async fn buffered_text_reaching_the_size_limit_is_stored() {
 
 #[tokio::test]
 async fn buffered_chunk_is_stored_after_the_age_limit_while_the_stream_is_quiet() {
-    let model = PacedModel { pieces: vec!["Hel".into(), "lo".into()], gap: Duration::ZERO, hang_after_pieces: true };
+    let model = PacedModel {
+        pieces: vec!["Hel".into(), "lo".into()],
+        gap: Duration::ZERO,
+        hang_after_pieces: true,
+        together: None,
+        later_gap: None,
+        calls: Default::default(),
+    };
     let harness = with_chunk_limits(harness_with_model(Arc::new(model)), usize::MAX, Duration::from_millis(30));
     let agent = create_agent(&harness.db, SIMPLE_ANSWER);
 
     let run = harness.runs.start_run(&agent.id, RunTrigger::Manual, json!({"question": "?"})).await.unwrap();
-    // The model now hangs, so only the age limit can store the buffered text.
+    // The model now hangs, so only the age limit can store the buffered text. On a busy
+    // machine "lo" can come more than the age limit after "Hel": then "Hel" is stored on its
+    // own first (as it must), and "lo" in a second row. Either way all of it gets stored.
     wait_for_event(&harness.db, &run.id, "node_chunk").await;
-    assert_eq!(harness.db.get_run(&run.id).unwrap().status, RunStatus::Running);
-    let stored_chunks = stored_chunks_of(&harness.db.list_run_events(&run.id).unwrap(), "answer_question");
-    assert_eq!(joined_chunk_text(stored_chunks.iter().map(|record| &record.event)), "Hello");
+    let deadline = tokio::time::Instant::now() + WAIT_TIMEOUT;
+    let stored_text = || {
+        let stored_chunks = stored_chunks_of(&harness.db.list_run_events(&run.id).unwrap(), "answer_question");
+        joined_chunk_text(stored_chunks.iter().map(|record| &record.event))
+    };
+    while stored_text() != "Hello" {
+        assert!(tokio::time::Instant::now() < deadline, "the age limit never stored the rest: {:?}", stored_text());
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert_eq!(harness.db.get_run(&run.id).unwrap().status, RunStatus::Running, "stored while the model hangs");
+    // Every live chunk names the row that holds its text.
+    let records = harness.db.list_run_events(&run.id).unwrap();
+    assert_live_chunks_name_their_rows(&records, &live_chunks_of(&harness.sink, &run.id, "answer_question"));
 
     harness.runs.abort_run(&run.id).unwrap();
     wait_for_status(&harness.sink, &run.id, RunStatus::Aborted).await;
@@ -221,7 +256,18 @@ async fn buffered_chunk_is_stored_after_the_age_limit_while_the_stream_is_quiet(
 
 #[tokio::test]
 async fn interleaved_streams_and_node_events_keep_their_stored_order() {
-    let model = PacedModel { pieces: numbered_pieces(20), gap: Duration::from_millis(1), hang_after_pieces: false };
+    // The two answers stream at the same time, start to end, one of them slower (what a
+    // busy machine does to two parallel steps). Without the barrier the faster one finishes
+    // first: its `node_succeeded` then stores the other stream's pending text
+    // (as it must, see `chunk_buffer`), and that stream ends up in two rows.
+    let model = PacedModel {
+        pieces: numbered_pieces(20),
+        gap: Duration::from_millis(1),
+        hang_after_pieces: false,
+        together: Some(Arc::new(tokio::sync::Barrier::new(2))),
+        later_gap: Some(Duration::from_millis(3)),
+        calls: Default::default(),
+    };
     // This test is about two streams interleaving, not about the age limit: with the default
     // 500 ms a busy machine (CI) can take longer than that over the 20 pieces and store two rows.
     let default_bytes = ChunkBufferLimits::default().max_bytes;
