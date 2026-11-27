@@ -1866,6 +1866,8 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "cron",
+ "dbus",
+ "dbus-secret-service",
  "flate2",
  "futures",
  "getrandom 0.3.4",

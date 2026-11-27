@@ -15,6 +15,10 @@ pub enum AppError {
     Database(#[from] rusqlite::Error),
     #[error("credential store error: {0}")]
     Credentials(String),
+    /// The OS credential store cannot keep or hand out secrets right now (Linux keyring
+    /// missing, not set up, or locked). The message says how to fix it.
+    #[error("{}", .0.message())]
+    CredentialStoreUnavailable(CredentialStoreProblem),
     #[error("not set up yet: {0}")]
     MissingCredentials(String),
     #[error("workflow error: {0}")]
@@ -69,6 +73,58 @@ fn newer_app_message(min_version: Option<&str>, unknown_feature: Option<&str>) -
     format!("{needs}. You have {app_version}. Update Graphrt Desktop, then try again.{detail}")
 }
 
+/// Why the OS credential store cannot be used. Only the Secret Service on Linux reports
+/// these; macOS Keychain and Windows Credential Manager are always there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CredentialStoreProblem {
+    /// A keyring service runs but has no default keyring (a fresh install where nobody
+    /// created one): there is nowhere to save, and nothing saved to read.
+    NoDefaultKeyring,
+    /// No keyring service answers (none installed or started, or no session bus).
+    NotRunning,
+    /// The keyring is locked and was not unlocked when asked.
+    Locked,
+}
+
+impl CredentialStoreProblem {
+    /// Stable name sent to the frontend as `details.reason`, which shows its own
+    /// translated wording for it.
+    pub fn reason(self) -> &'static str {
+        match self {
+            Self::NoDefaultKeyring => "no_default_keyring",
+            Self::NotRunning => "not_running",
+            Self::Locked => "locked",
+        }
+    }
+
+    /// Whether the store cannot hold any secret in this state, so a key that is looked
+    /// up is simply not set. A locked keyring may hold keys, so it is not one of these.
+    pub fn holds_no_secrets(self) -> bool {
+        match self {
+            Self::NoDefaultKeyring | Self::NotRunning => true,
+            Self::Locked => false,
+        }
+    }
+
+    /// What is wrong and how to fix it, in words a non-technical user can follow.
+    pub fn message(self) -> &'static str {
+        match self {
+            Self::NoDefaultKeyring => {
+                "This computer has no default password keyring yet, so there is no safe place to save this. \
+                 Open the \"Passwords and Keys\" app, add a password keyring, right-click it and choose \
+                 \"Set as default\", then try again."
+            }
+            Self::NotRunning => {
+                "This computer has no password keyring running, so there is no safe place to save this. \
+                 Install GNOME Keyring (or turn on KDE Wallet), sign out and back in, then try again."
+            }
+            Self::Locked => {
+                "Your password keyring is locked. Unlock it with your computer password when asked, then try again."
+            }
+        }
+    }
+}
+
 fn first_problem_message(problems: &[crate::agent_graph::GraphProblem]) -> String {
     problems.first().map(|problem| problem.message.clone()).unwrap_or_default()
 }
@@ -87,6 +143,7 @@ impl AppError {
             Self::InvalidInput(_) => "invalid_input",
             Self::Database(_) => "database",
             Self::Credentials(_) => "credentials",
+            Self::CredentialStoreUnavailable(_) => "credential_store_unavailable",
             Self::MissingCredentials(_) => "missing_credentials",
             Self::Workflow(_) => "workflow",
             Self::Model(_) => "model",
@@ -109,6 +166,7 @@ impl AppError {
             Self::VersionConflict { base_version, latest_version } => {
                 Some(serde_json::json!({ "baseVersion": base_version, "latestVersion": latest_version }))
             }
+            Self::CredentialStoreUnavailable(problem) => Some(serde_json::json!({ "reason": problem.reason() })),
             Self::InvalidGraph(problems) => {
                 serde_json::to_value(problems).ok().map(|problems| serde_json::json!({ "problems": problems }))
             }
@@ -141,3 +199,20 @@ impl Serialize for AppError {
 }
 
 pub type AppResult<T> = Result<T, AppError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn credential_store_problem_serializes_its_reason_and_fix() {
+        let error = AppError::CredentialStoreUnavailable(CredentialStoreProblem::NoDefaultKeyring);
+        let serialized = serde_json::to_value(&error).unwrap();
+
+        assert_eq!(serialized["code"], "credential_store_unavailable");
+        assert_eq!(serialized["details"]["reason"], "no_default_keyring");
+        let message = serialized["message"].as_str().unwrap();
+        assert!(message.contains("no default password keyring"), "{message}");
+        assert!(message.contains("Passwords and Keys"), "{message}");
+    }
+}

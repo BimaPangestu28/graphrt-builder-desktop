@@ -277,6 +277,8 @@ export type BackendErrorCode =
   | 'invalid_input'
   | 'database'
   | 'credentials'
+  /** The system keyring cannot keep secrets right now (Linux only); `details.reason` says why. */
+  | 'credential_store_unavailable'
   | 'missing_credentials'
   /** start_run: the workflow uses plugins that are not installed, trusted or set up yet. */
   | 'missing_plugins'

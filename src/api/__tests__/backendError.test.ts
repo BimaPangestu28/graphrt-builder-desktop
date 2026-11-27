@@ -1,5 +1,6 @@
 import { conflictLatestVersion, invalidGraphProblems } from '../agentGraph'
-import { BackendError, isBackendErrorWithCode, parseBackendErrorDetails } from '../client'
+import { setLocale } from '@/i18n'
+import { BackendError, isBackendErrorWithCode, parseBackendErrorDetails, toBackendError } from '../client'
 
 describe('parseBackendErrorDetails', () => {
   it('keeps well-formed version_conflict details', () => {
@@ -18,6 +19,45 @@ describe('parseBackendErrorDetails', () => {
   it('returns null for codes without details', () => {
     expect(parseBackendErrorDetails('not_found', { anything: true })).toBeNull()
     expect(parseBackendErrorDetails('builder_busy', undefined)).toBeNull()
+  })
+})
+
+describe('toBackendError', () => {
+  afterEach(() => setLocale('en'))
+
+  it('keeps the code and message of a backend error', () => {
+    const error = toBackendError({ code: 'not_found', message: 'agent not found' })
+    expect(error.code).toBe('not_found')
+    expect(error.message).toBe('agent not found')
+  })
+
+  it('reports anything else as an internal error', () => {
+    expect(toBackendError('boom')).toMatchObject({ code: 'internal', message: 'boom' })
+  })
+
+  it('explains an unusable system keyring in the language of the app', () => {
+    const rawError = { code: 'credential_store_unavailable', message: 'English text from the backend', details: { reason: 'no_default_keyring' } }
+
+    setLocale('en')
+    expect(toBackendError(rawError).message).toContain('no default password keyring yet')
+    expect(toBackendError(rawError).message).toContain('"Passwords and Keys"')
+
+    setLocale('id')
+    const indonesian = toBackendError(rawError)
+    expect(indonesian.message).toContain('belum punya keyring kata sandi default')
+    expect(indonesian.details).toEqual({ reason: 'no_default_keyring' })
+  })
+
+  it('names each keyring problem differently', () => {
+    const messageFor = (reason: string) => toBackendError({ code: 'credential_store_unavailable', message: 'fallback', details: { reason } }).message
+    expect(messageFor('not_running')).toContain('no password keyring running')
+    expect(messageFor('locked')).toContain('is locked')
+  })
+
+  it('falls back to the backend wording for a keyring problem it does not know', () => {
+    const error = toBackendError({ code: 'credential_store_unavailable', message: 'The keyring is on holiday.', details: { reason: 'on_holiday' } })
+    expect(error.message).toBe('The keyring is on holiday.')
+    expect(error.details).toBeNull()
   })
 })
 

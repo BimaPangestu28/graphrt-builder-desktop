@@ -15,7 +15,7 @@ use graphrt_llm::openai::{OpenAiConfig, OpenAiModel};
 use graphrt_llm::{ChatModel, LlmError, ModelRegistry};
 use serde::{Deserialize, Serialize};
 
-use crate::error::{AppError, AppResult};
+use crate::error::{AppError, AppResult, CredentialStoreProblem};
 use crate::local_cli::{self, LocalCli, LocalCliStatus};
 use crate::storage::Database;
 
@@ -160,10 +160,107 @@ pub struct ModelChoice {
     pub name: String,
 }
 
+/// Opens the keychain entry of `(service, account)`.
+type OpenKeychainEntry = fn(&str, &str) -> keyring::Result<keyring::Entry>;
+
+/// The OS keychain: one entry per account under `service`.
+struct Keychain {
+    service: String,
+    /// `keyring::Entry::new` in the app; tests swap in a keychain that fails the way a
+    /// broken one does.
+    open_entry: OpenKeychainEntry,
+}
+
+impl Keychain {
+    /// The stored value of `account`, or `None` when there is none. A keychain that
+    /// cannot hold anything yet (see [`CredentialStoreProblem::holds_no_secrets`]) has
+    /// none either, so what needs no key keeps working there.
+    fn read(&self, account: &str) -> keyring::Result<Option<String>> {
+        match (self.open_entry)(&self.service, account)?.get_password() {
+            Ok(value) => Ok(Some(value)),
+            Err(error) if is_absent(&error) => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
+    /// Saves or replaces the value of `account`.
+    fn save(&self, account: &str, value: &str) -> keyring::Result<()> {
+        (self.open_entry)(&self.service, account)?.set_password(value)
+    }
+
+    /// Removes the value of `account`; succeeds if none was stored.
+    fn delete(&self, account: &str) -> keyring::Result<()> {
+        match (self.open_entry)(&self.service, account)?.delete_credential() {
+            Err(error) if is_absent(&error) => Ok(()),
+            result => result,
+        }
+    }
+}
+
+/// Whether a read or delete failed only because nothing is stored: no such entry, or a
+/// keychain that holds no secrets at all (logged once, since every read hits it).
+fn is_absent(error: &keyring::Error) -> bool {
+    if matches!(error, keyring::Error::NoEntry) {
+        return true;
+    }
+    match credential_store_problem(error) {
+        Some(problem) if problem.holds_no_secrets() => {
+            static LOGGED: std::sync::Once = std::sync::Once::new();
+            LOGGED.call_once(|| log::warn!("treating every key as not set: {} ({error})", problem.message()));
+            true
+        }
+        _ => false,
+    }
+}
+
+/// Why the Secret Service (Linux) cannot be used, if `error` is one of the known cases.
+///
+/// `keyring` reports them as generic storage failures wrapping the D-Bus client's error:
+/// - no default collection: looking up an entry that does not exist falls back to the
+///   default collection, and saving creates the item there (`NoResult`);
+/// - no secret service, or no session bus to reach one (`ServiceUnknown` and the like);
+/// - a locked collection, or an unlock prompt the user dismissed.
+#[cfg(target_os = "linux")]
+fn credential_store_problem(error: &keyring::Error) -> Option<CredentialStoreProblem> {
+    use dbus_secret_service::Error as SecretServiceError;
+
+    /// D-Bus errors that mean nothing answers on the secret service name, or there is no bus.
+    const NOT_RUNNING_DBUS_ERRORS: [&str; 5] = [
+        "org.freedesktop.DBus.Error.ServiceUnknown",
+        "org.freedesktop.DBus.Error.NameHasNoOwner",
+        "org.freedesktop.DBus.Error.FileNotFound",
+        "org.freedesktop.DBus.Error.NoServer",
+        "org.freedesktop.DBus.Error.NotSupported",
+    ];
+
+    let (keyring::Error::NoStorageAccess(source) | keyring::Error::PlatformFailure(source)) = error else {
+        return None;
+    };
+    match source.downcast_ref::<SecretServiceError>()? {
+        SecretServiceError::NoResult => Some(CredentialStoreProblem::NoDefaultKeyring),
+        SecretServiceError::Locked | SecretServiceError::Prompt => Some(CredentialStoreProblem::Locked),
+        SecretServiceError::Unavailable => Some(CredentialStoreProblem::NotRunning),
+        SecretServiceError::Dbus(dbus_error) => {
+            let name = dbus_error.name()?;
+            let not_running =
+                NOT_RUNNING_DBUS_ERRORS.contains(&name) || name.starts_with("org.freedesktop.DBus.Error.Spawn.");
+            not_running.then_some(CredentialStoreProblem::NotRunning)
+        }
+        _ => None,
+    }
+}
+
+/// macOS Keychain and Windows Credential Manager are always there; their failures stay
+/// plain credential store errors.
+#[cfg(not(target_os = "linux"))]
+fn credential_store_problem(_error: &keyring::Error) -> Option<CredentialStoreProblem> {
+    None
+}
+
 /// Where keys are physically kept.
 enum CredentialBackend {
     /// OS keychain; one entry per provider under `service`.
-    Keychain { service: String },
+    Keychain(Keychain),
     /// Process memory only (tests).
     InMemory(Mutex<HashMap<ModelProvider, String>>),
 }
@@ -179,10 +276,10 @@ pub struct CredentialStore {
 impl fmt::Debug for CredentialStore {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.backend {
-            CredentialBackend::Keychain { service } => formatter
+            CredentialBackend::Keychain(keychain) => formatter
                 .debug_struct("CredentialStore")
                 .field("backend", &"keychain")
-                .field("service", service)
+                .field("service", &keychain.service)
                 .finish(),
             CredentialBackend::InMemory(keys) => {
                 let mut stored_providers: Vec<ModelProvider> = match keys.lock() {
@@ -200,9 +297,13 @@ impl fmt::Debug for CredentialStore {
     }
 }
 
-/// Converts a keychain error into an `AppError` naming the provider and operation only.
+/// Converts a keychain error into an `AppError` naming the provider and operation only
+/// (or the keyring problem to fix, when it is a known one).
 /// `keyring::Error`'s `Display` never includes the password, so it is safe to include.
 fn keychain_error(operation: &str, provider: ModelProvider, error: &keyring::Error) -> AppError {
+    if let Some(problem) = credential_store_problem(error) {
+        return AppError::CredentialStoreUnavailable(problem);
+    }
     AppError::Credentials(format!("could not {operation} the {} key: {error}", provider.registry_name()))
 }
 
@@ -218,8 +319,13 @@ impl CredentialStore {
 
     /// Store backed by the OS keychain under a custom service name.
     fn keychain_for_service(service: &str) -> Self {
+        Self::keychain_with_entries(service, keyring::Entry::new)
+    }
+
+    /// Store backed by a keychain whose entries `open_entry` opens.
+    fn keychain_with_entries(service: &str, open_entry: OpenKeychainEntry) -> Self {
         Self {
-            backend: CredentialBackend::Keychain { service: service.to_owned() },
+            backend: CredentialBackend::Keychain(Keychain { service: service.to_owned(), open_entry }),
             in_memory_workflow_secrets: Mutex::new(HashMap::new()),
         }
     }
@@ -248,8 +354,8 @@ impl CredentialStore {
             return Err(AppError::InvalidInput("API key is empty".into()));
         }
         match &self.backend {
-            CredentialBackend::Keychain { service } => keychain_entry(service, provider)?
-                .set_password(api_key)
+            CredentialBackend::Keychain(keychain) => keychain
+                .save(provider.registry_name(), api_key)
                 .map_err(|error| keychain_error("save", provider, &error)),
             CredentialBackend::InMemory(keys) => {
                 lock_keys(keys)?.insert(provider, api_key.to_owned());
@@ -261,10 +367,9 @@ impl CredentialStore {
     /// Removes a key; succeeds if none was stored.
     pub fn delete_api_key(&self, provider: ModelProvider) -> AppResult<()> {
         match &self.backend {
-            CredentialBackend::Keychain { service } => match keychain_entry(service, provider)?.delete_credential() {
-                Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-                Err(error) => Err(keychain_error("delete", provider, &error)),
-            },
+            CredentialBackend::Keychain(keychain) => {
+                keychain.delete(provider.registry_name()).map_err(|error| keychain_error("delete", provider, &error))
+            }
             CredentialBackend::InMemory(keys) => {
                 lock_keys(keys)?.remove(&provider);
                 Ok(())
@@ -278,11 +383,9 @@ impl CredentialStore {
             return Ok(None);
         }
         match &self.backend {
-            CredentialBackend::Keychain { service } => match keychain_entry(service, provider)?.get_password() {
-                Ok(api_key) => Ok(Some(api_key)),
-                Err(keyring::Error::NoEntry) => Ok(None),
-                Err(error) => Err(keychain_error("read", provider, &error)),
-            },
+            CredentialBackend::Keychain(keychain) => {
+                keychain.read(provider.registry_name()).map_err(|error| keychain_error("read", provider, &error))
+            }
             CredentialBackend::InMemory(keys) => Ok(lock_keys(keys)?.get(&provider).cloned()),
         }
     }
@@ -308,8 +411,8 @@ impl CredentialStore {
             return Err(AppError::InvalidInput(format!("the value for {name} is empty")));
         }
         match &self.backend {
-            CredentialBackend::Keychain { service } => workflow_secret_entry(service, name)?
-                .set_password(value)
+            CredentialBackend::Keychain(keychain) => keychain
+                .save(&workflow_secret_account(name), value)
                 .map_err(|error| secret_keychain_error("save", name, &error)),
             CredentialBackend::InMemory(_) => {
                 lock_secrets(&self.in_memory_workflow_secrets)?.insert(name.to_owned(), value.to_owned());
@@ -322,12 +425,9 @@ impl CredentialStore {
     pub fn delete_workflow_secret(&self, name: &str) -> AppResult<()> {
         validate_workflow_secret_name(name)?;
         match &self.backend {
-            CredentialBackend::Keychain { service } => {
-                match workflow_secret_entry(service, name)?.delete_credential() {
-                    Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-                    Err(error) => Err(secret_keychain_error("delete", name, &error)),
-                }
-            }
+            CredentialBackend::Keychain(keychain) => keychain
+                .delete(&workflow_secret_account(name))
+                .map_err(|error| secret_keychain_error("delete", name, &error)),
             CredentialBackend::InMemory(_) => {
                 lock_secrets(&self.in_memory_workflow_secrets)?.remove(name);
                 Ok(())
@@ -339,11 +439,9 @@ impl CredentialStore {
     pub(crate) fn read_workflow_secret(&self, name: &str) -> AppResult<Option<String>> {
         validate_workflow_secret_name(name)?;
         match &self.backend {
-            CredentialBackend::Keychain { service } => match workflow_secret_entry(service, name)?.get_password() {
-                Ok(value) => Ok(Some(value)),
-                Err(keyring::Error::NoEntry) => Ok(None),
-                Err(error) => Err(secret_keychain_error("read", name, &error)),
-            },
+            CredentialBackend::Keychain(keychain) => keychain
+                .read(&workflow_secret_account(name))
+                .map_err(|error| secret_keychain_error("read", name, &error)),
             CredentialBackend::InMemory(_) => Ok(lock_secrets(&self.in_memory_workflow_secrets)?.get(name).cloned()),
         }
     }
@@ -394,9 +492,9 @@ impl CredentialStore {
             return Err(AppError::InvalidInput(format!("the value for {variable} is empty")));
         }
         match &self.backend {
-            CredentialBackend::Keychain { service } => keychain_account_entry(service, &account, variable)?
-                .set_password(value)
-                .map_err(|error| secret_keychain_error("save", variable, &error)),
+            CredentialBackend::Keychain(keychain) => {
+                keychain.save(&account, value).map_err(|error| secret_keychain_error("save", variable, &error))
+            }
             CredentialBackend::InMemory(_) => {
                 lock_secrets(&self.in_memory_workflow_secrets)?.insert(account, value.to_owned());
                 Ok(())
@@ -408,11 +506,8 @@ impl CredentialStore {
     pub fn delete_plugin_config(&self, plugin: &str, variable: &str) -> AppResult<()> {
         let account = plugin_config_account(plugin, variable)?;
         match &self.backend {
-            CredentialBackend::Keychain { service } => {
-                match keychain_account_entry(service, &account, variable)?.delete_credential() {
-                    Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-                    Err(error) => Err(secret_keychain_error("delete", variable, &error)),
-                }
+            CredentialBackend::Keychain(keychain) => {
+                keychain.delete(&account).map_err(|error| secret_keychain_error("delete", variable, &error))
             }
             CredentialBackend::InMemory(_) => {
                 lock_secrets(&self.in_memory_workflow_secrets)?.remove(&account);
@@ -426,12 +521,8 @@ impl CredentialStore {
     pub(crate) fn read_plugin_config(&self, plugin: &str, variable: &str) -> AppResult<Option<String>> {
         let account = plugin_config_account(plugin, variable)?;
         match &self.backend {
-            CredentialBackend::Keychain { service } => {
-                match keychain_account_entry(service, &account, variable)?.get_password() {
-                    Ok(value) => Ok(Some(value)),
-                    Err(keyring::Error::NoEntry) => Ok(None),
-                    Err(error) => Err(secret_keychain_error("read", variable, &error)),
-                }
+            CredentialBackend::Keychain(keychain) => {
+                keychain.read(&account).map_err(|error| secret_keychain_error("read", variable, &error))
             }
             CredentialBackend::InMemory(_) => {
                 Ok(lock_secrets(&self.in_memory_workflow_secrets)?.get(&account).cloned())
@@ -457,9 +548,9 @@ impl CredentialStore {
             return Err(AppError::InvalidInput("the value is empty".into()));
         }
         match &self.backend {
-            CredentialBackend::Keychain { service } => keychain_account_entry(service, &account, name)?
-                .set_password(value)
-                .map_err(|error| secret_keychain_error("save", name, &error)),
+            CredentialBackend::Keychain(keychain) => {
+                keychain.save(&account, value).map_err(|error| secret_keychain_error("save", name, &error))
+            }
             CredentialBackend::InMemory(_) => {
                 lock_secrets(&self.in_memory_workflow_secrets)?.insert(account, value.to_owned());
                 Ok(())
@@ -471,11 +562,8 @@ impl CredentialStore {
     pub fn delete_deploy_secret(&self, name: &str) -> AppResult<()> {
         let account = deploy_secret_account(name)?;
         match &self.backend {
-            CredentialBackend::Keychain { service } => {
-                match keychain_account_entry(service, &account, name)?.delete_credential() {
-                    Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-                    Err(error) => Err(secret_keychain_error("delete", name, &error)),
-                }
+            CredentialBackend::Keychain(keychain) => {
+                keychain.delete(&account).map_err(|error| secret_keychain_error("delete", name, &error))
             }
             CredentialBackend::InMemory(_) => {
                 lock_secrets(&self.in_memory_workflow_secrets)?.remove(&account);
@@ -489,12 +577,8 @@ impl CredentialStore {
     pub(crate) fn read_deploy_secret(&self, name: &str) -> AppResult<Option<String>> {
         let account = deploy_secret_account(name)?;
         match &self.backend {
-            CredentialBackend::Keychain { service } => {
-                match keychain_account_entry(service, &account, name)?.get_password() {
-                    Ok(value) => Ok(Some(value)),
-                    Err(keyring::Error::NoEntry) => Ok(None),
-                    Err(error) => Err(secret_keychain_error("read", name, &error)),
-                }
+            CredentialBackend::Keychain(keychain) => {
+                keychain.read(&account).map_err(|error| secret_keychain_error("read", name, &error))
             }
             CredentialBackend::InMemory(_) => {
                 Ok(lock_secrets(&self.in_memory_workflow_secrets)?.get(&account).cloned())
@@ -520,9 +604,9 @@ impl CredentialStore {
             return Err(AppError::InvalidInput("the value is empty".into()));
         }
         match &self.backend {
-            CredentialBackend::Keychain { service } => keychain_account_entry(service, &account, &account)?
-                .set_password(value)
-                .map_err(|error| secret_keychain_error("save", &account, &error)),
+            CredentialBackend::Keychain(keychain) => {
+                keychain.save(&account, value).map_err(|error| secret_keychain_error("save", &account, &error))
+            }
             CredentialBackend::InMemory(_) => {
                 lock_secrets(&self.in_memory_workflow_secrets)?.insert(account, value.to_owned());
                 Ok(())
@@ -534,11 +618,8 @@ impl CredentialStore {
     pub fn delete_mcp_oauth(&self, server: &str, part: McpOAuthPart) -> AppResult<()> {
         let account = mcp_oauth_account(server, part)?;
         match &self.backend {
-            CredentialBackend::Keychain { service } => {
-                match keychain_account_entry(service, &account, &account)?.delete_credential() {
-                    Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-                    Err(error) => Err(secret_keychain_error("delete", &account, &error)),
-                }
+            CredentialBackend::Keychain(keychain) => {
+                keychain.delete(&account).map_err(|error| secret_keychain_error("delete", &account, &error))
             }
             CredentialBackend::InMemory(_) => {
                 lock_secrets(&self.in_memory_workflow_secrets)?.remove(&account);
@@ -551,12 +632,8 @@ impl CredentialStore {
     pub(crate) fn read_mcp_oauth(&self, server: &str, part: McpOAuthPart) -> AppResult<Option<String>> {
         let account = mcp_oauth_account(server, part)?;
         match &self.backend {
-            CredentialBackend::Keychain { service } => {
-                match keychain_account_entry(service, &account, &account)?.get_password() {
-                    Ok(value) => Ok(Some(value)),
-                    Err(keyring::Error::NoEntry) => Ok(None),
-                    Err(error) => Err(secret_keychain_error("read", &account, &error)),
-                }
+            CredentialBackend::Keychain(keychain) => {
+                keychain.read(&account).map_err(|error| secret_keychain_error("read", &account, &error))
             }
             CredentialBackend::InMemory(_) => {
                 Ok(lock_secrets(&self.in_memory_workflow_secrets)?.get(&account).cloned())
@@ -628,10 +705,6 @@ fn plugin_config_account(plugin: &str, variable: &str) -> AppResult<String> {
     Ok(format!("{PLUGIN_CONFIG_ACCOUNT_PREFIX}{plugin}:{variable}"))
 }
 
-fn keychain_account_entry(service: &str, account: &str, label: &str) -> AppResult<keyring::Entry> {
-    keyring::Entry::new(service, account).map_err(|error| secret_keychain_error("open", label, &error))
-}
-
 /// Keychain account prefix that keeps workflow secrets apart from provider keys.
 const WORKFLOW_SECRET_ACCOUNT_PREFIX: &str = "env:";
 const WORKFLOW_SECRET_NAME_MAX_LENGTH: usize = 64;
@@ -652,22 +725,22 @@ fn validate_workflow_secret_name(name: &str) -> AppResult<()> {
     }
 }
 
-fn workflow_secret_entry(service: &str, name: &str) -> AppResult<keyring::Entry> {
-    keyring::Entry::new(service, &format!("{WORKFLOW_SECRET_ACCOUNT_PREFIX}{name}"))
-        .map_err(|error| secret_keychain_error("open", name, &error))
+/// `env:<NAME>`, the keychain account of a workflow secret.
+fn workflow_secret_account(name: &str) -> String {
+    format!("{WORKFLOW_SECRET_ACCOUNT_PREFIX}{name}")
 }
 
-/// Names the secret and operation only; `keyring::Error` never includes the value.
+/// Names the secret and operation only (or the keyring problem to fix, when it is a known
+/// one); `keyring::Error` never includes the value.
 fn secret_keychain_error(operation: &str, name: &str, error: &keyring::Error) -> AppError {
+    if let Some(problem) = credential_store_problem(error) {
+        return AppError::CredentialStoreUnavailable(problem);
+    }
     AppError::Credentials(format!("could not {operation} the secret {name}: {error}"))
 }
 
 fn lock_secrets(secrets: &Mutex<HashMap<String, String>>) -> AppResult<MutexGuard<'_, HashMap<String, String>>> {
     secrets.lock().map_err(|_| AppError::Internal("secret store lock poisoned".into()))
-}
-
-fn keychain_entry(service: &str, provider: ModelProvider) -> AppResult<keyring::Entry> {
-    keyring::Entry::new(service, provider.registry_name()).map_err(|error| keychain_error("open", provider, &error))
 }
 
 fn lock_keys(
@@ -1053,6 +1126,179 @@ mod tests {
         let store = CredentialStore::in_memory();
         store.set_workflow_secret("WHATSAPP_TOKEN", "super-secret-token").unwrap();
         assert!(!format!("{store:?}").contains("super-secret-token"));
+    }
+
+    /// The Secret Service states that broke a fresh Linux install: each fake keychain
+    /// fails every call with the exact error `keyring` returns in that state.
+    #[cfg(target_os = "linux")]
+    mod unusable_keyring {
+        use dbus_secret_service::Error as SecretServiceError;
+
+        use super::*;
+
+        /// A keychain entry whose every call fails with `error()`.
+        struct FailingCredential {
+            error: fn() -> keyring::Error,
+        }
+
+        impl keyring::credential::CredentialApi for FailingCredential {
+            fn set_secret(&self, _secret: &[u8]) -> keyring::Result<()> {
+                Err((self.error)())
+            }
+
+            fn get_secret(&self) -> keyring::Result<Vec<u8>> {
+                Err((self.error)())
+            }
+
+            fn delete_credential(&self) -> keyring::Result<()> {
+                Err((self.error)())
+            }
+
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
+            }
+        }
+
+        /// Opens entries that fail with `error()`.
+        fn failing_entry(error: fn() -> keyring::Error) -> keyring::Result<keyring::Entry> {
+            Ok(keyring::Entry::new_with_credential(Box::new(FailingCredential { error })))
+        }
+
+        fn store_failing_with(open_entry: OpenKeychainEntry) -> CredentialStore {
+            CredentialStore::keychain_with_entries("dev.graphrt.desktop.test", open_entry)
+        }
+
+        const NO_DEFAULT_COLLECTION: OpenKeychainEntry = |_, _| failing_entry(no_default_collection);
+        const NO_SECRET_SERVICE: OpenKeychainEntry = |_, _| failing_entry(no_secret_service);
+        const LOCKED_COLLECTION: OpenKeychainEntry = |_, _| failing_entry(locked_collection);
+        const UNKNOWN_FAILURE: OpenKeychainEntry = |_, _| failing_entry(unknown_failure);
+
+        /// GNOME Keyring on a fresh install: the service answers, but the `default`
+        /// alias points to no collection.
+        fn no_default_collection() -> keyring::Error {
+            keyring::Error::NoStorageAccess(Box::new(SecretServiceError::NoResult))
+        }
+
+        /// No keyring installed: nothing owns `org.freedesktop.secrets` on the session bus.
+        fn no_secret_service() -> keyring::Error {
+            let dbus_error = dbus::Error::new_custom(
+                "org.freedesktop.DBus.Error.ServiceUnknown",
+                "The name org.freedesktop.secrets was not provided by any .service files",
+            );
+            keyring::Error::PlatformFailure(Box::new(SecretServiceError::Dbus(dbus_error)))
+        }
+
+        /// The keyring is locked and the user dismissed the unlock prompt.
+        fn locked_collection() -> keyring::Error {
+            keyring::Error::NoStorageAccess(Box::new(SecretServiceError::Prompt))
+        }
+
+        /// A failure the app has no advice for.
+        fn unknown_failure() -> keyring::Error {
+            keyring::Error::PlatformFailure(Box::new(SecretServiceError::Parse))
+        }
+
+        #[test]
+        fn keys_read_as_not_set_when_the_keyring_holds_nothing() {
+            for (keychain, state) in
+                [(NO_DEFAULT_COLLECTION, "no default collection"), (NO_SECRET_SERVICE, "no secret service")]
+            {
+                let store = store_failing_with(keychain);
+                assert_eq!(store.read_api_key(ModelProvider::Openai).unwrap(), None, "{state}");
+                assert_eq!(store.read_workflow_secret("MAPS_KEY").unwrap(), None, "{state}");
+                assert!(!store.has_plugin_config("whatsapp", "WHATSAPP_ACCESS_TOKEN").unwrap(), "{state}");
+                assert_eq!(store.read_deploy_secret("key:agent-1").unwrap(), None, "{state}");
+                assert_eq!(store.read_mcp_oauth("notion", McpOAuthPart::AccessToken).unwrap(), None, "{state}");
+                store.delete_api_key(ModelProvider::Openai).expect("deleting a key that cannot exist succeeds");
+                store.delete_workflow_secret("MAPS_KEY").expect("deleting a secret that cannot exist succeeds");
+            }
+        }
+
+        /// The bug: a flow that only uses local Ollama failed with "credential store
+        /// error: could not read the openai key" because building the registry reads
+        /// every provider key.
+        #[test]
+        fn ollama_stays_usable_without_a_default_keyring() {
+            let store = store_failing_with(NO_DEFAULT_COLLECTION);
+            let db = test_database();
+
+            let registry = build_model_registry(&store, &db).expect("the registry builds without any key");
+            assert_eq!(registry.names().collect::<Vec<_>>(), ["ollama"]);
+
+            let statuses = store.provider_statuses(&db).unwrap();
+            let configured: Vec<ModelProvider> =
+                statuses.iter().filter(|status| status.configured).map(|status| status.provider).collect();
+            assert_eq!(configured, vec![ModelProvider::Ollama]);
+
+            db.set_setting(SETTING_DEFAULT_PROVIDER, "ollama").unwrap();
+            db.set_setting(SETTING_DEFAULT_MODEL, "llama3.2").unwrap();
+            assert_eq!(default_model(&store, &db).unwrap().provider, ModelProvider::Ollama);
+        }
+
+        #[test]
+        fn saving_explains_how_to_fix_the_keyring() {
+            for (keychain, problem) in [
+                (NO_DEFAULT_COLLECTION, CredentialStoreProblem::NoDefaultKeyring),
+                (NO_SECRET_SERVICE, CredentialStoreProblem::NotRunning),
+                (LOCKED_COLLECTION, CredentialStoreProblem::Locked),
+            ] {
+                let store = store_failing_with(keychain);
+                let saves = [
+                    store.set_api_key(ModelProvider::Openai, SECRET_KEY),
+                    store.set_workflow_secret("MAPS_KEY", SECRET_KEY),
+                    store.set_plugin_config("whatsapp", "WHATSAPP_ACCESS_TOKEN", SECRET_KEY),
+                    store.set_deploy_secret("key:agent-1", SECRET_KEY),
+                    store.set_mcp_oauth("notion", McpOAuthPart::AccessToken, SECRET_KEY),
+                ];
+                for save in saves {
+                    let save_error = save.expect_err("nothing can be saved");
+                    assert!(
+                        matches!(save_error, AppError::CredentialStoreUnavailable(found) if found == problem),
+                        "{problem:?}: {save_error:?}"
+                    );
+                    assert_eq!(save_error.to_string(), problem.message());
+                    assert!(!save_error.to_string().contains(SECRET_KEY));
+                }
+            }
+        }
+
+        /// A locked keyring may hold keys, so reading one is an error, never "not set".
+        #[test]
+        fn a_locked_keyring_is_not_read_as_empty() {
+            let store = store_failing_with(LOCKED_COLLECTION);
+            let read_error = store.read_api_key(ModelProvider::Openai).expect_err("a locked keyring cannot be read");
+            assert!(matches!(read_error, AppError::CredentialStoreUnavailable(CredentialStoreProblem::Locked)));
+            assert!(build_model_registry(&store, &test_database()).is_err());
+        }
+
+        #[test]
+        fn other_keyring_failures_stay_credential_errors() {
+            let store = store_failing_with(UNKNOWN_FAILURE);
+            let read_error = store.read_api_key(ModelProvider::Openai).expect_err("the failure is reported");
+            assert!(matches!(read_error, AppError::Credentials(_)), "{read_error:?}");
+            let save_error = store.set_api_key(ModelProvider::Openai, SECRET_KEY).expect_err("the failure is reported");
+            assert!(matches!(save_error, AppError::Credentials(_)), "{save_error:?}");
+        }
+
+        /// Talks to the real Secret Service of a session that has no default keyring. Run in
+        /// a throwaway session, with XDG_DATA_HOME, XDG_CONFIG_HOME and XDG_RUNTIME_DIR
+        /// pointing to empty directories:
+        /// `dbus-run-session -- cargo test real_secret_service_without_default_keyring -- --ignored`
+        #[test]
+        #[ignore]
+        fn real_secret_service_without_default_keyring() {
+            let service = format!("dev.graphrt.desktop.test.{}", uuid::Uuid::new_v4());
+            let store = CredentialStore::keychain_for_service(&service);
+
+            assert_eq!(store.read_api_key(ModelProvider::Openai).unwrap(), None);
+            store.delete_api_key(ModelProvider::Openai).unwrap();
+            assert!(build_model_registry(&store, &test_database()).unwrap().names().any(|name| name == "ollama"));
+            let save_error = store.set_api_key(ModelProvider::Openai, SECRET_KEY).expect_err("there is no keyring");
+            assert!(
+                matches!(save_error, AppError::CredentialStoreUnavailable(CredentialStoreProblem::NoDefaultKeyring)),
+                "{save_error:?}"
+            );
+        }
     }
 
     /// Touches the real OS keychain (may show a permission prompt); run with `--ignored`.

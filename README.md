@@ -89,8 +89,11 @@ signature does not match is rejected. On Linux, in-app updates replace the
   is on (Ubuntu enables it by default). Without a tray icon, closing the window quits
   graphrt; with one, starting graphrt again brings the window back.
 - **Keys and secrets** are stored through the Secret Service (GNOME Keyring, KWallet).
-  On a minimal window manager without one, install and start `gnome-keyring`, or
-  saving a key fails with a "credential store error".
+  On a minimal window manager without one, install and start `gnome-keyring`; on a
+  fresh install where the keyring has no default keyring yet, create one in
+  "Passwords and Keys" and set it as default. Until then graphrt treats every key as
+  not set (Ollama and the AI tools on your computer keep working) and saving a key
+  says what to do. Keys are never written to a plain file.
 - **Keep the computer awake while an agent runs** uses `systemd-inhibit` (systemd-logind).
 - **Browser plugins**: if Chromium fails to start, install its system libraries once,
   e.g. `sudo npx playwright install-deps chromium` (needs Node), or your distribution's

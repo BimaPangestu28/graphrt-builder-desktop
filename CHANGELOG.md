@@ -15,6 +15,10 @@ releases may contain breaking changes; they are called out under **Changed**.
 - **What this agent learned**: every agent has a **Learned** page with the short notes it picked up. After a run you can say it was not what you wanted and what should be different; that becomes a note waiting for you. A note is used only after you approve it. Notes that nobody verified and notes that are high risk (sending, money, approvals) are marked and say why. You can change, stop using or delete a note, add your own, apply one person's note to everyone, and forget a person. Passwords and keys are hidden before anything is saved. "Learn automatically" is off unless you turn it on.
 - **Plugins that need a newer app say so**: when a plugin in the catalog needs a newer Graphrt Desktop than yours, its card and page say "Needs Graphrt Desktop 0.3.0 or newer" with a way to update, and Install is off until then. An installed plugin keeps working; only its update waits. Installing such a plugin from a folder or archive gives the same plain message instead of a technical error.
 
+### Fixed
+
+- **Linux without a password keyring**: on a computer whose keyring has no default keyring yet (a fresh install) or that runs no keyring at all, every bot reply and run failed with "credential store error: could not read the openai key", even when it only used Ollama. A key that was never saved now simply counts as not set, so Ollama and the AI tools on your computer keep working. Saving a key there now says what is wrong and how to fix it (create a default keyring in "Passwords and Keys", start a keyring, or unlock it) instead of a technical error. Keys are still never written to a plain file.
+
 ## [0.2.0] - 2026-11-26
 
 Agents can now start on their own when something happens, the app speaks Bahasa Indonesia, and agents can use online services through MCP sign-in.
