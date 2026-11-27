@@ -222,7 +222,10 @@ async fn buffered_chunk_is_stored_after_the_age_limit_while_the_stream_is_quiet(
 #[tokio::test]
 async fn interleaved_streams_and_node_events_keep_their_stored_order() {
     let model = PacedModel { pieces: numbered_pieces(20), gap: Duration::from_millis(1), hang_after_pieces: false };
-    let harness = harness_with_model(Arc::new(model));
+    // This test is about two streams interleaving, not about the age limit: with the default
+    // 500 ms a busy machine (CI) can take longer than that over the 20 pieces and store two rows.
+    let default_bytes = ChunkBufferLimits::default().max_bytes;
+    let harness = with_chunk_limits(harness_with_model(Arc::new(model)), default_bytes, Duration::from_secs(600));
     let agent = create_agent(&harness.db, PARALLEL_ANSWERS);
 
     let run = harness.runs.start_run(&agent.id, RunTrigger::Manual, json!({})).await.unwrap();
