@@ -42,6 +42,30 @@ impl Database {
         )?;
         Ok(())
     }
+
+    /// Removes what is stored under `key` for the agent; succeeds when nothing was.
+    ///
+    /// # Errors
+    /// `InvalidInput` for a blank key.
+    pub fn delete_agent_setting(&self, agent_id: &str, key: &str) -> AppResult<()> {
+        validate_key(key)?;
+        let connection = self.lock()?;
+        connection.execute("DELETE FROM agent_settings WHERE agent_id = ?1 AND key = ?2", params![agent_id, key])?;
+        Ok(())
+    }
+
+    /// The agents that have something stored under `key`, oldest setting first.
+    ///
+    /// # Errors
+    /// `InvalidInput` for a blank key.
+    pub fn agents_with_setting(&self, key: &str) -> AppResult<Vec<String>> {
+        validate_key(key)?;
+        let connection = self.lock()?;
+        let mut statement =
+            connection.prepare("SELECT agent_id FROM agent_settings WHERE key = ?1 ORDER BY updated_at ASC")?;
+        let agents = statement.query_map([key], |row| row.get(0))?.collect::<Result<Vec<String>, _>>()?;
+        Ok(agents)
+    }
 }
 
 fn validate_key(key: &str) -> AppResult<()> {

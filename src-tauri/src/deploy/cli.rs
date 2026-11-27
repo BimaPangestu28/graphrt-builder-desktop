@@ -156,9 +156,39 @@ pub fn help_lists_online_features(deploy_help: &str) -> bool {
         .all(|flag| deploy_help.contains(flag))
 }
 
+/// Whether `graphrt deploy --help` lists `--channel` (Graphrt/graphrt#145): the online copy
+/// can answer customers on WhatsApp Business.
+pub fn help_lists_channels(deploy_help: &str) -> bool {
+    deploy_help.contains("--channel")
+}
+
+/// What the installed graphrt tools can put online, from one `graphrt deploy --help`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct CliAbilities {
+    /// The chat page, the phone page and the rest of [`help_lists_online_features`].
+    pub online_features: bool,
+    /// Messaging channels ([`help_lists_channels`]).
+    pub channels: bool,
+}
+
+/// Runs `graphrt deploy --help` and reads what the tools can do. Nothing when the tools do
+/// not start.
+pub fn abilities(executable: &Path) -> CliAbilities {
+    match deploy_help(executable) {
+        Some(help) => {
+            CliAbilities { online_features: help_lists_online_features(&help), channels: help_lists_channels(&help) }
+        }
+        None => CliAbilities::default(),
+    }
+}
+
 /// Runs `graphrt deploy --help` and checks it with [`help_lists_online_features`]. `false`
 /// when the tools do not start.
 pub fn knows_online_features(executable: &Path) -> bool {
+    abilities(executable).online_features
+}
+
+fn deploy_help(executable: &Path) -> Option<String> {
     let mut command = std::process::Command::new(executable);
     command.args(["deploy", "--help"]).env_clear().stdin(Stdio::null()).stderr(Stdio::null());
     for name in PASSTHROUGH_ENV {
@@ -173,8 +203,8 @@ pub fn knows_online_features(executable: &Path) -> bool {
         command.creation_flags(CREATE_NO_WINDOW);
     }
     match command.output() {
-        Ok(output) if output.status.success() => help_lists_online_features(&String::from_utf8_lossy(&output.stdout)),
-        Ok(_) | Err(_) => false,
+        Ok(output) if output.status.success() => Some(String::from_utf8_lossy(&output.stdout).into_owned()),
+        Ok(_) | Err(_) => None,
     }
 }
 

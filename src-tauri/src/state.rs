@@ -38,4 +38,10 @@ pub struct AppState {
     pub plugin_triggers: Arc<crate::plugin_triggers::PluginTriggerService>,
     /// Settings > Phone access: paired phones follow and answer this computer's runs.
     pub phone_access: Arc<crate::phone_access::PhoneAccess>,
+    /// Chatbots' Telegram bots (long polling).
+    pub telegram: Arc<crate::conversations::channels::telegram::TelegramService>,
+    /// The personal WhatsApp as a chatbot channel.
+    pub whatsapp_web: Arc<crate::conversations::channels::whatsapp_web::WhatsAppWebService>,
+    /// WhatsApp Business of chatbots that run online.
+    pub whatsapp_online: Arc<crate::conversations::channels::whatsapp_online::WhatsAppOnlineService>,
 }

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getCredentialStoreName } from '@/lib/platform'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { getAgent } from '@/api/agents'
+import type { AgentKind } from '@/api/types'
 import { Icon } from '@/components/ui'
 import { useBrowserRuntime } from '@/hooks/useBrowserRuntime'
 import { usePlugins } from '@/hooks/usePlugins'
@@ -8,16 +10,61 @@ import { agentPath, routePaths } from '@/routes'
 import { BuilderBackdropSkeleton } from './connect-whatsapp/BuilderBackdropSkeleton'
 import { BusinessApiSetup } from './connect-whatsapp/BusinessApiSetup'
 import { PersonalWhatsAppSetup } from './connect-whatsapp/PersonalWhatsAppSetup'
-import { WhatsAppOptionPicker, type WhatsAppConnectionOption } from './connect-whatsapp/WhatsAppOptionPicker'
+import { WhatsAppOptionPicker } from './connect-whatsapp/WhatsAppOptionPicker'
+import { findChannelOption, type ChannelOptionId } from './connect-whatsapp/channelOptions'
+import { TelegramSetup } from './connect-whatsapp/TelegramSetup'
+import { PersonalWhatsAppChannel, WhatsAppBusinessChannel } from './connect-whatsapp/WhatsAppChatbotChannels'
 import { LockIcon } from './agent-builder/LockIcon'
 import { messages } from '@/i18n'
 
-/** The chosen option's setup steps, both backed by graphrt plugins. */
-function SelectedOptionSetup({ selectedOption }: { selectedOption: WhatsAppConnectionOption | null }) {
+/** The kind of the agent in the route, once loaded (`null` while loading or unknown). */
+function useAgentKind(agentId: string | undefined): AgentKind | null {
+  const [kind, setKind] = useState<AgentKind | null>(null)
+  useEffect(() => {
+    if (!agentId) return
+    let isCurrent = true
+    getAgent(agentId).then(
+      (agent) => isCurrent && setKind(agent.kind),
+      () => isCurrent && setKind(null),
+    )
+    return () => {
+      isCurrent = false
+    }
+  }, [agentId])
+  return kind
+}
+
+interface SelectedOptionSetupProps {
+  selectedOption: ChannelOptionId | null
+  agentId: string | undefined
+  agentKind: AgentKind | null
+}
+
+/** The chosen option's setup steps; a chatbot also gets the steps that let it answer customers. */
+function SelectedOptionSetup({ selectedOption, agentId, agentKind }: SelectedOptionSetupProps) {
   const plugins = usePlugins()
   const browserRuntime = useBrowserRuntime()
-  if (selectedOption === 'business') return <BusinessApiSetup plugins={plugins} />
-  if (selectedOption === 'personal') return <PersonalWhatsAppSetup plugins={plugins} browserRuntime={browserRuntime} />
+  const chatbotId = agentKind === 'chatbot' ? agentId : undefined
+  if (selectedOption === 'telegram') {
+    if (chatbotId) return <TelegramSetup agentId={chatbotId} />
+    return <p className="m-0 text-[13px] text-body">{messages().channels.onlyForChatbots}</p>
+  }
+  if (selectedOption === 'business') {
+    return (
+      <div className="flex flex-col gap-5">
+        {chatbotId && <WhatsAppBusinessChannel agentId={chatbotId} />}
+        <BusinessApiSetup plugins={plugins} />
+      </div>
+    )
+  }
+  if (selectedOption === 'personal') {
+    return (
+      <div className="flex flex-col gap-5">
+        <PersonalWhatsAppSetup plugins={plugins} browserRuntime={browserRuntime} />
+        {chatbotId && <PersonalWhatsAppChannel agentId={chatbotId} />}
+      </div>
+    )
+  }
   return (
     <div className="flex items-center gap-2 text-[13px] text-ink-2">
       <LockIcon />
@@ -27,17 +74,22 @@ function SelectedOptionSetup({ selectedOption }: { selectedOption: WhatsAppConne
 }
 
 /**
- * Screen 05 · Connect WhatsApp. Modal opened from the builder's "Connect" button with two
- * options: the official WhatsApp Business API (`whatsapp-api` plugin: install, trust, token
- * and phone number ID, check connection) or a personal number linked by QR code
- * (`whatsapp-web` plugin: Terms of Service warning, install, trust, browser runtime, then a
- * browser window with the QR code). Close (or Escape) returns to the builder (04).
+ * Screen 05 · Connect a channel. Modal opened from the builder's "Connect" button and from a
+ * chatbot's "Where it answers" (`?channel=telegram|whatsapp|whatsapp-web` picks the card):
+ * - Telegram: a bot token from @BotFather, tested, then connected (chatbots);
+ * - WhatsApp Business (`whatsapp-api` plugin: install, trust, token and phone number ID,
+ *   check connection); a chatbot also answers customers on it from its online copy;
+ * - a personal number linked by QR code (`whatsapp-web` plugin: Terms of Service warning,
+ *   install, trust, browser runtime, QR code); a chatbot can answer it.
+ * Close (or Escape) returns to the builder (04).
  */
 export function ConnectWhatsAppPage() {
   const navigate = useNavigate()
   const { agentId } = useParams()
   const closeButtonRef = useRef<HTMLButtonElement>(null)
-  const [selectedOption, setSelectedOption] = useState<WhatsAppConnectionOption | null>(null)
+  const [searchParams] = useSearchParams()
+  const [selectedOption, setSelectedOption] = useState<ChannelOptionId | null>(() => findChannelOption(searchParams.get('channel')))
+  const agentKind = useAgentKind(agentId)
   // Back to the builder of the agent in the route (`/agents/:agentId/connect-whatsapp`).
   const closeDialog = useCallback(() => navigate(agentId ? agentPath('builder', agentId) : routePaths.home), [navigate, agentId])
 
@@ -58,11 +110,11 @@ export function ConnectWhatsAppPage() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="wa-title"
-          className="box-border flex max-h-full w-full max-w-[760px] flex-col gap-5 overflow-y-auto rounded-[20px] bg-surface p-8 shadow-[0_24px_64px_rgba(0,0,0,0.18)]"
+          className="box-border flex max-h-full w-full max-w-[1040px] flex-col gap-5 overflow-y-auto rounded-[20px] bg-surface p-8 shadow-[0_24px_64px_rgba(0,0,0,0.18)]"
         >
           <div className="flex items-start justify-between gap-3">
             <h2 id="wa-title" className="m-0 text-[24px] font-semibold">
-              {messages().chatbot.connectWhatsapp}
+              {messages().channels.connectAChannel}
             </h2>
             <button
               ref={closeButtonRef}
@@ -75,7 +127,7 @@ export function ConnectWhatsAppPage() {
             </button>
           </div>
           <WhatsAppOptionPicker selectedOption={selectedOption} onSelect={setSelectedOption} />
-          <SelectedOptionSetup selectedOption={selectedOption} />
+          <SelectedOptionSetup selectedOption={selectedOption} agentId={agentId} agentKind={agentKind} />
         </section>
       </div>
     </div>

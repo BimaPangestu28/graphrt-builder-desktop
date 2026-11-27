@@ -195,8 +195,8 @@ fn create_chatbot(db: &Database, flow_yaml: &str) -> Agent {
     .unwrap()
 }
 
-fn nothing_connected(_channel: &str) -> bool {
-    false
+fn nothing_connected(_channel: &str) -> ChannelLink {
+    ChannelLink::default()
 }
 
 async fn knowledge_base_with_faq(harness: &Harness, name: &str) -> String {
@@ -377,16 +377,19 @@ fn rejects_unknown_knowledge_long_fields_and_non_chatbots() {
 fn channels_show_connection_and_the_owners_switch() {
     let db = Database::open_in_memory().unwrap();
     let agent = create_chatbot(&db, REPLY_FLOW);
-    let whatsapp_only = |channel: &str| channel == "whatsapp";
+    let whatsapp_only =
+        |channel: &str| ChannelLink { connected: channel == "whatsapp", account: Some("+62 812-0000-1111".into()) };
     let setup = get_chatbot_setup(&db, &agent.id, &whatsapp_only).unwrap();
     let states: Vec<(&str, bool, bool)> =
         setup.channels.iter().map(|channel| (channel.id.as_str(), channel.connected, channel.enabled)).collect();
-    assert_eq!(states, [("whatsapp", true, true), ("telegram", false, false)]);
+    assert_eq!(states, [("telegram", false, false), ("whatsapp", true, true), ("whatsapp-web", false, false)]);
+    assert_eq!(setup.channels[1].detail.as_deref(), Some("+62 812-0000-1111"));
+    assert_eq!(setup.channels[0].detail, None, "a channel that is not connected names no account");
 
     let settings = ChatbotSettings { disabled_channels: vec!["whatsapp".into(), "sms".into()], ..setup.settings };
     let saved = save_chatbot_settings(&db, &agent.id, settings, &whatsapp_only).unwrap();
     assert_eq!(saved.settings.disabled_channels, ["whatsapp"]);
-    assert!(!saved.channels[0].enabled);
+    assert!(!saved.channels[1].enabled);
     assert!(!is_channel_enabled(&db, &agent.id, "whatsapp").unwrap());
     assert!(is_channel_enabled(&db, &agent.id, "telegram").unwrap());
 }

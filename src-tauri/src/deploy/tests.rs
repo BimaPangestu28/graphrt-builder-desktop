@@ -522,6 +522,7 @@ fn chat_and_phone() -> OnlineFeatures {
         notifications: true,
         notify_email: Some("ana@example.com".into()),
         answer_when_time_runs_out: true,
+        whatsapp: false,
     }
 }
 

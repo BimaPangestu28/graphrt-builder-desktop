@@ -51,6 +51,16 @@ function getBubbleStyle(message: ConversationMessage): BubbleStyle {
  * drawn under its text at the full width of the thread; their buttons are the customer's, so here they are
  * shown disabled.
  */
+/**
+ * Why a message did not reach the customer, in the reader's language when the backend sent a
+ * known `deliveryProblem` code (blocked, outside the 24 hour window...), else its sentence.
+ */
+function describeDeliveryProblem(metadata: Record<string, unknown>): string | null {
+  const problem = typeof metadata.deliveryProblem === 'string' ? messages().channels.deliveryProblems[metadata.deliveryProblem] : undefined
+  if (problem) return problem
+  return typeof metadata.deliveryError === 'string' ? metadata.deliveryError : null
+}
+
 export function ChatMessageBubble({ message }: { message: ConversationMessage }) {
   if (message.author === 'system') {
     return (
@@ -65,7 +75,7 @@ export function ChatMessageBubble({ message }: { message: ConversationMessage })
   const visuals = readMessageVisuals(message.metadata)
   if (isFilesOnly && visuals.length === 0) return null
   const bubbleStyle = getBubbleStyle(message)
-  const deliveryError = typeof message.metadata.deliveryError === 'string' ? message.metadata.deliveryError : null
+  const deliveryError = describeDeliveryProblem(message.metadata)
   const citations = readCitations(message)
   const showsText = !isTextOnlyFallback(message.metadata) && !isFilesOnly
   const bubble = (showsText || deliveryError || citations.length > 0) && (

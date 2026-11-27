@@ -257,6 +257,71 @@ impl Database {
         })
     }
 
+    /// Whether a message the channel delivered with `channel_message_id` is stored already
+    /// in a conversation of `agent_id` on `channel` (metadata `channelMessageId`): channels
+    /// deliver a message again when they are not sure it arrived.
+    pub fn has_channel_message(&self, agent_id: &str, channel: &str, channel_message_id: &str) -> AppResult<bool> {
+        let connection = self.lock()?;
+        let found = connection
+            .query_row(
+                "SELECT 1 FROM conversation_messages m JOIN conversations c ON c.id = m.conversation_id
+                 WHERE c.agent_id = ?1 AND c.channel = ?2
+                   AND json_extract(m.metadata_json, '$.channelMessageId') = ?3
+                 LIMIT 1",
+                params![agent_id, channel, channel_message_id],
+                |_| Ok(()),
+            )
+            .optional()?;
+        Ok(found.is_some())
+    }
+
+    /// Marks the newest message of `author` with `text` in the conversation that has no
+    /// `channelMessageId` yet with `channel_message_id`. Returns whether one was marked.
+    pub fn claim_channel_message(
+        &self,
+        conversation_id: &str,
+        author: MessageAuthor,
+        text: &str,
+        channel_message_id: &str,
+    ) -> AppResult<bool> {
+        let connection = self.lock()?;
+        let changed = connection.execute(
+            "UPDATE conversation_messages
+             SET metadata_json = json_set(metadata_json, '$.channelMessageId', ?4)
+             WHERE rowid = (
+                 SELECT rowid FROM conversation_messages
+                 WHERE conversation_id = ?1 AND author = ?2 AND text = ?3
+                   AND json_extract(metadata_json, '$.channelMessageId') IS NULL
+                 ORDER BY created_at DESC, rowid DESC LIMIT 1
+             )",
+            params![conversation_id, author, text.trim(), channel_message_id],
+        )?;
+        Ok(changed > 0)
+    }
+
+    /// The newest conversation of `agent_id` with the customer `customer_handle` on `channel`,
+    /// closed or not.
+    pub fn latest_channel_conversation(
+        &self,
+        agent_id: &str,
+        channel: &str,
+        customer_handle: &str,
+    ) -> AppResult<Option<Conversation>> {
+        let connection = self.lock()?;
+        let conversation = connection
+            .query_row(
+                &format!(
+                    "{CONVERSATION_SELECT}
+                     WHERE c.agent_id = ?1 AND c.channel = ?2 AND c.customer_handle = ?3
+                     ORDER BY c.updated_at DESC LIMIT 1"
+                ),
+                params![agent_id, channel, customer_handle],
+                map_conversation_row,
+            )
+            .optional()?;
+        Ok(conversation)
+    }
+
     /// Messages of a conversation, oldest first.
     ///
     /// # Errors

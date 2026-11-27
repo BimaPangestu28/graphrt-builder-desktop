@@ -68,6 +68,7 @@ fn everything_on() -> OnlineFeatures {
         notifications: true,
         notify_email: Some("owner@example.com".into()),
         answer_when_time_runs_out: true,
+        whatsapp: false,
     }
 }
 

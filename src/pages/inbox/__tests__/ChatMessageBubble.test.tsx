@@ -18,4 +18,15 @@ describe('ChatMessageBubble', () => {
     render(<ChatMessageBubble message={botMessage({})} />)
     expect(screen.queryByLabelText('Sources')).not.toBeInTheDocument()
   })
+
+  it('says in plain words why a reply did not reach the customer', () => {
+    render(<ChatMessageBubble message={botMessage({ deliveryError: 'whatsapp: refused', deliveryProblem: 'outside_window' })} />)
+    expect(screen.getByText(/More than 24 hours passed since the customer last wrote/)).toBeInTheDocument()
+    expect(screen.queryByText(/whatsapp: refused/)).not.toBeInTheDocument()
+  })
+
+  it('falls back to the backend sentence for a problem without a code', () => {
+    render(<ChatMessageBubble message={botMessage({ deliveryError: 'the channel did not answer' })} />)
+    expect(screen.getByText(/the channel did not answer/)).toBeInTheDocument()
+  })
 })

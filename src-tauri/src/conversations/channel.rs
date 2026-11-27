@@ -1,10 +1,11 @@
 //! Channels a chatbot talks to customers on.
 //!
 //! A [`ChannelAdapter`] turns what a channel delivers into an
-//! [`InboundMessage`] and sends bot / owner replies back out. Only the in-app
-//! [`TestChannel`] (the "Try it" panel) exists today; WhatsApp or Telegram plug
-//! in by implementing the trait and registering with
-//! `ConversationManager::with_channel`, without touching the reply pipeline.
+//! [`InboundMessage`] and sends bot / owner replies back out. The adapters are the
+//! in-app [`TestChannel`] (the "Try it" panel) and those of `super::channels`
+//! (Telegram, personal WhatsApp, WhatsApp Business of an online chatbot), each
+//! registered with `ConversationManager::with_channel`, without touching the reply
+//! pipeline.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -28,6 +29,33 @@ pub struct InboundMessage {
     pub text: String,
 }
 
+/// A button under a reply: one numbered choice of a card. The customer's tap comes back
+/// as a message whose text is `title`, which reads as that choice.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutboundButton {
+    /// The choice's number, as text.
+    pub id: String,
+    pub title: String,
+}
+
+/// A file the bot's reply (or the owner) hands to the customer.
+#[derive(Clone, PartialEq, Eq)]
+pub struct OutboundFile {
+    pub name: String,
+    pub mime_type: String,
+    pub bytes: Vec<u8>,
+}
+
+impl std::fmt::Debug for OutboundFile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OutboundFile")
+            .field("name", &self.name)
+            .field("mime_type", &self.mime_type)
+            .field("bytes", &self.bytes.len())
+            .finish()
+    }
+}
+
 /// A message to deliver to the customer of `conversation`.
 #[derive(Debug, Clone, Copy)]
 pub struct OutboundMessage<'a> {
@@ -38,6 +66,57 @@ pub struct OutboundMessage<'a> {
     pub text: &'a str,
     /// Charts drawn as PNG, for a channel whose [`ChannelCapabilities::images`] is set.
     pub images: &'a [OutboundImage],
+    /// The reply's numbered choices, for a channel that shows buttons (the text has them too).
+    pub buttons: &'a [OutboundButton],
+    /// Files of the reply, for a channel that sends files.
+    pub files: &'a [OutboundFile],
+}
+
+/// Why a message did not reach the customer, as a code the screens put in plain words.
+/// Keep `src/api/conversationTypes.ts` (`DeliveryProblem`) in sync.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeliveryProblem {
+    /// The customer blocked the bot (Telegram) or the number cannot get messages.
+    Blocked,
+    /// The channel refused the token: it is wrong or was revoked.
+    TokenWrong,
+    /// WhatsApp: the customer's last message is more than 24 hours old.
+    OutsideWindow,
+    /// No internet connection, or the channel did not answer.
+    Offline,
+    /// The file is larger than the channel takes.
+    TooLarge,
+    /// The channel's (or the personal WhatsApp plugin's) sending limit was reached.
+    RateLimited,
+    /// The channel is not connected for this chatbot any more.
+    NotConnected,
+    Other,
+}
+
+/// A message that was not delivered: the code and the English sentence for logs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeliveryFailure {
+    pub problem: DeliveryProblem,
+    pub message: String,
+}
+
+impl DeliveryFailure {
+    pub fn new(problem: DeliveryProblem, message: impl Into<String>) -> Self {
+        Self { problem, message: message.into() }
+    }
+}
+
+impl std::fmt::Display for DeliveryFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl From<AppError> for DeliveryFailure {
+    fn from(error: AppError) -> Self {
+        Self::new(DeliveryProblem::Other, error.to_string())
+    }
 }
 
 /// Receives customer messages from, and sends replies to, one messaging channel.
@@ -61,8 +140,38 @@ pub trait ChannelAdapter: Send + Sync + std::fmt::Debug {
     /// Delivers a bot or owner reply to the customer.
     ///
     /// # Errors
-    /// Any `AppError`; the reply is still stored, with the error in its metadata.
-    fn send<'a>(&'a self, outbound: OutboundMessage<'a>) -> BoxFuture<'a, AppResult<()>>;
+    /// A [`DeliveryFailure`]; the reply is still stored, with the problem in its metadata.
+    fn send<'a>(&'a self, outbound: OutboundMessage<'a>) -> BoxFuture<'a, Result<(), DeliveryFailure>>;
+
+    /// Whether the channel is connected for `agent_id` (a Telegram bot of that chatbot...).
+    fn is_connected_for(&self, _agent_id: &str) -> bool {
+        true
+    }
+
+    /// The account the chatbot answers as on this channel, e.g. `@toko_kue_bot`.
+    fn account_label(&self, _agent_id: &str) -> Option<String> {
+        None
+    }
+
+    /// Whether another program answers the customers of this channel (an online chatbot):
+    /// the app then only shows the chats, and the local bot never answers them.
+    fn answers_remotely(&self) -> bool {
+        false
+    }
+
+    /// Shows the customer that an answer is being written. Called every few seconds while
+    /// the bot works; failures are the adapter's to log.
+    fn typing<'a>(&'a self, _conversation: &'a Conversation) -> BoxFuture<'a, ()> {
+        Box::pin(async {})
+    }
+
+    /// The owner took over, handed back or closed `conversation` (its new status is set).
+    ///
+    /// # Errors
+    /// Any `AppError`; the app shows it in the chat.
+    fn status_changed<'a>(&'a self, _conversation: &'a Conversation) -> BoxFuture<'a, AppResult<()>> {
+        Box::pin(async { Ok(()) })
+    }
 }
 
 /// The in-app channel behind the chatbot's "Try it" panel. The app window is
@@ -98,7 +207,7 @@ impl ChannelAdapter for TestChannel {
         })
     }
 
-    fn send<'a>(&'a self, _outbound: OutboundMessage<'a>) -> BoxFuture<'a, AppResult<()>> {
+    fn send<'a>(&'a self, _outbound: OutboundMessage<'a>) -> BoxFuture<'a, Result<(), DeliveryFailure>> {
         Box::pin(async { Ok(()) })
     }
 }
@@ -131,6 +240,11 @@ impl ChannelRegistry {
     /// Whether an adapter is registered under `channel_name`.
     pub fn contains(&self, channel_name: &str) -> bool {
         self.adapters.contains_key(channel_name)
+    }
+
+    /// The adapter under `channel_name`, when one is registered.
+    pub fn find(&self, channel_name: &str) -> Option<Arc<dyn ChannelAdapter>> {
+        self.adapters.get(channel_name).cloned()
     }
 
     /// # Errors

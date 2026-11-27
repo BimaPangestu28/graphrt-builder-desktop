@@ -57,18 +57,21 @@ pub struct OnlineFeatures {
     pub notify_email: Option<String>,
     /// Requests whose time ran out answer themselves as the agent says (or stop the run).
     pub answer_when_time_runs_out: bool,
+    /// Customers talk to the chatbot on WhatsApp Business (`--channel whatsapp`). Its four
+    /// values are copied from the credential store as secrets of the online copy.
+    pub whatsapp: bool,
 }
 
 impl OnlineFeatures {
     /// Whether anything is on.
     pub fn any(&self) -> bool {
-        self.chat || self.phone || self.notifications || self.answer_when_time_runs_out
+        self.chat || self.phone || self.notifications || self.answer_when_time_runs_out || self.whatsapp
     }
 
     /// Whether the online copy keeps paired phones and notification sign-ups, which needs a
     /// small storage volume with the provider (billed by the provider).
     pub fn needs_storage(&self) -> bool {
-        self.phone || self.notifications
+        self.phone || self.notifications || self.whatsapp
     }
 
     /// The choices as they are saved and deployed: the website as an origin, options of a
@@ -101,6 +104,7 @@ impl OnlineFeatures {
             notifications,
             notify_email,
             answer_when_time_runs_out: self.answer_when_time_runs_out,
+            whatsapp: self.whatsapp,
         })
     }
 
@@ -127,6 +131,9 @@ impl OnlineFeatures {
         }
         if self.answer_when_time_runs_out {
             arguments.push("--expire-approvals".to_owned());
+        }
+        if self.whatsapp {
+            arguments.extend(["--channel".to_owned(), "whatsapp".to_owned()]);
         }
         if !self.needs_storage() {
             arguments.push("--drop-store".to_owned());
@@ -220,6 +227,8 @@ pub struct OwnServerInstructions {
     pub chat_address: Option<String>,
     /// The page to open on a phone.
     pub phone_address: Option<String>,
+    /// The callback URL to enter in the Meta app, for a chatbot on WhatsApp Business.
+    pub whatsapp_webhook: Option<String>,
 }
 
 /// The newest graphrt release that does NOT have the chat page, the phone page and their
@@ -275,17 +284,31 @@ pub fn own_server_instructions(
             format!("  -e {name}={value} \\")
         });
     }
+    if features.whatsapp {
+        for name in crate::conversations::channels::whatsapp_online::SECRET_ENV_NAMES {
+            lines.push(format!("  -e {name}=<from the WhatsApp step> \\"));
+        }
+    }
     let needs_newer = features.any();
-    lines.push(if needs_newer {
+    let image = if needs_newer {
         format!("  {GRAPHRT_IMAGE}:<a version newer than {LAST_GRAPHRT_WITHOUT_ONLINE_FEATURES}>")
     } else {
         GRAPHRT_IMAGE.to_owned()
+    };
+    lines.push(if features.whatsapp {
+        // The image's own command, plus the channel (`graphrt serve` reads it from no variable).
+        format!("{image} \\\n  serve /workflows --addr 0.0.0.0:8080 --channel whatsapp={file_name}")
+    } else {
+        image
     });
     OwnServerInstructions {
         command: lines.join("\n"),
         needs_graphrt_newer_than: needs_newer.then(|| LAST_GRAPHRT_WITHOUT_ONLINE_FEATURES.to_owned()),
         chat_address: features.chat.then(|| format!("https://<the address of this server>/chat/{file_name}")),
         phone_address: features.phone.then(|| "https://<the address of this server>/monitor/".to_owned()),
+        whatsapp_webhook: features
+            .whatsapp
+            .then(|| "https://<the address of this server>/v1/channels/whatsapp/webhook".to_owned()),
     }
 }
 
@@ -302,6 +325,7 @@ mod tests {
             notifications: true,
             notify_email: Some(" ana@example.com ".into()),
             answer_when_time_runs_out: true,
+            whatsapp: false,
         }
     }
 
