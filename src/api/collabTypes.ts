@@ -23,7 +23,15 @@ export interface ServerCheck {
   detail: string | null
   signInWithBrowser: boolean
   signInWithInvite: boolean
+  /** One sign in button each (e.g. Google and Microsoft). Empty: one "Sign in" button. */
+  signInProviders: SignInChoice[]
   mode: string | null
+}
+
+/** An identity provider of the server. */
+export interface SignInChoice {
+  id: string
+  name: string
 }
 
 /** `viewer`, `operator` (can edit) or `owner`. */

@@ -38,6 +38,8 @@ export function TeamServerSection() {
   const [address, setAddress] = useState('')
   const [check, setCheck] = useState<ServerCheck | null>(null)
   const [busy, setBusy] = useState<'check' | 'save' | 'sign-in' | 'sign-out' | null>(null)
+  // Which provider button was pressed, for its "Waiting for the browser" label.
+  const [signingInWith, setSigningInWith] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -54,6 +56,24 @@ export function TeamServerSection() {
     void load()
   }, [load])
 
+  // Signed out on a saved server: ask it how people sign in, for its provider buttons.
+  const savedServer = status?.server ?? null
+  const signedIn = status?.signedIn ?? false
+  useEffect(() => {
+    if (savedServer === null || signedIn) return
+    let current = true
+    checkCollabServer(savedServer)
+      .then((checked) => {
+        if (current) setCheck((shown) => shown ?? checked)
+      })
+      .catch(() => {
+        // "Check connection" says what is wrong; the plain Sign in button stays.
+      })
+    return () => {
+      current = false
+    }
+  }, [savedServer, signedIn])
+
   async function run(kind: NonNullable<typeof busy>, action: () => Promise<void>) {
     setBusy(kind)
     setError(null)
@@ -68,6 +88,12 @@ export function TeamServerSection() {
 
   const isSaved = status !== null && address.trim().replace(/\/+$/, '') === status.server
   const signInWithBrowser = check === null || check.signInWithBrowser
+  const providers = check?.ok ? check.signInProviders : []
+
+  function signIn(provider?: string) {
+    setSigningInWith(provider ?? null)
+    void run('sign-in', async () => setStatus(await signInToCollab(provider)))
+  }
 
   return (
     <SettingsGroup headingId={headingId} title={t.title}>
@@ -139,9 +165,17 @@ export function TeamServerSection() {
             </>
           ) : signInWithBrowser ? (
             <>
-              <Button size="sm" disabled={busy !== null} onClick={() => void run('sign-in', async () => setStatus(await signInToCollab()))}>
-                {busy === 'sign-in' ? t.signingIn : t.signIn}
-              </Button>
+              {providers.length === 0 ? (
+                <Button size="sm" disabled={busy !== null} onClick={() => signIn()}>
+                  {busy === 'sign-in' ? t.signingIn : t.signIn}
+                </Button>
+              ) : (
+                providers.map((provider, index) => (
+                  <Button key={provider.id} size="sm" variant={index === 0 ? 'primary' : 'secondary'} disabled={busy !== null} onClick={() => signIn(provider.id)}>
+                    {busy === 'sign-in' && signingInWith === provider.id ? t.signingIn : t.signInWith(provider.name)}
+                  </Button>
+                ))
+              )}
               <span className="text-[13px] text-body">{t.signInHint}</span>
             </>
           ) : (

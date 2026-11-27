@@ -57,9 +57,15 @@ async fn start_server(name: &str) -> (String, Arc<Server>) {
     let port = tcp.local_addr().unwrap().port();
     let yaml = format!("public_url: http://127.0.0.1:{port}\ndata_dir: {}\n", dir.display());
     let config: CollabConfig = graphrt_core::yaml::from_str(&yaml, true).unwrap();
-    let server =
-        Server::open(Options { config, signing_key: None, secrets_key: None, client_secret: None, verifiers: None })
-            .unwrap();
+    let server = Server::open(Options {
+        config,
+        signing_key: None,
+        secrets_key: None,
+        client_ids: Default::default(),
+        client_secrets: Default::default(),
+        verifiers: None,
+    })
+    .unwrap();
     let running = Arc::clone(&server);
     tokio::spawn(async move { graphrt_collab::server::http::serve_on(running, tcp, std::future::pending()).await });
     (format!("http://127.0.0.1:{port}"), server)
@@ -101,6 +107,7 @@ async fn two_desktops_build_one_agent_together() {
     let check = a.collab.check(&url).await;
     assert!(check.ok, "{check:?}");
     assert!(check.sign_in_with_invite);
+    assert!(check.sign_in_providers.is_empty(), "an invite only server has no provider buttons");
     let preview = a.collab.preview_invite(&link).await.unwrap();
     assert_eq!(preview["workspace"]["name"], "Acme team");
     let joined = a.collab.join(&link, Some("Ana")).await.unwrap();

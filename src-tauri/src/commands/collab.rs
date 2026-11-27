@@ -26,10 +26,11 @@ pub async fn collab_set_server(state: State<'_, AppState>, address: String) -> A
     state.collab.set_server(&address).await
 }
 
-/// Signs in with the server's identity provider in the browser.
+/// Signs in with one of the server's identity providers in the browser (`provider`: its id,
+/// none for the server's first).
 #[tauri::command]
-pub async fn collab_sign_in(state: State<'_, AppState>) -> AppResult<CollabStatus> {
-    state.collab.sign_in().await
+pub async fn collab_sign_in(state: State<'_, AppState>, provider: Option<String>) -> AppResult<CollabStatus> {
+    state.collab.sign_in(provider.as_deref()).await
 }
 
 /// Signs out of the team server.
