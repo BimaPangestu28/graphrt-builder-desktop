@@ -102,6 +102,13 @@ async fn a_local_model_fills_in_a_plan_and_the_app_writes_the_document() {
     assert_eq!(summary.model_providers, ["ollama"]);
     assert_eq!(summary.inputs[0].name, "complaint");
     assert!(agent.flow_yaml.contains("name: llama3.2"), "{}", agent.flow_yaml);
+    assert!(
+        agent
+            .flow_yaml
+            .contains("The whole job, as the person asked for it: Write a polite reply to a complaint I paste"),
+        "the writing step reads the job: {}",
+        agent.flow_yaml
+    );
     let requests = mock.requests();
     assert_eq!(requests.len(), 1, "one short call, no full-document draft");
     assert!(

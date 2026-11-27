@@ -119,6 +119,10 @@ pub(super) struct Plan {
     /// The job's own words behind the plan's decisions (checked against the job).
     #[serde(default, skip_serializing_if = "JobWords::is_empty")]
     pub job_words: JobWords,
+    /// The job as the person wrote it (references defused): every writing step reads it, so a
+    /// small model writes about the rupiah when the job asked for it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub job: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -509,7 +513,15 @@ pub(super) fn normalize(raw: RawPlan, rules: &PlanRules<'_>) -> Result<Plan, Str
         for_each: plain_text(&raw.job_words.for_each),
         files: plain_text(&raw.job_words.files),
     };
-    Ok(Plan { summary, name: plain_text(&raw.name), inputs, steps, schedule: schedule(&raw.schedule), job_words })
+    Ok(Plan {
+        summary,
+        name: plain_text(&raw.name),
+        inputs,
+        steps,
+        schedule: schedule(&raw.schedule),
+        job_words,
+        job: String::new(),
+    })
 }
 
 /// Whether the plan must end on a writing step it does not have: when what it found last
@@ -959,6 +971,12 @@ fn operation_in_address<'a>(raw_url: &str, rules: &'a PlanRules<'_>) -> Option<&
         let name = kind.split_once('.').map_or(kind.as_str(), |(_, name)| name);
         address.contains(&kind) || (name.contains('_') && address.contains(name))
     })
+}
+
+/// `written` as plain text a step may quote: references and markup a model could break
+/// out with are defused.
+pub(super) fn quotable(written: &str) -> String {
+    plain_text(written)
 }
 
 /// The input name a lookup address consists of, when it is one placeholder and nothing
@@ -1529,6 +1547,7 @@ mod tests {
             ],
             schedule: None,
             job_words: Default::default(),
+            job: String::new(),
         }
     }
 

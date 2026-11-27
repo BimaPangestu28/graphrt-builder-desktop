@@ -104,6 +104,7 @@ mod tests {
             steps,
             schedule: None,
             job_words: Default::default(),
+            job: String::new(),
         }
     }
 

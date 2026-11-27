@@ -370,6 +370,11 @@ impl Planning<'_> {
         if let Some(reason) = coverage::out_of_reach(&plan.job_words, !self.operations.is_empty()) {
             return Err(PlanProblem::OutOfReach(reason));
         }
+        plan.job = match (self.description, self.previous) {
+            (Some(description), _) => plan::quotable(description),
+            (None, Some(previous)) => previous.job.clone(),
+            (None, None) => String::new(),
+        };
         if self.description.is_some() {
             if let Some(problem) = coverage::missing_action(&plan) {
                 // A small model rarely adds the step when asked again; the app adds the

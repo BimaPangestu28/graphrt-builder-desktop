@@ -298,7 +298,10 @@ impl Builder<'_> {
                         },
                         prompt_template: vec![
                             PromptMessage { role: "system", text: role.to_owned() },
-                            PromptMessage { role: "user", text: writer_request(instruction, &self.materials) },
+                            PromptMessage {
+                                role: "user",
+                                text: writer_request(instruction, &self.plan.job, &self.materials),
+                            },
                         ],
                     },
                 });
@@ -488,8 +491,11 @@ fn start_variable(input: &PlanInput) -> StartVariable {
 }
 
 /// The user message of a writing step: the task, then every input and earlier result under its heading.
-fn writer_request(instruction: &str, materials: &[Material]) -> String {
+fn writer_request(instruction: &str, job: &str, materials: &[Material]) -> String {
     let mut request = format!("Task: {instruction}");
+    if !job.is_empty() && job != instruction {
+        request.push_str(&format!("\n\nThe whole job, as the person asked for it: {job}"));
+    }
     for material in materials {
         request.push_str(&format!("\n\n{}:\n{}", material.heading, material.reference));
     }

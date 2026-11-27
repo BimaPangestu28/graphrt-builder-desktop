@@ -261,6 +261,7 @@ mod tests {
             steps,
             schedule: None,
             job_words: JobWords::default(),
+            job: String::new(),
         }
     }
 

@@ -223,6 +223,7 @@ mod tests {
             ],
             schedule: None,
             job_words: Default::default(),
+            job: String::new(),
         };
         let request = fields_request(&operation, &plan, 1, "Email the note to the address I give");
         assert!(request.contains("\"to\" (required): Recipients"), "{request}");
