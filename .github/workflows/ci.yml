@@ -133,7 +133,7 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       # tauri::generate_context! embeds the built frontend, so clippy needs dist/
       # (built once by the frontend job instead of installing Node here).
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist
