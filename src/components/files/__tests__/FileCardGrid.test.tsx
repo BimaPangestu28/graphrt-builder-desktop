@@ -44,7 +44,15 @@ describe('FileCardGrid', () => {
   it('lays the cards out in two columns, three when the group is wide', () => {
     render(<FileCardGrid agentId="agent-1" cards={[pdf]} label="Files" />)
     expect(screen.getByRole('region', { name: 'Files' })).toHaveClass('@container', 'ui-block')
-    expect(screen.getByRole('list')).toHaveClass('grid-cols-2', '@md:grid-cols-3')
+    expect(screen.getByRole('listitem')).toHaveClass('w-[calc((100%-0.5rem)/2)]', '@md:w-[calc((100%-1rem)/3)]')
+  })
+
+  it('starts a row that is not full from the side of its message', () => {
+    const { unmount } = render(<FileCardGrid agentId="agent-1" cards={[pdf]} label="Files" align="end" />)
+    expect(screen.getByRole('list')).toHaveClass('justify-end')
+    unmount()
+    render(<FileCardGrid agentId="agent-1" cards={[pdf]} label="Files" />)
+    expect(screen.getByRole('list')).not.toHaveClass('justify-end')
   })
 
   it('shows a small picture for a raster picture only', async () => {

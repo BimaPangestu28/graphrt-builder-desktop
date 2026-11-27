@@ -10,6 +10,12 @@ import { useFilePreview } from './useFilePreview'
 /** How long a card says "Saved" after a download, in milliseconds. */
 const savedNoticeMs = 2500
 
+/**
+ * Two cards per row, three when the group is at least 28rem wide (a container query, so it follows
+ * the group and not the window). The widths leave room for the 0.5rem gaps between cards.
+ */
+const cardWidthClassNames = 'w-[calc((100%-0.5rem)/2)] @md:w-[calc((100%-1rem)/3)]'
+
 type SaveState = 'idle' | 'saving' | 'saved'
 
 interface FileCardItemProps {
@@ -49,7 +55,7 @@ function FileCardItem({ agentId, card, onSaveError }: FileCardItemProps) {
 
   const buttonLabel = saveState === 'saving' ? messages().files.saving : saveState === 'saved' ? messages().files.saved : messages().files.download
   return (
-    <li className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-line bg-surface text-left text-ink">
+    <li className={joinClassNames('flex min-w-0 flex-none flex-col overflow-hidden rounded-xl border border-line bg-surface text-left text-ink', cardWidthClassNames)}>
       <div className="flex h-20 flex-none items-center justify-center overflow-hidden bg-subtle text-muted">
         {pictureUrl ? (
           <img src={pictureUrl} alt={messages().files.previewOf(card.name)} className="size-full object-cover" draggable={false} />
@@ -88,6 +94,8 @@ interface FileCardGridProps {
   cards: FileCard[]
   /** What the group is, for screen readers ("Attached files", "Files the agent made"). */
   label: string
+  /** Which edge the cards start from when they do not fill a row: `end` for messages on the right of a chat. */
+  align?: 'start' | 'end'
   className?: string
 }
 
@@ -100,16 +108,17 @@ interface FileCardGridProps {
  * @param agentId - The agent the files belong to (string)
  * @param cards - The files to show; nothing is rendered for none (FileCard[])
  * @param label - Accessible name of the group (string)
+ * @param align - The edge a row that is not full starts from, `start` by default ('start' | 'end')
  *
  * @example
  * <FileCardGrid agentId={conversation.agentId} cards={files} label={messages().files.madeByTheAgent} />
  */
-export function FileCardGrid({ agentId, cards, label, className }: FileCardGridProps) {
+export function FileCardGrid({ agentId, cards, label, align = 'start', className }: FileCardGridProps) {
   const [saveError, setSaveError] = useState<string | null>(null)
   if (cards.length === 0) return null
   return (
     <section aria-label={label} className={joinClassNames('ui-block @container flex w-full min-w-0 flex-col gap-1.5', className)}>
-      <ul className="m-0 grid list-none grid-cols-2 gap-2 p-0 @md:grid-cols-3">
+      <ul className={joinClassNames('m-0 flex list-none flex-wrap gap-2 p-0', align === 'end' && 'justify-end')}>
         {cards.map((card) => (
           <FileCardItem key={card.reference} agentId={agentId} card={card} onSaveError={setSaveError} />
         ))}

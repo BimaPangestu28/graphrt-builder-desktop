@@ -26,8 +26,8 @@ export function MessageFiles({ agentId, message, side }: MessageFilesProps) {
   const sideClassNames = joinClassNames('max-w-[30rem]', side === 'end' ? 'self-end' : 'self-start')
   return (
     <>
-      <FileCardGrid agentId={agentId} cards={attachments} label={messages().files.attached} className={sideClassNames} />
-      <FileCardGrid agentId={agentId} cards={files} label={messages().files.madeByTheAgent} className={sideClassNames} />
+      <FileCardGrid agentId={agentId} cards={attachments} label={messages().files.attached} align={side} className={sideClassNames} />
+      <FileCardGrid agentId={agentId} cards={files} label={messages().files.madeByTheAgent} align={side} className={sideClassNames} />
     </>
   )
 }

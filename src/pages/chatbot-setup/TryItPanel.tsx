@@ -97,6 +97,13 @@ export function TryItPanel({ agentId }: { agentId: string }) {
     onDrop: (droppedItems) => attachments.addDropped(droppedItems.map((item) => item.path)),
   })
 
+  // Keep the newest message, its files and the reply being written in view (file cards are tall).
+  const messageCount = detail?.messages.length ?? 0
+  useEffect(() => {
+    const chatElement = zoneRef.current
+    if (chatElement) chatElement.scrollTop = chatElement.scrollHeight
+  }, [zoneRef, messageCount, replyDraft, isWaitingForBot])
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const customerText = testMessage.trim()

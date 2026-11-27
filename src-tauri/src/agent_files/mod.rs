@@ -45,7 +45,7 @@ pub mod run_files;
 mod tests;
 mod wiring;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -201,11 +201,12 @@ impl AgentFiles {
     /// Whether `path` was dropped onto the window; forgets it, so it attaches once.
     fn take_dropped(&self, path: &Path) -> bool {
         let Ok(mut dropped_paths) = self.dropped_paths.lock() else { return false };
-        let known: HashSet<&PathBuf> = dropped_paths.iter().collect();
-        if !known.contains(&path.to_path_buf()) {
-            return false;
+        match dropped_paths.iter().position(|dropped| dropped == path) {
+            Some(index) => {
+                dropped_paths.remove(index);
+                true
+            }
+            None => false,
         }
-        dropped_paths.retain(|dropped| dropped != path);
-        true
     }
 }

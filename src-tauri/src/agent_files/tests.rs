@@ -400,6 +400,86 @@ async fn a_picture_that_declares_a_huge_canvas_is_refused_from_its_header() {
     }
 }
 
+// --- Large attachments do not block ---
+
+/// A 12 megapixel JPEG (4000 x 3000) with EXIF orientation 6, like a photo from a phone
+/// held upright: attaching it decodes, turns and encodes every pixel.
+fn large_rotated_photo() -> Vec<u8> {
+    let channel = |value: u32| u8::try_from(value % 256).unwrap_or(0);
+    let pixels = image::RgbImage::from_fn(4000, 3000, |x, y| image::Rgb([channel(x), channel(y), channel(x + y)]));
+    let mut encoded = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut encoded, 85).encode_image(&pixels).unwrap();
+    // An EXIF segment with one entry, Orientation = 6, right after the start-of-image marker.
+    let tiff: &[u8] = b"II*\0\x08\0\0\0\x01\0\x12\x01\x03\0\x01\0\0\0\x06\0\0\0\0\0\0\0";
+    let mut exif = Vec::from(*b"Exif\0\0");
+    exif.extend_from_slice(tiff);
+    let mut photo = Vec::from(&encoded[..2]);
+    photo.extend_from_slice(&[0xFF, 0xE1]);
+    photo.extend_from_slice(&u16::try_from(exif.len() + 2).unwrap().to_be_bytes());
+    photo.extend_from_slice(&exif);
+    photo.extend_from_slice(&encoded[2..]);
+    photo
+}
+
+/// The longest pause between two turns of a task that only sleeps 5 ms at a time, while
+/// `work` runs on the same single-threaded runtime: how long `work` kept the thread to itself.
+async fn longest_stall_during<T>(work: impl std::future::Future<Output = T>) -> (T, std::time::Duration, u32) {
+    let stalls = Arc::new(std::sync::Mutex::new((std::time::Duration::ZERO, 0_u32)));
+    let recorded = stalls.clone();
+    let ticker = tokio::spawn(async move {
+        let mut last_turn = std::time::Instant::now();
+        loop {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            let mut stalls = recorded.lock().unwrap();
+            stalls.0 = stalls.0.max(last_turn.elapsed());
+            stalls.1 += 1;
+            last_turn = std::time::Instant::now();
+        }
+    });
+    let output = work.await;
+    ticker.abort();
+    let (longest_stall, turns) = *stalls.lock().unwrap();
+    (output, longest_stall, turns)
+}
+
+/// The UI talks to the backend on the async runtime: while a large file is read, checked,
+/// re-encoded and stored, that runtime must keep serving everything else.
+#[tokio::test]
+async fn attaching_large_files_does_not_block_the_runtime() {
+    let fixture = Fixture::new();
+    let scope = FileScope::conversation("agent-1", "chat-1");
+    let large_document = fixture.host_file("export.csv", &b"tanggal,pelanggan,jumlah\n".repeat(1_000_000));
+    let large_photo = fixture.host_file("IMG_0042.jpg", &large_rotated_photo());
+    assert!(std::fs::metadata(&large_document).unwrap().len() > 23 * 1024 * 1024);
+
+    let started = std::time::Instant::now();
+    let (document, document_stall, _) = longest_stall_during(fixture.attach(&scope, EVERYTHING, large_document)).await;
+    let document_time = started.elapsed();
+    let started = std::time::Instant::now();
+    let (photo, photo_stall, photo_turns) = longest_stall_during(fixture.attach(&scope, EVERYTHING, large_photo)).await;
+    let photo_time = started.elapsed();
+    let photo_card = photo.card.expect("the photo is attached");
+    let started = std::time::Instant::now();
+    let (preview, preview_stall, _) =
+        longest_stall_during(fixture.files.preview("agent-1", &photo_card.reference)).await;
+    let preview_time = started.elapsed();
+
+    // `cargo test -- --nocapture` prints these (the numbers in the pull request).
+    println!("24 MB document: attached in {document_time:?}, runtime stalled at most {document_stall:?}");
+    println!("12 MP photo:    attached in {photo_time:?}, runtime stalled at most {photo_stall:?}");
+    println!("12 MP preview:  made in {preview_time:?}, runtime stalled at most {preview_stall:?}");
+
+    assert!(document.card.is_some());
+    assert!(matches!(preview.unwrap(), FilePreview::Picture { width: 360, height: 480, .. }));
+    let stored = fixture.stored_bytes(&scope, &photo_card).await;
+    let info = graphrt_image::probe(&stored).unwrap();
+    assert_eq!((info.width, info.height), (3000, 4000), "turned upright");
+    // Decoding 12 megapixels takes far longer than a turn of the runtime. Had it run on the
+    // runtime's thread, the ticker would not have had a turn for the whole time.
+    assert!(photo_turns >= 3, "the runtime kept turning while the photo was processed ({photo_turns} turns)");
+    assert!(photo_stall * 2 < photo_time, "stalled {photo_stall:?} of {photo_time:?}");
+}
+
 // --- Workspaces are kept apart ---
 
 #[tokio::test]

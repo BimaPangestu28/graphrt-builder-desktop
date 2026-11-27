@@ -119,6 +119,8 @@ windows-sys = { version = "0.61", features = ["Win32_System_Power"] }
 minisign = "0.10.0"
 # Tests build .tar.xz fixtures of the Node runtime archive.
 lzma-rust2 = { version = "0.25", default-features = false, features = ["std", "xz", "encoder"] }
+# Tests encode a large photo to check that attaching it does not block (the version graphrt-image uses).
+image = { version = "0.25.10", default-features = false, features = ["jpeg"] }
 
 # Tests build the D-Bus errors of a missing Secret Service (the version `keyring` uses).
 [target.'cfg(target_os = "linux")'.dev-dependencies]
