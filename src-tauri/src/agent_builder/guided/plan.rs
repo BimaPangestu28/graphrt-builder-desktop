@@ -64,6 +64,9 @@ pub(super) struct JobWords {
     /// The words that say the person gives the text to work on ("the notes I paste").
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub given: String,
+    /// The words that say when the owner takes a chat over ("hand over to me for custom orders").
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub hand_over: String,
 }
 
 impl JobWords {
@@ -73,6 +76,7 @@ impl JobWords {
             && self.for_each.is_empty()
             && self.files.is_empty()
             && self.given.is_empty()
+            && self.hand_over.is_empty()
     }
 }
 
@@ -342,9 +346,10 @@ pub(super) fn schema(rules: &PlanRules<'_>) -> serde_json::Value {
                     "when": { "type": "string" },
                     "for_each": { "type": "string" },
                     "files": { "type": "string" },
-                    "given": { "type": "string" }
+                    "given": { "type": "string" },
+                    "hand_over": { "type": "string" }
                 },
-                "required": ["send", "when", "for_each", "files", "given"],
+                "required": ["send", "when", "for_each", "files", "given", "hand_over"],
                 "additionalProperties": false
             }
         },
@@ -521,6 +526,7 @@ pub(super) fn normalize(raw: RawPlan, rules: &PlanRules<'_>) -> Result<Plan, Str
         for_each: plain_text(&raw.job_words.for_each),
         files: plain_text(&raw.job_words.files),
         given: plain_text(&raw.job_words.given),
+        hand_over: plain_text(&raw.job_words.hand_over),
     };
     Ok(Plan {
         summary,

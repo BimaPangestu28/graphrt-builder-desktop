@@ -508,3 +508,33 @@ async fn a_model_call_cut_off_once_is_asked_again() {
     assert!(matches!(failed, Err(AppError::Model(_))), "{failed:?}");
     assert_eq!(mock.requests().len(), 2);
 }
+
+#[tokio::test]
+async fn a_chatbot_whose_job_says_when_the_owner_takes_over_hands_over() {
+    let db = Database::open_in_memory().unwrap();
+    let plan = reply_plan().replace(
+        NO_SCHEDULE,
+        &format!(r#"{NO_SCHEDULE}, "job_words": {{"hand_over": "Hand over to me for custom orders"}}"#),
+    );
+    let (_mock, builder) = local_builder(&[&plan]);
+    let build = BuildRequest {
+        description: "Answer questions about my bakery's prices. Hand over to me for custom orders.".into(),
+        kind: Some(AgentKind::Chatbot),
+    };
+
+    let agent = build_agent_with_model(&db, &builder, build, &|_| {}).await.unwrap();
+
+    let yaml = &agent.flow_yaml;
+    assert!(yaml.contains("id: decide_handoff"), "{yaml}");
+    assert!(yaml.contains("The owner takes over when: Hand over to me for custom orders"), "{yaml}");
+    assert!(yaml.contains("variable: handoff\n") && yaml.contains("variable: handoff_reason"), "{yaml}");
+    assert!(yaml.contains("Write your reply in the same language as the customer's message"), "{yaml}");
+    // Without such words the bot never hands over on its own.
+    let (_mock, builder) = local_builder(&[&reply_plan()]);
+    let plain = BuildRequest {
+        description: "Answer questions about my bakery's prices.".into(),
+        kind: Some(AgentKind::Chatbot),
+    };
+    let agent = build_agent_with_model(&db, &builder, plain, &|_| {}).await.unwrap();
+    assert!(!agent.flow_yaml.contains("decide_handoff"));
+}

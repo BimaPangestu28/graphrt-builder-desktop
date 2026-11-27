@@ -294,7 +294,7 @@ fn plan_for_the_model(plan: &Plan) -> serde_json::Value {
         })).collect::<Vec<_>>(),
         "steps": steps,
         "schedule": {"repeat": repeat, "hour": hour},
-        "job_words": {"send": "", "when": "", "for_each": "", "files": "", "given": ""},
+        "job_words": {"send": "", "when": "", "for_each": "", "files": "", "given": "", "hand_over": ""},
     })
 }
 

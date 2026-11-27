@@ -51,9 +51,10 @@ const JOB_WORDS: &str = "\
 - \"job_words\": words copied exactly from the job, or empty: \"send\" (the words that say to send, post or \
 save something), \"when\" (the words that say when it runs by itself), \"for_each\" (the words that say it \
 repeats for each item of a list), \"files\" (the words that say it works on files), \"given\" (the words that \
-say the person gives the text to work on). Example: for the job \"Summarize the notes I paste and email the \
+say the person gives the text to work on), \"hand_over\" (the words that say when the owner takes a chat \
+over). Example: for the job \"Summarize the notes I paste and email the \
 summary to the address I give every Monday\" they are {\"send\": \"email the summary to the address I give\", \
-\"when\": \"every Monday\", \"for_each\": \"\", \"files\": \"\", \"given\": \"the notes I paste\"}.";
+\"when\": \"every Monday\", \"for_each\": \"\", \"files\": \"\", \"given\": \"the notes I paste\", \"hand_over\": \"\"}.";
 
 const CLOSING: &str = "\
 Use as few steps as the job needs: most jobs are ONE \"write\" step. Do not add steps for checking, formatting or \

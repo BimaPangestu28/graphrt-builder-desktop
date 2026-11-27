@@ -133,7 +133,14 @@ pub(in crate::agent_builder) mod eval_path {
 /// @example a "send" quote "send it by email" stays for the job "Write a note and send it by email."
 pub(super) fn verify_job_words(words: &mut JobWords, job: &str) {
     let job = comparable(job);
-    for quote in [&mut words.send, &mut words.when, &mut words.for_each, &mut words.files, &mut words.given] {
+    for quote in [
+        &mut words.send,
+        &mut words.when,
+        &mut words.for_each,
+        &mut words.files,
+        &mut words.given,
+        &mut words.hand_over,
+    ] {
         let wanted = comparable(quote);
         let holds_it =
             wanted.chars().filter(|character| character.is_alphanumeric()).count() >= 3 && job.contains(&wanted);
@@ -290,6 +297,7 @@ mod tests {
             for_each: for_each.into(),
             files: files.into(),
             given: String::new(),
+            hand_over: String::new(),
         }
     }
 

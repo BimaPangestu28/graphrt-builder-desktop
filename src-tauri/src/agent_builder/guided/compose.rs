@@ -34,8 +34,15 @@ const APPROVE_ACTION: &str = "approve";
 const WRITER_ROLE: &str = "You do one step of a job for a business person. Do exactly what the task says, using \
 the material given. Reply with only the result, ready to use: no introduction, no explanation of what you did.";
 
+/// The outputs the app reads to hand a chat to the owner (`conversations::bot`).
+const HANDOFF: &str = "handoff";
+const HANDOFF_REASON: &str = "handoff_reason";
+
+/// The language sentence is the one the chatbot guide asks for, word for word: shorter
+/// wordings ("in the customer's language") made gpt-4o-mini answer English in Spanish.
 const CHATBOT_ROLE: &str = "You answer a customer's chat message for a business. Do exactly what the task says. \
-Reply with only the message to send to the customer, in the customer's language.";
+Reply with only the message to send to the customer. Write your reply in the same language as the customer's \
+message: English if they write English, Indonesian if they write Indonesian, and so on.";
 
 /// The input every chatbot has: the customer's message.
 pub(super) fn chatbot_message_input() -> PlanInput {
@@ -414,6 +421,10 @@ impl Builder<'_> {
     }
 
     fn finish(mut self) -> Document {
+        let hands_over = self.is_chatbot && !self.plan.job_words.hand_over.is_empty();
+        if hands_over {
+            self.hand_over_step();
+        }
         if let (true, Some(last_write_id)) = (self.is_chatbot, &self.last_write_id) {
             self.nodes.push(Node {
                 id: "reply".to_owned(),
@@ -427,8 +438,15 @@ impl Builder<'_> {
             Some(write_id) => Some([write_id.clone(), "text".to_owned()]),
             None => self.results.selectors.iter().rev().flatten().next().cloned(),
         };
-        let outputs =
+        let mut outputs: Vec<EndOutput> =
             result.into_iter().map(|value_selector| EndOutput { variable: "result", value_selector }).collect();
+        if hands_over {
+            outputs.push(EndOutput { variable: HANDOFF, value_selector: [HANDOFF.to_owned(), "output".to_owned()] });
+            outputs.push(EndOutput {
+                variable: HANDOFF_REASON,
+                value_selector: [HANDOFF_REASON.to_owned(), "output".to_owned()],
+            });
+        }
         self.nodes.push(Node {
             id: "end".to_owned(),
             node_type: "end".to_owned(),
@@ -450,6 +468,60 @@ impl Builder<'_> {
             description: self.plan.summary.clone(),
             graph: Graph { nodes: self.nodes, edges },
         }
+    }
+}
+
+impl Builder<'_> {
+    /// For a chatbot whose job says when the owner takes over: a model step that answers
+    /// yes or no for the customer's message, and the `handoff` / `handoff_reason` outputs
+    /// the app reads to stop the bot and call the owner (as the full path's chatbots do).
+    fn hand_over_step(&mut self) {
+        let rule = self.plan.job_words.hand_over.clone();
+        self.nodes.push(Node {
+            id: "decide_handoff".to_owned(),
+            node_type: "llm".to_owned(),
+            title: Some("Decide whether the owner takes over".to_owned()),
+            config: NodeConfig::Write {
+                model: Model {
+                    provider: self.model.provider.clone(),
+                    name: self.model.name.clone(),
+                    completion_params: CompletionParams { temperature: 0.0 },
+                },
+                prompt_template: vec![
+                    PromptMessage {
+                        role: "system",
+                        text: "You decide whether a business owner must take over a customer chat. Answer only \
+                               yes or no."
+                            .to_owned(),
+                    },
+                    PromptMessage {
+                        role: "user",
+                        text: format!(
+                            "The owner takes over when: {rule}\n\nCustomer message:\n{{{{#start.message#}}}}\n\n\
+                             Must the owner take over this chat?"
+                        ),
+                    },
+                ],
+            },
+        });
+        self.nodes.push(Node {
+            id: HANDOFF.to_owned(),
+            node_type: "template-transform".to_owned(),
+            title: Some("Hand over to the owner?".to_owned()),
+            config: NodeConfig::Shorten {
+                template: "{{ 'true' if 'yes' in answer | lower else 'false' }}".to_owned(),
+                variables: vec![TemplateVariable {
+                    variable: "answer",
+                    value_selector: ["decide_handoff".to_owned(), "text".to_owned()],
+                }],
+            },
+        });
+        self.nodes.push(Node {
+            id: HANDOFF_REASON.to_owned(),
+            node_type: "template-transform".to_owned(),
+            title: Some("Why the owner takes over".to_owned()),
+            config: NodeConfig::Shorten { template: "owner_needed".to_owned(), variables: Vec::new() },
+        });
     }
 }
 
