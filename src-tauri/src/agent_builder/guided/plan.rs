@@ -1237,7 +1237,7 @@ mod tests {
         )
         .unwrap();
         let plan = normalize(raw, &rules).unwrap();
-        assert_eq!(plan.inputs, [message.clone()]);
+        assert_eq!(plan.inputs, std::slice::from_ref(&message));
         assert_eq!(plan.steps.len(), 2, "the approval is left out: {:?}", plan.steps);
         let PlanStep::Lookup { url, .. } = &plan.steps[0] else { panic!("lookup expected") };
         assert_eq!(url.to_graphrt_template(), "https://wttr.in/{{#start.message#}}");

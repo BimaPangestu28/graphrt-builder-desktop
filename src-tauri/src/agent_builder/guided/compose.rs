@@ -399,11 +399,12 @@ impl Builder<'_> {
             match part {
                 FieldPart::Text(text) => rendered.push_str(text),
                 FieldPart::Input(name) => rendered.push_str(&format!("{{{{#start.{name}#}}}}")),
-                FieldPart::StepResult(step_index) => match self.results.reference(step_index) {
-                    Some(reference) => rendered.push_str(&reference),
-                    // A later step, or one without a result: nothing to insert.
-                    None => {}
-                },
+                // A later step, or one without a result, inserts nothing.
+                FieldPart::StepResult(step_index) => {
+                    if let Some(reference) = self.results.reference(step_index) {
+                        rendered.push_str(&reference);
+                    }
+                }
             }
         }
         serde_json::Value::String(rendered)
