@@ -25,6 +25,8 @@ mod extract;
 pub mod history;
 mod kind;
 mod live;
+#[cfg(test)]
+mod live_eval;
 mod prompt;
 pub mod stop;
 #[cfg(test)]
