@@ -2,7 +2,7 @@
 //! files the bot's reply hands back (see `crate::agent_files`).
 //!
 //! A message keeps its files as cards in its metadata: `attachments` on a customer
-//! message, `files` on a bot reply. A message that is only files stores their names as
+//! message and on the owner's own reply, `files` on a bot reply. A message that is only files stores their names as
 //! its text (a message needs one, and the Inbox list shows it) with `filesOnly: true`, so
 //! the chat shows the cards and not the names twice.
 
@@ -18,7 +18,8 @@ pub const FILES_KEY: &str = "files";
 /// Metadata flag of a message whose text is only the names of its files.
 pub const FILES_ONLY_KEY: &str = "filesOnly";
 
-/// One customer message as it is stored and as the bot's workflow gets it.
+/// One customer message as it is stored and as the bot's workflow gets it. The owner's own
+/// reply is stored the same way (`stored_text` and `metadata`); no workflow reads it.
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct CustomerTurn {
     /// The text kept with the message.
