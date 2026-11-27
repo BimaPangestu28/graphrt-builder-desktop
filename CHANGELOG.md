@@ -17,6 +17,18 @@ releases may contain breaking changes; they are called out under **Changed**.
 - **Diagrams**: agents can show a flowchart, sequence, state or entity diagram, Gantt chart, mind map or timeline, written as Mermaid text (UI Render 0.2.0, `show_diagram`). The app draws it as a picture in its own colours. A diagram is text only: links, scripts, HTML and custom colours are refused before anything is drawn, and the drawing code loads only when a diagram appears.
 - **Dark colours for cards, tables, KPI tiles, charts and diagrams**: they follow the app's theme. The rest of the app is still light, so today this shows in the browser preview's Appearance setting.
 
+### Fixed
+
+- **Plugin setup asks only for what a plugin needs**: a setting that already has a sensible default (a size limit, a time limit, extra fonts) is no longer asked for, and the one thing a plugin cannot work without, such as the folder your invoices are saved in, is. A plugin now says this itself; older plugins are read by their setting names as before.
+- **Plugin settings in plain words**: a setting shows a name and a short explanation instead of a technical variable name. A folder or file is chosen with a picker, a folder that does not exist yet is created for you, and a number must be a number. Only passwords and keys are hidden after saving; a folder you chose stays visible and can be changed.
+- **Find the file a run made**: when a run creates a file, such as an invoice PDF, the result shows its name and folder with **Open file** and **Open folder**.
+- **Free, private AI**: building an agent no longer fails with "model nodes use provider(s) openai" when the model on this computer writes the wrong AI provider into its draft. The app corrects it.
+- **Test form after a change**: when you change an agent in the chat, the test form shows the new starting values instead of the ones from your last run.
+- **Approvals you can read**: data inside an approval question (an invoice with its items, for example) is shown as a short list instead of code.
+- **Builder chat**: Enter sends your message (Shift+Enter starts a new line), and scrolling a long column no longer moves the whole window.
+- **Plugin categories**: a plugin is placed by its name before its description, so Document Templates is under Files & media.
+- **Installing a plugin without a password keyring (Linux)**: the plugin installs and is listed; saving a setting then explains what to do.
+
 ## [0.2.1] - 2026-11-27
 
 Agents can now be taught your way of working with Skills, remember what you correct, and chatbot answers show which file and page they came from.
