@@ -527,11 +527,7 @@ async fn live_eval() {
     let full_document_only = env_or("GRAPHRT_EVAL_FULL_DOCUMENT", "0") == "1";
     // `GRAPHRT_EVAL_PATH=guided|full` forces the path the app would choose (both fall back
     // to the full path when no plan is usable, as the app does).
-    match env_or("GRAPHRT_EVAL_PATH", "auto").as_str() {
-        "guided" => guided::eval_path::force(Some(guided::eval_path::Forced::Guided)),
-        "full" => guided::eval_path::force(Some(guided::eval_path::Forced::Full)),
-        _ => guided::eval_path::force(None),
-    }
+    force_path_from_env();
     let (plugins, _plugin_dir) = install_plugins(credentials.clone()).await;
     let (mut total, mut built, mut worked) = (0, 0, 0);
     for index in chosen {
@@ -671,6 +667,7 @@ impl crate::conversations::ConversationEventSink for QuietConversationSink {
 #[ignore = "needs a real model (Ollama or OPENAI_API_KEY)"]
 async fn live_eval_chatbots() {
     let _ = log::set_logger(&PrintLogger).map(|()| log::set_max_level(log::LevelFilter::Info));
+    force_path_from_env();
     let model_name = env_or("GRAPHRT_EVAL_MODEL", "llama3.2");
     let attempts: usize = env_or("GRAPHRT_EVAL_ATTEMPTS", "2").parse().unwrap();
     let EvalSetup { builder, credentials, ollama_base_url } = eval_setup(&model_name);
@@ -736,6 +733,16 @@ async fn live_eval_chatbots() {
     println!(
         "[{model_name}] CHATBOTS built {built}/{total}, first try {first_try}/{total}, answered {answered}/{total}"
     );
+}
+
+/// `GRAPHRT_EVAL_PATH=guided|full` forces the path the app would choose (both fall back to
+/// the full path when no plan is usable, as the app does).
+fn force_path_from_env() {
+    match env_or("GRAPHRT_EVAL_PATH", "auto").as_str() {
+        "guided" => guided::eval_path::force(Some(guided::eval_path::Forced::Guided)),
+        "full" => guided::eval_path::force(Some(guided::eval_path::Forced::Full)),
+        _ => guided::eval_path::force(None),
+    }
 }
 
 /// An `agent` step that answers with a plugin's tools, no builder involved: measures the
