@@ -60,18 +60,21 @@ pub struct OnlineFeatures {
     /// Customers talk to the chatbot on WhatsApp Business (`--channel whatsapp`). Its four
     /// values are copied from the credential store as secrets of the online copy.
     pub whatsapp: bool,
+    /// People talk to the chatbot in Microsoft Teams (`--channel teams`). The Azure Bot's
+    /// three values are copied from the credential store as secrets of the online copy.
+    pub teams: bool,
 }
 
 impl OnlineFeatures {
     /// Whether anything is on.
     pub fn any(&self) -> bool {
-        self.chat || self.phone || self.notifications || self.answer_when_time_runs_out || self.whatsapp
+        self.chat || self.phone || self.notifications || self.answer_when_time_runs_out || self.whatsapp || self.teams
     }
 
     /// Whether the online copy keeps paired phones and notification sign-ups, which needs a
     /// small storage volume with the provider (billed by the provider).
     pub fn needs_storage(&self) -> bool {
-        self.phone || self.notifications || self.whatsapp
+        self.phone || self.notifications || self.whatsapp || self.teams
     }
 
     /// The choices as they are saved and deployed: the website as an origin, options of a
@@ -105,6 +108,7 @@ impl OnlineFeatures {
             notify_email,
             answer_when_time_runs_out: self.answer_when_time_runs_out,
             whatsapp: self.whatsapp,
+            teams: self.teams,
         })
     }
 
@@ -134,6 +138,9 @@ impl OnlineFeatures {
         }
         if self.whatsapp {
             arguments.extend(["--channel".to_owned(), "whatsapp".to_owned()]);
+        }
+        if self.teams {
+            arguments.extend(["--channel".to_owned(), "teams".to_owned()]);
         }
         if !self.needs_storage() {
             arguments.push("--drop-store".to_owned());
@@ -229,6 +236,8 @@ pub struct OwnServerInstructions {
     pub phone_address: Option<String>,
     /// The callback URL to enter in the Meta app, for a chatbot on WhatsApp Business.
     pub whatsapp_webhook: Option<String>,
+    /// The messaging endpoint to enter in the Azure Bot, for a chatbot in Teams.
+    pub teams_endpoint: Option<String>,
 }
 
 /// The newest graphrt release that does NOT have the chat page, the phone page and their
@@ -289,17 +298,27 @@ pub fn own_server_instructions(
             lines.push(format!("  -e {name}=<from the WhatsApp step> \\"));
         }
     }
+    if features.teams {
+        for name in crate::conversations::channels::teams_online::SECRET_ENV_NAMES {
+            lines.push(format!("  -e {name}=<from the Teams step> \\"));
+        }
+    }
     let needs_newer = features.any();
     let image = if needs_newer {
         format!("  {GRAPHRT_IMAGE}:<a version newer than {LAST_GRAPHRT_WITHOUT_ONLINE_FEATURES}>")
     } else {
         GRAPHRT_IMAGE.to_owned()
     };
-    lines.push(if features.whatsapp {
-        // The image's own command, plus the channel (`graphrt serve` reads it from no variable).
-        format!("{image} \\\n  serve /workflows --addr 0.0.0.0:8080 --channel whatsapp={file_name}")
-    } else {
+    let channels: Vec<String> = [("whatsapp", features.whatsapp), ("teams", features.teams)]
+        .iter()
+        .filter(|(_, on)| *on)
+        .map(|(kind, _)| format!(" --channel {kind}={file_name}"))
+        .collect();
+    lines.push(if channels.is_empty() {
         image
+    } else {
+        // The image's own command, plus the channels (`graphrt serve` reads them from no variable).
+        format!("{image} \\\n  serve /workflows --addr 0.0.0.0:8080{}", channels.concat())
     });
     OwnServerInstructions {
         command: lines.join("\n"),
@@ -309,6 +328,9 @@ pub fn own_server_instructions(
         whatsapp_webhook: features
             .whatsapp
             .then(|| "https://<the address of this server>/v1/channels/whatsapp/webhook".to_owned()),
+        teams_endpoint: features
+            .teams
+            .then(|| "https://<the address of this server>/v1/channels/teams/webhook".to_owned()),
     }
 }
 
@@ -326,6 +348,7 @@ mod tests {
             notify_email: Some(" ana@example.com ".into()),
             answer_when_time_runs_out: true,
             whatsapp: false,
+            teams: false,
         }
     }
 

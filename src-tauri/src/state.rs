@@ -44,8 +44,10 @@ pub struct AppState {
     pub phone_access: Arc<crate::phone_access::PhoneAccess>,
     /// Chatbots' Telegram bots (long polling).
     pub telegram: Arc<crate::conversations::channels::telegram::TelegramService>,
+    pub slack: Arc<crate::conversations::channels::slack::SlackService>,
     /// The personal WhatsApp as a chatbot channel.
     pub whatsapp_web: Arc<crate::conversations::channels::whatsapp_web::WhatsAppWebService>,
     /// WhatsApp Business of chatbots that run online.
     pub whatsapp_online: Arc<crate::conversations::channels::whatsapp_online::WhatsAppOnlineService>,
+    pub teams_online: Arc<crate::conversations::channels::teams_online::TeamsOnlineService>,
 }

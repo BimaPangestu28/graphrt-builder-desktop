@@ -1,7 +1,7 @@
 import { useEffect, useId, useState, type ReactNode } from 'react'
 import { useParams } from 'react-router-dom'
 import { getAgent } from '@/api/agents'
-import { getWhatsAppBusinessSetup } from '@/api/channels'
+import { getWhatsAppBusinessSetup, getTeamsSetup } from '@/api/channels'
 import type { ChatAudience, OnlineFeatures } from '@/api/deployTypes'
 import { joinClassNames } from '@/components/ui'
 import { messages } from '@/i18n'
@@ -17,31 +17,32 @@ interface OnlineFeaturesFormProps {
   phoneWasOn?: boolean
 }
 
-/** Whether WhatsApp Business can be offered: only for a chatbot, and ready once its values are saved. */
-type WhatsAppOffer = 'ready' | 'needs_values' | null
+/** Whether a channel of the online copy can be offered: only for a chatbot, and ready once its values are saved. */
+type ChannelOffer = 'ready' | 'needs_values' | null
 
-/** The WhatsApp Business offer for the chatbot in the route (`null` for other agents). */
-function useWhatsAppOffer(): WhatsAppOffer {
+/** The WhatsApp Business and Teams offers for the chatbot in the route (`null` for other agents). */
+function useChannelOffers(): { whatsApp: ChannelOffer; teams: ChannelOffer } {
   const { agentId } = useParams()
-  const [offer, setOffer] = useState<WhatsAppOffer>(null)
+  const [offers, setOffers] = useState<{ whatsApp: ChannelOffer; teams: ChannelOffer }>({ whatsApp: null, teams: null })
   useEffect(() => {
     if (!agentId) return
     let isCurrent = true
+    const offerOf = (saved: boolean): ChannelOffer => (saved ? 'ready' : 'needs_values')
     getAgent(agentId)
       .then(async (agent) => {
-        if (agent.kind !== 'chatbot') return null
-        const setup = await getWhatsAppBusinessSetup(agentId)
-        return setup.saved ? 'ready' : 'needs_values'
+        if (agent.kind !== 'chatbot') return { whatsApp: null, teams: null }
+        const [whatsApp, teams] = await Promise.all([getWhatsAppBusinessSetup(agentId), getTeamsSetup(agentId)])
+        return { whatsApp: offerOf(whatsApp.saved), teams: offerOf(teams.saved) }
       })
       .then(
-        (next: WhatsAppOffer) => isCurrent && setOffer(next),
-        () => isCurrent && setOffer(null),
+        (next) => isCurrent && setOffers(next),
+        () => isCurrent && setOffers({ whatsApp: null, teams: null }),
       )
     return () => {
       isCurrent = false
     }
   }, [agentId])
-  return offer
+  return offers
 }
 
 const fieldClassName = 'box-border h-9 w-full rounded-lg border border-line-strong bg-surface px-3 text-[14px] text-ink disabled:opacity-60'
@@ -87,7 +88,7 @@ export function OnlineFeaturesForm({ value, onChange, providerName, availability
   const emailId = useId()
   const isDisabled = availability !== 'ready'
   const change = (next: Partial<OnlineFeatures>) => onChange(withFeatureChange(value, next))
-  const whatsAppOffer = useWhatsAppOffer()
+  const { whatsApp: whatsAppOffer, teams: teamsOffer } = useChannelOffers()
   const channels = messages().channels
   const audiences: Array<{ audience: ChatAudience; title: string; detail: string }> = [
     { audience: 'guests', title: text.audienceGuestsTitle, detail: text.audienceGuestsDetail(guestMessagesPerMinute, allGuestsMessagesPerMinute) },
@@ -178,6 +179,18 @@ export function OnlineFeaturesForm({ value, onChange, providerName, availability
               onToggle={(whatsapp) => change({ whatsapp })}
             />
             {whatsAppOffer === 'needs_values' && <span className="px-1 text-[12px] leading-normal text-muted">{channels.onlineWhatsAppNeedsValues}</span>}
+          </div>
+        )}
+        {teamsOffer !== null && (
+          <div className="flex flex-col gap-2">
+            <FeatureCard
+              title={channels.onlineTeamsTitle}
+              detail={channels.onlineTeamsDetail}
+              checked={value.teams}
+              disabled={isDisabled || (teamsOffer === 'needs_values' && !value.teams)}
+              onToggle={(teams) => change({ teams })}
+            />
+            {teamsOffer === 'needs_values' && <span className="px-1 text-[12px] leading-normal text-muted">{channels.onlineTeamsNeedsValues}</span>}
           </div>
         )}
       </div>

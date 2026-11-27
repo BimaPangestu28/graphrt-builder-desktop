@@ -12,6 +12,8 @@ import { BusinessApiSetup } from './connect-whatsapp/BusinessApiSetup'
 import { PersonalWhatsAppSetup } from './connect-whatsapp/PersonalWhatsAppSetup'
 import { WhatsAppOptionPicker } from './connect-whatsapp/WhatsAppOptionPicker'
 import { findChannelOption, type ChannelOptionId } from './connect-whatsapp/channelOptions'
+import { SlackSetup } from './connect-whatsapp/SlackSetup'
+import { TeamsSetup } from './connect-whatsapp/TeamsSetup'
 import { TelegramSetup } from './connect-whatsapp/TelegramSetup'
 import { PersonalWhatsAppChannel, WhatsAppBusinessChannel } from './connect-whatsapp/WhatsAppChatbotChannels'
 import { LockIcon } from './agent-builder/LockIcon'
@@ -47,6 +49,14 @@ function SelectedOptionSetup({ selectedOption, agentId, agentKind }: SelectedOpt
   const chatbotId = agentKind === 'chatbot' ? agentId : undefined
   if (selectedOption === 'telegram') {
     if (chatbotId) return <TelegramSetup agentId={chatbotId} />
+    return <p className="m-0 text-[13px] text-body">{messages().channels.onlyForChatbots}</p>
+  }
+  if (selectedOption === 'slack') {
+    if (chatbotId) return <SlackSetup agentId={chatbotId} />
+    return <p className="m-0 text-[13px] text-body">{messages().channels.onlyForChatbots}</p>
+  }
+  if (selectedOption === 'teams') {
+    if (chatbotId) return <TeamsSetup agentId={chatbotId} />
     return <p className="m-0 text-[13px] text-body">{messages().channels.onlyForChatbots}</p>
   }
   if (selectedOption === 'business') {

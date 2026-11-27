@@ -147,6 +147,7 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         db.clone(),
     ));
     let telegram = Arc::new(conversations::channels::telegram::TelegramService::new(db.clone(), credentials.clone())?);
+    let slack = Arc::new(conversations::channels::slack::SlackService::new(db.clone(), credentials.clone())?);
     let knowledge = Arc::new(knowledge::KnowledgeService::new(
         db.clone(),
         credentials.clone(),
@@ -185,17 +186,27 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         deploy.clone(),
         Arc::new(deploy::http::ReqwestDeployHttp::new()?),
     )?);
+    let teams_online = Arc::new(conversations::channels::teams_online::TeamsOnlineService::new(
+        db.clone(),
+        credentials.clone(),
+        deploy.clone(),
+        Arc::new(deploy::http::ReqwestDeployHttp::new()?),
+    )?);
     // Customer channels: messages land in the Inbox, the bot answers, the owner takes over.
     let conversations = Arc::new(
         conversations::ConversationManager::new(db.clone(), credentials.clone(), conversation_sink)
             .with_agent_files(agent_files.clone())
             .with_channel(telegram.adapter())
+            .with_channel(slack.adapter())
             .with_channel(whatsapp_web.adapter())
-            .with_channel(whatsapp_online.adapter()),
+            .with_channel(whatsapp_online.adapter())
+            .with_channel(teams_online.adapter()),
     );
     telegram.attach(&conversations);
+    slack.attach(&conversations);
     whatsapp_web.attach(&conversations);
     whatsapp_online.attach(&conversations);
+    teams_online.attach(&conversations);
     let draft_model = Arc::new(skills::DefaultDraftModel { db: db.clone(), credentials: credentials.clone() });
     let skills = Arc::new(skills::SkillService::new(&data_dir, plugins.clone(), draft_model.clone()));
     let moved_skills = skills.migrate_legacy_origins();
@@ -218,8 +229,10 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
     mcp::publish_from_database(&db);
     conversations::file_cleanup::spawn(conversations.clone());
     telegram.start_saved();
+    slack.start_saved();
     whatsapp_web.spawn();
     whatsapp_online.spawn();
+    teams_online.spawn();
     let unanswered = conversations.clone();
     tauri::async_runtime::spawn(async move {
         match unanswered.answer_unanswered_channel_messages().await {
@@ -264,8 +277,10 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         plugin_triggers,
         phone_access,
         telegram,
+        slack,
         whatsapp_web,
         whatsapp_online,
+        teams_online,
     })
 }
 
@@ -447,12 +462,19 @@ pub fn run() {
             commands::channels::connect_telegram,
             commands::channels::disconnect_telegram,
             commands::channels::get_telegram_connection,
+            commands::channels::check_slack_tokens,
+            commands::channels::connect_slack,
+            commands::channels::disconnect_slack,
+            commands::channels::get_slack_connection,
             commands::channels::get_whatsapp_web_channel,
             commands::channels::set_whatsapp_web_chatbot,
             commands::channels::get_whatsapp_business_setup,
             commands::channels::save_whatsapp_business,
             commands::channels::reveal_whatsapp_verify_token,
             commands::channels::forget_whatsapp_business,
+            commands::channels::get_teams_setup,
+            commands::channels::save_teams_bot,
+            commands::channels::forget_teams_bot,
             commands::chatbot_setup::save_chatbot_settings,
             commands::chatbot_setup::attach_chatbot_knowledge,
             commands::chatbot_setup::detach_chatbot_knowledge,

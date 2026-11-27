@@ -33,11 +33,10 @@ use super::channel_http_client;
 use crate::conversations::channel::{
     ChannelAdapter, ChannelCapabilities, DeliveryFailure, DeliveryProblem, InboundMessage, OutboundMessage,
 };
-use crate::conversations::inbound::MirroredMessage;
 use crate::conversations::models::{Conversation, ConversationStatus, MessageAuthor};
 use crate::conversations::ConversationManager;
 use crate::credentials::CredentialStore;
-use crate::deploy::http::{join_url, DeployHttp, HttpMethod, HttpRequest};
+use crate::deploy::http::{join_url, DeployHttp};
 use crate::error::{AppError, AppResult};
 use crate::storage::Database;
 
@@ -125,6 +124,10 @@ pub struct WhatsAppBusinessSetup {
 pub trait OnlineChatbots: Send + Sync + std::fmt::Debug {
     /// The chatbots whose online copy answers on WhatsApp Business.
     fn whatsapp_agents(&self) -> Vec<String>;
+    /// The chatbots whose online copy answers in Microsoft Teams.
+    fn teams_agents(&self) -> Vec<String> {
+        Vec::new()
+    }
     /// The online copy's address and access key.
     ///
     /// # Errors
@@ -135,6 +138,10 @@ pub trait OnlineChatbots: Send + Sync + std::fmt::Debug {
 impl OnlineChatbots for crate::deploy::DeployService {
     fn whatsapp_agents(&self) -> Vec<String> {
         self.whatsapp_online_agents()
+    }
+
+    fn teams_agents(&self) -> Vec<String> {
+        self.teams_online_agents()
     }
 
     fn access(&self, agent_id: &str) -> AppResult<(String, String)> {
@@ -328,103 +335,31 @@ impl WhatsAppOnlineService {
     pub async fn sync(&self, agent_id: &str) -> AppResult<usize> {
         let Some(manager) = self.manager.get().and_then(Weak::upgrade) else { return Ok(0) };
         let (url, api_key) = self.online.access(agent_id)?;
-        let list = self.server_json(&join_url(&url, "v1/conversations?limit=100"), &api_key).await?;
-        let synced =
-            self.db.get_agent_setting(agent_id, SYNCED_SETTING_KEY)?.and_then(|value| value.as_u64()).unwrap_or(0);
-        let mut newest = synced;
-        let mut added = 0;
-        for summary in list["conversations"].as_array().into_iter().flatten() {
-            let channel = &summary["channel"];
-            if channel["kind"].as_str() != Some("whatsapp") {
-                continue;
-            }
-            let updated = summary["updated_ms"].as_u64().unwrap_or(0);
-            let (Some(id), Some(chat)) = (summary["id"].as_str(), channel["chat_id"].as_str()) else { continue };
-            if let Ok(mut last_inbound) = self.last_inbound.lock() {
-                last_inbound
-                    .insert((agent_id.to_owned(), chat.to_owned()), channel["last_inbound_ms"].as_u64().unwrap_or(0));
-            }
-            if updated <= synced {
-                continue;
-            }
-            newest = newest.max(updated);
-            let detail = self.server_json(&join_url(&url, &format!("v1/conversations/{id}")), &api_key).await?;
-            let name = channel["customer_name"].as_str();
-            for message in detail["messages"].as_array().into_iter().flatten() {
-                let author = match message["role"].as_str() {
-                    Some("user") => MessageAuthor::Customer,
-                    Some("assistant") => MessageAuthor::Bot,
-                    _ => continue,
-                };
-                let text = message["content"].as_str().unwrap_or_default();
-                let created = message["created_ms"].as_u64().unwrap_or(0);
-                let mirrored = MirroredMessage {
-                    external_id: format!("{id}:{created}:{}", message["role"].as_str().unwrap_or_default()),
-                    author,
-                    text: text.to_owned(),
-                };
-                if author == MessageAuthor::Bot
-                    && manager.claim_operator_message(WHATSAPP_CHANNEL, agent_id, chat, &mirrored)?
-                {
-                    continue;
+        let channel = super::online_sync::OnlineChannel {
+            kind: "whatsapp",
+            app_channel: WHATSAPP_CHANNEL,
+            synced_key: SYNCED_SETTING_KEY,
+            feature_name: "WhatsApp Business",
+        };
+        super::online_sync::sync_online_chats(
+            &self.db,
+            self.server.as_ref(),
+            &manager,
+            (&url, &api_key),
+            agent_id,
+            channel,
+            |chat, link| {
+                if let Ok(mut last_inbound) = self.last_inbound.lock() {
+                    last_inbound
+                        .insert((agent_id.to_owned(), chat.to_owned()), link["last_inbound_ms"].as_u64().unwrap_or(0));
                 }
-                if manager.mirror_channel_message(WHATSAPP_CHANNEL, agent_id, chat, name, &mirrored)? {
-                    added += 1;
-                }
-            }
-            let person = channel["human"].as_bool().unwrap_or(false);
-            let waiting = channel["waiting_run"].as_str().is_some();
-            manager.mirror_channel_status(WHATSAPP_CHANNEL, agent_id, chat, person, waiting)?;
-        }
-        if newest > synced {
-            self.db.set_agent_setting(agent_id, SYNCED_SETTING_KEY, &json!(newest))?;
-        }
-        Ok(added)
-    }
-
-    async fn server_json(&self, url: &str, api_key: &str) -> AppResult<Json> {
-        let reply = self.server.get(url.to_owned(), Some(api_key.to_owned())).await?;
-        match reply.status {
-            200 => Ok(serde_json::from_str(&reply.body).unwrap_or(Json::Null)),
-            401 | 403 => Err(AppError::Credentials("the online chatbot did not accept its access key".into())),
-            404 => Err(AppError::InvalidInput(
-                "the online chatbot keeps no conversations: put it online again with WhatsApp Business on".into(),
-            )),
-            status => Err(AppError::Internal(format!("the online chatbot answered with an error ({status})"))),
-        }
+            },
+        )
+        .await
     }
 
     async fn post(&self, agent_id: &str, path: &str, body: Json) -> Result<(), DeliveryFailure> {
-        let (url, api_key) = self
-            .online
-            .access(agent_id)
-            .map_err(|error| DeliveryFailure::new(DeliveryProblem::NotConnected, error.to_string()))?;
-        let request = HttpRequest {
-            method: HttpMethod::Post,
-            url: join_url(&url, path),
-            bearer: Some(api_key),
-            body: Some(body),
-        };
-        let reply = self
-            .server
-            .send(request)
-            .await
-            .map_err(|_| DeliveryFailure::new(DeliveryProblem::Offline, "the online chatbot cannot be reached"))?;
-        match reply.status {
-            200..=299 => Ok(()),
-            401 | 403 => Err(DeliveryFailure::new(
-                DeliveryProblem::NotConnected,
-                "the online chatbot did not accept its access key",
-            )),
-            status => {
-                let why = serde_json::from_str::<Json>(&reply.body)
-                    .ok()
-                    .and_then(|body| body["error"].as_str().map(str::to_owned))
-                    .unwrap_or_else(|| format!("error {status}"));
-                let problem = if why.contains("24") { DeliveryProblem::OutsideWindow } else { DeliveryProblem::Other };
-                Err(DeliveryFailure::new(problem, format!("the online chatbot refused: {why}")))
-            }
-        }
+        super::online_sync::post_to_online_copy(self.server.as_ref(), self.online.access(agent_id), path, body).await
     }
 
     fn window_is_closed(&self, agent_id: &str, chat: &str) -> bool {
