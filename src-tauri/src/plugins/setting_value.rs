@@ -61,7 +61,10 @@ fn each_path(
 fn absolute_path(entry: &str, home_dir: Option<&Path>) -> AppResult<PathBuf> {
     let expanded = match (entry.strip_prefix('~'), home_dir) {
         (Some(rest), Some(home)) if rest.is_empty() || rest.starts_with(['/', '\\']) => {
-            home.join(rest.trim_start_matches(['/', '\\']))
+            // Part by part, so the path gets this system's separator whichever one was typed.
+            let mut path = home.to_path_buf();
+            path.extend(rest.split(['/', '\\']).filter(|part| !part.is_empty()));
+            path
         }
         _ => PathBuf::from(entry),
     };

@@ -163,16 +163,18 @@ mod tests {
 
     #[test]
     fn finds_the_files_steps_report_once_each() {
+        // Absolute on the system the test runs on (`/home/me` is not absolute on Windows).
+        let home = PathBuf::from(if cfg!(windows) { r"C:\Users\me" } else { "/home/me" });
+        let invoice = home.join("Invoices").join("INV-1.pdf");
+        let sheet = home.join("a.csv");
         let events = vec![
-            step(
-                json!({ "data": { "path": "/home/me/Invoices/2026/11/INV-1.pdf", "relative_path": "2026/11/INV-1.pdf" } }),
-            ),
-            json!({ "type": "node_failed", "outputs": { "path": "/home/me/never.pdf" } }),
-            step(json!({ "data": { "files": [{ "path": "/home/me/a.csv" }, { "path": "relative/b.csv" }] } })),
+            step(json!({ "data": { "path": invoice, "relative_path": "2026/11/INV-1.pdf" } })),
+            json!({ "type": "node_failed", "outputs": { "path": home.join("never.pdf") } }),
+            step(json!({ "data": { "files": [{ "path": sheet }, { "path": "relative/b.csv" }] } })),
         ];
-        let run_outputs = json!({ "summary": "Done", "pdf_file": { "path": "/home/me/Invoices/2026/11/INV-1.pdf" } });
+        let run_outputs = json!({ "summary": "Done", "pdf_file": { "path": invoice } });
         let paths = candidate_paths(&events, Some(&run_outputs));
-        assert_eq!(paths, [PathBuf::from("/home/me/Invoices/2026/11/INV-1.pdf"), PathBuf::from("/home/me/a.csv")]);
+        assert_eq!(paths, [invoice, sheet]);
     }
 
     #[test]
