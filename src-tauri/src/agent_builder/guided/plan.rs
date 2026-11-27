@@ -689,9 +689,8 @@ fn guarded_sending_value(
         let names_only_inputs = !parts.is_empty()
             && parts.iter().all(|part| match part {
                 FieldPart::Input(_) => true,
-                FieldPart::Text(words) => {
-                    !words.contains('@') && words.chars().filter(char::is_ascii_digit).count() < 6
-                }
+                // Only separators between inputs: "Sari W <{address}" is a made-up name around one.
+                FieldPart::Text(words) => words.chars().all(|character| matches!(character, ',' | ';' | ' ')),
                 FieldPart::StepResult(_) => false,
             })
             && parts.iter().any(|part| matches!(part, FieldPart::Input(_)));
@@ -701,7 +700,13 @@ fn guarded_sending_value(
         return address_input(plan).map(|name| json!(format!("{{{name}}}")));
     }
     if SINGLE_LINE_FIELDS.contains(&field.name.as_str()) {
-        // A subject is one line; a model's step result or its own text may hold several.
+        // A subject is one line. A step's result may hold several, so a subject that reads
+        // one becomes the plan's own one-line summary.
+        let reads_a_result = field_parts(text, plan).iter().any(|part| matches!(part, FieldPart::StepResult(_)));
+        if reads_a_result {
+            let summary = plan.summary.trim();
+            return (!summary.is_empty()).then(|| json!(summary));
+        }
         return value.map(|value| match value {
             serde_json::Value::String(text) => json!(text.split_whitespace().collect::<Vec<_>>().join(" ")),
             other => other,
@@ -1673,6 +1678,17 @@ mod tests {
         )
         .unwrap();
         assert_eq!(two_lines["subject"], json!("Ringkasan rapat"));
+        let mut plan = sending_plan();
+        plan.summary = "Sends the meeting summary.".into();
+        let read_subject = normalize_fields(
+            &send_email_operation(),
+            r#"{"subject": "{step_1}", "to": "Sari W <{address}>"}"#,
+            &plan,
+            2,
+        )
+        .unwrap();
+        assert_eq!(read_subject["subject"], json!("Sends the meeting summary."));
+        assert_eq!(read_subject["to"], json!("{address}"), "a made-up name around the address goes");
 
         let mut no_address_input = sending_plan();
         no_address_input.inputs = vec![input("notes", "Meeting notes")];
