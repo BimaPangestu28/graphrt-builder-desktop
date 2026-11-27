@@ -1,7 +1,7 @@
 import type { ChatbotChannel, ChatbotSettings, ChatbotSetup } from '../chatbotSetupTypes'
 import { sampleChatbotPersona, sampleHandoffRules } from '@/api/sampleBackend/fixtures/chatbotSetup'
 import { sampleKnowledgeBackend } from './knowledge'
-import { sampleTelegramAccount, sampleWhatsAppWebAgent } from './channels'
+import { sampleSlackAccount, sampleTelegramAccount, sampleWhatsAppWebAgent } from './channels'
 import { respondWith } from './sampleResponse'
 
 /**
@@ -38,10 +38,13 @@ function describeChannels(agentId: string, settings: ChatbotSettings): ChatbotCh
   const isOn = (channel: string) => !settings.disabledChannels.includes(channel)
   const telegram = sampleTelegramAccount(agentId)
   const answersPersonal = sampleWhatsAppWebAgent() === agentId
+  const slack = sampleSlackAccount(agentId)
   return [
     { id: 'telegram', name: 'Telegram', connected: telegram !== null, enabled: telegram !== null && isOn('telegram'), detail: telegram },
     { id: 'whatsapp', name: 'WhatsApp Business', connected: true, enabled: isOn('whatsapp'), detail: '+62 8•• •••• 1204 · same number as outreach' },
     { id: 'whatsapp-web', name: 'Personal WhatsApp', connected: answersPersonal, enabled: answersPersonal && isOn('whatsapp-web'), detail: null },
+    { id: 'slack', name: 'Slack', connected: slack !== null, enabled: slack !== null && isOn('slack'), detail: slack },
+    { id: 'teams', name: 'Microsoft Teams', connected: false, enabled: false, detail: null },
   ]
 }
 

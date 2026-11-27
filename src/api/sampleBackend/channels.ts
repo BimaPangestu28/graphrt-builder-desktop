@@ -1,5 +1,10 @@
 import { BackendError } from '../client'
 import type {
+  SlackApp,
+  SlackConnection,
+  SlackTokens,
+  TeamsBotInput,
+  TeamsSetup,
   TelegramConnection,
   TelegramTokenCheck,
   WhatsAppBusinessInput,
@@ -22,11 +27,31 @@ const tokenShape = /^\d{5,}:[A-Za-z0-9_-]{6,}$/
 let telegramByAgent = new Map<string, TelegramConnection>()
 let whatsAppWebAgent: string | null = null
 let businessByAgent = new Map<string, WhatsAppBusinessNumber>()
+let slackByAgent = new Map<string, SlackConnection>()
+let teamsSaved = new Set<string>()
 
 export function resetSampleChannels(): void {
   telegramByAgent = new Map()
   whatsAppWebAgent = null
   businessByAgent = new Map()
+  slackByAgent = new Map()
+  teamsSaved = new Set()
+}
+
+const guidShape = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** The sample Slack app: tokens of the right shape are accepted, `xoxb-revoked…` is refused. */
+function checkedSlack(tokens: SlackTokens): SlackApp {
+  if (!/^xoxb-[A-Za-z0-9-]{8,}$/.test(tokens.botToken.trim())) {
+    throw new BackendError('invalid_input', 'this is not a Slack bot token. Copy the Bot User OAuth Token from OAuth & Permissions, it starts with xoxb-')
+  }
+  if (!/^xapp-[A-Za-z0-9-]{8,}$/.test(tokens.appToken.trim())) {
+    throw new BackendError('invalid_input', 'this is not a Slack app token. Make one under Basic Information › App-Level Tokens with connections:write, it starts with xapp-')
+  }
+  if (tokens.botToken.includes('revoked')) {
+    throw new BackendError('invalid_input', 'Slack does not accept the bot token. It is wrong, or the app was removed from the workspace: copy it again')
+  }
+  return { botUserId: 'U0TOKOKUE', team: 'Toko Kue' }
 }
 
 function checkedToken(token: string): TelegramTokenCheck {
@@ -44,6 +69,11 @@ function checkedToken(token: string): TelegramTokenCheck {
 export function sampleTelegramAccount(agentId: string): string | null {
   const connection = telegramByAgent.get(agentId)
   return connection?.bot.username ? `@${connection.bot.username}` : null
+}
+
+/** The workspace the sample chatbot answers in on Slack, or null. */
+export function sampleSlackAccount(agentId: string): string | null {
+  return slackByAgent.get(agentId)?.app.team ?? null
 }
 
 /** The chatbot that answers the sample personal WhatsApp. */
@@ -110,5 +140,45 @@ export const sampleChannelsBackend = {
   forgetWhatsAppBusiness: (agentId: string): Promise<void> =>
     respondWith(() => {
       businessByAgent.delete(agentId)
+    }),
+
+  checkSlackTokens: (tokens: SlackTokens): Promise<SlackApp> => respondWith(() => checkedSlack(tokens)),
+
+  connectSlack: (agentId: string, tokens: SlackTokens): Promise<SlackConnection> =>
+    respondWith(() => {
+      const connection: SlackConnection = { agentId, app: checkedSlack(tokens), state: 'connected' }
+      slackByAgent.set(agentId, connection)
+      return { ...connection }
+    }),
+
+  disconnectSlack: (agentId: string): Promise<void> =>
+    respondWith(() => {
+      slackByAgent.delete(agentId)
+    }),
+
+  getSlackConnection: (agentId: string): Promise<SlackConnection | null> =>
+    respondWith(() => {
+      const connection = slackByAgent.get(agentId)
+      return connection ? { ...connection } : null
+    }),
+
+  getTeamsSetup: (agentId: string): Promise<TeamsSetup> =>
+    respondWith(() => ({ agentId, saved: teamsSaved.has(agentId), online: false, messagingEndpoint: null, toolsReady: true })),
+
+  saveTeamsBot: (agentId: string, input: TeamsBotInput): Promise<void> =>
+    respondWith(() => {
+      if (!guidShape.test(input.appId.trim())) {
+        throw new BackendError('invalid_input', 'Copy the Microsoft App ID from the Configuration page of the Azure Bot: it looks like 1a2b3c4d-1234-...')
+      }
+      if (!guidShape.test(input.tenantId.trim())) {
+        throw new BackendError('invalid_input', 'Copy the App Tenant ID from the Configuration page of the Azure Bot: it looks like 9f8e7d6c-...')
+      }
+      if (!input.appPassword.trim()) throw new BackendError('invalid_input', "Paste the client secret value of the bot's app")
+      teamsSaved.add(agentId)
+    }),
+
+  forgetTeamsBot: (agentId: string): Promise<void> =>
+    respondWith(() => {
+      teamsSaved.delete(agentId)
     }),
 }

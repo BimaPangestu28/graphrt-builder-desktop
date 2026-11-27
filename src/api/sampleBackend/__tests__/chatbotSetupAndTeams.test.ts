@@ -17,6 +17,8 @@ describe('sample chatbot setup backend', () => {
       ['telegram', false],
       ['whatsapp', true],
       ['whatsapp-web', false],
+      ['slack', false],
+      ['teams', false],
     ])
     const other = await sampleChatbotSetupBackend.getChatbotSetup('other-bot')
     expect(other.isSaved).toBe(false)

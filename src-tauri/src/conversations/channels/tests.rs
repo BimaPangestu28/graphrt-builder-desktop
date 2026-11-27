@@ -1,7 +1,10 @@
-//! The customer channels against fake servers: a fake Telegram Bot API, a fake Graph API,
+//! The customer channels against fake servers: a fake Telegram Bot API, a fake Slack (Web
+//! API and Socket Mode), a fake Microsoft login server, a fake Graph API,
 //! a fake online chatbot (`graphrt serve --channel whatsapp`), and a scripted
 //! `whatsapp-web` plugin. Real HTTP on `127.0.0.1`, the real reply pipeline, a scripted model.
 
+mod slack_tests;
+mod teams_online_tests;
 mod telegram_tests;
 mod whatsapp_online_tests;
 mod whatsapp_web_tests;

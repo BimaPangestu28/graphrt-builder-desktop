@@ -14,11 +14,11 @@ export type FeaturesAvailability = 'ready' | 'needs_tools' | 'needs_newer_tools'
 
 /** Whether the online copy keeps paired phones, which costs a small storage space. */
 export function needsStorage(features: OnlineFeatures): boolean {
-  return features.phone || features.notifications || features.whatsapp
+  return features.phone || features.notifications || features.whatsapp || features.teams
 }
 
 export function anyFeatureOn(features: OnlineFeatures): boolean {
-  return features.chat || features.phone || features.notifications || features.answerWhenTimeRunsOut || features.whatsapp
+  return features.chat || features.phone || features.notifications || features.answerWhenTimeRunsOut || features.whatsapp || features.teams
 }
 
 /**

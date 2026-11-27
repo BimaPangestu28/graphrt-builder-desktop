@@ -5,13 +5,13 @@ import { messages } from '@/i18n'
  * card of the picker; its setup is chosen by `id` in `ConnectWhatsAppPage`. Adding a
  * channel is one entry here plus its setup component.
  */
-export type ChannelOptionId = 'telegram' | 'business' | 'personal'
+export type ChannelOptionId = 'telegram' | 'slack' | 'teams' | 'business' | 'personal'
 
 export interface ChannelOption {
   id: ChannelOptionId
   title: string
   description: string
-  /** The chatbot setup's channel id (`whatsapp`, `whatsapp-web`, `telegram`) this option connects. */
+  /** The chatbot setup's channel id (`whatsapp`, `whatsapp-web`, `telegram`, `slack`, `teams`) this option connects. */
   chatbotChannel: string
 }
 
@@ -22,6 +22,8 @@ export function listChannelOptions(): ChannelOption[] {
     { id: 'telegram', title: c.telegramTitle, description: c.telegramDescription, chatbotChannel: 'telegram' },
     { id: 'business', title: t.businessTitle, description: t.businessDescription, chatbotChannel: 'whatsapp' },
     { id: 'personal', title: t.personalTitle, description: t.personalDescription, chatbotChannel: 'whatsapp-web' },
+    { id: 'slack', title: c.slackTitle, description: c.slackDescription, chatbotChannel: 'slack' },
+    { id: 'teams', title: c.teamsTitle, description: c.teamsDescription, chatbotChannel: 'teams' },
   ]
 }
 

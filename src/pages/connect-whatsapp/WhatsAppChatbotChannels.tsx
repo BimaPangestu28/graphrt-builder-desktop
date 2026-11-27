@@ -18,7 +18,7 @@ import { SetupStep } from './SetupStep'
 const inputClassNames =
   'box-border h-9 w-full min-w-0 rounded-lg border border-line-strong bg-surface px-3 font-mono text-[13px] text-ink outline-none focus:border-brand'
 
-function SecretField({ label, help, value, onChange }: { label: string; help: string; value: string; onChange: (value: string) => void }) {
+export function SecretField({ label, help, value, onChange }: { label: string; help: string; value: string; onChange: (value: string) => void }) {
   const id = useId()
   return (
     <div className="flex min-w-0 flex-col gap-1">
@@ -31,7 +31,7 @@ function SecretField({ label, help, value, onChange }: { label: string; help: st
   )
 }
 
-function CopyRow({ label, value }: { label: string; value: string }) {
+export function CopyRow({ label, value }: { label: string; value: string }) {
   const c = messages().channels
   const [copied, setCopied] = useState(false)
   return (

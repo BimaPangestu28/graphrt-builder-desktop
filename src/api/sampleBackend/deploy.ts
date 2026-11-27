@@ -262,11 +262,11 @@ function checkedFeatures(features: OnlineFeatures): OnlineFeatures {
   const email = features.notifyEmail?.trim().replace(/^mailto:/, '') ?? ''
   if (notifications && !email) invalid('Enter your email address for notifications. Notification services use it only to reach you if something is wrong with this sender')
   if (notifications && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) invalid(`\`${email}\` is not an email address such as you@example.com`)
-  return { chat: features.chat, chatAudience: features.chat ? features.chatAudience : 'guests', embedSite, phone: features.phone, notifications, notifyEmail: notifications ? email : null, answerWhenTimeRunsOut: features.answerWhenTimeRunsOut, whatsapp: features.whatsapp }
+  return { chat: features.chat, chatAudience: features.chat ? features.chatAudience : 'guests', embedSite, phone: features.phone, notifications, notifyEmail: notifications ? email : null, answerWhenTimeRunsOut: features.answerWhenTimeRunsOut, whatsapp: features.whatsapp, teams: features.teams }
 }
 
 function anyFeature(features: OnlineFeatures): boolean {
-  return features.chat || features.phone || features.notifications || features.answerWhenTimeRunsOut || features.whatsapp
+  return features.chat || features.phone || features.notifications || features.answerWhenTimeRunsOut || features.whatsapp || features.teams
 }
 
 function targetKey(target: OnlineTarget): string {
@@ -322,7 +322,7 @@ function pair(target: OnlineTarget, name: string): DevicePairing {
 function ownServerInstructions(agentId: string, requested: OnlineFeatures): OwnServerInstructions {
   const features = checkedFeatures(requested)
   const name = readStoredAgent(agentId).name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'agent'
-  const needsStorage = features.phone || features.notifications || features.whatsapp
+  const needsStorage = features.phone || features.notifications || features.whatsapp || features.teams
   const lines = [`docker run -d --name ${name} -p 8080:8080 \\`, '  -v "$PWD/bundles:/workflows:ro" \\']
   if (needsStorage) lines.push(`  -v ${name}-store:/data \\`)
   lines.push('  -e GRAPHRT_API_KEY=<generate one> \\', '  -e OPENAI_API_KEY=<your key> \\')
@@ -335,14 +335,19 @@ function ownServerInstructions(agentId: string, requested: OnlineFeatures): OwnS
   if (features.whatsapp) {
     for (const variable of ['WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID', 'WHATSAPP_APP_SECRET', 'WHATSAPP_VERIFY_TOKEN']) lines.push(`  -e ${variable}=<from the WhatsApp step> \\`)
   }
+  if (features.teams) {
+    for (const variable of ['TEAMS_APP_ID', 'TEAMS_APP_PASSWORD', 'TEAMS_TENANT_ID']) lines.push(`  -e ${variable}=<from the Teams step> \\`)
+  }
   const image = anyFeature(features) ? '  ghcr.io/graphrt/graphrt:<a version newer than 0.6.2>' : '  ghcr.io/graphrt/graphrt'
-  lines.push(features.whatsapp ? `${image} \\\n  serve /workflows --addr 0.0.0.0:8080 --channel whatsapp=${name}` : image)
+  const channels = [features.whatsapp ? 'whatsapp' : null, features.teams ? 'teams' : null].filter((kind): kind is string => kind !== null)
+  lines.push(channels.length > 0 ? `${image} \\\n  serve /workflows --addr 0.0.0.0:8080${channels.map((kind) => ` --channel ${kind}=${name}`).join('')}` : image)
   return {
     command: lines.join('\n'),
     needsGraphrtNewerThan: anyFeature(features) ? '0.6.2' : null,
     chatAddress: features.chat ? `https://<the address of this server>/chat/${name}` : null,
     phoneAddress: features.phone ? 'https://<the address of this server>/monitor/' : null,
     whatsappWebhook: features.whatsapp ? 'https://<the address of this server>/v1/channels/whatsapp/webhook' : null,
+    teamsEndpoint: features.teams ? 'https://<the address of this server>/v1/channels/teams/webhook' : null,
   }
 }
 

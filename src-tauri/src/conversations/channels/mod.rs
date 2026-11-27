@@ -1,5 +1,7 @@
 //! The customer channels of chatbots, on graphrt's `graphrt-channel` crate.
 //!
+//! - [`slack`]: a Slack app per chatbot, by Socket Mode: the app connects out to Slack, so
+//!   nothing listens on this computer either. Direct messages and mentions in channels.
 //! - [`telegram`]: a Telegram bot per chatbot, by long polling. Nothing listens on this
 //!   computer: the app asks Telegram for new messages, so it works behind any router and
 //!   picks up after sleep or a lost connection where it stopped (the update cursor is
@@ -15,6 +17,9 @@
 //! Every adapter turns the channel's errors into a [`super::channel::DeliveryProblem`]
 //! the screens put in plain words, and never names a token or a URL that carries one.
 
+pub mod online_sync;
+pub mod slack;
+pub mod teams_online;
 pub mod telegram;
 pub mod whatsapp_online;
 pub mod whatsapp_web;

@@ -37,8 +37,13 @@ use crate::storage::Database;
 /// `agent_settings` key of the chatbot setup.
 pub const SETTINGS_KEY: &str = "chatbot_setup";
 /// Channels a chatbot can answer on besides the in-app test channel, in display order.
-pub const CUSTOMER_CHANNELS: &[(&str, &str)] =
-    &[("telegram", "Telegram"), ("whatsapp", "WhatsApp Business"), ("whatsapp-web", "Personal WhatsApp")];
+pub const CUSTOMER_CHANNELS: &[(&str, &str)] = &[
+    ("telegram", "Telegram"),
+    ("whatsapp", "WhatsApp Business"),
+    ("whatsapp-web", "Personal WhatsApp"),
+    ("slack", "Slack"),
+    ("teams", "Microsoft Teams"),
+];
 
 /// Whether a channel is connected for a chatbot, and the account it answers as.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

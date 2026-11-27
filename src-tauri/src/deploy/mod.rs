@@ -462,6 +462,22 @@ impl DeployService {
             .collect()
     }
 
+    /// The chatbots whose online copy answers in Microsoft Teams: put online with it on,
+    /// and not failed.
+    pub fn teams_online_agents(&self) -> Vec<String> {
+        let agents = self.db.agents_with_setting(ONLINE_FEATURES_KEY).unwrap_or_default();
+        agents
+            .into_iter()
+            .filter(|agent_id| self.online_features(agent_id).is_ok_and(|features| features.teams))
+            .filter(|agent_id| {
+                self.db.get_deployment(agent_id).ok().flatten().is_some_and(|record| {
+                    record.url.is_some()
+                        && !matches!(record.status, DeploymentStatus::Failed | DeploymentStatus::Deploying)
+                })
+            })
+            .collect()
+    }
+
     /// The address and access key of the online copy of `agent_id`, for the Inbox to show
     /// its WhatsApp Business chats.
     ///
@@ -769,7 +785,7 @@ impl DeployService {
     /// # Errors
     /// `InvalidInput` when something is turned on and the installed tools are too old for it.
     fn feature_arguments(&self, features: &OnlineFeatures) -> AppResult<Vec<String>> {
-        if features.whatsapp && !self.cli_knows_channels() {
+        if (features.whatsapp || features.teams) && !self.cli_knows_channels() {
             return Err(AppError::InvalidInput(WHATSAPP_NEEDS_NEWER_TOOLS.into()));
         }
         if self.cli_knows_online_features() {
@@ -905,6 +921,14 @@ impl DeployService {
         if options.features.whatsapp {
             // The four WhatsApp Business values become Fly secrets, like the model keys.
             let secrets = crate::conversations::channels::whatsapp_online::deploy_secrets(&self.credentials, agent_id)?;
+            for (env_name, credential_name, value) in secrets {
+                keys.push(KeyToCopy::channel_secret(env_name, &credential_name));
+                environment_extra.push((env_name.to_owned(), value));
+            }
+        }
+        if options.features.teams {
+            // The three values of the Azure Bot become Fly secrets too.
+            let secrets = crate::conversations::channels::teams_online::deploy_secrets(&self.credentials, agent_id)?;
             for (env_name, credential_name, value) in secrets {
                 keys.push(KeyToCopy::channel_secret(env_name, &credential_name));
                 environment_extra.push((env_name.to_owned(), value));
