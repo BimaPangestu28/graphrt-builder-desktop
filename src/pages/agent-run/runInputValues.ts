@@ -75,6 +75,18 @@ export function controlForInput(input: FlowInput): RunInputControl {
   return controlByInputType[(input.inputType ?? 'text-input').toLowerCase()] ?? 'text'
 }
 
+/** A label that already says it is optional: "(optional)" or "(opsional)" anywhere in it. */
+const saysOptionalPattern = /\((optional|opsional)\)/i
+
+/**
+ * The label shown above an input: "(optional)" is added to an input that may stay empty,
+ * unless the workflow's own label already says so ("Client address (optional)").
+ */
+export function runInputLabel(input: FlowInput): string {
+  if (input.required || saysOptionalPattern.test(input.label)) return input.label
+  return `${input.label} (optional)`
+}
+
 function toFileListValue(rawValue: unknown): string[] {
   if (typeof rawValue === 'string') return rawValue === '' ? [] : [rawValue]
   return Array.isArray(rawValue) ? rawValue.filter((item): item is string => typeof item === 'string') : []

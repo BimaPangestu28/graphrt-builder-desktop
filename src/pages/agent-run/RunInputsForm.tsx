@@ -3,7 +3,7 @@ import type { RunInputs } from '@/api/runReviewTypes'
 import type { FlowInput } from '@/api/types'
 import { ListRowsInput } from './ListRowsInput'
 import { RunFileInput } from './RunFileInput'
-import { controlForInput, initialRunInputValues, isListRowsState, jsonTextToListRows, listRowsToJsonText, parseRunInputValues, type RunInputValue, type RunInputValues } from './runInputValues'
+import { controlForInput, initialRunInputValues, isListRowsState, jsonTextToListRows, listRowsToJsonText, parseRunInputValues, runInputLabel, type RunInputValue, type RunInputValues } from './runInputValues'
 import { messages } from '@/i18n'
 
 interface RunInputsFormProps {
@@ -22,7 +22,7 @@ const fieldClassNames =
 function InputControl({ input, value, onChange }: { input: FlowInput; value: RunInputValue; onChange: (value: RunInputValue) => void }) {
   const inputId = useId()
   const control = controlForInput(input)
-  const labelText = input.required ? input.label : `${input.label} (optional)`
+  const labelText = runInputLabel(input)
 
   if (control === 'checkbox') {
     return (

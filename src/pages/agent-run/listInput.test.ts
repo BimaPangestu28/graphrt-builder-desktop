@@ -1,6 +1,6 @@
 import type { FlowInput } from '@/api/types'
 import { emptyRow, listColumns, rowsFromValue, valueFromRows } from './listInput'
-import { initialRunInputValues, isListRowsState, jsonTextToListRows, listRowsToJsonText, parseRunInputValues } from './runInputValues'
+import { initialRunInputValues, isListRowsState, jsonTextToListRows, listRowsToJsonText, parseRunInputValues, runInputLabel } from './runInputValues'
 
 const invoiceItems = [
   { description: 'Desain antarmuka', quantity: 3, unit: 'hari', unit_price: 1500000 },
@@ -120,5 +120,17 @@ describe('a list input in the run form', () => {
     expect(jsonTextToListRows(itemsInput, jsonText)).toEqual(state)
     expect(jsonTextToListRows(itemsInput, '[{"description": ')).toBeNull()
     expect(jsonTextToListRows(itemsInput, '{"not":"a list"}')).toBeNull()
+  })
+})
+
+describe('runInputLabel', () => {
+  const input = (label: string, required: boolean): FlowInput => ({ name: 'x', label, required })
+
+  it('marks an input that may stay empty, once', () => {
+    expect(runInputLabel(input('Client name', true))).toBe('Client name')
+    expect(runInputLabel(input('Tax name', false))).toBe('Tax name (optional)')
+    expect(runInputLabel(input('Client address (optional)', false))).toBe('Client address (optional)')
+    expect(runInputLabel(input('Alamat klien (opsional)', false))).toBe('Alamat klien (opsional)')
+    expect(runInputLabel(input('Tax percent (leave empty for no tax)', false))).toBe('Tax percent (leave empty for no tax) (optional)')
   })
 })
