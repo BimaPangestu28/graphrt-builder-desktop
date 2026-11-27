@@ -66,6 +66,11 @@ describe('RunResultPage', () => {
   })
 
   it('shows the latest finished test run of the agent without ?runId=', async () => {
+    // The sample test run ended a day and 38 minutes before "now": "Yesterday" only when now is
+    // not just after midnight. Noon, local time, with the sample runs seeded from that clock.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 10, 20, 12, 0, 0))
+    resetSampleRuns()
     renderRunResultPage()
     expect(await screen.findByText(/^Yesterday \d\d:\d\d · on this computer$/)).toBeInTheDocument()
     expect(screen.getByText('Succeeded')).toBeInTheDocument()
