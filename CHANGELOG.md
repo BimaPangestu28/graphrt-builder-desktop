@@ -35,6 +35,8 @@ releases may contain breaking changes; they are called out under **Changed**.
 
 ### Fixed
 
+- **Knowledge goes online too**: putting an agent online (and "Make a new key") now ships the same package as "Export agent file" when the agent uses knowledge: its passages and chunking settings travel with it, so the online copy searches and indexes the same way. An online copy carries at most 1 MB; larger knowledge is refused before anything is sent, with a plain message pointing to My own server, whose agent file has no such limit.
+- **Passage numbers have no gaps**: the passage viewer numbered passages by graphrt's internal cut number, which skips numbers when a cut holds only a PDF page marker or repeats text. Passages are now numbered 1, 2, 3 in document order.
 - **A customer message during a take-over is answered after the hand back**: when a customer wrote while you held the chat and you then gave it back to the bot, that message stayed unanswered. The bot now answers the latest such message as soon as you hand back.
 - **Telegram says "Connected" at once**: after **Connect bot** the status stayed on "Connecting to Telegram…" for about 25 seconds, until the first wait for messages ended.
 - **The answer you chose is named in words**: after you answer an "Ask me before continuing" step, the run feed, the step's details in the run history and the review of many questions now say which button you pressed as the button says it ("You chose “Buat invoice”"), not its internal id (`create`). The id appears only when the button has no title.

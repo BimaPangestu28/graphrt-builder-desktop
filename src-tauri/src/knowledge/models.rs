@@ -257,8 +257,11 @@ pub struct KnowledgeDocument {
 #[serde(rename_all = "camelCase")]
 pub struct KnowledgeChunk {
     pub id: String,
-    /// Position in the document, from 0.
+    /// graphrt's `chunk_index`: the cut the passage came from, from 0. It can skip
+    /// numbers (cuts that held only a page marker, repeated text stored once).
     pub index: u64,
+    /// Place among the document's stored passages, from 1, with no gaps: the number people see.
+    pub position: u64,
     pub text: String,
     pub char_count: u64,
     /// Estimated with graphrt's 4 characters per token.

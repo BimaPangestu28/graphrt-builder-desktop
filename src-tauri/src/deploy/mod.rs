@@ -332,6 +332,20 @@ impl std::fmt::Debug for DeployService {
 }
 
 /// `menu-questions-chatbot-1a2b3c`: lowercase letters, digits and dashes, at most 48 characters.
+/// Largest agent file a direct deploy ships (graphrt-provider-fly `MAX_AGENT_FILE_BYTES`:
+/// the file travels inside the Machine's configuration).
+pub const MAX_DEPLOY_FILE_BYTES: usize = 1024 * 1024;
+
+/// Why an agent whose knowledge is too large cannot go online directly, and what to do.
+fn knowledge_too_large_message(bytes: usize) -> String {
+    let megabytes = bytes as f64 / 1_048_576.0;
+    format!(
+        "This agent's knowledge is {megabytes:.1} MB with its passages, and an online copy can carry at most 1 MB. \
+         Make the knowledge smaller (fewer or smaller files), or use My own server: its agent file carries \
+         knowledge of any size"
+    )
+}
+
 pub fn deployment_name_for(agent: &Agent) -> String {
     let mut slug = String::new();
     for character in agent.name.to_lowercase().chars() {
@@ -945,9 +959,7 @@ impl DeployService {
 
         let work_dir =
             tempfile::tempdir().map_err(|error| AppError::Internal(format!("no temporary folder: {error}")))?;
-        let agent_file = work_dir.path().join("agent.yaml");
-        std::fs::write(&agent_file, &agent.flow_yaml)
-            .map_err(|error| AppError::Internal(format!("could not write the agent file: {error}")))?;
+        let agent_file = self.write_deploy_file(agent, work_dir.path())?;
         let request = DeployRequest {
             target: options.provider,
             deployment: record.deployment_name.clone(),
@@ -1036,16 +1048,14 @@ impl DeployService {
         let executable = self.require_cli()?;
         let environment =
             cli::compose_environment(|name| std::env::var(name).ok(), &self.provider_environment(record.provider)?);
-        let agent = self.db.get_agent(agent_id)?;
-        let flow_yaml = match record.deployed_agent_version {
-            Some(version) => self.db.get_agent_version(agent_id, version)?.flow_yaml,
-            None => agent.flow_yaml.clone(),
-        };
+        let mut agent = self.db.get_agent(agent_id)?;
+        if let Some(version) = record.deployed_agent_version {
+            agent.flow_yaml = self.db.get_agent_version(agent_id, version)?.flow_yaml;
+            agent.current_version = version;
+        }
         let work_dir =
             tempfile::tempdir().map_err(|error| AppError::Internal(format!("no temporary folder: {error}")))?;
-        let agent_file = work_dir.path().join("agent.yaml");
-        std::fs::write(&agent_file, flow_yaml)
-            .map_err(|error| AppError::Internal(format!("could not write the agent file: {error}")))?;
+        let agent_file = self.write_deploy_file(&agent, work_dir.path())?;
         let request = DeployRequest {
             target: record.provider,
             deployment: record.deployment_name.clone(),
@@ -1395,6 +1405,47 @@ impl DeployService {
         self.credentials.delete_deploy_secret(&format!("server:{server_id}"))
     }
 
+    /// The agent as a `.grt` bundle: its workflow plus, when it uses knowledge, the knowledge
+    /// bases (passages and chunking settings), so `graphrt serve` searches and indexes the
+    /// same way as this app. Every path that packages an agent goes through here.
+    fn agent_bundle(&self, agent: &Agent) -> AppResult<Vec<u8>> {
+        let knowledge = crate::knowledge::bundle::knowledge_for_bundle(&self.db, agent)?;
+        let bundle_error =
+            |error: graphrt_bundle::BundleError| AppError::Workflow(format!("could not build the agent file: {error}"));
+        let mut builder =
+            graphrt_bundle::BundleBuilder::new(deployment_name_for(agent), format!("{}.0.0", agent.current_version))
+                .description(agent.description.clone())
+                .workflow("workflow.yaml", agent.flow_yaml.clone())
+                .map_err(bundle_error)?;
+        if let Some(knowledge) = &knowledge {
+            builder = builder.knowledge(&knowledge.config_json, knowledge.directory.path()).map_err(bundle_error)?;
+        }
+        builder.build().map_err(bundle_error)
+    }
+
+    /// Writes the file `graphrt deploy` ships into `work_dir`: a `.grt` bundle when the agent
+    /// uses knowledge (so the online copy has the same passages and chunking), plain YAML
+    /// otherwise.
+    ///
+    /// # Errors
+    /// `InvalidInput` with a plain sentence when the knowledge is larger than a direct deploy carries.
+    fn write_deploy_file(&self, agent: &Agent, work_dir: &Path) -> AppResult<PathBuf> {
+        let uses_knowledge = crate::knowledge::bundle::uses_knowledge(&self.db, agent)?;
+        let (file_name, bytes) = if uses_knowledge {
+            let bytes = self.agent_bundle(agent)?;
+            if bytes.len() > MAX_DEPLOY_FILE_BYTES {
+                return Err(AppError::InvalidInput(knowledge_too_large_message(bytes.len())));
+            }
+            ("agent.grt", bytes)
+        } else {
+            ("agent.yaml", agent.flow_yaml.clone().into_bytes())
+        };
+        let agent_file = work_dir.join(file_name);
+        std::fs::write(&agent_file, bytes)
+            .map_err(|error| AppError::Internal(format!("could not write the agent file: {error}")))?;
+        Ok(agent_file)
+    }
+
     /// Writes the agent's release in use as a `.grt` bundle (or plain YAML when `path` ends in `.yaml` / `.yml`).
     /// A bundle carries the knowledge bases the agent uses (passages and chunking settings).
     /// Keys are never inside: the IT team adds them on the server.
@@ -1405,23 +1456,7 @@ impl DeployService {
         let bytes = if extension == "yaml" || extension == "yml" {
             agent.flow_yaml.clone().into_bytes()
         } else {
-            // Knowledge goes inside with its chunking, so `graphrt serve` searches and indexes the same way.
-            let knowledge = crate::knowledge::bundle::knowledge_for_bundle(&self.db, &agent)?;
-            let bundle_error = |error: graphrt_bundle::BundleError| {
-                AppError::Workflow(format!("could not build the agent file: {error}"))
-            };
-            let mut builder = graphrt_bundle::BundleBuilder::new(
-                deployment_name_for(&agent),
-                format!("{}.0.0", agent.current_version),
-            )
-            .description(agent.description.clone())
-            .workflow("workflow.yaml", agent.flow_yaml.clone())
-            .map_err(bundle_error)?;
-            if let Some(knowledge) = &knowledge {
-                builder =
-                    builder.knowledge(&knowledge.config_json, knowledge.directory.path()).map_err(bundle_error)?;
-            }
-            builder.build().map_err(bundle_error)?
+            self.agent_bundle(&agent)?
         };
         std::fs::write(path, bytes)
             .map_err(|error| AppError::Internal(format!("could not save {}: {error}", path.display())))?;

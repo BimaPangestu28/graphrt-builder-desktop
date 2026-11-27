@@ -92,16 +92,29 @@ fn build_config(knowledge_bases: &[StoredKnowledgeBase], directory: &Path) -> Ap
     Ok(json!({ "embedders": embedders, "stores": stores, "datasets": datasets }))
 }
 
+/// Knowledge bases the agent uses (by its workflow or, for a chatbot, its saved setup).
+fn used_knowledge_bases(db: &Database, agent: &Agent) -> AppResult<Vec<StoredKnowledgeBase>> {
+    let agents = std::slice::from_ref(agent);
+    Ok(records::list_knowledge_bases(db)?
+        .into_iter()
+        .filter(|knowledge_base| !super::usages_of(knowledge_base, agents, db).is_empty())
+        .collect())
+}
+
+/// Whether the agent uses any knowledge base, so its packages must carry knowledge.
+///
+/// # Errors
+/// `Database` when the knowledge bases cannot be read.
+pub fn uses_knowledge(db: &Database, agent: &Agent) -> AppResult<bool> {
+    Ok(!used_knowledge_bases(db, agent)?.is_empty())
+}
+
 /// The knowledge the agent uses, ready for a bundle; `None` when it uses none.
 ///
 /// # Errors
 /// `Database` when the knowledge bases cannot be read, `Internal` when a store cannot be copied.
 pub fn knowledge_for_bundle(db: &Database, agent: &Agent) -> AppResult<Option<KnowledgeBundle>> {
-    let agents = std::slice::from_ref(agent);
-    let used: Vec<StoredKnowledgeBase> = records::list_knowledge_bases(db)?
-        .into_iter()
-        .filter(|knowledge_base| !super::usages_of(knowledge_base, agents, db).is_empty())
-        .collect();
+    let used = used_knowledge_bases(db, agent)?;
     if used.is_empty() {
         return Ok(None);
     }
