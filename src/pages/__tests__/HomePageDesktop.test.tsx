@@ -316,7 +316,8 @@ describe('HomePage in the desktop app', () => {
     const preview = await within(needsYou).findByText('Send this promotion to HEBAT Business Consulting? Subject: Grow faster Hello team, Best regards')
     expect(preview).toHaveAttribute('title', promotionMessage)
     expect(preview).toHaveClass('line-clamp-2')
-    expect(within(needsYou).getByText(/^Today \d\d:\d\d run · paused for your review · 1 more waiting$/)).toBeInTheDocument()
+    // The run paused some minutes ago: just after midnight that was still yesterday.
+    expect(within(needsYou).getByText(/^(Today|Yesterday) \d\d:\d\d run · paused for your review · 1 more waiting$/)).toBeInTheDocument()
   })
 
   it('clamps long run results to a plain preview and links to every run', async () => {
