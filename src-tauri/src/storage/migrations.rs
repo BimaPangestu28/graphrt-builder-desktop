@@ -345,6 +345,21 @@ const MIGRATIONS: &[&str] = &[
     );
     CREATE INDEX agent_release_switches_by_agent ON agent_release_switches (agent_id, id DESC);
     "#,
+    // Knowledge connectors (see `knowledge::connectors`): a knowledge source that syncs
+    // from a web site, an API, Google Drive, Notion or SharePoint. The source row keeps
+    // kind `url`; this row says which connector, its settings (JSON, no secret: those
+    // are in the keychain) and its sync schedule (JSON, graphrt-connect's form).
+    r#"
+    CREATE TABLE knowledge_connectors (
+        source_id       TEXT PRIMARY KEY NOT NULL REFERENCES knowledge_sources (id) ON DELETE CASCADE,
+        connector       TEXT NOT NULL CHECK (connector IN ('website', 'api', 'google_drive', 'notion', 'sharepoint')),
+        options_json    TEXT NOT NULL,
+        auth_json       TEXT NOT NULL,
+        schedule_json   TEXT NOT NULL,
+        account_label   TEXT,
+        last_error_kind TEXT
+    );
+    "#,
 ];
 
 /// Applies every migration newer than the database's `user_version`.
@@ -409,6 +424,7 @@ mod tests {
                 "conversations",
                 "deployments",
                 "knowledge_bases",
+                "knowledge_connectors",
                 "knowledge_documents",
                 "knowledge_sources",
                 "node_layouts",

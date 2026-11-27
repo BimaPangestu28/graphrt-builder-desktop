@@ -15,6 +15,8 @@ import type { KnowledgeBase, KnowledgeBaseDetail, KnowledgeSettings, KnowledgeSo
 import { useKnowledgeBaseDetail } from '@/hooks/useKnowledge'
 import { agentPath, routePaths, sampleKnowledgeBaseId } from '@/routes'
 import { AddLinkForm } from './knowledge/AddLinkForm'
+import { ConnectSourceCard } from './knowledge/connectors/ConnectorWizard'
+import { syncKnowledgeSource } from '@/api/knowledgeConnectors'
 import { SectionHeading, compactButtonClassNames } from './knowledge/FormControls'
 import { KnowledgeSettingsPanel } from './knowledge/KnowledgeSettingsPanel'
 import { KnowledgeSourcesTable } from './knowledge/KnowledgeSourcesTable'
@@ -80,6 +82,12 @@ function useKnowledgeBaseActions(knowledgeBaseId: string, live: ReturnType<typeo
     actionError,
     setActionError,
     addSources,
+    addConnectedSource: (source: KnowledgeSource) =>
+      setData((current) => (current && !current.sources.some((known) => known.id === source.id) ? { ...current, sources: [...current.sources, source] } : current)),
+    syncSource: (source: KnowledgeSource) =>
+      runAction(async () => {
+        await syncKnowledgeSource(source.id)
+      }),
     removeSource: (source: KnowledgeSource) =>
       runAction(async () => {
         await removeKnowledgeSource(source.id)
@@ -167,7 +175,12 @@ export function KnowledgeDetailPage() {
             )}
             <section aria-labelledby="src-h" className="flex flex-col gap-3">
               <SectionHeading id="src-h">{t.sources}</SectionHeading>
-              <KnowledgeSourcesTable sources={detail.sources} readingPercents={readingPercents} onRemove={(source) => void actions.removeSource(source)} />
+              <KnowledgeSourcesTable
+                sources={detail.sources}
+                readingPercents={readingPercents}
+                onRemove={(source) => void actions.removeSource(source)}
+                onSyncSource={(source) => void actions.syncSource(source)}
+              />
               <FileDropZone
                 compact
                 itemDescription={t.filesOrFolder}
@@ -184,6 +197,7 @@ export function KnowledgeDetailPage() {
                 hint={knowledgeDropHint()}
               />
               <AddLinkForm label={t.websiteLinkToAdd} onAddLink={(url) => actions.addSources('url', [url])} />
+              <ConnectSourceCard knowledgeBaseId={knowledgeBase.id} onAdded={actions.addConnectedSource} />
             </section>
             <TestQuestionSection knowledgeBaseId={knowledgeBase.id} matchThreshold={parseMatchThreshold(currentThresholdText)} />
           </div>

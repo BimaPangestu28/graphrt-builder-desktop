@@ -15,6 +15,7 @@ const DELETE_ALL_DATA_SQL: &str = "
     DELETE FROM chain_steps;
     DELETE FROM chains;
     DELETE FROM knowledge_documents;
+    DELETE FROM knowledge_connectors;
     DELETE FROM knowledge_sources;
     DELETE FROM knowledge_bases;
     DELETE FROM agent_release_switches;

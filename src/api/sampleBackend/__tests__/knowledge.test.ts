@@ -15,6 +15,7 @@ describe('sample knowledge backend', () => {
     expect(knowledgeBases.map((knowledgeBase) => [knowledgeBase.id, knowledgeBase.status])).toEqual([
       ['menu-and-prices', 'up_to_date'],
       ['company-documents', 'syncing'],
+      ['team-wiki', 'needs_attention'],
       ['past-orders', 'up_to_date'],
     ])
     const detail = await sampleKnowledgeBackend.getKnowledgeBase('menu-and-prices')

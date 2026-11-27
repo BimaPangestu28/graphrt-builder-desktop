@@ -6,10 +6,15 @@ const sourceTypeClassNames: Record<KnowledgeSourceType, string> = {
   XLS: 'bg-ok-soft text-ok-strong',
   TXT: 'bg-selected text-ink-2',
   WEB: 'bg-info-soft text-info',
+  API: 'bg-selected text-ink',
+  GD: 'bg-amber-soft text-amber-strong',
+  N: 'bg-ink text-inverse',
+  SP: 'bg-brand-soft text-brand-strong',
 }
 
 /**
- * Small colored square naming a knowledge source's file type (PDF, XLS, TXT, WEB).
+ * Small colored square naming a knowledge source's file type (PDF, XLS, TXT, WEB) or its
+ * connector (API, GD for Google Drive, N for Notion, SP for SharePoint).
  * Used in the chatbot setup knowledge list (32px) and the knowledge sources table (30px).
  */
 export function SourceTypeTile({ type, size = 'md' }: { type: KnowledgeSourceType; size?: 'sm' | 'md' }) {
