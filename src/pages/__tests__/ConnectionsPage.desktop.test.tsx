@@ -106,6 +106,8 @@ describe('ConnectionsPage in the desktop app', () => {
     expect(await screen.findByText('OpenAI')).toBeInTheDocument()
     // The AI app already on this computer stays offered: it is the easiest one to connect.
     expect(screen.getByRole('button', { name: 'Turn on Claude Code' })).toBeInTheDocument()
+    // The tab says the same thing as the notice: Ollama alone is not a connected model.
+    expect(within(getTabBar()).getByRole('link', { name: 'AI models None connected' })).toBeInTheDocument()
   })
 
   it('still reports a real failure to read the default model as an error', async () => {

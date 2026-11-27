@@ -12,7 +12,7 @@ import { ConnectionCard } from './ConnectionCard'
 import { ConnectionsNotice, ConnectionsSection } from './ConnectionsSection'
 import { LocalCliCard } from './LocalCliCard'
 import { MoreLocalCliSection } from './MoreLocalCliSection'
-import type { ModelConnection } from './modelConnections'
+import { countConnectedModels, type ModelConnection } from './modelConnections'
 import { ProviderKeyForm } from './ProviderKeyForm'
 import { messages } from '@/i18n'
 
@@ -195,7 +195,7 @@ export function ModelProvidersSection({ connections, defaultModel, loadError, on
     >
       {loadError && <ConnectionsNotice tone="danger">{messages().connections.couldNotLoadAiModels}{' '}{describeError(loadError)}</ConnectionsNotice>}
       {!loadError && !connections && <ConnectionsNotice>{messages().connections.loadingAiModels}</ConnectionsNotice>}
-      {connections && !defaultModel && <NoModelYet hasLocalCli={localCliConnections.some((connection) => connection.localCli?.installed)} />}
+      {connections && countConnectedModels(connections) === 0 && <NoModelYet hasLocalCli={localCliConnections.some((connection) => connection.localCli?.installed)} />}
       {connections && (
         <div id={recommendedTargetIds.keyedCards} className={connectionCardGridClassNames}>
           {keyedConnections.map(renderCard)}
