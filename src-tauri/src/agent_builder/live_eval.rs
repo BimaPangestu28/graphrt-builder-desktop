@@ -1,19 +1,21 @@
-//! Measures how often the builder makes a working agent with a real local model.
+//! Measures how often the builder makes a working agent with a real model.
 //!
 //! Not part of the normal test run (`#[ignore]`): it needs Ollama with the model pulled, or
-//! with `GRAPHRT_EVAL_PROVIDER=openai` an `OPENAI_API_KEY`.
+//! with `GRAPHRT_EVAL_PROVIDER=openai` an `OPENAI_API_KEY`. It installs the `email` and
+//! `currency-rates` plugins from the live catalog (network, Node.js).
 //!
 //! ```sh
 //! GRAPHRT_EVAL_OLLAMA=http://127.0.0.1:11434 GRAPHRT_EVAL_MODEL=llama3.2 GRAPHRT_EVAL_ATTEMPTS=10 \
 //!   cargo test --manifest-path src-tauri/Cargo.toml live_eval -- --ignored --nocapture
 //! ```
 //!
-//! For every request it builds an agent `GRAPHRT_EVAL_ATTEMPTS` times (default 2), then
-//! runs each built agent once with sample inputs, approving every question. An attempt
-//! counts as working when the run succeeds with an output that is not empty. Set
-//! `GRAPHRT_EVAL_REQUESTS=0,3` to use only some requests and `GRAPHRT_EVAL_RUN=0` to skip
-//! the runs. `GRAPHRT_EVAL_FULL_DOCUMENT=1` builds on the full-document path only (the
-//! number before the guided path existed).
+//! For every scenario it builds an agent `GRAPHRT_EVAL_ATTEMPTS` times (default 2), applies
+//! the scenario's chat change if it has one, then runs the agent once with sample inputs,
+//! approving every question. An attempt counts as working when the scenario's own check
+//! passes ([`Scenario`]). Set `GRAPHRT_EVAL_REQUESTS=0,3` to use only some scenarios and
+//! `GRAPHRT_EVAL_RUN=0` to skip the runs. `GRAPHRT_EVAL_FULL_DOCUMENT=1` builds on the
+//! full-document path only (the number before the guided path existed).
+//! `GRAPHRT_EVAL_PLUGIN_DIR` keeps the installed plugins between runs.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -23,40 +25,170 @@ use serde_json::json;
 
 use super::*;
 use crate::engine::{RunEventPayload, RunEventSink, RunManager};
+use crate::plugins::download::HttpsDownloader;
+use crate::plugins::events::PluginEventSink;
+use crate::plugins::models::PluginEvent;
+use crate::plugins::{PluginService, PluginServiceConfig};
 use crate::storage::models::{RunStatus, RunTrigger};
-
-/// Jobs a business user would plausibly type first, all doable with a model alone or a public lookup.
-const REQUESTS: &[&str] = &[
-    "Look up the Wikipedia page summary for Jakarta and write a two sentence summary of it",
-    "Write a polite reply to a customer complaint that I paste in",
-    "Translate the text I give into Indonesian and make it sound formal",
-    "Take my meeting notes and turn them into a list of action items with owners",
-    "Write three Instagram caption ideas for a product I describe",
-];
 
 const NOTES: &str = "Our order of 20 lunch boxes arrived two hours late and cold. Rina will call the customer by \
                      Friday and Budi will refund the delivery fee.";
+const ADDRESS: &str = "budi@example.test";
+const ARTICLE: &str = "https://en.wikipedia.org/wiki/Nasi_goreng";
 
-/// Per request: what the person types into every text input.
-const SAMPLE_TEXTS: &[&str] = &["Jakarta", NOTES, NOTES, NOTES, "Handmade leather wallet"];
+/// What must be true, besides a run that ends well, for an attempt to count as working.
+#[derive(Clone, Copy, Default)]
+struct Needs {
+    /// The run asked the person at least once.
+    asks_first: bool,
+    /// The run reached this plugin step. A step that sends counts as reached when the
+    /// question before it showed [`ADDRESS`]; the mail itself is not delivered (no account).
+    plugin_step: Option<&'static str>,
+    /// A schedule was saved for the agent, turned off.
+    paused_schedule: bool,
+}
 
-/// Per request: words of which the output must contain at least one (lowercase) to count as
-/// a real result for the sample input, so "I have no text to summarize" does not pass.
-const EXPECTED_WORDS: &[&[&str]] = &[
-    &["jakarta"],
-    &["apolog", "sorry", "maaf", "regret"],
-    &["pesanan", "kami", "pelanggan", "terlambat"],
-    &["rina", "budi"],
-    &["wallet", "leather", "dompet"],
+/// One job a business user might type, and how to tell that the built agent does it.
+struct Scenario {
+    /// The kind of job, for the report.
+    job: &'static str,
+    description: &'static str,
+    /// What the person types into a text input that is not an address, a link or a place.
+    sample_text: &'static str,
+    /// Words of which the output must contain at least one (lowercase), so that "I have
+    /// no text to summarize" does not pass.
+    expected_words: &'static [&'static str],
+    needs: Needs,
+    /// A change asked for in the builder chat before the run, and the words the output
+    /// must then also contain one of.
+    change: Option<(&'static str, &'static [&'static str])>,
+}
+
+const NO_NEEDS: Needs = Needs { asks_first: false, plugin_step: None, paused_schedule: false };
+
+const SCENARIOS: &[Scenario] = &[
+    Scenario {
+        job: "lookup (data address)",
+        description: "Look up the Wikipedia page summary for Jakarta and write a two sentence summary of it",
+        sample_text: "Jakarta",
+        expected_words: &["jakarta"],
+        needs: NO_NEEDS,
+        change: None,
+    },
+    Scenario {
+        job: "writing",
+        description: "Write a polite reply to a customer complaint that I paste in",
+        sample_text: NOTES,
+        expected_words: &["apolog", "sorry", "maaf", "regret"],
+        needs: NO_NEEDS,
+        change: None,
+    },
+    Scenario {
+        job: "writing",
+        description: "Translate the text I give into Indonesian and make it sound formal",
+        sample_text: NOTES,
+        expected_words: &["pesanan", "kami", "pelanggan", "terlambat"],
+        needs: NO_NEEDS,
+        change: None,
+    },
+    Scenario {
+        job: "writing",
+        description: "Take my meeting notes and turn them into a list of action items with owners",
+        sample_text: NOTES,
+        expected_words: &["rina", "budi"],
+        needs: NO_NEEDS,
+        change: None,
+    },
+    Scenario {
+        job: "writing",
+        description: "Write three Instagram caption ideas for a product I describe",
+        sample_text: "Handmade leather wallet",
+        expected_words: &["wallet", "leather", "dompet"],
+        needs: NO_NEEDS,
+        change: None,
+    },
+    Scenario {
+        job: "lookup (web page)",
+        description: "Read the web page at a link I give and summarize it in three bullet points",
+        sample_text: ARTICLE,
+        expected_words: &["rice", "nasi"],
+        needs: NO_NEEDS,
+        change: None,
+    },
+    Scenario {
+        job: "send (email plugin)",
+        description: "Write a short thank-you note to a customer and send it by email to the address I give",
+        sample_text: "Budi, who ordered 20 lunch boxes",
+        expected_words: &["thank"],
+        needs: Needs { plugin_step: Some("email.send_email"), ..NO_NEEDS },
+        change: None,
+    },
+    Scenario {
+        job: "send (email plugin)",
+        description:
+            "Ringkas catatan rapat yang saya tempel lalu kirim ringkasannya lewat email ke alamat yang saya isi",
+        sample_text: NOTES,
+        expected_words: &["rina", "budi"],
+        needs: Needs { plugin_step: Some("email.send_email"), ..NO_NEEDS },
+        change: None,
+    },
+    Scenario {
+        job: "approval",
+        description: "Draft a reply to a customer complaint I paste and ask me to approve it before finishing",
+        sample_text: NOTES,
+        expected_words: &["apolog", "sorry", "maaf", "regret"],
+        needs: Needs { asks_first: true, ..NO_NEEDS },
+        change: None,
+    },
+    Scenario {
+        job: "schedule",
+        description:
+            "Every morning look up the Wikipedia page summary for Jakarta and write a one sentence note about the city",
+        sample_text: "Jakarta",
+        expected_words: &["jakarta"],
+        needs: Needs { paused_schedule: true, ..NO_NEEDS },
+        change: None,
+    },
+    Scenario {
+        job: "plugin that reads",
+        description: "Get the latest US dollar to Indonesian rupiah exchange rate and write one sentence about it",
+        sample_text: "USD",
+        expected_words: &["rupiah", "idr"],
+        needs: Needs { plugin_step: Some("currency-rates."), ..NO_NEEDS },
+        change: None,
+    },
+    Scenario {
+        job: "change in the chat",
+        description: "Write a polite reply to a customer complaint that I paste in",
+        sample_text: NOTES,
+        expected_words: &["maaf", "mohon", "kami", "pelanggan"],
+        needs: NO_NEEDS,
+        change: Some((
+            "Write the reply in Indonesian and offer a 10% discount on the next order",
+            &["10%", "10 %", "diskon"],
+        )),
+    },
+    Scenario {
+        job: "change in the chat",
+        description: "Look up the Wikipedia page summary for Jakarta and write a two sentence summary of it",
+        sample_text: "Jakarta",
+        expected_words: &["jakarta"],
+        needs: Needs { asks_first: true, ..NO_NEEDS },
+        change: Some(("Ask me to approve the summary before finishing", &["jakarta"])),
+    },
 ];
 
-const RUN_TIMEOUT: Duration = Duration::from_secs(300);
+const RUN_TIMEOUT: Duration = Duration::from_secs(420);
 
 #[derive(Debug)]
 struct QuietSink;
 
 impl RunEventSink for QuietSink {
     fn send(&self, _payload: RunEventPayload) {}
+}
+
+impl PluginEventSink for QuietSink {
+    fn send(&self, _event: PluginEvent) {}
 }
 
 fn env_or(name: &str, default: &str) -> String {
@@ -104,6 +236,196 @@ fn eval_setup(model_name: &str) -> EvalSetup {
     EvalSetup { builder, credentials, ollama_base_url: base_url }
 }
 
+/// Installs the plugins the scenarios use and publishes them, as the app does at start.
+/// The email plugin gets an SMTP server that does not exist: its sending step is reached
+/// and fails at the connection, which is as far as a test without an account can go.
+async fn install_plugins(credentials: Arc<CredentialStore>) -> (PluginService, Option<tempfile::TempDir>) {
+    let (app_data_dir, kept_alive) = match std::env::var("GRAPHRT_EVAL_PLUGIN_DIR") {
+        Ok(dir) => (std::path::PathBuf::from(dir), None),
+        Err(_) => {
+            let dir = tempfile::tempdir().unwrap();
+            (dir.path().to_path_buf(), Some(dir))
+        }
+    };
+    std::fs::create_dir_all(&app_data_dir).unwrap();
+    let service = PluginService::new(PluginServiceConfig {
+        app_data_dir: app_data_dir.clone(),
+        catalog_url: crate::plugins::DEFAULT_CATALOG_URL.to_owned(),
+        db: Arc::new(Database::open_in_memory().unwrap()),
+        credentials,
+        node_runtime: Arc::new(crate::node_runtime::NodeRuntime::new(app_data_dir)),
+        downloader: Arc::new(HttpsDownloader::new().unwrap()),
+        events: Arc::new(QuietSink),
+    });
+    let catalog = service.catalog(true).await.unwrap();
+    for name in ["email", "currency-rates"] {
+        let entry = catalog
+            .plugins
+            .iter()
+            .find(|entry| entry.name == name)
+            .unwrap_or_else(|| panic!("{name} is not in the catalog"));
+        let installed =
+            service.install(name, &entry.permissions).await.unwrap_or_else(|error| panic!("{name}: {error}"));
+        assert_eq!(installed.load_error, None, "{name}");
+    }
+    let email = catalog.plugins.iter().find(|entry| entry.name == "email").unwrap();
+    service.set_trusted("email", true, Some(&email.permissions)).await.unwrap();
+    for (variable, value) in [
+        ("EMAIL_SMTP_HOST", "127.0.0.1"),
+        ("EMAIL_SMTP_PORT", "2525"),
+        ("EMAIL_SMTP_SECURE", "false"),
+        ("EMAIL_SMTP_USER", "agent@example.test"),
+        ("EMAIL_FROM", "agent@example.test"),
+        ("EMAIL_PASSWORD", "not-a-real-password"),
+    ] {
+        service.set_config("email", variable, value).await.unwrap_or_else(|error| panic!("{variable}: {error}"));
+    }
+    service.activate();
+    (service, kept_alive)
+}
+
+/// A value for each start input: an address, a link or a place where the input's name or
+/// label asks for one, else the scenario's sample text, whatever type the draft gave it.
+fn sample_inputs(flow_yaml: &str, sample_text: &str) -> serde_json::Value {
+    let mut inputs = serde_json::Map::new();
+    let Ok(summary) = flow::summarize_flow(flow_yaml) else { return json!({}) };
+    for input in summary.inputs {
+        let asked_for = format!("{} {}", input.name, input.label).to_lowercase();
+        let mentions = |words: &[&str]| words.iter().any(|word| asked_for.contains(word));
+        let text = if mentions(&["mail", "address", "alamat", "recipient", "penerima"]) {
+            ADDRESS
+        } else if mentions(&["link", "url", "tautan", "page"]) {
+            ARTICLE
+        } else if mentions(&["city", "kota", "place", "location", "topic"]) && sample_text != ARTICLE {
+            "Jakarta"
+        } else {
+            sample_text
+        };
+        let value = match input.input_type.as_str() {
+            "number" => json!(3),
+            "checkbox" => json!(true),
+            "select" => json!(input.options.first().cloned().unwrap_or_default()),
+            "json" => json!({"text": text}),
+            _ => json!(text),
+        };
+        inputs.insert(input.name, value);
+    }
+    serde_json::Value::Object(inputs)
+}
+
+/// What a finished run looked like.
+struct RunReport {
+    outputs: serde_json::Value,
+    /// The questions the run asked, as the person saw them.
+    questions: Vec<String>,
+    /// How the run ended when it did not succeed.
+    failure: Option<String>,
+}
+
+/// Runs the agent to its end, approving every question.
+async fn run_to_end(
+    db: &Arc<Database>,
+    runs: &RunManager,
+    agent: &Agent,
+    sample_text: &str,
+) -> Result<RunReport, String> {
+    let inputs = sample_inputs(&agent.flow_yaml, sample_text);
+    let run = runs.start_run(&agent.id, RunTrigger::Test, inputs).await.map_err(|error| format!("start: {error}"))?;
+    let started = Instant::now();
+    let mut questions = Vec::new();
+    loop {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let current = db.get_run(&run.id).map_err(|error| error.to_string())?;
+        match current.status {
+            RunStatus::Running if started.elapsed() > RUN_TIMEOUT => return Err("run timed out".into()),
+            RunStatus::Running => {}
+            RunStatus::Succeeded => {
+                return Ok(RunReport { outputs: current.outputs.unwrap_or_default(), questions, failure: None });
+            }
+            RunStatus::Failed | RunStatus::Aborted => {
+                let failure = Some(current.error_message.unwrap_or_default());
+                return Ok(RunReport { outputs: serde_json::Value::Null, questions, failure });
+            }
+            RunStatus::Paused => {
+                let review = crate::run_review::get_run_review(db, &run.id).map_err(|error| error.to_string())?;
+                let mut answers = serde_json::Map::new();
+                for question in &review.pending {
+                    questions.push(question.prompt.clone().unwrap_or_default());
+                    let answer = match question.tool_call.as_ref() {
+                        Some(call) => json!({"approvals": {call.call_id.clone(): true}}),
+                        None => {
+                            let approving =
+                                ["approve", "send", "yes", "confirm", "continue", "proceed", "fetch", "search"];
+                            let action = question
+                                .actions
+                                .iter()
+                                .find(|action| approving.contains(&action.id.as_str()))
+                                .or(question.actions.first())
+                                .map(|action| action.id.clone())
+                                .unwrap_or_default();
+                            json!({"action": action, "values": {}})
+                        }
+                    };
+                    answers.insert(question.resume_key.clone(), answer);
+                }
+                if answers.is_empty() {
+                    return Err(format!("paused on something else: {:?}", review.other_pause_kinds));
+                }
+                runs.resume_run(&run.id, serde_json::Value::Object(answers))
+                    .await
+                    .map_err(|error| format!("resume: {error}"))?;
+            }
+        }
+    }
+}
+
+/// Whether the run did what the scenario asks. `Err` says what is missing.
+fn judge(scenario: &Scenario, agent: &Agent, report: &RunReport, db: &Database) -> Result<String, String> {
+    let asked = report.questions.join("\n---\n");
+    let sends = scenario.needs.plugin_step.is_some_and(|step| !step.ends_with('.'));
+    // What the person would read: the output, or for a sending job what they were asked to send.
+    let shown = if sends { asked.to_lowercase() } else { report.outputs.to_string().to_lowercase() };
+    if let Some(step) = scenario.needs.plugin_step {
+        if !agent.flow_yaml.contains(&format!("type: {step}")) {
+            return Err(format!("no `{step}` step in the agent"));
+        }
+    }
+    if sends {
+        if !asked.contains(ADDRESS) {
+            return Err(format!("the question before sending does not show the address: {asked:?}"));
+        }
+        // No mail account exists: the sending step is reached when the run got past the question.
+        match &report.failure {
+            None => {}
+            Some(failure) if failure.to_lowercase().contains("smtp") || failure.contains("ECONNREFUSED") => {}
+            Some(failure) => return Err(format!("run failed before sending: {failure}")),
+        }
+    } else if let Some(failure) = &report.failure {
+        return Err(format!("run failed: {failure}"));
+    }
+    if scenario.needs.asks_first && report.questions.is_empty() {
+        return Err("the run never asked the person".into());
+    }
+    if scenario.needs.paused_schedule {
+        let triggers = db.list_triggers(Some(&agent.id)).map_err(|error| error.to_string())?;
+        match triggers.as_slice() {
+            [trigger] if !trigger.enabled => {}
+            [] => return Err("no schedule was saved".into()),
+            _ => return Err("the schedule is on, or there are several".into()),
+        }
+    }
+    let has_one_of = |words: &[&str]| words.iter().any(|word| shown.contains(word));
+    if !has_one_of(scenario.expected_words) {
+        return Err(format!("the result is not about the input: {}", first_line(&shown)));
+    }
+    if let Some((_, changed_words)) = scenario.change {
+        if !has_one_of(changed_words) {
+            return Err(format!("the change did not show in the result: {}", first_line(&shown)));
+        }
+    }
+    Ok(first_line(&shown))
+}
+
 /// Builds on the full-document path only, as every model did before the guided path
 /// (`GRAPHRT_EVAL_FULL_DOCUMENT=1`): the "before" number for a local model.
 async fn full_document_build(db: &Database, builder: &BuilderModel, request: BuildRequest) -> AppResult<Agent> {
@@ -121,91 +443,12 @@ async fn full_document_build(db: &Database, builder: &BuilderModel, request: Bui
     })
 }
 
-/// A value for each start input: `sample_text` for every text input, whatever type the draft gave it.
-fn sample_inputs(flow_yaml: &str, sample_text: &str) -> serde_json::Value {
-    let mut inputs = serde_json::Map::new();
-    let Ok(summary) = flow::summarize_flow(flow_yaml) else { return json!({}) };
-    for input in summary.inputs {
-        let value = match input.input_type.as_str() {
-            "number" => json!(3),
-            "checkbox" => json!(true),
-            "select" => json!(input.options.first().cloned().unwrap_or_default()),
-            "json" => json!({"text": sample_text}),
-            _ => json!(sample_text),
-        };
-        inputs.insert(input.name, value);
-    }
-    serde_json::Value::Object(inputs)
-}
-
-/// Runs the agent to its end, approving every question with its first action.
-async fn run_to_end(
-    db: &Arc<Database>,
-    runs: &RunManager,
-    agent: &Agent,
-    sample_text: &str,
-    expected_words: &[&str],
-) -> Result<serde_json::Value, String> {
-    let inputs = sample_inputs(&agent.flow_yaml, sample_text);
-    let run = runs.start_run(&agent.id, RunTrigger::Test, inputs).await.map_err(|error| format!("start: {error}"))?;
-    let started = Instant::now();
-    loop {
-        tokio::time::sleep(Duration::from_millis(300)).await;
-        let current = db.get_run(&run.id).map_err(|error| error.to_string())?;
-        match current.status {
-            RunStatus::Running if started.elapsed() > RUN_TIMEOUT => return Err("run timed out".into()),
-            RunStatus::Running => {}
-            RunStatus::Succeeded => {
-                let outputs = current.outputs.unwrap_or_default();
-                let has_text = outputs.as_object().is_some_and(|map| {
-                    map.values().any(|value| match value {
-                        serde_json::Value::String(text) => !text.trim().is_empty(),
-                        serde_json::Value::Null => false,
-                        _ => true,
-                    })
-                });
-                let lowered = outputs.to_string().to_lowercase();
-                if !has_text {
-                    return Err(format!("empty outputs: {outputs}"));
-                }
-                if !expected_words.iter().any(|word| lowered.contains(word)) {
-                    return Err(format!("the output is not about the input: {outputs}"));
-                }
-                return Ok(outputs);
-            }
-            RunStatus::Failed | RunStatus::Aborted => {
-                return Err(format!("run failed: {}", current.error_message.unwrap_or_default()));
-            }
-            RunStatus::Paused => {
-                let review = crate::run_review::get_run_review(db, &run.id).map_err(|error| error.to_string())?;
-                let mut answers = serde_json::Map::new();
-                for question in &review.pending {
-                    let answer = match question.tool_call.as_ref() {
-                        Some(call) => json!({"approvals": {call.call_id.clone(): true}}),
-                        None => {
-                            let action = question.actions.first().map(|action| action.id.clone()).unwrap_or_default();
-                            json!({"action": action, "values": {}})
-                        }
-                    };
-                    answers.insert(question.resume_key.clone(), answer);
-                }
-                if answers.is_empty() {
-                    return Err(format!("paused on something else: {:?}", review.other_pause_kinds));
-                }
-                runs.resume_run(&run.id, serde_json::Value::Object(answers))
-                    .await
-                    .map_err(|error| format!("resume: {error}"))?;
-            }
-        }
-    }
-}
-
 fn first_line(text: &str) -> String {
     text.lines().next().unwrap_or_default().chars().take(220).collect()
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs a running Ollama with the model pulled"]
+#[ignore = "needs a running Ollama with the model pulled (or an OpenAI key), the network and Node.js"]
 async fn live_eval() {
     let _ = log::set_logger(&PrintLogger).map(|()| log::set_max_level(log::LevelFilter::Info));
     let model_name = env_or("GRAPHRT_EVAL_MODEL", "llama3.2");
@@ -213,26 +456,32 @@ async fn live_eval() {
     let with_runs = env_or("GRAPHRT_EVAL_RUN", "1") != "0";
     let chosen: Vec<usize> = match std::env::var("GRAPHRT_EVAL_REQUESTS") {
         Ok(list) => list.split(',').map(|index| index.trim().parse().unwrap()).collect(),
-        Err(_) => (0..REQUESTS.len()).collect(),
+        Err(_) => (0..SCENARIOS.len()).collect(),
     };
     let EvalSetup { builder, credentials, ollama_base_url } = eval_setup(&model_name);
     let full_document_only = env_or("GRAPHRT_EVAL_FULL_DOCUMENT", "0") == "1";
+    let (_plugins, _plugin_dir) = install_plugins(credentials.clone()).await;
     let (mut total, mut built, mut worked) = (0, 0, 0);
     for index in chosen {
-        let description = REQUESTS[index];
-        let (mut request_built, mut request_worked) = (0, 0);
+        let scenario = &SCENARIOS[index];
+        let (mut scenario_built, mut scenario_worked) = (0, 0);
         for attempt in 1..=attempts {
             total += 1;
             let db = Arc::new(Database::open_in_memory().unwrap());
             // Runs read the Ollama address from the app's settings.
             db.set_setting(crate::credentials::SETTING_OLLAMA_BASE_URL, &ollama_base_url).unwrap();
             let started = Instant::now();
-            let request = BuildRequest { description: description.into(), kind: None };
-            let build_result = if full_document_only {
+            let request = BuildRequest { description: scenario.description.into(), kind: None };
+            let mut build_result = if full_document_only {
                 full_document_build(&db, &builder, request).await
             } else {
                 build_agent_with_model(&db, &builder, request, &|_| {}).await
             };
+            if let (Ok(agent), Some((change, _))) = (&build_result, scenario.change) {
+                build_result = revise_agent_with_model(&db, &builder, &agent.id, change, &|_| {})
+                    .await
+                    .map(|revision| revision.agent);
+            }
             let agent = match build_result {
                 Ok(agent) => agent,
                 Err(error) => {
@@ -245,7 +494,7 @@ async fn live_eval() {
                 }
             };
             built += 1;
-            request_built += 1;
+            scenario_built += 1;
             let build_seconds = started.elapsed().as_secs();
             if std::env::var("GRAPHRT_EVAL_SHOW").is_ok() {
                 println!("{}", agent.flow_yaml);
@@ -260,14 +509,15 @@ async fn live_eval() {
                 db.add_trusted_lookup_host(&agent.id, host).unwrap();
             }
             let runs = RunManager::new(db.clone(), credentials.clone(), Arc::new(QuietSink));
-            match run_to_end(&db, &runs, &agent, SAMPLE_TEXTS[index], EXPECTED_WORDS[index]).await {
-                Ok(outputs) => {
+            let outcome = match run_to_end(&db, &runs, &agent, scenario.sample_text).await {
+                Ok(report) => judge(scenario, &agent, &report, &db),
+                Err(problem) => Err(problem),
+            };
+            match outcome {
+                Ok(shown) => {
                     worked += 1;
-                    request_worked += 1;
-                    println!(
-                        "[{model_name}] r{index} a{attempt} WORKED build {build_seconds}s: {}",
-                        first_line(&outputs.to_string())
-                    );
+                    scenario_worked += 1;
+                    println!("[{model_name}] r{index} a{attempt} WORKED build {build_seconds}s: {shown}");
                 }
                 Err(problem) => {
                     println!(
@@ -277,7 +527,10 @@ async fn live_eval() {
                 }
             }
         }
-        println!("[{model_name}] r{index} built {request_built}/{attempts} worked {request_worked}/{attempts}: {description}");
+        println!(
+            "[{model_name}] r{index} built {scenario_built}/{attempts} worked {scenario_worked}/{attempts}: {} | {}",
+            scenario.job, scenario.description
+        );
     }
     println!("[{model_name}] TOTAL built {built}/{total} worked {worked}/{total}");
 }

@@ -76,25 +76,8 @@ impl FieldType {
     }
 }
 
-#[cfg(test)]
-thread_local! {
-    /// Operations a test offers in place of the published plugins' (see [`offer_in_this_test`]).
-    static TEST_OPERATIONS: std::cell::RefCell<Option<Vec<OfferedOperation>>> = const { std::cell::RefCell::new(None) };
-}
-
-/// Makes [`offered_operations`] return `operations` on this thread, so a test does not
-/// depend on the process-wide plugin snapshot other tests publish.
-#[cfg(test)]
-pub(crate) fn offer_in_this_test(operations: Vec<OfferedOperation>) {
-    TEST_OPERATIONS.with(|slot| *slot.borrow_mut() = Some(operations));
-}
-
 /// The operations of the published plugins and catalog (see [`operations_of`]).
 pub(crate) fn offered_operations() -> Vec<OfferedOperation> {
-    #[cfg(test)]
-    if let Some(operations) = TEST_OPERATIONS.with(|slot| slot.borrow().clone()) {
-        return operations;
-    }
     let catalog = super::active::current_catalog();
     match super::active::current() {
         Some(snapshot) => operations_of(&snapshot.plugins, catalog.as_deref()),
