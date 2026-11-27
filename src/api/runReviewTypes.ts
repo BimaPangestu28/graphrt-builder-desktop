@@ -98,6 +98,8 @@ export interface AnsweredApproval {
   nodeId: string
   frame: string
   action: string
+  /** The button's title from the answered question ("Buat invoice"); null when it had none. */
+  actionTitle: string | null
   index: number | null
   answeredAt: string
 }

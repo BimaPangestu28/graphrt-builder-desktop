@@ -1,5 +1,6 @@
 import type { GraphrtEvent, RunEventRecord } from '@/api/types'
 import type { TestRunStepState } from '@/pages/agent-run/testRunTypes'
+import { readChosenActionId, readPauseActionTitles } from './approvalAnswers'
 import { isRecord, readFrame, readNumber, readString } from './runEventValues'
 import { messages } from '@/i18n'
 
@@ -46,6 +47,10 @@ export interface NodeExecution {
   progressReports: NodeProgressReport[]
   /** Set while the whole run waits; cleared when it resumes. */
   isWaitingWithRun: boolean
+  /** Button id → title of the question this execution asked (`node_paused`), kept over the resume. */
+  pauseActionTitles: ReadonlyMap<string, string> | null
+  /** The button the question was answered with (`outputs.action`), once it was. */
+  chosenActionId: string | null
 }
 
 export interface NodeTrack {
@@ -76,6 +81,8 @@ function createExecution(frame: string, startedAt: string | null): NodeExecution
     detail: null,
     progressReports: [],
     isWaitingWithRun: false,
+    pauseActionTitles: null,
+    chosenActionId: null,
   }
 }
 
@@ -128,6 +135,7 @@ function applyNodeEvent(execution: NodeExecution, record: RunEventRecord): void 
     case 'node_succeeded':
       finishExecution(execution, record, 'done')
       execution.usage = readUsage(event.usage)
+      if (execution.pauseActionTitles) execution.chosenActionId = readChosenActionId(event)
       return
     case 'node_failed':
       finishExecution(execution, record, 'failed')
@@ -137,8 +145,11 @@ function applyNodeEvent(execution: NodeExecution, record: RunEventRecord): void 
     case 'node_skipped':
       finishExecution(execution, record, 'skipped')
       return
-    case 'node_paused':
+    case 'node_paused': {
       execution.state = 'waiting'
+      execution.pauseActionTitles = readPauseActionTitles(event) ?? execution.pauseActionTitles
+      return
+    }
   }
 }
 
@@ -151,6 +162,8 @@ function startExecution(track: NodeTrack, record: RunEventRecord, frame: string)
   execution.retryCount = Math.max(previous && previous.state === 'running' ? previous.retryCount : 0, attempt - 1)
   execution.lastRetryError = previous?.lastRetryError ?? null
   execution.inputs = record.event.inputs
+  // A resumed question starts again: what it asked is still what the answer chose from.
+  execution.pauseActionTitles = previous?.pauseActionTitles ?? null
   track.executionsByFrame.set(frame, execution)
   return execution
 }

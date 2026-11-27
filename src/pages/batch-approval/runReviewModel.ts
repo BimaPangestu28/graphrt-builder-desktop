@@ -90,6 +90,8 @@ export function hasItemsAfterThese(pending: PendingApproval[]): boolean {
 export function summarizeAnswers(review: RunReview, actionTitles: Map<string, string>): string | null {
   if (review.answered.length === 0) return null
   const countByAction = new Map<string, number>()
+  // A question already answered is no longer pending: its own answer knows the button's title.
+  const answeredTitles = new Map(review.answered.flatMap((answered) => (answered.actionTitle ? [[answered.action, answered.actionTitle] as const] : [])))
   for (const answered of review.answered) countByAction.set(answered.action, (countByAction.get(answered.action) ?? 0) + 1)
-  return [...countByAction.entries()].map(([actionId, count]) => `${actionTitles.get(actionId) ?? actionId} ${count}`).join(' · ')
+  return [...countByAction.entries()].map(([actionId, count]) => `${actionTitles.get(actionId) ?? answeredTitles.get(actionId) ?? actionId} ${count}`).join(' · ')
 }

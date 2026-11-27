@@ -35,6 +35,7 @@ function buildMapsStep(state: RunStepView['state']): RunStepView {
     inputs: null,
     errorMessage: null,
     errorType: null,
+    chosenAction: null,
     usage: null,
     detail: null,
     iteration: null,

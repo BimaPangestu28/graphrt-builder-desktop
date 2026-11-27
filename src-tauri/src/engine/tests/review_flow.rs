@@ -96,6 +96,8 @@ async fn sequential_iteration_is_reviewed_one_item_at_a_time() {
     assert_eq!(second.container.as_ref().and_then(|position| position.finished), Some(1));
     assert_eq!(second_review.answered.len(), 1);
     assert_eq!((second_review.answered[0].action.as_str(), second_review.answered[0].index), ("send", Some(0)));
+    // The button is named the way the question wrote it, not by its id.
+    assert_eq!(second_review.answered[0].action_title.as_deref(), Some("Send"));
 
     let skip = json!({"action": "skip", "values": {"message": "Hello two"}});
     harness.runs.resume_run(&run.id, json!({ second.resume_key.clone(): skip })).await.unwrap();

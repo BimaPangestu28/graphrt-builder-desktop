@@ -157,7 +157,11 @@ function answerSampleReview(answersByResumeKey: Record<string, ApprovalAnswer>):
   if (unknownKey) throw new BackendError('invalid_input', `Nothing waits on ${unknownKey}`)
   const newlyAnswered: AnsweredApproval[] = sampleReview.pending
     .filter((pending) => answersByResumeKey[pending.resumeKey])
-    .map((pending) => ({ nodeId: pending.nodeId, frame: pending.frame, action: readAnsweredAction(answersByResumeKey[pending.resumeKey]), index: pending.container?.index ?? null, answeredAt }))
+    .map((pending) => {
+      const action = readAnsweredAction(answersByResumeKey[pending.resumeKey])
+      const actionTitle = pending.actions.find((known) => known.id === action)?.title ?? null
+      return { nodeId: pending.nodeId, frame: pending.frame, action, actionTitle, index: pending.container?.index ?? null, answeredAt }
+    })
   const pending = sampleReview.pending.filter((approval) => !answersByResumeKey[approval.resumeKey])
   sampleReview = { ...sampleReview, pending, answered: [...sampleReview.answered, ...newlyAnswered], status: pending.length === 0 ? 'succeeded' : 'paused' }
   return reviewAsRun(sampleReview)

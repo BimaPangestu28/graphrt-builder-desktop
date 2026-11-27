@@ -190,7 +190,13 @@ export function StepDetails({ step, id, fixAgentId, agentId }: StepDetailsProps)
         </span>
       )}
       <ValueList title={messages().agentRun.inputs} values={step.inputs} />
-      <ValueList title={messages().agentRun.outputs} values={step.outputs} skippedKeys={step.isModelStep ? ['text'] : []} />
+      {step.chosenAction && (
+        <div className="flex flex-col gap-1.5">
+          <span className={sectionLabelClassNames}>{messages().agentRun.chosenButton}</span>
+          <span className="font-medium text-ink">{step.chosenAction}</span>
+        </div>
+      )}
+      <ValueList title={messages().agentRun.outputs} values={step.outputs} skippedKeys={[...(step.isModelStep ? ['text'] : []), ...(step.chosenAction ? ['action'] : [])]} />
       {usageText && <span className="text-[12px] text-muted">{usageText}</span>}
       {emptyState && !hasValues &&<span className="text-[13px] text-muted">{emptyState}</span>}
     </div>

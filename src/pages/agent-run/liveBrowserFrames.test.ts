@@ -18,6 +18,7 @@ function buildStepView(overrides: Partial<RunStepView>): RunStepView {
     inputs: null,
     errorMessage: null,
     errorType: null,
+    chosenAction: null,
     usage: null,
     detail: null,
     iteration: null,

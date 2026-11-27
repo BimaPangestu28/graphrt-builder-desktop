@@ -1,5 +1,6 @@
 import type { RunEventRecord } from '@/api/types'
 import type { TestRunStepState } from '@/pages/agent-run/testRunTypes'
+import { describeChosenAction } from './approvalAnswers'
 import { buildItemFrame, describeItemShort, findIterationItems, parseFrame, readIteratorPath, readNumber } from './runEventValues'
 import { collectActiveFrames, collectNodeTracks, type NodeExecution, type NodeTrack, type StepTokenUsage } from './runNodeTracks'
 import { containerNodeKinds, hiddenNodeKinds, humanizeNodeId, modelNodeKinds, type RunStepTemplate } from './runProgress'
@@ -45,6 +46,8 @@ export interface RunStepView {
   errorMessage: string | null
   /** The failure's error kind (`setup_required`, `invalid_input`…), explained under the error. */
   errorType: string | null
+  /** The button an answered question was answered with, in its own words ("Buat invoice"); null otherwise. */
+  chosenAction: string | null
   usage: StepTokenUsage | null
   detail: string | null
   iteration: IterationProgress | null
@@ -193,6 +196,7 @@ function buildEmptyView(step: RunStepTemplate, nodeType: string | null): RunStep
     inputs: undefined,
     errorMessage: null,
     errorType: null,
+    chosenAction: null,
     usage: null,
     detail: null,
     iteration: null,
@@ -217,6 +221,7 @@ function applyExecution(view: RunStepView, execution: NodeExecution): RunStepVie
     inputs: execution.inputs,
     errorMessage: execution.errorMessage,
     errorType: execution.errorType,
+    chosenAction: execution.chosenActionId === null ? null : describeChosenAction(execution.chosenActionId, execution.pauseActionTitles ?? undefined),
     usage: execution.usage,
     detail: execution.detail,
     learnedNoteCount: countLearnedNotes(execution),
