@@ -38,28 +38,28 @@ function AbilityCard({ title, summary, unavailableReason, isOpen, isBlocked, onO
   const reasonId = useId()
   const isDisabled = unavailableReason !== null || isBlocked
   return (
-    <Card className={joinClassNames('flex h-full min-w-0 items-center gap-3 p-3.5', isOpen && 'border-ink')}>
-      <div className="flex min-w-0 flex-auto flex-col gap-0.5">
-        <span title={title} className="line-clamp-2 text-[14px] leading-[19px] font-semibold text-ink">
-          {title}
-        </span>
-        <span id={reasonId} title={unavailableReason ?? summary} className="line-clamp-2 text-[12.5px] leading-[17px] text-muted">
+    <Card className={joinClassNames('flex h-full min-w-0 flex-col gap-1.5 p-3.5', isOpen && 'border-ink')}>
+      <span title={title} className="line-clamp-2 text-[14px] leading-[19px] font-semibold text-ink">
+        {title}
+      </span>
+      <div className="mt-auto flex min-w-0 items-center gap-3">
+        <span id={reasonId} title={unavailableReason ?? summary} className="line-clamp-2 min-w-0 flex-auto text-[12.5px] leading-[17px] text-muted">
           {unavailableReason ?? summary}
         </span>
+        <button
+          type="button"
+          ref={buttonRef}
+          onClick={() => !isDisabled && onOpen()}
+          aria-disabled={isDisabled}
+          aria-describedby={unavailableReason ? reasonId : undefined}
+          title={isBlocked ? t.closeOtherFirst : undefined}
+          aria-expanded={isOpen}
+          aria-label={`${t.change}: ${title}`}
+          className={buttonClassNames('secondary', 'sm', joinClassNames('shrink-0', isDisabled && 'cursor-not-allowed opacity-50'))}
+        >
+          {t.change}
+        </button>
       </div>
-      <button
-        type="button"
-        ref={buttonRef}
-        onClick={() => !isDisabled && onOpen()}
-        aria-disabled={isDisabled}
-        aria-describedby={unavailableReason ? reasonId : undefined}
-        title={isBlocked ? t.closeOtherFirst : undefined}
-        aria-expanded={isOpen}
-        aria-label={`${t.change}: ${title}`}
-        className={buttonClassNames('secondary', 'sm', isDisabled ? 'cursor-not-allowed opacity-50' : undefined)}
-      >
-        {t.change}
-      </button>
     </Card>
   )
 }
