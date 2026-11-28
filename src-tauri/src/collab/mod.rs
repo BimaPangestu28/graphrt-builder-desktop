@@ -143,7 +143,7 @@ pub struct ServerCheck {
     /// How people sign in there: with the browser, with invite links.
     pub sign_in_with_browser: bool,
     pub sign_in_with_invite: bool,
-    /// The identity providers, one sign in button each (e.g. Google and Microsoft).
+    /// The identity providers, one sign in button each (e.g. Google and the company's own).
     /// Empty for a server with one unnamed provider: one "Sign in" button.
     pub sign_in_providers: Vec<SignInChoice>,
     /// `hosted` or `self_hosted`.
