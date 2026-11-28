@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { resetSampleAgents } from '@/api/sampleBackend/agents'
 import { getAgentDeployment } from '@/api/deploy'
-import { resetSampleDeploy, setSampleCliStatus, setSampleCompatibility, setSampleToolsKnowOnlineFeatures } from '@/api/sampleBackend/deploy'
+import { resetSampleDeploy, setSampleCliStatus, setSampleCompatibility, setSampleToolsKnowCloudRun, setSampleToolsKnowOnlineFeatures } from '@/api/sampleBackend/deploy'
 import { agentRoutePatterns, routePaths, sampleAgentId } from '@/routes'
 import { PutOnlinePage } from '../PutOnlinePage'
 
@@ -173,7 +173,7 @@ describe('PutOnlinePage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Next' }))
     await userEvent.click(await screen.findByRole('button', { name: 'Continue' }))
     await userEvent.click(screen.getByText('Other providers — for teams that already use them'))
-    expect(screen.getAllByText('Coming soon')).toHaveLength(4)
+    expect(screen.getAllByText('Coming soon')).toHaveLength(3)
     await userEvent.click(screen.getByRole('button', { name: 'Connect AWS' }))
     const dialog = screen.getByRole('dialog', { name: 'Connect AWS' })
     await userEvent.type(within(dialog).getByLabelText('Access key ID'), 'TESTACCESSKEYID00000')
@@ -183,6 +183,57 @@ describe('PutOnlinePage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Next' }))
     expect(await screen.findByText(/Putting agents online with AWS is coming soon/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Coming soon' })).toBeDisabled()
+  })
+
+  it('puts an agent on Google Cloud: sign in, a project with billing, a region, then its address', async () => {
+    renderWizard()
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Continue' }))
+    // Next to Fly.io, not folded away with the providers that are coming soon.
+    expect(screen.getByRole('radio', { name: 'Google Cloud' })).toBeVisible()
+    await userEvent.click(screen.getByRole('button', { name: 'Connect Google Cloud' }))
+    const dialog = screen.getByRole('dialog', { name: 'Sign in with Google' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Sign in with Google' }))
+    await userEvent.click(await within(dialog).findByRole('button', { name: 'Done' }))
+    expect(screen.getByRole('radio', { name: 'Google Cloud' })).toBeChecked()
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }))
+
+    expect(await screen.findByRole('heading', { name: 'Review' })).toBeInTheDocument()
+    expect(screen.getByText('Google Cloud project and region')).toBeInTheDocument()
+    const project = await screen.findByLabelText('Project')
+    await screen.findByRole('option', { name: /Acme agents \(acme-agents\) · Billing on/ })
+    expect(project).toHaveValue('acme-agents')
+    expect(screen.getByLabelText('Region')).toHaveValue('asia-southeast2')
+    expect(screen.queryByLabelText('Server location')).not.toBeInTheDocument()
+
+    await userEvent.selectOptions(project, 'acme-sandbox-2')
+    expect(screen.getByText(/needs a billing account on acme-sandbox-2/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Turn on billing' })).toBeInTheDocument()
+    expect(screen.getByText('Pick a project with billing to continue')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Allow download' }))
+    await screen.findByText('Saves money')
+    await userEvent.click(screen.getByRole('checkbox', { name: 'I understand Google Cloud bills me for this' }))
+    expect(screen.getByRole('button', { name: 'Put it online' })).toBeDisabled()
+
+    await userEvent.selectOptions(project, 'acme-agents')
+    await userEvent.selectOptions(screen.getByLabelText('Region'), 'asia-southeast1')
+    expect(screen.getByRole('button', { name: 'Put it online' })).toBeEnabled()
+    await userEvent.click(screen.getByRole('button', { name: 'Put it online' }))
+    expect(await screen.findByRole('heading', { level: 2, name: /is online$/ }, { timeout: 5000 })).toBeInTheDocument()
+    const view = await getAgentDeployment(sampleAgentId)
+    expect(view?.deployment.provider).toBe('google_cloud')
+    expect(view?.deployment.url).toMatch(/\.a\.run\.app$/)
+    expect(view?.place).toEqual({ project: 'acme-agents', region: 'asia-southeast1' })
+  })
+
+  it('keeps Google Cloud with the providers that are coming soon while the graphrt tools cannot use it', async () => {
+    setSampleToolsKnowCloudRun(false)
+    renderWizard()
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Continue' }))
+    expect(screen.getByRole('radio', { name: 'Google Cloud' })).not.toBeVisible()
+    await userEvent.click(screen.getByText('Other providers — for teams that already use them'))
+    expect(screen.getAllByText('Coming soon')).toHaveLength(4)
   })
 
   it('sends "This computer" back to the builder and "My own server" to its page', async () => {

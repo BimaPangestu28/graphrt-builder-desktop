@@ -76,6 +76,11 @@ pub enum AppError {
     /// in use stays the same here and online. The cause is in the log.
     #[error("{}", online_switch_failed_message(*release_number, *in_use_number))]
     OnlineSwitchFailed { release_number: i64, in_use_number: Option<i64> },
+    /// The online provider refused a deploy or a change, explained: plain words, the CLI's own
+    /// message and what to do (a console page, or signing in again). The screens word the
+    /// known kinds themselves from `details`.
+    #[error("{}", .0.message)]
+    DeployFailed(Box<crate::deploy::google_cloud::DeployProblem>),
 }
 
 /// "The online copy could not go back to release 1, so nothing changed: ..." in plain words; the
@@ -193,6 +198,7 @@ impl AppError {
             Self::PluginStepFailed { .. } => "plugin_step_failed",
             Self::NeedsRelease => "needs_release",
             Self::OnlineSwitchFailed { .. } => "online_switch_failed",
+            Self::DeployFailed(_) => "deploy_failed",
         }
     }
 
@@ -216,6 +222,7 @@ impl AppError {
             Self::OnlineSwitchFailed { release_number, in_use_number } => {
                 Some(serde_json::json!({ "releaseNumber": release_number, "inUseNumber": in_use_number }))
             }
+            Self::DeployFailed(problem) => serde_json::to_value(problem).ok(),
             _ => None,
         }
     }

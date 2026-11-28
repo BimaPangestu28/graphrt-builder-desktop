@@ -1,6 +1,7 @@
 import { messages } from '@/i18n'
 import { genericErrorMessage } from '@/lib/errors'
 import type { GraphProblem } from './agentGraphTypes'
+import type { DeployProblem } from './deployTypes'
 import type { BackendErrorCode } from './types'
 
 /**
@@ -73,6 +74,7 @@ export interface BackendErrorDetailsByCode {
   draft_not_valid: DraftNotValidDetails
   plugin_step_failed: PluginStepFailedDetails
   online_switch_failed: OnlineSwitchFailedDetails
+  deploy_failed: DeployProblem
 }
 
 /** The details a code carries: its entry in {@link BackendErrorDetailsByCode}, else null. */

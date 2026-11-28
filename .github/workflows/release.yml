@@ -291,6 +291,9 @@ jobs:
       - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          # The "Graphrt Desktop" Google OAuth client (Put it online > Google Cloud). Without
+          # it the app says signing in to Google Cloud is not available in this build.
+          GRAPHRT_GOOGLE_CLOUD_CLIENT_SECRET: ${{ secrets.GRAPHRT_GOOGLE_CLOUD_CLIENT_SECRET }}
           # Signs the updater bundles (NSIS / MSI, AppImage, deb, rpm) -> .sig
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -389,6 +392,7 @@ jobs:
           fi
       - name: Build the universal app and .dmg
         env:
+          GRAPHRT_GOOGLE_CLOUD_CLIENT_SECRET: ${{ secrets.GRAPHRT_GOOGLE_CLOUD_CLIENT_SECRET }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           SECRET_APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}

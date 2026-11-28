@@ -126,8 +126,13 @@ pub async fn post_to_online_copy(
 ) -> Result<(), DeliveryFailure> {
     let (url, api_key) =
         access.map_err(|error| DeliveryFailure::new(DeliveryProblem::NotConnected, error.to_string()))?;
-    let request =
-        HttpRequest { method: HttpMethod::Post, url: join_url(&url, path), bearer: Some(api_key), body: Some(body) };
+    let request = HttpRequest {
+        method: HttpMethod::Post,
+        url: join_url(&url, path),
+        bearer: Some(api_key),
+        body: Some(body),
+        form: None,
+    };
     let reply = server
         .send(request)
         .await

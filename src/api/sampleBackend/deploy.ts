@@ -1,5 +1,6 @@
 import { BackendError } from '../client'
 import type {
+  CloudPlace,
   CliInfo,
   CompatibilityFix,
   CompatibilityReport,
@@ -9,11 +10,13 @@ import type {
   DeployedVersion,
   DeployOptions,
   DeployOutcome,
+  DeployProblem,
   DeployProvider,
   DeployReview,
   DeploymentView,
   DeployStep,
   DevicePairing,
+  GoogleProject,
   LiveFeatures,
   ManageAction,
   OnlineFeatures,
@@ -55,7 +58,17 @@ interface SampleDeployState {
   /** Paired phones by target (`agent:<id>` / `server:<id>`), with their kept codes. */
   devices: Map<string, Array<PairedDevice & { link: string }>>
   deviceNumber: number
+  /** Whether the sample tools put agents on Google Cloud Run. */
+  toolsKnowCloudRun: boolean
+  /** The signed-in Google account's projects. */
+  googleProjects: GoogleProject[]
 }
+
+/** The projects of the sample Google account: one with billing, one without. */
+export const sampleGoogleProjects: GoogleProject[] = [
+  { id: 'acme-agents', name: 'Acme agents', billing: 'enabled' },
+  { id: 'acme-sandbox-2', name: 'Acme sandbox', billing: 'disabled' },
+]
 
 function freshState(): SampleDeployState {
   return {
@@ -72,6 +85,8 @@ function freshState(): SampleDeployState {
     serverFeatures: new Map(),
     devices: new Map(),
     deviceNumber: 0,
+    toolsKnowCloudRun: true,
+    googleProjects: sampleGoogleProjects,
   }
 }
 
@@ -90,6 +105,11 @@ export function setSampleCliStatus(cli: CliInfo): void {
 export function setSampleToolsKnowOnlineFeatures(known: boolean): void {
   state.toolsKnowOnlineFeatures = known
   state.cli = { ...state.cli, onlineFeatures: known && state.cli.status === 'installed' }
+}
+
+/** Makes the sample tools older than Cloud Run (Google Cloud then stays "coming soon"). */
+export function setSampleToolsKnowCloudRun(known: boolean): void {
+  state.toolsKnowCloudRun = known
 }
 
 /** What a connected sample server offers (default: a chat page for guests and the phone page). */
@@ -148,7 +168,7 @@ function buildView(agent: Agent, changes: Partial<DeploymentView['deployment']>,
     updatedAt: now,
     ...changes,
   }
-  return { deployment, providerName: deployProviderNames[deployment.provider], area: regionArea(deployment.region), hasChanges, agentVersion: agent.currentVersion, hasApiKey: true, features: noOnlineFeatures }
+  return { deployment, providerName: deployProviderNames[deployment.provider], area: deployment.provider === 'fly' ? regionArea(deployment.region) : null, hasChanges, agentVersion: agent.currentVersion, hasApiKey: true, features: noOnlineFeatures, place: null }
 }
 
 function regionArea(region: string | null): DeploymentView['area'] {
@@ -173,9 +193,13 @@ function listAccounts(): DeployAccount[] {
     displayName: deployProviderNames[provider],
     connected: state.accounts.has(provider),
     summary: state.accounts.get(provider) ?? null,
-    canDeploy: provider === 'fly',
+    canDeploy: canDeploy(provider),
     usedByAgents: [...state.deployments.values()].filter((view) => view.deployment.provider === provider).map((view) => names.get(view.deployment.agentId) ?? view.deployment.deploymentName),
   }))
+}
+
+function canDeploy(provider: DeployProvider): boolean {
+  return provider === 'fly' || (provider === 'google_cloud' && state.toolsKnowCloudRun)
 }
 
 function invalid(message: string): never {
@@ -193,9 +217,6 @@ function checkAccount(input: DeployAccountInput): string {
       if (token.replace(/^FlyV1 /, '').length < 20 || /\s/.test(token.replace(/^FlyV1 /, ''))) invalid("This doesn't look like a Fly.io access key. Copy the whole key from the Tokens page")
       return 'Access key saved'
     }
-    case 'google_cloud':
-      if (!input.keyFilePath.toLowerCase().endsWith('.json')) invalid('This is not a Google Cloud key file (it is not JSON)')
-      return 'Service account graphrt@acme-agents · project acme-agents'
     case 'aws':
       if (!/^[A-Z0-9]{16,128}$/.test(input.accessKeyId.trim())) invalid('The access key ID looks wrong. It is about 20 capital letters and digits, like AKIA…')
       if (input.secretAccessKey.trim().length < 20) invalid('The secret access key looks wrong. Copy it again from AWS')
@@ -229,9 +250,9 @@ function review(agentId: string, provider: DeployProvider): DeployReview {
   return {
     provider,
     providerConnected: state.accounts.has(provider),
-    canDeploy: provider === 'fly',
+    canDeploy: canDeploy(provider),
     deploymentName: name,
-    expectedAddress: `${name}.fly.dev`,
+    expectedAddress: provider === 'google_cloud' ? `${name}-….a.run.app` : `${name}.fly.dev`,
     keys: [
       { friendlyName: 'Your OpenAI key', purpose: 'So it can write answers', isSaved: true, envName: 'OPENAI_API_KEY' },
       { friendlyName: 'WhatsApp Business access', purpose: 'So it can reply to customers', isSaved: true, envName: 'WHATSAPP_CLOUD_ACCESS_TOKEN' },
@@ -241,6 +262,7 @@ function review(agentId: string, provider: DeployProvider): DeployReview {
     area: existing?.area ?? 'us',
     image: state.images.get(agentId) ?? null,
     features: existing?.features ?? noOnlineFeatures,
+    cloudPlace: existing?.deployment.provider === 'google_cloud' ? existing.place : null,
   }
 }
 
@@ -354,26 +376,48 @@ function ownServerInstructions(agentId: string, requested: OnlineFeatures): OwnS
 const sampleSteps: DeployStep[] = ['preparing', 'secrets', 'starting', 'checking']
 const regionForArea = { asia: 'sin', europe: 'fra', us: 'iad' } as const
 
+/** Like `google_cloud::problem_for` for the one refusal the preview shows: no billing. */
+function billingProblem(place: CloudPlace): DeployProblem {
+  return {
+    provider: 'google_cloud',
+    kind: 'billing_disabled',
+    message: `Project ${place.project} has no billing account. Link one (Google asks for a card), then try again`,
+    technical: `could not create the Cloud Storage bucket: project ${place.project} has no active billing account`,
+    project: place.project,
+    service: null,
+    role: null,
+    fix: { kind: 'open_page', url: `https://console.cloud.google.com/billing/linkedaccount?project=${place.project}` },
+  }
+}
+
 async function deploy(agentId: string, options: DeployOptions): Promise<DeployOutcome> {
-  if (options.provider !== 'fly') invalid(`Putting agents online with ${deployProviderNames[options.provider]} is coming soon`)
+  if (!canDeploy(options.provider)) invalid(`Putting agents online with ${deployProviderNames[options.provider]} is coming soon`)
+  const place = options.provider === 'google_cloud' ? (options.cloudPlace ?? invalid('Pick a Google Cloud project and region first')) : null
   if (state.cli.status === 'not_available') invalid(onlineDeployNotAvailableMessage())
   if (state.cli.status !== 'installed') invalid('Download the graphrt tools first (Review › Allow download)')
   const image = options.image?.trim() || null
   if (image && (image.startsWith('-') || !/^[A-Za-z0-9./:_@-]+$/.test(image))) invalid(`\`${image}\` is not an image name such as ghcr.io/you/graphrt:0.6.0 (leave it empty for graphrt's own image)`)
   const features = checkedFeatures(options.features ?? noOnlineFeatures)
   if (anyFeature(features) && !state.cli.onlineFeatures) invalid(onlineFeaturesNeedNewerToolsMessage())
-  if (!state.accounts.has('fly')) throw new BackendError('missing_credentials', 'not set up yet: your Fly.io account (connect it in Online accounts)')
+  if (!state.accounts.has(options.provider)) throw new BackendError('missing_credentials', `not set up yet: your ${deployProviderNames[options.provider]} account (connect it in Online accounts)`)
   const agent = readStoredAgent(agentId)
   for (const step of sampleSteps) {
     emit({ kind: 'step', agentId, step, status: 'running', message: null })
     emit({ kind: 'log', agentId, line: `${step}: working…` })
     await waitFor(700)
+    if (place && state.googleProjects.find((project) => project.id === place.project)?.billing === 'disabled') {
+      emit({ kind: 'step', agentId, step, status: 'failed', message: null })
+      const problem = billingProblem(place)
+      throw new BackendError('deploy_failed', problem.message, problem)
+    }
     emit({ kind: 'step', agentId, step, status: 'done', message: null })
   }
   const previous = state.deployments.get(agentId)
   const nextNumber = Number(previous?.deployment.deployedVersionLabel?.slice(1) ?? 0) + 1
   const label = `v${nextNumber}`
-  const view = { ...buildView(agent, { mode: options.mode, region: regionForArea[options.area], deployedVersionLabel: label, createdAt: previous?.deployment.createdAt }), features }
+  const name = slugFor(agent)
+  const placeChanges = place ? { provider: 'google_cloud' as const, region: place.region, url: `https://${name}-x7k2q9fa3b-et.a.run.app` } : { region: regionForArea[options.area] }
+  const view = { ...buildView(agent, { mode: options.mode, ...placeChanges, deployedVersionLabel: label, createdAt: previous?.deployment.createdAt }), features, place }
   state.deployments.set(agentId, view)
   // Without the phone page its storage is removed, and the paired phones with it.
   if (!features.phone) state.devices.delete(`agent:${agentId}`)
@@ -458,6 +502,16 @@ export const sampleDeployBackend = {
     return listAccounts().find((account) => account.provider === input.provider) as DeployAccount
   },
   disconnectDeployAccount: (provider: DeployProvider) => respondWith(() => void state.accounts.delete(provider)),
+  signInGoogleCloud: async (): Promise<DeployAccount> => {
+    await waitFor(600)
+    state.accounts.set('google_cloud', 'Signed in as ana@acme.com')
+    return listAccounts().find((account) => account.provider === 'google_cloud') as DeployAccount
+  },
+  listGoogleCloudProjects: () =>
+    respondWith(() => {
+      if (!state.accounts.has('google_cloud')) throw new BackendError('missing_credentials', 'not set up yet: sign in with Google')
+      return state.googleProjects
+    }),
   readKubeconfigContexts: (path: string) => respondWith(() => (path.toLowerCase().includes('config') || path.toLowerCase().endsWith('.yaml') ? ['staging', 'prod'] : invalid('This file is not a kubeconfig (it is not YAML)'))),
   checkDeployCompatibility: (agentId: string) => respondWith(() => compatibilityFor(agentId)),
   applyDeployFix: (agentId: string, fix: CompatibilityFix) => respondWith(() => applyFix(agentId, fix)),

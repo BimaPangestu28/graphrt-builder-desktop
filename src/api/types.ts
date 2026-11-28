@@ -323,3 +323,5 @@ export type BackendErrorCode =
   | 'needs_release'
   /** use_agent_release: the online copy could not switch, so nothing changed (`details.releaseNumber`, `details.inUseNumber`). */
   | 'online_switch_failed'
+  /** deploy / manage on Google Cloud: the provider refused; `details` explains it with a fix (`DeployProblem`). */
+  | 'deploy_failed'

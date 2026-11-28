@@ -31,16 +31,15 @@ describe('ConnectProviderDialog', () => {
     expect(onConnected).toHaveBeenCalledWith(expect.objectContaining({ provider: 'fly', connected: true }))
   })
 
-  it('takes a dropped Google Cloud key file and refuses other files', async () => {
+  it('signs in to Google Cloud with Google instead of a form', async () => {
     const { onConnected } = renderDialog('google_cloud')
-    const zone = screen.getByRole('group', { name: /Drop your key file/ })
-    dropBrowserFiles(zone, [new File(['x'], 'notes.txt')])
-    expect(await screen.findByText(/cannot be added|can't be added|not/i)).toBeInTheDocument()
-    dropBrowserFiles(zone, [new File(['{}'], 'acme-agents-graphrt.json')])
-    expect(await screen.findByText('acme-agents-graphrt.json')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Connect' }))
-    expect(await screen.findByText(/Service account graphrt@acme-agents/)).toBeInTheDocument()
-    expect(onConnected).toHaveBeenCalled()
+    expect(screen.getByRole('dialog', { name: 'Sign in with Google' })).toBeInTheDocument()
+    expect(screen.getByText(/Google hasn’t verified this app/)).toBeInTheDocument()
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in with Google' }))
+    expect(await screen.findByText('Signed in as ana@acme.com')).toBeInTheDocument()
+    expect(screen.getByText(/You can now pick it/i)).toBeInTheDocument()
+    expect(onConnected).toHaveBeenCalledWith(expect.objectContaining({ provider: 'google_cloud', connected: true, canDeploy: true }))
   })
 
   it('lets Azure use a client secret instead of a certificate', async () => {

@@ -1,10 +1,11 @@
-import { useState, type ReactNode } from 'react'
-import { installGraphrtCli, openDeployLink } from '@/api/deploy'
-import { deployProviderNames, noOnlineFeatures, type CliInfo, type DeployMode, type DeployReview, type OnlineFeatures, type ServerArea } from '@/api/deployTypes'
+import { useCallback, useState, type ReactNode } from 'react'
+import { installGraphrtCli, openDeployLink, openGoogleCloudPage } from '@/api/deploy'
+import { deployProviderNames, noOnlineFeatures, type CliInfo, type CloudPlace, type DeployMode, type DeployReview, type OnlineFeatures, type ServerArea } from '@/api/deployTypes'
 import { Badge, Button, Icon, joinClassNames } from '@/components/ui'
 import { DevelopersDetails } from './DeployDialog'
 import { deployModeLabels, describeCliNeed, plainErrorMessage, serverAreaLabels } from './deployDisplay'
 import type { FeaturesAvailability } from './onlineFeatures'
+import { GoogleCloudPlacePicker } from './GoogleCloudPlacePicker'
 import { OnlineFeaturesForm } from './OnlineFeaturesForm'
 import { messages } from '@/i18n'
 
@@ -14,6 +15,8 @@ export interface DeployChoice {
   area: ServerArea
   image: string | null
   features: OnlineFeatures
+  /** Google Cloud: the project and region; null for the other providers. */
+  cloudPlace: CloudPlace | null
 }
 
 interface ReviewStepProps {
@@ -95,14 +98,21 @@ export function ReviewStep({ agentName, review, isUpdate, onCliChanged, onBack, 
   // Asked from the installed tools themselves: a version too old for these gets a plain note.
   const featuresAvailability: FeaturesAvailability = review.cli.status !== 'installed' ? 'needs_tools' : review.cli.onlineFeatures ? 'ready' : 'needs_newer_tools'
   const [acceptsBilling, setAcceptsBilling] = useState(isUpdate)
+  const [cloudPlace, setCloudPlace] = useState<CloudPlace | null>(review.cloudPlace)
+  const onCloudPlaceChange = useCallback((place: CloudPlace | null) => setCloudPlace(place), [])
   const providerName = deployProviderNames[review.provider]
   const isFly = review.provider === 'fly'
+  const isGoogleCloud = review.provider === 'google_cloud'
+  const googleWords = messages().deploy.googleCloud
+  const needsPlace = isGoogleCloud && cloudPlace === null
   const blockedReason = !review.canDeploy
     ? messages().deploy.puttingAgentsOnlineWithProvidernameIs(providerName)
     : !review.providerConnected
       ? messages().deploy.connectProvidernameFirst(providerName)
-      : null
-  const canConfirm = review.canDeploy && review.providerConnected && review.cli.status === 'installed' && acceptsBilling
+      : needsPlace
+        ? googleWords.pickProjectFirst
+        : null
+  const canConfirm = review.canDeploy && review.providerConnected && review.cli.status === 'installed' && acceptsBilling && !needsPlace
 
   return (
     <section aria-label={messages().deploy.review} className="flex flex-col gap-4">
@@ -117,7 +127,7 @@ export function ReviewStep({ agentName, review, isUpdate, onCliChanged, onBack, 
           <ul className="m-0 flex list-none flex-col gap-2.5 p-0">
             <CreatedItem title={messages().deploy.anOnlineCopyOfAgentname(agentName)} detail={messages().deploy.onProvidernameInYourAccount(providerName)} />
             <CreatedItem title={messages().deploy.itsWebAddress} detail={review.expectedAddress} />
-            <CreatedItem title={messages().deploy.aSmallStorageSpace} detail={messages().deploy.keepsItsHistoryAndConversationsWaiting} />
+            <CreatedItem title={messages().deploy.aSmallStorageSpace} detail={isGoogleCloud ? googleWords.whatGetsCreated : messages().deploy.keepsItsHistoryAndConversationsWaiting} />
           </ul>
         </ReviewSection>
         <ReviewSection title={messages().deploy.howItRuns}>
@@ -141,18 +151,28 @@ export function ReviewStep({ agentName, review, isUpdate, onCliChanged, onBack, 
             </label>
           </DevelopersDetails>
         </ReviewSection>
-        <ReviewSection title={messages().deploy.serverLocation}>
-          <label className="flex flex-col gap-1.5 text-[13px] text-body">
-            {messages().deploy.pickWhereMostOfYourCustomers}
-            <select aria-label={messages().deploy.serverLocation} value={area} onChange={(event) => setArea(event.target.value as ServerArea)} className="h-10 rounded-[9px] border border-line-strong bg-surface px-3 text-[14px] text-ink">
-              {areas.map((option) => (
-                <option key={option} value={option}>
-                  {serverAreaLabels[option]}
-                </option>
-              ))}
-            </select>
-          </label>
-        </ReviewSection>
+        {isGoogleCloud ? (
+          <ReviewSection title={googleWords.whereTitle}>
+            {review.providerConnected ? (
+              <GoogleCloudPlacePicker current={review.cloudPlace} isLocked={isUpdate && review.cloudPlace !== null} onChange={onCloudPlaceChange} />
+            ) : (
+              <span className="text-[13px] text-body">{messages().deploy.connectProvidernameFirst(providerName)}</span>
+            )}
+          </ReviewSection>
+        ) : (
+          <ReviewSection title={messages().deploy.serverLocation}>
+            <label className="flex flex-col gap-1.5 text-[13px] text-body">
+              {messages().deploy.pickWhereMostOfYourCustomers}
+              <select aria-label={messages().deploy.serverLocation} value={area} onChange={(event) => setArea(event.target.value as ServerArea)} className="h-10 rounded-[9px] border border-line-strong bg-surface px-3 text-[14px] text-ink">
+                {areas.map((option) => (
+                  <option key={option} value={option}>
+                    {serverAreaLabels[option]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </ReviewSection>
+        )}
         <ReviewSection title={messages().deploy.keysThatWillBeCopied}>
           {review.keys.length === 0 ? (
             <span className="text-[13px] text-body">{messages().deploy.noneThisAgentUsesNoKeys}</span>
@@ -181,6 +201,11 @@ export function ReviewStep({ agentName, review, isUpdate, onCliChanged, onBack, 
               {messages().deploy.flyIoPricing}
             </button>
           )}
+          {isGoogleCloud && (
+            <button type="button" onClick={() => void openGoogleCloudPage('pricing', null)} className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-brand hover:underline">
+              {googleWords.pricing}
+            </button>
+          )}
         </span>
       </ReviewSection>
       <CliDownload cli={review.cli} onCliChanged={onCliChanged} />
@@ -194,7 +219,7 @@ export function ReviewStep({ agentName, review, isUpdate, onCliChanged, onBack, 
         <span>{messages().deploy.iUnderstand}{' '}{providerName} {messages().deploy.billsMeForThis}</span>
       </label>
       <div className="flex flex-wrap gap-2">
-        <Button onClick={() => onConfirm({ mode, area, image: image.trim() || null, features: featuresAvailability === 'ready' ? features : noOnlineFeatures })} disabled={!canConfirm}>
+        <Button onClick={() => onConfirm({ mode, area, image: image.trim() || null, features: featuresAvailability === 'ready' ? features : noOnlineFeatures, cloudPlace: isGoogleCloud ? cloudPlace : null })} disabled={!canConfirm}>
           {!review.canDeploy ? messages().deploy.comingSoon : isUpdate ? messages().deploy.updateOnlineVersion : messages().deploy.putItOnline}
         </Button>
         <Button variant="ghost" onClick={onBack}>
@@ -202,11 +227,15 @@ export function ReviewStep({ agentName, review, isUpdate, onCliChanged, onBack, 
         </Button>
       </div>
       <DevelopersDetails>
-        <span>
-          {isFly ? messages().deploy.flyApp : messages().deploy.deployment} <code>{review.deploymentName}</code> {messages().deploy.region2}{' '}<code>{{ asia: 'sin', europe: 'fra', us: 'iad' }[area]}</code> ·{' '}
-          {mode === 'scale_to_zero' ? messages().deploy.autostopMin0Machines : messages().deploy.min1Machine} {messages().deploy.storageVolumeForRunsSecrets}{' '}
-          {review.keys.map((key) => key.envName).join(', ') || 'none'}{messages().deploy.plus}{' '}<code>{messages().deploy.graphrtApiKey}</code> {messages().deploy.onTheFirstDeployRuns}{' '}<code>{messages().deploy.graphrtDeployTargetFlyDirect}</code>{messages().deploy.secretsGoToTheToolAs}
-        </span>
+        {isGoogleCloud ? (
+          <span>{googleWords.developers(review.deploymentName, cloudPlace?.project ?? '…', cloudPlace?.region ?? '…')}</span>
+        ) : (
+          <span>
+            {isFly ? messages().deploy.flyApp : messages().deploy.deployment} <code>{review.deploymentName}</code> {messages().deploy.region2}{' '}<code>{{ asia: 'sin', europe: 'fra', us: 'iad' }[area]}</code> ·{' '}
+            {mode === 'scale_to_zero' ? messages().deploy.autostopMin0Machines : messages().deploy.min1Machine} {messages().deploy.storageVolumeForRunsSecrets}{' '}
+            {review.keys.map((key) => key.envName).join(', ') || 'none'}{messages().deploy.plus}{' '}<code>{messages().deploy.graphrtApiKey}</code> {messages().deploy.onTheFirstDeployRuns}{' '}<code>{messages().deploy.graphrtDeployTargetFlyDirect}</code>{messages().deploy.secretsGoToTheToolAs}
+          </span>
+        )}
         <label className="flex flex-col gap-1.5">
           <span className="font-medium text-ink-2">{messages().deploy.serverImageOptional}</span>
           <input

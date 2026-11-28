@@ -10,6 +10,8 @@ import type {
   DevicePairing,
   DeployLink,
   DeployOptions,
+  GoogleConsolePage,
+  GoogleProject,
   DeployOutcome,
   DeployProvider,
   DeployReview,
@@ -64,6 +66,31 @@ export function disconnectDeployAccount(provider: DeployProvider): Promise<void>
 }
 
 /** The contexts of a dropped kubeconfig (the backend reads the file). */
+/**
+ * "Sign in with Google" for Google Cloud: the browser opens, and the sign in is kept in the
+ * keychain once the person allowed it.
+ *
+ * @throws BackendError - `invalid_input` when the person cancelled or this build cannot sign in
+ */
+export function signInGoogleCloud(): Promise<DeployAccount> {
+  return useSample() ? sampleDeployBackend.signInGoogleCloud() : callBackend('sign_in_google_cloud')
+}
+
+/** The signed-in Google account's active projects, with billing on first. */
+export function listGoogleCloudProjects(): Promise<GoogleProject[]> {
+  return useSample() ? sampleDeployBackend.listGoogleCloudProjects() : callBackend('list_google_cloud_projects')
+}
+
+/** Opens a Google Cloud console page (billing, permissions…) of a project in the browser. */
+export function openGoogleCloudPage(page: GoogleConsolePage, project: string | null): Promise<void> {
+  return useSample() ? sampleDeployBackend.openDeployLink() : callBackend('open_google_cloud_page', { page, project })
+}
+
+/** Opens the fix of a deploy problem (a Google Cloud console page the backend named). */
+export function openDeployFix(url: string): Promise<void> {
+  return useSample() ? sampleDeployBackend.openDeployLink() : callBackend('open_deploy_fix', { url })
+}
+
 export function readKubeconfigContexts(path: string): Promise<string[]> {
   return useSample() ? sampleDeployBackend.readKubeconfigContexts(path) : callBackend('read_kubeconfig_contexts', { path })
 }

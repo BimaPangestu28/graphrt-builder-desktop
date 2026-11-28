@@ -301,6 +301,7 @@ impl DeployService {
             bearer: Some(api_key),
             // The phone reaches the agent at the address this app knows it by.
             body: Some(serde_json::json!({ "name": name, "url": url.trim_end_matches('/') })),
+            form: None,
         };
         let reply = self.http.send(request).await?;
         if !(200..300).contains(&reply.status) {
@@ -355,6 +356,7 @@ impl DeployService {
             url: http::join_url(&url, &format!("v1/devices/{device_id}")),
             bearer: Some(api_key),
             body: None,
+            form: None,
         };
         let reply = self.http.send(request).await?;
         // 404: it is already gone on the server, which is what was asked for.

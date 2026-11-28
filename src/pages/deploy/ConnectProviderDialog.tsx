@@ -1,5 +1,5 @@
 import { useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { connectDeployAccount, openDeployLink, readKubeconfigContexts } from '@/api/deploy'
+import { connectDeployAccount, openDeployLink, readKubeconfigContexts, signInGoogleCloud } from '@/api/deploy'
 import { deployProviderNames, type DeployAccount, type DeployAccountInput, type DeployLink, type DeployProvider } from '@/api/deployTypes'
 import { pickFilePaths } from '@/api/fileDrop'
 import { FileDropZone, type FileDropAccept } from '@/components/fileDrop'
@@ -110,21 +110,14 @@ function FlyForm({ onBuild }: { onBuild: (build: BuildInput) => void }) {
   )
 }
 
-function GoogleCloudForm({ onBuild }: { onBuild: (build: BuildInput) => void }) {
-  const [keyFilePath, setKeyFilePath] = useState<string | null>(null)
-  onBuild(() => (keyFilePath ? { provider: 'google_cloud', keyFilePath } : null))
+/** Google Cloud has no form: the person signs in with Google in the browser. */
+function GoogleCloudSignInGuide() {
+  const words = messages().deploy.googleCloud
   return (
     <>
-      <GuideSteps
-        steps={[
-          messages().deploy.inGoogleCloudCreateAService,
-          messages().deploy.giveItTheseRolesYourIt,
-          messages().deploy.createAKeyForItAnd,
-        ]}
-      />
-      <GuideLink link="google_cloud_keys">{messages().deploy.howToCreateAKeyFile}</GuideLink>
-      <KeyFileField itemDescription={messages().deploy.yourKeyFileJson} accept={{ extensions: ['json'] }} hint={messages().deploy.theJsonKeyFileOfThe} pickerTitle={messages().deploy.chooseTheGoogleCloudKeyFile} path={keyFilePath} onChange={setKeyFilePath} />
-      <p className="m-0 text-[13px] leading-normal text-muted">{messages().deploy.thisFileLetsGraphrtPutAgents}{' '}{getCredentialStoreName()}{messages().deploy.neverShownAgain}</p>
+      <GuideSteps steps={[...words.signInSteps]} />
+      <p className="m-0 text-[13px] leading-normal text-muted">{words.unverifiedNote}</p>
+      <p className="m-0 text-[13px] leading-normal text-muted">{words.signInKept(getCredentialStoreName())}</p>
     </>
   )
 }
@@ -234,9 +227,10 @@ function KubernetesForm({ onBuild }: { onBuild: (build: BuildInput) => void }) {
   )
 }
 
-const forms: Record<DeployProvider, (props: { onBuild: (build: BuildInput) => void }) => JSX.Element> = {
+/** Each provider's form; null for a provider signed in to in the browser (Google Cloud). */
+const forms: Record<DeployProvider, ((props: { onBuild: (build: BuildInput) => void }) => JSX.Element) | null> = {
   fly: FlyForm,
-  google_cloud: GoogleCloudForm,
+  google_cloud: null,
   aws: AwsForm,
   azure: AzureForm,
   kubernetes: KubernetesForm,
@@ -257,15 +251,15 @@ export function ConnectProviderDialog({ provider, onClose, onConnected }: Connec
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const input = buildInputRef.current()
-    if (!input) {
+    const input = Form ? buildInputRef.current() : null
+    if (Form && !input) {
       setErrorMessage(messages().deploy.fillInEverythingAboveFirst)
       return
     }
     setIsConnecting(true)
     setErrorMessage(null)
     try {
-      const account = await connectDeployAccount(input)
+      const account = input ? await connectDeployAccount(input) : await signInGoogleCloud()
       setConnectedAccount(account)
       onConnected(account)
     } catch (error) {
@@ -275,9 +269,13 @@ export function ConnectProviderDialog({ provider, onClose, onConnected }: Connec
     }
   }
 
+  const title = Form ? messages().deploy.connectProvidername(providerName) : messages().deploy.googleCloud.signInTitle
+  const idleLabel = Form ? messages().deploy.connect : messages().deploy.googleCloud.signInButton
+  const busyLabel = Form ? messages().deploy.connectingCheckingWithProvidername(providerName) : messages().deploy.googleCloud.waitingForBrowser
+
   if (connectedAccount) {
     return (
-      <DeployDialog title={messages().deploy.connectProvidername(providerName)} leading={<ProviderLogo provider={provider} />} onClose={onClose} footer={<Button onClick={onClose}>{messages().deploy.done}</Button>}>
+      <DeployDialog title={title} leading={<ProviderLogo provider={provider} />} onClose={onClose} footer={<Button onClick={onClose}>{messages().deploy.done}</Button>}>
         <div role="status" className="flex items-start gap-3 rounded-[12px] border border-ok-soft bg-ok-tint px-4 py-3">
           <Icon name="check" size={18} className="mt-0.5 shrink-0 text-ok" />
           <span className="leading-normal">
@@ -291,9 +289,9 @@ export function ConnectProviderDialog({ provider, onClose, onConnected }: Connec
   }
 
   return (
-    <DeployDialog title={messages().deploy.connectProvidername(providerName)} leading={<ProviderLogo provider={provider} />} onClose={onClose}>
-      <form onSubmit={(event) => void handleSubmit(event)} aria-label={messages().deploy.connectProvidername(providerName)} className="flex flex-col gap-4">
-        <Form onBuild={(build) => (buildInputRef.current = build)} />
+    <DeployDialog title={title} leading={<ProviderLogo provider={provider} />} onClose={onClose}>
+      <form onSubmit={(event) => void handleSubmit(event)} aria-label={title} className="flex flex-col gap-4">
+        {Form ? <Form onBuild={(build) => (buildInputRef.current = build)} /> : <GoogleCloudSignInGuide />}
         {errorMessage && (
           <p role="alert" className="m-0 rounded-[10px] border border-danger-line bg-danger-tint px-3 py-2 text-[13px] text-danger-deep">
             {errorMessage}
@@ -304,7 +302,7 @@ export function ConnectProviderDialog({ provider, onClose, onConnected }: Connec
             {messages().deploy.cancel}
           </Button>
           <Button type="submit" disabled={isConnecting}>
-            {isConnecting ? messages().deploy.connectingCheckingWithProvidername(providerName) : errorMessage ? messages().deploy.tryAgain : messages().deploy.connect}
+            {isConnecting ? busyLabel : errorMessage ? messages().deploy.tryAgain : idleLabel}
           </Button>
         </div>
       </form>

@@ -1,9 +1,11 @@
 import { useEffect, useId, useState } from 'react'
 import { listDeployedVersions, manageAgentDeployment } from '@/api/deploy'
-import type { DeployedVersion, DeploymentView, ManageAction } from '@/api/deployTypes'
+import type { DeployedVersion, DeploymentView, DeployProblem, ManageAction } from '@/api/deployTypes'
 import { Badge, Button, LinkButton, StatusDot } from '@/components/ui'
 import { agentPath } from '@/routes'
 import { DevelopersDetails } from './DeployDialog'
+import { DeployProblemNotice } from './DeployProblemNotice'
+import { cloudRunRegionLabel, deployProblemOf } from './googleCloud'
 import { NewAccessKey } from './NewAccessKey'
 import { OnlineFeaturesPanel } from './OnlineFeaturesPanel'
 import { deployModeLabels, describeDeploymentStatus, describeTimeAgo, plainErrorMessage, serverAreaLabels } from './deployDisplay'
@@ -93,6 +95,7 @@ export function AgentOnlinePanel({ agentId, agentName, view, onViewChange }: Age
   const [versions, setVersions] = useState<DeployedVersion[]>([])
   const [busyAction, setBusyAction] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [problem, setProblem] = useState<DeployProblem | null>(null)
   const [isConfirmingOffline, setIsConfirmingOffline] = useState(false)
   const { deployment } = view
   const label = deployment.deployedVersionLabel
@@ -104,12 +107,14 @@ export function AgentOnlinePanel({ agentId, agentName, view, onViewChange }: Age
   async function run(action: ManageAction, name: string) {
     setBusyAction(name)
     setErrorMessage(null)
+    setProblem(null)
     try {
       const next = await manageAgentDeployment(agentId, action)
       onViewChange(next)
       if (action.action === 'remove') setIsConfirmingOffline(false)
     } catch (error) {
       setErrorMessage(plainErrorMessage(error))
+      setProblem(deployProblemOf(error))
     } finally {
       setBusyAction(null)
     }
@@ -129,10 +134,14 @@ export function AgentOnlinePanel({ agentId, agentName, view, onViewChange }: Age
             {busyAction === 'remove' ? messages().deploy.removing : messages().deploy.removeWhatWasCreatedOnProvidername(view.providerName)}
           </Button>
         </div>
-        {errorMessage && (
-          <p role="alert" className="m-0 text-[13px] text-danger">
-            {errorMessage}
-          </p>
+        {problem ? (
+          <DeployProblemNotice problem={problem} compact />
+        ) : (
+          errorMessage && (
+            <p role="alert" className="m-0 text-[13px] text-danger">
+              {errorMessage}
+            </p>
+          )
         )}
       </section>
     )
@@ -140,7 +149,7 @@ export function AgentOnlinePanel({ agentId, agentName, view, onViewChange }: Age
 
   const isPaused = deployment.status === 'paused'
   const display = describeDeploymentStatus(deployment.status)
-  const details = [`Last update: ${describeTimeAgo(deployment.updatedAt)}`, deployModeLabels[deployment.mode].title, view.area ? serverAreaLabels[view.area] : null].filter(Boolean).join(' · ')
+  const details = [`Last update: ${describeTimeAgo(deployment.updatedAt)}`, deployModeLabels[deployment.mode].title, view.area ? serverAreaLabels[view.area] : null, view.place ? messages().deploy.googleCloud.onlineIn(view.place.project, cloudRunRegionLabel(view.place.region)) : null].filter(Boolean).join(' · ')
   const updateLink = (
     <LinkButton to={agentPath('putOnline', agentId, { screen: 'review' })} size="sm">
       {messages().deploy.updateWithLatestChanges}
@@ -194,10 +203,14 @@ export function AgentOnlinePanel({ agentId, agentName, view, onViewChange }: Age
             onConfirm={() => void run({ action: 'remove' }, 'remove')}
           />
         )}
-        {errorMessage && (
-          <p role="alert" className="m-0 text-[13px] text-danger">
-            {errorMessage}
-          </p>
+        {problem ? (
+          <DeployProblemNotice problem={problem} compact />
+        ) : (
+          errorMessage && (
+            <p role="alert" className="m-0 text-[13px] text-danger">
+              {errorMessage}
+            </p>
+          )
         )}
       </div>
       {deployment.url && !isPaused && <OnlineFeaturesPanel target={{ kind: 'agent', agentId }} chosen={view.features} changeTo={agentPath('putOnline', agentId, { screen: 'review' })} />}

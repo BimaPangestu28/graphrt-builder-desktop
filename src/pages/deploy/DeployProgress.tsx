@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import type { DeployOutcome } from '@/api/deployTypes'
+import type { DeployOutcome, DeployProblem } from '@/api/deployTypes'
 import { Badge, Button, Icon, LinkButton, StatusDot, joinClassNames } from '@/components/ui'
 import { getCredentialStoreName } from '@/lib/platform'
 import { agentPath, routePaths } from '@/routes'
 import { DevelopersDetails } from './DeployDialog'
+import { DeployProblemNotice } from './DeployProblemNotice'
 import { NewAccessKey } from './NewAccessKey'
 import { currentDeployStep, deployProgressPercent, deployStepLabels, deployStepOrder, type StepStates } from './deployDisplay'
 import { messages } from '@/i18n'
@@ -13,13 +14,15 @@ interface DeployProgressViewProps {
   logLines: string[]
   /** One plain sentence when it failed; null while running. */
   errorMessage: string | null
+  /** The provider's refusal with its fix (Google Cloud), shown instead of `errorMessage`. */
+  problem?: DeployProblem | null
   onCancel: () => void
   onRetry: () => void
   isCancelling: boolean
 }
 
 /** "Putting it online…": the bar, the four human steps, and the technical log under Details. */
-export function DeployProgressView({ stepStates, logLines, errorMessage, onCancel, onRetry, isCancelling }: DeployProgressViewProps) {
+export function DeployProgressView({ stepStates, logLines, errorMessage, problem = null, onCancel, onRetry, isCancelling }: DeployProgressViewProps) {
   const percent = deployProgressPercent(stepStates)
   const currentStep = currentDeployStep(stepStates)
   return (
@@ -28,7 +31,9 @@ export function DeployProgressView({ stepStates, logLines, errorMessage, onCance
         <h2 className="m-0 text-[20px] font-semibold tracking-[-0.2px]">{errorMessage ? messages().deploy.itCouldNotGoOnline : messages().deploy.puttingItOnline2}</h2>
         {!errorMessage && <span className="text-body">{deployStepLabels[currentStep]}</span>}
       </div>
-      {errorMessage ? (
+      {errorMessage && problem ? (
+        <DeployProblemNotice problem={problem} />
+      ) : errorMessage ? (
         <p role="alert" className="m-0 rounded-[12px] border border-danger-line bg-danger-tint px-4 py-3 leading-normal text-danger-deep">
           {errorMessage}
         </p>
