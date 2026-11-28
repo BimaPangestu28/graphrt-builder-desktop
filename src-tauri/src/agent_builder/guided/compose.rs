@@ -44,6 +44,9 @@ const CHATBOT_ROLE: &str = "You answer a customer's chat message for a business.
 message asks, using the business's own facts. Do what the task says. Reply with only the message to send to the customer. Write your reply in the same language as the customer's \
 message: English if they write English, Indonesian if they write Indonesian, and so on.";
 
+/// How a chatbot's steps read the customer's message.
+const CHATBOT_MESSAGE_REFERENCE: &str = "{{#start.message#}}";
+
 /// The input every chatbot has: the customer's message.
 pub(super) fn chatbot_message_input() -> PlanInput {
     PlanInput {
@@ -291,8 +294,21 @@ impl Builder<'_> {
                 result = Some([shorten_id, "output".to_owned()]);
             }
             PlanStep::Write { title, instruction } => {
+                // A chatbot sends one reply: its writing steps are notes for that one reply, the
+                // last step. llama3.2 planned a step per topic ("Answer: We open at 8", "Answer:
+                // brownies 50k, cheesecake 120k"); the last one was the reply, so asked about the
+                // cheesecake the bot answered with the brownies' price.
+                if self.is_chatbot && Some(index) != self.last_write_index() {
+                    self.results.selectors.push(None);
+                    return;
+                }
                 let write_id = format!("write_{number}");
                 let role = if self.is_chatbot { CHATBOT_ROLE } else { WRITER_ROLE };
+                let request = if self.is_chatbot {
+                    chatbot_request(&self.reply_notes(), &self.plan.job, &self.materials)
+                } else {
+                    writer_request(instruction, &self.plan.job, &self.materials)
+                };
                 self.nodes.push(Node {
                     id: write_id.clone(),
                     node_type: "llm".to_owned(),
@@ -305,10 +321,7 @@ impl Builder<'_> {
                         },
                         prompt_template: vec![
                             PromptMessage { role: "system", text: role.to_owned() },
-                            PromptMessage {
-                                role: "user",
-                                text: writer_request(instruction, &self.plan.job, &self.materials),
-                            },
+                            PromptMessage { role: "user", text: request },
                         ],
                     },
                 });
@@ -358,6 +371,23 @@ impl Builder<'_> {
             }
         }
         self.results.selectors.push(result);
+    }
+
+    /// Where the plan's last writing step is (a chatbot's reply).
+    fn last_write_index(&self) -> Option<usize> {
+        self.plan.steps.iter().rposition(|step| matches!(step, PlanStep::Write { .. }))
+    }
+
+    /// The instructions of every writing step, which a chatbot's one reply follows where they fit.
+    fn reply_notes(&self) -> Vec<&str> {
+        self.plan
+            .steps
+            .iter()
+            .filter_map(|step| match step {
+                PlanStep::Write { instruction, .. } => Some(instruction.as_str()),
+                _ => None,
+            })
+            .collect()
     }
 
     /// A question to the person; only its approve action leads on.
@@ -570,6 +600,34 @@ fn writer_request(instruction: &str, job: &str, materials: &[Material]) -> Strin
     }
     for material in materials {
         request.push_str(&format!("\n\n{}:\n{}", material.heading, material.reference));
+    }
+    request
+}
+
+/// The user message of a chatbot's reply: the business's facts and the plan's notes, what
+/// earlier steps found, and the customer's message last, right before the model writes, so
+/// a small model answers that message and not the last fact it read.
+fn chatbot_request(notes: &[&str], job: &str, materials: &[Material]) -> String {
+    let mut request = "Task: reply to the customer's message at the end. Use only the facts that answer \
+        what the customer asks; leave out the ones they did not ask about."
+        .to_owned();
+    if !job.is_empty() {
+        request.push_str(&format!("\n\nThe business's facts, as the owner wrote them: {job}"));
+    }
+    let notes: Vec<&str> = notes.iter().copied().filter(|note| !note.is_empty() && *note != job).collect();
+    if !notes.is_empty() {
+        request.push_str("\n\nNotes for replies:");
+        for note in notes {
+            request.push_str(&format!("\n- {note}"));
+        }
+    }
+    let (message, found): (Vec<&Material>, Vec<&Material>) =
+        materials.iter().partition(|material| material.reference == CHATBOT_MESSAGE_REFERENCE);
+    for material in found {
+        request.push_str(&format!("\n\n{}:\n{}", material.heading, material.reference));
+    }
+    for material in message {
+        request.push_str(&format!("\n\nThe customer's message, the one to answer:\n{}", material.reference));
     }
     request
 }
@@ -812,6 +870,27 @@ mod tests {
         assert_eq!(summary.inputs[0].name, "message");
         assert_eq!(step_types(&yaml), ["llm", "answer"], "{yaml}");
         assert!(yaml.contains("{{#write_1.text#}}"), "{yaml}");
+    }
+
+    #[test]
+    fn a_chatbot_sends_one_reply_whatever_writing_steps_its_plan_has() {
+        // What llama3.2 planned for a bakery: one step per topic.
+        let mut plan = plan_from(
+            r#"{"steps": [{"kind": "write", "title": "Answer opening hours", "instruction": "Answer: We are open 8 to 17, closed Sunday."},
+                          {"kind": "write", "title": "Provide cake prices", "instruction": "Answer: Our brownies cost 50k and our cheesecakes cost 120k."}]}"#,
+            true,
+        );
+        plan.job = "Answer questions for my bakery (brownies 50k, cheesecake 120k).".to_owned();
+        let yaml = workflow_yaml(&plan, &local_model(), AgentKind::Chatbot).unwrap();
+        flow::summarize_flow(&yaml).unwrap_or_else(|error| panic!("{error}\n{yaml}"));
+        assert_eq!(step_types(&yaml), ["llm", "answer"], "{yaml}");
+        assert!(yaml.contains("{{#write_2.text#}}") && !yaml.contains("write_1"), "{yaml}");
+        let notes = yaml.find("- Answer: We are open").unwrap_or_else(|| panic!("{yaml}"));
+        let prices = yaml.find("- Answer: Our brownies").unwrap_or_else(|| panic!("{yaml}"));
+        let facts = yaml.find("The business's facts, as the owner wrote them: Answer questions").unwrap();
+        let message = yaml.find("The customer's message, the one to answer:").unwrap();
+        assert!(facts < notes && notes < prices && prices < message, "the message comes last: {yaml}");
+        assert!(yaml[message..].contains("{{#start.message#}}"), "{yaml}");
     }
 
     #[test]

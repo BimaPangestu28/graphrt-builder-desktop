@@ -504,8 +504,12 @@ pub(super) fn normalize(raw: RawPlan, rules: &PlanRules<'_>) -> Result<Plan, Str
     }
     // The model says the job needs facts from outside and planned no step that gets them
     // (it would write them from memory): the best offered operation that reads gets them.
+    // Not when the job's own words say the person gives the text to work on: llama3.2 said
+    // "looks up the web" for "summarize the meeting notes I paste, then send it by email",
+    // and the best reading operation offered was `email.list_messages`.
     let gets_facts = steps.iter().any(|step| matches!(step, PlanStep::Lookup { .. } | PlanStep::Use { .. }));
-    if raw.looks_up_the_web && !gets_facts {
+    let text_is_given = raw.job_words.given.chars().filter(|character| character.is_alphanumeric()).count() >= 3;
+    if raw.looks_up_the_web && !gets_facts && !text_is_given {
         if let Some(operation) = rules.operations.iter().find(|operation| !operation.sends) {
             let instruction = plain_text(&raw.summary);
             let instruction = if instruction.is_empty() { operation.title.clone() } else { instruction };
@@ -634,7 +638,50 @@ pub(super) fn normalize_fields(
     if operation.sends {
         drop_repeated_recipients(operation, &mut fields);
     }
+    split_code_pairs(operation, &mut fields);
     Ok(fields)
+}
+
+/// A field whose description shows one short code ("Base currency, e.g. USD") given a pair
+/// of such codes (gpt-4o-mini filled `base` with "USD/IDR", and the plugin refused "invalid
+/// currency") keeps one of them: the one no other field already holds, else the first (a
+/// pair names its base first).
+fn split_code_pairs(operation: &OfferedOperation, fields: &mut BTreeMap<String, serde_json::Value>) {
+    for field in &operation.fields {
+        if !example_is_a_code(&field.description) {
+            continue;
+        }
+        let Some(serde_json::Value::String(text)) = fields.get(&field.name) else { continue };
+        let Some((first, second)) = code_pair(text) else { continue };
+        let held_elsewhere = |code: &str| {
+            fields
+                .iter()
+                .any(|(name, value)| name != &field.name && value.as_str().is_some_and(|other| other.trim() == code))
+        };
+        let kept = if held_elsewhere(&first) && !held_elsewhere(&second) { second } else { first };
+        fields.insert(field.name.clone(), json!(kept));
+    }
+}
+
+/// Whether a description's example ("e.g. USD", "for example IDR") is one code of 2 to 5
+/// capital letters.
+fn example_is_a_code(description: &str) -> bool {
+    ["e.g. ", "e.g ", "for example "].iter().any(|marker| {
+        description.split(marker).nth(1).and_then(|after| after.split_whitespace().next()).is_some_and(|example| {
+            let example = example.trim_end_matches([',', '.', ';', ')']);
+            (2..=5).contains(&example.len()) && example.chars().all(|character| character.is_ascii_uppercase())
+        })
+    })
+}
+
+/// The two codes of "USD/IDR", "USD-IDR" or "USD to IDR" (capital letters, 2 to 5 each).
+fn code_pair(text: &str) -> Option<(String, String)> {
+    let text = text.trim();
+    let (first, second) = text.split_once('/').or_else(|| text.split_once(" to ")).or_else(|| text.split_once('-'))?;
+    let is_code =
+        |code: &str| (2..=5).contains(&code.len()) && code.chars().all(|character| character.is_ascii_uppercase());
+    let (first, second) = (first.trim(), second.trim());
+    (is_code(first) && is_code(second)).then(|| (first.to_owned(), second.to_owned()))
 }
 
 /// Removes optional recipient fields (`cc`, `bcc`) that repeat a required one, and an
@@ -681,7 +728,10 @@ fn without_copied_description(value: serde_json::Value, description: &str) -> se
         let bracketed = &rest[open..=open + close];
         kept.push_str(&rest[..open]);
         let inside = words_of(bracketed);
-        if inside.is_empty() || !description.contains(&inside) {
+        // Also a note about the default in the model's own words ("USD (DEFAULT: USD IF NOT
+        // SPECIFIED)") when the description has a default.
+        let notes_the_default = inside.starts_with("default") && description.contains("default");
+        if inside.is_empty() || !(description.contains(&inside) || notes_the_default) {
             kept.push_str(bracketed);
         }
         rest = &rest[open + close + 1..];
@@ -1762,11 +1812,53 @@ mod tests {
     }
 
     #[test]
+    fn a_pair_of_codes_in_a_field_for_one_code_keeps_the_one_it_names() {
+        let field = |name: &str, description: &str| OperationField {
+            name: name.to_owned(),
+            description: description.to_owned(),
+            field_type: FieldType::Text,
+            required: false,
+        };
+        let operation = OfferedOperation {
+            kind: "currency-rates.get_pair_rate".to_owned(),
+            plugin: "currency-rates".to_owned(),
+            title: "Exchange rate for a pair".to_owned(),
+            description: String::new(),
+            installed: true,
+            sends: false,
+            needs_setup: false,
+            fields: vec![
+                field("base", "Base currency, e.g. USD"),
+                field("quote", "Quote currency, e.g. IDR"),
+                field("note", "Free text, e.g. A/B testing"),
+            ],
+        };
+        let plan = sending_plan();
+        // What gpt-4o-mini wrote for `get_latest_rates`.
+        let fields = normalize_fields(&operation, r#"{"base": "USD/IDR"}"#, &plan, 0).unwrap();
+        assert_eq!(fields["base"], json!("USD"));
+        let fields = normalize_fields(&operation, r#"{"base": "USD to IDR", "quote": "USD/IDR"}"#, &plan, 0).unwrap();
+        assert_eq!((&fields["base"], &fields["quote"]), (&json!("USD"), &json!("IDR")));
+        // Text that is not a pair of codes, and a field without a code example, stay as written.
+        let fields = normalize_fields(&operation, r#"{"base": "usd/idr", "note": "EU/US"}"#, &plan, 0).unwrap();
+        assert_eq!((&fields["base"], &fields["note"]), (&json!("usd/idr"), &json!("EU/US")));
+    }
+
+    #[test]
     fn text_copied_from_a_fields_description_is_left_out() {
         assert_eq!(
             without_copied_description(json!("USD (DEFAULT: EUR)"), "Base currency, e.g. USD (default: EUR)"),
             json!("USD")
         );
+        // What llama3.2 wrote in round 4: the default in its own words.
+        assert_eq!(
+            without_copied_description(
+                json!("USD (DEFAULT: USD IF NOT SPECIFIED)"),
+                "Base currency, e.g. USD (default EUR)"
+            ),
+            json!("USD")
+        );
+        assert_eq!(without_copied_description(json!("Rapat (default)"), "Subject line"), json!("Rapat (default)"));
         assert_eq!(without_copied_description(json!("Rapat (Senin)"), "Subject line"), json!("Rapat (Senin)"));
         assert_eq!(without_copied_description(json!(5), "Limit (default 10)"), json!(5));
     }
@@ -1786,6 +1878,16 @@ mod tests {
             "{plan:?}"
         );
         assert_eq!(plan.steps.len(), 2);
+        // The same claim for a job whose text the person gives reads nothing (llama3.2's plan
+        // for "summarize the meeting notes I paste, then send the summary by email").
+        let given = parse(
+            r#"{"looks_up_the_web": true, "summary": "Sends the meeting summary.", "inputs": [],
+                "steps": [{"kind": "write", "title": "Sum up", "instruction": "Sum up the notes.", "url": ""}],
+                "job_words": {"send": "kirim", "given": "catatan rapat"}}"#,
+        )
+        .unwrap();
+        let plan = normalize(given, &rules).unwrap();
+        assert!(plan.steps.iter().all(|step| matches!(step, PlanStep::Write { .. })), "{plan:?}");
     }
 
     #[test]

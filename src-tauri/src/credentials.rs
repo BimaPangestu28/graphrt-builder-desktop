@@ -999,7 +999,8 @@ fn build_keyed_model(provider: ModelProvider, api_key: String) -> AppResult<Arc<
 fn build_ollama_model(base_url: &str) -> AppResult<Arc<dyn ChatModel>> {
     let config = OpenAiConfig::new(format!("{}/v1", base_url.trim_end_matches('/')), None);
     let model = OpenAiModel::new(config).map_err(|error| model_error(ModelProvider::Ollama, &error))?;
-    Ok(Arc::new(model))
+    // Tool turns at temperature 0 unless a step sets its own (see `local_model`).
+    Ok(crate::local_model::LocalModel::around(Arc::new(model)))
 }
 
 /// Builds the graphrt model registry from stored keys: every provider with a key,

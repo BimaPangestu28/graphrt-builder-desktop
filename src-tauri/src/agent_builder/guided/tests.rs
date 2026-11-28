@@ -559,3 +559,28 @@ async fn a_chatbot_does_not_look_up_a_site_its_job_never_names() {
     assert!(!agent.flow_yaml.contains("sendbird"), "{}", agent.flow_yaml);
     assert!(!agent.flow_yaml.contains("type: http-request"), "{}", agent.flow_yaml);
 }
+
+#[tokio::test]
+async fn a_chatbot_never_looks_up_the_chat_channel_it_is_reached_through() {
+    let db = Database::open_in_memory().unwrap();
+    // As llama3.2 planned it: "pass confirmed orders to me" as a lookup on WhatsApp's site,
+    // which the job names as the channel.
+    let channel = format!(
+        r#"{{"looks_up_the_web": true, "summary": "Catering menu assistant for WhatsApp", "name": "Menu bot", "inputs": [],
+            "steps": [{{"kind": "write", "title": "Answer", "instruction": "Answer with the menu prices.", "url": ""}},
+                      {{"kind": "lookup", "title": "Confirm orders", "instruction": "Send confirmed orders to the owner's WhatsApp number.",
+                        "url": "https://api.whatsapp.com/api/confirm?phone=+1234567890&message=Confirmed%20order"}}], {NO_SCHEDULE}}}"#
+    );
+    let (_mock, builder) = local_builder(&[&channel]);
+    let build = BuildRequest {
+        description: "Answer WhatsApp questions about our catering menu (nasi box 25k, tumpeng 350k) and pass confirmed orders to me.".into(),
+        kind: Some(AgentKind::Chatbot),
+    };
+
+    let agent = build_agent_with_model(&db, &builder, build, &|_| {}).await.unwrap();
+
+    assert!(!agent.flow_yaml.contains("whatsapp.com"), "{}", agent.flow_yaml);
+    assert!(!agent.flow_yaml.contains("type: http-request"), "{}", agent.flow_yaml);
+    assert!(super::is_chat_channel("web.whatsapp.com") && super::is_chat_channel("wa.me"));
+    assert!(!super::is_chat_channel("notwa.me") && !super::is_chat_channel("example.com"));
+}

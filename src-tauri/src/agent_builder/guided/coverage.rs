@@ -167,8 +167,11 @@ pub(super) fn out_of_reach(words: &JobWords, has_offered_operations: bool) -> Op
 
 /// A sentence for the model when its own words say the job sends something and no step
 /// does; `None` when the plan does what it says.
-pub(super) fn missing_action(plan: &Plan) -> Option<String> {
-    let has_plugin_step = plan.steps.iter().any(|step| matches!(step, PlanStep::Use { .. }));
+/// A step only counts when its operation sends (`sends` says which do): a plan whose only
+/// plugin step lists emails still sends nothing.
+pub(super) fn missing_action(plan: &Plan, sends: impl Fn(&str) -> bool) -> Option<String> {
+    let has_plugin_step =
+        plan.steps.iter().any(|step| matches!(step, PlanStep::Use { operation, .. } if sends(operation)));
     (!plan.job_words.send.is_empty() && !has_plugin_step).then(|| {
         format!(
             "the job says \"{}\", but no step does it; add a \"use\" step with the operation that does it, after \
@@ -369,9 +372,9 @@ mod tests {
     #[test]
     fn a_plan_whose_words_say_send_but_that_sends_nothing_is_sent_back() {
         let mut only_writes = plan_with(vec![write_step()]);
-        assert_eq!(missing_action(&only_writes), None);
+        assert_eq!(missing_action(&only_writes, |_| true), None);
         only_writes.job_words.send = "send it by email".into();
-        assert!(missing_action(&only_writes).unwrap().contains("\"send it by email\""));
+        assert!(missing_action(&only_writes, |_| true).unwrap().contains("\"send it by email\""));
         let sends = Plan {
             job_words: job_words("send it by email", "", "", ""),
             ..plan_with(vec![
@@ -384,7 +387,9 @@ mod tests {
                 },
             ])
         };
-        assert_eq!(missing_action(&sends), None);
+        assert_eq!(missing_action(&sends, |_| true), None);
+        // A plugin step that only reads does not send.
+        assert!(missing_action(&sends, |_| false).is_some());
     }
 
     #[test]
