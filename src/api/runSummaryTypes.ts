@@ -62,6 +62,8 @@ export interface RunSummary {
   errorMessage: string | null
   /** Tokens and money against the agent's spending limit (`src-tauri/src/run_budget.rs`); null when unreadable. */
   budget: RunBudget | null
+  /** The budget could not be worked out. */
+  budgetUnavailable: boolean
 }
 
 /** What one run spent against its agent's spending limit. */

@@ -126,9 +126,10 @@ function SkillAndLearningNotes({ step, agentId }: { step: RunStepView; agentId?:
   return (
     <div className="flex flex-col gap-1.5">
       {step.abilityNotes.length > 0 && (
-        <ul aria-label={messages().abilities.section.title} className="m-0 flex list-none flex-col gap-1 p-0">
+        <ul aria-label={messages().abilities.runNotes.listLabel} className="m-0 flex list-none flex-col gap-1 p-0">
           {step.abilityNotes.map((note) => (
             <li key={note.key} className={note.isWarning ? 'rounded-lg border border-amber-line-2 bg-amber-tint px-3 py-1.5 text-[13px] text-amber-deep' : 'text-[13px] text-body'}>
+              {note.isWarning && <span className="font-semibold">{`${messages().abilities.runNotes.notePrefix} `}</span>}
               {note.text}
               {note.kind === 'memory' && agentId && (
                 <>

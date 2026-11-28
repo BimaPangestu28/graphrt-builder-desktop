@@ -14,7 +14,8 @@ pub enum MemoryPersonKind {
     Customer,
     /// The owner, in runs started in the app (Test, Run now).
     You,
-    /// The agent's tests and release checks.
+    /// The agent's tests and release checks (each case is erased when it is done; a leftover
+    /// from an interrupted check can be found here).
     Checks,
     /// Found in the memory folder only (for example after their conversation was deleted).
     Other,
@@ -81,6 +82,8 @@ pub struct AgentMemory {
     pub people: Vec<MemoryPerson>,
     /// Notes of the agent as a whole: what runs without a person proposed, and what the owner added.
     pub agent_notes: Vec<MemoryNoteView>,
+    /// Some people could not be read from the store's folder (the list may miss someone).
+    pub incomplete: bool,
 }
 
 /// A fact of the memory graph, as the owner reads it.

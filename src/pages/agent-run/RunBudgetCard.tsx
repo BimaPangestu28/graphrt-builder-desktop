@@ -22,8 +22,9 @@ export function describeRunBudget(budget: RunBudget, t: ReturnType<typeof useT>[
  * spending limit, and a warning when the limit stopped it. Nothing for a run that used no
  * model and has no limit.
  */
-export function RunBudgetCard({ budget }: { budget: RunBudget | null }) {
+export function RunBudgetCard({ budget, isUnavailable = false }: { budget: RunBudget | null; isUnavailable?: boolean }) {
   const t = useT().abilities.budget
+  if (isUnavailable) return <p className="m-0 text-[13px] text-muted">{t.unavailable}</p>
   if (!budget) return null
   const hasLimit = budget.limit.maxCostMicros !== null || budget.limit.maxTotalTokens !== null
   if (budget.tokensUsed === 0 && !hasLimit) return null
@@ -35,7 +36,11 @@ export function RunBudgetCard({ budget }: { budget: RunBudget | null }) {
           {line}
         </span>
       ))}
-      {budget.limitReached && <span className="basis-full text-[13px] font-semibold text-amber-deep">{t.limitReached}</span>}
+      {budget.limitReached && (
+        <span role="status" className="basis-full text-[13px] font-semibold text-amber-deep">
+          {t.limitReached}
+        </span>
+      )}
     </section>
   )
 }

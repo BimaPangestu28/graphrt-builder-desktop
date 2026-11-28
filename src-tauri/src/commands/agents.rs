@@ -43,6 +43,16 @@ pub fn delete_agent(state: State<'_, AppState>, agent_id: String) -> AppResult<(
     if let Err(error) = state.agent_files.forget_agent(&agent_id) {
         log::warn!("could not remove the files of deleted agent {agent_id}: {error}");
     }
+    // So does what it remembered about people.
+    if let Err(error) = state.memory.forget_agent(&agent_id) {
+        log::warn!("could not remove the memory of deleted agent {agent_id}: {error}");
+    }
+    // Agents that asked it for help stop listing it, so their runs keep working.
+    let registry = crate::flow::draft_node_registry();
+    let runnable_kinds = crate::agent_graph::registry_kinds(&crate::flow::node_registry());
+    let mut context = crate::agent_graph::GraphContext::new(&registry);
+    context.validation.runnable_kinds = Some(&runnable_kinds);
+    crate::agent_graph::abilities::remove_helper_everywhere(&state.db, &agent_id, &context);
     Ok(())
 }
 

@@ -55,6 +55,10 @@ export interface AgentAbilities {
   retrySafeTools: string[]
   toolChoices: string[]
   spending: SpendingLimit
+  /** The stored limit could not be read: runs are refused until it is set again. */
+  spendingUnreadable: boolean
+  /** The steps say different things; saving here sets them all alike. */
+  stepsDiffer: boolean
   /** `provider/model` without a known price: a money limit cannot count them. */
   unpricedModels: string[]
 }
@@ -113,6 +117,8 @@ export interface AgentMemory {
   people: MemoryPerson[]
   /** Notes of the agent as a whole (proposals of runs without a person, and the owner's). */
   agentNotes: MemoryNote[]
+  /** Some people could not be read: the list may miss someone. */
+  incomplete: boolean
 }
 
 export interface MemoryFact {

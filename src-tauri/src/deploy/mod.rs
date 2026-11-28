@@ -86,7 +86,9 @@ fn abilities_in_use(db: &Database, agent_id: &str) -> AppResult<compatibility::A
         helpers: !abilities.helpers.agent_ids.is_empty(),
         custom_long_conversations: abilities.context.mode != crate::agent_graph::abilities::ContextMode::Auto
             || abilities.context.max_tokens.is_some(),
-        spending_limit: abilities.spending != crate::engine::spending::SpendingLimit::default(),
+        // A limit that cannot be read is still a limit the owner set.
+        spending_limit: abilities.spending_unreadable
+            || abilities.spending != crate::engine::spending::SpendingLimit::default(),
     })
 }
 /// Longest `--image` reference accepted.

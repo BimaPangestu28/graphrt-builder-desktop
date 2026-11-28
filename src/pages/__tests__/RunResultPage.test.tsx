@@ -53,6 +53,7 @@ function buildSummary(changes: Partial<RunSummary>): RunSummary {
     files: [],
     errorMessage: null,
     budget: null,
+    budgetUnavailable: false,
     ...changes,
   }
 }

@@ -96,7 +96,25 @@ pub async fn forget_memory_person(
     agent_id: String,
     user: String,
 ) -> AppResult<ForgottenPerson> {
-    let notes = state.memory.erase_person(&agent_id, &user).await?;
-    let lessons = state.learning.forget_person(&agent_id, &user)?;
+    forget_person(&state.memory, &state.learning, &agent_id, &user).await
+}
+
+/// Erases a person's notes and graph, then the lessons about them. When the lessons fail, the
+/// error says the notes are already gone, so the owner knows what is left to retry.
+///
+/// # Errors
+/// What either store reports.
+pub(crate) async fn forget_person(
+    memory: &crate::memory::MemoryService,
+    learning: &crate::learning::LearningService,
+    agent_id: &str,
+    user: &str,
+) -> AppResult<ForgottenPerson> {
+    let notes = memory.erase_person(agent_id, user).await?;
+    let lessons = learning.forget_person(agent_id, user).map_err(|error| {
+        crate::error::AppError::Internal(format!(
+            "the {notes} note(s) about this person were erased, but the lessons about them could not be: {error}. Try again"
+        ))
+    })?;
     Ok(ForgottenPerson { notes, lessons })
 }

@@ -184,3 +184,82 @@ fn the_graph_view_names_entities_and_marks_closed_facts() {
     let empty = graph_view(&serde_json::json!({"notes": []}));
     assert!(!empty.unreadable && empty.facts.is_empty());
 }
+
+#[derive(Debug)]
+struct NoDraftModel;
+
+impl crate::skills::DraftModelSource for NoDraftModel {
+    fn text_model(&self) -> crate::error::AppResult<Arc<dyn graphrt_core::text_model::TextModel>> {
+        Err(AppError::MissingCredentials("no model in this test".into()))
+    }
+}
+
+#[tokio::test]
+async fn forgetting_a_person_erases_their_notes_and_the_lessons_about_them() {
+    let harness = harness();
+    let credentials = Arc::new(crate::credentials::CredentialStore::in_memory());
+    let learning = crate::learning::LearningService::new(
+        harness._app_data.path(),
+        harness.db.clone(),
+        credentials,
+        Arc::new(NoDraftModel),
+    );
+    remember(&harness, Some("telegram:42"), "Lives in Bandung", MemoryTrust::UserStated).await;
+    let lesson = graphrt_learn::NewLesson {
+        agent: harness.agent_id.clone(),
+        user: Some("telegram:42".into()),
+        kind: graphrt_learn::LessonKind::Preference,
+        text: "Greet Dana by her first name".into(),
+    };
+    learning.store().add(lesson, "owner").unwrap();
+
+    let forgotten =
+        crate::commands::abilities::forget_person(&harness.service, &learning, &harness.agent_id, "telegram:42")
+            .await
+            .unwrap();
+
+    assert_eq!((forgotten.notes, forgotten.lessons), (1, 1));
+    let again =
+        crate::commands::abilities::forget_person(&harness.service, &learning, &harness.agent_id, "telegram:42")
+            .await
+            .unwrap();
+    assert_eq!((again.notes, again.lessons), (0, 0));
+}
+
+#[tokio::test]
+async fn a_customer_known_only_by_a_display_name_is_not_listed_and_each_handle_shows_once() {
+    let harness = harness();
+    customer(&harness, "telegram:42", "Dana");
+    customer(&harness, "telegram:42", "Dana W.");
+    let display_name = NewConversation {
+        agent_id: harness.agent_id.clone(),
+        channel: "whatsapp-web".into(),
+        customer_name: "Family group".into(),
+        customer_handle: "Family group".into(),
+        origin: None,
+    };
+    harness.db.insert_conversation(&display_name).unwrap();
+    let customers = harness.db.conversation_customers(&harness.agent_id).unwrap();
+    assert_eq!(customers.iter().filter(|(_, handle, _)| handle == "telegram:42").count(), 1);
+    remember(&harness, Some("telegram:42"), "Lives in Bandung", MemoryTrust::UserStated).await;
+    remember(&harness, Some("Family group"), "Planted", MemoryTrust::UserStated).await;
+
+    let people = harness.service.overview(&harness.agent_id).await.unwrap().people;
+
+    let names: Vec<_> = people.iter().map(|person| (person.user.as_str(), person.name.as_deref())).collect();
+    assert_eq!(names[0], ("telegram:42", Some("Dana W.")), "the latest name");
+    // Found in the folder, so still in reach of the owner, but never as a customer.
+    assert!(people.iter().all(|person| person.user != "Family group" || person.kind == MemoryPersonKind::Other));
+}
+
+#[tokio::test]
+async fn deleting_an_agent_removes_its_memory_folder() {
+    let harness = harness();
+    remember(&harness, Some("telegram:42"), "Lives in Bandung", MemoryTrust::UserStated).await;
+    let agent_dir = harness._app_data.path().join(MEMORY_DIR_NAME).join("_").join(&harness.agent_id);
+    assert!(agent_dir.exists());
+    harness.service.forget_agent(&harness.agent_id).unwrap();
+    assert!(!agent_dir.exists());
+    harness.service.forget_agent(&harness.agent_id).unwrap();
+    assert!(matches!(harness.service.forget_agent("../escape"), Err(AppError::InvalidInput(_))));
+}

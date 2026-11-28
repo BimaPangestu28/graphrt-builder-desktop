@@ -8,6 +8,7 @@ const statusClassNames: Record<HelperRunStatus, string> = {
   finished: 'bg-ok-tint text-ok-deep',
   failed: 'bg-danger-tint text-danger-deep',
   paused: 'bg-amber-tint text-amber-deep',
+  stopped: 'bg-chip text-muted',
 }
 
 interface HelperRunsCardProps {
@@ -54,7 +55,7 @@ export function HelperRunsCard({ helpers, nameOf, className }: HelperRunsCardPro
       <h3 id={headingId} className="m-0 text-[12px] font-medium text-muted">
         {t.title}
       </h3>
-      <ul className="m-0 flex list-none flex-col gap-2 p-0">
+      <ul aria-live="polite" className="m-0 flex list-none flex-col gap-2 p-0">
         {helpers.map((helper) => (
           <HelperRunItem key={helper.frame} helper={helper} nameOf={nameOf} />
         ))}

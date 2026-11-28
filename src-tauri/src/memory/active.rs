@@ -15,13 +15,29 @@ pub(crate) fn publish(store: Option<Arc<MemoryStore>>) {
     }
 }
 
+fn active_store() -> Option<Arc<MemoryStore>> {
+    match ACTIVE_STORE.read() {
+        Ok(slot) => slot.clone(),
+        Err(poisoned) => poisoned.into_inner().clone(),
+    }
+}
+
+/// Erases what runs kept about `user` of `agent_id` in the published store (a test case's
+/// own person, once the case is done). Nothing to do without a store.
+///
+/// # Errors
+/// What the store reports.
+pub(crate) async fn erase_now(agent_id: &str, user: &str) -> Result<usize, graphrt_core::memory::MemoryError> {
+    let Some(store) = active_store() else { return Ok(0) };
+    let scope = graphrt_core::memory::MemoryScope::user(None, agent_id, user);
+    let source = graphrt_core::memory::MemorySource { actor: "owner:desktop-checks".to_owned(), ..Default::default() };
+    store.erase_user(&scope, &source).await
+}
+
 /// The memory service for a run's engine, if the app published a store. Agent steps with
 /// `long_term_memory` save and recall notes through it (the runtime's write gate decides
 /// what is used at once and what waits for the owner).
 pub(crate) fn memories_service() -> Option<Memories> {
-    let store = match ACTIVE_STORE.read() {
-        Ok(slot) => slot.clone(),
-        Err(poisoned) => poisoned.into_inner().clone(),
-    }?;
+    let store = active_store()?;
     Some(MemoryStore::clone(&store).into_service())
 }

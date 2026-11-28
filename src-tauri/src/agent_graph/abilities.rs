@@ -52,8 +52,6 @@ pub const MAX_CONTEXT_TOKENS: u64 = 2_000_000;
 const MAX_HELPER_DESCRIPTION_CHARS: usize = 300;
 /// Most tools marked safe to call again.
 const MAX_RETRY_SAFE_TOOLS: usize = 50;
-/// Providers whose models run on this computer and cost nothing.
-const PAID_PROVIDERS: [&str; 3] = ["openai", "anthropic", "gemini"];
 
 /// What a step does when a conversation outgrows the model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -145,6 +143,11 @@ pub struct AgentAbilities {
     /// The tools the agent's steps may use (`provider/name`, patterns as written).
     pub tool_choices: Vec<String>,
     pub spending: SpendingLimit,
+    /// The stored limit could not be read: runs are refused until it is set again.
+    pub spending_unreadable: bool,
+    /// The steps say different things (the builder or the Nodes view set them apart); a change
+    /// here sets them all alike.
+    pub steps_differ: bool,
     /// `provider/model` the agent uses that the app has no price for: a money limit cannot
     /// count them (only the token limit does).
     pub unpriced_models: Vec<String>,
@@ -165,7 +168,6 @@ pub fn agent_abilities(db: &Database, agent_id: &str) -> AppResult<AgentAbilitie
         .filter(|node| node.kind == AGENT_STEP_KIND || node.kind == MODEL_STEP_KIND)
         .map(|node| &node.config)
         .collect();
-    let first_agent_step = agent_steps.first().copied();
     let helper_choices = db
         .list_agents()?
         .iter()
@@ -177,19 +179,57 @@ pub fn agent_abilities(db: &Database, agent_id: &str) -> AppResult<AgentAbilitie
             unavailable: helper_unavailable(&other.flow_yaml),
         })
         .collect();
+    // A change here sets every step alike, but the builder or the Nodes view can make them
+    // differ: an ability counts as on when any step has it, so nothing in use is hidden.
+    let contexts: Vec<ContextSetting> = model_steps.iter().map(|config| read_context(config)).collect();
+    let memories: Vec<MemorySetting> = agent_steps.iter().map(|config| read_memory(config)).collect();
+    let helper_settings: Vec<HelpersSetting> = agent_steps.iter().map(|config| read_helpers(config)).collect();
+    let retry_lists: Vec<Vec<String>> =
+        agent_steps.iter().map(|config| read_strings(config.get(RETRY_SAFE_KEY))).collect();
+    let context = contexts.iter().copied().find(|context| *context != AUTO_CONTEXT).unwrap_or(AUTO_CONTEXT);
+    let memory = MemorySetting {
+        enabled: memories.iter().any(|memory| memory.enabled),
+        graph: memories.iter().any(|memory| memory.enabled && memory.graph),
+    };
+    let helpers = match helper_settings.iter().find(|helpers| !helpers.agent_ids.is_empty()) {
+        Some(first) => HelpersSetting { agent_ids: listed_helpers(&agent.flow_yaml)?, ..first.clone() },
+        None => no_helpers(),
+    };
+    let mut retry_safe_tools: Vec<String> = Vec::new();
+    for tool in retry_lists.iter().flatten() {
+        if !retry_safe_tools.contains(tool) {
+            retry_safe_tools.push(tool.clone());
+        }
+    }
+    let steps_differ =
+        !all_same(&contexts) || !all_same(&memories) || !all_same(&helper_settings) || !all_same(&retry_lists);
+    // An unreadable limit must not hide the editor that can set it again.
+    let (spending, spending_unreadable) = match spending::load(db, agent_id) {
+        Ok(limit) => (limit, false),
+        Err(error) => {
+            log::error!("could not read the spending limit of agent {agent_id}: {error}");
+            (SpendingLimit::default(), true)
+        }
+    };
     Ok(AgentAbilities {
         agent_id: agent.id.clone(),
         agent_steps: agent_steps.len(),
         model_steps: model_steps.len(),
-        context: model_steps.first().map_or(AUTO_CONTEXT, |config| read_context(config)),
-        memory: first_agent_step.map_or(MemorySetting { enabled: false, graph: false }, read_memory),
-        helpers: first_agent_step.map_or_else(no_helpers, read_helpers),
+        context,
+        memory,
+        helpers,
         helper_choices,
-        retry_safe_tools: first_agent_step.map(|config| read_strings(config.get(RETRY_SAFE_KEY))).unwrap_or_default(),
+        retry_safe_tools,
         tool_choices: tool_choices(&agent_steps),
-        spending: spending::load(db, agent_id)?,
+        spending,
+        spending_unreadable,
+        steps_differ,
         unpriced_models: unpriced_models(&model_steps),
     })
+}
+
+fn all_same<T: PartialEq>(values: &[T]) -> bool {
+    values.windows(2).all(|pair| pair.first() == pair.last())
 }
 
 /// The agents `flow_yaml`'s steps may ask for help, each once, in document order.
@@ -207,6 +247,46 @@ pub fn listed_helpers(flow_yaml: &str) -> AppResult<Vec<String>> {
         }
     }
     Ok(helpers)
+}
+
+/// Takes a deleted agent off the helpers of every agent that listed it (a new version of each),
+/// so their runs and chatbot replies keep working. Returns the agents changed; an agent that
+/// cannot be changed now (the builder is editing it) is logged and keeps the entry, and its
+/// runs then say which helper is gone.
+pub fn remove_helper_everywhere(db: &Database, removed_agent_id: &str, context: &GraphContext<'_>) -> Vec<String> {
+    let agents = match db.list_agents() {
+        Ok(agents) => agents,
+        Err(error) => {
+            log::error!("could not list the agents that asked deleted agent {removed_agent_id} for help: {error}");
+            return Vec::new();
+        }
+    };
+    let mut changed = Vec::new();
+    for agent in agents {
+        let Ok(helpers) = listed_helpers(&agent.flow_yaml) else { continue };
+        if !helpers.iter().any(|helper| helper == removed_agent_id) {
+            continue;
+        }
+        let current = match agent_abilities(db, &agent.id) {
+            Ok(abilities) => abilities.helpers,
+            Err(error) => {
+                log::error!("could not read the helpers of agent {}: {error}", agent.id);
+                continue;
+            }
+        };
+        let change = AbilityChange::Helpers {
+            agent_ids: helpers.into_iter().filter(|helper| helper != removed_agent_id).collect(),
+            max_parallel: current.max_parallel,
+            max_calls: current.max_calls,
+        };
+        match set_ability(db, &agent.id, &change, context) {
+            Ok(_) => changed.push(agent.id),
+            Err(error) => {
+                log::error!("could not take deleted agent {removed_agent_id} off the helpers of {}: {error}", agent.id)
+            }
+        }
+    }
+    changed
 }
 
 /// Applies one change to every step that can use it, saved as a new version. Saves nothing
@@ -281,13 +361,10 @@ fn plan_change(db: &Database, agent: &Agent, change: &AbilityChange) -> AppResul
             })
         }
         AbilityChange::Memory { enabled, graph } => {
-            let value = enabled.then(|| {
-                let mut memory = Map::new();
-                memory.insert("agent".to_owned(), Json::String(agent.id.clone()));
-                if *graph {
-                    memory.insert("graph".to_owned(), Json::Bool(true));
-                }
-                Json::Object(memory)
+            // Whose memory it is comes from the host (the agent's id), never from the document.
+            let value = enabled.then(|| match graph {
+                true => serde_json::json!({ "graph": true }),
+                false => Json::from("auto"),
             });
             let summary = match (enabled, graph) {
                 (false, _) => "no longer remembers conversations and customers",
@@ -413,7 +490,8 @@ fn read_context(config: &Map<String, Json>) -> ContextSetting {
 
 fn read_memory(config: &Map<String, Json>) -> MemorySetting {
     match config.get(MEMORY_KEY) {
-        None | Some(Json::Null) | Some(Json::Bool(false)) => MemorySetting { enabled: false, graph: false },
+        None => MemorySetting { enabled: false, graph: false },
+        Some(value) if !read_memory_value(value) => MemorySetting { enabled: false, graph: false },
         Some(Json::Object(fields)) => MemorySetting {
             enabled: true,
             graph: fields.get("graph").is_some_and(|graph| graph != &Json::Bool(false) && !graph.is_null()),
@@ -437,13 +515,19 @@ fn read_helpers(config: &Map<String, Json>) -> HelpersSetting {
         }
         _ => Vec::new(),
     };
-    let read_u32 = |key: &str, default: u32| {
-        config.get(key).and_then(Json::as_u64).and_then(|value| u32::try_from(value).ok()).unwrap_or(default)
+    // A value outside what the card can save shows as the default, so saving it back works.
+    let read_u32 = |key: &str, default: u32, max: u32| {
+        config
+            .get(key)
+            .and_then(Json::as_u64)
+            .and_then(|value| u32::try_from(value).ok())
+            .filter(|value| (1..=max).contains(value))
+            .unwrap_or(default)
     };
     HelpersSetting {
         agent_ids,
-        max_parallel: read_u32(MAX_PARALLEL_KEY, DEFAULT_MAX_PARALLEL_HELPERS),
-        max_calls: read_u32(MAX_CALLS_KEY, DEFAULT_MAX_HELPER_CALLS),
+        max_parallel: read_u32(MAX_PARALLEL_KEY, DEFAULT_MAX_PARALLEL_HELPERS, MAX_PARALLEL_HELPERS),
+        max_calls: read_u32(MAX_CALLS_KEY, DEFAULT_MAX_HELPER_CALLS, MAX_HELPER_CALLS),
     }
 }
 
@@ -553,6 +637,49 @@ fn tool_choices(agent_steps: &[&Map<String, Json>]) -> Vec<String> {
     tools
 }
 
+/// The default user of `long_term_memory`: the person the run serves.
+const DEFAULT_MEMORY_USER: &str = "{{#sys.user_id#}}";
+
+/// Refuses a document whose memory would not be the running agent's own: a step that names
+/// another memory agent, or another user than the person the run serves. The app always
+/// gives a run its agent's memory (`engine::preparation`), so such a setting could only come
+/// from a hand edit or a shared copy, and would read or write notes the owner cannot see
+/// here. `agent_id` is `None` for a workflow that is no agent's, which has no memory.
+///
+/// # Errors
+/// `InvalidInput` naming the step; `Workflow` when the document cannot be read.
+pub fn check_memory_scope(flow_yaml: &str, agent_id: Option<&str>) -> AppResult<()> {
+    let document = EditableDocument::parse(flow_yaml)?;
+    for node in document.workflow.graph.nodes.iter().filter(|node| node.kind == AGENT_STEP_KIND) {
+        let Some(memory) = node.config.get(MEMORY_KEY).filter(|memory| read_memory_value(memory)) else { continue };
+        let refuse = |why: &str| {
+            Err(AppError::InvalidInput(format!(
+                "step `{}` {why}: turn \"Remember conversations and customers\" off and on again in the agent's abilities",
+                node.id
+            )))
+        };
+        if agent_id.is_none() {
+            return refuse("remembers people, but this workflow belongs to no agent");
+        }
+        if let Json::Object(fields) = memory {
+            let names_other_agent = fields.get("agent").is_some_and(|agent| agent.as_str() != agent_id);
+            if names_other_agent {
+                return refuse("keeps its memory under another agent");
+            }
+            let names_other_user = fields.get("user").is_some_and(|user| user.as_str() != Some(DEFAULT_MEMORY_USER));
+            if names_other_user {
+                return refuse("chooses whose memory it reads itself");
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Whether a `long_term_memory` value turns memory on.
+fn read_memory_value(value: &Json) -> bool {
+    !matches!(value, Json::Null | Json::Bool(false)) && value.as_str() != Some("off")
+}
+
 /// Paid models the steps use that `engine::prices` has no price for.
 fn unpriced_models(model_steps: &[&Map<String, Json>]) -> Vec<String> {
     let mut unpriced: Vec<String> = Vec::new();
@@ -564,7 +691,7 @@ fn unpriced_models(model_steps: &[&Map<String, Json>]) -> Vec<String> {
             continue;
         };
         let key = format!("{provider}/{name}");
-        if PAID_PROVIDERS.contains(&provider)
+        if crate::engine::prices::is_paid_provider(provider)
             && !crate::engine::prices::has_list_price(provider, name)
             && !unpriced.contains(&key)
         {
@@ -732,7 +859,8 @@ graph:
         assert_eq!(abilities.retry_safe_tools, ["crm/search"]);
         let agent_step = step_config(&db, &agent_id, "helper");
         assert_eq!(agent_step.get(CONTEXT_KEY), Some(&serde_json::json!({"max_tokens": 60_000, "summarize": true})));
-        assert_eq!(agent_step.get(MEMORY_KEY), Some(&serde_json::json!({"agent": agent_id, "graph": true})));
+        // Whose memory it is comes from the host, never from the document.
+        assert_eq!(agent_step.get(MEMORY_KEY), Some(&serde_json::json!({"graph": true})));
         assert_eq!(
             agent_step.get(HELPERS_KEY),
             Some(&serde_json::json!([{"workflow": helper_id, "description": "Stock checker: Checks stock levels"}]))
@@ -804,6 +932,100 @@ graph:
         set_ability(&db, &agent_id, &AbilityChange::Context { mode: ContextMode::Off, max_tokens: None }, &context)
             .unwrap();
         assert_eq!(agent_abilities(&db, &agent_id).unwrap().context.mode, ContextMode::Off);
+    }
+
+    #[test]
+    fn a_document_that_points_memory_elsewhere_is_refused() {
+        let with_memory = |memory: &str| {
+            STEPS.replace(
+                "query: \"{{#start.question#}}\",",
+                &format!("query: \"{{{{#start.question#}}}}\", long_term_memory: {memory},"),
+            )
+        };
+        assert!(check_memory_scope(&with_memory("auto"), Some("a1")).is_ok());
+        assert!(check_memory_scope(&with_memory("{ graph: true }"), Some("a1")).is_ok());
+        assert!(check_memory_scope(&with_memory("{ agent: a1 }"), Some("a1")).is_ok(), "its own name is fine");
+        assert!(check_memory_scope(STEPS, None).is_ok(), "no memory, no agent needed");
+        let other_agent = check_memory_scope(&with_memory("{ agent: someone-else }"), Some("a1"));
+        assert!(matches!(other_agent, Err(AppError::InvalidInput(message)) if message.contains("another agent")));
+        let chosen_user = check_memory_scope(&with_memory("{ user: \"{{#start.question#}}\" }"), Some("a1"));
+        assert!(matches!(chosen_user, Err(AppError::InvalidInput(message)) if message.contains("whose memory")));
+        assert!(matches!(check_memory_scope(&with_memory("auto"), None), Err(AppError::InvalidInput(_))));
+    }
+
+    #[test]
+    fn a_deleted_helper_is_taken_off_every_agent_that_asked_it() {
+        let db = Database::open_in_memory().unwrap();
+        let lead = create(&db, "Support", "", STEPS);
+        let kept = create(&db, "Stock checker", "", include_str!("../../fixtures/flows/simple_answer.yaml"));
+        let gone = create(&db, "Invoices", "", include_str!("../../fixtures/flows/simple_answer.yaml"));
+        let registry = flow::draft_node_registry();
+        let context = GraphContext::new(&registry);
+        let helpers =
+            AbilityChange::Helpers { agent_ids: vec![kept.clone(), gone.clone()], max_parallel: 3, max_calls: 9 };
+        set_ability(&db, &lead, &helpers, &context).unwrap();
+        db.delete_agent(&gone).unwrap();
+
+        assert_eq!(remove_helper_everywhere(&db, &gone, &context), [lead.clone()]);
+
+        assert_eq!(
+            agent_abilities(&db, &lead).unwrap().helpers,
+            HelpersSetting { agent_ids: vec![kept], max_parallel: 3, max_calls: 9 }
+        );
+        assert!(remove_helper_everywhere(&db, &gone, &context).is_empty(), "nothing left to change");
+    }
+
+    #[test]
+    fn steps_set_apart_by_hand_count_as_on_and_say_so() {
+        let db = Database::open_in_memory().unwrap();
+        let two_steps = STEPS.replace(
+            "    - id: polish\n      type: llm",
+            "    - { id: second, type: agent, model: { provider: openai, name: gpt-4o-mini }, query: \"{{#helper.text#}}\", long_term_memory: auto, max_parallel_subagents: 0 }\n    - id: polish\n      type: llm",
+        );
+        let agent_id = create(&db, "Support", "", &two_steps);
+        let abilities = agent_abilities(&db, &agent_id).unwrap();
+        assert!(abilities.memory.enabled, "the second step remembers");
+        assert!(abilities.steps_differ);
+        let one_step = create(&db, "Plain", "", STEPS);
+        assert!(!agent_abilities(&db, &one_step).unwrap().steps_differ);
+    }
+
+    #[test]
+    fn an_unreadable_spending_limit_still_shows_the_card() {
+        let db = Database::open_in_memory().unwrap();
+        let agent_id = create(&db, "Support", "", STEPS);
+        db.set_agent_setting(&agent_id, spending::SPENDING_LIMIT_KEY, &serde_json::json!("lots")).unwrap();
+        let abilities = agent_abilities(&db, &agent_id).unwrap();
+        assert!(abilities.spending_unreadable);
+        assert_eq!(abilities.spending, SpendingLimit::default());
+    }
+
+    #[test]
+    fn the_ui_bounds_match_the_backend() {
+        let ui = include_str!("../../../src/api/abilitiesTypes.ts");
+        for (name, value) in [
+            ("defaultMaxParallel", u64::from(DEFAULT_MAX_PARALLEL_HELPERS)),
+            ("defaultMaxCalls", u64::from(DEFAULT_MAX_HELPER_CALLS)),
+            ("maxParallel", u64::from(MAX_PARALLEL_HELPERS)),
+            ("maxCalls", u64::from(MAX_HELPER_CALLS)),
+            ("maxHelpers", MAX_HELPERS as u64),
+            ("minContextTokens", MIN_CONTEXT_TOKENS),
+            ("maxContextTokens", MAX_CONTEXT_TOKENS),
+            ("minTokens", spending::MIN_TOKENS),
+            ("maxTokens", spending::MAX_TOKENS),
+            ("minCostMicros", spending::MIN_COST_MICROS),
+            ("maxCostMicros", spending::MAX_COST_MICROS),
+        ] {
+            let grouped = value
+                .to_string()
+                .as_bytes()
+                .rchunks(3)
+                .rev()
+                .map(|chunk| String::from_utf8_lossy(chunk).into_owned())
+                .collect::<Vec<_>>()
+                .join("_");
+            assert!(ui.contains(&format!("{name}: {grouped},")), "{name} should be {grouped} in abilitiesTypes.ts");
+        }
     }
 
     #[test]

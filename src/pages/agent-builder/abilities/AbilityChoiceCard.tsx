@@ -24,7 +24,7 @@ export function AbilityChoiceCard({ type, name, checked, disabled = false, onCha
   return (
     <label
       className={joinClassNames(
-        'box-border flex h-full min-w-0 gap-3 rounded-[12px] bg-surface p-3.5 transition-colors',
+        'box-border flex h-full min-w-0 gap-3 rounded-[12px] bg-surface p-3.5 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ink',
         checked ? 'border-2 border-ink p-[13px]' : 'border border-line-strong',
         disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:border-line-heavy',
       )}

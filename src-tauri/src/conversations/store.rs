@@ -120,21 +120,25 @@ impl Database {
         Ok(conversations)
     }
 
-    /// Every customer who wrote to the agent, as `(handle, name)`, each handle once (its latest
-    /// name), most recently active first. A chatbot's memory is kept per handle.
-    pub fn conversation_customers(&self, agent_id: &str) -> AppResult<Vec<(String, String)>> {
+    /// Every customer who wrote to the agent, as `(channel, handle, name)`, each handle of a
+    /// channel once (its latest name), most recently active first. A chatbot's memory is kept
+    /// per handle (see `bot::person_of`).
+    pub fn conversation_customers(&self, agent_id: &str) -> AppResult<Vec<(String, String, String)>> {
         let connection = self.lock()?;
         let mut statement = connection.prepare(
-            "SELECT customer_handle, customer_name FROM conversations c
+            "SELECT channel, customer_handle, customer_name FROM conversations c
              WHERE agent_id = ?1 AND rowid = (
                  SELECT rowid FROM conversations latest
-                 WHERE latest.agent_id = c.agent_id AND latest.customer_handle = c.customer_handle
+                 WHERE latest.agent_id = c.agent_id AND latest.channel = c.channel
+                   AND latest.customer_handle = c.customer_handle
                  ORDER BY latest.updated_at DESC, latest.rowid DESC LIMIT 1
              )
              ORDER BY updated_at DESC, rowid DESC",
         )?;
         let customers = statement
-            .query_map(params![agent_id], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+            .query_map(params![agent_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+            })?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(customers)
     }

@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { abilityBounds } from '@/api/abilitiesTypes'
 import type { AbilityChange, AgentAbilities, ContextMode, SpendingLimit } from '@/api/abilitiesTypes'
@@ -29,13 +29,21 @@ interface EditorFrameProps {
 function EditorFrame({ title, step, error, isSaving, onCancel, primaryLabel, onPrimary, onBack, children }: EditorFrameProps) {
   const t = useT().abilities.section
   const headingId = useId()
+  const headingRef = useRef<HTMLHeadingElement>(null)
+  const stepNumber = step?.[0] ?? 0
+  // Keyboard and screen reader users land on the editor, and on each new step of a wizard.
+  useEffect(() => headingRef.current?.focus(), [stepNumber])
   return (
     <section aria-labelledby={headingId} className="@container flex min-w-0 flex-col gap-4 rounded-[14px] border border-line-strong bg-surface p-4">
       <header className="flex min-w-0 flex-wrap items-baseline justify-between gap-2">
-        <h4 id={headingId} className="m-0 truncate text-[15px] font-semibold text-ink">
+        <h4 id={headingId} ref={headingRef} tabIndex={-1} className="m-0 truncate text-[15px] font-semibold text-ink outline-none">
           {title}
         </h4>
-        {step && <span className="shrink-0 text-[12px] text-muted">{t.stepOf(step[0], step[1])}</span>}
+        {step && (
+          <span aria-live="polite" className="shrink-0 text-[12px] text-muted">
+            {t.stepOf(step[0], step[1])}
+          </span>
+        )}
       </header>
       {children}
       {error && (
@@ -243,16 +251,17 @@ export function HelpersEditor({ abilities, isSaving, error, onCancel, onSave }: 
       ) : (
         <div className="flex min-w-0 flex-col gap-3">
           <p className="m-0 text-[13px] font-medium text-ink">{t.review(agentIds.length)}</p>
-          {agentIds.length > 0 && (
-            <>
-              <div className="grid min-w-0 grid-cols-1 gap-3 @lg:grid-cols-2">
-                <TextNumberField label={t.maxParallelLabel} value={maxParallelText} onChange={setMaxParallelText} />
-                <TextNumberField label={t.maxCallsLabel} value={maxCallsText} onChange={setMaxCallsText} />
-              </div>
-              <p className="m-0 text-[12.5px] leading-[18px] text-muted">{t.sharedBudget}</p>
-            </>
-          )}
+          {agentIds.length > 0 && <p className="m-0 text-[12.5px] leading-[18px] text-muted">{t.sharedBudget}</p>}
           <Advanced>
+            {agentIds.length > 0 && (
+              <>
+                <span className="text-[13px] font-medium text-ink">{t.limitsQuestion}</span>
+                <div className="grid min-w-0 grid-cols-1 gap-3 @lg:grid-cols-2">
+                  <TextNumberField label={t.maxParallelLabel} value={maxParallelText} onChange={setMaxParallelText} />
+                  <TextNumberField label={t.maxCallsLabel} value={maxCallsText} onChange={setMaxCallsText} />
+                </div>
+              </>
+            )}
             <span className="text-[13px] font-medium text-ink">{t.retrySafeLabel}</span>
             <span className="text-[12px] leading-[17px] text-muted">{t.retrySafeHint}</span>
             {abilities.toolChoices.length === 0 ? (
@@ -305,10 +314,12 @@ export function SpendingEditor({ abilities, isSaving, error, onCancel, onSave }:
         <AbilityChoiceCard type="radio" name={groupName} checked={isLimited} onChange={() => setIsLimited(true)} title={t.withLimit.title} details={t.withLimit.details} />
       </fieldset>
       {isLimited && (
-        <div className="grid min-w-0 grid-cols-1 gap-3 @lg:grid-cols-2">
+        <>
           <TextNumberField label={t.moneyLabel} hint={t.moneyHint} value={moneyText} onChange={setMoneyText} inputMode="decimal" placeholder="0.50" />
-          <TextNumberField label={t.tokensLabel} hint={t.tokensHint} value={tokensText} onChange={setTokensText} placeholder="50000" />
-        </div>
+          <Advanced>
+            <TextNumberField label={t.tokensLabel} hint={t.tokensHint} value={tokensText} onChange={setTokensText} placeholder="50000" />
+          </Advanced>
+        </>
       )}
       {isLimited && abilities.unpricedModels.length > 0 && <p className="m-0 text-[12.5px] leading-[18px] text-amber-strong">{t.unpriced(abilities.unpricedModels.join(', '))}</p>}
     </EditorFrame>

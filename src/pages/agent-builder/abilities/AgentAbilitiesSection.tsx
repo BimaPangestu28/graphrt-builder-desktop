@@ -1,8 +1,8 @@
-import { useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { getAgentAbilities, setAgentAbility, setAgentSpendingLimit } from '@/api/abilities'
 import type { AgentAbilities } from '@/api/abilitiesTypes'
 import { isBackendErrorWithCode } from '@/api/client'
-import { Button, Card, joinClassNames } from '@/components/ui'
+import { Card, buttonClassNames, joinClassNames } from '@/components/ui'
 import { useAsyncData } from '@/hooks/useAsyncData'
 import { useT } from '@/i18n'
 import { describeError } from '@/lib/agentDisplay'
@@ -26,25 +26,40 @@ interface AbilityCardProps {
   summary: string
   unavailableReason: string | null
   isOpen: boolean
+  /** Another ability's editor is open: Change waits until it is saved or cancelled. */
+  isBlocked: boolean
   onOpen: () => void
+  buttonRef: (button: HTMLButtonElement | null) => void
 }
 
-/** One ability at a glance: its name, what it does now on one line, and Change. */
-function AbilityCard({ title, summary, unavailableReason, isOpen, onOpen }: AbilityCardProps) {
+/** One ability at a glance: its name, what it does now (or why it cannot), and Change. */
+function AbilityCard({ title, summary, unavailableReason, isOpen, isBlocked, onOpen, buttonRef }: AbilityCardProps) {
   const t = useT().abilities.section
+  const reasonId = useId()
+  const isDisabled = unavailableReason !== null || isBlocked
   return (
     <Card className={joinClassNames('flex min-w-0 items-center gap-3 p-3.5', isOpen && 'border-ink')}>
       <div className="flex min-w-0 flex-auto flex-col gap-0.5">
         <span title={title} className="truncate text-[14px] font-semibold text-ink">
           {title}
         </span>
-        <span title={unavailableReason ?? summary} className="truncate text-[12.5px] text-muted">
+        <span id={reasonId} title={unavailableReason ?? summary} className={joinClassNames('text-[12.5px] text-muted', unavailableReason ? 'line-clamp-2' : 'truncate')}>
           {unavailableReason ?? summary}
         </span>
       </div>
-      <Button variant="secondary" size="sm" onClick={onOpen} disabled={unavailableReason !== null} aria-expanded={isOpen} aria-label={`${t.change}: ${title}`}>
+      <button
+        type="button"
+        ref={buttonRef}
+        onClick={() => !isDisabled && onOpen()}
+        aria-disabled={isDisabled}
+        aria-describedby={unavailableReason ? reasonId : undefined}
+        title={isBlocked ? t.closeOtherFirst : undefined}
+        aria-expanded={isOpen}
+        aria-label={`${t.change}: ${title}`}
+        className={buttonClassNames('secondary', 'sm', isDisabled ? 'cursor-not-allowed opacity-50' : undefined)}
+      >
         {t.change}
-      </Button>
+      </button>
     </Card>
   )
 }
@@ -64,22 +79,35 @@ export function AgentAbilitiesSection({ agentId, agentVersion, onSaved }: AgentA
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [savedNotice, setSavedNotice] = useState<string | null>(null)
+  const changeButtons = useRef(new Map<AbilityKey, HTMLButtonElement>())
+  const lastOpened = useRef<AbilityKey | null>(null)
   const abilities = state.data
+
+  // Focus follows the editor: into it when it opens, back to its Change button when it closes.
+  useEffect(() => {
+    if (openAbility === null && lastOpened.current) changeButtons.current.get(lastOpened.current)?.focus()
+  }, [openAbility])
 
   function open(key: AbilityKey) {
     setSaveError(null)
     setSavedNotice(null)
+    lastOpened.current = key
     setOpenAbility((current) => (current === key ? null : key))
   }
 
   const save: SaveAbilities = async (changes) => {
     setIsSaving(true)
     setSaveError(null)
+    let savedCount = 0
     try {
       if ('spending' in changes) {
         await setAgentSpendingLimit(agentId, changes.spending)
+        setSavedNotice(t.savedLimit)
       } else {
-        for (const change of changes) await setAgentAbility(agentId, change)
+        for (const change of changes) {
+          await setAgentAbility(agentId, change)
+          savedCount += 1
+        }
         setSavedNotice(t.saved)
         onSaved?.()
       }
@@ -87,8 +115,10 @@ export function AgentAbilitiesSection({ agentId, agentVersion, onSaved }: AgentA
       await state.reload()
       return true
     } catch (error) {
-      setSaveError(isBackendErrorWithCode(error, 'builder_busy') ? t.builderBusy : t.couldNotSave(describeError(error)))
-      // A change before the failing one may have saved: show what is saved now.
+      const reason = isBackendErrorWithCode(error, 'builder_busy') ? t.builderBusy : t.couldNotSave(describeError(error))
+      // A change before the failing one saved a version: say so, and show what is saved now.
+      setSaveError(savedCount > 0 ? `${t.partlySaved} ${reason}` : reason)
+      if (savedCount > 0) onSaved?.()
       await state.reload()
       return false
     } finally {
@@ -98,6 +128,7 @@ export function AgentAbilitiesSection({ agentId, agentVersion, onSaved }: AgentA
 
   const summaries = abilities ? summarize(abilities, all) : null
   const editorProps = abilities ? { abilities, isSaving, error: saveError, onCancel: () => setOpenAbility(null), onSave: save } : null
+  const notices = abilities ? [abilities.spendingUnreadable ? t.spendingUnreadable : null, abilities.stepsDiffer ? t.stepsDiffer : null].filter((notice): notice is string => notice !== null) : []
 
   return (
     <section aria-labelledby={headingId} className="@container flex min-w-0 flex-col gap-3">
@@ -108,12 +139,32 @@ export function AgentAbilitiesSection({ agentId, agentVersion, onSaved }: AgentA
         <p className="m-0 text-[13px] leading-normal text-body">{t.subtitle}</p>
       </div>
       {state.error && !abilities && <p className="m-0 text-[13px] text-danger">{t.couldNotLoad(describeError(state.error))}</p>}
-      {!abilities && !state.error && <p className="m-0 text-[13px] text-muted">{t.loading}</p>}
+      {!abilities && !state.error && (
+        <p role="status" className="m-0 text-[13px] text-muted">
+          {t.loading}
+        </p>
+      )}
+      {notices.map((notice) => (
+        <p key={notice} className="m-0 rounded-[10px] border border-amber-line-2 bg-amber-tint px-3 py-2 text-[12.5px] leading-[18px] text-amber-deep">
+          {notice}
+        </p>
+      ))}
       {abilities && summaries && (
         <ul className="m-0 grid min-w-0 list-none grid-cols-1 gap-2.5 p-0 @xl:grid-cols-2">
           {abilityKeys.map((key) => (
             <li key={key} className="min-w-0">
-              <AbilityCard title={summaries[key].title} summary={summaries[key].summary} unavailableReason={summaries[key].unavailable} isOpen={openAbility === key} onOpen={() => open(key)} />
+              <AbilityCard
+                title={summaries[key].title}
+                summary={summaries[key].summary}
+                unavailableReason={summaries[key].unavailable}
+                isOpen={openAbility === key}
+                isBlocked={openAbility !== null && openAbility !== key}
+                onOpen={() => open(key)}
+                buttonRef={(button) => {
+                  if (button) changeButtons.current.set(key, button)
+                  else changeButtons.current.delete(key)
+                }}
+              />
             </li>
           ))}
         </ul>

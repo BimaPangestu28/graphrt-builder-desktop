@@ -244,9 +244,7 @@ pub fn check_compatibility(facts: &CompatibilityFacts) -> CompatibilityReport {
         });
     }
     items.extend(facts.keys.iter().map(key_item));
-    if !facts.online_runs_abilities {
-        items.extend(ability_items(facts.abilities));
-    }
+    items.extend(ability_items(facts.abilities, facts.online_runs_abilities));
     items.sort_by_key(|item| match item.level {
         CompatibilityLevel::Blocker => 0,
         CompatibilityLevel::Info => 1,
@@ -256,8 +254,10 @@ pub fn check_compatibility(facts: &CompatibilityFacts) -> CompatibilityReport {
     CompatibilityReport { ready, items }
 }
 
-/// What the online version cannot do yet of the agent's abilities.
-fn ability_items(abilities: AbilitiesInUse) -> Vec<CompatibilityItem> {
+/// What the online version cannot do yet of the agent's abilities. Helpers and the spending
+/// limit are named whatever the tools can do: putting an agent online sends neither the
+/// helper agents' workflows nor the limit (an agent setting, not part of the workflow) yet.
+fn ability_items(abilities: AbilitiesInUse, online_runs_abilities: bool) -> Vec<CompatibilityItem> {
     let item = |id: &str, level, title: &str, detail: &str| CompatibilityItem {
         id: id.to_owned(),
         level,
@@ -276,7 +276,7 @@ fn ability_items(abilities: AbilitiesInUse) -> Vec<CompatibilityItem> {
              the agent's abilities to put it online, or keep it on this computer.",
         ));
     }
-    if abilities.memory {
+    if abilities.memory && !online_runs_abilities {
         items.push(item(
             "ability:memory",
             CompatibilityLevel::Info,
@@ -292,7 +292,7 @@ fn ability_items(abilities: AbilitiesInUse) -> Vec<CompatibilityItem> {
             "Online runs are not stopped at the limit yet. Your AI provider's own limits still apply.",
         ));
     }
-    if abilities.custom_long_conversations {
+    if abilities.custom_long_conversations && !online_runs_abilities {
         items.push(item(
             "ability:context",
             CompatibilityLevel::Info,
@@ -323,8 +323,12 @@ mod tests {
             ..CompatibilityFacts::default()
         };
         assert!(check_compatibility(&memory_only).ready, "memory alone does not block");
+        assert!(ids.contains(&("ability:spending", CompatibilityLevel::Info)), "{ids:?}");
+        assert!(ids.contains(&("ability:context", CompatibilityLevel::Info)), "{ids:?}");
+        // Newer tools run memory and long conversations; helpers and the limit are not sent yet.
         let supported = CompatibilityFacts { abilities, online_runs_abilities: true, ..CompatibilityFacts::default() };
-        assert!(check_compatibility(&supported).items.is_empty());
+        let left: Vec<_> = check_compatibility(&supported).items.into_iter().map(|item| item.id).collect();
+        assert_eq!(left, ["ability:helpers", "ability:spending"]);
     }
 
     fn plugin(name: &str, needs_browser: bool, needs_session: bool) -> PluginFacts {

@@ -22,7 +22,6 @@ use crate::storage::Database;
 const CONTAINER_NODE_KINDS: &[&str] = &["iteration", "loop"];
 /// Step kinds that call a model and name it in `model`.
 const MODEL_NODE_KINDS: &[&str] = &["agent", "llm", "question-classifier", "parameter-extractor"];
-const PAID_PROVIDERS: [&str; 3] = ["openai", "anthropic", "gemini"];
 
 /// Keep `src/api/runSummaryTypes.ts` in sync.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
@@ -47,7 +46,8 @@ pub fn run_budget(db: &Database, run: &Run, events: &[Json]) -> AppResult<RunBud
     let mut tokens_used = 0_u64;
     let mut cost_micros = Some(0_u64);
     let mut kinds: HashMap<String, String> = HashMap::new();
-    let mut limit_reached = run.error_message.as_deref().is_some_and(|message| message.contains("limit_exceeded"));
+    let mut limit_reached = run.error_message.as_deref().is_some_and(is_budget_stop);
+    let mut run_tokens = 0_u64;
     for event in events {
         let text = |name: &str| event.get(name).and_then(Json::as_str);
         match text("type") {
@@ -59,28 +59,42 @@ pub fn run_budget(db: &Database, run: &Run, events: &[Json]) -> AppResult<RunBud
             Some("node_progress") if text("name") == Some("budget") => {
                 limit_reached |= event.pointer("/data/final_turn").and_then(Json::as_bool) == Some(true);
             }
-            Some("node_failed") if text("error_type") == Some("limit_exceeded") => limit_reached = true,
+            // `limit_exceeded` is also the step, depth and time limits: only the budget's own words count.
+            Some("node_failed") if text("error_type") == Some("limit_exceeded") => {
+                limit_reached |= text("error").is_some_and(is_budget_stop);
+            }
+            // The run's own total also counts steps that failed (a step stopped at the limit).
+            Some("run_succeeded" | "run_failed") => {
+                if let Some(usage) = event.get("usage").and_then(read_usage) {
+                    run_tokens = run_tokens.max(billable(&usage));
+                }
+            }
             Some("node_succeeded") => {
                 let kind = text("exec_id").and_then(|exec_id| kinds.get(exec_id)).map(String::as_str);
                 if kind.is_some_and(|kind| CONTAINER_NODE_KINDS.contains(&kind)) {
                     continue;
                 }
                 let Some(usage) = event.get("usage").and_then(read_usage) else { continue };
-                tokens_used =
-                    tokens_used.saturating_add(usage.total_tokens.max(usage.prompt_tokens + usage.completion_tokens));
+                tokens_used = tokens_used.saturating_add(billable(&usage));
                 let model = models.model_of(text("frame").unwrap_or_default(), text("node_id").unwrap_or_default());
-                cost_micros =
-                    match (cost_micros, model.as_ref().map(|(provider, name)| price_of(provider, name, &usage))) {
-                        (Some(total), Some(Some(cost))) => Some(total.saturating_add(cost)),
-                        // A step whose model is unknown (not a model step) costs nothing.
-                        (Some(total), None) => Some(total),
-                        _ => None,
-                    };
+                // A step that used tokens with a model nobody can name has an unknown cost.
+                let step_cost = model.and_then(|(provider, name)| price_of(&provider, &name, &usage));
+                cost_micros = cost_micros.zip(step_cost).map(|(total, cost)| total.saturating_add(cost));
             }
             _ => {}
         }
     }
+    let tokens_used = tokens_used.max(run_tokens);
     Ok(RunBudget { tokens_used, estimated_cost_micros: cost_micros, limit, limit_reached })
+}
+
+/// The words graphrt's run budget stops a run with (`graphrt_core::budget`).
+fn is_budget_stop(message: &str) -> bool {
+    ["token budget of", "cost budget of", "token or cost budget is spent"].iter().any(|words| message.contains(words))
+}
+
+fn billable(usage: &graphrt_core::Usage) -> u64 {
+    usage.total_tokens.max(usage.prompt_tokens.saturating_add(usage.completion_tokens))
 }
 
 fn read_usage(usage: &Json) -> Option<graphrt_core::Usage> {
@@ -96,7 +110,7 @@ fn read_usage(usage: &Json) -> Option<graphrt_core::Usage> {
 /// The cost of `usage` on `provider/name`: `Some(0)` for a model on this computer, `None`
 /// for a paid model without a known price.
 fn price_of(provider: &str, name: &str, usage: &graphrt_core::Usage) -> Option<u64> {
-    if !PAID_PROVIDERS.contains(&provider) {
+    if !crate::engine::prices::is_paid_provider(provider) {
         return Some(0);
     }
     let mut registry = graphrt_llm::ModelRegistry::new();
@@ -259,7 +273,20 @@ graph:
         assert_eq!((budget.tokens_used, budget.estimated_cost_micros, budget.limit_reached), (20, None, false));
 
         run.status = RunStatus::Failed;
-        run.error_message = Some("limit_exceeded: the run used its token budget".into());
+        run.error_message = Some("step limit exceeded".into());
+        assert!(!run_budget(&db, &run, &[]).unwrap().limit_reached, "another limit is not the spending limit");
+        run.error_message = Some("token budget of 20000 exceeded (20412 used)".into());
         assert!(run_budget(&db, &run, &[]).unwrap().limit_reached);
+        let failed_run = vec![
+            json!({"type": "node_failed", "frame": "", "node_id": "assistant", "exec_id": "e1", "error_type": "limit_exceeded", "error": "step limit exceeded"}),
+            json!({"type": "run_failed", "error": "step limit exceeded", "error_type": "limit_exceeded", "usage": {"prompt_tokens": 9000, "completion_tokens": 1000, "total_tokens": 10000}}),
+        ];
+        run.error_message = None;
+        let budget = run_budget(&db, &run, &failed_run).unwrap();
+        assert_eq!(
+            (budget.tokens_used, budget.limit_reached),
+            (10_000, false),
+            "the run's total counts the failed step"
+        );
     }
 }

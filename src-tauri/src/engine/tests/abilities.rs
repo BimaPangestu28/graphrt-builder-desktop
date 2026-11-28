@@ -116,6 +116,25 @@ async fn a_test_run_asks_its_helper_agent_and_remembers_what_the_owner_said() {
     let notes = memory.notes(&lead.id, Some(APP_USER)).await.unwrap();
     assert_eq!(notes.iter().map(|note| note.text.as_str()).collect::<Vec<_>>(), ["Prefers invoices as PDF"]);
     assert_eq!(notes[0].status, graphrt_core::memory::MemoryStatus::Active);
+
+    // A scheduled run serves nobody in particular: what it saves is only proposed for the
+    // agent as a whole, never kept under the owner.
+    model_script.push(MockModel::tool_calls(&[(
+        "call-3",
+        "remember",
+        r#"{"text":"The showroom opens at 10 on Saturdays"}"#,
+    )]));
+    model_script.push(MockModel::text("Noted."));
+    let scheduled =
+        harness.runs.start_run(&lead.id, RunTrigger::Schedule, json!({"question": "Weekly check"})).await.unwrap();
+    wait_for_status(&harness.sink, &scheduled.id, RunStatus::Succeeded).await;
+    let owner_notes = memory.notes(&lead.id, Some(APP_USER)).await.unwrap();
+    assert_eq!(owner_notes.len(), 1, "nothing new under the owner: {owner_notes:?}");
+    let agent_notes = memory.notes(&lead.id, None).await.unwrap();
+    assert_eq!(
+        agent_notes.iter().map(|note| (note.text.as_str(), note.status)).collect::<Vec<_>>(),
+        [("The showroom opens at 10 on Saturdays", graphrt_core::memory::MemoryStatus::Pending)]
+    );
     crate::memory::unpublish_for_tests();
 }
 
@@ -215,4 +234,55 @@ async fn an_approval_inside_a_helper_pauses_the_whole_run_and_resuming_finishes_
     wait_for_status(&harness.sink, &run.id, RunStatus::Succeeded).await;
     let outputs = harness.db.get_run(&run.id).unwrap().outputs.unwrap();
     assert_eq!(outputs["result"], "The order for 50 lunch boxes is placed.");
+}
+
+#[test]
+fn helpers_of_helpers_are_linked_once_and_a_loop_ends() {
+    let harness = harness_with_answers(&[]);
+    let registry = crate::flow::draft_node_registry();
+    let context = GraphContext::new(&registry);
+    let first = create_agent(&harness.db, LEAD);
+    let second = create_agent(&harness.db, LEAD);
+    let leaf = create_agent(&harness.db, ECHO_HELPER);
+    let ask = |agent: &Agent, helpers: Vec<String>| {
+        let change = AbilityChange::Helpers { agent_ids: helpers, max_parallel: 4, max_calls: 16 };
+        set_ability(&harness.db, &agent.id, &change, &context).unwrap();
+    };
+    // first -> second -> (leaf, first): a chain with a loop back to the start.
+    ask(&second, vec![leaf.id.clone(), first.id.clone()]);
+    ask(&first, vec![second.id.clone()]);
+    let first = harness.db.get_agent(&first.id).unwrap();
+
+    let engine = harness.runs.engine_for(
+        &first,
+        &first.flow_yaml,
+        &crate::flow::TrustedHosts::none(),
+        graphrt_core::tool::ToolRegistry::new(),
+    );
+
+    // Every agent of the chain is linked, the loop included, and building stops.
+    assert!(engine.is_ok(), "{:?}", engine.err());
+}
+
+#[test]
+fn a_helper_that_needs_a_file_to_start_is_refused_when_linked() {
+    let harness = harness_with_answers(&[]);
+    let registry = crate::flow::draft_node_registry();
+    let lead = create_agent(&harness.db, LEAD);
+    let helper = create_agent(&harness.db, ECHO_HELPER);
+    let change = AbilityChange::Helpers { agent_ids: vec![helper.id.clone()], max_parallel: 4, max_calls: 16 };
+    set_ability(&harness.db, &lead.id, &change, &GraphContext::new(&registry)).unwrap();
+    // The helper is changed afterwards so that it needs a file another agent cannot hand over.
+    let needs_file = ECHO_HELPER.replace("type: text-input, required: true", "type: file, required: true");
+    harness.db.update_agent_flow_from_version(&helper.id, helper.current_version, &needs_file, "needs a file").unwrap();
+    let lead = harness.db.get_agent(&lead.id).unwrap();
+
+    let refused = harness.runs.engine_for(
+        &lead,
+        &lead.flow_yaml,
+        &crate::flow::TrustedHosts::none(),
+        graphrt_core::tool::ToolRegistry::new(),
+    );
+
+    assert!(matches!(refused, Err(AppError::InvalidInput(message)) if message.contains("cannot be asked for help")));
 }

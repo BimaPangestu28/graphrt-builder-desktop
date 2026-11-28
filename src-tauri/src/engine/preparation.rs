@@ -49,6 +49,8 @@ pub(super) fn build_engine(
 ) -> AppResult<Engine> {
     let RunScope { agent_id, trusted_hosts, files } = *scope;
     ensure_plugins_installed(flow_yaml)?;
+    // Memory is always the running agent's own (see `MemoryDefaults` below).
+    crate::agent_graph::abilities::check_memory_scope(flow_yaml, agent_id)?;
     let mut tools = tools;
     // File and image tools, only for a workflow that uses them (see `agent_files`).
     let file_wiring = match files {

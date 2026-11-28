@@ -25,8 +25,10 @@ pub const MIN_COST_MICROS: u64 = 1_000;
 pub const MAX_COST_MICROS: u64 = 1_000_000_000;
 
 /// The limit the owner set; both parts are optional (`None` is no limit).
+/// Both fields are always sent (a missing one reads as `None`); an unknown field is refused,
+/// so a misspelled one cannot clear the limit.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SpendingLimit {
     pub max_total_tokens: Option<u64>,
     /// In millionths of a dollar (the prices of `engine::prices` are in dollars).
@@ -86,7 +88,7 @@ pub fn load(db: &Database, agent_id: &str) -> AppResult<SpendingLimit> {
 /// # Errors
 /// `Internal` naming the setting when it cannot be read.
 pub(crate) fn load_for_run(db: &Database, agent_id: &str) -> AppResult<SpendingLimit> {
-    load(db, agent_id).map_err(|error| {
+    load(db, agent_id).and_then(|limit| limit.validate().map(|()| limit)).map_err(|error| {
         log::error!("could not read the spending limit of agent {agent_id}: {error}");
         AppError::Internal(
             "the spending limit of this agent could not be read: set it again in the agent's abilities".to_owned(),
@@ -148,6 +150,14 @@ mod tests {
             matches!(save(&db, &agent_id, too_much), Err(AppError::InvalidInput(message)) if message.contains("money"))
         );
         assert!(matches!(save(&db, "nobody", SpendingLimit::default()), Err(AppError::NotFound(_))));
+    }
+
+    #[test]
+    fn a_misspelled_field_is_refused_instead_of_clearing_the_limit() {
+        let misspelled = serde_json::from_value::<SpendingLimit>(serde_json::json!({"maxTokens": 5000}));
+        assert!(misspelled.is_err());
+        let partial: SpendingLimit = serde_json::from_value(serde_json::json!({"maxCostMicros": 5000})).unwrap();
+        assert_eq!(partial, SpendingLimit { max_total_tokens: None, max_cost_micros: Some(5000) });
     }
 
     #[test]

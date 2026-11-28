@@ -154,6 +154,7 @@ export function summarizeSampleRun(run: Run, events: GraphrtEvent[]): RunSummary
     files: [],
     errorMessage: run.errorMessage,
     budget: { tokensUsed: tally.usage.totalTokens, estimatedCostMicros: null, limit: sampleSpendingLimit(run.agentId), limitReached: false },
+    budgetUnavailable: false,
   }
 }
 

@@ -1357,3 +1357,63 @@ esac"#,
     let path = config["stores"][store]["path"].as_str().unwrap();
     assert!(bundle.file(path).is_some_and(|bytes| bytes.len() > 1024 * 1024), "every passage goes along");
 }
+
+#[test]
+fn the_online_check_sees_each_ability_the_agent_uses() {
+    use crate::agent_graph::abilities::{set_ability, AbilityChange, ContextMode};
+    use crate::agent_graph::GraphContext;
+    use crate::engine::spending::{self, SpendingLimit};
+    let db = crate::storage::Database::open_in_memory().unwrap();
+    let flow_yaml = r#"
+version: "1"
+name: support
+graph:
+  nodes:
+    - { id: start, type: start, variables: [{ variable: question, type: paragraph, required: true }] }
+    - { id: helper, type: agent, model: { provider: openai, name: gpt-4o-mini }, query: "{{#start.question#}}" }
+    - { id: end, type: end, outputs: [{ variable: result, value_selector: [helper, text], value_type: string }] }
+  edges:
+    - { source: start, target: helper }
+    - { source: helper, target: end }
+"#;
+    let new_agent = |name: &str| crate::storage::models::NewAgent {
+        name: name.into(),
+        kind: crate::storage::models::AgentKind::Task,
+        description: String::new(),
+        flow_yaml: flow_yaml.into(),
+    };
+    let agent_id = db.create_agent(new_agent("Support")).unwrap().id;
+    let other = db.create_agent(new_agent("Stock")).unwrap().id;
+    assert_eq!(abilities_in_use(&db, &agent_id).unwrap(), compatibility::AbilitiesInUse::default());
+
+    let registry = crate::flow::draft_node_registry();
+    let context = GraphContext::new(&registry);
+    // Automatic trimming with a token budget is not the standard handling.
+    set_ability(
+        &db,
+        &agent_id,
+        &AbilityChange::Context { mode: ContextMode::Auto, max_tokens: Some(60_000) },
+        &context,
+    )
+    .unwrap();
+    set_ability(&db, &agent_id, &AbilityChange::Memory { enabled: true, graph: false }, &context).unwrap();
+    set_ability(
+        &db,
+        &agent_id,
+        &AbilityChange::Helpers { agent_ids: vec![other], max_parallel: 4, max_calls: 16 },
+        &context,
+    )
+    .unwrap();
+    spending::save(&db, &agent_id, SpendingLimit { max_total_tokens: Some(20_000), max_cost_micros: None }).unwrap();
+
+    let in_use = abilities_in_use(&db, &agent_id).unwrap();
+    assert_eq!(
+        in_use,
+        compatibility::AbilitiesInUse {
+            memory: true,
+            helpers: true,
+            custom_long_conversations: true,
+            spending_limit: true
+        }
+    );
+}

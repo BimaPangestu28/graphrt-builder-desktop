@@ -159,7 +159,7 @@ function ResultDetails({ resultRun }: { resultRun: ResultRun }) {
     <>
       <RunFilesCard runId={resultRun.summary.runId} files={resultRun.summary.files} />
       <RunStatTiles stats={view.stats} />
-      <RunBudgetCard budget={resultRun.summary.budget} />
+      <RunBudgetCard budget={resultRun.summary.budget} isUnavailable={resultRun.summary.budgetUnavailable} />
       {view.activity && <p className="m-0 text-[13px] text-body">{view.activity}</p>}
       <RunVisualList visuals={resultRun.summary.visuals} rejected={resultRun.summary.rejectedVisuals} />
       <RunFileList agentId={resultRun.summary.agentId} runId={resultRun.summary.runId} />

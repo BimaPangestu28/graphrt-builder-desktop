@@ -39,7 +39,7 @@ describe('abilities display', () => {
   it('summarizes each ability in a short line', () => {
     expect(summarizeContext({ mode: 'auto', maxTokens: null })).toBe('Makes room automatically')
     expect(summarizeContext({ mode: 'summarize', maxTokens: 60_000 })).toBe('Summarizes older parts, up to 60,000 tokens')
-    expect(summarizeMemory({ enabled: false, graph: true })).toBe('Off')
+    expect(summarizeMemory({ enabled: false, graph: true })).toBe('Starts fresh each time')
     expect(summarizeMemory({ enabled: true, graph: true })).toBe('Remembers each customer, with connections')
     const choices = [
       { agentId: 'a', name: 'Stock checker', description: '', unavailable: null },

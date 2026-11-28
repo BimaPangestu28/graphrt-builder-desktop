@@ -31,6 +31,14 @@ const LIST_PRICES: &[(&str, &str, f64, f64)] = &[
     ("gemini", "gemini-2.5-pro", 1.25, 10.00),
 ];
 
+/// Providers that bill per token (the others run on this computer and cost nothing).
+const PAID_PROVIDERS: [&str; 3] = ["openai", "anthropic", "gemini"];
+
+/// Whether models of `provider` cost money (an API provider, not a model on this computer).
+pub fn is_paid_provider(provider: &str) -> bool {
+    PAID_PROVIDERS.contains(&provider)
+}
+
 /// Gives `registry` the list prices of the known models.
 pub(crate) fn add_list_prices(registry: &mut ModelRegistry) {
     for (provider, model, input, output) in LIST_PRICES {

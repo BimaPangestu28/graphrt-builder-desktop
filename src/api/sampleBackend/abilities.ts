@@ -89,6 +89,8 @@ function view(agentId: string): AgentAbilities {
       .filter((agent) => agent.id !== agentId)
       .map((agent) => ({ agentId: agent.id, name: agent.name, description: agent.description, unavailable: agent.id === 'invoice-reminders' ? 'needs_file_or_secret' : null })),
     toolChoices: steps.tools,
+    spendingUnreadable: false,
+    stepsDiffer: false,
     unpricedModels: [],
   }
 }
@@ -164,7 +166,7 @@ export const sampleAbilitiesBackend = {
   getAgentMemory: (agentId: string): Promise<AgentMemory> =>
     respondWith(() => {
       const memory = memoryOf(agentId)
-      return { agentId, people: [...memory.people.values()].map((entry) => entry.person), agentNotes: [...memory.agentNotes] }
+      return { agentId, people: [...memory.people.values()].map((entry) => entry.person), agentNotes: [...memory.agentNotes], incomplete: false }
     }),
   listMemoryNotes: (agentId: string, user: string | null): Promise<MemoryNote[]> => respondWith(() => [...findNotes(agentId, user)]),
   getMemoryGraph: (agentId: string, user: string | null): Promise<MemoryGraph> =>

@@ -32,7 +32,7 @@ use crate::storage::Database;
 pub const QUESTION_TIMEOUT: Duration = Duration::from_secs(180);
 /// `sys.conversation_id` and `sys.user_id` of a check's chatbot turns.
 const CHECK_CONVERSATION: &str = CHECK_USER_ID;
-/// `sys.user_id` of a check's chatbot turns (what long term memory keeps notes under).
+/// Start of the `sys.user_id` of a check's chatbot turns (`test-check:<uuid>`, one per case).
 pub(crate) const CHECK_USER_ID: &str = "test-check";
 
 /// What every run of a check needs from the app.
@@ -124,11 +124,14 @@ impl AgentTarget {
             Ok(prepared_engine) => prepared_engine,
             Err(error) => return failed_capture(&error.to_string(), started),
         };
+        // Each case is its own person: what the chatbot remembers in one case never reaches
+        // another case or a later check (erased below).
+        let person = format!("{CHECK_USER_ID}:{}", uuid::Uuid::new_v4());
         let mut input = RunInput::new()
             .input(MESSAGE_INPUT, question)
             .sys("query", question)
             .sys("conversation_id", CHECK_CONVERSATION)
-            .sys("user_id", CHECK_CONVERSATION);
+            .sys("user_id", person.as_str());
         input.env = env;
         let mut assembler = ResponseAssembler::new(engine.graph());
         for (name, value) in &prepared.sys_values {
@@ -142,6 +145,9 @@ impl AgentTarget {
             events.push(event);
         }
         let latency_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        if let Err(error) = crate::memory::erase_now(&agent.id, &person).await {
+            log::warn!("could not erase what a check case of agent {} remembered: {}", agent.id, error.message);
+        }
         RunCapture::from_events(events, assembler.text_so_far().to_owned(), latency_ms)
     }
 }

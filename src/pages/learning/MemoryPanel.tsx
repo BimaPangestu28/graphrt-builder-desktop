@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { decideMemoryNote, deleteMemoryNote, forgetMemoryPerson, getAgentAbilities, getAgentMemory, getMemoryGraph, listMemoryNotes } from '@/api/abilities'
 import type { MemoryNote, MemoryPerson } from '@/api/abilitiesTypes'
-import { Button, Card, LinkButton } from '@/components/ui'
+import { Button, Card, LinkButton, buttonClassNames } from '@/components/ui'
 import { useAsyncData } from '@/hooks/useAsyncData'
 import { useT } from '@/i18n'
 import { describeError } from '@/lib/agentDisplay'
@@ -16,17 +16,24 @@ interface NoteListProps {
   onChanged: () => void
 }
 
+/** What a note's action asks before it happens: nothing for "Use it", a confirm for the rest. */
+type PendingAction = { noteId: string; kind: 'remove' | 'reject' }
+
 /** The notes of one person (or of the agent), waiting ones first, each with its actions. */
 function NoteList({ agentId, user, notes, onChanged }: NoteListProps) {
   const t = useT().abilities.memoryTab
   const [busyNoteId, setBusyNoteId] = useState<string | null>(null)
+  const [asking, setAsking] = useState<PendingAction | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const confirmRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => confirmRef.current?.focus(), [asking])
 
   async function act(noteId: string, action: () => Promise<unknown>) {
     setBusyNoteId(noteId)
     setError(null)
     try {
       await action()
+      setAsking(null)
       onChanged()
     } catch (actionError) {
       setError(t.couldNotChange(describeError(actionError)))
@@ -37,11 +44,12 @@ function NoteList({ agentId, user, notes, onChanged }: NoteListProps) {
 
   if (notes.length === 0) return <p className="m-0 text-[13px] text-muted">{t.noNotes}</p>
   return (
-    <div className="flex min-w-0 flex-col gap-2">
-      <ul className="m-0 grid min-w-0 list-none grid-cols-1 gap-2 p-0 lg:grid-cols-2">
+    <div className="@container flex min-w-0 flex-col gap-2">
+      <ul className="m-0 grid min-w-0 list-none grid-cols-1 gap-2 p-0 @xl:grid-cols-2">
         {sortNotes(notes).map((note) => {
           const isWaiting = note.status === 'pending'
           const isBusy = busyNoteId === note.id
+          const pending = asking?.noteId === note.id ? asking.kind : null
           return (
             <li key={note.id} className={`flex min-w-0 flex-col gap-1.5 rounded-[10px] border px-3 py-2.5 ${isWaiting ? 'border-amber-line-2 bg-amber-tint' : 'border-line bg-surface'}`}>
               <p className="m-0 line-clamp-3 text-[14px] leading-normal font-medium text-ink" title={note.text}>
@@ -49,23 +57,41 @@ function NoteList({ agentId, user, notes, onChanged }: NoteListProps) {
               </p>
               <span className="line-clamp-2 text-[12px] leading-[17px] text-muted">{describeNoteMeta(note)}</span>
               {isWaiting && <span className="text-[12px] font-semibold text-amber-deep">{`${t.waiting} · ${t.waitingHint}`}</span>}
-              <div className="flex flex-wrap gap-2">
-                {isWaiting && (
-                  <>
-                    <Button variant="approve" size="sm" disabled={isBusy} onClick={() => void act(note.id, () => decideMemoryNote(agentId, user, note.id, true))}>
-                      {t.approve}
-                    </Button>
-                    <Button variant="secondary" size="sm" disabled={isBusy} onClick={() => void act(note.id, () => decideMemoryNote(agentId, user, note.id, false))}>
-                      {t.reject}
-                    </Button>
-                  </>
-                )}
-                {!isWaiting && (
-                  <Button variant="ghost" size="sm" disabled={isBusy} aria-label={`${t.remove}: ${note.text}`} onClick={() => void act(note.id, () => deleteMemoryNote(agentId, user, note.id))}>
-                    {t.remove}
+              {pending ? (
+                <div role="group" aria-label={pending === 'remove' ? t.removeConfirm : t.rejectConfirm} className="flex flex-wrap items-center gap-2">
+                  <span className="basis-full text-[13px] text-ink">{pending === 'remove' ? t.removeConfirm : t.rejectConfirm}</span>
+                  <button
+                    type="button"
+                    ref={confirmRef}
+                    disabled={isBusy}
+                    className={buttonClassNames('danger', 'sm')}
+                    onClick={() => void act(note.id, () => (pending === 'remove' ? deleteMemoryNote(agentId, user, note.id) : decideMemoryNote(agentId, user, note.id, false)))}
+                  >
+                    {t.confirmYes}
+                  </button>
+                  <Button variant="ghost" size="sm" disabled={isBusy} onClick={() => setAsking(null)}>
+                    {t.forgetNo}
                   </Button>
-                )}
-              </div>
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {isWaiting && (
+                    <>
+                      <Button variant="approve" size="sm" disabled={isBusy} aria-label={t.approveNote(note.text)} onClick={() => void act(note.id, () => decideMemoryNote(agentId, user, note.id, true))}>
+                        {t.approve}
+                      </Button>
+                      <Button variant="secondary" size="sm" disabled={isBusy} aria-label={t.rejectNote(note.text)} onClick={() => setAsking({ noteId: note.id, kind: 'reject' })}>
+                        {t.reject}
+                      </Button>
+                    </>
+                  )}
+                  {!isWaiting && (
+                    <Button variant="ghost" size="sm" disabled={isBusy} aria-label={`${t.remove}: ${note.text}`} onClick={() => setAsking({ noteId: note.id, kind: 'remove' })}>
+                      {t.remove}
+                    </Button>
+                  )}
+                </div>
+              )}
             </li>
           )
         })}
@@ -83,8 +109,13 @@ function NoteList({ agentId, user, notes, onChanged }: NoteListProps) {
 function PersonGraph({ agentId, user }: { agentId: string; user: string }) {
   const t = useT().abilities.memoryTab
   const graph = useAsyncData(() => getMemoryGraph(agentId, user), [agentId, user])
-  if (graph.error) return <p className="m-0 text-[13px] text-danger">{t.couldNotChange(describeError(graph.error))}</p>
-  if (!graph.data) return <p className="m-0 text-[13px] text-muted">{t.loading}</p>
+  if (graph.error) return <p className="m-0 text-[13px] text-danger">{t.graphCouldNotLoad(describeError(graph.error))}</p>
+  if (!graph.data)
+    return (
+      <p role="status" className="m-0 text-[13px] text-muted">
+        {t.loading}
+      </p>
+    )
   if (graph.data.unreadable) return <p className="m-0 text-[13px] text-amber-deep">{t.graphUnreadable}</p>
   if (graph.data.facts.length === 0) return <p className="m-0 text-[13px] text-muted">{t.graphEmpty}</p>
   return (
@@ -113,6 +144,15 @@ function PersonCard({ agentId, person, keepsGraph, onChanged }: PersonCardProps)
   const [isAsking, setIsAsking] = useState(false)
   const [isForgetting, setIsForgetting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const forgetRef = useRef<HTMLButtonElement>(null)
+  const eraseRef = useRef<HTMLButtonElement>(null)
+  const wasAsking = useRef(false)
+  // Focus moves to "Yes, erase" when the question opens, and back to Forget when it closes.
+  useEffect(() => {
+    if (isAsking) eraseRef.current?.focus()
+    else if (wasAsking.current) forgetRef.current?.focus()
+    wasAsking.current = isAsking
+  }, [isAsking])
   const notes = useAsyncData(() => (isOpen ? listMemoryNotes(agentId, person.user) : Promise.resolve(null)), [agentId, person.user, isOpen, person.noteCount, person.waitingCount])
   const who = describePerson(person)
 
@@ -151,18 +191,18 @@ function PersonCard({ agentId, person, keepsGraph, onChanged }: PersonCardProps)
             </Button>
           )}
           {!isAsking && (
-            <Button variant="danger" size="sm" onClick={() => setIsAsking(true)} aria-label={`${t.forget}: ${who}`}>
+            <button type="button" ref={forgetRef} onClick={() => setIsAsking(true)} aria-label={`${t.forget}: ${who}`} className={buttonClassNames('danger', 'sm')}>
               {t.forget}
-            </Button>
+            </button>
           )}
         </div>
       </div>
       {isAsking && (
         <div role="group" aria-label={t.forgetConfirm(who)} className="flex flex-wrap items-center gap-2 rounded-[10px] border border-danger-line bg-danger-tint px-3 py-2">
           <span className="min-w-0 flex-1 basis-[260px] text-[13px] text-ink">{t.forgetConfirm(who)}</span>
-          <Button variant="danger" size="sm" disabled={isForgetting} onClick={() => void forget()}>
+          <button type="button" ref={eraseRef} disabled={isForgetting} onClick={() => void forget()} className={buttonClassNames('danger', 'sm')}>
             {t.forgetYes}
-          </Button>
+          </button>
           <Button variant="ghost" size="sm" disabled={isForgetting} onClick={() => setIsAsking(false)}>
             {t.forgetNo}
           </Button>
@@ -170,6 +210,11 @@ function PersonCard({ agentId, person, keepsGraph, onChanged }: PersonCardProps)
       )}
       {isGraphOpen && <PersonGraph agentId={agentId} user={person.user} />}
       {isOpen && notes.error && <p className="m-0 text-[13px] text-danger">{t.couldNotLoad(describeError(notes.error))}</p>}
+      {isOpen && !notes.error && !notes.data && (
+        <p role="status" className="m-0 text-[13px] text-muted">
+          {t.loadingNotes}
+        </p>
+      )}
       {isOpen && notes.data && <NoteList agentId={agentId} user={person.user} notes={notes.data} onChanged={() => onChanged()} />}
       {error && (
         <p role="alert" className="m-0 text-[13px] text-danger">
@@ -194,11 +239,17 @@ export function MemoryPanel({ agentId }: { agentId: string }) {
     setNotice(nextNotice ?? null)
     void memory.reload()
   }
+  // Unknown until the abilities load: no "off" warning, and a load failure says so.
   const isEnabled = abilities.data?.memory.enabled ?? true
   const keepsGraph = abilities.data?.memory.graph ?? false
 
   if (memory.error) return <p role="alert" className="m-0 text-[13px] text-danger">{t.couldNotLoad(describeError(memory.error))}</p>
-  if (!memory.data) return <p className="m-0 text-muted">{t.loading}</p>
+  if (!memory.data)
+    return (
+      <p role="status" className="m-0 text-muted">
+        {t.loading}
+      </p>
+    )
   const { people, agentNotes } = memory.data
   return (
     <div className="flex min-w-0 flex-col gap-3">
@@ -214,6 +265,8 @@ export function MemoryPanel({ agentId }: { agentId: string }) {
           </LinkButton>
         </Card>
       )}
+      {abilities.error && <p className="m-0 text-[13px] text-muted">{t.abilitiesUnknown}</p>}
+      {memory.data.incomplete && <p className="m-0 rounded-[10px] border border-amber-line-2 bg-amber-tint px-3 py-2 text-[13px] text-amber-deep">{t.incomplete}</p>}
       {notice && (
         <p role="status" className="m-0 text-[13px] text-ok-strong">
           {notice}

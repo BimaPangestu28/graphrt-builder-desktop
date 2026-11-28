@@ -101,8 +101,10 @@ pub struct RunSummary {
     /// Files the run made that are still on this computer (see [`crate::run_files`]).
     pub files: Vec<RunFile>,
     pub error_message: Option<String>,
-    /// Tokens and money against the agent's spending limit; `None` when it could not be read.
+    /// Tokens and money against the agent's spending limit; `None` before it is worked out.
     pub budget: Option<crate::run_budget::RunBudget>,
+    /// The budget could not be worked out (the card says so instead of showing nothing).
+    pub budget_unavailable: bool,
 }
 
 /// One agent's runs over the last 7 days, for its Home card. Keep `src/api/runSummaryTypes.ts` in sync.
@@ -138,13 +140,13 @@ pub fn get_run_summary(db: &Database, run_id: &str) -> AppResult<RunSummary> {
     let events: Vec<Json> = db.list_run_events(run_id)?.into_iter().map(|record| record.event).collect();
     let mut summary = summarize_run(&run, &events);
     // The rest of the summary is still shown when the budget cannot be read (it says so).
-    summary.budget = match crate::run_budget::run_budget(db, &run, &events) {
-        Ok(budget) => Some(budget),
+    match crate::run_budget::run_budget(db, &run, &events) {
+        Ok(budget) => summary.budget = Some(budget),
         Err(error) => {
             log::warn!("could not read the budget of run {run_id}: {error}");
-            None
+            summary.budget_unavailable = true;
         }
-    };
+    }
     Ok(summary)
 }
 
@@ -172,6 +174,7 @@ pub fn summarize_run(run: &Run, events: &[Json]) -> RunSummary {
         files: collect_run_files(run, events),
         error_message: run.error_message.clone(),
         budget: None,
+        budget_unavailable: false,
     }
 }
 

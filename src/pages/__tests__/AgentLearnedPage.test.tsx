@@ -155,7 +155,7 @@ describe('AgentLearnedPage', () => {
 
     resetSampleLearning()
     renderLearnedPage()
-    const people = (await screen.findAllByRole('list', { name: 'People it remembers' })).at(-1) as HTMLElement
+    const people = (await screen.findAllByRole('list', { name: 'People its lessons are about' })).at(-1) as HTMLElement
     expect(within(people).getByText('1 note')).toBeInTheDocument()
     await userEvent.click(within(people).getByRole('button', { name: 'Forget +62 812-0000-1234' }))
     await userEvent.click(within(people).getByRole('button', { name: 'Forget' }))
@@ -206,5 +206,16 @@ describe('AgentLearnedPage', () => {
     expect(await screen.findByText('Risiko tinggi')).toBeInTheDocument()
     expect(screen.getAllByText('Belum diverifikasi').length).toBeGreaterThan(0)
     expect(screen.getByText('Ini soal uang.')).toBeInTheDocument()
+  })
+})
+
+describe('AgentLearnedPage, Remembered tab', () => {
+  beforeEach(() => resetSampleAgents())
+
+  it('opens what the agent remembers about people from the address', async () => {
+    renderLearnedPage('memory')
+    expect(await screen.findByRole('tab', { name: 'Remembered', selected: true })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'What it remembers about people' })).toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: 'Notes waiting for you' })).not.toBeInTheDocument()
   })
 })

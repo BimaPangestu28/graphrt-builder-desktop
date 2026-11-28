@@ -32,7 +32,7 @@ use graphrt_core::memory::{ForgetTarget, MemoryBank, MemoryError, MemoryScope, M
 use graphrt_memory::{ListFilter, MemoryStore};
 use serde::Deserialize;
 
-pub(crate) use self::active::memories_service;
+pub(crate) use self::active::{erase_now, memories_service};
 
 /// Clears the store runs use (tests that published one).
 #[cfg(test)]
@@ -49,7 +49,8 @@ use crate::storage::Database;
 pub const MEMORY_DIR_NAME: &str = "memory";
 /// `sys.user_id` of runs started in the app (Test, Run now): the person at this computer.
 pub const APP_USER: &str = "desktop-owner";
-/// `sys.user_id` of the agent's tests and release checks (`quality::target`).
+/// Start of the `sys.user_id` of the agent's tests and release checks (`quality::target`):
+/// each case is its own person, erased when the case is done.
 pub const CHECKS_USER: &str = crate::quality::target::CHECK_USER_ID;
 /// Who acts when the owner removes or approves a note (kept in the store's audit log).
 const OWNER_ACTOR: &str = "owner:desktop";
@@ -81,7 +82,8 @@ impl MemoryService {
     pub async fn overview(&self, agent_id: &str) -> AppResult<AgentMemory> {
         self.db.get_agent(agent_id)?;
         let mut people = Vec::new();
-        for candidate in self.candidates(agent_id)? {
+        let (candidates, incomplete) = self.candidates(agent_id)?;
+        for candidate in candidates {
             let notes = self.list(&user_scope(agent_id, &candidate.user), None).await?;
             if notes.is_empty() {
                 continue;
@@ -100,6 +102,7 @@ impl MemoryService {
             agent_id: agent_id.to_owned(),
             people,
             agent_notes: agent_notes.iter().map(MemoryNoteView::from).collect(),
+            incomplete,
         })
     }
 
@@ -159,6 +162,23 @@ impl MemoryService {
         Ok(approve.then(|| MemoryNoteView::from(&decided)))
     }
 
+    /// Removes everything the memory keeps for a deleted agent (its folder in the store).
+    ///
+    /// # Errors
+    /// `Internal` when the folder cannot be removed.
+    pub fn forget_agent(&self, agent_id: &str) -> AppResult<()> {
+        graphrt_memory::check_name("agent", agent_id).map_err(memory_error)?;
+        let agent_dir = self.store.root().join("_").join(agent_id);
+        match std::fs::remove_dir_all(&agent_dir) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => {
+                log::error!("could not remove the memory of deleted agent {agent_id}: {error}");
+                Err(AppError::Internal("what the deleted agent remembered could not be removed".into()))
+            }
+        }
+    }
+
     /// Erases everything the memory keeps about `user`: their notes and their graph.
     /// Returns how many notes there were. (Lessons about them are `LearningService`'s.)
     ///
@@ -179,7 +199,7 @@ impl MemoryService {
     }
 
     /// Everyone who may have notes: customers, the owner, the checks, then the store's folder.
-    fn candidates(&self, agent_id: &str) -> AppResult<Vec<Candidate>> {
+    fn candidates(&self, agent_id: &str) -> AppResult<(Vec<Candidate>, bool)> {
         let mut seen = HashSet::new();
         let mut candidates = Vec::new();
         let mut add = |user: String, name: Option<String>, kind: MemoryPersonKind| {
@@ -187,16 +207,22 @@ impl MemoryService {
                 candidates.push(Candidate { user, name, kind });
             }
         };
-        for (handle, name) in self.db.conversation_customers(agent_id)? {
+        for (channel, handle, name) in self.db.conversation_customers(agent_id)? {
+            // The same rule runs use: a customer known only by a display name has no notes.
+            if !crate::conversations::bot::is_memory_person(&channel, &handle) {
+                continue;
+            }
             let name = Some(name).filter(|name| !name.trim().is_empty());
             add(handle, name, MemoryPersonKind::Customer);
         }
         add(APP_USER.to_owned(), None, MemoryPersonKind::You);
-        add(CHECKS_USER.to_owned(), None, MemoryPersonKind::Checks);
-        for user in stored_users(&self.store.root().join("_").join(agent_id)) {
-            add(user, None, MemoryPersonKind::Other);
+        let scan = stored_users(&self.store.root().join("_").join(agent_id));
+        for user in scan.users {
+            let kind = if user.starts_with(CHECKS_USER) { MemoryPersonKind::Checks } else { MemoryPersonKind::Other };
+            add(user, None, kind);
         }
-        Ok(candidates)
+        let incomplete = scan.incomplete || candidates.len() >= MAX_PEOPLE;
+        Ok((candidates, incomplete))
     }
 }
 
@@ -225,39 +251,67 @@ fn owner_source() -> MemorySource {
 /// The user ids kept in the store's folder of one agent (`users/<hash>/notes.json` holds
 /// the id itself). The folder layout is graphrt-memory's: a folder it cannot read is
 /// skipped with a warning, and the other sources of people still apply.
-fn stored_users(agent_dir: &Path) -> Vec<String> {
+fn stored_users(agent_dir: &Path) -> StoredUsers {
     #[derive(Deserialize)]
     struct NotesFile {
         #[serde(default)]
         user: Option<String>,
     }
     let users_dir = agent_dir.join("users");
+    let mut found = StoredUsers::default();
     let entries = match std::fs::read_dir(&users_dir) {
         Ok(entries) => entries,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return found,
         Err(error) => {
             log::warn!("could not list the people in {}: {error}", users_dir.display());
-            return Vec::new();
+            found.incomplete = true;
+            return found;
         }
     };
-    let mut users = Vec::new();
-    for entry in entries.flatten().take(MAX_PEOPLE) {
+    for entry in entries {
+        if found.users.len() >= MAX_PEOPLE {
+            found.incomplete = true;
+            break;
+        }
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) => {
+                log::warn!("could not read an entry of {}: {error}", users_dir.display());
+                found.incomplete = true;
+                continue;
+            }
+        };
         let notes_path: PathBuf = entry.path().join("notes.json");
         let text = match std::fs::read_to_string(&notes_path) {
             Ok(text) => text,
+            // A person whose notes are gone but whose graph is left has nothing to list.
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
             Err(error) => {
                 log::warn!("could not read {}: {error}", notes_path.display());
+                found.incomplete = true;
                 continue;
             }
         };
         match serde_json::from_str::<NotesFile>(&text) {
-            Ok(NotesFile { user: Some(user) }) => users.push(user),
-            Ok(NotesFile { user: None }) => log::warn!("{} names no person", notes_path.display()),
-            Err(error) => log::warn!("could not read {}: {error}", notes_path.display()),
+            Ok(NotesFile { user: Some(user) }) => found.users.push(user),
+            Ok(NotesFile { user: None }) => {
+                log::warn!("{} names no person", notes_path.display());
+                found.incomplete = true;
+            }
+            Err(error) => {
+                log::warn!("could not read {}: {error}", notes_path.display());
+                found.incomplete = true;
+            }
         }
     }
-    users
+    found
+}
+
+/// The people found in the store's folder; `incomplete` when some could not be read.
+#[derive(Debug, Default)]
+struct StoredUsers {
+    users: Vec<String>,
+    incomplete: bool,
 }
 
 /// The graph part of an export (`{graph: {entities, relations}}` or `graph_error`).

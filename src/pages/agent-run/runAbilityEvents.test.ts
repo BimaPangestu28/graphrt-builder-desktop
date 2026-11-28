@@ -45,7 +45,7 @@ describe('ability notes of a step', () => {
       ['memory', 'Remembered 2 things · 1 waits for your approval · Recalled 2 notes', true],
       ['budget', 'The spending limit was close, so it gave its answer without using more tools.', true],
       ['budget', 'The app has no price for openai/gpt-9, so the money limit did not count it.', true],
-      ['checkpoint', 'Picked up where it stopped (turn 3) instead of starting over', false],
+      ['checkpoint', 'Picked up where it stopped instead of starting over', false],
       ['interrupted', 'crm/create_order was cut off before it finished and was not repeated', true],
     ])
   })
@@ -98,8 +98,46 @@ describe('helper runs', () => {
     const unfinished = [record({ type: 'node_started', frame: helperFrame, node_id: 'start', exec_id: 'c1', kind: 'start' })]
     const running = buildHelperTree(unfinished)
     expect(settleHelperStatuses(running, readRunEnd(unfinished))[0].status).toBe('running')
-    expect(settleHelperStatuses(running, 'stopped')[0].status).toBe('failed')
+    expect(settleHelperStatuses(running, 'stopped')[0].status).toBe('stopped')
     expect(settleHelperStatuses(running, 'succeeded')[0].status).toBe('finished')
     expect(readRunEnd([record({ type: 'run_aborted' })])).toBe('stopped')
+  })
+})
+
+describe('ability lines of the narration', () => {
+  const template: RunStepTemplate[] = [{ id: 'assistant', label: 'Answer the customer', detail: null, nodeType: 'agent', depth: 0 }]
+  const nestedFrame = `each[1]/assistant.${helperId}[0]`
+
+  it('says when it asked for help, a helper waits, the limit was close, and it picked up again', () => {
+    const events = [
+      record({ type: 'run_started' }),
+      record({ type: 'node_started', frame: '', node_id: 'assistant', exec_id: 'e1', kind: 'agent' }),
+      record({ type: 'node_started', frame: helperFrame, node_id: 'start', exec_id: 'c1', kind: 'start' }),
+      progress('subagent_paused', { workflow: helperId, index: 0 }),
+      progress('checkpoint_restored', { iteration: 2 }),
+      progress('context_trimmed', { removed_messages: 3, fits: true }),
+      progress('memory_saved', { id: 'm1', status: 'active' }),
+      progress('budget', { iteration: 4, final_turn: true }),
+    ]
+    const lines = buildRunNarration(template, events, () => 'Stock checker').map((line) => [line.text, line.tone])
+    expect(lines).toEqual(
+      expect.arrayContaining([
+        ['Stock checker waits for your approval', 'amber'],
+        ['Picked up where it stopped', 'neutral'],
+        ['Made room in a long conversation', 'neutral'],
+        ['Remembered something for next time', 'neutral'],
+        ['Close to the spending limit, so it answers with what it has', 'amber'],
+      ]),
+    )
+  })
+
+  it('names a helper asked inside a loop item once', () => {
+    const events = [
+      record({ type: 'node_started', frame: nestedFrame, node_id: 'start', exec_id: 'c1', kind: 'start' }),
+      record({ type: 'node_succeeded', frame: nestedFrame, node_id: 'start', exec_id: 'c1' }),
+      record({ type: 'node_started', frame: nestedFrame, node_id: 'checker', exec_id: 'c2', kind: 'agent' }),
+    ]
+    const lines = buildRunNarration(template, events, () => null).map((line) => line.text)
+    expect(lines.filter((line) => line === 'Asked Another agent for help…')).toHaveLength(1)
   })
 })

@@ -31,7 +31,7 @@ describe('AgentAbilitiesSection', () => {
   it('shows each ability with a one-line summary', async () => {
     renderSection()
     expect(await screen.findByRole('heading', { name: 'What this agent can do' })).toBeInTheDocument()
-    expect(within(await card('Remember conversations and customers')).getByText('Off')).toBeInTheDocument()
+    expect(within(await card('Remember conversations and customers')).getByText('Starts fresh each time')).toBeInTheDocument()
     expect(within(await card('Ask other agents for help')).getByText('Works alone')).toBeInTheDocument()
     expect(within(await card('Long conversations')).getByText('Makes room automatically')).toBeInTheDocument()
     expect(within(await card('Spending limit per run')).getByText('No limit')).toBeInTheDocument()
@@ -63,6 +63,7 @@ describe('AgentAbilitiesSection', () => {
     await user.click(screen.getByRole('button', { name: 'Next' }))
 
     expect(screen.getByText('It may ask 1 agent for help.')).toBeInTheDocument()
+    await user.click(screen.getByText('Advanced'))
     const parallel = screen.getByLabelText('Helpers working at the same time')
     await user.clear(parallel)
     await user.type(parallel, '2')
@@ -81,6 +82,7 @@ describe('AgentAbilitiesSection', () => {
     await user.click(screen.getByRole('button', { name: 'Back' }))
     await user.click(screen.getByRole('checkbox', { name: 'Catering assistant' }))
     await user.click(screen.getByRole('button', { name: 'Next' }))
+    await user.click(screen.getByText('Advanced'))
     const calls = screen.getByLabelText('Requests for help in one run')
     await user.clear(calls)
     await user.type(calls, '500')
@@ -96,10 +98,14 @@ describe('AgentAbilitiesSection', () => {
     await user.click(screen.getByRole('button', { name: 'Save' }))
     expect(screen.getByRole('alert')).toHaveTextContent('Enter a money or a token limit')
     await user.type(screen.getByLabelText('Most money per run (US dollars)'), '0.5')
+    await user.click(screen.getByText('Advanced'))
     await user.type(screen.getByLabelText('Most tokens per run'), '20000')
     await user.click(screen.getByRole('button', { name: 'Save' }))
 
     expect(within(await card('Spending limit per run')).getByText('Up to $0.50 or 20,000 tokens')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Spending limit saved')
+    // Focus is back on the card's Change button.
+    expect(screen.getByRole('button', { name: 'Change: Spending limit per run' })).toHaveFocus()
     expect((await sampleAbilitiesBackend.getAgentAbilities('maps-leads')).spending).toEqual({ maxCostMicros: 500_000, maxTotalTokens: 20_000 })
   })
 
@@ -107,8 +113,36 @@ describe('AgentAbilitiesSection', () => {
     renderSection('morning-digest')
     const memory = await card('Remember conversations and customers')
     expect(within(memory).getByText(/no step of this agent chooses its own tools/)).toBeInTheDocument()
-    expect(within(memory).getByRole('button', { name: 'Change: Remember conversations and customers' })).toBeDisabled()
+    expect(within(memory).getByRole('button', { name: 'Change: Remember conversations and customers' })).toHaveAttribute('aria-disabled', 'true')
     expect(within(await card('Long conversations')).getByRole('button')).toBeEnabled()
+  })
+
+  it('keeps one editor open at a time and focuses it', async () => {
+    const user = userEvent.setup()
+    renderSection()
+    await user.click(await screen.findByRole('button', { name: 'Change: Long conversations' }))
+    expect(screen.getByRole('heading', { name: 'Long conversations', level: 4 })).toHaveFocus()
+    await user.click(screen.getByRole('button', { name: 'Change: Spending limit per run' }))
+    expect(screen.queryByRole('heading', { name: 'Spending limit per run', level: 4 })).not.toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'Make room automatically' })).toBeChecked()
+  })
+
+  it('says when one of two changes saved and the other did not, and reloads the agent', async () => {
+    const realSet = sampleAbilitiesBackend.setAgentAbility
+    vi.spyOn(sampleAbilitiesBackend, 'setAgentAbility').mockImplementation(async (agentId, change) => {
+      if (change.kind === 'retry_safe_tools') throw new BackendError('internal', 'disk full')
+      return realSet(agentId, change)
+    })
+    const user = userEvent.setup()
+    const onSaved = renderSection()
+    await user.click(await screen.findByRole('button', { name: 'Change: Ask other agents for help' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Catering assistant' }))
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    await user.click(screen.getByText('Advanced'))
+    await user.click(screen.getByRole('checkbox', { name: 'google-maps/search' }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Some changes were saved')
+    expect(onSaved).toHaveBeenCalledTimes(1)
   })
 
   it('explains that the builder is busy instead of a raw error', async () => {

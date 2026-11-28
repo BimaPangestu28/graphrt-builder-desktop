@@ -213,7 +213,7 @@ function SkillFromNotesCard({ agentId }: { agentId: string }) {
   )
 }
 
-/** "People it remembers": forget a person and every note about them. */
+/** "People its lessons are about": forget a person and every lesson about them (what it remembers is the Remembered tab). */
 function PeopleSection({ learning, onChanged }: { learning: AgentLearning; onChanged: () => void }) {
   const t = useT().learning
   const people = peopleRemembered(learning.lessons)

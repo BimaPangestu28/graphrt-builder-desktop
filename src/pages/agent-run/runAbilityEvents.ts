@@ -64,7 +64,7 @@ export function readAbilityNotes(execution: NodeExecution): AbilityNote[] {
   let memoryFailed = false
   let finalTurn = false
   const unpricedModels: string[] = []
-  let restoredTurn: number | null = null
+  let restored = false
   const interruptedTools: string[] = []
   for (const report of execution.progressReports) {
     const { data } = report
@@ -95,7 +95,7 @@ export function readAbilityNotes(execution: NodeExecution): AbilityNote[] {
         break
       }
       case 'checkpoint_restored':
-        restoredTurn = readNumber(data, 'iteration') ?? restoredTurn ?? 0
+        restored = true
         break
       case 'tool_interrupted': {
         const tool = readDataText(data, 'name')
@@ -115,12 +115,12 @@ export function readAbilityNotes(execution: NodeExecution): AbilityNote[] {
   }
   if (finalTurn) notes.push({ key: 'budget', kind: 'budget', text: t.budgetFinalTurn, isWarning: true })
   for (const model of unpricedModels) notes.push({ key: `price:${model}`, kind: 'budget', text: t.budgetPriceMissing(model), isWarning: true })
-  if (restoredTurn !== null) notes.push({ key: 'checkpoint', kind: 'checkpoint', text: t.checkpointRestored(restoredTurn), isWarning: false })
+  if (restored) notes.push({ key: 'checkpoint', kind: 'checkpoint', text: t.checkpointRestored, isWarning: false })
   for (const tool of interruptedTools) notes.push({ key: `interrupted:${tool}`, kind: 'interrupted', text: t.toolInterrupted(tool), isWarning: true })
   return notes
 }
 
-export type HelperRunStatus = 'running' | 'finished' | 'failed' | 'paused'
+export type HelperRunStatus = 'running' | 'finished' | 'failed' | 'paused' | 'stopped'
 
 /** One request for help: a helper agent's run inside this run. */
 export interface HelperRun {
@@ -219,11 +219,15 @@ export function readRunEnd(events: RunEventRecord[]): 'succeeded' | 'stopped' | 
   return null
 }
 
-/** Helpers still "working" when the run ended: done when it succeeded, stopped with it otherwise. */
+/**
+ * Helpers still "working" when the run ended without a report of their own: graphrt reports
+ * every helper that finishes, so after a run that succeeded it finished; after one that was
+ * stopped it stopped with the run.
+ */
 export function settleHelperStatuses(helpers: HelperRun[], runEnd: 'succeeded' | 'stopped' | null): HelperRun[] {
   return helpers.map((helper) => ({
     ...helper,
-    status: helper.status === 'running' && runEnd !== null ? (runEnd === 'succeeded' ? 'finished' : 'failed') : helper.status,
+    status: helper.status === 'running' && runEnd !== null ? (runEnd === 'succeeded' ? 'finished' : 'stopped') : helper.status,
     children: settleHelperStatuses(helper.children, runEnd),
   }))
 }
