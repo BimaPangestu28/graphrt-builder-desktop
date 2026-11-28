@@ -151,8 +151,13 @@ pub(super) fn relevant_operations(operations: Vec<OfferedOperation>, description
                 words(&format!("{} {}", operation.kind.split_once('.').map_or("", |(_, name)| name), operation.title));
             let names_plugin =
                 plugin_words.iter().filter(|word| is_telling(word)).any(|word| has_word(&description_words, word));
+            // The verb an operation's name or title starts with ("describe" of `describe_template`)
+            // names no operation: "a product I describe" offered `document-templates` and
+            // `sqlite`, and llama3.2 then passed its captions to `describe_template` as a template.
+            let object_words =
+                object_words(operation.kind.split_once('.').map_or("", |(_, name)| name), &operation.title);
             let names_operation =
-                own_words.iter().filter(|word| is_telling(word)).any(|word| has_word(&description_words, word));
+                object_words.iter().filter(|word| is_telling(word)).any(|word| has_word(&description_words, word));
             // A word of the operation alone ("rate", "items", "translate") is enough only for a
             // plugin that needs no setting up: a plain writing job must not end up needing a
             // HubSpot token because its notes have "action items", nor a web page a browser.
@@ -177,6 +182,22 @@ pub(super) fn relevant_operations(operations: Vec<OfferedOperation>, description
     // Stable: operations with the same score keep the plugin's own order.
     scored.sort_by_key(|(score, _)| std::cmp::Reverse(*score));
     scored.into_iter().take(MAX_OFFERED).map(|(_, operation)| operation).collect()
+}
+
+/// The words of an operation's name and title without the verb each starts with, when it
+/// has more words (`describe_template` -> `template`; `translate` stays `translate`).
+fn object_words(name: &str, title: &str) -> Vec<String> {
+    let without_verb = |text: &str| {
+        let all = words(text);
+        if all.len() > 1 {
+            all.into_iter().skip(1).collect()
+        } else {
+            all
+        }
+    };
+    let mut object = without_verb(name);
+    object.extend(without_verb(title));
+    object
 }
 
 fn is_telling(word: &str) -> bool {
@@ -213,6 +234,21 @@ mod tests {
             needs_setup: !kind.starts_with("currency-rates"),
             fields: Vec::<OperationField>::new(),
         }
+    }
+
+    #[test]
+    fn the_verb_an_operation_starts_with_offers_nothing_alone() {
+        let operations = vec![
+            operation("document-templates.describe_template", "Describe template", true),
+            operation("sqlite.describe_table", "Describe table", true),
+            operation("google-translate.translate", "Translate", true),
+        ];
+        let offered = |description: &str| -> Vec<String> {
+            relevant_operations(operations.clone(), description).into_iter().map(|operation| operation.kind).collect()
+        };
+        assert!(offered("Write three Instagram caption ideas for a product I describe").is_empty());
+        assert_eq!(offered("Describe the orders table of my sqlite file"), ["sqlite.describe_table"]);
+        assert_eq!(offered("Translate my notes with google"), ["google-translate.translate"]);
     }
 
     fn catalog() -> Vec<OfferedOperation> {
