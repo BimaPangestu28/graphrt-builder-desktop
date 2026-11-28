@@ -15,6 +15,8 @@ interface OnlineFeaturesFormProps {
   availability?: FeaturesAvailability
   /** The phone page was on in the online copy: say what turning it off removes. */
   phoneWasOn?: boolean
+  /** The provider gives the online copy a store; without one the phone page and channels are not offered. */
+  withStore?: boolean
 }
 
 /** Whether a channel of the online copy can be offered: only for a chatbot, and ready once its values are saved. */
@@ -80,7 +82,7 @@ function RadioOption({ name, title, detail, checked, onSelect, disabled }: { nam
  * request nobody answers in time. Everything is off by default. The cost of the phone page is
  * said before it is turned on.
  */
-export function OnlineFeaturesForm({ value, onChange, providerName, availability = 'ready', phoneWasOn = false }: OnlineFeaturesFormProps) {
+export function OnlineFeaturesForm({ value, onChange, providerName, availability = 'ready', phoneWasOn = false, withStore = true }: OnlineFeaturesFormProps) {
   const text = messages().deploy.sharing
   const audienceName = useId()
   const expiryName = useId()
@@ -103,6 +105,11 @@ export function OnlineFeaturesForm({ value, onChange, providerName, availability
       {availability !== 'ready' && (
         <p role="status" className="m-0 rounded-[12px] border border-line bg-subtle px-4 py-3 text-[13px] leading-normal text-ink-2">
           {availability === 'needs_newer_tools' ? text.needNewerTools : text.downloadToolsFirst}
+        </p>
+      )}
+      {!withStore && (
+        <p role="status" className="m-0 rounded-[12px] border border-line bg-subtle px-4 py-3 text-[13px] leading-normal text-ink-2">
+          {messages().deploy.aws.storeNote}
         </p>
       )}
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,340px),1fr))] gap-3">
@@ -128,40 +135,42 @@ export function OnlineFeaturesForm({ value, onChange, providerName, availability
             <span className="text-[12px] text-muted">{text.embedSiteHint}</span>
           </label>
         </FeatureCard>
-        <div className="flex flex-col gap-2">
-          <FeatureCard title={text.phoneTitle} detail={text.phoneDetail} checked={value.phone} disabled={isDisabled} onToggle={(phone) => change({ phone })}>
-            <label className={joinClassNames('flex items-start gap-2.5', isDisabled ? 'opacity-60' : 'cursor-pointer')}>
-              <input type="checkbox" checked={value.notifications} disabled={isDisabled} onChange={(event) => change({ notifications: event.target.checked })} className="mt-1 size-4 accent-[var(--color-ink)]" />
-              <span className="flex flex-col">
-                <span className="font-medium">{text.notificationsTitle}</span>
-                <span className="text-[13px] leading-normal text-body">{text.notificationsDetail}</span>
-              </span>
-            </label>
-            {value.notifications && (
-              <label htmlFor={emailId} className="flex flex-col gap-1.5 text-[13px] text-ink-2">
-                {text.notifyEmailLabel}
-                <input
-                  id={emailId}
-                  type="email"
-                  value={value.notifyEmail ?? ''}
-                  disabled={isDisabled}
-                  onChange={(event) => change({ notifyEmail: event.target.value || null })}
-                  placeholder={text.notifyEmailPlaceholder}
-                  autoComplete="email"
-                  className={fieldClassName}
-                />
-                <span className="text-[12px] text-muted">{text.notifyEmailHint}</span>
+        {withStore && (
+          <div className="flex flex-col gap-2">
+            <FeatureCard title={text.phoneTitle} detail={text.phoneDetail} checked={value.phone} disabled={isDisabled} onToggle={(phone) => change({ phone })}>
+              <label className={joinClassNames('flex items-start gap-2.5', isDisabled ? 'opacity-60' : 'cursor-pointer')}>
+                <input type="checkbox" checked={value.notifications} disabled={isDisabled} onChange={(event) => change({ notifications: event.target.checked })} className="mt-1 size-4 accent-[var(--color-ink)]" />
+                <span className="flex flex-col">
+                  <span className="font-medium">{text.notificationsTitle}</span>
+                  <span className="text-[13px] leading-normal text-body">{text.notificationsDetail}</span>
+                </span>
               </label>
+              {value.notifications && (
+                <label htmlFor={emailId} className="flex flex-col gap-1.5 text-[13px] text-ink-2">
+                  {text.notifyEmailLabel}
+                  <input
+                    id={emailId}
+                    type="email"
+                    value={value.notifyEmail ?? ''}
+                    disabled={isDisabled}
+                    onChange={(event) => change({ notifyEmail: event.target.value || null })}
+                    placeholder={text.notifyEmailPlaceholder}
+                    autoComplete="email"
+                    className={fieldClassName}
+                  />
+                  <span className="text-[12px] text-muted">{text.notifyEmailHint}</span>
+                </label>
+              )}
+            </FeatureCard>
+            {/* The cost is said before the box is ticked, not after. */}
+            <span className="px-1 text-[12px] leading-normal text-muted">{providerName ? text.phoneCost(providerName) : text.phoneCostOwnServer}</span>
+            {phoneWasOn && !value.phone && (
+              <span role="status" className="px-1 text-[12px] leading-normal text-amber-strong">
+                {text.phoneTurningOff}
+              </span>
             )}
-          </FeatureCard>
-          {/* The cost is said before the box is ticked, not after. */}
-          <span className="px-1 text-[12px] leading-normal text-muted">{providerName ? text.phoneCost(providerName) : text.phoneCostOwnServer}</span>
-          {phoneWasOn && !value.phone && (
-            <span role="status" className="px-1 text-[12px] leading-normal text-amber-strong">
-              {text.phoneTurningOff}
-            </span>
-          )}
-        </div>
+          </div>
+        )}
         <div className="flex flex-col gap-3 rounded-[14px] border border-line bg-surface p-4">
           <span className="font-semibold">{text.expiryTitle}</span>
           <div role="radiogroup" aria-label={text.expiryTitle} className="flex flex-col gap-2">
@@ -169,7 +178,7 @@ export function OnlineFeaturesForm({ value, onChange, providerName, availability
             <RadioOption name={expiryName} title={text.expiryAct} detail={text.expiryActDetail} checked={value.answerWhenTimeRunsOut} disabled={isDisabled} onSelect={() => change({ answerWhenTimeRunsOut: true })} />
           </div>
         </div>
-        {whatsAppOffer !== null && (
+        {withStore && whatsAppOffer !== null && (
           <div className="flex flex-col gap-2">
             <FeatureCard
               title={channels.onlineWhatsAppTitle}
@@ -181,7 +190,7 @@ export function OnlineFeaturesForm({ value, onChange, providerName, availability
             {whatsAppOffer === 'needs_values' && <span className="px-1 text-[12px] leading-normal text-muted">{channels.onlineWhatsAppNeedsValues}</span>}
           </div>
         )}
-        {teamsOffer !== null && (
+        {withStore && teamsOffer !== null && (
           <div className="flex flex-col gap-2">
             <FeatureCard
               title={channels.onlineTeamsTitle}

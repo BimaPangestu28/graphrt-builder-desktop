@@ -31,6 +31,7 @@ describe('deploy_failed details', () => {
     expect(isBackendErrorWithCode(signIn, 'deploy_failed') && signIn.details?.fix).toEqual({ kind: 'sign_in_again' })
     expect(parseBackendErrorDetails('deploy_failed', { ...raw.details, fix: { kind: 'open_page' } })).toMatchObject({ fix: null })
     expect(parseBackendErrorDetails('deploy_failed', { kind: 'x', message: 'y' })).toBeNull()
+    expect(parseBackendErrorDetails('deploy_failed', { ...raw.details, provider: 'aws', fix: { kind: 'connect_again', provider: 'aws' } })).toMatchObject({ provider: 'aws', fix: { kind: 'connect_again', provider: 'aws' } })
   })
 })
 

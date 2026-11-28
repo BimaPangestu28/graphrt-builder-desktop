@@ -1,6 +1,7 @@
 import { isBackendErrorWithCode } from '@/api/client'
 import type { DeployProblem } from '@/api/deployTypes'
 import { messages } from '@/i18n'
+import { describeAwsProblem } from './aws'
 
 /** Google Cloud for "Put it online": the Cloud Run regions offered and plain words for its refusals. */
 
@@ -57,6 +58,7 @@ export function deployProblemOf(error: unknown): DeployProblem | null {
 
 /** What to tell the person: the problem in the UI language when its kind is known, else the backend's sentence. */
 export function describeDeployProblem(problem: DeployProblem): { text: string; fixLabel: string | null } {
+  if (problem.provider === 'aws') return describeAwsProblem(problem)
   const words = messages().deploy.googleCloud
   const project = problem.project ?? '—'
   const texts: Record<string, () => string> = {

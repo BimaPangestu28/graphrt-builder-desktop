@@ -102,7 +102,15 @@ export interface GoogleProject {
 export type GoogleConsolePage = 'billing' | 'permissions' | 'org_policies' | 'create_project' | 'pricing'
 
 /** What the person can do about a refusal of the provider. */
-export type DeployFix = { kind: 'open_page'; url: string } | { kind: 'sign_in_again' }
+export type DeployFix = { kind: 'open_page'; url: string } | { kind: 'sign_in_again' } | { kind: 'connect_again'; provider: DeployProvider }
+
+/** An AWS profile of this computer (`~/.aws`), never its keys. */
+export interface AwsProfile {
+  name: string
+  region: string | null
+  /** It holds an access key the app can use (not SSO or a role to assume). */
+  hasKeys: boolean
+}
 
 /** `deploy_failed`: the provider refused, explained (mirrors `DeployProblem` in `src-tauri/src/deploy/google_cloud.rs`). */
 export interface DeployProblem {
@@ -230,6 +238,10 @@ export interface DeployReview {
   features: OnlineFeatures
   /** Google Cloud: the project and region it is (or was last) online in. */
   cloudPlace: CloudPlace | null
+  /** AWS: the region it is (or was last) online in. */
+  region: string | null
+  /** The phone page, notifications and channels can go online with this provider (AWS Lambda needs newer graphrt tools for them). */
+  storeFeatures: boolean
 }
 
 export interface DeployOptions {
@@ -242,6 +254,8 @@ export interface DeployOptions {
   features?: OnlineFeatures
   /** Google Cloud: the project and region (required there). */
   cloudPlace?: CloudPlace | null
+  /** AWS: the region (required there). */
+  region?: string | null
 }
 
 export type DeploymentStatus = 'deploying' | 'working' | 'paused' | 'needs_attention' | 'failed'
@@ -354,4 +368,4 @@ export interface OwnServerView {
 }
 
 /** Provider pages the app may open (fixed addresses in the backend). */
-export type DeployLink = 'fly_tokens' | 'fly_pricing' | 'aws_access_keys' | 'azure_app_registrations'
+export type DeployLink = 'fly_tokens' | 'fly_pricing' | 'aws_access_keys' | 'aws_iam_policy' | 'aws_create_user' | 'aws_pricing' | 'aws_regions' | 'azure_app_registrations'

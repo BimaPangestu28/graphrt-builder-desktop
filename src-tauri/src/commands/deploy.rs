@@ -294,6 +294,7 @@ pub enum DeployLink {
     AwsIamPolicy,
     AwsCreateUser,
     AwsPricing,
+    AwsRegions,
     AzureAppRegistrations,
 }
 
@@ -306,6 +307,7 @@ impl DeployLink {
             Self::AwsIamPolicy => crate::deploy::aws::IAM_POLICY_DOCS_URL,
             Self::AwsCreateUser => "https://console.aws.amazon.com/iam/home#/users/create",
             Self::AwsPricing => "https://aws.amazon.com/lambda/pricing/",
+            Self::AwsRegions => "https://console.aws.amazon.com/billing/home#/account",
             Self::AzureAppRegistrations => {
                 "https://learn.microsoft.com/entra/identity-platform/quickstart-register-app"
             }

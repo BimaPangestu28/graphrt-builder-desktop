@@ -5,6 +5,7 @@ import { Badge, Button, Icon, joinClassNames } from '@/components/ui'
 import { DevelopersDetails } from './DeployDialog'
 import { deployModeLabels, describeCliNeed, plainErrorMessage, serverAreaLabels } from './deployDisplay'
 import type { FeaturesAvailability } from './onlineFeatures'
+import { AwsRegionPicker } from './AwsRegionPicker'
 import { GoogleCloudPlacePicker } from './GoogleCloudPlacePicker'
 import { OnlineFeaturesForm } from './OnlineFeaturesForm'
 import { messages } from '@/i18n'
@@ -17,6 +18,8 @@ export interface DeployChoice {
   features: OnlineFeatures
   /** Google Cloud: the project and region; null for the other providers. */
   cloudPlace: CloudPlace | null
+  /** AWS: the region; null for the other providers. */
+  region: string | null
 }
 
 interface ReviewStepProps {
@@ -84,6 +87,12 @@ function CliDownload({ cli, onCliChanged }: { cli: CliInfo; onCliChanged: (cli: 
 
 const areas: ServerArea[] = ['asia', 'europe', 'us']
 const modes: DeployMode[] = ['always_on', 'scale_to_zero']
+const awsModes: DeployMode[] = ['scale_to_zero']
+
+/** The choices without what needs a store (AWS Lambda before it has one). */
+function withoutStoreFeatures(features: OnlineFeatures): OnlineFeatures {
+  return { ...features, phone: false, notifications: false, notifyEmail: null, whatsapp: false, teams: false }
+}
 
 /**
  * Review: what will be created, how it runs (Always ready / Saves money), where (Asia / Europe /
@@ -91,7 +100,8 @@ const modes: DeployMode[] = ['always_on', 'scale_to_zero']
  * "Put it online" stays off until the box is ticked, the tools are there and the provider can deploy.
  */
 export function ReviewStep({ agentName, review, isUpdate, onCliChanged, onBack, onConfirm }: ReviewStepProps) {
-  const [mode, setMode] = useState<DeployMode>(review.mode)
+  // AWS Lambda only scales to zero.
+  const [mode, setMode] = useState<DeployMode>(review.provider === 'aws' ? 'scale_to_zero' : review.mode)
   const [area, setArea] = useState<ServerArea>(review.area)
   const [image, setImage] = useState(review.image ?? '')
   const [features, setFeatures] = useState<OnlineFeatures>(review.features)
@@ -103,8 +113,12 @@ export function ReviewStep({ agentName, review, isUpdate, onCliChanged, onBack, 
   const providerName = deployProviderNames[review.provider]
   const isFly = review.provider === 'fly'
   const isGoogleCloud = review.provider === 'google_cloud'
+  const isAws = review.provider === 'aws'
+  const awsWords = messages().deploy.aws
+  const [awsRegion, setAwsRegion] = useState<string | null>(review.region)
+  const onAwsRegionChange = useCallback((region: string) => setAwsRegion(region), [])
   const googleWords = messages().deploy.googleCloud
-  const needsPlace = isGoogleCloud && cloudPlace === null
+  const needsPlace = (isGoogleCloud && cloudPlace === null) || (isAws && !awsRegion)
   const blockedReason = !review.canDeploy
     ? messages().deploy.puttingAgentsOnlineWithProvidernameIs(providerName)
     : !review.providerConnected
@@ -127,12 +141,12 @@ export function ReviewStep({ agentName, review, isUpdate, onCliChanged, onBack, 
           <ul className="m-0 flex list-none flex-col gap-2.5 p-0">
             <CreatedItem title={messages().deploy.anOnlineCopyOfAgentname(agentName)} detail={messages().deploy.onProvidernameInYourAccount(providerName)} />
             <CreatedItem title={messages().deploy.itsWebAddress} detail={review.expectedAddress} />
-            <CreatedItem title={messages().deploy.aSmallStorageSpace} detail={isGoogleCloud ? googleWords.whatGetsCreated : messages().deploy.keepsItsHistoryAndConversationsWaiting} />
+            <CreatedItem title={messages().deploy.aSmallStorageSpace} detail={isGoogleCloud ? googleWords.whatGetsCreated : isAws ? awsWords.whatGetsCreated : messages().deploy.keepsItsHistoryAndConversationsWaiting} />
           </ul>
         </ReviewSection>
         <ReviewSection title={messages().deploy.howItRuns}>
           <div role="radiogroup" aria-label={messages().deploy.howItRuns} className="flex flex-col gap-2">
-            {modes.map((option) => (
+            {(isAws ? awsModes : modes).map((option) => (
               <label key={option} className={joinClassNames('flex cursor-pointer items-start gap-2.5 rounded-[10px] border px-3 py-2.5', mode === option ? 'border-ink' : 'border-line')}>
                 <input type="radio" name="deploy-mode" checked={mode === option} onChange={() => setMode(option)} className="mt-1 accent-[var(--color-ink)]" />
                 <span className="flex flex-col">
@@ -142,6 +156,7 @@ export function ReviewStep({ agentName, review, isUpdate, onCliChanged, onBack, 
               </label>
             ))}
           </div>
+          {isAws && <span className="text-[12px] leading-normal text-muted">{awsWords.onlyScaleToZero}</span>}
           <DevelopersDetails>
             <label className="flex items-start gap-2 opacity-60">
               <input type="checkbox" disabled className="mt-0.5" />
@@ -158,6 +173,10 @@ export function ReviewStep({ agentName, review, isUpdate, onCliChanged, onBack, 
             ) : (
               <span className="text-[13px] text-body">{messages().deploy.connectProvidernameFirst(providerName)}</span>
             )}
+          </ReviewSection>
+        ) : isAws ? (
+          <ReviewSection title={awsWords.regionTitle}>
+            <AwsRegionPicker current={review.region} isLocked={isUpdate && review.region !== null} onChange={onAwsRegionChange} />
           </ReviewSection>
         ) : (
           <ReviewSection title={messages().deploy.serverLocation}>
@@ -192,13 +211,18 @@ export function ReviewStep({ agentName, review, isUpdate, onCliChanged, onBack, 
           <span className="text-[12px] text-muted">{messages().deploy.theyGoStraightTo}{' '}{providerName}{messages().deploy.sSafeStorageNeverShownOr}</span>
         </ReviewSection>
       </div>
-      <OnlineFeaturesForm value={features} onChange={setFeatures} providerName={providerName} availability={featuresAvailability} phoneWasOn={review.features.phone} />
+      <OnlineFeaturesForm value={features} onChange={setFeatures} providerName={providerName} availability={featuresAvailability} phoneWasOn={review.features.phone} withStore={review.storeFeatures} />
       <ReviewSection title={messages().deploy.monthlyCost}>
         <span className="text-[13px] leading-normal text-body">
           {messages().deploy.billedBy}{' '}{providerName} {messages().deploy.toYourAccountSeeTheirPricing}{' '}
           {isFly && (
             <button type="button" onClick={() => void openDeployLink('fly_pricing')} className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-brand hover:underline">
               {messages().deploy.flyIoPricing}
+            </button>
+          )}
+          {isAws && (
+            <button type="button" onClick={() => void openDeployLink('aws_pricing')} className="cursor-pointer border-0 bg-transparent p-0 font-semibold text-brand hover:underline">
+              {awsWords.pricing}
             </button>
           )}
           {isGoogleCloud && (
@@ -219,7 +243,7 @@ export function ReviewStep({ agentName, review, isUpdate, onCliChanged, onBack, 
         <span>{messages().deploy.iUnderstand}{' '}{providerName} {messages().deploy.billsMeForThis}</span>
       </label>
       <div className="flex flex-wrap gap-2">
-        <Button onClick={() => onConfirm({ mode, area, image: image.trim() || null, features: featuresAvailability === 'ready' ? features : noOnlineFeatures, cloudPlace: isGoogleCloud ? cloudPlace : null })} disabled={!canConfirm}>
+        <Button onClick={() => onConfirm({ mode, area, image: image.trim() || null, features: featuresAvailability === 'ready' ? (review.storeFeatures ? features : withoutStoreFeatures(features)) : noOnlineFeatures, cloudPlace: isGoogleCloud ? cloudPlace : null, region: isAws ? awsRegion : null })} disabled={!canConfirm}>
           {!review.canDeploy ? messages().deploy.comingSoon : isUpdate ? messages().deploy.updateOnlineVersion : messages().deploy.putItOnline}
         </Button>
         <Button variant="ghost" onClick={onBack}>
@@ -227,7 +251,9 @@ export function ReviewStep({ agentName, review, isUpdate, onCliChanged, onBack, 
         </Button>
       </div>
       <DevelopersDetails>
-        {isGoogleCloud ? (
+        {isAws ? (
+          <span>{awsWords.developers(review.deploymentName, awsRegion ?? '…')}</span>
+        ) : isGoogleCloud ? (
           <span>{googleWords.developers(review.deploymentName, cloudPlace?.project ?? '…', cloudPlace?.region ?? '…')}</span>
         ) : (
           <span>

@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { resetSampleAgents } from '@/api/sampleBackend/agents'
@@ -173,15 +173,17 @@ describe('PutOnlinePage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Next' }))
     await userEvent.click(await screen.findByRole('button', { name: 'Continue' }))
     await userEvent.click(screen.getByText('Other providers — for teams that already use them'))
-    expect(screen.getAllByText('Coming soon')).toHaveLength(3)
-    await userEvent.click(screen.getByRole('button', { name: 'Connect AWS' }))
-    const dialog = screen.getByRole('dialog', { name: 'Connect AWS' })
-    await userEvent.type(within(dialog).getByLabelText('Access key ID'), 'TESTACCESSKEYID00000')
-    await userEvent.type(within(dialog).getByLabelText('Secret access key'), 'test-secret-value-not-real')
+    expect(screen.getAllByText('Coming soon')).toHaveLength(2)
+    await userEvent.click(screen.getByRole('button', { name: 'Connect Microsoft Azure' }))
+    const dialog = screen.getByRole('dialog', { name: 'Connect Microsoft Azure' })
+    fireEvent.change(within(dialog).getByLabelText('Tenant ID'), { target: { value: '72f988bf-86f1-41af-91ab-2d7cd011db47' } })
+    fireEvent.change(within(dialog).getByLabelText('App (client) ID'), { target: { value: '11111111-2222-3333-4444-555555555555' } })
+    await userEvent.click(within(dialog).getByRole('button', { name: /Paste a client secret instead/ }))
+    fireEvent.change(within(dialog).getByLabelText('Client secret'), { target: { value: 's3cret~value' } })
     await userEvent.click(within(dialog).getByRole('button', { name: 'Connect' }))
     await userEvent.click(await within(dialog).findByRole('button', { name: 'Done' }))
     await userEvent.click(screen.getByRole('button', { name: 'Next' }))
-    expect(await screen.findByText(/Putting agents online with AWS is coming soon/)).toBeInTheDocument()
+    expect(await screen.findByText(/Putting agents online with Microsoft Azure is coming soon/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Coming soon' })).toBeDisabled()
   })
 
@@ -234,7 +236,42 @@ describe('PutOnlinePage', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Continue' }))
     expect(screen.getByRole('radio', { name: 'Google Cloud' })).not.toBeVisible()
     await userEvent.click(screen.getByText('Other providers — for teams that already use them'))
-    expect(screen.getAllByText('Coming soon')).toHaveLength(4)
+    expect(screen.getAllByText('Coming soon')).toHaveLength(3)
+  })
+
+  it('puts an agent on AWS with a profile of this computer, a region and no store features', async () => {
+    renderWizard()
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Continue' }))
+    expect(screen.getByRole('radio', { name: 'AWS' })).toBeVisible()
+    await userEvent.click(screen.getByRole('button', { name: 'Connect AWS' }))
+    const dialog = screen.getByRole('dialog', { name: 'Connect AWS' })
+    expect(within(dialog).getByText(/create a user for Graphrt/)).toBeInTheDocument()
+    expect(within(dialog).getByLabelText('Graphrt deploy policy')).toHaveTextContent('arn:aws:lambda:*:*:function:graphrt-*')
+    expect(await within(dialog).findByText(/signs in another way/)).toBeInTheDocument()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Use default' }))
+    expect(await within(dialog).findByText(/Profile default · account 123456789012/)).toBeInTheDocument()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Done' }))
+    expect(screen.getByRole('radio', { name: 'AWS' })).toBeChecked()
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }))
+
+    expect(await screen.findByRole('heading', { name: 'Review' })).toBeInTheDocument()
+    expect(screen.getByText('AWS region')).toBeInTheDocument()
+    expect(screen.getByLabelText('Region')).toHaveValue('ap-southeast-3')
+    expect(screen.queryByText('Always ready')).not.toBeInTheDocument()
+    expect(screen.getByText(/nothing runs, or is billed/)).toBeInTheDocument()
+    expect(screen.queryByText('Follow it from your phone')).not.toBeInTheDocument()
+    expect(screen.getByText(/agents on AWS get with a later app update/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Allow download' }))
+    await screen.findByText('Saves money')
+    await userEvent.selectOptions(screen.getByLabelText('Region'), 'ap-southeast-1')
+    await userEvent.click(screen.getByRole('checkbox', { name: 'I understand AWS bills me for this' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Put it online' }))
+    expect(await screen.findByRole('heading', { level: 2, name: /is online$/ }, { timeout: 5000 })).toBeInTheDocument()
+    const view = await getAgentDeployment(sampleAgentId)
+    expect(view?.deployment.provider).toBe('aws')
+    expect(view?.deployment.region).toBe('ap-southeast-1')
+    expect(view?.deployment.url).toMatch(/\.lambda-url\.ap-southeast-1\.on\.aws\/$/)
   })
 
   it('sends "This computer" back to the builder and "My own server" to its page', async () => {

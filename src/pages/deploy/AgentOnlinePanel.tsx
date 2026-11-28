@@ -5,6 +5,7 @@ import { Badge, Button, LinkButton, StatusDot } from '@/components/ui'
 import { agentPath } from '@/routes'
 import { DevelopersDetails } from './DeployDialog'
 import { DeployProblemNotice } from './DeployProblemNotice'
+import { awsRegionLabel } from './aws'
 import { cloudRunRegionLabel, deployProblemOf } from './googleCloud'
 import { NewAccessKey } from './NewAccessKey'
 import { OnlineFeaturesPanel } from './OnlineFeaturesPanel'
@@ -149,7 +150,7 @@ export function AgentOnlinePanel({ agentId, agentName, view, onViewChange }: Age
 
   const isPaused = deployment.status === 'paused'
   const display = describeDeploymentStatus(deployment.status)
-  const details = [`Last update: ${describeTimeAgo(deployment.updatedAt)}`, deployModeLabels[deployment.mode].title, view.area ? serverAreaLabels[view.area] : null, view.place ? messages().deploy.googleCloud.onlineIn(view.place.project, cloudRunRegionLabel(view.place.region)) : null].filter(Boolean).join(' · ')
+  const details = [`Last update: ${describeTimeAgo(deployment.updatedAt)}`, deployModeLabels[deployment.mode].title, view.area ? serverAreaLabels[view.area] : null, view.place ? messages().deploy.googleCloud.onlineIn(view.place.project, cloudRunRegionLabel(view.place.region)) : null, deployment.provider === 'aws' && deployment.region ? awsRegionLabel(deployment.region) : null].filter(Boolean).join(' · ')
   const updateLink = (
     <LinkButton to={agentPath('putOnline', agentId, { screen: 'review' })} size="sm">
       {messages().deploy.updateWithLatestChanges}

@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { openDeployFix, signInGoogleCloud } from '@/api/deploy'
-import type { DeployProblem } from '@/api/deployTypes'
+import type { DeployProblem, DeployProvider } from '@/api/deployTypes'
 import { Button } from '@/components/ui'
+import { ConnectProviderDialog } from './ConnectProviderDialog'
 import { DevelopersDetails } from './DeployDialog'
 import { plainErrorMessage } from './deployDisplay'
 import { describeDeployProblem } from './googleCloud'
@@ -22,12 +23,17 @@ export function DeployProblemNotice({ problem, compact = false }: DeployProblemN
   const { text, fixLabel } = describeDeployProblem(problem)
   const [isFixing, setIsFixing] = useState(false)
   const [fixMessage, setFixMessage] = useState<string | null>(null)
+  const [reconnecting, setReconnecting] = useState<DeployProvider | null>(null)
 
   async function fix() {
     if (!problem.fix) return
     setFixMessage(null)
     if (problem.fix.kind === 'open_page') {
       await openDeployFix(problem.fix.url).catch((error: unknown) => setFixMessage(plainErrorMessage(error)))
+      return
+    }
+    if (problem.fix.kind === 'connect_again') {
+      setReconnecting(problem.fix.provider)
       return
     }
     setIsFixing(true)
@@ -53,9 +59,16 @@ export function DeployProblemNotice({ problem, compact = false }: DeployProblemN
         </span>
       )}
       {problem.technical && problem.technical !== text && (
-        <DevelopersDetails summary={messages().deploy.googleCloud.whatGoogleSaid}>
+        <DevelopersDetails summary={problem.provider === 'aws' ? messages().deploy.aws.whatAwsSaid : messages().deploy.googleCloud.whatGoogleSaid}>
           <span className="break-words text-[12px] text-ink-2">{problem.technical}</span>
         </DevelopersDetails>
+      )}
+      {reconnecting && (
+        <ConnectProviderDialog
+          provider={reconnecting}
+          onClose={() => setReconnecting(null)}
+          onConnected={() => setFixMessage(messages().deploy.googleCloud.signedInAgain)}
+        />
       )}
     </div>
   )
