@@ -554,7 +554,10 @@ pub fn console_url(page: ConsolePage, project: Option<&str>) -> AppResult<String
 pub fn is_fix_url(url: &str) -> bool {
     url::Url::parse(url).is_ok_and(|parsed| {
         parsed.scheme() == "https"
-            && matches!(parsed.host_str(), Some("console.cloud.google.com" | "cloud.google.com"))
+            && matches!(
+                parsed.host_str(),
+                Some("console.cloud.google.com" | "cloud.google.com" | "console.aws.amazon.com" | "aws.amazon.com")
+            )
             && parsed.username().is_empty()
     })
 }
@@ -569,6 +572,8 @@ pub enum DeployFix {
     OpenPage { url: String },
     /// Sign in to the provider again (the sign in expired or was removed).
     SignInAgain,
+    /// Connect the provider's account again (its key was refused).
+    ConnectAgain { provider: DeployProvider },
 }
 
 /// A refusal of the provider, explained: what went wrong in plain words, the CLI's own message

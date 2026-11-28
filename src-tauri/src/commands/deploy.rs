@@ -64,6 +64,19 @@ pub async fn disconnect_deploy_account(state: State<'_, AppState>, provider: Dep
     state.deploy.disconnect_account(provider).await
 }
 
+/// The AWS profiles of this computer (`~/.aws`), never their keys.
+#[tauri::command]
+pub fn list_aws_profiles(state: State<'_, AppState>) -> Vec<crate::deploy::aws::AwsProfile> {
+    state.deploy.aws_profiles()
+}
+
+/// Connects AWS with the access key of a profile of this computer (checked with AWS, kept in
+/// the keychain).
+#[tauri::command]
+pub async fn connect_aws_profile(state: State<'_, AppState>, profile: String) -> AppResult<DeployAccount> {
+    state.deploy.connect_aws_profile(&profile).await
+}
+
 /// "Sign in with Google" for Google Cloud: opens the browser, waits for the sign in (at most
 /// five minutes) and keeps the sign in in the keychain.
 #[tauri::command]
@@ -278,6 +291,9 @@ pub enum DeployLink {
     FlyTokens,
     FlyPricing,
     AwsAccessKeys,
+    AwsIamPolicy,
+    AwsCreateUser,
+    AwsPricing,
     AzureAppRegistrations,
 }
 
@@ -287,6 +303,9 @@ impl DeployLink {
             Self::FlyTokens => "https://fly.io/user/personal_access_tokens",
             Self::FlyPricing => "https://fly.io/docs/about/pricing/",
             Self::AwsAccessKeys => "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html",
+            Self::AwsIamPolicy => crate::deploy::aws::IAM_POLICY_DOCS_URL,
+            Self::AwsCreateUser => "https://console.aws.amazon.com/iam/home#/users/create",
+            Self::AwsPricing => "https://aws.amazon.com/lambda/pricing/",
             Self::AzureAppRegistrations => {
                 "https://learn.microsoft.com/entra/identity-platform/quickstart-register-app"
             }

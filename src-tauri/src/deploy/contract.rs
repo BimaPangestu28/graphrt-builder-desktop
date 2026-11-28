@@ -172,6 +172,9 @@ mod tests {
     /// graphrt `docs/schemas/deploy-direct-cloud-run.schema.json` at `90e0109` (Graphrt/graphrt#174).
     const CLOUD_RUN_SCHEMA: &str = include_str!("contract/deploy-direct-cloud-run.schema.json");
     const CLOUD_RUN: &str = include_str!("contract/fixtures/cloud-run.jsonl");
+    /// graphrt `docs/schemas/deploy-direct-aws.schema.json` at `7bb26aa` (Graphrt/graphrt#177).
+    const LAMBDA_SCHEMA: &str = include_str!("contract/deploy-direct-aws.schema.json");
+    const LAMBDA: &str = include_str!("contract/fixtures/lambda.jsonl");
 
     fn schema() -> Value {
         serde_json::from_str(SCHEMA).unwrap()
@@ -457,6 +460,41 @@ mod tests {
             let place =
                 crate::deploy::google_cloud::CloudPlace { project: "graphrt".into(), region: "asia-southeast2".into() };
             let problem = crate::deploy::google_cloud::problem_for(event.0.as_deref(), &event.1, Some(&place));
+            assert!(problem.fix.is_some(), "{} has a fix", problem.kind);
+        }
+    }
+
+    #[test]
+    fn lambda_results_and_refusals_follow_its_schema_and_are_read() {
+        let schema: Value = serde_json::from_str(LAMBDA_SCHEMA).unwrap();
+        let fixture = lines(LAMBDA);
+        for line in &fixture {
+            let problems = violations(&schema, &schema, line, "line");
+            assert!(problems.is_empty(), "{line} breaks the Lambda schema: {problems:?}");
+        }
+        assert_eq!(status_result(&fixture).unwrap().status, RemoteStatus::Online);
+        let listed = list_versions_result(&fixture).unwrap();
+        assert_eq!(listed.versions.iter().map(|version| version.label.as_str()).collect::<Vec<_>>(), ["v2", "v1"]);
+        let codes = definition(&schema, "error")["properties"]["code"]["enum"].as_array().unwrap().clone();
+        for code in [
+            "missing_credentials",
+            "unauthorized",
+            "permission_denied",
+            "account_not_ready",
+            "quota_exceeded",
+            "region_unavailable",
+            "rate_limited",
+            "aws_unavailable",
+            "health_check_failed",
+            "image_unavailable",
+        ] {
+            assert!(codes.iter().any(|known| known == code), "{code} is not a Lambda error code");
+        }
+        for line in fixture.iter().filter(|line| line["type"] == "error") {
+            let CliLine::Event(CliEvent::Error { code, message }) = parse_line(&line.to_string()) else {
+                panic!("not an error event: {line}")
+            };
+            let problem = crate::deploy::aws::problem_for(code.as_deref(), &message, Some("ap-southeast-3"));
             assert!(problem.fix.is_some(), "{} has a fix", problem.kind);
         }
     }

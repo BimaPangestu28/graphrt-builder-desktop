@@ -92,7 +92,7 @@ pub fn target_name(provider: DeployProvider) -> &'static str {
     match provider {
         DeployProvider::Fly => "fly",
         DeployProvider::GoogleCloud => "cloud-run",
-        DeployProvider::Aws => "ecs",
+        DeployProvider::Aws => "lambda",
         DeployProvider::Azure => "aca",
         DeployProvider::Kubernetes => "k8s",
     }
@@ -205,6 +205,32 @@ pub fn help_lists_cloud_run(deploy_help: &str) -> bool {
     deploy_help.contains("Google Cloud project id")
 }
 
+/// Whether `graphrt deploy --help` lists the AWS profile of a direct deploy
+/// (Graphrt/graphrt#177): the tools can put agents on AWS Lambda directly.
+pub fn help_lists_lambda(deploy_help: &str) -> bool {
+    deploy_help.contains("Direct, Lambda: AWS profile")
+}
+
+/// Whether `graphrt deploy --help` says a Lambda deployment has a store (the phone page,
+/// notifications, conversations and channels need one). Tools that predate
+/// `graphrt deploy capabilities` say it with this phrase.
+pub fn help_lists_lambda_store(deploy_help: &str) -> bool {
+    deploy_help.contains("store on Lambda")
+}
+
+/// What `graphrt deploy capabilities --json` says about the store of a Lambda deployment:
+/// `targets.lambda.store` (or `lambda.store`) as a boolean, or an object such as `{"kind": "s3"}`
+/// for one that exists. `None` when it says nothing.
+pub fn capabilities_lambda_store(capabilities: &serde_json::Value) -> Option<bool> {
+    let store = capabilities.pointer("/targets/lambda/store").or_else(|| capabilities.pointer("/lambda/store"))?;
+    match store {
+        serde_json::Value::Bool(has) => Some(*has),
+        serde_json::Value::Null => Some(false),
+        serde_json::Value::Object(_) | serde_json::Value::String(_) => Some(true),
+        _ => None,
+    }
+}
+
 /// What the installed graphrt tools can put online, from one `graphrt deploy --help`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct CliAbilities {
@@ -216,20 +242,45 @@ pub struct CliAbilities {
     pub large_agents: bool,
     /// Google Cloud Run, directly ([`help_lists_cloud_run`]).
     pub cloud_run: bool,
+    /// AWS Lambda, directly ([`help_lists_lambda`]).
+    pub lambda: bool,
+    /// A Lambda deployment has a store, so the phone page, notifications and channels work
+    /// there ([`capabilities_lambda_store`], else [`help_lists_lambda_store`]).
+    pub lambda_store: bool,
 }
 
 /// Runs `graphrt deploy --help` and reads what the tools can do. Nothing when the tools do
 /// not start.
 pub fn abilities(executable: &Path) -> CliAbilities {
     match deploy_help(executable) {
-        Some(help) => CliAbilities {
-            online_features: help_lists_online_features(&help),
-            channels: help_lists_channels(&help),
-            large_agents: help_lists_large_agents(&help),
-            cloud_run: help_lists_cloud_run(&help),
-        },
+        Some(help) => {
+            let lambda = help_lists_lambda(&help);
+            let declared_store = if lambda {
+                run_tool(executable, &["deploy", "capabilities", "--json"])
+                    .and_then(|output| last_json_object(&output))
+                    .and_then(|capabilities| capabilities_lambda_store(&capabilities))
+            } else {
+                None
+            };
+            CliAbilities {
+                online_features: help_lists_online_features(&help),
+                channels: help_lists_channels(&help),
+                large_agents: help_lists_large_agents(&help),
+                cloud_run: help_lists_cloud_run(&help),
+                lambda,
+                lambda_store: lambda && declared_store.unwrap_or_else(|| help_lists_lambda_store(&help)),
+            }
+        }
         None => CliAbilities::default(),
     }
+}
+
+/// The last line of `output` that is a JSON object.
+fn last_json_object(output: &str) -> Option<serde_json::Value> {
+    output.lines().rev().find_map(|line| {
+        let line = line.trim();
+        line.starts_with('{').then(|| serde_json::from_str(line).ok()).flatten()
+    })
 }
 
 /// Runs `graphrt deploy --help` and checks it with [`help_lists_online_features`]. `false`
@@ -239,8 +290,13 @@ pub fn knows_online_features(executable: &Path) -> bool {
 }
 
 fn deploy_help(executable: &Path) -> Option<String> {
+    run_tool(executable, &["deploy", "--help"])
+}
+
+/// Stdout of a short, read-only graphrt call (`None` when it fails or does not start).
+fn run_tool(executable: &Path, arguments: &[&str]) -> Option<String> {
     let mut command = std::process::Command::new(executable);
-    command.args(["deploy", "--help"]).env_clear().stdin(Stdio::null()).stderr(Stdio::null());
+    command.args(arguments).env_clear().stdin(Stdio::null()).stderr(Stdio::null());
     for name in PASSTHROUGH_ENV {
         if let Ok(value) = std::env::var(name) {
             command.env(name, value);
@@ -651,6 +707,42 @@ mod tests {
         let project_at = arguments.iter().position(|argument| argument == "--project").unwrap();
         assert_eq!(arguments[project_at..project_at + 4], ["--project", "graphrt", "--region", "asia-southeast2"]);
         assert!(!deploy_arguments(&sample_request()).iter().any(|argument| argument == "--project"));
+    }
+
+    #[test]
+    fn lambda_and_its_store_are_known_from_the_tools() {
+        let help = "  --profile <PROFILE>  Direct, Lambda: AWS profile of `~/.aws/credentials` / `~/.aws/config`";
+        assert!(help_lists_lambda(help));
+        assert!(!help_lists_lambda_store(help));
+        assert!(help_lists_lambda_store("--monitor  ... (the store on Lambda is an S3 bucket)"));
+        let declared = |value: serde_json::Value| capabilities_lambda_store(&value);
+        assert_eq!(declared(serde_json::json!({ "targets": { "lambda": { "store": true } } })), Some(true));
+        assert_eq!(declared(serde_json::json!({ "targets": { "lambda": { "store": null } } })), Some(false));
+        assert_eq!(declared(serde_json::json!({ "lambda": { "store": { "kind": "s3" } } })), Some(true));
+        assert_eq!(declared(serde_json::json!({ "targets": { "fly": { "store": true } } })), None);
+        assert_eq!(last_json_object("note\n{\"a\":1}\n").unwrap()["a"], 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_capabilities_command_wins_over_the_help_text() {
+        let temp = tempfile::tempdir().unwrap();
+        let tool = temp.path().join("graphrt");
+        crate::test_support::write_executable_script(
+            &tool,
+            r#"case "$2" in
+  --help) echo "Direct, Lambda: AWS profile; the store on Lambda is an S3 bucket" ;;
+  capabilities) echo '{"targets":{"lambda":{"store":false}}}' ;;
+esac"#,
+        );
+        let found = abilities(&tool);
+        assert!(found.lambda && !found.lambda_store, "{found:?}");
+        let old = temp.path().join("old");
+        crate::test_support::write_executable_script(
+            &old,
+            r#"[ "$2" = "--help" ] && echo "Direct, Lambda: AWS profile; the store on Lambda is an S3 bucket"; [ "$2" = capabilities ] && exit 2; true"#,
+        );
+        assert!(abilities(&old).lambda_store, "older tools fall back to the help text");
     }
 
     #[test]
