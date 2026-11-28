@@ -634,7 +634,50 @@ pub(super) fn normalize_fields(
     if operation.sends {
         drop_repeated_recipients(operation, &mut fields);
     }
+    split_code_pairs(operation, &mut fields);
     Ok(fields)
+}
+
+/// A field whose description shows one short code ("Base currency, e.g. USD") given a pair
+/// of such codes (gpt-4o-mini filled `base` with "USD/IDR", and the plugin refused "invalid
+/// currency") keeps one of them: the one no other field already holds, else the first (a
+/// pair names its base first).
+fn split_code_pairs(operation: &OfferedOperation, fields: &mut BTreeMap<String, serde_json::Value>) {
+    for field in &operation.fields {
+        if !example_is_a_code(&field.description) {
+            continue;
+        }
+        let Some(serde_json::Value::String(text)) = fields.get(&field.name) else { continue };
+        let Some((first, second)) = code_pair(text) else { continue };
+        let held_elsewhere = |code: &str| {
+            fields
+                .iter()
+                .any(|(name, value)| name != &field.name && value.as_str().is_some_and(|other| other.trim() == code))
+        };
+        let kept = if held_elsewhere(&first) && !held_elsewhere(&second) { second } else { first };
+        fields.insert(field.name.clone(), json!(kept));
+    }
+}
+
+/// Whether a description's example ("e.g. USD", "for example IDR") is one code of 2 to 5
+/// capital letters.
+fn example_is_a_code(description: &str) -> bool {
+    ["e.g. ", "e.g ", "for example "].iter().any(|marker| {
+        description.split(marker).nth(1).and_then(|after| after.split_whitespace().next()).is_some_and(|example| {
+            let example = example.trim_end_matches([',', '.', ';', ')']);
+            (2..=5).contains(&example.len()) && example.chars().all(|character| character.is_ascii_uppercase())
+        })
+    })
+}
+
+/// The two codes of "USD/IDR", "USD-IDR" or "USD to IDR" (capital letters, 2 to 5 each).
+fn code_pair(text: &str) -> Option<(String, String)> {
+    let text = text.trim();
+    let (first, second) = text.split_once('/').or_else(|| text.split_once(" to ")).or_else(|| text.split_once('-'))?;
+    let is_code =
+        |code: &str| (2..=5).contains(&code.len()) && code.chars().all(|character| character.is_ascii_uppercase());
+    let (first, second) = (first.trim(), second.trim());
+    (is_code(first) && is_code(second)).then(|| (first.to_owned(), second.to_owned()))
 }
 
 /// Removes optional recipient fields (`cc`, `bcc`) that repeat a required one, and an
@@ -1759,6 +1802,39 @@ mod tests {
             normalize_fields(&send_email_operation(), r#"{"subject": "S", "to": "a@b.test"}"#, &no_address_input, 2)
                 .unwrap_err();
         assert!(problem.contains("\"to\" is required"), "{problem}");
+    }
+
+    #[test]
+    fn a_pair_of_codes_in_a_field_for_one_code_keeps_the_one_it_names() {
+        let field = |name: &str, description: &str| OperationField {
+            name: name.to_owned(),
+            description: description.to_owned(),
+            field_type: FieldType::Text,
+            required: false,
+        };
+        let operation = OfferedOperation {
+            kind: "currency-rates.get_pair_rate".to_owned(),
+            plugin: "currency-rates".to_owned(),
+            title: "Exchange rate for a pair".to_owned(),
+            description: String::new(),
+            installed: true,
+            sends: false,
+            needs_setup: false,
+            fields: vec![
+                field("base", "Base currency, e.g. USD"),
+                field("quote", "Quote currency, e.g. IDR"),
+                field("note", "Free text, e.g. A/B testing"),
+            ],
+        };
+        let plan = sending_plan();
+        // What gpt-4o-mini wrote for `get_latest_rates`.
+        let fields = normalize_fields(&operation, r#"{"base": "USD/IDR"}"#, &plan, 0).unwrap();
+        assert_eq!(fields["base"], json!("USD"));
+        let fields = normalize_fields(&operation, r#"{"base": "USD to IDR", "quote": "USD/IDR"}"#, &plan, 0).unwrap();
+        assert_eq!((&fields["base"], &fields["quote"]), (&json!("USD"), &json!("IDR")));
+        // Text that is not a pair of codes, and a field without a code example, stay as written.
+        let fields = normalize_fields(&operation, r#"{"base": "usd/idr", "note": "EU/US"}"#, &plan, 0).unwrap();
+        assert_eq!((&fields["base"], &fields["note"]), (&json!("usd/idr"), &json!("EU/US")));
     }
 
     #[test]
