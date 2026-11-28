@@ -985,7 +985,9 @@ async fn a_tool_given_a_path_that_does_not_exist_says_which_files_do() {
     let resized = tools.get(IMAGE_PROVIDER).unwrap().call("resize", arguments, ToolCallContext::empty()).await.unwrap();
     assert!(!resized.is_error, "{}", resized.text);
     assert!(
-        resized.text.starts_with("`photos/cat.jpg` does not exist, so the only such file, `uploads/poster.png`, was used."),
+        resized
+            .text
+            .starts_with("`photos/cat.jpg` does not exist, so the only such file, `uploads/poster.png`, was used."),
         "{}",
         resized.text
     );
