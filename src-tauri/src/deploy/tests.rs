@@ -565,6 +565,10 @@ esac"#,
         "v2 still exists on the provider: the next label is v3"
     );
 
+    let labels: Vec<String> =
+        harness.service.history(&harness.agent.id).unwrap().into_iter().map(|entry| entry.label).collect();
+    assert_eq!(labels, ["v1", "v2", "v3"], "the release 2 version stays one to go back to");
+
     assert_eq!(harness.service.manage(&harness.agent.id, ManageAction::Remove).await.unwrap(), None);
     assert_eq!(harness.db.get_deployment(&harness.agent.id).unwrap(), None);
     assert_eq!(harness.credentials.read_deploy_secret(&format!("key:{}", harness.agent.id)).unwrap(), None);
@@ -912,6 +916,19 @@ fn a_released_chatbot_setup_goes_into_the_agent_file_and_going_back_takes_it_out
 
 // ---- the chat page, the phone page and paired phones ----
 
+#[test]
+fn the_chat_page_shows_the_name_customers_see() {
+    let harness = harness(FLOW);
+    assert_eq!(harness.service.chat_title(&harness.agent).unwrap().as_deref(), Some("Menu questions chatbot"));
+    let mut settings = crate::chatbot_setup::get_chatbot_setup(&harness.db, &harness.agent.id, &|_| Default::default())
+        .unwrap()
+        .settings;
+    settings.persona.display_name = "Admin Toko Kue".into();
+    crate::chatbot_setup::save_chatbot_settings(&harness.db, &harness.agent.id, settings, &|_| Default::default())
+        .unwrap();
+    assert_eq!(harness.service.chat_title(&harness.agent).unwrap().as_deref(), Some("Admin Toko Kue"));
+}
+
 fn chat_and_phone() -> OnlineFeatures {
     OnlineFeatures {
         chat: true,
@@ -995,8 +1012,8 @@ async fn the_chat_and_phone_choices_become_flags_are_remembered_and_survive_a_ne
     let deploy_line = calls.lines().next().unwrap();
     assert!(
         deploy_line.contains(
-            "--chat --chat-access guests --cors-origin https://www.toko-kue.example --monitor \
-             --push mailto:ana@example.com --expire-approvals --json"
+            "--chat --chat-access guests --chat-title Menu questions chatbot --cors-origin \
+             https://www.toko-kue.example --monitor --push mailto:ana@example.com --expire-approvals --json"
         ),
         "{deploy_line}"
     );

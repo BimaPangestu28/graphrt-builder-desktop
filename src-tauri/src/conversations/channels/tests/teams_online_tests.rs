@@ -192,10 +192,10 @@ async fn the_setup_step_checks_the_values_with_microsoft_and_keeps_them_in_the_c
 fn teams_goes_online_as_a_channel_with_its_values_as_secrets() {
     let features = OnlineFeatures { teams: true, ..OnlineFeatures::default() };
     assert!(features.any() && features.needs_storage());
-    let arguments = features.deploy_arguments();
+    let arguments = features.deploy_arguments(None);
     assert!(arguments.windows(2).any(|pair| pair == ["--channel", "teams"]), "{arguments:?}");
     let both = OnlineFeatures { teams: true, whatsapp: true, ..OnlineFeatures::default() };
-    let instructions = own_server_instructions("toko-kue", &both, &[]);
+    let instructions = own_server_instructions("toko-kue", &both, &[], None);
     assert!(
         instructions.command.contains("--channel whatsapp=toko-kue --channel teams=toko-kue"),
         "{}",

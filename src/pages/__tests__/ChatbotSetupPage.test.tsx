@@ -3,6 +3,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { resetSampleAgents, sampleAgentsBackend } from '@/api/sampleBackend/agents'
 import { resetSampleChatbotSetups, sampleChatbotSetupBackend } from '@/api/sampleBackend/chatbotSetup'
 import { resetSampleConversations, sampleConversationsBackend } from '@/api/sampleBackend/conversations'
+import { noOnlineFeatures } from '@/api/deployTypes'
 import { resetSampleDeploy, seedSampleDeployment } from '@/api/sampleBackend/deploy'
 import { resetSampleKnowledge } from '@/api/sampleBackend/knowledge'
 import { resetSampleTrustedHosts } from '@/api/sampleBackend/trustedHosts'
@@ -57,6 +58,15 @@ describe('ChatbotSetupPage', () => {
     renderChatbotSetup()
     expect(await screen.findByText('Online')).toBeInTheDocument()
     expect(screen.queryByText('Live')).not.toBeInTheDocument()
+    expect(screen.getByText('Needs a server')).toBeInTheDocument()
+  })
+
+  it('says the website bubble is on when the online copy has its chat page', async () => {
+    seedSampleDeployment('catering-assistant', {}, false, { ...noOnlineFeatures, chat: true })
+    renderChatbotSetup()
+    expect(await screen.findByText(/customers chat on its online chat page/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Get the link' })).toHaveAttribute('href', '/agents/catering-assistant/steps')
+    expect(screen.queryByText('Needs a server')).not.toBeInTheDocument()
   })
 
   it('pauses and goes live through the agent status', async () => {
@@ -106,6 +116,8 @@ describe('ChatbotSetupPage', () => {
     expect((await sampleChatbotSetupBackend.getChatbotSetup('catering-assistant')).settings.knowledgeBaseIds).toEqual([])
 
     fireEvent.click(screen.getByRole('button', { name: 'Add a knowledge base' }))
+    // The picker sits inside the setup form: a form inside it made "Use it" submit the setup instead.
+    expect(document.querySelectorAll('form form')).toHaveLength(0)
     fireEvent.change(screen.getByLabelText('Knowledge base'), { target: { value: 'past-orders' } })
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Use it' }))

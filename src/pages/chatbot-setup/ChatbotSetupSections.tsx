@@ -57,6 +57,8 @@ interface ChannelsSectionProps {
   channels: ChatbotChannel[]
   disabledChannels: string[]
   onToggle: (channelId: string, isEnabled: boolean) => void
+  /** Its online copy serves a chat page, so the website bubble already works. */
+  hasOnlineChatPage?: boolean
 }
 
 /** The connect step (screen 05) with this channel's card chosen. */
@@ -100,7 +102,7 @@ function ChannelRow({ agentId, channel, isEnabled, onToggle }: ChannelRowProps) 
   )
 }
 
-export function ChannelsSection({ agentId, channels, disabledChannels, onToggle }: ChannelsSectionProps) {
+export function ChannelsSection({ agentId, channels, disabledChannels, onToggle, hasOnlineChatPage = false }: ChannelsSectionProps) {
   return (
     <section aria-labelledby="c-h" className="flex flex-col gap-3">
       <SectionHeading id="c-h">{messages().chatbot.whereItAnswers}</SectionHeading>
@@ -117,9 +119,20 @@ export function ChannelsSection({ agentId, channels, disabledChannels, onToggle 
         <div className={listRowClassNames}>
           <span className="flex flex-auto flex-col">
             <span className="font-medium">{messages().chatbot.websiteChatBubble}</span>
-            <span className="text-[12px] text-muted">{messages().chatbot.worksWhenGraphrtRunsOnA}</span>
+            <span className="text-[12px] text-muted">
+              {hasOnlineChatPage ? messages().chatbot.onItsOnlineChatPage : messages().chatbot.worksWhenGraphrtRunsOnA}
+            </span>
           </span>
-          <span className="shrink-0 rounded-full bg-selected px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap text-ink-2">{messages().chatbot.needsAServer}</span>
+          {hasOnlineChatPage ? (
+            <Link
+              to={agentPath('builder', agentId)}
+              className="inline-flex h-8 shrink-0 items-center rounded-lg border border-line-strong bg-surface px-3 text-[13px] font-medium no-underline !text-ink hover:bg-subtle"
+            >
+              {messages().chatbot.getTheLink}
+            </Link>
+          ) : (
+            <span className="shrink-0 rounded-full bg-selected px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap text-ink-2">{messages().chatbot.needsAServer}</span>
+          )}
         </div>
       </div>
     </section>
