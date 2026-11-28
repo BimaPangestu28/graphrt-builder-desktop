@@ -47,6 +47,9 @@ pub struct HttpRequest {
     pub bearer: Option<String>,
     /// A JSON body.
     pub body: Option<serde_json::Value>,
+    /// A form body (`application/x-www-form-urlencoded`), e.g. an OAuth token request.
+    /// Used instead of `body` when set.
+    pub form: Option<Vec<(String, String)>>,
 }
 
 impl std::fmt::Debug for HttpRequest {
@@ -66,7 +69,7 @@ pub trait DeployHttp: Send + Sync + std::fmt::Debug {
 
     /// `GET url` with an optional bearer token.
     fn get(&self, url: String, bearer: Option<String>) -> BoxFuture<'_, AppResult<HttpReply>> {
-        self.send(HttpRequest { method: HttpMethod::Get, url, bearer, body: None })
+        self.send(HttpRequest { method: HttpMethod::Get, url, bearer, body: None, form: None })
     }
 }
 
@@ -125,7 +128,7 @@ impl ReqwestDeployHttp {
 impl DeployHttp for ReqwestDeployHttp {
     fn send(&self, request: HttpRequest) -> BoxFuture<'_, AppResult<HttpReply>> {
         Box::pin(async move {
-            let HttpRequest { method, url, bearer, body } = request;
+            let HttpRequest { method, url, bearer, body, form } = request;
             let mut request = match method {
                 HttpMethod::Get => self.client.get(&url),
                 HttpMethod::Post => self.client.post(&url),
@@ -134,7 +137,15 @@ impl DeployHttp for ReqwestDeployHttp {
             if let Some(token) = bearer {
                 request = request.bearer_auth(token);
             }
-            if let Some(body) = body {
+            if let Some(fields) = form {
+                let mut encoded = url::form_urlencoded::Serializer::new(String::new());
+                for (name, value) in &fields {
+                    encoded.append_pair(name, value);
+                }
+                request = request
+                    .header(reqwest::header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                    .body(encoded.finish());
+            } else if let Some(body) = body {
                 request = request.header(reqwest::header::CONTENT_TYPE, "application/json").body(body.to_string());
             }
             let host = reqwest::Url::parse(&url).ok().and_then(|parsed| parsed.host_str().map(str::to_owned));
@@ -163,7 +174,14 @@ pub struct HealthCheck {
 
 /// `GET <url>/healthz`: healthy on 2xx.
 pub async fn check_health(http: &dyn DeployHttp, base_url: &str) -> HealthCheck {
-    match http.get(join_url(base_url, "healthz"), None).await {
+    check_health_at(http, base_url, "healthz").await
+}
+
+/// `GET <url>/<path>`: healthy on 2xx. Cloud Run answers `/healthz` itself with a 404 (Google's
+/// front end keeps paths ending in `z` such as `/healthz`), so its online copies are asked at
+/// `/readyz`, which `graphrt serve` answers too.
+pub async fn check_health_at(http: &dyn DeployHttp, base_url: &str, path: &str) -> HealthCheck {
+    match http.get(join_url(base_url, path), None).await {
         Ok(reply) if (200..300).contains(&reply.status) => HealthCheck { healthy: true, message: "It answers".into() },
         Ok(reply) => HealthCheck { healthy: false, message: format!("It answered with an error ({})", reply.status) },
         Err(error) => HealthCheck { healthy: false, message: error.to_string() },
@@ -283,6 +301,11 @@ pub(crate) mod tests {
             self.requests.lock().unwrap().push((key.clone(), request.bearer));
             if let Some(body) = request.body {
                 self.bodies.lock().unwrap().push((key.clone(), body));
+            }
+            if let Some(form) = request.form {
+                let fields: serde_json::Map<String, serde_json::Value> =
+                    form.into_iter().map(|(name, value)| (name, serde_json::Value::String(value))).collect();
+                self.bodies.lock().unwrap().push((key.clone(), serde_json::Value::Object(fields)));
             }
             let reply = self.replies.lock().unwrap().get(&key).cloned();
             Box::pin(

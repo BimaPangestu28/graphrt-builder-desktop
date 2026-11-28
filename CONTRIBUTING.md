@@ -257,6 +257,20 @@ the updater artifacts. A new key pair comes from
 `pnpm tauri signer generate -w ~/.tauri/graphrt-updater.key`; replacing the
 public key in `tauri.conf.json` cuts off updates for every existing install.
 
+### Google sign in for Google Cloud (Put it online)
+
+"Put it online" signs people in to Google Cloud with the **Graphrt Desktop** OAuth client
+(type Desktop app, project `graphrt`). Its client id is in
+`src-tauri/src/deploy/google_cloud.rs`; its client secret is not a real secret for an
+installed app, but it stays out of the source and reaches the build as
+`GRAPHRT_GOOGLE_CLOUD_CLIENT_SECRET` (repository secret of the same name, passed by the
+Release workflow). A build without it says signing in to Google Cloud is not available.
+For a local build, export it from the client's JSON (never print it):
+`export GRAPHRT_GOOGLE_CLOUD_CLIENT_SECRET="$(jq -r .installed.client_secret <client>.json)"`.
+`GRAPHRT_GOOGLE_CLOUD_CLIENT_ID` replaces the built-in client id (another OAuth client).
+The consent screen asks for `cloud-platform`, a sensitive scope: until Google has verified the
+app, people see "Google hasn't verified this app" and at most 100 accounts can sign in.
+
 ### macOS signing and notarization
 
 The Release workflow attaches macOS only when it can sign and notarize it. That needs

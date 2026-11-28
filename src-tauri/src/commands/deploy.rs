@@ -8,6 +8,7 @@ use tauri::State;
 
 use crate::deploy::cli::ManageAction;
 use crate::deploy::compatibility::{CompatibilityFix, CompatibilityReport, WHATSAPP_CLOUD_PLUGIN};
+use crate::deploy::google_cloud::{self, ConsolePage, GoogleProject};
 use crate::deploy::online::{OnlineFeatures, OwnServerInstructions};
 use crate::deploy::phone::{DevicePairing, LiveFeatures, OnlineTarget, PairedDevice};
 use crate::deploy::providers::{DeployAccountInput, DeployProvider};
@@ -15,7 +16,7 @@ use crate::deploy::{
     CliInfo, DeployAccount, DeployOptions, DeployOutcome, DeployReview, DeployedVersion, DeploymentView, OnlineRuns,
     OwnServerView, RotatedApiKey,
 };
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::plugins::requirements::PluginRequirement;
 use crate::state::AppState;
 use crate::storage::models::Agent;
@@ -57,9 +58,42 @@ pub async fn connect_deploy_account(
     state.deploy.connect_account(&account).await
 }
 
+/// Forgets an online account (a Google sign in is also revoked at Google).
 #[tauri::command]
-pub fn disconnect_deploy_account(state: State<'_, AppState>, provider: DeployProvider) -> AppResult<()> {
-    state.deploy.disconnect_account(provider)
+pub async fn disconnect_deploy_account(state: State<'_, AppState>, provider: DeployProvider) -> AppResult<()> {
+    state.deploy.disconnect_account(provider).await
+}
+
+/// "Sign in with Google" for Google Cloud: opens the browser, waits for the sign in (at most
+/// five minutes) and keeps the sign in in the keychain.
+#[tauri::command]
+pub async fn sign_in_google_cloud(state: State<'_, AppState>) -> AppResult<DeployAccount> {
+    let open_browser = |url: &str| crate::crash_reports::sharing::open_in_browser(url).map_err(|e| e.to_string());
+    state.deploy.sign_in_google_cloud(&open_browser).await
+}
+
+/// The signed-in Google account's active projects, with whether billing is on.
+#[tauri::command]
+pub async fn list_google_cloud_projects(state: State<'_, AppState>) -> AppResult<Vec<GoogleProject>> {
+    state.deploy.google_cloud_projects().await
+}
+
+/// Opens a Google Cloud console page of a project (billing, permissions...) in the browser.
+#[tauri::command]
+pub fn open_google_cloud_page(page: ConsolePage, project: Option<String>) -> AppResult<()> {
+    crate::crash_reports::sharing::open_in_browser(&google_cloud::console_url(page, project.as_deref())?)
+}
+
+/// Opens the fix of a deploy problem (a Google Cloud console page the backend named).
+///
+/// # Errors
+/// `InvalidInput` for any other address.
+#[tauri::command]
+pub fn open_deploy_fix(url: String) -> AppResult<()> {
+    if !google_cloud::is_fix_url(&url) {
+        return Err(AppError::InvalidInput("this page cannot be opened from here".into()));
+    }
+    crate::crash_reports::sharing::open_in_browser(&url)
 }
 
 /// The contexts of a dropped kubeconfig, so the person can pick one before connecting.
@@ -243,7 +277,6 @@ pub async fn revoke_paired_device(
 pub enum DeployLink {
     FlyTokens,
     FlyPricing,
-    GoogleCloudKeys,
     AwsAccessKeys,
     AzureAppRegistrations,
 }
@@ -253,7 +286,6 @@ impl DeployLink {
         match self {
             Self::FlyTokens => "https://fly.io/user/personal_access_tokens",
             Self::FlyPricing => "https://fly.io/docs/about/pricing/",
-            Self::GoogleCloudKeys => "https://cloud.google.com/iam/docs/keys-create-delete",
             Self::AwsAccessKeys => "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html",
             Self::AzureAppRegistrations => {
                 "https://learn.microsoft.com/entra/identity-platform/quickstart-register-app"

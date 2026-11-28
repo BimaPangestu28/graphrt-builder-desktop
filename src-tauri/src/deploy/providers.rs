@@ -2,8 +2,10 @@
 //!
 //! Each provider's credential is validated here (pure functions, no network) and stored as one
 //! JSON value in the OS keychain (see `CredentialStore::set_deploy_account`); a short, non-secret
-//! summary ("service account graphrt@acme-agents") goes to the settings table so lists never read
-//! the keychain. Only Fly.io can deploy in this release; the others connect and wait for graphrt.
+//! summary ("Signed in as ana@acme.com") goes to the settings table so lists never read
+//! the keychain. Fly.io and Google Cloud (Cloud Run, with graphrt tools that know it) can
+//! deploy; the others connect and wait for graphrt. Google Cloud is signed in to with Google
+//! ([`super::google_cloud`]) instead of a form, so it has no [`DeployAccountInput`].
 
 use serde::{Deserialize, Serialize};
 
@@ -52,9 +54,14 @@ impl DeployProvider {
         }
     }
 
-    /// Whether the desktop can put agents online with it today (Phase 1: Fly.io only).
-    pub fn can_deploy(self) -> bool {
-        self == Self::Fly
+    /// Whether the desktop can put agents online with it, given what the graphrt tools can do.
+    /// A new provider gets a `--target` in graphrt first, then an ability here.
+    pub fn can_deploy(self, cli: super::cli::CliAbilities) -> bool {
+        match self {
+            Self::Fly => true,
+            Self::GoogleCloud => cli.cloud_run,
+            Self::Aws | Self::Azure | Self::Kubernetes => false,
+        }
     }
 }
 
@@ -64,9 +71,6 @@ impl DeployProvider {
 pub enum DeployAccountInput {
     Fly {
         access_token: String,
-    },
-    GoogleCloud {
-        key_file_path: String,
     },
     Aws {
         access_key_id: String,
@@ -93,7 +97,6 @@ impl DeployAccountInput {
     pub fn provider(&self) -> DeployProvider {
         match self {
             Self::Fly { .. } => DeployProvider::Fly,
-            Self::GoogleCloud { .. } => DeployProvider::GoogleCloud,
             Self::Aws { .. } => DeployProvider::Aws,
             Self::Azure { .. } => DeployProvider::Azure,
             Self::Kubernetes { .. } => DeployProvider::Kubernetes,
@@ -140,7 +143,6 @@ pub fn check_account(input: &DeployAccountInput) -> AppResult<CheckedAccount> {
     let provider = input.provider();
     let (secret, summary) = match input {
         DeployAccountInput::Fly { access_token } => check_fly_token(access_token)?,
-        DeployAccountInput::GoogleCloud { key_file_path } => check_google_key(&read_key_file(key_file_path)?)?,
         DeployAccountInput::Aws { access_key_id, secret_access_key, session_token } => {
             check_aws_keys(access_key_id, secret_access_key, session_token.as_deref())?
         }
@@ -172,25 +174,6 @@ pub fn check_fly_token(token: &str) -> AppResult<(serde_json::Value, String)> {
         return Err(invalid("This doesn't look like a Fly.io access key. Copy the whole key from the Tokens page"));
     }
     Ok((serde_json::json!({ "token": token }), "Access key saved".into()))
-}
-
-/// A Google Cloud service-account key file (`"type": "service_account"`).
-pub fn check_google_key(text: &str) -> AppResult<(serde_json::Value, String)> {
-    let key: serde_json::Value =
-        serde_json::from_str(text).map_err(|_| invalid("This file is not a Google Cloud key file (it is not JSON)"))?;
-    if key.get("type").and_then(serde_json::Value::as_str) != Some("service_account") {
-        return Err(invalid(
-            "This is not a service-account key file. Create a key for a service account and drop that file",
-        ));
-    }
-    let field = |name: &str| key.get(name).and_then(serde_json::Value::as_str).filter(|value| !value.trim().is_empty());
-    let (Some(client_email), Some(project_id), Some(_private_key)) =
-        (field("client_email"), field("project_id"), field("private_key"))
-    else {
-        return Err(invalid("This key file is missing its account, project or private key. Download a new key"));
-    };
-    let account = client_email.split_once(".iam.gserviceaccount.com").map_or(client_email, |(account, _)| account);
-    Ok((key.clone(), format!("Service account {account} · project {project_id}")))
 }
 
 /// An AWS access key id (`AKIA…` / `ASIA…`, 16–128 characters) and its secret.
@@ -325,24 +308,6 @@ mod tests {
     }
 
     #[test]
-    fn google_keys_must_be_service_accounts() {
-        let key = serde_json::json!({
-            "type": "service_account",
-            "project_id": "acme-agents",
-            "private_key": pem_block("PRIVATE KEY"),
-            "client_email": "graphrt@acme-agents.iam.gserviceaccount.com",
-        })
-        .to_string();
-        let key = key.as_str();
-        let (_, summary) = check_google_key(key).unwrap();
-        assert_eq!(summary, "Service account graphrt@acme-agents · project acme-agents");
-        let user_key = r#"{"type":"authorized_user","client_id":"x"}"#;
-        assert!(check_google_key(user_key).unwrap_err().to_string().contains("not a service-account key"));
-        assert!(check_google_key("not json").unwrap_err().to_string().contains("not JSON"));
-        assert!(check_google_key(r#"{"type":"service_account"}"#).is_err());
-    }
-
-    #[test]
     fn aws_keys_are_checked_and_masked() {
         let (secret, summary) = check_aws_keys("TESTACCESSKEYID00000", "test-secret-value-not-real", None).unwrap();
         assert_eq!(summary, "Access key TEST…0000");
@@ -397,9 +362,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(input.provider(), DeployProvider::Aws);
-        let input: DeployAccountInput =
-            serde_json::from_value(serde_json::json!({ "provider": "google_cloud", "keyFilePath": "/k.json" }))
-                .unwrap();
-        assert_eq!(input, DeployAccountInput::GoogleCloud { key_file_path: "/k.json".into() });
+        // Google Cloud is signed in to with Google, never with a form.
+        assert!(serde_json::from_value::<DeployAccountInput>(
+            serde_json::json!({ "provider": "google_cloud", "keyFilePath": "/k.json" })
+        )
+        .is_err());
     }
 }

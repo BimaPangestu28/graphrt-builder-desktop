@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { cancelDeploy, checkDeployCompatibility, deployAgent, getAgentDeployment, getDeployReview, listDeployAccounts, listOwnServers, subscribeToDeployEvents } from '@/api/deploy'
-import type { CompatibilityReport, DeployAccount, DeployOutcome, DeployProvider, DeployReview } from '@/api/deployTypes'
+import type { CompatibilityReport, DeployAccount, DeployOutcome, DeployProblem, DeployProvider, DeployReview } from '@/api/deployTypes'
 import { AppShell, PageFrame, PageTitleBlock } from '@/components/layout'
 import { Button, Icon, joinClassNames } from '@/components/ui'
 import { isBackendErrorWithCode } from '@/api/client'
@@ -10,6 +10,7 @@ import { agentPath, sampleAgentId } from '@/routes'
 import { CompatibilityChecklist } from './deploy/CompatibilityChecklist'
 import { applyDeployEvent, plainErrorMessage, type StepStates } from './deploy/deployDisplay'
 import { DeployDoneView, DeployProgressView } from './deploy/DeployProgress'
+import { deployProblemOf } from './deploy/googleCloud'
 import { ProviderList } from './deploy/ProviderList'
 import { ReviewStep, type DeployChoice } from './deploy/ReviewStep'
 import { WhereStep, type RunPlace } from './deploy/WhereStep'
@@ -61,6 +62,7 @@ function useDeployRun(agentId: string) {
   const [stepStates, setStepStates] = useState<StepStates>({})
   const [logLines, setLogLines] = useState<string[]>([])
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [problem, setProblem] = useState<DeployProblem | null>(null)
   const [outcome, setOutcome] = useState<DeployOutcome | null>(null)
   const [isCancelling, setIsCancelling] = useState(false)
 
@@ -82,18 +84,20 @@ function useDeployRun(agentId: string) {
   }, [agentId])
 
   const start = useCallback(
-    async (provider: DeployProvider, { mode, area, image, features }: DeployChoice) => {
+    async (provider: DeployProvider, { mode, area, image, features, cloudPlace }: DeployChoice) => {
       setStepStates({})
       setLogLines([])
       setErrorMessage(null)
+      setProblem(null)
       setOutcome(null)
       setIsCancelling(false)
       try {
-        const result = await deployAgent(agentId, { provider, mode, area, image, features })
+        const result = await deployAgent(agentId, { provider, mode, area, image, features, cloudPlace })
         setOutcome(result)
         return true
       } catch (error) {
         setErrorMessage(plainErrorMessage(error))
+        setProblem(deployProblemOf(error))
         return false
       }
     },
@@ -105,7 +109,7 @@ function useDeployRun(agentId: string) {
     await cancelDeploy(agentId)
   }, [agentId])
 
-  return { stepStates, logLines, errorMessage, outcome, isCancelling, start, cancel }
+  return { stepStates, logLines, errorMessage, problem, outcome, isCancelling, start, cancel }
 }
 
 /**
@@ -243,6 +247,7 @@ export function PutOnlinePage() {
             stepStates={deployRun.stepStates}
             logLines={deployRun.logLines}
             errorMessage={deployRun.errorMessage}
+            problem={deployRun.problem}
             isCancelling={deployRun.isCancelling}
             onCancel={() => void deployRun.cancel()}
             onRetry={() => (lastChoice.current ? void confirm(lastChoice.current) : setScreen('review'))}

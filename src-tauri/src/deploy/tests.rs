@@ -112,6 +112,7 @@ fn fly_options() -> DeployOptions {
         area: ServerArea::Asia,
         image: None,
         features: OnlineFeatures::default(),
+        cloud_place: None,
     }
 }
 
@@ -182,7 +183,7 @@ async fn accounts_are_checked_stored_in_the_keychain_and_forgotten() {
         .await;
     assert!(refused.unwrap_err().to_string().contains("didn't accept"));
 
-    harness.service.disconnect_account(DeployProvider::Fly).unwrap();
+    harness.service.disconnect_account(DeployProvider::Fly).await.unwrap();
     assert_eq!(harness.credentials.read_deploy_secret("account:fly").unwrap(), None);
     assert!(!harness.service.list_accounts().unwrap()[0].connected);
 }
@@ -201,6 +202,126 @@ fn compatibility_and_the_model_fix_make_a_new_version() {
     let after = harness.service.check_compatibility(&agent, &[], false).unwrap();
     assert!(after.ready, "{:?}", after.items);
     assert!(harness.service.apply_model_fix(&agent.id, &CompatibilityFix::SwitchWhatsAppToCloud).is_err());
+}
+
+#[test]
+fn release_numbers_are_compared_as_numbers() {
+    assert!(release_at_least("0.6.4", (0, 6, 4)));
+    assert!(release_at_least("v0.10.0-rc.1", (0, 6, 4)));
+    assert!(!release_at_least("0.6.3", (0, 6, 4)));
+    assert!(!release_at_least("unreleased", (0, 6, 4)));
+}
+
+#[cfg(unix)]
+fn google_place(project: &str) -> CloudPlace {
+    CloudPlace { project: project.into(), region: "asia-southeast2".into() }
+}
+
+#[cfg(unix)]
+fn google_options(place: Option<CloudPlace>) -> DeployOptions {
+    DeployOptions { provider: DeployProvider::GoogleCloud, cloud_place: place, ..fly_options() }
+}
+
+/// A fake `graphrt` that knows Cloud Run, records its calls and fails with `billing_disabled`
+/// while `{folder}/no-billing` exists.
+#[cfg(unix)]
+fn cloud_run_script(folder: &std::path::Path) -> String {
+    format!(
+        r#"echo "ARGS $*" >> "{record}"
+echo "ENV TOKEN=$GOOGLE_OAUTH_ACCESS_TOKEN FLY=$FLY_API_TOKEN CREDS=$GOOGLE_APPLICATION_CREDENTIALS" >> "{record}"
+case "$2" in
+  --help) echo "  --project <PROJECT>  Direct, Cloud Run: Google Cloud project id [default: \$GOOGLE_CLOUD_PROJECT]" ;;
+  pause) echo '{{"type":"result","action":"pause","app":"menu","url":"https://menu-abc-et.a.run.app","status":"paused","changed":true}}' ;;
+  remove) echo '{{"type":"result","action":"remove","app":"menu","removed":true,"secrets_deleted":["menu-graphrt-api-key"],"bucket_deleted":true,"service_account_deleted":true}}' ;;
+  list-versions) echo '{{"type":"result","action":"list-versions","app":"menu","url":"https://menu-abc-et.a.run.app","current_version":"v1","versions":[{{"label":"v1","deployed_at":"2026-11-28T10:00:00Z","current":true,"revision":"menu-00001-abc","mode":"scale-to-zero","workflow":"agent","state":"serving"}}],"project":"graphrt","region":"asia-southeast2"}}' ;;
+  *)
+    if [ -f "{no_billing}" ]; then
+      echo '{{"type":"error","code":"billing_disabled","message":"could not create the bucket: project graphrt has no active billing account. Link one at https://console.cloud.google.com/billing/linkedaccount?project=graphrt, then deploy again"}}'
+      exit 1
+    fi
+    echo '{{"type":"step","step":"preparing","status":"done","message":"Preparing"}}'
+    echo '{{"type":"result","action":"deploy","url":"https://menu-abc-et.a.run.app","version":"v1","app":"menu","workflow":"agent","api_key":"grk_once","serve":{{}},"store":null,"project":"graphrt","region":"asia-southeast2","image":"ghcr.io/graphrt/graphrt:0.6.4"}}'
+    ;;
+esac"#,
+        record = folder.join("calls.txt").display(),
+        no_billing = folder.join("no-billing").display(),
+    )
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn puts_an_agent_on_cloud_run_with_the_signed_in_google_account() {
+    let mut harness = harness(FLOW);
+    let folder = tempfile::tempdir().unwrap();
+    harness.service = harness.service.with_cli_executable(fake_cli(folder.path(), &cloud_run_script(folder.path())));
+    harness.credentials.set_api_key(ModelProvider::Openai, "sk-openai-secret").unwrap();
+    let agent_id = harness.agent.id.clone();
+
+    let not_signed_in =
+        harness.service.deploy(&agent_id, google_options(Some(google_place("graphrt"))), &[], &ready_report()).await;
+    assert!(
+        matches!(not_signed_in, Err(AppError::DeployFailed(ref problem)) if problem.fix == Some(google_cloud::DeployFix::SignInAgain))
+    );
+    harness.service.sign_in_google_for_test("ana@example.com", "ya29.test-token").await;
+    let accounts = harness.service.list_accounts().unwrap();
+    let google = accounts.iter().find(|account| account.provider == DeployProvider::GoogleCloud).unwrap();
+    assert!(google.connected && google.can_deploy, "{google:?}");
+    assert_eq!(google.summary.as_deref(), Some("Signed in as ana@example.com"));
+    let no_place = harness.service.deploy(&agent_id, google_options(None), &[], &ready_report()).await.unwrap_err();
+    assert!(no_place.to_string().contains("Pick a Google Cloud project"), "{no_place}");
+
+    std::fs::write(folder.path().join("no-billing"), "").unwrap();
+    let refused = harness
+        .service
+        .deploy(&agent_id, google_options(Some(google_place("graphrt"))), &[], &ready_report())
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code(), "deploy_failed");
+    let details = refused.details().unwrap();
+    assert_eq!(details["kind"], "billing_disabled");
+    assert_eq!(details["fix"]["url"], "https://console.cloud.google.com/billing/linkedaccount?project=graphrt");
+    assert!(refused.to_string().contains("no billing account"), "{refused}");
+    std::fs::remove_file(folder.path().join("no-billing")).unwrap();
+
+    let outcome = harness
+        .service
+        .deploy(&agent_id, google_options(Some(google_place("graphrt"))), &[], &ready_report())
+        .await
+        .unwrap();
+    assert_eq!(outcome.api_key.as_deref(), Some("grk_once"));
+    assert_eq!(outcome.view.deployment.url.as_deref(), Some("https://menu-abc-et.a.run.app"));
+    assert_eq!(outcome.view.place, Some(google_place("graphrt")));
+    assert_eq!(outcome.view.area, None, "Fly.io areas say nothing about Cloud Run");
+    let calls = std::fs::read_to_string(folder.path().join("calls.txt")).unwrap();
+    let deploy_line = calls.lines().rfind(|line| line.starts_with("ARGS deploy --target")).unwrap();
+    assert!(deploy_line.contains("--target cloud-run --direct"), "{deploy_line}");
+    assert!(deploy_line.contains("--project graphrt --region asia-southeast2"), "{deploy_line}");
+    assert!(deploy_line.contains("--secret OPENAI_API_KEY"));
+    assert!(calls.contains("ENV TOKEN=ya29.test-token FLY= CREDS="), "only the access token: {calls}");
+    assert!(!calls.lines().filter(|line| line.starts_with("ARGS")).any(|line| line.contains("ya29")));
+
+    let review = harness.service.review(&harness.agent, &[], DeployProvider::GoogleCloud).unwrap();
+    assert_eq!(review.cloud_place, Some(google_place("graphrt")));
+    let moved = harness
+        .service
+        .deploy(&agent_id, google_options(Some(google_place("other-project"))), &[], &ready_report())
+        .await
+        .unwrap_err();
+    assert!(matches!(moved, AppError::Conflict(ref message) if message.contains("Take it offline first")), "{moved}");
+    let to_fly = harness.service.deploy(&agent_id, fly_options(), &[], &ready_report()).await.unwrap_err();
+    assert!(to_fly.to_string().contains("online with Google Cloud"), "{to_fly}");
+
+    let paused = harness.service.manage(&agent_id, ManageAction::Pause).await.unwrap().unwrap();
+    assert_eq!(paused.deployment.status, DeploymentStatus::Paused);
+    let versions = harness.service.list_versions(&agent_id).await.unwrap();
+    assert_eq!(versions.iter().map(|version| version.label.as_str()).collect::<Vec<_>>(), ["v1"]);
+    let calls = std::fs::read_to_string(folder.path().join("calls.txt")).unwrap();
+    let pause_line = calls.lines().find(|line| line.starts_with("ARGS deploy pause")).unwrap();
+    assert!(pause_line.contains("--project graphrt --region asia-southeast2 --json"), "{pause_line}");
+
+    assert_eq!(harness.service.manage(&agent_id, ManageAction::Remove).await.unwrap(), None);
+    let project = harness.db.get_agent_setting(&agent_id, DEPLOY_PROJECT_KEY).unwrap();
+    assert!(project.is_none_or(|value| value.is_null()), "the project is forgotten with the deployment");
 }
 
 #[tokio::test]

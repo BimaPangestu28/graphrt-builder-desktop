@@ -1,8 +1,9 @@
-//! "Put it online": running an agent with an online provider (Fly.io today) or on a server an
-//! IT team runs, from the desktop.
+//! "Put it online": running an agent with an online provider (Fly.io, Google Cloud Run) or on a
+//! server an IT team runs, from the desktop.
 //!
 //! - [`cli_release`]: the pinned graphrt CLI, downloaded on demand with the user's OK
 //! - [`providers`]: online accounts and checking their credentials (stored in the keychain)
+//! - [`google_cloud`]: signing in with Google, projects and regions, Cloud Run's refusals
 //! - [`compatibility`]: what must change before an agent can run online, with one-click fixes
 //! - [`plan`]: the keys an online copy needs, by friendly name
 //! - [`cli`]: `graphrt deploy` with secrets passed only as environment variables
@@ -22,6 +23,7 @@ pub mod cli_release;
 pub mod compatibility;
 pub mod contract;
 pub mod fixes;
+pub mod google_cloud;
 pub mod http;
 #[cfg(test)]
 mod live_check;
@@ -40,8 +42,9 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
-use self::cli::{CliEvent, CliLine, DeployRequest, DeployStep, ManageAction, StepStatus};
+use self::cli::{CliEvent, CliLine, DeployRequest, DeployStep, ManageAction, ManagePlace, StepStatus};
 use self::compatibility::{CompatibilityFacts, CompatibilityFix, CompatibilityReport, KeyFacts, PluginFacts};
+use self::google_cloud::{CloudPlace, GoogleProject, GoogleSignIn};
 use self::http::{CloudRun, DeployHttp, HealthCheck};
 use self::online::{OnlineFeatures, OwnServerInstructions, ONLINE_FEATURES_KEY};
 use self::phone::OnlineTarget;
@@ -62,6 +65,13 @@ pub const DEPLOY_EVENT: &str = "deploy-event";
 const DEPLOY_HISTORY_KEY: &str = "deploy_history";
 /// `agent_settings` key of the `--image` an agent was deployed with (Advanced; absent: default).
 const DEPLOY_IMAGE_KEY: &str = "deploy_image";
+/// `agent_settings` key of the Google Cloud project an agent is online in (its region is the
+/// deployment's `region`).
+const DEPLOY_PROJECT_KEY: &str = "deploy_project";
+/// The first graphrt release whose tools put agents on Google Cloud Run directly. Until the
+/// tools are installed, whether Google Cloud can be picked is told from the pinned release;
+/// once they are, from the tools themselves (`graphrt deploy --help`).
+const FIRST_CLOUD_RUN_RELEASE: (u64, u64, u64) = (0, 6, 4);
 /// Longest `--image` reference accepted.
 const MAX_IMAGE_REFERENCE_CHARS: usize = 255;
 /// Why online deploy cannot be used in this app build (no graphrt release is pinned).
@@ -118,6 +128,16 @@ impl ServerArea {
     pub fn from_fly_region(region: &str) -> Option<Self> {
         [Self::Asia, Self::Europe, Self::Us].into_iter().find(|area| area.fly_region() == region)
     }
+}
+
+/// Whether `version` (`0.6.4`, `v0.7.0-rc.1`) is `minimum` or later.
+fn release_at_least(version: &str, minimum: (u64, u64, u64)) -> bool {
+    let mut numbers = version.trim_start_matches('v').split(['.', '-', '+']).map(|part| part.parse::<u64>().ok());
+    let (Some(Some(major)), Some(Some(minor)), Some(Some(patch))) = (numbers.next(), numbers.next(), numbers.next())
+    else {
+        return false;
+    };
+    (major, minor, patch) >= minimum
 }
 
 /// Whether the graphrt tools can be used.
@@ -206,6 +226,8 @@ pub struct DeployReview {
     pub image: Option<String>,
     /// The chat page and phone page choices of the online copy (all off before the first deploy).
     pub features: OnlineFeatures,
+    /// Google Cloud: the project and region it is (or was last) online in.
+    pub cloud_place: Option<CloudPlace>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -220,6 +242,9 @@ pub struct DeployOptions {
     /// The chat page, the phone page and what goes with them. Absent: all off.
     #[serde(default)]
     pub features: OnlineFeatures,
+    /// Google Cloud: the project and region (required there, ignored elsewhere).
+    #[serde(default)]
+    pub cloud_place: Option<CloudPlace>,
 }
 
 /// The agent's online state for the builder.
@@ -236,6 +261,8 @@ pub struct DeploymentView {
     pub has_api_key: bool,
     /// What the online copy was last put online with: chat page, phone page...
     pub features: OnlineFeatures,
+    /// Google Cloud: the project and region it is online in.
+    pub place: Option<CloudPlace>,
 }
 
 /// A finished deploy. `api_key` is the only time the key leaves the backend: set on the first
@@ -323,6 +350,8 @@ pub struct DeployService {
     running_deploys: Mutex<HashMap<String, Arc<tokio::sync::Notify>>>,
     /// Whether each graphrt executable asked so far knows the chat and phone flags.
     cli_features: Mutex<HashMap<PathBuf, cli::CliAbilities>>,
+    /// The Google Cloud access token, refreshed before it runs out.
+    google_token: google_cloud::TokenCache,
 }
 
 impl std::fmt::Debug for DeployService {
@@ -402,7 +431,17 @@ impl DeployService {
             installing: std::sync::atomic::AtomicBool::new(false),
             running_deploys: Mutex::new(HashMap::new()),
             cli_features: Mutex::new(HashMap::new()),
+            google_token: google_cloud::TokenCache::default(),
         }
+    }
+
+    /// Tests: a signed-in Google account with a fresh access token (no network; used by the
+    /// Unix-only fake-CLI tests).
+    #[cfg(all(test, unix))]
+    pub(crate) async fn sign_in_google_for_test(&self, email: &str, access_token: &str) {
+        let sign_in = GoogleSignIn::new("1//test-refresh".into(), Some(email.into()));
+        self.save_google_sign_in(&sign_in).unwrap();
+        self.google_token.set(Some(google_cloud::CachedToken::for_test(access_token, Duration::from_secs(3000)))).await;
     }
 
     /// Tests: run this executable as `graphrt` (the fake CLIs are shell scripts, so Unix only).
@@ -440,6 +479,24 @@ impl DeployService {
             cache.insert(executable, abilities);
         }
         abilities
+    }
+
+    /// What the graphrt tools can put online, for choosing a provider: asked from the installed
+    /// tools, or (before they are downloaded) told from the pinned release.
+    fn provider_abilities(&self) -> cli::CliAbilities {
+        if self.installed_cli().is_some() {
+            return self.cli_abilities();
+        }
+        cli::CliAbilities {
+            cloud_run: cli_release::GRAPHRT_CLI_VERSION
+                .is_some_and(|version| release_at_least(version, FIRST_CLOUD_RUN_RELEASE)),
+            ..cli::CliAbilities::default()
+        }
+    }
+
+    /// Whether agents can be put online with `provider` with these graphrt tools.
+    pub fn can_deploy_with(&self, provider: DeployProvider) -> bool {
+        provider.can_deploy(self.provider_abilities())
     }
 
     /// Whether the installed graphrt tools can put a chatbot online with WhatsApp Business.
@@ -582,7 +639,7 @@ impl DeployService {
                     display_name: provider.display_name().to_owned(),
                     connected: summary.is_some(),
                     summary,
-                    can_deploy: provider.can_deploy(),
+                    can_deploy: self.can_deploy_with(provider),
                     used_by_agents: deployments
                         .iter()
                         .filter(|deployment| deployment.provider == provider)
@@ -612,16 +669,78 @@ impl DeployService {
             .ok_or_else(|| AppError::Internal("the account was not saved".into()))
     }
 
-    /// Forgets the account's key. Agents already online stay online.
-    pub fn disconnect_account(&self, provider: DeployProvider) -> AppResult<()> {
+    /// Forgets the account's key (a Google sign in is also revoked at Google). Agents already
+    /// online stay online.
+    pub async fn disconnect_account(&self, provider: DeployProvider) -> AppResult<()> {
+        if provider == DeployProvider::GoogleCloud {
+            let stored = self.credentials.read_deploy_secret(&Self::account_secret_name(provider))?;
+            if let Some(sign_in) = stored.as_deref().and_then(GoogleSignIn::from_stored) {
+                google_cloud::revoke(self.http.as_ref(), &sign_in.refresh_token).await;
+            }
+            self.google_token.set(None).await;
+        }
         self.credentials.delete_deploy_secret(&Self::account_secret_name(provider))?;
         let key = format!("{ACCOUNT_SUMMARY_SETTING_PREFIX}{}", provider.key());
         self.db.lock()?.execute("DELETE FROM settings WHERE key = ?1", [key])?;
         Ok(())
     }
 
+    /// "Sign in with Google": the browser sign in, then the refresh token goes to the keychain.
+    ///
+    /// # Errors
+    /// `InvalidInput` when this build cannot sign in to Google, or the person cancelled.
+    pub async fn sign_in_google_cloud(
+        &self,
+        open_browser: &(dyn Fn(&str) -> Result<(), String> + Send + Sync),
+    ) -> AppResult<DeployAccount> {
+        let (sign_in, token) =
+            google_cloud::sign_in(self.http.as_ref(), open_browser, google_cloud::SIGN_IN_TIMEOUT).await?;
+        self.save_google_sign_in(&sign_in)?;
+        self.google_token.set(Some(token)).await;
+        log::info!("signed in to Google Cloud");
+        self.list_accounts()?
+            .into_iter()
+            .find(|account| account.provider == DeployProvider::GoogleCloud)
+            .ok_or_else(|| AppError::Internal("the account was not saved".into()))
+    }
+
+    fn save_google_sign_in(&self, sign_in: &GoogleSignIn) -> AppResult<()> {
+        let provider = DeployProvider::GoogleCloud;
+        self.credentials.set_deploy_secret(&Self::account_secret_name(provider), &serde_json::to_string(sign_in)?)?;
+        self.db.set_setting(&format!("{ACCOUNT_SUMMARY_SETTING_PREFIX}{}", provider.key()), &sign_in.summary())
+    }
+
+    /// The saved Google sign in; "sign in again" when there is none (or an old key file).
+    fn google_sign_in(&self) -> AppResult<GoogleSignIn> {
+        let stored = self.credentials.read_deploy_secret(&Self::account_secret_name(DeployProvider::GoogleCloud))?;
+        stored
+            .as_deref()
+            .and_then(GoogleSignIn::from_stored)
+            .ok_or_else(|| google_cloud::sign_in_again_error("no Google sign in is saved"))
+    }
+
+    /// A fresh access token of the signed-in Google account.
+    async fn google_access_token(&self) -> AppResult<String> {
+        let sign_in = self.google_sign_in()?;
+        self.google_token.access_token(self.http.as_ref(), &sign_in).await
+    }
+
+    /// The signed-in account's active projects, billing on first.
+    ///
+    /// # Errors
+    /// "Sign in again" when the sign in is gone; `Internal` when Google cannot be read.
+    pub async fn google_cloud_projects(&self) -> AppResult<Vec<GoogleProject>> {
+        let token = self.google_access_token().await?;
+        google_cloud::list_projects(self.http.as_ref(), &token).await
+    }
+
     /// The environment variables carrying a provider's credential to the graphrt process.
-    fn provider_environment(&self, provider: DeployProvider) -> AppResult<Vec<(String, String)>> {
+    async fn provider_environment(&self, provider: DeployProvider) -> AppResult<Vec<(String, String)>> {
+        if provider == DeployProvider::GoogleCloud {
+            // Always a token of the person who signed in here, never another gcloud account.
+            let token = self.google_access_token().await?;
+            return Ok(vec![(google_cloud::ACCESS_TOKEN_ENV.to_owned(), token)]);
+        }
         let stored = self.credentials.read_deploy_secret(&Self::account_secret_name(provider))?.ok_or_else(|| {
             AppError::MissingCredentials(format!(
                 "your {} account (connect it in Online accounts)",
@@ -748,14 +867,15 @@ impl DeployService {
             existing.as_ref().map_or_else(|| deployment_name_for(agent), |record| record.deployment_name.clone());
         let expected_address = existing
             .as_ref()
+            .filter(|record| record.provider == provider)
             .and_then(|record| record.url.clone())
-            .unwrap_or_else(|| format!("{deployment_name}.fly.dev"))
+            .unwrap_or_else(|| expected_address(provider, &deployment_name))
             .trim_start_matches("https://")
             .to_owned();
         Ok(DeployReview {
             provider,
             provider_connected: self.account_summary(provider)?.is_some(),
-            can_deploy: provider.can_deploy(),
+            can_deploy: self.can_deploy_with(provider),
             deployment_name,
             expected_address,
             keys: self.keys_for(agent, requirements)?.iter().map(KeyToCopy::view).collect(),
@@ -768,7 +888,58 @@ impl DeployService {
                 .unwrap_or(ServerArea::Us),
             image: self.deploy_image(&agent.id)?,
             features: self.online_features(&agent.id)?,
+            cloud_place: existing
+                .as_ref()
+                .filter(|record| record.provider == DeployProvider::GoogleCloud)
+                .and_then(|record| self.cloud_place(record)),
         })
+    }
+
+    /// The Google Cloud project and region of a deployment there.
+    fn cloud_place(&self, record: &DeploymentRecord) -> Option<CloudPlace> {
+        if record.provider != DeployProvider::GoogleCloud {
+            return None;
+        }
+        let project = self
+            .db
+            .get_agent_setting(&record.agent_id, DEPLOY_PROJECT_KEY)
+            .ok()
+            .flatten()
+            .and_then(|value| value.as_str().map(str::to_owned))?;
+        Some(CloudPlace { project, region: record.region.clone()? })
+    }
+
+    /// Where the management commands find a deployment.
+    fn manage_place(&self, record: &DeploymentRecord) -> ManagePlace {
+        match self.cloud_place(record) {
+            Some(place) => ManagePlace { project: Some(place.project), region: Some(place.region) },
+            None => ManagePlace { project: None, region: record.region.clone() },
+        }
+    }
+
+    /// The CLI's refusal in `output` as an error: plain words and a fix for Google Cloud, the
+    /// plain sentence for the others. `None` when it printed no error.
+    fn cli_problem(
+        &self,
+        provider: DeployProvider,
+        output: &cli::CliOutput,
+        place: Option<&CloudPlace>,
+    ) -> Option<AppError> {
+        let (code, message) = output.error()?;
+        if provider == DeployProvider::GoogleCloud {
+            let problem = google_cloud::problem_for(code.as_deref(), message, place);
+            return Some(AppError::DeployFailed(Box::new(problem)));
+        }
+        Some(AppError::Internal(cli::plain_error_message(code.as_deref(), message)))
+    }
+
+    /// Forgets the cached Google token after Google refused it, so the next call refreshes.
+    async fn forget_refused_token(&self, error: &AppError) {
+        if let AppError::DeployFailed(problem) = error {
+            if problem.fix == Some(google_cloud::DeployFix::SignInAgain) {
+                self.google_token.set(None).await;
+            }
+        }
     }
 
     /// The chat page and phone page choices the agent was last put online with.
@@ -891,7 +1062,7 @@ impl DeployService {
         requirements: &[PluginRequirement],
         report: &CompatibilityReport,
     ) -> AppResult<DeployOutcome> {
-        if !options.provider.can_deploy() {
+        if !self.can_deploy_with(options.provider) {
             return Err(AppError::InvalidInput(format!(
                 "Putting agents online with {} is coming soon",
                 options.provider.display_name()
@@ -912,7 +1083,19 @@ impl DeployService {
         if let Some(missing) = keys.iter().find(|key| !key.is_saved) {
             return Err(AppError::MissingCredentials(missing.friendly_name.clone()));
         }
-        let mut environment_extra = self.provider_environment(options.provider)?;
+        let place = match options.provider {
+            DeployProvider::GoogleCloud => Some(
+                options
+                    .cloud_place
+                    .as_ref()
+                    .ok_or_else(|| AppError::InvalidInput("Pick a Google Cloud project and region first".into()))?
+                    .checked()?,
+            ),
+            _ => None,
+        };
+        let options = DeployOptions { cloud_place: place, ..options };
+        self.check_same_place(agent_id, &options)?;
+        let mut environment_extra = self.provider_environment(options.provider).await?;
         for key in &keys {
             let value = plan::read_key_value(&self.credentials, key)?
                 .ok_or_else(|| AppError::MissingCredentials(key.friendly_name.clone()))?;
@@ -940,7 +1123,38 @@ impl DeployService {
         let cancel = self.start_tracking_deploy(agent_id)?;
         let result = self.run_deploy(&agent, options, &keys, &executable, &environment, cancel).await;
         self.stop_tracking_deploy(agent_id);
+        if let Err(error) = &result {
+            self.forget_refused_token(error).await;
+        }
         result
+    }
+
+    /// An agent online with one provider (or in one Google Cloud project and region) is updated
+    /// there: moving it means taking it offline first, so nothing is left running unseen.
+    ///
+    /// # Errors
+    /// `Conflict` with a plain sentence when the choice is another place.
+    fn check_same_place(&self, agent_id: &str, options: &DeployOptions) -> AppResult<()> {
+        let Some(record) = self.db.get_deployment(agent_id)? else { return Ok(()) };
+        if record.status == DeploymentStatus::Failed && record.deployed_version_label.is_none() {
+            return Ok(());
+        }
+        if record.provider != options.provider {
+            return Err(AppError::Conflict(format!(
+                "This agent is online with {}. Take it offline there first to put it online with {}",
+                record.provider.display_name(),
+                options.provider.display_name()
+            )));
+        }
+        if let (Some(online), Some(chosen)) = (self.cloud_place(&record), options.cloud_place.as_ref()) {
+            if &online != chosen {
+                return Err(AppError::Conflict(format!(
+                    "This agent is online in project {} ({}). Take it offline first to move it to project {} ({})",
+                    online.project, online.region, chosen.project, chosen.region
+                )));
+            }
+        }
+        Ok(())
     }
 
     async fn run_deploy(
@@ -976,11 +1190,17 @@ impl DeployService {
         });
         record.provider = options.provider;
         record.mode = options.mode;
-        record.region = Some(options.area.fly_region().to_owned());
+        record.region = Some(match &options.cloud_place {
+            Some(place) => place.region.clone(),
+            None => options.area.fly_region().to_owned(),
+        });
         if is_first {
             record.status = DeploymentStatus::Deploying;
         }
         self.db.save_deployment(&record)?;
+        // Saved before the deploy: a half-made deployment can then still be removed.
+        let project = options.cloud_place.as_ref().map(|place| serde_json::json!(place.project));
+        self.db.set_agent_setting(&agent.id, DEPLOY_PROJECT_KEY, &project.unwrap_or(serde_json::Value::Null))?;
 
         let work_dir =
             tempfile::tempdir().map_err(|error| AppError::Internal(format!("no temporary folder: {error}")))?;
@@ -990,6 +1210,7 @@ impl DeployService {
             deployment: record.deployment_name.clone(),
             version_label: version_label.clone(),
             region: record.region.clone(),
+            project: options.cloud_place.as_ref().map(|place| place.project.clone()),
             mode: options.mode,
             org: None,
             secret_names: keys.iter().map(|key| key.env_name.clone()).collect(),
@@ -1016,16 +1237,27 @@ impl DeployService {
             }
         };
         let Some(CliEvent::Result { url, version, app, workflow, api_key }) = output.result().cloned() else {
-            let mut message = output
-                .plain_error()
-                .unwrap_or_else(|| "The graphrt tools stopped without saying why. See Details".into());
+            let mut error =
+                self.cli_problem(options.provider, &output, options.cloud_place.as_ref()).unwrap_or_else(|| {
+                    AppError::Internal("The graphrt tools stopped without saying why. See Details".into())
+                });
             if let Some(live_key) = output.api_key_of_failure() {
                 // The key is already live on the provider and cannot be read back: keep it.
                 self.save_api_key(&agent.id, live_key)?;
-                message = failure_with_live_key_message(options.provider, is_first, &message);
+                error = match error {
+                    AppError::DeployFailed(mut problem) => {
+                        problem.message = failure_with_live_key_message(options.provider, is_first, &problem.message);
+                        AppError::DeployFailed(problem)
+                    }
+                    other => AppError::Internal(failure_with_live_key_message(
+                        options.provider,
+                        is_first,
+                        &other.to_string(),
+                    )),
+                };
             }
-            self.record_failure(&record, is_first, &message)?;
-            return Err(AppError::Internal(message));
+            self.record_failure(&record, is_first, &error.to_string())?;
+            return Err(error);
         };
         // `api_key` is null on every deploy but the first: the saved key stays valid then.
         if let Some(key) = api_key.as_deref() {
@@ -1071,8 +1303,11 @@ impl DeployService {
             return Err(AppError::InvalidInput("Put the agent online first".into()));
         };
         let executable = self.require_cli()?;
-        let environment =
-            cli::compose_environment(|name| std::env::var(name).ok(), &self.provider_environment(record.provider)?);
+        let environment = cli::compose_environment(
+            |name| std::env::var(name).ok(),
+            &self.provider_environment(record.provider).await?,
+        );
+        let place = self.cloud_place(&record);
         let mut agent = self.db.get_agent(agent_id)?;
         if let Some(version) = record.deployed_agent_version {
             agent.flow_yaml = self.db.get_agent_version(agent_id, version)?.flow_yaml;
@@ -1086,6 +1321,7 @@ impl DeployService {
             deployment: record.deployment_name.clone(),
             version_label,
             region: record.region.clone(),
+            project: place.as_ref().map(|place| place.project.clone()),
             mode: record.mode,
             org: None,
             secret_names: Vec::new(),
@@ -1123,9 +1359,9 @@ impl DeployService {
                 ))
             }
             (None, None) => {
-                return Err(AppError::Internal(
-                    output.plain_error().unwrap_or_else(|| "The graphrt tools stopped without saying why".into()),
-                ))
+                return Err(self
+                    .cli_problem(record.provider, &output, place.as_ref())
+                    .unwrap_or_else(|| AppError::Internal("The graphrt tools stopped without saying why".into())))
             }
         };
         self.save_api_key(agent_id, &api_key)?;
@@ -1184,7 +1420,12 @@ impl DeployService {
             },
             agent_version: agent.current_version,
             provider_name: deployment.provider.display_name().to_owned(),
-            area: deployment.region.as_deref().and_then(ServerArea::from_fly_region),
+            area: deployment
+                .region
+                .as_deref()
+                .filter(|_| deployment.provider == DeployProvider::Fly)
+                .and_then(ServerArea::from_fly_region),
+            place: self.cloud_place(&deployment),
             has_api_key: self.credentials.read_deploy_secret(&format!("key:{agent_id}"))?.is_some(),
             features: self.online_features(agent_id)?,
             deployment,
@@ -1197,9 +1438,12 @@ impl DeployService {
 
     async fn run_manage(&self, record: &DeploymentRecord, action: &ManageAction) -> AppResult<cli::CliOutput> {
         let executable = self.require_cli()?;
-        let environment =
-            cli::compose_environment(|name| std::env::var(name).ok(), &self.provider_environment(record.provider)?);
-        let arguments = cli::manage_arguments(action, record.provider, &record.deployment_name);
+        let environment = cli::compose_environment(
+            |name| std::env::var(name).ok(),
+            &self.provider_environment(record.provider).await?,
+        );
+        let arguments =
+            cli::manage_arguments(action, record.provider, &record.deployment_name, &self.manage_place(record));
         cli::run_cli(
             &executable,
             &arguments,
@@ -1221,6 +1465,10 @@ impl DeployService {
             return self.refresh_status(agent_id).await;
         }
         let output = self.run_manage(&record, &action).await?;
+        if let Some(error) = self.cli_problem(record.provider, &output, self.cloud_place(&record).as_ref()) {
+            self.forget_refused_token(&error).await;
+            return Err(error);
+        }
         output.ensure_success("The change")?;
         match &action {
             ManageAction::Pause => {
@@ -1245,6 +1493,7 @@ impl DeployService {
                 self.credentials.delete_deploy_secret(&format!("key:{agent_id}"))?;
                 self.db.set_agent_setting(agent_id, DEPLOY_HISTORY_KEY, &serde_json::json!([]))?;
                 self.db.set_agent_setting(agent_id, ONLINE_FEATURES_KEY, &serde_json::Value::Null)?;
+                self.db.set_agent_setting(agent_id, DEPLOY_PROJECT_KEY, &serde_json::Value::Null)?;
                 self.forget_device_codes(&OnlineTarget::Agent { agent_id: agent_id.to_owned() }, None)?;
                 log::info!("took agent {agent_id} offline");
                 return Ok(None);
@@ -1353,7 +1602,8 @@ impl DeployService {
             return self.view(agent_id);
         }
         let Some(url) = record.url.clone() else { return self.view(agent_id) };
-        let health = http::check_health(self.http.as_ref(), &url).await;
+        let health_path = if record.provider == DeployProvider::GoogleCloud { "readyz" } else { "healthz" };
+        let health = http::check_health_at(self.http.as_ref(), &url, health_path).await;
         let (status, message) = if health.healthy {
             (DeploymentStatus::Working, None)
         } else {
@@ -1556,6 +1806,15 @@ impl DeployService {
             forget(format!("server:{}", server.id));
             forget_codes(OnlineTarget::Server { server_id: server.id });
         }
+    }
+}
+
+/// The web address a first deploy is expected to get (the provider may give another one).
+fn expected_address(provider: DeployProvider, deployment_name: &str) -> String {
+    match provider {
+        // `https://<service>-<hash>-<region code>.a.run.app`: the hash is Cloud Run's.
+        DeployProvider::GoogleCloud => format!("{deployment_name}-….a.run.app"),
+        _ => format!("{deployment_name}.fly.dev"),
     }
 }
 

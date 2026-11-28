@@ -12,6 +12,8 @@
 #       (NOTARY_KEY=<path to AuthKey_XXXX.p8> NOTARY_KEY_ID=<key id> NOTARY_ISSUER=<issuer uuid>)
 #     or a notarytool keychain profile (NOTARY_PROFILE, default "graphrt-notary")
 #   - the updater signing key: TAURI_SIGNING_PRIVATE_KEY(_PASSWORD), else ~/.tauri/graphrt-updater.key(.password)
+#   - GRAPHRT_GOOGLE_CLOUD_CLIENT_SECRET for Google Cloud sign in (CONTRIBUTING.md; a build
+#     without it says signing in to Google Cloud is not available)
 #   - gh signed in with push rights (GH_TOKEN, or the BimaPangestu28 account)
 #
 # If release v<version> already exists (e.g. the Linux build was published first), the macOS
@@ -81,6 +83,7 @@ export TAURI_SIGNING_PRIVATE_KEY="${TAURI_SIGNING_PRIVATE_KEY:-$(cat ~/.tauri/gr
 export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-$(cat ~/.tauri/graphrt-updater.key.password)}"
 
 if ! $skip_build; then
+  [ -n "${GRAPHRT_GOOGLE_CLOUD_CLIENT_SECRET:-}" ] || echo "warning: GRAPHRT_GOOGLE_CLOUD_CLIENT_SECRET is not set: this build cannot sign in to Google Cloud" >&2
   pnpm install --frozen-lockfile > /dev/null
   APPLE_SIGNING_IDENTITY="$signing_identity" pnpm tauri build --target aarch64-apple-darwin --bundles app
 fi

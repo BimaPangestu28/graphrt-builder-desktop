@@ -13,10 +13,12 @@ import { messages } from '@/i18n'
 function DisconnectButton({ account, onDone }: { account: DeployAccount; onDone: () => void }) {
   const [isConfirming, setIsConfirming] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  // Google Cloud is signed in to, so it is signed out of (the sign in is revoked at Google too).
+  const label = account.provider === 'google_cloud' ? messages().deploy.googleCloud.signOut : messages().deploy.disconnect
   if (!isConfirming) {
     return (
       <Button size="sm" variant="ghost" onClick={() => setIsConfirming(true)}>
-        {messages().deploy.disconnect}
+        {label}
       </Button>
     )
   }
@@ -32,7 +34,7 @@ function DisconnectButton({ account, onDone }: { account: DeployAccount; onDone:
             .catch((error) => setErrorMessage(plainErrorMessage(error)))
         }
       >
-        {messages().deploy.disconnect}
+        {label}
       </Button>
       <Button size="sm" variant="ghost" onClick={() => setIsConfirming(false)}>
         {messages().deploy.keep}

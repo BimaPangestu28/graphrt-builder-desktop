@@ -13,6 +13,11 @@
 //! `graphrt deploy status|list-versions|rollback <v>|pause|resume|remove --target fly --direct
 //! --deployment <name> --json` manage it.
 //!
+//! Google Cloud Run (graphrt `docs/deploy-cloud-run.md`) takes the same flags and prints the
+//! same lines, with `--target cloud-run --project <id> --region <region>` (the management
+//! commands too: a deployment lives in one project and region) and its credential in
+//! `GOOGLE_OAUTH_ACCESS_TOKEN`.
+//!
 //! **Secrets never go on the command line.** The provider credential is `FLY_API_TOKEN` and each
 //! `--secret NAME` value is the environment variable `NAME`. The process starts with an empty
 //! environment plus [`PASSTHROUGH_ENV`], so nothing else of the app's environment leaks in.
@@ -52,6 +57,8 @@ pub struct DeployRequest {
     pub deployment: String,
     pub version_label: String,
     pub region: Option<String>,
+    /// `--project` (Google Cloud).
+    pub project: Option<String>,
     pub mode: DeployMode,
     pub org: Option<String>,
     /// `--secret NAME` (names only; values are environment variables).
@@ -84,7 +91,7 @@ pub enum ManageAction {
 pub fn target_name(provider: DeployProvider) -> &'static str {
     match provider {
         DeployProvider::Fly => "fly",
-        DeployProvider::GoogleCloud => "cloudrun",
+        DeployProvider::GoogleCloud => "cloud-run",
         DeployProvider::Aws => "ecs",
         DeployProvider::Azure => "aca",
         DeployProvider::Kubernetes => "k8s",
@@ -103,6 +110,9 @@ pub fn deploy_arguments(request: &DeployRequest) -> Vec<String> {
         "--version".into(),
         request.version_label.clone(),
     ];
+    if let Some(project) = &request.project {
+        arguments.extend(["--project".into(), project.clone()]);
+    }
     if let Some(region) = &request.region {
         arguments.extend(["--region".into(), region.clone()]);
     }
@@ -125,8 +135,21 @@ pub fn deploy_arguments(request: &DeployRequest) -> Vec<String> {
     arguments
 }
 
-/// `deploy <action> [version] --target … --direct --deployment <name> --json`.
-pub fn manage_arguments(action: &ManageAction, provider: DeployProvider, deployment: &str) -> Vec<String> {
+/// Where a deployment lives, for the management commands: Google Cloud needs its project and
+/// region; Fly.io refuses both (the app name is enough).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ManagePlace {
+    pub project: Option<String>,
+    pub region: Option<String>,
+}
+
+/// `deploy <action> [version] --target … --direct --deployment <name> [--project --region] --json`.
+pub fn manage_arguments(
+    action: &ManageAction,
+    provider: DeployProvider,
+    deployment: &str,
+    place: &ManagePlace,
+) -> Vec<String> {
     let mut arguments: Vec<String> = vec!["deploy".into()];
     match action {
         ManageAction::Status => arguments.push("status".into()),
@@ -142,8 +165,16 @@ pub fn manage_arguments(action: &ManageAction, provider: DeployProvider, deploym
         "--direct".into(),
         "--deployment".into(),
         deployment.to_owned(),
-        "--json".into(),
     ]);
+    if provider != DeployProvider::Fly {
+        if let Some(project) = &place.project {
+            arguments.extend(["--project".into(), project.clone()]);
+        }
+        if let Some(region) = &place.region {
+            arguments.extend(["--region".into(), region.clone()]);
+        }
+    }
+    arguments.push("--json".into());
     arguments
 }
 
@@ -168,6 +199,12 @@ pub fn help_lists_large_agents(deploy_help: &str) -> bool {
     deploy_help.contains("uploaded onto the store volume")
 }
 
+/// Whether `graphrt deploy --help` lists the Google Cloud project of a direct deploy
+/// (Graphrt/graphrt#174): the tools can put agents on Cloud Run directly.
+pub fn help_lists_cloud_run(deploy_help: &str) -> bool {
+    deploy_help.contains("Google Cloud project id")
+}
+
 /// What the installed graphrt tools can put online, from one `graphrt deploy --help`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct CliAbilities {
@@ -177,6 +214,8 @@ pub struct CliAbilities {
     pub channels: bool,
     /// Agents (with their knowledge) larger than 1 MiB ([`help_lists_large_agents`]).
     pub large_agents: bool,
+    /// Google Cloud Run, directly ([`help_lists_cloud_run`]).
+    pub cloud_run: bool,
 }
 
 /// Runs `graphrt deploy --help` and reads what the tools can do. Nothing when the tools do
@@ -187,6 +226,7 @@ pub fn abilities(executable: &Path) -> CliAbilities {
             online_features: help_lists_online_features(&help),
             channels: help_lists_channels(&help),
             large_agents: help_lists_large_agents(&help),
+            cloud_run: help_lists_cloud_run(&help),
         },
         None => CliAbilities::default(),
     }
@@ -452,6 +492,7 @@ mod tests {
             deployment: "menu-chatbot-1a2b".into(),
             version_label: "v2".into(),
             region: Some("sin".into()),
+            project: None,
             mode: DeployMode::ScaleToZero,
             org: None,
             secret_names: vec!["OPENAI_API_KEY".into(), "WHATSAPP_CLOUD_ACCESS_TOKEN".into()],
@@ -569,12 +610,55 @@ mod tests {
 
     #[test]
     fn manage_arguments_follow_the_contract() {
+        let fly = ManagePlace { project: None, region: Some("sin".into()) };
         assert_eq!(
-            manage_arguments(&ManageAction::Rollback { version: "v1".into() }, DeployProvider::Fly, "d"),
-            ["deploy", "rollback", "v1", "--target", "fly", "--direct", "--deployment", "d", "--json"]
+            manage_arguments(&ManageAction::Rollback { version: "v1".into() }, DeployProvider::Fly, "d", &fly),
+            ["deploy", "rollback", "v1", "--target", "fly", "--direct", "--deployment", "d", "--json"],
+            "Fly.io refuses --region on management commands"
         );
-        assert_eq!(manage_arguments(&ManageAction::Pause, DeployProvider::Fly, "d")[1], "pause");
-        assert_eq!(manage_arguments(&ManageAction::ListVersions, DeployProvider::Fly, "d")[1], "list-versions");
+        assert_eq!(manage_arguments(&ManageAction::Pause, DeployProvider::Fly, "d", &fly)[1], "pause");
+        assert_eq!(manage_arguments(&ManageAction::ListVersions, DeployProvider::Fly, "d", &fly)[1], "list-versions");
+        let cloud_run = ManagePlace { project: Some("graphrt".into()), region: Some("asia-southeast2".into()) };
+        assert_eq!(
+            manage_arguments(&ManageAction::Status, DeployProvider::GoogleCloud, "d", &cloud_run),
+            [
+                "deploy",
+                "status",
+                "--target",
+                "cloud-run",
+                "--direct",
+                "--deployment",
+                "d",
+                "--project",
+                "graphrt",
+                "--region",
+                "asia-southeast2",
+                "--json"
+            ]
+        );
+    }
+
+    #[test]
+    fn cloud_run_deploys_name_the_project_and_region() {
+        let request = DeployRequest {
+            target: DeployProvider::GoogleCloud,
+            region: Some("asia-southeast2".into()),
+            project: Some("graphrt".into()),
+            ..sample_request()
+        };
+        let arguments = deploy_arguments(&request);
+        assert_eq!(arguments[..4], ["deploy", "--target", "cloud-run", "--direct"]);
+        let project_at = arguments.iter().position(|argument| argument == "--project").unwrap();
+        assert_eq!(arguments[project_at..project_at + 4], ["--project", "graphrt", "--region", "asia-southeast2"]);
+        assert!(!deploy_arguments(&sample_request()).iter().any(|argument| argument == "--project"));
+    }
+
+    #[test]
+    fn cloud_run_is_known_from_the_deploy_help() {
+        assert!(help_lists_cloud_run(
+            "  --project <PROJECT>  Direct, Cloud Run: Google Cloud project id [default: $GOOGLE_CLOUD_PROJECT]"
+        ));
+        assert!(!help_lists_cloud_run("  --target <TARGET>  [possible values: local, k8s, cloud-run, fly]"));
     }
 
     #[test]

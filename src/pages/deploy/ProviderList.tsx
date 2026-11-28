@@ -9,6 +9,12 @@ import { localizedRecord } from '@/i18n/localized'
 /** One plain line per provider, as people read it. */
 export const providerTaglines: Readonly<Record<DeployProvider, string>> = localizedRecord(() => messages().deploy.taglines)
 
+/** "Signed in as ana@acme.com" (the backend's summary) in the UI language. */
+function googleAccountLine(summary: string): string {
+  const email = /^Signed in as (.+)$/.exec(summary)?.[1]
+  return email ? messages().deploy.googleCloud.signedInAs(email) : summary
+}
+
 export const otherProviders: DeployProvider[] = ['google_cloud', 'aws', 'azure', 'kubernetes']
 
 interface ProviderRowProps {
@@ -22,7 +28,12 @@ interface ProviderRowProps {
 
 export function ProviderRow({ account, selection, onConnect, connectedActions }: ProviderRowProps) {
   const isRecommended = account.provider === 'fly'
-  const tagline = account.connected && account.usedByAgents.length > 0 ? messages().deploy.usedByAgents(messages().common.joinAnd(account.usedByAgents)) : providerTaglines[account.provider]
+  const tagline =
+    account.connected && account.usedByAgents.length > 0
+      ? messages().deploy.usedByAgents(messages().common.joinAnd(account.usedByAgents))
+      : account.connected && account.provider === 'google_cloud' && account.summary
+        ? googleAccountLine(account.summary)
+        : providerTaglines[account.provider]
   const content = (
     <>
       <ProviderLogo provider={account.provider} />
@@ -75,13 +86,15 @@ interface ProviderListProps {
 }
 
 /**
- * Fly.io on top, then "Other providers — for teams that already use them" (folded unless one is
- * connected or chosen). Connect opens the provider's popup.
+ * The providers agents can go online with on top (Fly.io, and Google Cloud once the graphrt
+ * tools know Cloud Run), then "Other providers — for teams that already use them" (coming soon;
+ * folded unless one is connected or chosen). Connect opens the provider's popup. A provider
+ * joins the top group by itself once the backend says it can deploy (`canDeploy`).
  */
 export function ProviderList({ accounts, selectedProvider, onSelect, onAccountsChanged, renderConnectedActions }: ProviderListProps) {
   const [connectingProvider, setConnectingProvider] = useState<DeployProvider | null>(null)
-  const fly = accounts.find((account) => account.provider === 'fly')
-  const others = accounts.filter((account) => account.provider !== 'fly')
+  const ready = accounts.filter((account) => account.provider === 'fly' || account.canDeploy)
+  const others = accounts.filter((account) => !ready.includes(account))
   const opensOthers = others.some((account) => account.connected || account.provider === selectedProvider)
   const row = (account: DeployAccount) => (
     <ProviderRow
@@ -94,11 +107,13 @@ export function ProviderList({ accounts, selectedProvider, onSelect, onAccountsC
   )
   return (
     <div className="flex flex-col gap-3">
-      {fly && <ul className="m-0 flex list-none flex-col gap-2 p-0">{row(fly)}</ul>}
-      <details open={opensOthers} className="flex flex-col gap-2">
-        <summary className="cursor-pointer py-1 text-[13px] font-semibold text-ink-2">{messages().deploy.otherProvidersForTeamsThatAlready}</summary>
-        <ul className="m-0 mt-2 flex list-none flex-col gap-2 p-0">{others.map(row)}</ul>
-      </details>
+      {ready.length > 0 && <ul className="m-0 flex list-none flex-col gap-2 p-0">{ready.map(row)}</ul>}
+      {others.length > 0 && (
+        <details open={opensOthers} className="flex flex-col gap-2">
+          <summary className="cursor-pointer py-1 text-[13px] font-semibold text-ink-2">{messages().deploy.otherProvidersForTeamsThatAlready}</summary>
+          <ul className="m-0 mt-2 flex list-none flex-col gap-2 p-0">{others.map(row)}</ul>
+        </details>
+      )}
       {connectingProvider && (
         <ConnectProviderDialog
           provider={connectingProvider}

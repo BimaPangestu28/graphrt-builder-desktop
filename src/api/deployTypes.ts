@@ -45,17 +45,16 @@ export interface DeployAccount {
   provider: DeployProvider
   displayName: string
   connected: boolean
-  /** Non-secret, e.g. "Service account graphrt@acme · project acme". */
+  /** Non-secret, e.g. "Signed in as ana@acme.com". */
   summary: string | null
-  /** Agents can be put online with it in this release (Fly.io only for now). */
+  /** Agents can be put online with it with this app's graphrt tools (Fly.io; Google Cloud with tools that know Cloud Run). */
   canDeploy: boolean
   usedByAgents: string[]
 }
 
-/** What a Connect dialog sends; files are paths (dropped or picked), read by the backend. */
+/** What a Connect dialog sends; files are paths (dropped or picked), read by the backend. Google Cloud is signed in to with Google instead (`signInGoogleCloud`). */
 export type DeployAccountInput =
   | { provider: 'fly'; accessToken: string }
-  | { provider: 'google_cloud'; keyFilePath: string }
   | { provider: 'aws'; accessKeyId: string; secretAccessKey: string; sessionToken?: string | null }
   | { provider: 'azure'; tenantId: string; clientId: string; certificatePath?: string | null; clientSecret?: string | null }
   | { provider: 'kubernetes'; kubeconfigPath: string; context?: string | null }
@@ -82,6 +81,45 @@ export interface CompatibilityReport {
 
 export type DeployMode = 'always_on' | 'scale_to_zero'
 export type ServerArea = 'asia' | 'europe' | 'us'
+
+/** Google Cloud: the project and the Cloud Run region an agent runs in. */
+export interface CloudPlace {
+  project: string
+  region: string
+}
+
+/** Whether billing is on for a project (`unknown`: the account may not read it). */
+export type BillingState = 'enabled' | 'disabled' | 'unknown'
+
+/** One project of the signed-in Google account. */
+export interface GoogleProject {
+  id: string
+  name: string
+  billing: BillingState
+}
+
+/** Google Cloud console pages the screens open for a project. */
+export type GoogleConsolePage = 'billing' | 'permissions' | 'org_policies' | 'create_project' | 'pricing'
+
+/** What the person can do about a refusal of the provider. */
+export type DeployFix = { kind: 'open_page'; url: string } | { kind: 'sign_in_again' }
+
+/** `deploy_failed`: the provider refused, explained (mirrors `DeployProblem` in `src-tauri/src/deploy/google_cloud.rs`). */
+export interface DeployProblem {
+  provider: DeployProvider
+  /** The graphrt tools' error code, e.g. `billing_disabled`. */
+  kind: string
+  /** Plain English (shown when the kind has no wording of its own). */
+  message: string
+  /** The tools' own message, for Details. */
+  technical: string
+  project: string | null
+  /** The Google API that is off (`api_disabled`). */
+  service: string | null
+  /** The role to ask for (`permission_denied`). */
+  role: string | null
+  fix: DeployFix | null
+}
 
 export interface KeyToCopy {
   friendlyName: string
@@ -190,6 +228,8 @@ export interface DeployReview {
   image: string | null
   /** The chat page and phone page choices of the online copy. */
   features: OnlineFeatures
+  /** Google Cloud: the project and region it is (or was last) online in. */
+  cloudPlace: CloudPlace | null
 }
 
 export interface DeployOptions {
@@ -200,6 +240,8 @@ export interface DeployOptions {
   image?: string | null
   /** The chat page, the phone page and what goes with them; absent: all off. */
   features?: OnlineFeatures
+  /** Google Cloud: the project and region (required there). */
+  cloudPlace?: CloudPlace | null
 }
 
 export type DeploymentStatus = 'deploying' | 'working' | 'paused' | 'needs_attention' | 'failed'
@@ -230,6 +272,8 @@ export interface DeploymentView {
   hasApiKey: boolean
   /** What the online copy was last put online with. */
   features: OnlineFeatures
+  /** Google Cloud: the project and region it is online in. */
+  place: CloudPlace | null
 }
 
 export interface DeployOutcome {
@@ -310,4 +354,4 @@ export interface OwnServerView {
 }
 
 /** Provider pages the app may open (fixed addresses in the backend). */
-export type DeployLink = 'fly_tokens' | 'fly_pricing' | 'google_cloud_keys' | 'aws_access_keys' | 'azure_app_registrations'
+export type DeployLink = 'fly_tokens' | 'fly_pricing' | 'aws_access_keys' | 'azure_app_registrations'

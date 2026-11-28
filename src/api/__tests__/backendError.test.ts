@@ -22,6 +22,18 @@ describe('parseBackendErrorDetails', () => {
   })
 })
 
+describe('deploy_failed details', () => {
+  it('keeps a provider refusal with its fix and drops what it cannot read', () => {
+    const raw = { code: 'deploy_failed', message: 'Project acme has no billing account', details: { provider: 'google_cloud', kind: 'billing_disabled', message: 'Project acme has no billing account', technical: 'HTTP 403', project: 'acme', service: null, role: null, fix: { kind: 'open_page', url: 'https://console.cloud.google.com/billing/linkedaccount?project=acme' } } }
+    const error = toBackendError(raw)
+    expect(isBackendErrorWithCode(error, 'deploy_failed') && error.details).toEqual({ ...raw.details })
+    const signIn = toBackendError({ ...raw, details: { ...raw.details, kind: 'unauthorized', fix: { kind: 'sign_in_again' } } })
+    expect(isBackendErrorWithCode(signIn, 'deploy_failed') && signIn.details?.fix).toEqual({ kind: 'sign_in_again' })
+    expect(parseBackendErrorDetails('deploy_failed', { ...raw.details, fix: { kind: 'open_page' } })).toMatchObject({ fix: null })
+    expect(parseBackendErrorDetails('deploy_failed', { kind: 'x', message: 'y' })).toBeNull()
+  })
+})
+
 describe('toBackendError', () => {
   afterEach(() => setLocale('en'))
 

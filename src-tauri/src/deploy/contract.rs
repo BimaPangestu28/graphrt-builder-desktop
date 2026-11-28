@@ -97,6 +97,8 @@ pub struct StatusResult {
     pub mode: Option<RemoteMode>,
     /// RFC 3339 UTC; a rollback keeps that version's original time.
     pub last_deployed_at: Option<String>,
+    /// Fly.io only (Cloud Run reports `traffic` instead, which the app does not read).
+    #[serde(default)]
     pub machines: Vec<RemoteMachine>,
 }
 
@@ -106,10 +108,12 @@ pub struct RemoteVersion {
     pub label: String,
     pub deployed_at: Option<String>,
     pub current: bool,
+    /// Fly.io: `current`, `candidate`, `standby`; Cloud Run has none (its `state` says it).
+    #[serde(default)]
     pub role: String,
     pub mode: Option<String>,
     pub workflow: Option<String>,
-    /// The Fly state of the version's Machine.
+    /// Fly.io: the state of the version's Machine; Cloud Run: `serving` or `standby`.
     pub state: String,
 }
 
@@ -142,7 +146,8 @@ pub fn status_result(json: &[serde_json::Value]) -> Option<StatusResult> {
     final_result(json, "status")
 }
 
-/// The `list-versions` result among the JSON lines of `graphrt deploy list-versions --json`.
+/// The `list-versions` result among the JSON lines of `graphrt deploy list-versions --json`
+/// (Fly.io and Cloud Run, graphrt `docs/schemas/deploy-direct-cloud-run.schema.json`).
 pub fn list_versions_result(json: &[serde_json::Value]) -> Option<ListVersionsResult> {
     final_result(json, "list-versions")
 }
@@ -164,6 +169,9 @@ mod tests {
     const STATUS_OFFLINE: &str = include_str!("contract/fixtures/status-offline.json");
     const LIST_VERSIONS: &str = include_str!("contract/fixtures/list-versions.json");
     const MANAGE_RESULTS: &str = include_str!("contract/fixtures/manage-results.jsonl");
+    /// graphrt `docs/schemas/deploy-direct-cloud-run.schema.json` at `90e0109` (Graphrt/graphrt#174).
+    const CLOUD_RUN_SCHEMA: &str = include_str!("contract/deploy-direct-cloud-run.schema.json");
+    const CLOUD_RUN: &str = include_str!("contract/fixtures/cloud-run.jsonl");
 
     fn schema() -> Value {
         serde_json::from_str(SCHEMA).unwrap()
@@ -407,6 +415,50 @@ mod tests {
             "current_version": null, "versions": [], "added_later": 1
         });
         assert!(list_versions_result(&[newer]).is_some(), "unknown fields are ignored");
+    }
+
+    #[test]
+    fn cloud_run_results_and_refusals_follow_its_schema_and_are_read() {
+        let schema: Value = serde_json::from_str(CLOUD_RUN_SCHEMA).unwrap();
+        let fixture = lines(CLOUD_RUN);
+        for line in &fixture {
+            let problems = violations(&schema, &schema, line, "line");
+            assert!(problems.is_empty(), "{line} breaks the Cloud Run schema: {problems:?}");
+        }
+        let status = status_result(&fixture).unwrap();
+        assert_eq!(status.status, RemoteStatus::Online);
+        assert_eq!(status.current_version.as_deref(), Some("v2"));
+        assert!(status.machines.is_empty());
+        let listed = list_versions_result(&fixture).unwrap();
+        assert_eq!(listed.versions.iter().map(|version| version.label.as_str()).collect::<Vec<_>>(), ["v2", "v1"]);
+        assert_eq!(listed.versions[1].state, "standby");
+        // Every code the app words itself is one the tools can print.
+        let codes = definition(&schema, "error")["properties"]["code"]["enum"].as_array().unwrap().clone();
+        for code in [
+            "api_disabled",
+            "billing_disabled",
+            "permission_denied",
+            "org_policy",
+            "unauthorized",
+            "missing_credentials",
+            "name_taken",
+            "rate_limited",
+            "gcp_unavailable",
+            "health_check_failed",
+            "start_timeout",
+        ] {
+            assert!(codes.iter().any(|known| known == code), "{code} is not a Cloud Run error code");
+        }
+        for line in fixture.iter().filter(|line| line["type"] == "error") {
+            let event = match parse_line(&line.to_string()) {
+                CliLine::Event(CliEvent::Error { code, message }) => (code, message),
+                other => panic!("not an error event: {other:?}"),
+            };
+            let place =
+                crate::deploy::google_cloud::CloudPlace { project: "graphrt".into(), region: "asia-southeast2".into() };
+            let problem = crate::deploy::google_cloud::problem_for(event.0.as_deref(), &event.1, Some(&place));
+            assert!(problem.fix.is_some(), "{} has a fix", problem.kind);
+        }
     }
 
     #[test]
