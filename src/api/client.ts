@@ -57,6 +57,12 @@ export interface PluginStepFailedDetails {
   kind: string
 }
 
+/** `online_switch_failed`: the release asked for and the one that stays in use (null before any). */
+export interface OnlineSwitchFailedDetails {
+  releaseNumber: number
+  inUseNumber: number | null
+}
+
 /** Structured data per error code; codes not listed carry none. */
 export interface BackendErrorDetailsByCode {
   credential_store_unavailable: CredentialStoreUnavailableDetails
@@ -66,6 +72,7 @@ export interface BackendErrorDetailsByCode {
   needs_newer_app: NeedsNewerAppDetails
   draft_not_valid: DraftNotValidDetails
   plugin_step_failed: PluginStepFailedDetails
+  online_switch_failed: OnlineSwitchFailedDetails
 }
 
 /** The details a code carries: its entry in {@link BackendErrorDetailsByCode}, else null. */
@@ -126,6 +133,11 @@ export function parseBackendErrorDetails(code: BackendErrorCode, rawDetails: unk
   if (code === 'plugin_step_failed') {
     return typeof rawDetails.kind === 'string' && rawDetails.kind ? { kind: rawDetails.kind } : null
   }
+  if (code === 'online_switch_failed') {
+    const { releaseNumber, inUseNumber } = rawDetails
+    if (typeof releaseNumber !== 'number') return null
+    return { releaseNumber, inUseNumber: typeof inUseNumber === 'number' ? inUseNumber : null }
+  }
   if (code === 'needs_newer_app') {
     const { minVersion, appVersion } = rawDetails
     return { minVersion: typeof minVersion === 'string' ? minVersion : null, appVersion: typeof appVersion === 'string' ? appVersion : null }
@@ -155,6 +167,10 @@ function localizedBackendMessage(code: BackendErrorCode, backendMessage: string,
     return reason ? describeCredentialStoreProblem(reason) : backendMessage
   }
   if (code === 'draft_not_valid') return messages().newAgent.modelCouldNotWriteAgent
+  if (code === 'online_switch_failed') {
+    const switchDetails = details as OnlineSwitchFailedDetails | null
+    return switchDetails ? messages().quality.release.onlineSwitchFailed(switchDetails.releaseNumber, switchDetails.inUseNumber) : backendMessage
+  }
   if (code !== 'needs_newer_app') return backendMessage
   const { minVersion = null, appVersion = null } = (details as NeedsNewerAppDetails | null) ?? {}
   if (appVersion === null) return backendMessage

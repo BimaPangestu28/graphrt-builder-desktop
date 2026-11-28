@@ -76,7 +76,8 @@ describe('ChatbotSetupPage', () => {
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
     })
-    expect(await screen.findByText('Saved · the bot uses it from its next reply')).toBeInTheDocument()
+    expect(await screen.findByText(/Saved · try it here\. To update the online copy, check and release it in/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Test & release' })).toHaveAttribute('href', '/agents/catering-assistant/tests')
     const saved = await sampleChatbotSetupBackend.getChatbotSetup('catering-assistant')
     expect(saved.settings.persona).toMatchObject({ displayName: 'Admin Dapur', tone: 'Formal' })
     expect(saved.settings.handoffRules.soundsUpset).toBe(true)

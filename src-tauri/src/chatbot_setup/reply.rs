@@ -114,7 +114,10 @@ pub async fn prepare_reply(
 }
 
 /// Attached knowledge bases that still exist (a deleted one is skipped, not an error), in attach order.
-fn attached_knowledge_bases(db: &Database, settings: &ChatbotSettings) -> AppResult<Vec<StoredKnowledgeBase>> {
+pub(super) fn attached_knowledge_bases(
+    db: &Database,
+    settings: &ChatbotSettings,
+) -> AppResult<Vec<StoredKnowledgeBase>> {
     let knowledge_bases = records::list_knowledge_bases(db)?;
     Ok(settings
         .knowledge_base_ids

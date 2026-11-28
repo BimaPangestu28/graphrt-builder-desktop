@@ -54,6 +54,19 @@ describe('toBackendError', () => {
     expect(messageFor('locked')).toContain('is locked')
   })
 
+  it('says in the language of the app that nothing changed when the online copy could not go back', () => {
+    const rawError = { code: 'online_switch_failed', message: 'English text from the backend', details: { releaseNumber: 1, inUseNumber: 2 } }
+    setLocale('en')
+    const error = toBackendError(rawError)
+    expect(error.details).toEqual({ releaseNumber: 1, inUseNumber: 2 })
+    expect(error.message).toBe(
+      'The online copy could not go back to release 1, so nothing changed: release 2 stays in use here and online. Try again in a few minutes.',
+    )
+    setLocale('id')
+    expect(toBackendError(rawError).message).toContain('tidak ada yang berubah. Rilis 2 tetap dipakai di sini dan online')
+    expect(toBackendError({ ...rawError, details: { releaseNumber: 'one' } }).message).toBe('English text from the backend')
+  })
+
   it('falls back to the backend wording for a keyring problem it does not know', () => {
     const error = toBackendError({ code: 'credential_store_unavailable', message: 'The keyring is on holiday.', details: { reason: 'on_holiday' } })
     expect(error.message).toBe('The keyring is on holiday.')

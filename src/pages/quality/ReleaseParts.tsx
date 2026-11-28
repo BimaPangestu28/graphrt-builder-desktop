@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { isBackendErrorWithCode } from '@/api/client'
 import { createAgentRelease, switchAgentRelease } from '@/api/quality'
 import type { QualityOverview, Release, ReleaseSwitchOutcome } from '@/api/qualityTypes'
 import { Badge, Button, Card, LinkButton } from '@/components/ui'
@@ -187,7 +188,8 @@ export function ReleaseList({ agentId, releases, inUse, onSwitched }: ReleaseLis
       setConfirming(null)
       onSwitched()
     } catch (switchError) {
-      setNotice(t.couldNot(describeError(switchError)))
+      // Nothing changed when the online copy could not switch: its own sentence says so.
+      setNotice(isBackendErrorWithCode(switchError, 'online_switch_failed') ? switchError.message : t.couldNot(describeError(switchError)))
     } finally {
       setIsSwitching(false)
     }

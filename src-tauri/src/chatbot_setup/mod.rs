@@ -12,11 +12,16 @@
 //! are dropped by the host ([`HandoffRules::allows`]), so a switched-off rule
 //! holds even when the model ignores its instructions.
 //!
-//! Why an overlay rather than a new flow version: saving is instant and needs no
-//! model call, the builder keeps showing the flow the person built, version
-//! history is not flooded by every persona edit, and the rules apply to any
-//! chatbot flow, whatever its step names. Until the setup is saved once, the bot
-//! runs its flow unchanged (`is_saved: false`).
+//! Why an overlay rather than writing the setup into the flow: saving is instant and
+//! needs no model call, the builder keeps showing the flow the person built, and the
+//! rules apply to any chatbot flow, whatever its step names. Until the setup is saved
+//! once, the bot runs its flow unchanged (`is_saved: false`).
+//!
+//! A save that changes what the bot says (persona, hand-off rules, knowledge) is a new
+//! agent version with the same flow and that setup
+//! (`storage::chatbot_setups`), so it is checked, released, put online and gone back to
+//! like any other change. The online copy gets the setup of its released version baked
+//! into its workflow ([`flow_for_online`]). Switching a channel off is not a version.
 
 pub mod brief;
 pub mod overlay;
@@ -196,8 +201,51 @@ pub fn save_chatbot_settings(
 ) -> AppResult<ChatbotSetup> {
     ensure_chatbot(db, agent_id)?;
     let settings = normalize_settings(db, settings)?;
-    db.set_agent_setting(agent_id, SETTINGS_KEY, &serde_json::to_value(&settings)?)?;
+    let value = serde_json::to_value(&settings)?;
+    let saved = load_saved_settings(db, agent_id)?;
+    if saved.as_ref().is_none_or(|saved| changes_answers(saved, &settings)) {
+        db.save_chatbot_setup_version(agent_id, SETTINGS_KEY, &value, SETUP_CHANGE_SUMMARY)?;
+    } else {
+        db.set_agent_setting(agent_id, SETTINGS_KEY, &value)?;
+    }
     get_chatbot_setup(db, agent_id, is_connected)
+}
+
+/// Version summary of a saved chatbot setup.
+pub const SETUP_CHANGE_SUMMARY: &str = "Changed the chatbot setup";
+
+/// Whether `next` changes what the bot answers (not only where it answers).
+fn changes_answers(saved: &ChatbotSettings, next: &ChatbotSettings) -> bool {
+    saved.persona != next.persona
+        || saved.handoff_rules != next.handoff_rules
+        || saved.knowledge_base_ids != next.knowledge_base_ids
+}
+
+/// The workflow the online copy (or an exported agent file) runs for `agent` at its
+/// version: a chatbot's setup of that version overlaid with its texts in `env`
+/// ([`overlay::overlay_for_online`]), the stored flow for other agents and for chatbots
+/// whose setup was never saved by then.
+///
+/// Knowledge passages the bot gets on this computer from the host (flows without a
+/// retrieval step) are not part of it: the online copy answers from its retrieval steps.
+///
+/// # Errors
+/// `Workflow` when the flow cannot be overlaid; `Serialization` for a corrupt stored setup.
+pub fn flow_for_online(db: &Database, agent: &Agent) -> AppResult<String> {
+    if agent.kind != AgentKind::Chatbot {
+        return Ok(agent.flow_yaml.clone());
+    }
+    let Some(stored) = db.chatbot_setup_at_version(&agent.id, agent.current_version)? else {
+        return Ok(agent.flow_yaml.clone());
+    };
+    let settings: ChatbotSettings = serde_json::from_value(stored)?;
+    let knowledge_base_ids: Vec<String> =
+        reply::attached_knowledge_bases(db, &settings)?.into_iter().map(|base| base.id).collect();
+    let texts = overlay::OnlineTexts {
+        brief: brief::chatbot_brief(&settings, None),
+        handoff_rules: brief::handoff_rules_text(&settings.handoff_rules),
+    };
+    overlay::overlay_for_online(&agent.flow_yaml, &knowledge_base_ids, &texts)
 }
 
 /// Adds a knowledge base to the chatbot (saving the setup if it never was).

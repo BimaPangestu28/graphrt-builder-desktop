@@ -60,6 +60,14 @@ function SaveBar({ form }: { form: ChatbotSetupForm }) {
       {status && (
         <span role="status" className="text-[13px] text-muted">
           {status}
+          {form.hasJustSaved && form.savedSetup && (
+            <>
+              {' '}
+              <Link to={agentPath('agentTests', form.savedSetup.agentId)} className="font-semibold text-brand no-underline hover:underline">
+                {messages().quality.headerLink}
+              </Link>
+            </>
+          )}
         </span>
       )}
     </div>

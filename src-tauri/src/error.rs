@@ -72,6 +72,23 @@ pub enum AppError {
     /// Only a released version goes online, and this agent has no release yet.
     #[error("release a checked version of this agent first (Versions > Release); only a release goes online")]
     NeedsRelease,
+    /// The online copy could not go back to another release, so nothing changed: the release
+    /// in use stays the same here and online. The cause is in the log.
+    #[error("{}", online_switch_failed_message(*release_number, *in_use_number))]
+    OnlineSwitchFailed { release_number: i64, in_use_number: Option<i64> },
+}
+
+/// "The online copy could not go back to release 1, so nothing changed: ..." in plain words; the
+/// screens show their own translated text from the error's `details`.
+fn online_switch_failed_message(release_number: i64, in_use_number: Option<i64>) -> String {
+    let stays = match in_use_number {
+        Some(number) => format!("release {number} stays in use here and online"),
+        None => "the release in use stays the same here and online".to_owned(),
+    };
+    format!(
+        "The online copy could not go back to release {release_number}, so nothing changed: {stays}. \
+         Try again in a few minutes."
+    )
 }
 
 /// "This plugin needs Graphrt Desktop 0.3.0 or newer. ..." in plain words; the screens show
@@ -175,6 +192,7 @@ impl AppError {
             Self::NeedsNewerApp { .. } => "needs_newer_app",
             Self::PluginStepFailed { .. } => "plugin_step_failed",
             Self::NeedsRelease => "needs_release",
+            Self::OnlineSwitchFailed { .. } => "online_switch_failed",
         }
     }
 
@@ -195,6 +213,9 @@ impl AppError {
                 "unknownFeature": unknown_feature,
             })),
             Self::PluginStepFailed { kind, .. } => Some(serde_json::json!({ "kind": kind })),
+            Self::OnlineSwitchFailed { release_number, in_use_number } => {
+                Some(serde_json::json!({ "releaseNumber": release_number, "inUseNumber": in_use_number }))
+            }
             _ => None,
         }
     }

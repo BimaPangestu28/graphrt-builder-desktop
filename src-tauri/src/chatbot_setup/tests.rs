@@ -544,3 +544,91 @@ fn a_new_chatbot_starts_with_what_the_owner_asked_for() {
     assert_eq!(setup.settings.persona.instructions.chars().count(), MAX_INSTRUCTIONS_CHARS);
     save_chatbot_settings(&db, &long.id, setup.settings, &nothing_connected).expect("the prefilled text saves as is");
 }
+
+#[test]
+fn a_setup_that_changes_the_answers_is_a_new_version_and_a_channel_switch_is_not() {
+    let db = Database::open_in_memory().unwrap();
+    let agent = create_chatbot(&db, REPLY_FLOW);
+    let version = |db: &Database| db.get_agent(&agent.id).unwrap().current_version;
+
+    let saved = save_chatbot_settings(&db, &agent.id, persona_settings(), &nothing_connected).unwrap();
+    assert_eq!(version(&db), 2, "the first save is a version");
+    assert_eq!(db.get_agent_version(&agent.id, 2).unwrap().change_summary, SETUP_CHANGE_SUMMARY);
+    assert_eq!(db.get_agent(&agent.id).unwrap().flow_yaml, agent.flow_yaml, "the flow as built stays");
+
+    save_chatbot_settings(&db, &agent.id, saved.settings.clone(), &nothing_connected).unwrap();
+    assert_eq!(version(&db), 2, "saving the same setup again changes nothing");
+
+    let channel_off = ChatbotSettings { disabled_channels: vec!["telegram".into()], ..saved.settings.clone() };
+    save_chatbot_settings(&db, &agent.id, channel_off, &nothing_connected).unwrap();
+    assert_eq!(version(&db), 2, "where it answers is not a version");
+    assert!(!is_channel_enabled(&db, &agent.id, "telegram").unwrap());
+
+    let mut new_rules = saved.settings;
+    new_rules.handoff_rules.order_ready = false;
+    save_chatbot_settings(&db, &agent.id, new_rules, &nothing_connected).unwrap();
+    assert_eq!(version(&db), 3);
+}
+
+#[tokio::test]
+async fn the_online_copy_carries_the_setup_of_its_version_and_graphrt_runs_it() {
+    let harness = harness(&["Halo."]);
+    let agent = create_chatbot(&harness.db, REPLY_FLOW);
+    assert_eq!(flow_for_online(&harness.db, &agent).unwrap(), agent.flow_yaml, "never saved: the flow as built");
+
+    save_chatbot_settings(&harness.db, &agent.id, persona_settings(), &nothing_connected).unwrap();
+    let latest = harness.db.get_agent(&agent.id).unwrap();
+    let version_one = Agent { current_version: 1, ..latest.clone() };
+    assert_eq!(flow_for_online(&harness.db, &version_one).unwrap(), agent.flow_yaml, "version 1 had no setup");
+
+    let online_flow = flow_for_online(&harness.db, &latest).unwrap();
+    let document: Json = serde_json::from_str(&online_flow).unwrap();
+    let nodes = document["graph"]["nodes"].as_array().unwrap();
+    let write_reply = nodes.iter().find(|node| node["id"] == "write_reply").unwrap();
+    assert_eq!(
+        write_reply["prompt_template"][0]["text"], "{{#env.chatbot_brief#}}\n\nAnswer the customer.",
+        "the owner's words stay out of templates"
+    );
+    let env = document["env"].as_array().unwrap();
+    let brief = env.iter().find(|variable| variable["name"] == "chatbot_brief").unwrap();
+    assert!(brief["value"].as_str().unwrap().contains("{{#env.SECRET#}} stays literal."), "{brief}");
+    assert!(online_flow.contains("chatbot_handoff_rules") && online_flow.contains("chatbot_no_knowledge"));
+    assert!(!online_flow.contains("#sys.chatbot"), "nothing reads a value only this app gives");
+
+    // graphrt runs the online document on its own (a chatbot whose setup was never saved here).
+    let online_copy = create_chatbot(&harness.db, &online_flow);
+    let conversation = harness.conversations.start_test_conversation(&online_copy.id).unwrap().conversation;
+    harness.conversations.send_customer_message(&conversation.id, "Ada diskon?").await.unwrap();
+    let prompt = system_prompt(&harness.model, 0);
+    assert!(prompt.starts_with("You are Admin Catering"), "{prompt}");
+    assert!(prompt.contains("Never promise a discount. {{#env.SECRET#}} stays literal."), "{prompt}");
+    assert!(prompt.ends_with("Answer the customer."), "{prompt}");
+}
+
+#[test]
+fn the_online_copy_points_retrieval_at_the_attached_knowledge_or_at_nothing() {
+    let db = Database::open_in_memory().unwrap();
+    let agent = create_chatbot(&db, &RETRIEVAL_FLOW.replace("DATASET", "Old"));
+    save_chatbot_settings(&db, &agent.id, persona_settings(), &nothing_connected).unwrap();
+    let online_flow = flow_for_online(&db, &db.get_agent(&agent.id).unwrap()).unwrap();
+    let document: Json = serde_json::from_str(&online_flow).unwrap();
+    let look_up = document["graph"]["nodes"].as_array().unwrap().iter().find(|node| node["id"] == "look_up").unwrap();
+    assert_eq!(look_up["query_variable_selector"], serde_json::json!(["env", "chatbot_no_knowledge"]));
+    let empty = document["env"].as_array().unwrap().iter().find(|variable| variable["name"] == "chatbot_no_knowledge");
+    assert_eq!(empty.unwrap()["value"], "", "an empty query finds no passages");
+    crate::flow::compile_flow(&online_flow).unwrap();
+}
+
+#[test]
+fn other_agents_go_online_as_built() {
+    let db = Database::open_in_memory().unwrap();
+    let task = db
+        .create_agent(NewAgent {
+            name: "Task".into(),
+            kind: AgentKind::Task,
+            description: "Does a task".into(),
+            flow_yaml: REPLY_FLOW.into(),
+        })
+        .unwrap();
+    assert_eq!(flow_for_online(&db, &task).unwrap(), task.flow_yaml);
+}
