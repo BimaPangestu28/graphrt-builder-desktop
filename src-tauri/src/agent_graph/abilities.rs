@@ -968,7 +968,7 @@ graph:
         set_ability(&db, &lead, &helpers, &context).unwrap();
         db.delete_agent(&gone).unwrap();
 
-        assert_eq!(remove_helper_everywhere(&db, &gone, &context), [lead.clone()]);
+        assert_eq!(remove_helper_everywhere(&db, &gone, &context), std::slice::from_ref(&lead));
 
         assert_eq!(
             agent_abilities(&db, &lead).unwrap().helpers,
