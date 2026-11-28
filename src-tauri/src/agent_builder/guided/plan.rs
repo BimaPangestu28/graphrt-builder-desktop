@@ -728,7 +728,10 @@ fn without_copied_description(value: serde_json::Value, description: &str) -> se
         let bracketed = &rest[open..=open + close];
         kept.push_str(&rest[..open]);
         let inside = words_of(bracketed);
-        if inside.is_empty() || !description.contains(&inside) {
+        // Also a note about the default in the model's own words ("USD (DEFAULT: USD IF NOT
+        // SPECIFIED)") when the description has a default.
+        let notes_the_default = inside.starts_with("default") && description.contains("default");
+        if inside.is_empty() || !(description.contains(&inside) || notes_the_default) {
             kept.push_str(bracketed);
         }
         rest = &rest[open + close + 1..];
@@ -1847,6 +1850,15 @@ mod tests {
             without_copied_description(json!("USD (DEFAULT: EUR)"), "Base currency, e.g. USD (default: EUR)"),
             json!("USD")
         );
+        // What llama3.2 wrote in round 4: the default in its own words.
+        assert_eq!(
+            without_copied_description(
+                json!("USD (DEFAULT: USD IF NOT SPECIFIED)"),
+                "Base currency, e.g. USD (default EUR)"
+            ),
+            json!("USD")
+        );
+        assert_eq!(without_copied_description(json!("Rapat (default)"), "Subject line"), json!("Rapat (default)"));
         assert_eq!(without_copied_description(json!("Rapat (Senin)"), "Subject line"), json!("Rapat (Senin)"));
         assert_eq!(without_copied_description(json!(5), "Limit (default 10)"), json!(5));
     }
