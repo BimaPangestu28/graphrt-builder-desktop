@@ -8,6 +8,7 @@ import type {
   DeployEvent,
   DeployedVersion,
   DevicePairing,
+  AwsProfile,
   DeployLink,
   DeployOptions,
   GoogleConsolePage,
@@ -89,6 +90,20 @@ export function openGoogleCloudPage(page: GoogleConsolePage, project: string | n
 /** Opens the fix of a deploy problem (a Google Cloud console page the backend named). */
 export function openDeployFix(url: string): Promise<void> {
   return useSample() ? sampleDeployBackend.openDeployLink() : callBackend('open_deploy_fix', { url })
+}
+
+/** The AWS profiles of this computer (`~/.aws`), never their keys. */
+export function listAwsProfiles(): Promise<AwsProfile[]> {
+  return useSample() ? sampleDeployBackend.listAwsProfiles() : callBackend('list_aws_profiles')
+}
+
+/**
+ * Connects AWS with the access key of a profile of this computer (checked with AWS, kept in the keychain).
+ *
+ * @throws BackendError - `invalid_input` when the profile has no key or AWS refuses it
+ */
+export function connectAwsProfile(profile: string): Promise<DeployAccount> {
+  return useSample() ? sampleDeployBackend.connectAwsProfile(profile) : callBackend('connect_aws_profile', { profile })
 }
 
 export function readKubeconfigContexts(path: string): Promise<string[]> {

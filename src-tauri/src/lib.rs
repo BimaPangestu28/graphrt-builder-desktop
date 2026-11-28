@@ -509,6 +509,8 @@ pub fn run() {
             commands::deploy::connect_deploy_account,
             commands::deploy::disconnect_deploy_account,
             commands::deploy::sign_in_google_cloud,
+            commands::deploy::list_aws_profiles,
+            commands::deploy::connect_aws_profile,
             commands::deploy::list_google_cloud_projects,
             commands::deploy::open_google_cloud_page,
             commands::deploy::open_deploy_fix,

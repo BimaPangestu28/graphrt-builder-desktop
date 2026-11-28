@@ -1,0 +1,561 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Graphrt/graphrt/blob/main/docs/schemas/deploy-direct-aws.schema.json",
+  "title": "graphrt deploy --target lambda --direct --json output line",
+  "description": "One line of the JSON Lines that `graphrt deploy --target lambda --direct --json` and its subcommands (status, list-versions, rollback, pause, resume, remove) print on stdout: zero or more `step` lines, then exactly one `result` or `error` line. A deploy that fails after storing a new API key prints one `api_key` line right before its `error` line. Same shape as docs/schemas/deploy-direct.schema.json (Fly) with AWS error codes, Function URLs and a `region` on every result. See docs/deploy-direct-aws.md.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/step"
+    },
+    {
+      "$ref": "#/$defs/api_key"
+    },
+    {
+      "$ref": "#/$defs/error"
+    },
+    {
+      "$ref": "#/$defs/deploy_result"
+    },
+    {
+      "$ref": "#/$defs/status_result"
+    },
+    {
+      "$ref": "#/$defs/list_versions_result"
+    },
+    {
+      "$ref": "#/$defs/rollback_result"
+    },
+    {
+      "$ref": "#/$defs/pause_result"
+    },
+    {
+      "$ref": "#/$defs/resume_result"
+    },
+    {
+      "$ref": "#/$defs/remove_result"
+    }
+  ],
+  "$defs": {
+    "nullable_string": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "timestamp": {
+      "description": "RFC 3339 UTC with milliseconds, e.g. 2026-11-24T16:00:00.123Z.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+    },
+    "step": {
+      "description": "Progress of a deploy, rollback or resume. Each step reports `running`, then `done` or `failed`.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "step",
+        "status",
+        "message"
+      ],
+      "properties": {
+        "type": {
+          "const": "step"
+        },
+        "step": {
+          "enum": [
+            "preparing",
+            "secrets",
+            "starting",
+            "checking"
+          ]
+        },
+        "status": {
+          "enum": [
+            "running",
+            "done",
+            "failed"
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "error": {
+      "description": "The command failed (exit code 2 for invalid_input, 1 otherwise). Never carries the API key (see `api_key`).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "code",
+        "message"
+      ],
+      "properties": {
+        "type": {
+          "const": "error"
+        },
+        "code": {
+          "enum": [
+            "invalid_input",
+            "missing_credentials",
+            "unauthorized",
+            "permission_denied",
+            "region_unavailable",
+            "account_not_ready",
+            "quota_exceeded",
+            "not_found",
+            "rate_limited",
+            "image_unavailable",
+            "health_check_failed",
+            "aws_unavailable",
+            "aws_api",
+            "internal"
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "deploy_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "action",
+        "url",
+        "version",
+        "app",
+        "workflow",
+        "api_key",
+        "serve",
+        "store",
+        "region"
+      ],
+      "properties": {
+        "type": {
+          "const": "result"
+        },
+        "action": {
+          "const": "deploy"
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^https://[a-z0-9]+\\.lambda-url\\.[a-z0-9-]+\\.on\\.aws$"
+        },
+        "version": {
+          "type": "string"
+        },
+        "app": {
+          "type": "string"
+        },
+        "workflow": {
+          "description": "Run it with POST {url}/v1/workflows/{workflow}/runs.",
+          "type": "string"
+        },
+        "api_key": {
+          "description": "Bearer token of the deployment, only on the deploy that created it or with --rotate-api-key; null otherwise.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "serve": {
+          "$ref": "#/$defs/serve"
+        },
+        "store": {
+          "type": "null",
+          "description": "Lambda keeps no store."
+        },
+        "region": {
+          "type": "string",
+          "description": "AWS region of the function."
+        }
+      }
+    },
+    "status_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "action",
+        "app",
+        "url",
+        "status",
+        "current_version",
+        "workflow",
+        "mode",
+        "last_deployed_at",
+        "machines",
+        "store",
+        "region"
+      ],
+      "properties": {
+        "type": {
+          "const": "result"
+        },
+        "action": {
+          "const": "status"
+        },
+        "app": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string",
+          "description": "The Function URL, empty when nothing serves yet."
+        },
+        "status": {
+          "enum": [
+            "online",
+            "paused",
+            "deploying",
+            "failed",
+            "offline"
+          ]
+        },
+        "workflow": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "mode": {
+          "enum": [
+            "always-on",
+            "scale-to-zero",
+            null
+          ]
+        },
+        "machines": {
+          "type": "array",
+          "maxItems": 0,
+          "description": "Lambda has no Machines: always empty."
+        },
+        "current_version": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "last_deployed_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "store": {
+          "type": "null"
+        },
+        "region": {
+          "type": "string",
+          "description": "AWS region of the function."
+        }
+      }
+    },
+    "list_versions_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "action",
+        "app",
+        "url",
+        "current_version",
+        "versions",
+        "region"
+      ],
+      "properties": {
+        "type": {
+          "const": "result"
+        },
+        "action": {
+          "const": "list-versions"
+        },
+        "app": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "versions": {
+          "description": "Newest deploy first.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "label",
+              "deployed_at",
+              "current",
+              "role",
+              "mode",
+              "workflow",
+              "state",
+              "lambda_version"
+            ],
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "deployed_at": {
+                "$ref": "#/$defs/timestamp"
+              },
+              "current": {
+                "type": "boolean"
+              },
+              "role": {
+                "type": "string"
+              },
+              "mode": {
+                "$ref": "#/$defs/nullable_string"
+              },
+              "workflow": {
+                "$ref": "#/$defs/nullable_string"
+              },
+              "state": {
+                "type": "string"
+              },
+              "lambda_version": {
+                "type": "string",
+                "description": "The Lambda version number serving this label."
+              }
+            }
+          }
+        },
+        "current_version": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "region": {
+          "type": "string",
+          "description": "AWS region of the function."
+        }
+      }
+    },
+    "rollback_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "action",
+        "app",
+        "url",
+        "version",
+        "workflow",
+        "region"
+      ],
+      "properties": {
+        "type": {
+          "const": "result"
+        },
+        "action": {
+          "const": "rollback"
+        },
+        "app": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "workflow": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "region": {
+          "type": "string",
+          "description": "AWS region of the function."
+        }
+      }
+    },
+    "pause_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "action",
+        "app",
+        "url",
+        "status",
+        "changed",
+        "region"
+      ],
+      "properties": {
+        "type": {
+          "const": "result"
+        },
+        "action": {
+          "const": "pause"
+        },
+        "app": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "status": {
+          "const": "paused"
+        },
+        "changed": {
+          "description": "false when it was already paused.",
+          "type": "boolean"
+        },
+        "region": {
+          "type": "string",
+          "description": "AWS region of the function."
+        }
+      }
+    },
+    "resume_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "action",
+        "app",
+        "url",
+        "status",
+        "version",
+        "changed",
+        "region"
+      ],
+      "properties": {
+        "type": {
+          "const": "result"
+        },
+        "action": {
+          "const": "resume"
+        },
+        "app": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "status": {
+          "const": "online"
+        },
+        "version": {
+          "$ref": "#/$defs/nullable_string"
+        },
+        "changed": {
+          "description": "false when it was not paused.",
+          "type": "boolean"
+        },
+        "region": {
+          "type": "string",
+          "description": "AWS region of the function."
+        }
+      }
+    },
+    "remove_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "action",
+        "app",
+        "removed",
+        "region"
+      ],
+      "properties": {
+        "type": {
+          "const": "result"
+        },
+        "action": {
+          "const": "remove"
+        },
+        "app": {
+          "type": "string"
+        },
+        "removed": {
+          "description": "false when the app did not exist.",
+          "type": "boolean"
+        },
+        "region": {
+          "type": "string",
+          "description": "AWS region of the function."
+        }
+      }
+    },
+    "api_key": {
+      "description": "Only on failure: a deploy stored a new API key (first deploy or --rotate-api-key) and then failed. Printed once, immediately before the `error` line. On success the key is in the result's `api_key` instead; it is never in an `error` line.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "api_key"
+      ],
+      "properties": {
+        "type": {
+          "const": "api_key"
+        },
+        "api_key": {
+          "type": "string"
+        }
+      }
+    },
+    "serve": {
+      "description": "What the deployed version serves besides the API.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "chat",
+        "cors_origins",
+        "conversations",
+        "monitor",
+        "devices",
+        "approvals",
+        "expire_approvals",
+        "push"
+      ],
+      "properties": {
+        "chat": {
+          "description": "Who may use the chat page at {url}/chat/; null without one.",
+          "enum": [
+            "key",
+            "guests",
+            null
+          ]
+        },
+        "cors_origins": {
+          "description": "Sites whose pages may call the agent and embed the chat widget.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "conversations": {
+          "type": "boolean"
+        },
+        "monitor": {
+          "description": "The monitoring page is served at {url}/monitor/.",
+          "type": "boolean"
+        },
+        "devices": {
+          "description": "Devices can be paired: POST {url}/v1/devices.",
+          "type": "boolean"
+        },
+        "approvals": {
+          "description": "The approvals inbox is served: GET {url}/v1/approvals.",
+          "type": "boolean"
+        },
+        "expire_approvals": {
+          "description": "Requests answer themselves (on_expire) when their time limit passes.",
+          "type": "boolean"
+        },
+        "push": {
+          "description": "Web Push notifications are sent.",
+          "type": "boolean"
+        },
+        "channels": {
+          "description": "Messaging channels the agent answers on (--channel). Absent in results of tools older than the flag.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "telegram",
+              "whatsapp",
+              "slack",
+              "teams"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

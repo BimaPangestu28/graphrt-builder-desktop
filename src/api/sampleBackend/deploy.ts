@@ -1,5 +1,6 @@
 import { BackendError } from '../client'
 import type {
+  AwsProfile,
   CloudPlace,
   CliInfo,
   CompatibilityFix,
@@ -62,6 +63,10 @@ interface SampleDeployState {
   toolsKnowCloudRun: boolean
   /** The signed-in Google account's projects. */
   googleProjects: GoogleProject[]
+  /** Whether the sample tools give Lambda a store (the phone page and channels). */
+  lambdaStore: boolean
+  /** The AWS profiles of the sample computer. */
+  awsProfiles: AwsProfile[]
 }
 
 /** The projects of the sample Google account: one with billing, one without. */
@@ -87,6 +92,11 @@ function freshState(): SampleDeployState {
     deviceNumber: 0,
     toolsKnowCloudRun: true,
     googleProjects: sampleGoogleProjects,
+    lambdaStore: false,
+    awsProfiles: [
+      { name: 'default', region: 'ap-southeast-3', hasKeys: true },
+      { name: 'work-sso', region: 'eu-west-1', hasKeys: false },
+    ],
   }
 }
 
@@ -105,6 +115,11 @@ export function setSampleCliStatus(cli: CliInfo): void {
 export function setSampleToolsKnowOnlineFeatures(known: boolean): void {
   state.toolsKnowOnlineFeatures = known
   state.cli = { ...state.cli, onlineFeatures: known && state.cli.status === 'installed' }
+}
+
+/** Gives Lambda deployments of the sample tools a store (the phone page and channels on AWS). */
+export function setSampleLambdaStore(hasStore: boolean): void {
+  state.lambdaStore = hasStore
 }
 
 /** Makes the sample tools older than Cloud Run (Google Cloud then stays "coming soon"). */
@@ -199,7 +214,7 @@ function listAccounts(): DeployAccount[] {
 }
 
 function canDeploy(provider: DeployProvider): boolean {
-  return provider === 'fly' || (provider === 'google_cloud' && state.toolsKnowCloudRun)
+  return provider === 'fly' || provider === 'aws' || (provider === 'google_cloud' && state.toolsKnowCloudRun)
 }
 
 function invalid(message: string): never {
@@ -220,7 +235,7 @@ function checkAccount(input: DeployAccountInput): string {
     case 'aws':
       if (!/^[A-Z0-9]{16,128}$/.test(input.accessKeyId.trim())) invalid('The access key ID looks wrong. It is about 20 capital letters and digits, like AKIA…')
       if (input.secretAccessKey.trim().length < 20) invalid('The secret access key looks wrong. Copy it again from AWS')
-      return `Access key ${input.accessKeyId.trim().slice(0, 4)}…${input.accessKeyId.trim().slice(-4)}`
+      return `Access key ${input.accessKeyId.trim().slice(0, 4)}…${input.accessKeyId.trim().slice(-4)} · account 123456789012 · user graphrt-deployer`
     case 'azure':
       if (!guidPattern.test(input.tenantId.trim())) invalid('The tenant ID looks wrong. It looks like 00000000-0000-0000-0000-000000000000')
       if (!guidPattern.test(input.clientId.trim())) invalid('The app (client) ID looks wrong. It looks like 00000000-0000-0000-0000-000000000000')
@@ -252,7 +267,7 @@ function review(agentId: string, provider: DeployProvider): DeployReview {
     providerConnected: state.accounts.has(provider),
     canDeploy: canDeploy(provider),
     deploymentName: name,
-    expectedAddress: provider === 'google_cloud' ? `${name}-….a.run.app` : `${name}.fly.dev`,
+    expectedAddress: provider === 'google_cloud' ? `${name}-….a.run.app` : provider === 'aws' ? '….lambda-url.on.aws' : `${name}.fly.dev`,
     keys: [
       { friendlyName: 'Your OpenAI key', purpose: 'So it can write answers', isSaved: true, envName: 'OPENAI_API_KEY' },
       { friendlyName: 'WhatsApp Business access', purpose: 'So it can reply to customers', isSaved: true, envName: 'WHATSAPP_CLOUD_ACCESS_TOKEN' },
@@ -263,6 +278,8 @@ function review(agentId: string, provider: DeployProvider): DeployReview {
     image: state.images.get(agentId) ?? null,
     features: existing?.features ?? noOnlineFeatures,
     cloudPlace: existing?.deployment.provider === 'google_cloud' ? existing.place : null,
+    region: existing?.deployment.provider === 'aws' ? existing.deployment.region : null,
+    storeFeatures: provider !== 'aws' || state.lambdaStore,
   }
 }
 
@@ -393,12 +410,15 @@ function billingProblem(place: CloudPlace): DeployProblem {
 async function deploy(agentId: string, options: DeployOptions): Promise<DeployOutcome> {
   if (!canDeploy(options.provider)) invalid(`Putting agents online with ${deployProviderNames[options.provider]} is coming soon`)
   const place = options.provider === 'google_cloud' ? (options.cloudPlace ?? invalid('Pick a Google Cloud project and region first')) : null
+  const awsRegion = options.provider === 'aws' ? (options.region ?? invalid('Pick an AWS region such as ap-southeast-3 first')) : null
   if (state.cli.status === 'not_available') invalid(onlineDeployNotAvailableMessage())
   if (state.cli.status !== 'installed') invalid('Download the graphrt tools first (Review › Allow download)')
   const image = options.image?.trim() || null
   if (image && (image.startsWith('-') || !/^[A-Za-z0-9./:_@-]+$/.test(image))) invalid(`\`${image}\` is not an image name such as ghcr.io/you/graphrt:0.6.0 (leave it empty for graphrt's own image)`)
   const features = checkedFeatures(options.features ?? noOnlineFeatures)
   if (anyFeature(features) && !state.cli.onlineFeatures) invalid(onlineFeaturesNeedNewerToolsMessage())
+  const needsStore = features.phone || features.notifications || features.whatsapp || features.teams
+  if (options.provider === 'aws' && !state.lambdaStore && needsStore) invalid('Following the agent from your phone, notifications, WhatsApp Business and Microsoft Teams keep things on a storage space, which agents on AWS do not have yet. Turn them off, or put the agent online with Fly.io or Google Cloud.')
   if (!state.accounts.has(options.provider)) throw new BackendError('missing_credentials', `not set up yet: your ${deployProviderNames[options.provider]} account (connect it in Online accounts)`)
   const agent = readStoredAgent(agentId)
   for (const step of sampleSteps) {
@@ -416,7 +436,11 @@ async function deploy(agentId: string, options: DeployOptions): Promise<DeployOu
   const nextNumber = Number(previous?.deployment.deployedVersionLabel?.slice(1) ?? 0) + 1
   const label = `v${nextNumber}`
   const name = slugFor(agent)
-  const placeChanges = place ? { provider: 'google_cloud' as const, region: place.region, url: `https://${name}-x7k2q9fa3b-et.a.run.app` } : { region: regionForArea[options.area] }
+  const placeChanges = place
+    ? { provider: 'google_cloud' as const, region: place.region, url: `https://${name}-x7k2q9fa3b-et.a.run.app` }
+    : awsRegion
+      ? { provider: 'aws' as const, region: awsRegion, url: `https://k3x9q2w7p5c4m8t6.lambda-url.${awsRegion}.on.aws/` }
+      : { region: regionForArea[options.area] }
   const view = { ...buildView(agent, { mode: options.mode, ...placeChanges, deployedVersionLabel: label, createdAt: previous?.deployment.createdAt }), features, place }
   state.deployments.set(agentId, view)
   // Without the phone page its storage is removed, and the paired phones with it.
@@ -506,6 +530,13 @@ export const sampleDeployBackend = {
     await waitFor(600)
     state.accounts.set('google_cloud', 'Signed in as ana@acme.com')
     return listAccounts().find((account) => account.provider === 'google_cloud') as DeployAccount
+  },
+  listAwsProfiles: () => respondWith(() => state.awsProfiles),
+  connectAwsProfile: async (profile: string): Promise<DeployAccount> => {
+    await waitFor(500)
+    if (!state.awsProfiles.find((entry) => entry.name === profile)?.hasKeys) invalid(`The profile ${profile} has no access key (it signs in another way). Paste an access key instead`)
+    state.accounts.set('aws', `Profile ${profile} · account 123456789012 · user graphrt-deployer`)
+    return listAccounts().find((account) => account.provider === 'aws') as DeployAccount
   },
   listGoogleCloudProjects: () =>
     respondWith(() => {

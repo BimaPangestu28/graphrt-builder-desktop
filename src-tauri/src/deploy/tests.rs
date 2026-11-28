@@ -113,6 +113,7 @@ fn fly_options() -> DeployOptions {
         image: None,
         features: OnlineFeatures::default(),
         cloud_place: None,
+        region: None,
     }
 }
 
@@ -131,6 +132,8 @@ fn deployment_names_and_versions() {
     assert!(name.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-'));
     assert_eq!(next_version_label(None), "v1");
     assert_eq!(next_version_label(Some("v9")), "v10");
+    assert_eq!(highest_version_label(["v1", "v10", "v2", "custom"].into_iter()), Some("v10"));
+    assert_eq!(highest_version_label(std::iter::empty()), None);
     assert_eq!(ServerArea::from_fly_region(ServerArea::Europe.fly_region()), Some(ServerArea::Europe));
 }
 
@@ -324,10 +327,137 @@ async fn puts_an_agent_on_cloud_run_with_the_signed_in_google_account() {
     assert!(project.is_none_or(|value| value.is_null()), "the project is forgotten with the deployment");
 }
 
+/// A fake `graphrt` that knows Lambda (without a store), records its calls and refuses with
+/// `permission_denied` while `{folder}/denied` exists.
+#[cfg(unix)]
+fn lambda_script(folder: &std::path::Path) -> String {
+    format!(
+        r#"echo "ARGS $*" >> "{record}"
+echo "ENV ID=$AWS_ACCESS_KEY_ID SECRET=$AWS_SECRET_ACCESS_KEY TOKEN=$AWS_SESSION_TOKEN PROFILE=$AWS_PROFILE" >> "{record}"
+case "$2" in
+  --help) echo "  --profile <PROFILE>  Direct, Lambda: AWS profile of ~/.aws/credentials / ~/.aws/config --chat-access --monitor --push --expire-approvals --drop-store" ;;
+  capabilities) exit 2 ;;
+  pause) echo '{{"type":"result","action":"pause","app":"graphrt-menu","url":"https://abc.lambda-url.ap-southeast-3.on.aws/","status":"paused","changed":true,"region":"ap-southeast-3"}}' ;;
+  remove) echo '{{"type":"result","action":"remove","app":"graphrt-menu","removed":true,"region":"ap-southeast-3"}}' ;;
+  *)
+    if [ -f "{denied}" ]; then
+      echo '{{"type":"error","code":"permission_denied","message":"could not create the function: User: arn:aws:iam::1:user/x is not authorized to perform: lambda:CreateFunction on resource: graphrt-menu"}}'
+      exit 1
+    fi
+    echo '{{"type":"result","action":"deploy","url":"https://abc.lambda-url.ap-southeast-3.on.aws/","version":"v1","app":"graphrt-menu","workflow":"agent","api_key":"grk_lambda","region":"ap-southeast-3"}}'
+    ;;
+esac"#,
+        record = folder.join("calls.txt").display(),
+        denied = folder.join("denied").display(),
+    )
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn puts_an_agent_on_aws_lambda_with_the_saved_access_key() {
+    let mut harness = harness(FLOW);
+    let folder = tempfile::tempdir().unwrap();
+    harness.service = harness.service.with_cli_executable(fake_cli(folder.path(), &lambda_script(folder.path())));
+    harness.credentials.set_api_key(ModelProvider::Openai, "sk-openai-secret").unwrap();
+    let agent_id = harness.agent.id.clone();
+    let aws_options = |region: Option<&str>, features: OnlineFeatures| DeployOptions {
+        provider: DeployProvider::Aws,
+        mode: DeployMode::AlwaysOn,
+        region: region.map(str::to_owned),
+        features,
+        ..fly_options()
+    };
+
+    let review = harness.service.review(&harness.agent, &[], DeployProvider::Aws).unwrap();
+    assert!(review.can_deploy && !review.store_features, "Lambda without a store: {review:?}");
+    let not_connected = harness
+        .service
+        .deploy(&agent_id, aws_options(Some("ap-southeast-3"), OnlineFeatures::default()), &[], &ready_report())
+        .await;
+    assert!(
+        matches!(not_connected, Err(AppError::DeployFailed(ref problem)) if problem.fix == Some(google_cloud::DeployFix::ConnectAgain { provider: DeployProvider::Aws })),
+        "{not_connected:?}"
+    );
+    harness
+        .credentials
+        .set_deploy_secret(
+            "account:aws",
+            r#"{"accessKeyId":"AKIATESTTESTTEST1234","secretAccessKey":"test-secret-not-real","sessionToken":null}"#,
+        )
+        .unwrap();
+    let no_region =
+        harness.service.deploy(&agent_id, aws_options(None, OnlineFeatures::default()), &[], &ready_report()).await;
+    assert!(no_region.unwrap_err().to_string().contains("Pick an AWS region"));
+    let phone = OnlineFeatures { phone: true, ..OnlineFeatures::default() };
+    let needs_store =
+        harness.service.deploy(&agent_id, aws_options(Some("ap-southeast-3"), phone), &[], &ready_report()).await;
+    assert!(needs_store.unwrap_err().to_string().contains("storage space"));
+
+    std::fs::write(folder.path().join("denied"), "").unwrap();
+    let denied = harness
+        .service
+        .deploy(&agent_id, aws_options(Some("ap-southeast-3"), OnlineFeatures::default()), &[], &ready_report())
+        .await
+        .unwrap_err();
+    let details = denied.details().unwrap();
+    assert_eq!((details["provider"].as_str(), details["kind"].as_str()), (Some("aws"), Some("permission_denied")));
+    assert_eq!(details["role"], "lambda:CreateFunction");
+    std::fs::remove_file(folder.path().join("denied")).unwrap();
+
+    let chat = OnlineFeatures { chat: true, ..OnlineFeatures::default() };
+    let outcome = harness
+        .service
+        .deploy(
+            &agent_id,
+            DeployOptions {
+                image: Some("123456789012.dkr.ecr.ap-southeast-3.amazonaws.com/graphrt:test".into()),
+                ..aws_options(Some("ap-southeast-3"), chat)
+            },
+            &[],
+            &ready_report(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(outcome.view.deployment.url.as_deref(), Some("https://abc.lambda-url.ap-southeast-3.on.aws/"));
+    assert_eq!(outcome.view.deployment.region.as_deref(), Some("ap-southeast-3"));
+    assert_eq!(outcome.view.deployment.mode, DeployMode::ScaleToZero, "Lambda only scales to zero");
+    let calls = std::fs::read_to_string(folder.path().join("calls.txt")).unwrap();
+    let deploy_line = calls.lines().rfind(|line| line.starts_with("ARGS deploy --target")).unwrap();
+    assert!(deploy_line.contains("--target lambda --direct"), "{deploy_line}");
+    assert!(deploy_line.contains("--region ap-southeast-3 --mode scale-to-zero"), "{deploy_line}");
+    assert!(deploy_line.contains("--chat") && !deploy_line.contains("--drop-store"), "{deploy_line}");
+    assert!(!deploy_line.contains("--project"));
+    assert!(calls.contains("ENV ID=AKIATESTTESTTEST1234 SECRET=test-secret-not-real TOKEN= PROFILE="), "{calls}");
+    assert!(!calls.lines().filter(|line| line.starts_with("ARGS")).any(|line| line.contains("test-secret-not-real")));
+
+    let moved = harness
+        .service
+        .deploy(&agent_id, aws_options(Some("us-east-1"), OnlineFeatures::default()), &[], &ready_report())
+        .await
+        .unwrap_err();
+    assert!(moved.to_string().contains("Take it offline first"), "{moved}");
+    assert_eq!(
+        harness.service.review(&harness.agent, &[], DeployProvider::Aws).unwrap().region.as_deref(),
+        Some("ap-southeast-3")
+    );
+
+    harness.service.manage(&agent_id, ManageAction::Pause).await.unwrap();
+    let calls = std::fs::read_to_string(folder.path().join("calls.txt")).unwrap();
+    let pause_line = calls.lines().find(|line| line.starts_with("ARGS deploy pause")).unwrap();
+    assert!(
+        pause_line.contains("--target lambda --direct") && pause_line.contains("--region ap-southeast-3 --json"),
+        "{pause_line}"
+    );
+    assert!(harness.service.review(&harness.agent, &[], DeployProvider::Aws).unwrap().image.is_some());
+    assert_eq!(harness.service.manage(&agent_id, ManageAction::Remove).await.unwrap(), None);
+    let after = harness.service.review(&harness.agent, &[], DeployProvider::Aws).unwrap();
+    assert_eq!(after.image, None, "a next deploy starts from graphrt's own image");
+}
+
 #[tokio::test]
 async fn deploying_needs_fly_the_tools_and_saved_keys() {
     let harness = harness(FLOW);
-    let not_fly = DeployOptions { provider: DeployProvider::Aws, ..fly_options() };
+    let not_fly = DeployOptions { provider: DeployProvider::Azure, ..fly_options() };
     let error = harness.service.deploy(&harness.agent.id, not_fly, &[], &ready_report()).await.unwrap_err();
     assert!(error.to_string().contains("coming soon"), "{error}");
     let blocked = CompatibilityReport { ready: false, items: Vec::new() };
@@ -428,6 +558,12 @@ esac"#,
     assert_eq!(rolled_back.deployment.deployed_version_label.as_deref(), Some("v1"));
     assert!(!rolled_back.has_changes, "going back online puts the release of v1 in use too");
     assert_eq!(harness.db.release_in_use(&harness.agent.id).unwrap().map(|release| release.number), Some(1));
+    let after_roll_back = harness.service.deploy(&harness.agent.id, fly_options(), &[], &ready_report()).await.unwrap();
+    assert_eq!(
+        after_roll_back.view.deployment.deployed_version_label.as_deref(),
+        Some("v3"),
+        "v2 still exists on the provider: the next label is v3"
+    );
 
     assert_eq!(harness.service.manage(&harness.agent.id, ManageAction::Remove).await.unwrap(), None);
     assert_eq!(harness.db.get_deployment(&harness.agent.id).unwrap(), None);

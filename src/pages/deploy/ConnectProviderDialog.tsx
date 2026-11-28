@@ -1,6 +1,6 @@
-import { useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { connectDeployAccount, openDeployLink, readKubeconfigContexts, signInGoogleCloud } from '@/api/deploy'
-import { deployProviderNames, type DeployAccount, type DeployAccountInput, type DeployLink, type DeployProvider } from '@/api/deployTypes'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { connectAwsProfile, connectDeployAccount, listAwsProfiles, openDeployLink, readKubeconfigContexts, signInGoogleCloud } from '@/api/deploy'
+import { deployProviderNames, type AwsProfile, type DeployAccount, type DeployAccountInput, type DeployLink, type DeployProvider } from '@/api/deployTypes'
 import { pickFilePaths } from '@/api/fileDrop'
 import { FileDropZone, type FileDropAccept } from '@/components/fileDrop'
 import { Button, Icon } from '@/components/ui'
@@ -8,6 +8,7 @@ import { lastPathSegment } from '@/lib/fileDrop'
 import { getCredentialStoreName } from '@/lib/platform'
 import { DeployDialog, DevelopersDetails, GuideSteps } from './DeployDialog'
 import { plainErrorMessage } from './deployDisplay'
+import { graphrtAwsPolicyText } from './aws'
 import { ProviderLogo } from './ProviderLogo'
 import { messages } from '@/i18n'
 
@@ -21,6 +22,12 @@ interface ConnectProviderDialogProps {
 
 /** What each provider's form produces: a complete input, or null while something is missing. */
 type BuildInput = () => DeployAccountInput | null
+
+/** A form hands over how to build its input, or connects by itself (an AWS profile of this computer). */
+interface FormProps {
+  onBuild: (build: BuildInput) => void
+  onConnected: (account: DeployAccount) => void
+}
 
 function TextField({ label, value, onChange, type = 'text', placeholder }: { label: string; value: string; onChange: (value: string) => void; type?: string; placeholder?: string }) {
   return (
@@ -122,15 +129,108 @@ function GoogleCloudSignInGuide() {
   )
 }
 
-function AwsForm({ onBuild }: { onBuild: (build: BuildInput) => void }) {
+/** The minimum IAM policy, shown with a Copy button (AWS console: Create inline policy, JSON). */
+function AwsPolicy() {
+  const words = messages().deploy.aws
+  const [isCopied, setIsCopied] = useState(false)
+  return (
+    <details className="rounded-xl border border-line bg-surface px-4 py-3 text-[13px] text-body">
+      <summary className="cursor-pointer font-medium text-ink-2">{words.policyTitle}</summary>
+      <div className="mt-2 flex flex-col gap-2">
+        <span className="leading-normal">{words.policyHint}</span>
+        <pre aria-label={words.policyTitle} className="m-0 max-h-[200px] overflow-auto rounded-lg bg-subtle p-3 font-mono text-[11px] leading-[1.5] text-ink-2">
+          {graphrtAwsPolicyText}
+        </pre>
+        <span className="flex flex-wrap items-center gap-3">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              void navigator.clipboard?.writeText(graphrtAwsPolicyText)
+              setIsCopied(true)
+            }}
+          >
+            {isCopied ? words.policyCopied : words.copyPolicy}
+          </Button>
+          <GuideLink link="aws_iam_policy">{words.policyDocs}</GuideLink>
+        </span>
+      </div>
+    </details>
+  )
+}
+
+/** The AWS profiles of this computer that hold a key: one click connects with it. */
+function AwsProfiles({ onConnected }: { onConnected: (account: DeployAccount) => void }) {
+  const words = messages().deploy.aws
+  const [profiles, setProfiles] = useState<AwsProfile[]>([])
+  const [usingProfile, setUsingProfile] = useState<string | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  useEffect(() => {
+    let isCurrent = true
+    listAwsProfiles()
+      .then((found) => isCurrent && setProfiles(found))
+      .catch(() => isCurrent && setProfiles([]))
+    return () => {
+      isCurrent = false
+    }
+  }, [])
+  if (profiles.length === 0) return null
+  async function useProfile(name: string) {
+    setUsingProfile(name)
+    setErrorMessage(null)
+    try {
+      onConnected(await connectAwsProfile(name))
+    } catch (error) {
+      setErrorMessage(plainErrorMessage(error))
+    } finally {
+      setUsingProfile(null)
+    }
+  }
+  return (
+    <section aria-label={words.profilesTitle} className="flex flex-col gap-2 rounded-[12px] border border-line bg-subtle px-3.5 py-3">
+      <span className="text-[13px] font-semibold text-ink-2">{words.profilesTitle}</span>
+      <span className="text-[12px] text-muted">{words.profilesHint(getCredentialStoreName())}</span>
+      <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
+        {profiles.map((profile) => (
+          <li key={profile.name} className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[13px]">
+              <b className="font-medium">{profile.name}</b>
+              {profile.region && <span className="text-muted"> · {words.profileRegion(profile.region)}</span>}
+              {!profile.hasKeys && <span className="text-muted"> · {words.profileNoKeys}</span>}
+            </span>
+            {profile.hasKeys && (
+              <Button size="sm" variant="secondary" disabled={usingProfile !== null} onClick={() => void useProfile(profile.name)}>
+                {usingProfile === profile.name ? words.checkingWithAws : words.useProfile(profile.name)}
+              </Button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {errorMessage && (
+        <p role="alert" className="m-0 text-[13px] text-danger">
+          {errorMessage}
+        </p>
+      )}
+      <span className="text-[12px] font-semibold text-ink-2">{words.orPasteKey}</span>
+    </section>
+  )
+}
+
+function AwsForm({ onBuild, onConnected }: FormProps) {
+  const words = messages().deploy.aws
   const [accessKeyId, setAccessKeyId] = useState('')
   const [secretAccessKey, setSecretAccessKey] = useState('')
   const [sessionToken, setSessionToken] = useState('')
   onBuild(() => (accessKeyId.trim() && secretAccessKey.trim() ? { provider: 'aws', accessKeyId, secretAccessKey, sessionToken: sessionToken.trim() || null } : null))
   return (
     <>
-      <GuideSteps steps={[messages().deploy.askYourItTeamForAn, messages().deploy.pasteTheAccessKeyIdAnd]} />
-      <GuideLink link="aws_access_keys">{messages().deploy.aboutAwsAccessKeys}</GuideLink>
+      <AwsProfiles onConnected={onConnected} />
+      <GuideSteps steps={[...words.guideSteps]} />
+      <span className="flex flex-wrap gap-4">
+        <GuideLink link="aws_create_user">{words.openCreateUser}</GuideLink>
+        <GuideLink link="aws_access_keys">{messages().deploy.aboutAwsAccessKeys}</GuideLink>
+      </span>
+      <AwsPolicy />
       <TextField label={messages().deploy.accessKeyId} value={accessKeyId} onChange={setAccessKeyId} placeholder={messages().deploy.akia} />
       <TextField label={messages().deploy.secretAccessKey} type="password" value={secretAccessKey} onChange={setSecretAccessKey} />
       <DevelopersDetails>
@@ -228,7 +328,7 @@ function KubernetesForm({ onBuild }: { onBuild: (build: BuildInput) => void }) {
 }
 
 /** Each provider's form; null for a provider signed in to in the browser (Google Cloud). */
-const forms: Record<DeployProvider, ((props: { onBuild: (build: BuildInput) => void }) => JSX.Element) | null> = {
+const forms: Record<DeployProvider, ((props: FormProps) => JSX.Element) | null> = {
   fly: FlyForm,
   google_cloud: null,
   aws: AwsForm,
@@ -248,6 +348,11 @@ export function ConnectProviderDialog({ provider, onClose, onConnected }: Connec
   // Each form hands over how to build its input on every render (latest values).
   const buildInputRef = useRef<BuildInput>(() => null)
   const Form = forms[provider]
+
+  function finishConnecting(account: DeployAccount) {
+    setConnectedAccount(account)
+    onConnected(account)
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -291,7 +396,7 @@ export function ConnectProviderDialog({ provider, onClose, onConnected }: Connec
   return (
     <DeployDialog title={title} leading={<ProviderLogo provider={provider} />} onClose={onClose}>
       <form onSubmit={(event) => void handleSubmit(event)} aria-label={title} className="flex flex-col gap-4">
-        {Form ? <Form onBuild={(build) => (buildInputRef.current = build)} /> : <GoogleCloudSignInGuide />}
+        {Form ? <Form onBuild={(build) => (buildInputRef.current = build)} onConnected={finishConnecting} /> : <GoogleCloudSignInGuide />}
         {errorMessage && (
           <p role="alert" className="m-0 rounded-[10px] border border-danger-line bg-danger-tint px-3 py-2 text-[13px] text-danger-deep">
             {errorMessage}

@@ -84,7 +84,7 @@ function useDeployRun(agentId: string) {
   }, [agentId])
 
   const start = useCallback(
-    async (provider: DeployProvider, { mode, area, image, features, cloudPlace }: DeployChoice) => {
+    async (provider: DeployProvider, { mode, area, image, features, cloudPlace, region }: DeployChoice) => {
       setStepStates({})
       setLogLines([])
       setErrorMessage(null)
@@ -92,7 +92,7 @@ function useDeployRun(agentId: string) {
       setOutcome(null)
       setIsCancelling(false)
       try {
-        const result = await deployAgent(agentId, { provider, mode, area, image, features, cloudPlace })
+        const result = await deployAgent(agentId, { provider, mode, area, image, features, cloudPlace, region })
         setOutcome(result)
         return true
       } catch (error) {

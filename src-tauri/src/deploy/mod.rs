@@ -4,6 +4,7 @@
 //! - [`cli_release`]: the pinned graphrt CLI, downloaded on demand with the user's OK
 //! - [`providers`]: online accounts and checking their credentials (stored in the keychain)
 //! - [`google_cloud`]: signing in with Google, projects and regions, Cloud Run's refusals
+//! - [`aws`]: AWS access keys (pasted or from `~/.aws`), regions, Lambda's refusals
 //! - [`compatibility`]: what must change before an agent can run online, with one-click fixes
 //! - [`plan`]: the keys an online copy needs, by friendly name
 //! - [`cli`]: `graphrt deploy` with secrets passed only as environment variables
@@ -18,6 +19,7 @@
 //! `device:agent:<agent id>:<device id>` / `device:server:<id>:<device id>` (a paired phone's
 //! pairing link).
 
+pub mod aws;
 pub mod cli;
 pub mod cli_release;
 pub mod compatibility;
@@ -68,7 +70,7 @@ const DEPLOY_IMAGE_KEY: &str = "deploy_image";
 /// `agent_settings` key of the Google Cloud project an agent is online in (its region is the
 /// deployment's `region`).
 const DEPLOY_PROJECT_KEY: &str = "deploy_project";
-/// The first graphrt release whose tools put agents on Google Cloud Run directly. Until the
+/// The first graphrt release whose tools put agents on Google Cloud Run and AWS Lambda directly. Until the
 /// tools are installed, whether Google Cloud can be picked is told from the pinned release;
 /// once they are, from the tools themselves (`graphrt deploy --help`).
 const FIRST_CLOUD_RUN_RELEASE: (u64, u64, u64) = (0, 6, 4);
@@ -82,6 +84,10 @@ pub const NOT_AVAILABLE_MESSAGE: &str = "Online deploy is not available yet. It 
 pub const ONLINE_FEATURES_NEED_NEWER_TOOLS: &str = "The chat page and following an agent from your phone need newer \
      graphrt tools than this version of the app can download. They come with an app update. Turn them off to put \
      the agent online now.";
+/// Why the phone page, notifications and channels cannot go to AWS Lambda yet.
+pub const LAMBDA_NEEDS_STORE: &str = "Following the agent from your phone, notifications, WhatsApp Business and \
+     Microsoft Teams keep things on a storage space, which agents on AWS do not have yet. Turn them off, or put the \
+     agent online with Fly.io or Google Cloud.";
 /// Why WhatsApp Business cannot be put online with the installed graphrt tools.
 pub const WHATSAPP_NEEDS_NEWER_TOOLS: &str = "Answering customers on WhatsApp Business online needs newer graphrt \
      tools than this version of the app can download. It comes with an app update. Turn WhatsApp Business off to put \
@@ -228,6 +234,11 @@ pub struct DeployReview {
     pub features: OnlineFeatures,
     /// Google Cloud: the project and region it is (or was last) online in.
     pub cloud_place: Option<CloudPlace>,
+    /// AWS: the region it is (or was last) online in.
+    pub region: Option<String>,
+    /// The phone page, notifications and channels can go online with this provider (they need
+    /// a store, which AWS Lambda gets with newer graphrt tools).
+    pub store_features: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -245,6 +256,9 @@ pub struct DeployOptions {
     /// Google Cloud: the project and region (required there, ignored elsewhere).
     #[serde(default)]
     pub cloud_place: Option<CloudPlace>,
+    /// AWS: the region (required there, ignored elsewhere).
+    #[serde(default)]
+    pub region: Option<String>,
 }
 
 /// The agent's online state for the builder.
@@ -392,6 +406,13 @@ pub fn deployment_name_for(agent: &Agent) -> String {
     format!("{base}-{suffix}")
 }
 
+/// The `vN` label with the highest number among `labels` (others are ignored).
+pub fn highest_version_label<'a>(labels: impl Iterator<Item = &'a str>) -> Option<&'a str> {
+    labels
+        .filter(|label| label.strip_prefix('v').is_some_and(|number| number.parse::<u64>().is_ok()))
+        .max_by_key(|label| label.strip_prefix('v').and_then(|number| number.parse::<u64>().ok()).unwrap_or(0))
+}
+
 /// `v1` after nothing, `v4` after `v3`.
 pub fn next_version_label(current: Option<&str>) -> String {
     let number = current.and_then(|label| label.strip_prefix('v')?.parse::<u64>().ok()).unwrap_or(0);
@@ -487,9 +508,12 @@ impl DeployService {
         if self.installed_cli().is_some() {
             return self.cli_abilities();
         }
+        let pinned_is_newer =
+            cli_release::GRAPHRT_CLI_VERSION.is_some_and(|version| release_at_least(version, FIRST_CLOUD_RUN_RELEASE));
         cli::CliAbilities {
-            cloud_run: cli_release::GRAPHRT_CLI_VERSION
-                .is_some_and(|version| release_at_least(version, FIRST_CLOUD_RUN_RELEASE)),
+            // graphrt 0.6.4 brings both Cloud Run and Lambda direct deploys.
+            cloud_run: pinned_is_newer,
+            lambda: pinned_is_newer,
             ..cli::CliAbilities::default()
         }
     }
@@ -655,17 +679,51 @@ impl DeployService {
     /// # Errors
     /// `InvalidInput` with a plain sentence when the details are not usable.
     pub async fn connect_account(&self, input: &DeployAccountInput) -> AppResult<DeployAccount> {
-        let checked = providers::check_account(input)?;
+        let mut checked = providers::check_account(input)?;
         if let DeployAccountInput::Fly { access_token } = input {
             http::check_fly_token_online(self.http.as_ref(), access_token.trim()).await?;
         }
-        self.credentials.set_deploy_secret(&Self::account_secret_name(checked.provider), &checked.secret_json)?;
-        self.db
-            .set_setting(&format!("{ACCOUNT_SUMMARY_SETTING_PREFIX}{}", checked.provider.key()), &checked.summary)?;
+        if checked.provider == DeployProvider::Aws {
+            let keys: aws::AwsKeys = serde_json::from_str(&checked.secret_json)?;
+            let caller = aws::check_keys_online(&keys).await?;
+            checked.summary = format!("{} · account {} · {}", checked.summary, caller.account, caller.identity());
+        }
+        self.save_account(&checked)?;
         log::info!("connected the {} online account", checked.provider.display_name());
         self.list_accounts()?
             .into_iter()
             .find(|account| account.provider == checked.provider)
+            .ok_or_else(|| AppError::Internal("the account was not saved".into()))
+    }
+
+    fn save_account(&self, checked: &providers::CheckedAccount) -> AppResult<()> {
+        self.credentials.set_deploy_secret(&Self::account_secret_name(checked.provider), &checked.secret_json)?;
+        self.db.set_setting(&format!("{ACCOUNT_SUMMARY_SETTING_PREFIX}{}", checked.provider.key()), &checked.summary)
+    }
+
+    /// The AWS profiles of this computer (`~/.aws`), never their keys.
+    pub fn aws_profiles(&self) -> Vec<aws::AwsProfile> {
+        aws::local_profiles()
+    }
+
+    /// Connects AWS with the access key of a profile of this computer: checked with AWS, then
+    /// copied into the keychain (later changes of `~/.aws` do not touch it).
+    ///
+    /// # Errors
+    /// `InvalidInput` when the profile has no access key or AWS refuses it.
+    pub async fn connect_aws_profile(&self, profile: &str) -> AppResult<DeployAccount> {
+        let keys = aws::local_profile_keys(profile.trim())?;
+        let caller = aws::check_keys_online(&keys).await?;
+        let checked = providers::CheckedAccount {
+            provider: DeployProvider::Aws,
+            secret_json: serde_json::to_string(&keys)?,
+            summary: format!("Profile {} · account {} · {}", profile.trim(), caller.account, caller.identity()),
+        };
+        self.save_account(&checked)?;
+        log::info!("connected AWS with a profile of this computer");
+        self.list_accounts()?
+            .into_iter()
+            .find(|account| account.provider == DeployProvider::Aws)
             .ok_or_else(|| AppError::Internal("the account was not saved".into()))
     }
 
@@ -740,6 +798,17 @@ impl DeployService {
             // Always a token of the person who signed in here, never another gcloud account.
             let token = self.google_access_token().await?;
             return Ok(vec![(google_cloud::ACCESS_TOKEN_ENV.to_owned(), token)]);
+        }
+        if provider == DeployProvider::Aws {
+            let stored = self.credentials.read_deploy_secret(&Self::account_secret_name(provider))?;
+            let keys = stored.as_deref().and_then(|stored| serde_json::from_str::<aws::AwsKeys>(stored).ok());
+            return keys.map(|keys| keys.environment()).ok_or_else(|| {
+                AppError::DeployFailed(Box::new(aws::problem_for(
+                    Some("missing_credentials"),
+                    "no AWS key is saved",
+                    None,
+                )))
+            });
         }
         let stored = self.credentials.read_deploy_secret(&Self::account_secret_name(provider))?.ok_or_else(|| {
             AppError::MissingCredentials(format!(
@@ -892,7 +961,17 @@ impl DeployService {
                 .as_ref()
                 .filter(|record| record.provider == DeployProvider::GoogleCloud)
                 .and_then(|record| self.cloud_place(record)),
+            region: existing
+                .as_ref()
+                .filter(|record| record.provider == DeployProvider::Aws)
+                .and_then(|record| record.region.clone()),
+            store_features: self.has_store(provider),
         })
+    }
+
+    /// Whether deployments with `provider` have a store (AWS Lambda only with tools that say so).
+    fn has_store(&self, provider: DeployProvider) -> bool {
+        provider != DeployProvider::Aws || self.provider_abilities().lambda_store
     }
 
     /// The Google Cloud project and region of a deployment there.
@@ -924,8 +1003,12 @@ impl DeployService {
         provider: DeployProvider,
         output: &cli::CliOutput,
         place: Option<&CloudPlace>,
+        region: Option<&str>,
     ) -> Option<AppError> {
         let (code, message) = output.error()?;
+        if provider == DeployProvider::Aws {
+            return Some(AppError::DeployFailed(Box::new(aws::problem_for(code.as_deref(), message, region))));
+        }
         if provider == DeployProvider::GoogleCloud {
             let problem = google_cloud::problem_for(code.as_deref(), message, place);
             return Some(AppError::DeployFailed(Box::new(problem)));
@@ -956,12 +1039,21 @@ impl DeployService {
     ///
     /// # Errors
     /// `InvalidInput` when something is turned on and the installed tools are too old for it.
-    fn feature_arguments(&self, features: &OnlineFeatures) -> AppResult<Vec<String>> {
+    fn feature_arguments(&self, provider: DeployProvider, features: &OnlineFeatures) -> AppResult<Vec<String>> {
+        let has_store = self.has_store(provider);
+        if !has_store && features.needs_storage() {
+            return Err(AppError::InvalidInput(LAMBDA_NEEDS_STORE.into()));
+        }
         if (features.whatsapp || features.teams) && !self.cli_knows_channels() {
             return Err(AppError::InvalidInput(WHATSAPP_NEEDS_NEWER_TOOLS.into()));
         }
         if self.cli_knows_online_features() {
-            return Ok(features.deploy_arguments());
+            let mut arguments = features.deploy_arguments();
+            if !has_store {
+                // Nothing to drop where there is no store (and Lambda refuses the flag).
+                arguments.retain(|argument| argument != "--drop-store");
+            }
+            return Ok(arguments);
         }
         if features.any() {
             return Err(AppError::InvalidInput(ONLINE_FEATURES_NEED_NEWER_TOOLS.into()));
@@ -1093,7 +1185,13 @@ impl DeployService {
             ),
             _ => None,
         };
-        let options = DeployOptions { cloud_place: place, ..options };
+        let region = match options.provider {
+            DeployProvider::Aws => Some(aws::checked_region(options.region.as_deref())?),
+            _ => None,
+        };
+        // Lambda only scales to zero: nothing runs (or is billed) while idle.
+        let mode = if options.provider == DeployProvider::Aws { DeployMode::ScaleToZero } else { options.mode };
+        let options = DeployOptions { cloud_place: place, region, mode, ..options };
         self.check_same_place(agent_id, &options)?;
         let mut environment_extra = self.provider_environment(options.provider).await?;
         for key in &keys {
@@ -1146,6 +1244,15 @@ impl DeployService {
                 options.provider.display_name()
             )));
         }
+        if let (DeployProvider::Aws, Some(online), Some(chosen)) =
+            (record.provider, record.region.as_ref(), options.region.as_ref())
+        {
+            if online != chosen {
+                return Err(AppError::Conflict(format!(
+                    "This agent is online in {online}. Take it offline first to move it to {chosen}"
+                )));
+            }
+        }
         if let (Some(online), Some(chosen)) = (self.cloud_place(&record), options.cloud_place.as_ref()) {
             if &online != chosen {
                 return Err(AppError::Conflict(format!(
@@ -1167,11 +1274,18 @@ impl DeployService {
         cancel: Arc<tokio::sync::Notify>,
     ) -> AppResult<DeployOutcome> {
         // Before anything is written or sent: tools too old for a chosen page refuse here.
-        let feature_arguments = self.feature_arguments(&options.features)?;
+        let feature_arguments = self.feature_arguments(options.provider, &options.features)?;
         let previous = self.db.get_deployment(&agent.id)?;
         let is_first = previous.as_ref().is_none_or(|record| record.status == DeploymentStatus::Failed);
-        let version_label =
-            next_version_label(previous.as_ref().and_then(|record| record.deployed_version_label.as_deref()));
+        // After the highest label ever deployed, not the one serving: after a roll back to v1, v2
+        // still exists on the provider, and Lambda never takes a label twice.
+        let history = self.history(&agent.id)?;
+        let version_label = next_version_label(highest_version_label(
+            history
+                .iter()
+                .map(|entry| entry.label.as_str())
+                .chain(previous.as_ref().and_then(|record| record.deployed_version_label.as_deref())),
+        ));
         let mut record = previous.clone().unwrap_or_else(|| DeploymentRecord {
             agent_id: agent.id.clone(),
             provider: options.provider,
@@ -1190,9 +1304,10 @@ impl DeployService {
         });
         record.provider = options.provider;
         record.mode = options.mode;
-        record.region = Some(match &options.cloud_place {
-            Some(place) => place.region.clone(),
-            None => options.area.fly_region().to_owned(),
+        record.region = Some(match (&options.cloud_place, &options.region) {
+            (Some(place), _) => place.region.clone(),
+            (None, Some(region)) => region.clone(),
+            (None, None) => options.area.fly_region().to_owned(),
         });
         if is_first {
             record.status = DeploymentStatus::Deploying;
@@ -1237,8 +1352,9 @@ impl DeployService {
             }
         };
         let Some(CliEvent::Result { url, version, app, workflow, api_key }) = output.result().cloned() else {
-            let mut error =
-                self.cli_problem(options.provider, &output, options.cloud_place.as_ref()).unwrap_or_else(|| {
+            let mut error = self
+                .cli_problem(options.provider, &output, options.cloud_place.as_ref(), record.region.as_deref())
+                .unwrap_or_else(|| {
                     AppError::Internal("The graphrt tools stopped without saying why. See Details".into())
                 });
             if let Some(live_key) = output.api_key_of_failure() {
@@ -1328,7 +1444,7 @@ impl DeployService {
             image: self.deploy_image(agent_id)?,
             rotate_api_key: true,
             // A deploy turns off what it does not name: keep what is on.
-            feature_arguments: self.feature_arguments(&self.online_features(agent_id)?)?,
+            feature_arguments: self.feature_arguments(record.provider, &self.online_features(agent_id)?)?,
             agent_file,
         };
         let cancel = self.start_tracking_deploy(agent_id)?;
@@ -1360,7 +1476,7 @@ impl DeployService {
             }
             (None, None) => {
                 return Err(self
-                    .cli_problem(record.provider, &output, place.as_ref())
+                    .cli_problem(record.provider, &output, place.as_ref(), record.region.as_deref())
                     .unwrap_or_else(|| AppError::Internal("The graphrt tools stopped without saying why".into())))
             }
         };
@@ -1465,7 +1581,9 @@ impl DeployService {
             return self.refresh_status(agent_id).await;
         }
         let output = self.run_manage(&record, &action).await?;
-        if let Some(error) = self.cli_problem(record.provider, &output, self.cloud_place(&record).as_ref()) {
+        if let Some(error) =
+            self.cli_problem(record.provider, &output, self.cloud_place(&record).as_ref(), record.region.as_deref())
+        {
             self.forget_refused_token(&error).await;
             return Err(error);
         }
@@ -1494,6 +1612,8 @@ impl DeployService {
                 self.db.set_agent_setting(agent_id, DEPLOY_HISTORY_KEY, &serde_json::json!([]))?;
                 self.db.set_agent_setting(agent_id, ONLINE_FEATURES_KEY, &serde_json::Value::Null)?;
                 self.db.set_agent_setting(agent_id, DEPLOY_PROJECT_KEY, &serde_json::Value::Null)?;
+                // A next deploy (maybe with another provider) starts from graphrt's own image.
+                self.db.set_agent_setting(agent_id, DEPLOY_IMAGE_KEY, &serde_json::Value::Null)?;
                 self.forget_device_codes(&OnlineTarget::Agent { agent_id: agent_id.to_owned() }, None)?;
                 log::info!("took agent {agent_id} offline");
                 return Ok(None);
@@ -1602,7 +1722,8 @@ impl DeployService {
             return self.view(agent_id);
         }
         let Some(url) = record.url.clone() else { return self.view(agent_id) };
-        let health_path = if record.provider == DeployProvider::GoogleCloud { "readyz" } else { "healthz" };
+        // Cloud Run's front end keeps `/healthz` for itself; `graphrt serve` answers `/readyz` too.
+        let health_path = if record.provider == DeployProvider::Fly { "healthz" } else { "readyz" };
         let health = http::check_health_at(self.http.as_ref(), &url, health_path).await;
         let (status, message) = if health.healthy {
             (DeploymentStatus::Working, None)
@@ -1814,6 +1935,8 @@ fn expected_address(provider: DeployProvider, deployment_name: &str) -> String {
     match provider {
         // `https://<service>-<hash>-<region code>.a.run.app`: the hash is Cloud Run's.
         DeployProvider::GoogleCloud => format!("{deployment_name}-….a.run.app"),
+        // A Function URL: `https://<id>.lambda-url.<region>.on.aws`.
+        DeployProvider::Aws => "….lambda-url.on.aws".to_owned(),
         _ => format!("{deployment_name}.fly.dev"),
     }
 }

@@ -60,7 +60,8 @@ impl DeployProvider {
         match self {
             Self::Fly => true,
             Self::GoogleCloud => cli.cloud_run,
-            Self::Aws | Self::Azure | Self::Kubernetes => false,
+            Self::Aws => cli.lambda,
+            Self::Azure | Self::Kubernetes => false,
         }
     }
 }

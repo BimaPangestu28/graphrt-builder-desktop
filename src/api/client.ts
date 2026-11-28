@@ -161,6 +161,7 @@ function parseDeployProblem(rawDetails: Record<string, unknown>): DeployProblem 
   let parsedFix: DeployFix | null = null
   if (isRecord(fix) && fix.kind === 'sign_in_again') parsedFix = { kind: 'sign_in_again' }
   else if (isRecord(fix) && fix.kind === 'open_page' && typeof fix.url === 'string') parsedFix = { kind: 'open_page', url: fix.url }
+  else if (isRecord(fix) && fix.kind === 'connect_again' && typeof fix.provider === 'string' && deployProviders.includes(fix.provider)) parsedFix = { kind: 'connect_again', provider: fix.provider as DeployProvider }
   return {
     provider: provider as DeployProvider,
     kind,

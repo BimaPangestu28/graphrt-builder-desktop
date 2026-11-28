@@ -196,6 +196,7 @@ async fn live_put_online_passes_the_choices() {
         image: None,
         features,
         cloud_place: None,
+        region: None,
     };
 
     let on = service.deploy(&agent.id, options(everything_on()), &[], &report).await.unwrap();
