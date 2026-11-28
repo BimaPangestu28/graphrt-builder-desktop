@@ -36,7 +36,14 @@ describe('AgentOnlinePanel', () => {
     expect(screen.getAllByText('Online · working').length).toBeGreaterThan(0)
     expect(screen.getByText('Online on Fly.io')).toBeInTheDocument()
     expect(screen.getByText('You changed this agent — update the online version?')).toBeInTheDocument()
-    expect(screen.getAllByRole('link', { name: 'Update with latest changes' })[0]).toHaveAttribute('href', `/agents/${sampleAgentId}/online?screen=review`)
+    expect(screen.getByRole('link', { name: 'Update with latest changes' })).toHaveAttribute('href', `/agents/${sampleAgentId}/online?screen=review`)
+  })
+
+  it('offers no update when the online copy already runs the release in use', async () => {
+    await renderPanel(false)
+    expect(screen.getByText('Online on Fly.io')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Update with latest changes' })).not.toBeInTheDocument()
+    expect(screen.queryByText('You changed this agent — update the online version?')).not.toBeInTheDocument()
   })
 
   it('pauses, resumes and goes back to an earlier version', async () => {

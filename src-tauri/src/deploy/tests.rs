@@ -1000,6 +1000,25 @@ async fn bundles_carry_the_knowledge_the_agent_uses_with_its_chunking() {
     assert!(plain.knowledge_config().is_none());
 }
 
+#[tokio::test]
+async fn a_chatbot_whose_flow_has_no_retrieval_step_ships_its_attached_knowledge_and_looks_it_up() {
+    let harness = harness(FLOW);
+    let (_, knowledge_base_id) = agent_with_knowledge(&harness, &faq_fixture()).await;
+    let chatbot_id = harness.agent.id.clone();
+    crate::chatbot_setup::attach_knowledge_base(&harness.db, &chatbot_id, &knowledge_base_id, &|_| Default::default())
+        .unwrap();
+    release_latest(&harness.db, &chatbot_id);
+
+    let folder = tempfile::tempdir().unwrap();
+    let bytes = std::fs::read(harness.service.export_agent_file(&chatbot_id, &folder.path().join("menu.grt")).unwrap())
+        .unwrap();
+    let (bundle, config) = bundle_knowledge(&bytes);
+    assert_eq!(config["datasets"][0]["id"], knowledge_base_id.as_str(), "the attached knowledge ships with it");
+    let workflow = String::from_utf8(bundle.file("workflow.yaml").unwrap().to_vec()).unwrap();
+    assert!(workflow.contains(crate::chatbot_setup::overlay::ONLINE_KNOWLEDGE_STEP), "{workflow}");
+    assert!(workflow.contains("{{#context#}}"), "{workflow}");
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn going_online_ships_the_knowledge_bundle_and_refuses_knowledge_too_large() {

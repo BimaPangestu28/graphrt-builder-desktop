@@ -1,11 +1,13 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { setAgentStatus } from '@/api/agents'
+import type { DeploymentStatus } from '@/api/deployTypes'
 import type { Agent } from '@/api/types'
 import { AppShell } from '@/components/layout'
 import { TrustedHostsSection } from '@/components/TrustedHostsSection'
 import { joinClassNames } from '@/components/ui'
 import { useAgent } from '@/hooks/useAgent'
+import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { agentPath } from '@/routes'
 import { ChannelsSection, HandoffRulesSection, PersonaSection } from './chatbot-setup/ChatbotSetupSections'
 import { KnowledgeSection } from './chatbot-setup/KnowledgeSection'
@@ -23,15 +25,24 @@ interface ChatbotSetupHeaderProps {
   isSaving: boolean
 }
 
+/** The header's status: online when its online copy answers, else whether it answers from this computer. */
+function describeChatbotStatus(agent: Agent | null, online: DeploymentStatus | null): { label: string; isOn: boolean } {
+  if (online === 'working' || online === 'needs_attention') return { label: messages().chatbot.online, isOn: true }
+  if (agent?.status === 'active') return { label: messages().chatbot.live, isOn: true }
+  return { label: agent?.status === 'paused' ? messages().chatbot.paused : messages().chatbot.notLiveYet, isOn: false }
+}
+
 function ChatbotSetupHeader({ agent, onToggleLive, isSaving }: ChatbotSetupHeaderProps) {
   const isLive = agent?.status === 'active'
+  const online = useOnlineStatus(agent?.id ?? null)
+  const status = describeChatbotStatus(agent, online)
   return (
     <header className="box-border flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-line px-6 py-3">
       <div className="flex items-center gap-2.5">
         <h1 className="m-0 text-[16px] font-semibold">{agent?.name ?? messages().chatbot.chatbot}</h1>
         <span className="rounded-full bg-brand-soft px-2 py-[3px] text-[12px] font-semibold text-brand-strong">{messages().chatbot.chatbot}</span>
-        <span role="status" className={joinClassNames('rounded-full px-2 py-[3px] text-[12px] font-medium', isLive ? 'bg-ok-soft text-ok-strong' : 'bg-selected text-ink-2')}>
-          {isLive ? messages().chatbot.live : agent?.status === 'paused' ? messages().chatbot.paused : messages().chatbot.notLiveYet}
+        <span role="status" className={joinClassNames('rounded-full px-2 py-[3px] text-[12px] font-medium', status.isOn ? 'bg-ok-soft text-ok-strong' : 'bg-selected text-ink-2')}>
+          {status.label}
         </span>
       </div>
       <div className="flex gap-2">

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { Link } from 'react-router-dom'
 import type { PluginRequirement } from '@/api/pluginRequirementTypes'
 import type { AgentRunStats } from '@/api/runSummaryTypes'
@@ -68,7 +69,8 @@ function PrimaryAction({ action, agentId, agentTriggers }: { action: AgentCardAc
 
 function AgentSummaryCard(cardData: AgentCardData) {
   const { agent, agentTriggers, latestRun, pluginRequirements } = cardData
-  const cardState = describeAgentCardState(agent, agentTriggers, latestRun)
+  const online = useOnlineStatus(agent.id)
+  const cardState = describeAgentCardState(agent, agentTriggers, latestRun, new Date(), online)
   const facts = describeFacts(cardData)
   const [cardMode, setCardMode] = useState<'view' | 'rename' | 'delete'>('view')
   return (

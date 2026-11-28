@@ -17,6 +17,7 @@
 //! keychain through the same path as any run.
 
 pub mod judges;
+pub mod language;
 #[cfg(test)]
 mod live_check;
 pub mod release;
@@ -40,7 +41,7 @@ use self::target::{AgentTarget, CheckDependencies};
 use self::view::{check_view, CheckView, StoredCheck, TestWords};
 use crate::error::{AppError, AppResult};
 use crate::skills::DraftModelSource;
-use crate::storage::models::{Agent, AgentKind};
+use crate::storage::models::{Agent, AgentKind, AgentStatus};
 use crate::storage::quality::{AgentTest, CheckRecord, CheckStatus, NewRelease, Release, SwitchReason, TestInput};
 
 /// `agent_settings` key of [`QualitySettings`].
@@ -286,7 +287,9 @@ impl QualityService {
         let judge_model = crate::credentials::default_model(&self.dependencies.credentials, self.db())?;
         // Fails here, before a check is recorded, when the agent cannot run (keys, plugins, flow).
         let target = AgentTarget::new(self.dependencies.clone(), agent.clone())?;
+        let handoff_rules = handoff_rules_of(self.db(), &agent)?;
         Ok(PreparedCheck {
+            handoff_rules,
             fingerprint: suite::tests_fingerprint(&tests),
             agent,
             tests,
@@ -391,6 +394,9 @@ impl QualityService {
             },
         )?;
         log::info!("agent {agent_id}: released version {} as release {}", release.agent_version, release.number);
+        if release.override_reason.is_none() {
+            mark_tested(self.db(), agent_id);
+        }
         Ok(release)
     }
 
@@ -407,6 +413,19 @@ impl QualityService {
         let release = self.db().switch_release(agent_id, number, SwitchReason::RolledBack)?;
         log::info!("agent {agent_id}: release {number} is in use again");
         Ok(release)
+    }
+}
+
+/// A draft whose check passed (or that was released) is tested, as after a good test run: Home
+/// and the agent list stop calling it "not tested". Other statuses stay. A failure is logged only:
+/// the check or release itself went through.
+fn mark_tested(db: &crate::storage::Database, agent_id: &str) {
+    let promoted = db.get_agent(agent_id).and_then(|agent| match agent.status {
+        AgentStatus::Draft => db.set_agent_status(agent_id, AgentStatus::Tested).map(|_| ()),
+        _ => Ok(()),
+    });
+    if let Err(error) = promoted {
+        log::warn!("agent {agent_id}: could not mark it tested: {error}");
     }
 }
 
@@ -458,8 +477,39 @@ async fn chatbot_brief(dependencies: &CheckDependencies, agent: &Agent) -> Optio
     }
 }
 
+/// The questions the agent passes to the owner whatever it knows, in the words the judges
+/// read: a chatbot's saved rules (every rule on until its setup is saved, as its replies do)
+/// about the person asking, an order or an upset customer, else none.
+///
+/// "The answer is not in the knowledge" is left out on purpose: a test with a good answer
+/// says what the bot should know, so "I will ask the owner" there is a missing fact, not a
+/// right hand-off.
+///
+/// # Errors
+/// Storage errors, or `Serialization` for a corrupt stored setup.
+fn handoff_rules_of(db: &crate::storage::Database, agent: &Agent) -> AppResult<String> {
+    if agent.kind != AgentKind::Chatbot {
+        return Ok(suite::NO_HANDOFF_RULES.to_owned());
+    }
+    let rules = crate::chatbot_setup::load_saved_settings(db, &agent.id)?
+        .map(|settings| settings.handoff_rules)
+        .unwrap_or_default();
+    let cases: Vec<String> = rules
+        .entries()
+        .iter()
+        .filter(|(is_enabled, reason, _)| *is_enabled && *reason != crate::conversations::bot::NOT_SURE_REASON)
+        .map(|(_, _, words)| format!("- {words}"))
+        .collect();
+    if cases.is_empty() {
+        return Ok(suite::NO_HANDOFF_RULES.to_owned());
+    }
+    Ok(format!("It passes the chat to the owner when:\n{}", cases.join("\n")))
+}
+
 /// A check ready to run.
 struct PreparedCheck {
+    /// When the agent passes a chat to the owner ([`handoff_rules_of`]).
+    handoff_rules: String,
     agent: Agent,
     tests: Vec<AgentTest>,
     fingerprint: String,
@@ -490,7 +540,12 @@ impl CheckTask {
         let agent_id = check.agent_id.clone();
         let outcome = self.evaluate(&check, &prepared).await;
         let stored = match outcome {
-            Ok((passed, total, json)) => db.finish_check(&check.id, passed, total, &json),
+            Ok((passed, total, json)) => {
+                if total > 0 && passed >= release::needed_good(total, prepared.settings.required_percent) {
+                    mark_tested(&db, &agent_id);
+                }
+                db.finish_check(&check.id, passed, total, &json)
+            }
             Err(error) => {
                 log::warn!("check {} of agent {agent_id} did not finish: {error}", check.id);
                 db.fail_check(&check.id, &error.to_string())
@@ -509,6 +564,7 @@ impl CheckTask {
             &prepared.tests,
             &prepared.input_name,
             prepared.settings.required_percent,
+            &prepared.handoff_rules,
             Path::new(""),
         )?;
         let registry = judges::registry(self.dependencies.clone(), prepared.judge_model.clone());

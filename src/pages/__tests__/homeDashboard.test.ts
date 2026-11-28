@@ -234,6 +234,18 @@ describe('Agent card state', () => {
     expect(chatbot.secondaryLinks[1].path).toBe(`${routePaths.chatbotSetup}?agentId=promo`)
   })
 
+  it('shows an agent that is online as live, and a tested chatbot as not answering yet', () => {
+    const testedChatbot = describeAgentCardState(buildAgent({ kind: 'chatbot', status: 'tested' }), [], undefined, now)
+    expect(testedChatbot).toMatchObject({ stage: 'tested', chipLabel: 'Tested · not answering yet' })
+
+    const onlineChatbot = describeAgentCardState(buildAgent({ kind: 'chatbot', status: 'draft' }), [], undefined, now, 'working')
+    expect(onlineChatbot).toMatchObject({ stage: 'active', chipLabel: 'Online · answering chats', chipTone: 'ok' })
+    const pausedHereOnlineThere = describeAgentCardState(buildAgent({ kind: 'task', status: 'paused' }), [], undefined, now, 'needs_attention')
+    expect(pausedHereOnlineThere).toMatchObject({ stage: 'active', chipLabel: 'Online', chipTone: 'amber' })
+    const pausedOnline = describeAgentCardState(buildAgent({ kind: 'chatbot', status: 'tested' }), [], undefined, now, 'paused')
+    expect(pausedOnline).toMatchObject({ stage: 'tested', chipLabel: 'Tested · not answering yet' })
+  })
+
   it('runs now with the last inputs, else the schedule\'s, else asks', () => {
     expect(chooseRunNowInputs({ city: 'Medan' }, [buildTrigger({})])).toEqual({ city: 'Medan' })
     expect(chooseRunNowInputs(null, [buildTrigger({})])).toEqual({ city: 'Bandung' })

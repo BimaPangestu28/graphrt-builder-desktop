@@ -1,3 +1,4 @@
+import type { DeploymentStatus } from '@/api/deployTypes'
 import type { Agent, Run, Trigger } from '@/api/types'
 import { formatClockTime } from '@/pages/agent-run/runResultSummary'
 import type { StatusPillTone } from '@/pages/agent-run/StatusPill'
@@ -57,16 +58,24 @@ function findNextFireAt(agentTriggers: Trigger[]): string | null {
   return upcomingTimes[0] ?? null
 }
 
+/** The online copy answers (it may need a look, but it runs). */
+function isAnsweringOnline(online: DeploymentStatus | null): boolean {
+  return online === 'working' || online === 'needs_attention'
+}
+
 /**
- * The agent's stage from its status, schedule and latest run.
+ * The agent's stage from its status, schedule, latest run and online copy (an agent that is
+ * online is live, whatever this computer does).
  *
  * @param agent - The agent (Agent)
  * @param agentTriggers - Its triggers (Trigger[])
  * @param latestRun - Its newest run, if any (Run | undefined)
+ * @param online - Status of its online copy, null when it is not online
  */
-export function deriveAgentCardStage(agent: Agent, agentTriggers: Trigger[], latestRun: Run | undefined): AgentCardStage {
-  if (agent.status === 'paused') return 'paused'
-  const isLive = agent.status === 'active' || agentTriggers.some((trigger) => trigger.enabled)
+export function deriveAgentCardStage(agent: Agent, agentTriggers: Trigger[], latestRun: Run | undefined, online: DeploymentStatus | null = null): AgentCardStage {
+  const isOnline = isAnsweringOnline(online)
+  if (agent.status === 'paused' && !isOnline) return 'paused'
+  const isLive = agent.status === 'active' || agentTriggers.some((trigger) => trigger.enabled) || isOnline
   const lastRunFailed = latestRun?.status === 'failed'
   if (isLive) return lastRunFailed ? 'failing' : 'active'
   if (lastRunFailed) return 'test_failed'
@@ -74,13 +83,14 @@ export function deriveAgentCardStage(agent: Agent, agentTriggers: Trigger[], lat
   return 'draft'
 }
 
-function describeChip(stage: AgentCardStage, agent: Agent, agentTriggers: Trigger[], now: Date): { chipLabel: string; chipTone: StatusPillTone } {
+function describeChip(stage: AgentCardStage, agent: Agent, agentTriggers: Trigger[], now: Date, online: DeploymentStatus | null): { chipLabel: string; chipTone: StatusPillTone } {
   const t = messages().home.chip
   if (stage === 'draft') return { chipLabel: t.draft, chipTone: 'neutral' }
   if (stage === 'test_failed') return { chipLabel: t.testFailed, chipTone: 'danger' }
-  if (stage === 'tested') return { chipLabel: t.tested, chipTone: 'amber' }
+  if (stage === 'tested') return { chipLabel: agent.kind === 'chatbot' ? t.testedChatbot : t.tested, chipTone: 'amber' }
   if (stage === 'failing') return { chipLabel: t.failing, chipTone: 'danger' }
   if (stage === 'paused') return { chipLabel: t.paused, chipTone: 'neutral' }
+  if (isAnsweringOnline(online)) return { chipLabel: agent.kind === 'chatbot' ? t.onlineChats : t.online, chipTone: online === 'working' ? 'ok' : 'amber' }
   const nextFireAt = findNextFireAt(agentTriggers)
   if (nextFireAt) return { chipLabel: t.activeNext(formatNextRunTime(nextFireAt, now)), chipTone: 'ok' }
   return { chipLabel: agent.kind === 'chatbot' ? t.activeChats : t.active, chipTone: 'ok' }
@@ -103,17 +113,24 @@ function choosePrimaryAction(stage: AgentCardStage, agent: Agent, latestRun: Run
  * @param agentTriggers - Its triggers (Trigger[])
  * @param latestRun - Its newest run, if any (Run | undefined)
  * @param now - Reference time for the next-run chip (Date)
+ * @param online - Status of its online copy, null when it is not online
  * @returns What the card shows (AgentCardState)
  *
  * @example
  * describeAgentCardState(draftAgent, [], undefined).primaryAction // { kind: 'link', label: 'Test it', path: '/agents/a1/test' }
  */
-export function describeAgentCardState(agent: Agent, agentTriggers: Trigger[], latestRun: Run | undefined, now: Date = new Date()): AgentCardState {
-  const stage = deriveAgentCardStage(agent, agentTriggers, latestRun)
+export function describeAgentCardState(
+  agent: Agent,
+  agentTriggers: Trigger[],
+  latestRun: Run | undefined,
+  now: Date = new Date(),
+  online: DeploymentStatus | null = null,
+): AgentCardState {
+  const stage = deriveAgentCardStage(agent, agentTriggers, latestRun, online)
   const t = messages().home.action
   return {
     stage,
-    ...describeChip(stage, agent, agentTriggers, now),
+    ...describeChip(stage, agent, agentTriggers, now, online),
     primaryAction: choosePrimaryAction(stage, agent, latestRun),
     secondaryLinks: [
       { label: t.editSteps, path: agentPath('builder', agent.id) },

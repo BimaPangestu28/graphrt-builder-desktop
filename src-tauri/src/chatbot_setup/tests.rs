@@ -632,3 +632,36 @@ fn other_agents_go_online_as_built() {
         .unwrap();
     assert_eq!(flow_for_online(&db, &task).unwrap(), task.flow_yaml);
 }
+
+#[tokio::test]
+async fn the_online_copy_of_a_flow_without_retrieval_steps_looks_up_the_attached_knowledge() {
+    let harness = harness(&["Ongkir sesuai jarak."]);
+    let knowledge_base_id = knowledge_base_with_faq(&harness, "Catering menu and prices").await;
+    let agent = create_chatbot(&harness.db, REPLY_FLOW);
+    attach_knowledge_base(&harness.db, &agent.id, &knowledge_base_id, &nothing_connected).unwrap();
+    let online_flow = flow_for_online(&harness.db, &harness.db.get_agent(&agent.id).unwrap()).unwrap();
+
+    let document: Json = serde_json::from_str(&online_flow).unwrap();
+    let nodes = document["graph"]["nodes"].as_array().unwrap();
+    let look_up = nodes.iter().find(|node| node["id"] == overlay::ONLINE_KNOWLEDGE_STEP).unwrap();
+    assert_eq!(look_up["dataset_ids"], serde_json::json!([knowledge_base_id]));
+    assert_eq!(look_up["query_variable_selector"], serde_json::json!(["start", "message"]));
+    let edges = document["graph"]["edges"].as_array().unwrap();
+    let pairs: Vec<(&str, &str)> =
+        edges.iter().map(|edge| (edge["source"].as_str().unwrap(), edge["target"].as_str().unwrap())).collect();
+    assert!(
+        pairs.contains(&("start", overlay::ONLINE_KNOWLEDGE_STEP))
+            && pairs.contains(&(overlay::ONLINE_KNOWLEDGE_STEP, "write_reply"))
+    );
+    assert!(!pairs.contains(&("start", "write_reply")), "{pairs:?}");
+
+    // graphrt runs it on its own: the retrieval step finds the FAQ and the model reads it.
+    let online_copy = create_chatbot(&harness.db, &online_flow);
+    let conversation = harness.conversations.start_test_conversation(&online_copy.id).unwrap().conversation;
+    harness.conversations.send_customer_message(&conversation.id, "delivery fee for small orders").await.unwrap();
+    let prompt = system_prompt(&harness.model, 0);
+    assert!(prompt.starts_with("You are Catering assistant"), "{prompt}");
+    assert!(prompt.contains("Facts from the owner's knowledge"), "{prompt}");
+    assert!(prompt.contains("delivery fee based on distance"), "{prompt}");
+    assert!(prompt.ends_with("Answer the customer."), "{prompt}");
+}
