@@ -23,7 +23,7 @@ export interface ServerCheck {
   detail: string | null
   signInWithBrowser: boolean
   signInWithInvite: boolean
-  /** One sign in button each (e.g. Google and Microsoft). Empty: one "Sign in" button. */
+  /** One sign in button each (e.g. Google and the company's own). Empty: one "Sign in" button. */
   signInProviders: SignInChoice[]
   mode: string | null
 }

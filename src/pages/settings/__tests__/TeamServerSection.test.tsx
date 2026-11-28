@@ -53,15 +53,15 @@ describe('Team server sign in', () => {
       signInWithInvite: true,
       signInProviders: [
         { id: 'google', name: 'Google' },
-        { id: 'microsoft', name: 'Microsoft' },
+        { id: 'acme', name: 'Acme SSO' },
       ],
     })
     api.signInToCollab.mockResolvedValue(signedOut)
     render(<TeamServerSection />)
 
     expect(await screen.findByRole('button', { name: 'Sign in with Google' })).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Sign in with Microsoft' }))
-    expect(api.signInToCollab).toHaveBeenCalledWith('microsoft')
+    await user.click(screen.getByRole('button', { name: 'Sign in with Acme SSO' }))
+    expect(api.signInToCollab).toHaveBeenCalledWith('acme')
     expect(api.checkCollabServer).toHaveBeenCalledWith('https://collab.graphrt.com')
   })
 
