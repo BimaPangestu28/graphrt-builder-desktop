@@ -168,3 +168,51 @@ async fn a_run_refuses_to_start_when_a_helper_agent_was_deleted() {
     }
     assert!(harness.db.list_runs(&RunFilter::default()).unwrap().is_empty(), "no run is recorded");
 }
+
+/// A helper that asks the owner before it answers.
+const ASKING_HELPER: &str = r#"
+version: "1"
+name: order-placer
+graph:
+  nodes:
+    - { id: start, type: start, variables: [{ variable: question, type: text-input, required: true }] }
+    - id: ask
+      type: human-input
+      prompt: "Place this order? {{#start.question#}}"
+      actions:
+        - { id: approve, title: Place it }
+        - { id: reject, title: Don't }
+    - { id: end, type: end, outputs: [{ variable: text, value_selector: [start, question], value_type: string }] }
+  edges:
+    - { source: start, target: ask }
+    - { source: ask, target: end, handle: approve }
+"#;
+
+#[tokio::test]
+async fn an_approval_inside_a_helper_pauses_the_whole_run_and_resuming_finishes_it() {
+    let model = Arc::new(MockModel::new(Vec::new()));
+    let harness = harness_with_model(model.clone());
+    let helper = create_agent(&harness.db, ASKING_HELPER);
+    let lead = create_agent(&harness.db, LEAD);
+    let registry = crate::flow::draft_node_registry();
+    let helpers = AbilityChange::Helpers { agent_ids: vec![helper.id.clone()], max_parallel: 4, max_calls: 16 };
+    set_ability(&harness.db, &lead.id, &helpers, &GraphContext::new(&registry)).unwrap();
+    model.push(MockModel::tool_calls(&[("call-1", helper.id.as_str(), r#"{"question":"50 lunch boxes"}"#)]));
+    model.push(MockModel::text("The order for 50 lunch boxes is placed."));
+
+    let run =
+        harness.runs.start_run(&lead.id, RunTrigger::Test, json!({"question": "Order 50 lunch boxes"})).await.unwrap();
+    wait_for_status(&harness.sink, &run.id, RunStatus::Paused).await;
+
+    let reasons = harness.db.get_run(&run.id).unwrap().pause_reasons.unwrap();
+    let helper_frame = format!("assistant.{}[0]", helper.id);
+    let waiting =
+        reasons.as_array().unwrap().iter().find(|reason| reason["node_id"] == "ask").expect("the helper's question");
+    assert_eq!(waiting["frame"], helper_frame.as_str());
+    assert!(waiting.get("expires_at").is_none(), "no deadline taken from the lead's steps");
+
+    harness.runs.resume_run(&run.id, json!({ format!("{helper_frame}/ask"): {"action": "approve"} })).await.unwrap();
+    wait_for_status(&harness.sink, &run.id, RunStatus::Succeeded).await;
+    let outputs = harness.db.get_run(&run.id).unwrap().outputs.unwrap();
+    assert_eq!(outputs["result"], "The order for 50 lunch boxes is placed.");
+}
