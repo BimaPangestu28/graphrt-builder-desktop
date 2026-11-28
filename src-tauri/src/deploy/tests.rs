@@ -405,7 +405,15 @@ async fn puts_an_agent_on_aws_lambda_with_the_saved_access_key() {
     let chat = OnlineFeatures { chat: true, ..OnlineFeatures::default() };
     let outcome = harness
         .service
-        .deploy(&agent_id, aws_options(Some("ap-southeast-3"), chat), &[], &ready_report())
+        .deploy(
+            &agent_id,
+            DeployOptions {
+                image: Some("123456789012.dkr.ecr.ap-southeast-3.amazonaws.com/graphrt:test".into()),
+                ..aws_options(Some("ap-southeast-3"), chat)
+            },
+            &[],
+            &ready_report(),
+        )
         .await
         .unwrap();
     assert_eq!(outcome.view.deployment.url.as_deref(), Some("https://abc.lambda-url.ap-southeast-3.on.aws/"));
@@ -438,7 +446,10 @@ async fn puts_an_agent_on_aws_lambda_with_the_saved_access_key() {
         pause_line.contains("--target lambda --direct") && pause_line.contains("--region ap-southeast-3 --json"),
         "{pause_line}"
     );
+    assert!(harness.service.review(&harness.agent, &[], DeployProvider::Aws).unwrap().image.is_some());
     assert_eq!(harness.service.manage(&agent_id, ManageAction::Remove).await.unwrap(), None);
+    let after = harness.service.review(&harness.agent, &[], DeployProvider::Aws).unwrap();
+    assert_eq!(after.image, None, "a next deploy starts from graphrt's own image");
 }
 
 #[tokio::test]

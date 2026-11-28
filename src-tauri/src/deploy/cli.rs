@@ -218,17 +218,33 @@ pub fn help_lists_lambda_store(deploy_help: &str) -> bool {
     deploy_help.contains("store on Lambda")
 }
 
-/// What `graphrt deploy capabilities --json` says about the store of a Lambda deployment:
-/// `targets.lambda.store` (or `lambda.store`) as a boolean, or an object such as `{"kind": "s3"}`
-/// for one that exists. `None` when it says nothing.
-pub fn capabilities_lambda_store(capabilities: &serde_json::Value) -> Option<bool> {
-    let store = capabilities.pointer("/targets/lambda/store").or_else(|| capabilities.pointer("/lambda/store"))?;
-    match store {
-        serde_json::Value::Bool(has) => Some(*has),
-        serde_json::Value::Null => Some(false),
-        serde_json::Value::Object(_) | serde_json::Value::String(_) => Some(true),
+/// What `graphrt deploy capabilities --json` says about the direct targets (schema version 1:
+/// `{"type":"result","action":"capabilities","schema_version":1,"targets":[{"target":"lambda",
+/// "available":true,"store":{"kind":"s3","available":false,...},...},...]}`; fields are only
+/// ever added). `None` for what it does not say.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DeclaredTargets {
+    pub cloud_run: Option<bool>,
+    pub lambda: Option<bool>,
+    pub lambda_store: Option<bool>,
+}
+
+/// Reads the `capabilities` result (see [`DeclaredTargets`]).
+pub fn declared_targets(capabilities: &serde_json::Value) -> DeclaredTargets {
+    let targets = capabilities.get("targets").and_then(serde_json::Value::as_array);
+    let entry = |name: &str| {
+        targets?.iter().find(|entry| entry.get("target").and_then(serde_json::Value::as_str) == Some(name))
+    };
+    let available = |name: &str| entry(name)?.get("available")?.as_bool();
+    // A store that exists has a kind; one that needs a newer build says `available: false`.
+    let lambda_store = entry("lambda").and_then(|lambda| match lambda.get("store") {
+        Some(serde_json::Value::Object(store)) => {
+            Some(store.get("available").and_then(serde_json::Value::as_bool).unwrap_or(store.contains_key("kind")))
+        }
+        Some(serde_json::Value::Null) => Some(false),
         _ => None,
-    }
+    });
+    DeclaredTargets { cloud_run: available("cloud-run"), lambda: available("lambda"), lambda_store }
 }
 
 /// What the installed graphrt tools can put online, from one `graphrt deploy --help`.
@@ -245,7 +261,7 @@ pub struct CliAbilities {
     /// AWS Lambda, directly ([`help_lists_lambda`]).
     pub lambda: bool,
     /// A Lambda deployment has a store, so the phone page, notifications and channels work
-    /// there ([`capabilities_lambda_store`], else [`help_lists_lambda_store`]).
+    /// there ([`declared_targets`], else [`help_lists_lambda_store`]).
     pub lambda_store: bool,
 }
 
@@ -254,21 +270,24 @@ pub struct CliAbilities {
 pub fn abilities(executable: &Path) -> CliAbilities {
     match deploy_help(executable) {
         Some(help) => {
-            let lambda = help_lists_lambda(&help);
-            let declared_store = if lambda {
-                run_tool(executable, &["deploy", "capabilities", "--json"])
-                    .and_then(|output| last_json_object(&output))
-                    .and_then(|capabilities| capabilities_lambda_store(&capabilities))
-            } else {
-                None
-            };
+            // The machine-readable list wins; the help text speaks for tools that predate it.
+            // Asked only from tools whose help lists the sub-command (older ones refuse it).
+            let declared = help
+                .contains("capabilities")
+                .then(|| run_tool(executable, &["deploy", "capabilities", "--json"]))
+                .flatten()
+                .and_then(|output| last_json_object(&output))
+                .filter(|result| result.get("action").and_then(serde_json::Value::as_str) == Some("capabilities"))
+                .map(|result| declared_targets(&result))
+                .unwrap_or_default();
+            let lambda = declared.lambda.unwrap_or_else(|| help_lists_lambda(&help));
             CliAbilities {
                 online_features: help_lists_online_features(&help),
                 channels: help_lists_channels(&help),
                 large_agents: help_lists_large_agents(&help),
-                cloud_run: help_lists_cloud_run(&help),
+                cloud_run: declared.cloud_run.unwrap_or_else(|| help_lists_cloud_run(&help)),
                 lambda,
-                lambda_store: lambda && declared_store.unwrap_or_else(|| help_lists_lambda_store(&help)),
+                lambda_store: lambda && declared.lambda_store.unwrap_or_else(|| help_lists_lambda_store(&help)),
             }
         }
         None => CliAbilities::default(),
@@ -715,11 +734,20 @@ mod tests {
         assert!(help_lists_lambda(help));
         assert!(!help_lists_lambda_store(help));
         assert!(help_lists_lambda_store("--monitor  ... (the store on Lambda is an S3 bucket)"));
-        let declared = |value: serde_json::Value| capabilities_lambda_store(&value);
-        assert_eq!(declared(serde_json::json!({ "targets": { "lambda": { "store": true } } })), Some(true));
-        assert_eq!(declared(serde_json::json!({ "targets": { "lambda": { "store": null } } })), Some(false));
-        assert_eq!(declared(serde_json::json!({ "lambda": { "store": { "kind": "s3" } } })), Some(true));
-        assert_eq!(declared(serde_json::json!({ "targets": { "fly": { "store": true } } })), None);
+        let declared = declared_targets(&serde_json::json!({
+            "type": "result", "action": "capabilities", "schema_version": 1, "graphrt": "0.6.4",
+            "targets": [
+                { "target": "fly", "available": true, "store": { "kind": "volume", "features": [], "drop_store": true } },
+                { "target": "cloud-run", "available": false, "store": { "kind": "gcs" } },
+                { "target": "lambda", "available": true, "store": { "kind": "s3", "requires_feature": "store-s3", "available": false } }
+            ]
+        }));
+        assert_eq!(declared, DeclaredTargets { cloud_run: Some(false), lambda: Some(true), lambda_store: Some(false) });
+        let with_store = declared_targets(&serde_json::json!({ "targets": [
+            { "target": "lambda", "available": true, "store": { "kind": "s3", "available": true } }
+        ] }));
+        assert_eq!(with_store.lambda_store, Some(true));
+        assert_eq!(declared_targets(&serde_json::json!({ "targets": [] })), DeclaredTargets::default());
         assert_eq!(last_json_object("note\n{\"a\":1}\n").unwrap()["a"], 1);
     }
 
@@ -731,18 +759,19 @@ mod tests {
         crate::test_support::write_executable_script(
             &tool,
             r#"case "$2" in
-  --help) echo "Direct, Lambda: AWS profile; the store on Lambda is an S3 bucket" ;;
-  capabilities) echo '{"targets":{"lambda":{"store":false}}}' ;;
+  --help) echo "capabilities  What each target offers; Direct, Lambda: AWS profile; Direct, Cloud Run: Google Cloud project id; the store on Lambda is an S3 bucket" ;;
+  capabilities) echo '{"type":"result","action":"capabilities","schema_version":1,"targets":[{"target":"lambda","available":true,"store":{"kind":"s3","available":false}},{"target":"cloud-run","available":false}]}' ;;
 esac"#,
         );
         let found = abilities(&tool);
-        assert!(found.lambda && !found.lambda_store, "{found:?}");
+        assert!(found.lambda && !found.lambda_store && !found.cloud_run, "{found:?}");
         let old = temp.path().join("old");
         crate::test_support::write_executable_script(
             &old,
-            r#"[ "$2" = "--help" ] && echo "Direct, Lambda: AWS profile; the store on Lambda is an S3 bucket"; [ "$2" = capabilities ] && exit 2; true"#,
+            r#"[ "$2" = "--help" ] && echo "capabilities; Direct, Lambda: AWS profile; the store on Lambda is an S3 bucket"; [ "$2" = capabilities ] && exit 2; true"#,
         );
-        assert!(abilities(&old).lambda_store, "older tools fall back to the help text");
+        let fallback = abilities(&old);
+        assert!(fallback.lambda && fallback.lambda_store, "older tools fall back to the help text: {fallback:?}");
     }
 
     #[test]

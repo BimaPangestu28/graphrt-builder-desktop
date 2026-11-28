@@ -1598,6 +1598,8 @@ impl DeployService {
                 self.db.set_agent_setting(agent_id, DEPLOY_HISTORY_KEY, &serde_json::json!([]))?;
                 self.db.set_agent_setting(agent_id, ONLINE_FEATURES_KEY, &serde_json::Value::Null)?;
                 self.db.set_agent_setting(agent_id, DEPLOY_PROJECT_KEY, &serde_json::Value::Null)?;
+                // A next deploy (maybe with another provider) starts from graphrt's own image.
+                self.db.set_agent_setting(agent_id, DEPLOY_IMAGE_KEY, &serde_json::Value::Null)?;
                 self.forget_device_codes(&OnlineTarget::Agent { agent_id: agent_id.to_owned() }, None)?;
                 log::info!("took agent {agent_id} offline");
                 return Ok(None);
