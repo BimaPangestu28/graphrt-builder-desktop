@@ -132,6 +132,8 @@ fn deployment_names_and_versions() {
     assert!(name.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-'));
     assert_eq!(next_version_label(None), "v1");
     assert_eq!(next_version_label(Some("v9")), "v10");
+    assert_eq!(highest_version_label(["v1", "v10", "v2", "custom"].into_iter()), Some("v10"));
+    assert_eq!(highest_version_label(std::iter::empty()), None);
     assert_eq!(ServerArea::from_fly_region(ServerArea::Europe.fly_region()), Some(ServerArea::Europe));
 }
 
@@ -556,6 +558,12 @@ esac"#,
     assert_eq!(rolled_back.deployment.deployed_version_label.as_deref(), Some("v1"));
     assert!(!rolled_back.has_changes, "going back online puts the release of v1 in use too");
     assert_eq!(harness.db.release_in_use(&harness.agent.id).unwrap().map(|release| release.number), Some(1));
+    let after_roll_back = harness.service.deploy(&harness.agent.id, fly_options(), &[], &ready_report()).await.unwrap();
+    assert_eq!(
+        after_roll_back.view.deployment.deployed_version_label.as_deref(),
+        Some("v3"),
+        "v2 still exists on the provider: the next label is v3"
+    );
 
     assert_eq!(harness.service.manage(&harness.agent.id, ManageAction::Remove).await.unwrap(), None);
     assert_eq!(harness.db.get_deployment(&harness.agent.id).unwrap(), None);

@@ -406,6 +406,13 @@ pub fn deployment_name_for(agent: &Agent) -> String {
     format!("{base}-{suffix}")
 }
 
+/// The `vN` label with the highest number among `labels` (others are ignored).
+pub fn highest_version_label<'a>(labels: impl Iterator<Item = &'a str>) -> Option<&'a str> {
+    labels
+        .filter(|label| label.strip_prefix('v').is_some_and(|number| number.parse::<u64>().is_ok()))
+        .max_by_key(|label| label.strip_prefix('v').and_then(|number| number.parse::<u64>().ok()).unwrap_or(0))
+}
+
 /// `v1` after nothing, `v4` after `v3`.
 pub fn next_version_label(current: Option<&str>) -> String {
     let number = current.and_then(|label| label.strip_prefix('v')?.parse::<u64>().ok()).unwrap_or(0);
@@ -1270,8 +1277,15 @@ impl DeployService {
         let feature_arguments = self.feature_arguments(options.provider, &options.features)?;
         let previous = self.db.get_deployment(&agent.id)?;
         let is_first = previous.as_ref().is_none_or(|record| record.status == DeploymentStatus::Failed);
-        let version_label =
-            next_version_label(previous.as_ref().and_then(|record| record.deployed_version_label.as_deref()));
+        // After the highest label ever deployed, not the one serving: after a roll back to v1, v2
+        // still exists on the provider, and Lambda never takes a label twice.
+        let history = self.history(&agent.id)?;
+        let version_label = next_version_label(highest_version_label(
+            history
+                .iter()
+                .map(|entry| entry.label.as_str())
+                .chain(previous.as_ref().and_then(|record| record.deployed_version_label.as_deref())),
+        ));
         let mut record = previous.clone().unwrap_or_else(|| DeploymentRecord {
             agent_id: agent.id.clone(),
             provider: options.provider,
