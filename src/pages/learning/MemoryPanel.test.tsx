@@ -107,3 +107,20 @@ describe('MemoryPanel', () => {
     expect(screen.getByText('It does not remember anyone yet.')).toBeInTheDocument()
   })
 })
+
+describe('MemoryPanel connections', () => {
+  beforeEach(() => {
+    resetSampleAgents()
+    resetSampleAbilities()
+  })
+
+  it('shows the connections of a person when the agent keeps a memory graph', async () => {
+    await sampleAbilitiesBackend.setAgentAbility(agentId, { kind: 'memory', enabled: true, graph: true })
+    const user = userEvent.setup()
+    renderPanel()
+    const dana = await personCard('Dana Wijaya')
+    await user.click(within(dana).getByRole('button', { name: 'Show connections' }))
+    const facts = await within(dana).findByRole('list', { name: 'Connections it made' })
+    expect(within(facts).getAllByRole('listitem')[0]).toHaveTextContent('Dana Wijaya works at PT Sinar · since 1 Jan 2024')
+  })
+})

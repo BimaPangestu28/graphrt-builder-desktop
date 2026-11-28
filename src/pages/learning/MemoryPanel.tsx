@@ -119,13 +119,16 @@ function PersonGraph({ agentId, user }: { agentId: string; user: string }) {
   if (graph.data.unreadable) return <p className="m-0 text-[13px] text-amber-deep">{t.graphUnreadable}</p>
   if (graph.data.facts.length === 0) return <p className="m-0 text-[13px] text-muted">{t.graphEmpty}</p>
   return (
-    <ul className="m-0 flex list-none flex-col gap-1 p-0">
-      {graph.data.facts.map((fact) => (
-        <li key={fact.id} className={`min-w-0 truncate text-[13px] ${fact.isClosed ? 'text-muted line-through' : 'text-ink'}`} title={describeFact(fact)}>
-          {describeFact(fact)}
-        </li>
-      ))}
-    </ul>
+    <div className="flex min-w-0 flex-col gap-1">
+      <span className="text-[12px] font-medium text-muted">{t.connections}</span>
+      <ul aria-label={t.connections} className="m-0 flex list-none flex-col gap-1 p-0">
+        {graph.data.facts.map((fact) => (
+          <li key={fact.id} className={`min-w-0 truncate text-[13px] ${fact.isClosed ? 'text-muted line-through' : 'text-ink'}`} title={describeFact(fact)}>
+            {describeFact(fact)}
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
 

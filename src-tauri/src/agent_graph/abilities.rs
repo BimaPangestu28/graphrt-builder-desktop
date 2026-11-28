@@ -386,7 +386,8 @@ fn plan_change(db: &Database, agent: &Agent, change: &AbilityChange) -> AppResul
             let non_default = |value: u32, default: u32| (listed && value != default).then(|| Json::from(value));
             let summary = match entries.len() {
                 0 => "asks no other agent for help".to_owned(),
-                count => format!("may ask {count} other agent(s) for help"),
+                1 => "may ask 1 other agent for help".to_owned(),
+                count => format!("may ask {count} other agents for help"),
             };
             Ok(PlannedChange {
                 kinds: AGENT_STEPS_ONLY,
@@ -403,7 +404,8 @@ fn plan_change(db: &Database, agent: &Agent, change: &AbilityChange) -> AppResul
             let tools = clean_tool_names(tools)?;
             let summary = match tools.len() {
                 0 => "no tool is called again after an interrupted run".to_owned(),
-                count => format!("{count} tool(s) may be called again after an interrupted run"),
+                1 => "1 tool may be called again after an interrupted run".to_owned(),
+                count => format!("{count} tools may be called again after an interrupted run"),
             };
             Ok(PlannedChange {
                 kinds: AGENT_STEPS_ONLY,

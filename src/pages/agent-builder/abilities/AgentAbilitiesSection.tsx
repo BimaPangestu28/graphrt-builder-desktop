@@ -38,12 +38,12 @@ function AbilityCard({ title, summary, unavailableReason, isOpen, isBlocked, onO
   const reasonId = useId()
   const isDisabled = unavailableReason !== null || isBlocked
   return (
-    <Card className={joinClassNames('flex min-w-0 items-center gap-3 p-3.5', isOpen && 'border-ink')}>
+    <Card className={joinClassNames('flex h-full min-w-0 items-center gap-3 p-3.5', isOpen && 'border-ink')}>
       <div className="flex min-w-0 flex-auto flex-col gap-0.5">
-        <span title={title} className="truncate text-[14px] font-semibold text-ink">
+        <span title={title} className="line-clamp-2 text-[14px] leading-[19px] font-semibold text-ink">
           {title}
         </span>
-        <span id={reasonId} title={unavailableReason ?? summary} className={joinClassNames('text-[12.5px] text-muted', unavailableReason ? 'line-clamp-2' : 'truncate')}>
+        <span id={reasonId} title={unavailableReason ?? summary} className="line-clamp-2 text-[12.5px] leading-[17px] text-muted">
           {unavailableReason ?? summary}
         </span>
       </div>
