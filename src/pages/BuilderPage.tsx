@@ -155,6 +155,7 @@ export function BuilderPage() {
             if (result.saved) revisions.recordNodesEdit(result)
             void reloadAgentAndSteps(null)
           }}
+          onAbilitiesSaved={() => void reloadAgentAndSteps(null)}
           onAskBuilder={prefillChat}
           onFoldChat={activeTab === 'nodes' && !chatRail.isCollapsed ? () => setChatCollapsed(true) : undefined}
           activeTab={activeTab}

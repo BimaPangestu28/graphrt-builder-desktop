@@ -20,6 +20,9 @@ import { RunNarrationFeed } from '@/pages/agent-run/RunNarrationFeed'
 import { BuildChatPanel, BuilderReply, RunPanel, RunTitleRow, RunWorkspace, UserChatBubble, runHeaderActionClassNames } from '@/pages/agent-run/RunWorkspace'
 import { StatusPill } from '@/pages/agent-run/StatusPill'
 import { StepProgressList } from '@/pages/agent-run/StepProgressList'
+import { HelperRunsCard } from '@/pages/agent-run/HelperRunsCard'
+import { buildHelperTree, readRunEnd, settleHelperStatuses } from '@/pages/agent-run/runAbilityEvents'
+import { useAgentNames } from '@/hooks/useAgentNames'
 import { buildRunSidebarAgents, useRunAgent } from '@/pages/agent-run/runAgentSidebar'
 import { summarizeRunInputs } from '@/pages/agent-run/runInputValues'
 import { buildRunNarration } from '@/pages/agent-run/runNarration'
@@ -133,7 +136,11 @@ function TestRunScreen({ agentId, agent, runId, flowSummary }: TestRunScreenProp
   const isActive = isRunActive(run)
   const now = useNow(isActive)
   const steps = buildRunStepViews(stepTemplate, events)
-  const narrationLines = buildRunNarration(stepTemplate, events)
+  const agentNames = useAgentNames()
+  // The lookup falls back to the id itself: an id is no name to show.
+  const nameOfHelper = (helperId: string) => (agentNames(helperId) === helperId ? null : agentNames(helperId))
+  const narrationLines = buildRunNarration(stepTemplate, events, nameOfHelper)
+  const helpers = settleHelperStatuses(buildHelperTree(events), readRunEnd(events))
   const approvalCardRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -176,6 +183,7 @@ function TestRunScreen({ agentId, agent, runId, flowSummary }: TestRunScreenProp
           <RunTitleRow meta={buildRunHeaderMeta(run, steps, now)} status={<RunStatusPill run={run} />} />
           {visibleError && <RunErrorNotice title={messages().agentRun.somethingWentWrongWithThisTest} error={visibleError} />}
           <StepProgressList steps={steps} now={now} fixAgentId={agentId} />
+          <HelperRunsCard helpers={helpers} nameOf={agentNames} />
           {firstApproval && (
             <div ref={approvalCardRef} id="approval-card" tabIndex={-1} className="rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-amber">
               <ApprovalCard

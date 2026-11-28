@@ -132,7 +132,7 @@ export const learning = defineMessages(
       add: 'Add note',
     },
     people: {
-      heading: 'People it remembers',
+      heading: 'People its lessons are about',
       hint: 'Forgetting a person removes every note about them and every note that came from them.',
       noteCount: (count: number) => (count === 1 ? '1 note' : `${count} notes`),
       forget: 'Forget this person',
@@ -303,7 +303,7 @@ export const learning = defineMessages(
       add: 'Tambah catatan',
     },
     people: {
-      heading: 'Orang yang diingat',
+      heading: 'Orang dalam pelajarannya',
       hint: 'Melupakan seseorang menghapus semua catatan tentang dia dan semua catatan yang berasal dari dia.',
       noteCount: (count: number) => `${count} catatan`,
       forget: 'Lupakan orang ini',

@@ -8,6 +8,7 @@ import { joinClassNames } from '@/components/ui'
 import { agentPath, builderAskParam } from '@/routes'
 import { AgentOnlinePanel, RunPlaceBadge } from '@/pages/deploy/AgentOnlinePanel'
 import { useAgentDeployment } from '@/pages/deploy/useAgentDeployment'
+import { AgentAbilitiesSection } from './abilities/AgentAbilitiesSection'
 import { AgentIdentityHeader } from './AgentIdentityHeader'
 import { AgentRequirementsList, type BuilderRequirement } from './AgentRequirementsList'
 import { BuilderStepCard } from './BuilderStepCard'
@@ -191,6 +192,8 @@ interface BuilderAgentPanelProps {
   onAgentRenamed?: () => Promise<void> | void
   /** After the Nodes view saved a version: reload the agent, steps and chat. */
   onGraphSaved?: (result: SaveGraphResult) => void
+  /** After an ability change saved a version: reload the agent, steps and chat. */
+  onAbilitiesSaved?: () => void
   /** "Fix with builder" in the Nodes view: prefills the chat box (the user sends it). */
   onAskBuilder?: (request: string) => void
   /** Folds the chat into its rail (offered in the Nodes view when the canvas is narrow); absent when it is folded. */
@@ -216,6 +219,7 @@ export function BuilderAgentPanel({
   arePluginsReady,
   onAgentRenamed,
   onGraphSaved,
+  onAbilitiesSaved,
   onAskBuilder,
   onFoldChat,
   activeTab: controlledTab,
@@ -268,6 +272,7 @@ export function BuilderAgentPanel({
               onPluginSessionChange={onPluginSessionChange}
             />
           )}
+          {activeTab === 'steps' && <AgentAbilitiesSection agentId={agent.id} agentVersion={agent.currentVersion} onSaved={onAbilitiesSaved} />}
           {activeTab === 'steps' && <TrustedHostsSection agentId={agent.id} />}
           {activeTab === 'runs' && <RunsTabContent agentId={agent.id} />}
           {activeTab === 'source' && <SourceTabContent flowYaml={agent.flowYaml} />}

@@ -72,7 +72,10 @@ use crate::agent_files::{AgentFiles, FileAccess, FileScope};
 use crate::chatbot_setup::reply::prepare_reply;
 use crate::credentials::CredentialStore;
 use crate::desktop::app_settings::AppSettings;
-use crate::engine::{agent_tools_for, prepare_engine_and_env, KeychainModelRegistrySource, ModelRegistrySource};
+use crate::engine::{
+    agent_tools_for, link_helper_agents, prepare_engine_and_env, EngineDependencies, KeychainModelRegistrySource,
+    ModelRegistrySource, RunScope,
+};
 use crate::error::{AppError, AppResult};
 use crate::storage::models::AgentKind;
 use crate::storage::Database;
@@ -648,15 +651,21 @@ impl ConversationManager {
         );
         let file_access = self.file_access(conversation);
         let trusted_hosts = self.db.trusted_lookup_hosts(&agent.id)?;
+        let scope = RunScope { agent_id: Some(&agent.id), trusted_hosts: &trusted_hosts, files: file_access.as_ref() };
         let (engine, env) = prepare_engine_and_env(
             &prepared.flow_text,
-            &trusted_hosts,
+            &scope,
             &self.credentials,
             &self.db,
             &*self.model_source,
             tools,
-            file_access.as_ref(),
         )?;
+        let engine = link_helper_agents(engine, &prepared.flow_text, &self.engine_dependencies())?;
+        // An agent that remembers people (or asks a helper that does) knows the customer by a
+        // handle nobody else can take (see `bot::person_of`); other flows keep the plain handle.
+        if crate::agent_graph::abilities::remembers_people(&self.db, &prepared.flow_text) {
+            sys_values.push(("user_id".to_owned(), self::bot::person_of(conversation).to_owned()));
+        }
         let on_draft = |draft: &str| self.emit_draft(conversation, draft);
         let mut turn =
             run_bot_turn(&engine, env, conversation, model_text, &sys_values, &customer_turn.files, &on_draft).await?;
@@ -717,6 +726,16 @@ impl ConversationManager {
 
     /// Whose files a bot turn of `conversation` may use: the conversation's own part of
     /// the agent's workspace.
+    fn engine_dependencies(&self) -> EngineDependencies {
+        EngineDependencies {
+            db: self.db.clone(),
+            credentials: self.credentials.clone(),
+            model_source: self.model_source.clone(),
+            agent_files: self.agent_files.clone(),
+            read_only_memory: false,
+        }
+    }
+
     fn file_access(&self, conversation: &Conversation) -> Option<FileAccess> {
         self.agent_files
             .clone()

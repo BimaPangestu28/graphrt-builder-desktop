@@ -21,7 +21,7 @@ use crate::agent_files::AgentFiles;
 use crate::chatbot_setup::reply::prepare_reply;
 use crate::conversations::bot::MESSAGE_INPUT;
 use crate::credentials::CredentialStore;
-use crate::engine::{agent_tools_for, prepare_engine_and_env, ModelRegistrySource};
+use crate::engine::{link_helper_agents, prepare_engine_and_env, EngineDependencies, ModelRegistrySource, RunScope};
 use crate::error::AppResult;
 use crate::storage::models::{Agent, AgentKind};
 use crate::storage::Database;
@@ -29,7 +29,9 @@ use crate::storage::Database;
 /// Longest one question may take before its test counts as not good.
 pub const QUESTION_TIMEOUT: Duration = Duration::from_secs(180);
 /// `sys.conversation_id` and `sys.user_id` of a check's chatbot turns.
-const CHECK_CONVERSATION: &str = "test-check";
+const CHECK_CONVERSATION: &str = CHECK_USER_ID;
+/// `sys.user_id` of a check's chatbot turns (memory only reads in checks, so it keeps nothing).
+pub(crate) const CHECK_USER_ID: &str = "test-check";
 
 /// What every run of a check needs from the app.
 #[derive(Clone, Debug)]
@@ -42,31 +44,34 @@ pub struct CheckDependencies {
 
 impl CheckDependencies {
     /// The engine and `env.*` values of `flow_yaml` for the agent `agent_id`.
+    ///
+    /// Long term memory only reads in checks (the agent's, its helpers' and the agents it calls
+    /// as tools): a check recalls what the agent knows but never leaves a note behind.
     fn engine_for(&self, agent_id: &str, flow_yaml: &str) -> AppResult<(Engine, IndexMap<String, Value>)> {
-        let tools = agent_tools_for(
-            self.db.clone(),
-            self.credentials.clone(),
-            self.model_source.clone(),
-            self.agent_files.clone(),
-            agent_id,
-        );
+        let dependencies = EngineDependencies {
+            db: self.db.clone(),
+            credentials: self.credentials.clone(),
+            model_source: self.model_source.clone(),
+            agent_files: self.agent_files.clone(),
+            read_only_memory: true,
+        };
+        let flow_yaml = crate::agent_graph::abilities::without_memory_writes(flow_yaml)?;
+        let flow_yaml = flow_yaml.as_str();
+        let tools = crate::engine::agent_tools::agent_tool_registry(&dependencies, vec![agent_id.to_owned()]);
         let trusted_hosts = self.db.trusted_lookup_hosts(agent_id)?;
-        prepare_engine_and_env(flow_yaml, &trusted_hosts, &self.credentials, &self.db, &*self.model_source, tools, None)
+        let scope = RunScope { agent_id: Some(agent_id), trusted_hosts: &trusted_hosts, files: None };
+        let (engine, env) =
+            prepare_engine_and_env(flow_yaml, &scope, &self.credentials, &self.db, &*self.model_source, tools)?;
+        Ok((link_helper_agents(engine, flow_yaml, &dependencies)?, env))
     }
 
     /// An engine for a workflow that is not an agent's (a judge): no agent tools.
     pub fn plain_engine(&self, flow_yaml: &str) -> AppResult<Engine> {
         let trusted_hosts = crate::flow::TrustedHosts::default();
         let tools = graphrt_core::tool::ToolRegistry::new();
-        let (engine, _env) = prepare_engine_and_env(
-            flow_yaml,
-            &trusted_hosts,
-            &self.credentials,
-            &self.db,
-            &*self.model_source,
-            tools,
-            None,
-        )?;
+        let scope = RunScope { agent_id: None, trusted_hosts: &trusted_hosts, files: None };
+        let (engine, _env) =
+            prepare_engine_and_env(flow_yaml, &scope, &self.credentials, &self.db, &*self.model_source, tools)?;
         Ok(engine)
     }
 }

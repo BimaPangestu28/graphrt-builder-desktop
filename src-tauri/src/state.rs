@@ -28,6 +28,8 @@ pub struct AppState {
     pub skills: Arc<crate::skills::SkillService>,
     /// What agents learned: lessons, the ones waiting for the owner, feedback on runs.
     pub learning: Arc<crate::learning::LearningService>,
+    /// What agents remember about the people they serve (long term memory).
+    pub memory: Arc<crate::memory::MemoryService>,
     /// The chat models each connected provider offers (cached).
     pub model_catalog: Arc<crate::model_catalog::ModelCatalog>,
     /// Put it online: online accounts, deployments and the graphrt tools.

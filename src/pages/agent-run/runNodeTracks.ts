@@ -1,6 +1,7 @@
 import type { GraphrtEvent, RunEventRecord } from '@/api/types'
 import type { TestRunStepState } from '@/pages/agent-run/testRunTypes'
 import { readChosenActionId, readPauseActionTitles } from './approvalAnswers'
+import { isHelperFrame } from './runAbilityEvents'
 import { isRecord, readFrame, readNumber, readString } from './runEventValues'
 import { messages } from '@/i18n'
 
@@ -213,6 +214,8 @@ export function collectNodeTracks(events: RunEventRecord[]): Map<string, NodeTra
   const tracksByNodeId = new Map<string, NodeTrack>()
   for (const record of events) {
     const nodeId = record.event.node_id
+    // A helper agent's steps belong to its own workflow (shown as help from other agents), not to this run's steps.
+    if (isHelperFrame(readFrame(record.event))) continue
     if (nodeEventTypes.has(record.event.type) && typeof nodeId === 'string' && nodeId) trackNodeEvent(tracksByNodeId, record, nodeId)
     else applyRunEvent(tracksByNodeId, record)
   }

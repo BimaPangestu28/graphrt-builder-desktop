@@ -43,6 +43,8 @@ function buildSummary(changes: Partial<RunSummary>): RunSummary {
     rejectedVisuals: [],
     files: [],
     errorMessage: null,
+    budget: null,
+    budgetUnavailable: false,
     ...changes,
   }
 }

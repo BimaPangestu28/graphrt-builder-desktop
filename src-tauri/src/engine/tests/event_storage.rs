@@ -415,14 +415,15 @@ async fn abort_before_the_task_registers_aborts_the_graphrt_run() {
     harness.runs.abort_run(&run.id).unwrap();
     assert_eq!(harness.db.get_run(&run.id).unwrap().status, RunStatus::Aborted);
 
+    let trusted_hosts = crate::flow::TrustedHosts::none();
+    let scope = preparation::RunScope { agent_id: Some(&agent.id), trusted_hosts: &trusted_hosts, files: None };
     let engine = preparation::build_engine(
         &agent.flow_yaml,
-        &crate::flow::TrustedHosts::none(),
+        &scope,
         &harness.credentials,
         &harness.db,
         &*harness.runs.model_source,
         graphrt_core::tool::ToolRegistry::new(),
-        None,
     )
     .unwrap();
     let mut run_input = graphrt_core::RunInput::new();

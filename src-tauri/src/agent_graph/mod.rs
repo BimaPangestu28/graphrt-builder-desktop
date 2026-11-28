@@ -16,6 +16,7 @@
 //! Positions are not part of the document; they live in
 //! `storage::node_layouts` and are copied forward to each new version.
 
+pub mod abilities;
 mod document;
 pub mod learning;
 pub mod library;

@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { RunRecord } from '@/pages/runs/runRecordTypes'
 import { StepProgressList } from '@/pages/agent-run/StepProgressList'
+import { HelperRunsCard } from '@/pages/agent-run/HelperRunsCard'
+import type { HelperRun } from '@/pages/agent-run/runAbilityEvents'
 import { RunFeedbackCard } from '@/pages/learning/RunFeedbackCard'
 import type { RunStepView } from '@/pages/agent-run/runSteps'
 import { agentPath, routePaths } from '@/routes'
@@ -13,6 +15,9 @@ interface RunDetailPanelProps {
   stepViews: RunStepView[]
   /** Current time in ms, for live durations of a running run. */
   now?: number
+  /** The helper agents the run asked (none for online runs). */
+  helpers?: HelperRun[]
+  nameOf?: (agentId: string) => string
   onClose: () => void
 }
 
@@ -31,7 +36,7 @@ function buildRunCsvHref(run: RunRecord): string {
  * can be rated like a test run), and actions to run it again, export it, or read the raw
  * runner log.
  */
-export function RunDetailPanel({ run, stepViews, now, onClose }: RunDetailPanelProps) {
+export function RunDetailPanel({ run, stepViews, now, helpers = [], nameOf = (agentId) => agentId, onClose }: RunDetailPanelProps) {
   const t = useT().runs
   const [isRawLogVisible, setIsRawLogVisible] = useState(false)
 
@@ -50,6 +55,7 @@ export function RunDetailPanel({ run, stepViews, now, onClose }: RunDetailPanelP
       </div>
 
       {stepViews.length > 0 && <StepProgressList steps={stepViews} now={now} fixAgentId={run.agentId} />}
+      <HelperRunsCard helpers={helpers} nameOf={nameOf} />
 
       <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface p-3.5">
         <span className="text-[12px] font-medium text-muted">{t.output}</span>

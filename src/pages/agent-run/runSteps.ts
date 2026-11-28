@@ -1,4 +1,5 @@
 import type { RunEventRecord } from '@/api/types'
+import { readAbilityNotes, type AbilityNote } from './runAbilityEvents'
 import type { TestRunStepState } from '@/pages/agent-run/testRunTypes'
 import { describeChosenAction } from './approvalAnswers'
 import { buildItemFrame, describeItemShort, findIterationItems, parseFrame, readIteratorPath, readNumber } from './runEventValues'
@@ -61,6 +62,8 @@ export interface RunStepView {
   learnedNoteCount: number
   /** Tools a skill was allowed but could not use because nothing here provides them (`skill_tool_unavailable`). */
   unavailableSkillTools: UnavailableSkillTool[]
+  /** What the agent's abilities did in the shown execution (context, memory, budget, checkpoint). */
+  abilityNotes: AbilityNote[]
 }
 
 /** A tool a skill may use that this computer does not have (its plugin was removed, say). */
@@ -205,6 +208,7 @@ function buildEmptyView(step: RunStepTemplate, nodeType: string | null): RunStep
     stepDetail: step.detail ?? null,
     learnedNoteCount: 0,
     unavailableSkillTools: [],
+    abilityNotes: [],
   }
 }
 
@@ -226,6 +230,7 @@ function applyExecution(view: RunStepView, execution: NodeExecution): RunStepVie
     detail: execution.detail,
     learnedNoteCount: countLearnedNotes(execution),
     unavailableSkillTools: collectUnavailableSkillTools(execution),
+    abilityNotes: readAbilityNotes(execution),
   }
 }
 

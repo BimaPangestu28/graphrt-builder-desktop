@@ -1,3 +1,4 @@
+import type { SpendingLimit } from './abilitiesTypes'
 import type { UiBlock, UiBlockKind } from '@/components/visuals/uiBlockTypes'
 import type { RunStatus } from './types'
 
@@ -59,6 +60,21 @@ export interface RunSummary {
   /** Files the run made that are still on this computer (`src-tauri/src/run_files.rs`). */
   files: RunFile[]
   errorMessage: string | null
+  /** Tokens and money against the agent's spending limit (`src-tauri/src/run_budget.rs`); null when unreadable. */
+  budget: RunBudget | null
+  /** The budget could not be worked out. */
+  budgetUnavailable: boolean
+}
+
+/** What one run spent against its agent's spending limit. */
+export interface RunBudget {
+  tokensUsed: number
+  /** Millionths of a dollar at list prices; null when a model has no known price. */
+  estimatedCostMicros: number | null
+  /** The agent's limit now. */
+  limit: SpendingLimit
+  /** graphrt stopped the run, or answered without tools, at the limit. */
+  limitReached: boolean
 }
 
 /** A file a run made, e.g. the invoice PDF a plugin step saved. */

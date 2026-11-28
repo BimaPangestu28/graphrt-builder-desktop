@@ -9,14 +9,14 @@ fn weather_trusted() -> TrustedHosts {
 }
 
 fn build(harness: &Harness, flow_yaml: &str, trusted_hosts: &TrustedHosts) -> AppResult<graphrt_core::Engine> {
+    let scope = preparation::RunScope { agent_id: None, trusted_hosts, files: None };
     preparation::build_engine(
         flow_yaml,
-        trusted_hosts,
+        &scope,
         &harness.credentials,
         &harness.db,
         &*harness.runs.model_source,
         graphrt_core::tool::ToolRegistry::new(),
-        None,
     )
 }
 
@@ -50,14 +50,14 @@ fn a_chatbot_lookup_runs_on_a_trusted_host() {
     let harness = harness_with_answers(&[]);
     let chatbot = test_fixtures::chatbot_weather_lookup();
     let prepare = |trusted_hosts: &TrustedHosts| {
+        let scope = preparation::RunScope { agent_id: None, trusted_hosts, files: None };
         prepare_engine_and_env(
             &chatbot,
-            trusted_hosts,
+            &scope,
             &harness.credentials,
             &harness.db,
             &*harness.runs.model_source,
             graphrt_core::tool::ToolRegistry::new(),
-            None,
         )
     };
     assert!(matches!(prepare(&TrustedHosts::none()), Err(AppError::InvalidInput(_))));

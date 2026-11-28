@@ -33,7 +33,10 @@ pub(crate) mod approval_pauses;
 mod chosen_files;
 mod chunk_buffer;
 mod driver;
+pub(crate) mod helpers;
 mod preparation;
+pub mod prices;
+pub mod spending;
 pub mod tauri_sink;
 #[cfg(test)]
 mod tests;
@@ -45,12 +48,15 @@ use graphrt_core::{RunInput, Snapshot};
 use serde::{Deserialize, Serialize};
 
 use self::active_runs::ActiveRuns;
+pub(crate) use self::agent_tools::EngineDependencies;
 pub(crate) use self::approval_expiry::spawn_approval_expiry;
 use self::approval_pauses::PauseSettings;
 use self::chunk_buffer::ChunkBufferLimits;
 use self::driver::RunDriver;
+pub(crate) use self::helpers::link_helper_agents;
 pub(crate) use self::preparation::flow_for_version;
 pub(crate) use self::preparation::prepare_engine_and_env;
+pub(crate) use self::preparation::RunScope;
 
 /// Whether paths given for `file` / `file-list` inputs become graphrt files.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -70,7 +76,8 @@ pub(crate) fn agent_tools_for(
     agent_files: Option<Arc<AgentFiles>>,
     agent_id: &str,
 ) -> graphrt_core::tool::ToolRegistry {
-    let dependencies = agent_tools::EngineDependencies { db, credentials, model_source, agent_files };
+    let dependencies =
+        agent_tools::EngineDependencies { db, credentials, model_source, agent_files, read_only_memory: false };
     agent_tools::agent_tool_registry(&dependencies, vec![agent_id.to_owned()])
 }
 use crate::agent_files::{AgentFiles, FileAccess, FileScope};
@@ -204,6 +211,31 @@ impl RunManager {
         self
     }
 
+    /// The engine of a top-level run of `agent` on `flow_yaml`, its helper agents linked.
+    fn engine_for(
+        &self,
+        agent: &crate::storage::models::Agent,
+        flow_yaml: &str,
+        trusted_hosts: &TrustedHosts,
+        tools: graphrt_core::tool::ToolRegistry,
+    ) -> AppResult<graphrt_core::Engine> {
+        let files = self.file_access(&agent.id);
+        let scope = preparation::RunScope { agent_id: Some(&agent.id), trusted_hosts, files: files.as_ref() };
+        let engine =
+            preparation::build_engine(flow_yaml, &scope, &self.credentials, &self.db, &*self.model_source, tools)?;
+        helpers::link_helper_agents(engine, flow_yaml, &self.engine_dependencies())
+    }
+
+    fn engine_dependencies(&self) -> agent_tools::EngineDependencies {
+        agent_tools::EngineDependencies {
+            db: self.db.clone(),
+            credentials: self.credentials.clone(),
+            model_source: self.model_source.clone(),
+            agent_files: self.agent_files.clone(),
+            read_only_memory: false,
+        }
+    }
+
     /// Whose files a top-level run of `agent_id` may use.
     fn file_access(&self, agent_id: &str) -> Option<FileAccess> {
         self.agent_files.clone().map(|files| FileAccess { files, scope: FileScope::agent(agent_id) })
@@ -251,16 +283,13 @@ impl RunManager {
         let agent = self.db.get_agent(agent_id)?;
         let tools = self.agent_tools(&agent.id);
         let trusted_hosts = self.db.trusted_lookup_hosts(&agent.id)?;
-        let engine = preparation::build_engine(
-            &agent.flow_yaml,
-            &trusted_hosts,
-            &self.credentials,
-            &self.db,
-            &*self.model_source,
-            tools,
-            self.file_access(&agent.id).as_ref(),
-        )?;
+        let engine = self.engine_for(&agent, &agent.flow_yaml, &trusted_hosts, tools)?;
         let mut run_input = RunInput::new();
+        // Runs started in the app are the owner's: an agent that remembers people keeps
+        // what they say under the owner (schedules and chains run for nobody in particular).
+        if matches!(trigger, RunTrigger::Test | RunTrigger::Manual) {
+            run_input = run_input.sys("user_id", crate::memory::APP_USER);
+        }
         let stored_inputs = inputs.clone();
         run_input.inputs = preparation::json_object_to_value_map(inputs, "run inputs")?;
         if input_files == InputFiles::AttachChosen {
@@ -298,15 +327,7 @@ impl RunManager {
         let flow_yaml = preparation::flow_for_version(&self.db, &agent, run.agent_version)?;
         let tools = self.agent_tools(&agent.id);
         let trusted_hosts = self.db.trusted_lookup_hosts(&agent.id)?;
-        let engine = preparation::build_engine(
-            &flow_yaml,
-            &trusted_hosts,
-            &self.credentials,
-            &self.db,
-            &*self.model_source,
-            tools,
-            self.file_access(&agent.id).as_ref(),
-        )?;
+        let engine = self.engine_for(&agent, &flow_yaml, &trusted_hosts, tools)?;
         let snapshot = Snapshot::from_json(&self.db.get_run_snapshot(run_id)?)?;
         // After a restart the allow-list is empty: the files the run started with are readable again.
         if let Ok(Some(stored_inputs)) = self.db.get_run_inputs(run_id) {
@@ -378,13 +399,7 @@ impl RunManager {
 
     /// Tool registry for a top-level run of `agent_id`: other agents as tools.
     fn agent_tools(&self, agent_id: &str) -> graphrt_core::tool::ToolRegistry {
-        let dependencies = agent_tools::EngineDependencies {
-            db: self.db.clone(),
-            credentials: self.credentials.clone(),
-            model_source: self.model_source.clone(),
-            agent_files: self.agent_files.clone(),
-        };
-        agent_tools::agent_tool_registry(&dependencies, vec![agent_id.to_owned()])
+        agent_tools::agent_tool_registry(&self.engine_dependencies(), vec![agent_id.to_owned()])
     }
 
     fn finish_aborted(&self, run: &Run) -> AppResult<()> {

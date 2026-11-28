@@ -134,16 +134,21 @@ impl PauseSettings {
     /// Adds deadlines, timeout actions and tool details to graphrt's pause reasons (a JSON array).
     pub(crate) fn enrich(&self, reasons: &mut Json, carried: &HashMap<String, String>, now: DateTime<Utc>) {
         let Some(reasons) = reasons.as_array_mut() else { return };
+        let no_steps = PauseSettings::default();
         for reason in reasons {
             let key = pause_key(reason);
             let node_id = text(reason, "node_id").unwrap_or_default().to_owned();
+            // A step of a helper agent belongs to the helper's workflow: this run's steps of the
+            // same id say nothing about it (only what graphrt reported applies).
+            let in_helper = crate::run_budget::helper_of_frame(text(reason, "frame").unwrap_or_default()).is_some();
+            let settings = if in_helper { &no_steps } else { self };
             let Some(fields) = reason.as_object_mut() else { continue };
             match fields.get("kind").and_then(Json::as_str) {
                 Some(HUMAN_INPUT_PAUSE_KIND) => {
-                    self.add_deadline(fields, &node_id, carried.get(&key), now);
+                    settings.add_deadline(fields, &node_id, carried.get(&key), now);
                     check_card(fields, &node_id);
                 }
-                Some(TOOL_APPROVAL_PAUSE_KIND) => self.describe_tool_calls(fields, &node_id),
+                Some(TOOL_APPROVAL_PAUSE_KIND) => settings.describe_tool_calls(fields, &node_id),
                 _ => {}
             }
         }
@@ -474,6 +479,23 @@ graph:
         assert_eq!(reasons[0][ON_TIMEOUT_KEY], json!({"kind": "answer", "action": "skip"}));
         assert!(reasons[1].get(EXPIRES_AT_KEY).is_none(), "no time limit, waits until answered");
         assert_eq!(reasons[2][ON_TIMEOUT_KEY], json!({"kind": "stop"}), "no on_expire stops the run");
+    }
+
+    #[test]
+    fn a_helper_agents_step_is_not_mistaken_for_this_runs_step_of_the_same_id() {
+        let settings = PauseSettings::from_flow(FLOW, &TrustedHosts::none());
+        let mut reasons = json!([
+            {"frame": "helper.3f2a-b1[0]", "node_id": "ask", "kind": "human_input", "data": {}},
+            {"frame": "helper.3f2a-b1[0]", "node_id": "ask", "kind": "human_input", "data": {"timeout_ms": 60_000}},
+        ]);
+        settings.enrich(&mut reasons, &HashMap::new(), now());
+        assert!(reasons[0].get(EXPIRES_AT_KEY).is_none(), "this run's `ask` time limit is not the helper's");
+        assert_eq!(
+            reasons[1][EXPIRES_AT_KEY],
+            json!("2026-11-21T10:01:00+00:00"),
+            "what graphrt reported still applies"
+        );
+        assert_eq!(reasons[1][ON_TIMEOUT_KEY], json!({"kind": "stop"}));
     }
 
     #[test]
