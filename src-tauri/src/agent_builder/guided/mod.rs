@@ -382,7 +382,8 @@ impl Planning<'_> {
             (None, None) => String::new(),
         };
         if self.description.is_some() {
-            if let Some(problem) = coverage::missing_action(&plan) {
+            let sends = |kind: &str| self.operations.iter().any(|operation| operation.kind == kind && operation.sends);
+            if let Some(problem) = coverage::missing_action(&plan, sends) {
                 // A small model rarely adds the step when asked again; the app adds the
                 // sending operation offered for the job (best match first) itself.
                 if !self.add_offered_sending_step(&mut plan, rules) {

@@ -504,8 +504,12 @@ pub(super) fn normalize(raw: RawPlan, rules: &PlanRules<'_>) -> Result<Plan, Str
     }
     // The model says the job needs facts from outside and planned no step that gets them
     // (it would write them from memory): the best offered operation that reads gets them.
+    // Not when the job's own words say the person gives the text to work on: llama3.2 said
+    // "looks up the web" for "summarize the meeting notes I paste, then send it by email",
+    // and the best reading operation offered was `email.list_messages`.
     let gets_facts = steps.iter().any(|step| matches!(step, PlanStep::Lookup { .. } | PlanStep::Use { .. }));
-    if raw.looks_up_the_web && !gets_facts {
+    let text_is_given = raw.job_words.given.chars().filter(|character| character.is_alphanumeric()).count() >= 3;
+    if raw.looks_up_the_web && !gets_facts && !text_is_given {
         if let Some(operation) = rules.operations.iter().find(|operation| !operation.sends) {
             let instruction = plain_text(&raw.summary);
             let instruction = if instruction.is_empty() { operation.title.clone() } else { instruction };
@@ -1862,6 +1866,16 @@ mod tests {
             "{plan:?}"
         );
         assert_eq!(plan.steps.len(), 2);
+        // The same claim for a job whose text the person gives reads nothing (llama3.2's plan
+        // for "summarize the meeting notes I paste, then send the summary by email").
+        let given = parse(
+            r#"{"looks_up_the_web": true, "summary": "Sends the meeting summary.", "inputs": [],
+                "steps": [{"kind": "write", "title": "Sum up", "instruction": "Sum up the notes.", "url": ""}],
+                "job_words": {"send": "kirim", "given": "catatan rapat"}}"#,
+        )
+        .unwrap();
+        let plan = normalize(given, &rules).unwrap();
+        assert!(plan.steps.iter().all(|step| matches!(step, PlanStep::Write { .. })), "{plan:?}");
     }
 
     #[test]
