@@ -200,15 +200,20 @@ impl AgentToolRuntime {
             files,
             scope: crate::agent_files::FileScope::agent(&agent.id),
         });
+        let scope = preparation::RunScope {
+            agent_id: Some(&agent.id),
+            trusted_hosts: &trusted_hosts,
+            files: file_access.as_ref(),
+        };
         let engine = preparation::build_engine(
             &agent.flow_yaml,
-            &trusted_hosts,
+            &scope,
             &self.dependencies.credentials,
             &self.dependencies.db,
             &*self.dependencies.model_source,
             registry_with_budget(&self.dependencies, agent_ids_below, self.budget.clone()),
-            file_access.as_ref(),
         )?;
+        let engine = super::helpers::link_helper_agents(engine, &agent.flow_yaml, &self.dependencies)?;
         let mut run_input = RunInput::new();
         run_input.inputs = preparation::json_object_to_value_map(arguments, "step inputs")?;
         run_input.env = preparation::workflow_env(&agent.flow_yaml, &self.dependencies.credentials)?;

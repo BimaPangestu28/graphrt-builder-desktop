@@ -21,7 +21,9 @@ use crate::agent_files::AgentFiles;
 use crate::chatbot_setup::reply::prepare_reply;
 use crate::conversations::bot::MESSAGE_INPUT;
 use crate::credentials::CredentialStore;
-use crate::engine::{agent_tools_for, prepare_engine_and_env, ModelRegistrySource};
+use crate::engine::{
+    agent_tools_for, link_helper_agents, prepare_engine_and_env, EngineDependencies, ModelRegistrySource, RunScope,
+};
 use crate::error::AppResult;
 use crate::storage::models::{Agent, AgentKind};
 use crate::storage::Database;
@@ -29,7 +31,9 @@ use crate::storage::Database;
 /// Longest one question may take before its test counts as not good.
 pub const QUESTION_TIMEOUT: Duration = Duration::from_secs(180);
 /// `sys.conversation_id` and `sys.user_id` of a check's chatbot turns.
-const CHECK_CONVERSATION: &str = "test-check";
+const CHECK_CONVERSATION: &str = CHECK_USER_ID;
+/// `sys.user_id` of a check's chatbot turns (what long term memory keeps notes under).
+pub(crate) const CHECK_USER_ID: &str = "test-check";
 
 /// What every run of a check needs from the app.
 #[derive(Clone, Debug)]
@@ -51,22 +55,25 @@ impl CheckDependencies {
             agent_id,
         );
         let trusted_hosts = self.db.trusted_lookup_hosts(agent_id)?;
-        prepare_engine_and_env(flow_yaml, &trusted_hosts, &self.credentials, &self.db, &*self.model_source, tools, None)
+        let scope = RunScope { agent_id: Some(agent_id), trusted_hosts: &trusted_hosts, files: None };
+        let (engine, env) =
+            prepare_engine_and_env(flow_yaml, &scope, &self.credentials, &self.db, &*self.model_source, tools)?;
+        let dependencies = EngineDependencies {
+            db: self.db.clone(),
+            credentials: self.credentials.clone(),
+            model_source: self.model_source.clone(),
+            agent_files: self.agent_files.clone(),
+        };
+        Ok((link_helper_agents(engine, flow_yaml, &dependencies)?, env))
     }
 
     /// An engine for a workflow that is not an agent's (a judge): no agent tools.
     pub fn plain_engine(&self, flow_yaml: &str) -> AppResult<Engine> {
         let trusted_hosts = crate::flow::TrustedHosts::default();
         let tools = graphrt_core::tool::ToolRegistry::new();
-        let (engine, _env) = prepare_engine_and_env(
-            flow_yaml,
-            &trusted_hosts,
-            &self.credentials,
-            &self.db,
-            &*self.model_source,
-            tools,
-            None,
-        )?;
+        let scope = RunScope { agent_id: None, trusted_hosts: &trusted_hosts, files: None };
+        let (engine, _env) =
+            prepare_engine_and_env(flow_yaml, &scope, &self.credentials, &self.db, &*self.model_source, tools)?;
         Ok(engine)
     }
 }

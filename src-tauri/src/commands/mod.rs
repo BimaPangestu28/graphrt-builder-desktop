@@ -2,6 +2,7 @@
 //! delegates to its module; the frontend wrappers live in `src/api/`.
 //! Argument names are camelCase on the JavaScript side (Tauri's default).
 
+pub mod abilities;
 pub mod agent_files;
 pub mod agent_graph;
 pub mod agent_tools;

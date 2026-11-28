@@ -1,3 +1,4 @@
+mod abilities;
 mod approvals;
 mod chosen_file_inputs;
 mod event_storage;

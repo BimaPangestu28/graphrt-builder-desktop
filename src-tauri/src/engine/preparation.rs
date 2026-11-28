@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use graphrt_core::engine::Limits;
+use graphrt_core::memory::MemoryDefaults;
 use graphrt_core::tool::ToolRegistry;
 use graphrt_core::{Engine, IndexMap, Services, Value};
 
@@ -16,11 +17,22 @@ use crate::flow::{self, TrustedHosts};
 use crate::storage::models::Agent;
 use crate::storage::Database;
 
+/// Who a run belongs to and what it may reach.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RunScope<'a> {
+    /// The agent the run belongs to (`None` for a workflow that is no agent's, such as a
+    /// judge): its steps keep long term memory under its id, and its spending limit bounds
+    /// the run.
+    pub agent_id: Option<&'a str>,
+    pub trusted_hosts: &'a TrustedHosts,
+    /// Whose file workspace the run may use; `None` gives the run none.
+    pub files: Option<&'a FileAccess>,
+}
+
 /// Compiles the flow, checks provider keys and wires graphrt services.
 ///
 /// `tools` is the graphrt tool registry for `tool` / `agent` nodes (the
 /// `agents` provider, see `agent_tools`); other tool providers are added to it.
-/// `files` says whose file workspace the run may use; `None` gives the run none.
 ///
 /// # Errors
 /// `MissingPlugins` when the flow uses plugins that are not installed,
@@ -29,13 +41,13 @@ use crate::storage::Database;
 /// registry / HTTP client reports.
 pub(super) fn build_engine(
     flow_yaml: &str,
-    trusted_hosts: &TrustedHosts,
+    scope: &RunScope<'_>,
     credentials: &CredentialStore,
     db: &Database,
     model_source: &dyn ModelRegistrySource,
     tools: ToolRegistry,
-    files: Option<&FileAccess>,
 ) -> AppResult<Engine> {
+    let RunScope { agent_id, trusted_hosts, files } = *scope;
     ensure_plugins_installed(flow_yaml)?;
     let mut tools = tools;
     // File and image tools, only for a workflow that uses them (see `agent_files`).
@@ -49,7 +61,10 @@ pub(super) fn build_engine(
     ensure_lookups_trusted(&graph, trusted_hosts)?;
     let http_client = graphrt_http::HttpClient::new(egress_policy(&graph, trusted_hosts))
         .map_err(|error| AppError::Internal(format!("could not set up the HTTP client: {error}")))?;
-    let services = Services::new().with(model_source.build_registry(credentials, db)?).with(http_client).with(tools);
+    let mut models = model_source.build_registry(credentials, db)?;
+    // List prices of the common models, for an agent's spending limit in money.
+    super::prices::add_list_prices(&mut models);
+    let services = Services::new().with(models).with(http_client).with(tools);
     // Knowledge bases for the `knowledge-retrieval` node (stores open on first search).
     let services = services.with(crate::knowledge::knowledge_service_for_runs(db, credentials)?);
     // Files the user chose for `file` / `file-list` inputs (and data URLs), then the
@@ -71,7 +86,19 @@ pub(super) fn build_engine(
         Some(lessons) => services.with(lessons),
         None => services,
     };
-    Ok(Engine::new(Arc::new(graph)).with_services(services).with_limits(run_limits(db)))
+    // Long term memory for `agent` steps with `long_term_memory`, kept under the agent's id
+    // (a step that names no memory agent uses it too).
+    let services = match crate::memory::memories_service() {
+        Some(memories) => {
+            services.with(memories).with(MemoryDefaults { tenant: None, agent: agent_id.map(str::to_owned) })
+        }
+        None => services,
+    };
+    let limits = match agent_id {
+        Some(agent_id) => super::spending::load_for_run(db, agent_id)?.apply_to(run_limits(db)),
+        None => run_limits(db),
+    };
+    Ok(Engine::new(Arc::new(graph)).with_services(services).with_limits(limits))
 }
 
 /// `InvalidInput` naming the first lookup that only runs without asking once its
@@ -232,14 +259,13 @@ pub(super) fn workflow_env(flow_yaml: &str, credentials: &CredentialStore) -> Ap
 /// Everything [`build_engine`] and [`workflow_env`] report.
 pub(crate) fn prepare_engine_and_env(
     flow_yaml: &str,
-    trusted_hosts: &TrustedHosts,
+    scope: &RunScope<'_>,
     credentials: &CredentialStore,
     db: &Database,
     model_source: &dyn ModelRegistrySource,
     tools: ToolRegistry,
-    files: Option<&FileAccess>,
 ) -> AppResult<(Engine, IndexMap<String, Value>)> {
-    let engine = build_engine(flow_yaml, trusted_hosts, credentials, db, model_source, tools, files)?;
+    let engine = build_engine(flow_yaml, scope, credentials, db, model_source, tools)?;
     let env = workflow_env(flow_yaml, credentials)?;
     Ok((engine, env))
 }

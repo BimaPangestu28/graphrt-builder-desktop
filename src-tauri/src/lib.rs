@@ -54,6 +54,7 @@ pub mod linux_display;
 pub mod live_view;
 pub mod local_cli;
 pub mod mcp;
+pub mod memory;
 pub mod model_catalog;
 pub mod node_runtime;
 pub mod ollama_check;
@@ -226,6 +227,8 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
     ));
     let learning = Arc::new(learning::LearningService::new(&data_dir, db.clone(), credentials.clone(), draft_model));
     learning.activate();
+    let memory = Arc::new(memory::MemoryService::new(&data_dir, db.clone()));
+    memory.activate();
     mcp::publish_from_database(&db);
     conversations::file_cleanup::spawn(conversations.clone());
     telegram.start_saved();
@@ -270,6 +273,7 @@ fn initialize_app_state(app: &tauri::App) -> Result<AppState, Box<dyn std::error
         plugins,
         skills,
         learning,
+        memory,
         model_catalog: Arc::new(model_catalog::ModelCatalog::with_http()?),
         deploy,
         quality,
@@ -561,6 +565,15 @@ pub fn run() {
             commands::node_runtime::install_browser_runtime,
             commands::node_runtime::install_node_runtime,
             commands::node_runtime::remove_node_runtime,
+            commands::abilities::get_agent_abilities,
+            commands::abilities::set_agent_ability,
+            commands::abilities::set_agent_spending_limit,
+            commands::abilities::get_agent_memory,
+            commands::abilities::list_memory_notes,
+            commands::abilities::get_memory_graph,
+            commands::abilities::delete_memory_note,
+            commands::abilities::decide_memory_note,
+            commands::abilities::forget_memory_person,
             commands::learning::get_agent_learning,
             commands::learning::decide_lesson,
             commands::learning::edit_lesson,
