@@ -67,6 +67,7 @@ pub mod plugin_triggers;
 pub mod plugins;
 pub mod problems;
 pub mod quality;
+pub mod run_budget;
 pub mod run_files;
 pub mod run_prefill;
 pub mod run_review;

@@ -48,6 +48,21 @@ pub struct CompatibilityFacts {
     pub connected_api_providers: Vec<ModelProvider>,
     /// The WhatsApp Business plugin is installed or in the catalog.
     pub whatsapp_cloud_available: bool,
+    /// The agent's abilities (`agent_graph::abilities`) that online servers must support.
+    pub abilities: AbilitiesInUse,
+    /// The graphrt tools that put the agent online run memory, helpers, long conversation
+    /// handling and spending limits (graphrt after 0.6.3).
+    pub online_runs_abilities: bool,
+}
+
+/// Which of the agent's abilities it uses.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AbilitiesInUse {
+    pub memory: bool,
+    pub helpers: bool,
+    /// Long conversations are handled otherwise than graphrt's default.
+    pub custom_long_conversations: bool,
+    pub spending_limit: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -229,6 +244,9 @@ pub fn check_compatibility(facts: &CompatibilityFacts) -> CompatibilityReport {
         });
     }
     items.extend(facts.keys.iter().map(key_item));
+    if !facts.online_runs_abilities {
+        items.extend(ability_items(facts.abilities));
+    }
     items.sort_by_key(|item| match item.level {
         CompatibilityLevel::Blocker => 0,
         CompatibilityLevel::Info => 1,
@@ -238,9 +256,76 @@ pub fn check_compatibility(facts: &CompatibilityFacts) -> CompatibilityReport {
     CompatibilityReport { ready, items }
 }
 
+/// What the online version cannot do yet of the agent's abilities.
+fn ability_items(abilities: AbilitiesInUse) -> Vec<CompatibilityItem> {
+    let item = |id: &str, level, title: &str, detail: &str| CompatibilityItem {
+        id: id.to_owned(),
+        level,
+        title: title.to_owned(),
+        detail: detail.to_owned(),
+        fix: None,
+        fix_label: None,
+    };
+    let mut items = Vec::new();
+    if abilities.helpers {
+        items.push(item(
+            "ability:helpers",
+            CompatibilityLevel::Blocker,
+            "Asking other agents for help only works on this computer for now",
+            "The online version of Graphrt cannot start helper agents yet. Turn off \"Ask other agents for help\" in \
+             the agent's abilities to put it online, or keep it on this computer.",
+        ));
+    }
+    if abilities.memory {
+        items.push(item(
+            "ability:memory",
+            CompatibilityLevel::Info,
+            "It will not remember customers online yet",
+            "Online, it answers without what it remembers here. What it remembers on this computer stays here.",
+        ));
+    }
+    if abilities.spending_limit {
+        items.push(item(
+            "ability:spending",
+            CompatibilityLevel::Info,
+            "The spending limit per run applies on this computer only for now",
+            "Online runs are not stopped at the limit yet. Your AI provider's own limits still apply.",
+        ));
+    }
+    if abilities.custom_long_conversations {
+        items.push(item(
+            "ability:context",
+            CompatibilityLevel::Info,
+            "Long conversations are handled the standard way online",
+            "Your choice for long conversations applies on this computer only for now.",
+        ));
+    }
+    items
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn abilities_the_online_version_lacks_are_named_and_helpers_block() {
+        let abilities =
+            AbilitiesInUse { memory: true, helpers: true, custom_long_conversations: true, spending_limit: true };
+        let facts = CompatibilityFacts { abilities, ..CompatibilityFacts::default() };
+        let report = check_compatibility(&facts);
+        assert!(!report.ready);
+        let ids: Vec<_> = report.items.iter().map(|item| (item.id.as_str(), item.level)).collect();
+        assert_eq!(ids[0], ("ability:helpers", CompatibilityLevel::Blocker));
+        assert!(ids.contains(&("ability:memory", CompatibilityLevel::Info)), "{ids:?}");
+
+        let memory_only = CompatibilityFacts {
+            abilities: AbilitiesInUse { memory: true, ..AbilitiesInUse::default() },
+            ..CompatibilityFacts::default()
+        };
+        assert!(check_compatibility(&memory_only).ready, "memory alone does not block");
+        let supported = CompatibilityFacts { abilities, online_runs_abilities: true, ..CompatibilityFacts::default() };
+        assert!(check_compatibility(&supported).items.is_empty());
+    }
 
     fn plugin(name: &str, needs_browser: bool, needs_session: bool) -> PluginFacts {
         PluginFacts { name: name.into(), display_name: format!("{name} plugin"), needs_browser, needs_session }

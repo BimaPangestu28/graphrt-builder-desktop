@@ -74,6 +74,21 @@ const DEPLOY_PROJECT_KEY: &str = "deploy_project";
 /// tools are installed, whether Google Cloud can be picked is told from the pinned release;
 /// once they are, from the tools themselves (`graphrt deploy --help`).
 const FIRST_CLOUD_RUN_RELEASE: (u64, u64, u64) = (0, 6, 4);
+/// The first graphrt release whose servers run long term memory, helper agents, long
+/// conversation handling and spending limits (graphrt main after 0.6.3, PRs #147 to #182).
+const FIRST_AGENT_ABILITIES_RELEASE: (u64, u64, u64) = (0, 6, 4);
+
+/// Which abilities of the agent an online server has to support.
+fn abilities_in_use(db: &Database, agent_id: &str) -> AppResult<compatibility::AbilitiesInUse> {
+    let abilities = crate::agent_graph::abilities::agent_abilities(db, agent_id)?;
+    Ok(compatibility::AbilitiesInUse {
+        memory: abilities.memory.enabled,
+        helpers: !abilities.helpers.agent_ids.is_empty(),
+        custom_long_conversations: abilities.context.mode != crate::agent_graph::abilities::ContextMode::Auto
+            || abilities.context.max_tokens.is_some(),
+        spending_limit: abilities.spending != crate::engine::spending::SpendingLimit::default(),
+    })
+}
 /// Longest `--image` reference accepted.
 const MAX_IMAGE_REFERENCE_CHARS: usize = 255;
 /// Why online deploy cannot be used in this app build (no graphrt release is pinned).
@@ -894,6 +909,9 @@ impl DeployService {
                 .collect(),
             connected_api_providers,
             whatsapp_cloud_available,
+            abilities: abilities_in_use(&self.db, &agent.id)?,
+            online_runs_abilities: cli_release::GRAPHRT_CLI_VERSION
+                .is_some_and(|version| release_at_least(version, FIRST_AGENT_ABILITIES_RELEASE)),
         };
         Ok(compatibility::check_compatibility(&facts))
     }
