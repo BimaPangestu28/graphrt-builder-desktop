@@ -196,6 +196,7 @@ describe('PutOnlinePage', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Sign in with Google' }))
     await userEvent.click(await within(dialog).findByRole('button', { name: 'Done' }))
     expect(screen.getByRole('radio', { name: 'Google Cloud' })).toBeChecked()
+    expect(screen.getByText('Signed in as ana@acme.com')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Next' }))
 
     expect(await screen.findByRole('heading', { name: 'Review' })).toBeInTheDocument()

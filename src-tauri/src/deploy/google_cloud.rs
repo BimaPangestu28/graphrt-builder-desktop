@@ -127,6 +127,18 @@ struct TokenReply {
     refresh_token: Option<String>,
     #[serde(default)]
     id_token: Option<String>,
+    /// The scopes granted: Google lets people untick `cloud-platform` on its consent screen.
+    #[serde(default)]
+    scope: Option<String>,
+}
+
+/// The `cloud-platform` scope, which deploying needs.
+const CLOUD_PLATFORM_SCOPE: &str = "https://www.googleapis.com/auth/cloud-platform";
+
+/// Whether the granted scopes (space separated) let the app manage Google Cloud. An answer
+/// without `scope` grants what was asked.
+fn grants_cloud_platform(scope: Option<&str>) -> bool {
+    scope.is_none_or(|granted| granted.split_whitespace().any(|scope| scope == CLOUD_PLATFORM_SCOPE))
 }
 
 fn form(fields: &[(&str, &str)]) -> Vec<(String, String)> {
@@ -209,6 +221,13 @@ pub async fn sign_in(
         ]),
     )
     .await?;
+    if !grants_cloud_platform(reply.scope.as_deref()) {
+        // Nothing is kept: a sign in that may not manage Google Cloud cannot put agents online.
+        revoke(http, reply.refresh_token.as_deref().unwrap_or(&reply.access_token)).await;
+        return Err(AppError::InvalidInput(
+            "Google Cloud access was not allowed. Sign in again and tick the box that lets Graphrt manage your Google Cloud resources".into(),
+        ));
+    }
     let refresh_token = reply.refresh_token.clone().filter(|token| !token.is_empty()).ok_or_else(|| {
         AppError::InvalidInput("Google gave no lasting sign in. Sign in again and allow every permission asked".into())
     })?;
@@ -644,6 +663,18 @@ pub fn problem_for(code: Option<&str>, message: &str, place: Option<&CloudPlace>
             "Your Google sign in expired or was removed. Sign in with Google again, then try again".to_owned(),
             Some(DeployFix::SignInAgain),
         ),
+        "not_found" if message.to_ascii_lowercase().contains("image") => {
+            return DeployProblem {
+                provider: DeployProvider::GoogleCloud,
+                kind: "image_not_found".into(),
+                message: "The server image was not found, so the earlier version keeps answering. Leave Server image (Advanced) empty to use graphrt's own image, or name one that exists".into(),
+                technical: message.to_owned(),
+                project,
+                service: None,
+                role: None,
+                fix: None,
+            }
+        }
         "name_taken" => (
             "Another Google Cloud account already uses this agent's name. Rename the agent, then try again".to_owned(),
             None,
@@ -687,6 +718,16 @@ mod tests {
         assert_eq!(query["code_challenge"], verifier.challenge());
         assert_eq!(query["redirect_uri"], "http://127.0.0.1:5000/callback");
         assert!(!url.contains("client_secret"));
+    }
+
+    #[test]
+    fn a_sign_in_must_grant_google_cloud() {
+        assert!(grants_cloud_platform(Some("openid https://www.googleapis.com/auth/cloud-platform email")));
+        assert!(!grants_cloud_platform(Some("openid https://www.googleapis.com/auth/userinfo.email")));
+        assert!(grants_cloud_platform(None));
+        let image = problem_for(Some("not_found"), "Image 'x' not found. Pass --image", None);
+        assert_eq!(image.kind, "image_not_found");
+        assert_eq!(problem_for(Some("not_found"), "no such deployment", None).kind, "not_found");
     }
 
     #[test]

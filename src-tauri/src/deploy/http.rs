@@ -174,7 +174,14 @@ pub struct HealthCheck {
 
 /// `GET <url>/healthz`: healthy on 2xx.
 pub async fn check_health(http: &dyn DeployHttp, base_url: &str) -> HealthCheck {
-    match http.get(join_url(base_url, "healthz"), None).await {
+    check_health_at(http, base_url, "healthz").await
+}
+
+/// `GET <url>/<path>`: healthy on 2xx. Cloud Run answers `/healthz` itself with a 404 (Google's
+/// front end keeps paths ending in `z` such as `/healthz`), so its online copies are asked at
+/// `/readyz`, which `graphrt serve` answers too.
+pub async fn check_health_at(http: &dyn DeployHttp, base_url: &str, path: &str) -> HealthCheck {
+    match http.get(join_url(base_url, path), None).await {
         Ok(reply) if (200..300).contains(&reply.status) => HealthCheck { healthy: true, message: "It answers".into() },
         Ok(reply) => HealthCheck { healthy: false, message: format!("It answered with an error ({})", reply.status) },
         Err(error) => HealthCheck { healthy: false, message: error.to_string() },

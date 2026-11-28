@@ -9,6 +9,12 @@ import { localizedRecord } from '@/i18n/localized'
 /** One plain line per provider, as people read it. */
 export const providerTaglines: Readonly<Record<DeployProvider, string>> = localizedRecord(() => messages().deploy.taglines)
 
+/** "Signed in as ana@acme.com" (the backend's summary) in the UI language. */
+function googleAccountLine(summary: string): string {
+  const email = /^Signed in as (.+)$/.exec(summary)?.[1]
+  return email ? messages().deploy.googleCloud.signedInAs(email) : summary
+}
+
 export const otherProviders: DeployProvider[] = ['google_cloud', 'aws', 'azure', 'kubernetes']
 
 interface ProviderRowProps {
@@ -22,7 +28,12 @@ interface ProviderRowProps {
 
 export function ProviderRow({ account, selection, onConnect, connectedActions }: ProviderRowProps) {
   const isRecommended = account.provider === 'fly'
-  const tagline = account.connected && account.usedByAgents.length > 0 ? messages().deploy.usedByAgents(messages().common.joinAnd(account.usedByAgents)) : providerTaglines[account.provider]
+  const tagline =
+    account.connected && account.usedByAgents.length > 0
+      ? messages().deploy.usedByAgents(messages().common.joinAnd(account.usedByAgents))
+      : account.connected && account.provider === 'google_cloud' && account.summary
+        ? googleAccountLine(account.summary)
+        : providerTaglines[account.provider]
   const content = (
     <>
       <ProviderLogo provider={account.provider} />

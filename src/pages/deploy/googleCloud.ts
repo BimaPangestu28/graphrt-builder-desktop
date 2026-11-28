@@ -70,6 +70,7 @@ export function describeDeployProblem(problem: DeployProblem): { text: string; f
     rate_limited: () => words.problems.rate_limited,
     gcp_unavailable: () => words.problems.gcp_unavailable,
     health_check_failed: () => words.problems.health_check_failed,
+    image_not_found: () => words.problems.image_not_found,
     start_timeout: () => words.problems.health_check_failed,
   }
   const wording = problem.provider === 'google_cloud' ? texts[problem.kind] : undefined

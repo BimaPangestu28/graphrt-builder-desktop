@@ -1,7 +1,7 @@
 import { messages } from '@/i18n'
 import { genericErrorMessage } from '@/lib/errors'
 import type { GraphProblem } from './agentGraphTypes'
-import type { DeployProblem } from './deployTypes'
+import type { DeployFix, DeployProblem, DeployProvider } from './deployTypes'
 import type { BackendErrorCode } from './types'
 
 /**
@@ -144,7 +144,33 @@ export function parseBackendErrorDetails(code: BackendErrorCode, rawDetails: unk
     const { minVersion, appVersion } = rawDetails
     return { minVersion: typeof minVersion === 'string' ? minVersion : null, appVersion: typeof appVersion === 'string' ? appVersion : null }
   }
+  if (code === 'deploy_failed') return parseDeployProblem(rawDetails)
   return null
+}
+
+const deployProviders: readonly string[] = ['fly', 'google_cloud', 'aws', 'azure', 'kubernetes'] satisfies DeployProvider[]
+
+function textOrNull(value: unknown): string | null {
+  return typeof value === 'string' ? value : null
+}
+
+/** `deploy_failed` details: a provider's refusal, explained, with its fix (`DeployProblem`). */
+function parseDeployProblem(rawDetails: Record<string, unknown>): DeployProblem | null {
+  const { provider, kind, message, technical, fix } = rawDetails
+  if (typeof provider !== 'string' || !deployProviders.includes(provider) || typeof kind !== 'string' || typeof message !== 'string') return null
+  let parsedFix: DeployFix | null = null
+  if (isRecord(fix) && fix.kind === 'sign_in_again') parsedFix = { kind: 'sign_in_again' }
+  else if (isRecord(fix) && fix.kind === 'open_page' && typeof fix.url === 'string') parsedFix = { kind: 'open_page', url: fix.url }
+  return {
+    provider: provider as DeployProvider,
+    kind,
+    message,
+    technical: typeof technical === 'string' ? technical : '',
+    project: textOrNull(rawDetails.project),
+    service: textOrNull(rawDetails.service),
+    role: textOrNull(rawDetails.role),
+    fix: parsedFix,
+  }
 }
 
 /**

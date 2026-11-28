@@ -1601,7 +1601,8 @@ impl DeployService {
             return self.view(agent_id);
         }
         let Some(url) = record.url.clone() else { return self.view(agent_id) };
-        let health = http::check_health(self.http.as_ref(), &url).await;
+        let health_path = if record.provider == DeployProvider::GoogleCloud { "readyz" } else { "healthz" };
+        let health = http::check_health_at(self.http.as_ref(), &url, health_path).await;
         let (status, message) = if health.healthy {
             (DeploymentStatus::Working, None)
         } else {
