@@ -27,6 +27,7 @@ function buildStepView(overrides: Partial<RunStepView>): RunStepView {
     stepDetail: null,
     learnedNoteCount: 0,
     unavailableSkillTools: [],
+    abilityNotes: [],
     ...overrides,
   }
 }

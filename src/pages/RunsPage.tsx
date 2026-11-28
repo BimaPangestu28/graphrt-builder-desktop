@@ -14,6 +14,7 @@ import { useRunEvents, useRuns } from '@/hooks/useRuns'
 import { RunErrorNotice } from '@/pages/agent-run/RunErrorNotice'
 import { toRunStepTemplate } from '@/pages/agent-run/runProgress'
 import { buildRunStepViews } from '@/pages/agent-run/runSteps'
+import { buildHelperTree, readRunEnd, settleHelperStatuses } from '@/pages/agent-run/runAbilityEvents'
 import { RunDetailPanel } from './runs/RunDetailPanel'
 import { RunsTable } from './runs/RunsTable'
 import { RunsToolbar } from './runs/RunsToolbar'
@@ -37,7 +38,8 @@ function SelectedRunPanel({ run, getAgentName, onClose }: { run: Run; getAgentNa
   const now = useNow(run.status === 'running')
   const record = useMemo(() => withRunEvents(toRunRecord(run, getAgentName(run.agentId)), events ?? []), [run, getAgentName, events])
   const stepViews = useMemo(() => buildRunStepViews(toRunStepTemplate(flowSummary), events ?? []), [flowSummary, events])
-  return <RunDetailPanel key={run.id} run={record} stepViews={stepViews} now={now} onClose={onClose} />
+  const helpers = useMemo(() => settleHelperStatuses(buildHelperTree(events ?? []), readRunEnd(events ?? [])), [events])
+  return <RunDetailPanel key={run.id} run={record} stepViews={stepViews} now={now} helpers={helpers} nameOf={getAgentName} onClose={onClose} />
 }
 
 /**

@@ -44,6 +44,7 @@ function buildMapsStep(state: RunStepView['state']): RunStepView {
     stepDetail: null,
     learnedNoteCount: 0,
     unavailableSkillTools: [],
+    abilityNotes: [],
   }
 }
 

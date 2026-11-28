@@ -17,6 +17,7 @@ import { RunAnswerCard } from '@/pages/agent-run/RunAnswerCard'
 import { RunErrorNotice } from '@/pages/agent-run/RunErrorNotice'
 import { RunFilesCard } from '@/pages/agent-run/RunFilesCard'
 import { RunItemsTable, RunStatTiles } from '@/pages/agent-run/RunResultDetails'
+import { RunBudgetCard } from '@/pages/agent-run/RunBudgetCard'
 import { buildRunResultView } from '@/pages/agent-run/runResultSummary'
 import { BuildChatPanel, BuilderReply, RunPanel, RunTitleRow, RunWorkspace, UserChatBubble, runHeaderActionClassNames } from '@/pages/agent-run/RunWorkspace'
 import { StatusPill } from '@/pages/agent-run/StatusPill'
@@ -158,6 +159,7 @@ function ResultDetails({ resultRun }: { resultRun: ResultRun }) {
     <>
       <RunFilesCard runId={resultRun.summary.runId} files={resultRun.summary.files} />
       <RunStatTiles stats={view.stats} />
+      <RunBudgetCard budget={resultRun.summary.budget} />
       {view.activity && <p className="m-0 text-[13px] text-body">{view.activity}</p>}
       <RunVisualList visuals={resultRun.summary.visuals} rejected={resultRun.summary.rejectedVisuals} />
       <RunFileList agentId={resultRun.summary.agentId} runId={resultRun.summary.runId} />

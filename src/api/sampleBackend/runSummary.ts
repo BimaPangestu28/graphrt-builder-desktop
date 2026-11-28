@@ -1,3 +1,4 @@
+import { sampleSpendingLimit } from './abilities'
 import type { UiBlock } from '@/components/visuals/uiBlockTypes'
 import type { AgentRunStats, ApprovalCounts, RunCounter, RunSummary, StepCounts, TokenUsage } from '../runSummaryTypes'
 import type { GraphrtEvent, Run } from '../types'
@@ -152,6 +153,7 @@ export function summarizeSampleRun(run: Run, events: GraphrtEvent[]): RunSummary
     // The browser preview has no files on disk to point at.
     files: [],
     errorMessage: run.errorMessage,
+    budget: { tokensUsed: tally.usage.totalTokens, estimatedCostMicros: null, limit: sampleSpendingLimit(run.agentId), limitReached: false },
   }
 }
 

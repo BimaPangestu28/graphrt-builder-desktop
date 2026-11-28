@@ -11,13 +11,16 @@ import { describeError } from '@/lib/agentDisplay'
 import { useT } from '@/i18n'
 import { agentPath, connectionsTabPath, sampleAgentId, skillFromNotesPath } from '@/routes'
 import { LessonCard } from './learning/LessonCard'
+import { MemoryPanel } from './learning/MemoryPanel'
 import { describeHistoryEntry, describeHistoryTime, lessonsOfTab, peopleRemembered, type LessonTab } from './learning/lessonDisplay'
 
-const tabs: readonly LessonTab[] = ['waiting', 'inUse', 'notUsed', 'history']
+/** The lesson tabs, then what the agent remembers about people (long term memory). */
+type PageTab = LessonTab | 'memory'
+const tabs: readonly PageTab[] = ['waiting', 'inUse', 'notUsed', 'history', 'memory']
 const tabParam = 'tab'
 const maxNoteChars = 500
 
-function readTab(value: string | null): LessonTab {
+function readTab(value: string | null): PageTab {
   return tabs.find((tab) => tab === value) ?? 'waiting'
 }
 
@@ -305,6 +308,7 @@ function EmptyTab({ message }: { message: string }) {
  */
 export function AgentLearnedPage() {
   const t = useT().learning
+  const memoryTabLabel = useT().abilities.memoryTab.tab
   const { agentId = sampleAgentId } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const tab = readTab(searchParams.get(tabParam))
@@ -312,12 +316,14 @@ export function AgentLearnedPage() {
   const loaded = useAsyncData(() => getAgentLearning(agentId), [agentId])
   const learning = loaded.data
   const reload = () => void loaded.reload()
-  const counts: Record<LessonTab, number | null> = {
+  const counts: Record<PageTab, number | null> = {
     waiting: learning ? lessonsOfTab(learning.lessons, 'waiting').length : null,
     inUse: learning ? lessonsOfTab(learning.lessons, 'inUse').length : null,
     notUsed: learning ? lessonsOfTab(learning.lessons, 'notUsed').length : null,
     history: null,
+    memory: null,
   }
+  const tabLabel = (candidate: PageTab) => (candidate === 'memory' ? memoryTabLabel : t.tabs[candidate])
   const isUsing = learning ? learning.usage.capableSteps > 0 && learning.usage.readingSteps === learning.usage.capableSteps : false
 
   return (
@@ -349,7 +355,7 @@ export function AgentLearnedPage() {
                   onClick={() => setSearchParams(candidate === 'waiting' ? {} : { [tabParam]: candidate }, { replace: true })}
                   className={pillTabClassNames(tab === candidate)}
                 >
-                  {t.tabs[candidate]}
+                  {tabLabel(candidate)}
                   {/* Keeps the accessible name "In use 3", not "In use3". */}
                   {counts[candidate] !== null && ' '}
                   {counts[candidate] !== null && (
@@ -360,7 +366,9 @@ export function AgentLearnedPage() {
                 </button>
               ))}
             </div>
-            {tab === 'history' ? (
+            {tab === 'memory' ? (
+              <MemoryPanel agentId={agentId} />
+            ) : tab === 'history' ? (
               <HistoryList learning={learning} />
             ) : (
               <>

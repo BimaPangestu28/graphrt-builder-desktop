@@ -2,6 +2,7 @@ import type { GraphrtEvent, RunEventRecord } from '@/api/types'
 import { pluginNameFromNodeType } from '@/lib/errorHelp'
 import { describeChosenAction, readChosenActionId, readPauseActionTitles } from './approvalAnswers'
 import { humanizeRunError } from './runErrorText'
+import { isHelperFrame } from './runAbilityEvents'
 import { buildItemFrame, findIterationItems, describeItemShort, parseFrame, readFrame, readIteratorPath, readNumber, readString } from './runEventValues'
 import { collectNodeTracks } from './runNodeTracks'
 import { containerNodeKinds, formatDurationMs, modelNodeKinds, type RunStepTemplate } from './runProgress'
@@ -59,6 +60,8 @@ interface NarrationState {
   runStartedAt: string | null
   /** Pause line key → button id → title of the question asked there. */
   actionTitlesByPause: Map<string, ReadonlyMap<string, string>>
+  /** The name of a helper agent, `null` when unknown. */
+  nameOfHelper: (agentId: string) => string | null
 }
 
 function setLine(state: NarrationState, key: string, text: string, changes: Partial<NarrationLine> = {}): void {
@@ -166,6 +169,54 @@ function handleTopLevelStepEvent(state: NarrationState, step: StepInfo, event: G
   }
 }
 
+/** Progress of the agent's abilities worth a line: asking a helper, a limit, picking up again. */
+function handleAbilityProgress(state: NarrationState, record: RunEventRecord, frame: string): boolean {
+  const { event } = record
+  const t = messages().abilities.narration
+  const name = typeof event.name === 'string' ? event.name : ''
+  const data = event.data
+  const nodeId = event.node_id ?? ''
+  if (name.startsWith('subagent_')) {
+    const agentId = data && typeof data === 'object' ? (data as Record<string, unknown>).workflow : null
+    const index = readNumber(data, 'index')
+    if (typeof agentId !== 'string' || index === null) return true
+    const helperName = state.nameOfHelper(agentId) ?? messages().abilities.helperTree.unknownAgent
+    const key = `helper:${frame}|${nodeId}.${agentId}[${index}]`
+    if (name === 'subagent_finished') setLine(state, key, t.helperDone(helperName), { tone: 'ok' })
+    else if (name === 'subagent_failed') setLine(state, key, t.helperFailed(helperName), { tone: 'danger' })
+    else if (name === 'subagent_paused') setLine(state, key, t.helperWaiting(helperName), { tone: 'amber' })
+    return true
+  }
+  if (name === 'budget' && data && typeof data === 'object' && (data as Record<string, unknown>).final_turn === true) {
+    setLine(state, `budget:${frame}|${nodeId}`, t.budget, { tone: 'amber' })
+    return true
+  }
+  if (name === 'checkpoint_restored') {
+    setLine(state, `checkpoint:${frame}|${nodeId}`, t.checkpointRestored)
+    return true
+  }
+  if (name === 'context_trimmed') {
+    setLine(state, `context:${frame}|${nodeId}`, t.contextTrimmed)
+    return true
+  }
+  if (name === 'memory_saved') {
+    setLine(state, `memory:${frame}|${nodeId}`, t.memorySaved)
+    return true
+  }
+  return false
+}
+
+/** A helper agent started: its first event under its own frame says so. */
+function handleHelperStart(state: NarrationState, record: RunEventRecord, frame: string): void {
+  const segment = frame.split('/').find((part) => /^[^./[\]]+\.[^/[\]]+\[\d+\]$/.test(part))
+  if (!segment) return
+  const parentFrame = frame.slice(0, frame.indexOf(segment)).replace(/\/$/, '')
+  const key = `helper:${parentFrame}|${segment}`
+  if (state.lines.has(key) || record.event.type !== 'node_started') return
+  const agentId = segment.slice(segment.indexOf('.') + 1, segment.lastIndexOf('['))
+  setLine(state, key, messages().abilities.narration.helperAsked(state.nameOfHelper(agentId) ?? messages().abilities.helperTree.unknownAgent))
+}
+
 function handleNodeEvent(state: NarrationState, record: RunEventRecord, step: StepInfo): void {
   const { event } = record
   const frame = readFrame(event)
@@ -174,6 +225,7 @@ function handleNodeEvent(state: NarrationState, record: RunEventRecord, step: St
     handleItemStart(state, record, step)
     return
   }
+  if (event.type === 'node_progress' && handleAbilityProgress(state, record, frame)) return
   if (event.type === 'node_paused') {
     const isApproval = step.template.nodeType === 'human-input' || event.kind === 'human_input' || event.kind === 'human-input'
     const pauseKind = event.reason && typeof event.reason === 'object' ? (event.reason as Record<string, unknown>).kind : event.kind
@@ -250,13 +302,14 @@ function settleApprovalLinks(lines: NarrationLine[], events: RunEventRecord[]): 
  *
  * @param template - Expected steps from the flow summary (RunStepTemplate[])
  * @param events - The run's events ordered by seq (RunEventRecord[])
- * @returns One line per step, item, approval and outcome (NarrationLine[])
+ * @param nameOfHelper - The name of a helper agent asked, `null` when unknown ((agentId) => string | null)
+ * @returns One line per step, item, helper request, approval and outcome (NarrationLine[])
  *
  * @example
  * buildRunNarration(toRunStepTemplate(flowSummary), events).map((line) => line.text)
  * // ["Search Google Maps: found 10 places", "Business 3 of 10: Kopi Kenangan — write the message…"]
  */
-export function buildRunNarration(template: RunStepTemplate[], events: RunEventRecord[]): NarrationLine[] {
+export function buildRunNarration(template: RunStepTemplate[], events: RunEventRecord[], nameOfHelper: (agentId: string) => string | null = () => null): NarrationLine[] {
   const steps = chooseStepTemplate(template, collectNodeTracks(events))
   const stepsById = new Map<string, StepInfo>(
     steps.map((step) => [step.id, { template: step, isContainer: containerNodeKinds.has(step.nodeType ?? ''), isModel: modelNodeKinds.has(step.nodeType ?? '') }]),
@@ -271,9 +324,15 @@ export function buildRunNarration(template: RunStepTemplate[], events: RunEventR
     firstFailure: null,
     runStartedAt: events[0]?.createdAt ?? null,
     actionTitlesByPause: new Map(),
+    nameOfHelper,
   }
   for (const record of events) {
     const { type, node_id: nodeId } = record.event
+    // A helper agent's own steps are its business: one line says it was asked, its result another.
+    if (type.startsWith('node_') && isHelperFrame(readFrame(record.event))) {
+      handleHelperStart(state, record, readFrame(record.event))
+      continue
+    }
     const step = nodeId ? stepsById.get(nodeId) : undefined
     if (type.startsWith('node_')) {
       if (step) handleNodeEvent(state, record, step)

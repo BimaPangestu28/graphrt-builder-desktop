@@ -122,9 +122,26 @@ function describeUnavailableTool(tool: string): string {
  */
 function SkillAndLearningNotes({ step, agentId }: { step: RunStepView; agentId?: string | null }) {
   const t = messages().agentRun
-  if (step.learnedNoteCount === 0 && step.unavailableSkillTools.length === 0) return null
+  if (step.learnedNoteCount === 0 && step.unavailableSkillTools.length === 0 && step.abilityNotes.length === 0) return null
   return (
     <div className="flex flex-col gap-1.5">
+      {step.abilityNotes.length > 0 && (
+        <ul aria-label={messages().abilities.section.title} className="m-0 flex list-none flex-col gap-1 p-0">
+          {step.abilityNotes.map((note) => (
+            <li key={note.key} className={note.isWarning ? 'rounded-lg border border-amber-line-2 bg-amber-tint px-3 py-1.5 text-[13px] text-amber-deep' : 'text-[13px] text-body'}>
+              {note.text}
+              {note.kind === 'memory' && agentId && (
+                <>
+                  {' '}
+                  <Link to={agentPath('learned', agentId, { tab: 'memory' })} className="font-medium">
+                    {messages().abilities.runNotes.seeMemory}
+                  </Link>
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
       {step.learnedNoteCount > 0 && (
         <span className="text-[13px] text-body">
           {t.usedLearnedNotes(step.learnedNoteCount)}
@@ -170,7 +187,7 @@ interface StepDetailsProps {
 export function StepDetails({ step, id, fixAgentId, agentId }: StepDetailsProps) {
   const usageText = formatUsage(step)
   const emptyState = describeEmptyState(step)
-  const hasValues = step.outputs !== null || step.inputs !== undefined || step.learnedNoteCount > 0 || step.unavailableSkillTools.length > 0
+  const hasValues = step.outputs !== null || step.inputs !== undefined || step.learnedNoteCount > 0 || step.unavailableSkillTools.length > 0 || step.abilityNotes.length > 0
   return (
     <div id={id} className="flex flex-col gap-3 pb-1 pt-2 motion-safe:animate-[step-details-in_160ms_ease-out]">
       {step.itemDescription && <span className="text-[13px] text-body">{step.itemDescription}</span>}
