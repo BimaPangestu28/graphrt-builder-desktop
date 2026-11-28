@@ -115,7 +115,10 @@ impl OnlineFeatures {
     /// The `graphrt deploy --direct` flags for these (checked) choices. Without paired phones
     /// or notifications, `--drop-store` removes the storage volume an earlier deploy made, so
     /// turning them off also ends its cost.
-    pub fn deploy_arguments(&self) -> Vec<String> {
+    ///
+    /// @param chat_title - the name the chat page shows ([`chat_title`]), `None` for graphrt's
+    ///   default (the workflow's name, `agent`)
+    pub fn deploy_arguments(&self, chat_title: Option<&str>) -> Vec<String> {
         let mut arguments: Vec<String> = Vec::new();
         if self.chat {
             arguments.extend([
@@ -123,6 +126,9 @@ impl OnlineFeatures {
                 "--chat-access".to_owned(),
                 self.chat_audience.cli_value().to_owned(),
             ]);
+            if let Some(title) = chat_title {
+                arguments.extend(["--chat-title".to_owned(), title.to_owned()]);
+            }
             if let Some(site) = &self.embed_site {
                 arguments.extend(["--cors-origin".to_owned(), site.clone()]);
             }
@@ -152,12 +158,16 @@ impl OnlineFeatures {
     /// an IT team runs in Docker.
     ///
     /// @param workflow - the name the agent is served under (&str)
-    pub fn serve_environment(&self, workflow: &str) -> Vec<(String, String)> {
+    /// @param chat_title - the name the chat page shows, as in [`Self::deploy_arguments`]
+    pub fn serve_environment(&self, workflow: &str, chat_title: Option<&str>) -> Vec<(String, String)> {
         let mut environment: Vec<(String, String)> = Vec::new();
         let mut set = |name: &str, value: String| environment.push((name.to_owned(), value));
         if self.chat {
             set("GRAPHRT_CHAT", workflow.to_owned());
             set("GRAPHRT_CHAT_ACCESS", self.chat_audience.cli_value().to_owned());
+            if let Some(title) = chat_title {
+                set("GRAPHRT_CHAT_TITLE", title.to_owned());
+            }
             if let Some(site) = &self.embed_site {
                 set("GRAPHRT_CORS_ORIGINS", site.clone());
             }
@@ -177,6 +187,20 @@ impl OnlineFeatures {
         }
         environment
     }
+}
+
+/// Longest chat page title graphrt accepts (`--chat-title`).
+const MAX_CHAT_TITLE_CHARS: usize = 120;
+
+/// The title of the chat page: `name` (what customers see, e.g. a chatbot's name) on one line,
+/// at most [`MAX_CHAT_TITLE_CHARS`] characters; `None` when nothing is left, so graphrt's
+/// default stays.
+pub fn chat_title(name: &str) -> Option<String> {
+    let one_line: String = name.chars().map(|character| if character.is_control() { ' ' } else { character }).collect();
+    let title: String =
+        one_line.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(MAX_CHAT_TITLE_CHARS).collect();
+    let title = title.trim().to_owned();
+    (!title.is_empty()).then_some(title)
 }
 
 /// `www.example.com/shop` → `https://www.example.com`: the part of a website's address a
@@ -286,6 +310,7 @@ pub fn own_server_instructions(
     file_name: &str,
     features: &OnlineFeatures,
     model_key_names: &[String],
+    chat_title: Option<&str>,
 ) -> OwnServerInstructions {
     let mut lines = vec![format!("docker run -d --name {file_name} -p 8080:8080 \\")];
     lines.push("  -v \"$PWD/bundles:/workflows:ro\" \\".to_owned());
@@ -296,7 +321,7 @@ pub fn own_server_instructions(
     for name in model_key_names {
         lines.push(format!("  -e {name}=<your key> \\"));
     }
-    for (name, value) in features.serve_environment(file_name) {
+    for (name, value) in features.serve_environment(file_name, chat_title) {
         let needs_quotes = value.contains(['<', ' ']);
         lines.push(if needs_quotes {
             format!("  -e {name}=\"{value}\" \\")
@@ -367,8 +392,8 @@ mod tests {
     fn nothing_is_on_by_default_and_old_settings_still_read() {
         let features = OnlineFeatures::default();
         assert!(!features.any() && !features.needs_storage());
-        assert_eq!(features.deploy_arguments(), ["--drop-store"], "an earlier storage volume is not left behind");
-        assert!(features.serve_environment("menu").is_empty());
+        assert_eq!(features.deploy_arguments(None), ["--drop-store"], "an earlier storage volume is not left behind");
+        assert!(features.serve_environment("menu", None).is_empty());
         let stored: OnlineFeatures = serde_json::from_str(r#"{"chat":true}"#).unwrap();
         assert!(stored.chat && stored.chat_audience == ChatAudience::Guests && !stored.phone);
     }
@@ -379,7 +404,7 @@ mod tests {
         assert_eq!(checked.embed_site.as_deref(), Some("https://www.toko-kue.example"));
         assert_eq!(checked.notify_email.as_deref(), Some("ana@example.com"));
         assert_eq!(
-            checked.deploy_arguments(),
+            checked.deploy_arguments(None),
             [
                 "--chat",
                 "--chat-access",
@@ -396,9 +421,9 @@ mod tests {
 
     #[test]
     fn guest_limits_of_the_server_are_never_changed() {
-        let arguments = everything().checked().unwrap().deploy_arguments().join(" ");
+        let arguments = everything().checked().unwrap().deploy_arguments(None).join(" ");
         assert!(!arguments.contains("guest-rate-limit") && !arguments.contains("guest-budget"), "{arguments}");
-        let environment = everything().checked().unwrap().serve_environment("menu");
+        let environment = everything().checked().unwrap().serve_environment("menu", None);
         assert!(!environment.iter().any(|(name, _)| name.contains("GUEST")));
     }
 
@@ -410,9 +435,12 @@ mod tests {
         let phone_off = OnlineFeatures { phone: false, ..everything() }.checked().unwrap();
         assert!(!phone_off.notifications && phone_off.notify_email.is_none(), "notifications arrive on the phone page");
         assert!(!phone_off.needs_storage());
-        assert!(phone_off.deploy_arguments().contains(&"--drop-store".to_owned()));
+        assert!(phone_off.deploy_arguments(None).contains(&"--drop-store".to_owned()));
         let key_only = OnlineFeatures { chat: true, chat_audience: ChatAudience::Key, ..OnlineFeatures::default() };
-        assert_eq!(key_only.checked().unwrap().deploy_arguments(), ["--chat", "--chat-access", "key", "--drop-store"]);
+        assert_eq!(
+            key_only.checked().unwrap().deploy_arguments(None),
+            ["--chat", "--chat-access", "key", "--drop-store"]
+        );
     }
 
     #[test]
@@ -440,18 +468,33 @@ mod tests {
     }
 
     #[test]
+    fn the_chat_page_is_titled_with_the_name_customers_see() {
+        assert_eq!(chat_title("  Toko Roti\nMelati  ").as_deref(), Some("Toko Roti Melati"));
+        assert_eq!(chat_title(&"a".repeat(300)).map(|title| title.chars().count()), Some(120));
+        assert_eq!(chat_title(" \t "), None, "graphrt's default stays");
+        let chat = OnlineFeatures { chat: true, ..OnlineFeatures::default() }.checked().unwrap();
+        assert_eq!(
+            chat.deploy_arguments(Some("Toko Roti Melati")),
+            ["--chat", "--chat-access", "guests", "--chat-title", "Toko Roti Melati", "--drop-store"]
+        );
+        assert!(!OnlineFeatures::default().deploy_arguments(Some("Toko")).contains(&"--chat-title".to_owned()));
+    }
+
+    #[test]
     fn own_server_instructions_carry_the_choices_as_environment_variables() {
-        let plain = own_server_instructions("menu-chatbot", &OnlineFeatures::default(), &["OPENAI_API_KEY".to_owned()]);
+        let plain =
+            own_server_instructions("menu-chatbot", &OnlineFeatures::default(), &["OPENAI_API_KEY".to_owned()], None);
         assert!(plain.command.ends_with("ghcr.io/graphrt/graphrt"), "{}", plain.command);
         assert!(plain.command.contains("-e OPENAI_API_KEY=<your key>"));
         assert!(!plain.command.contains("GRAPHRT_CHAT") && !plain.command.contains("-store:"));
         assert_eq!((plain.needs_graphrt_newer_than, plain.chat_address, plain.phone_address), (None, None, None));
 
-        let full = own_server_instructions("menu-chatbot", &everything().checked().unwrap(), &[]);
+        let full = own_server_instructions("menu-chatbot", &everything().checked().unwrap(), &[], Some("Toko Roti"));
         for expected in [
             "-v menu-chatbot-store:/data",
             "-e GRAPHRT_CHAT=menu-chatbot",
             "-e GRAPHRT_CHAT_ACCESS=guests",
+            "-e GRAPHRT_CHAT_TITLE=\"Toko Roti\"",
             "-e GRAPHRT_CORS_ORIGINS=https://www.toko-kue.example",
             "-e GRAPHRT_STORE=/data",
             "-e GRAPHRT_PUBLIC_URL=\"<https://the address of this server>\"",

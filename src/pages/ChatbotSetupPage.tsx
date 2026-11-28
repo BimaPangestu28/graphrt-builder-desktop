@@ -7,7 +7,7 @@ import { AppShell } from '@/components/layout'
 import { TrustedHostsSection } from '@/components/TrustedHostsSection'
 import { joinClassNames } from '@/components/ui'
 import { useAgent } from '@/hooks/useAgent'
-import { useOnlineStatus } from '@/hooks/useOnlineStatus'
+import { useOnlineDeployment, useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { agentPath } from '@/routes'
 import { ChannelsSection, HandoffRulesSection, PersonaSection } from './chatbot-setup/ChatbotSetupSections'
 import { KnowledgeSection } from './chatbot-setup/KnowledgeSection'
@@ -85,7 +85,7 @@ function SaveBar({ form }: { form: ChatbotSetupForm }) {
   )
 }
 
-function ChatbotSetupFormView({ form }: { form: ChatbotSetupForm }) {
+function ChatbotSetupFormView({ form, hasOnlineChatPage }: { form: ChatbotSetupForm; hasOnlineChatPage: boolean }) {
   const { draft, savedSetup } = form
   if (!draft || !savedSetup) return form.error ? null : <p className="m-0 text-muted">{messages().chatbot.loadingTheSetup}</p>
   const toggleChannel = (channelId: string, isEnabled: boolean) => {
@@ -102,7 +102,13 @@ function ChatbotSetupFormView({ form }: { form: ChatbotSetupForm }) {
         onAttach={(knowledgeBaseId) => void form.attach(knowledgeBaseId)}
         onDetach={(knowledgeBaseId) => void form.detach(knowledgeBaseId)}
       />
-      <ChannelsSection agentId={savedSetup.agentId} channels={savedSetup.channels} disabledChannels={draft.disabledChannels} onToggle={toggleChannel} />
+      <ChannelsSection
+        agentId={savedSetup.agentId}
+        channels={savedSetup.channels}
+        disabledChannels={draft.disabledChannels}
+        onToggle={toggleChannel}
+        hasOnlineChatPage={hasOnlineChatPage}
+      />
       <HandoffRulesSection
         handoffRules={draft.handoffRules}
         onToggle={(ruleKey, isEnabled) => form.setDraft({ ...draft, handoffRules: { ...draft.handoffRules, [ruleKey]: isEnabled } })}
@@ -127,6 +133,9 @@ export function ChatbotSetupPage() {
   const { data: agent, reload: reloadAgent } = useAgent(agentId)
   const [isSavingStatus, setIsSavingStatus] = useState(false)
   const form = useChatbotSetupForm(agentId)
+  const online = useOnlineDeployment(agent ? agentId : null)
+  // The online copy answers on its chat page: the website bubble works without a computer that is on.
+  const hasOnlineChatPage = Boolean(online?.features.chat && online.deployment.status !== 'failed' && online.deployment.status !== 'paused')
 
   async function toggleLive() {
     if (!agent) return
@@ -157,7 +166,7 @@ export function ChatbotSetupPage() {
                 {form.error}
               </p>
             )}
-            <ChatbotSetupFormView form={form} />
+            <ChatbotSetupFormView form={form} hasOnlineChatPage={hasOnlineChatPage} />
           </form>
           <TrustedHostsSection agentId={agentId} note={messages().chatbot.aChatCannotStopToAsk} />
         </div>

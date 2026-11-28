@@ -316,11 +316,11 @@ async fn a_meta_webhook_delivery_reads_as_a_customer_message() {
 fn whatsapp_business_goes_online_as_a_channel_with_its_values_as_secrets() {
     let features = OnlineFeatures { whatsapp: true, ..OnlineFeatures::default() };
     assert!(features.any() && features.needs_storage(), "channel conversations outlive a restart");
-    let arguments = features.deploy_arguments();
+    let arguments = features.deploy_arguments(None);
     assert!(arguments.windows(2).any(|pair| pair == ["--channel", "whatsapp"]), "{arguments:?}");
     assert!(!arguments.contains(&"--drop-store".to_owned()));
 
-    let instructions = own_server_instructions("toko-kue", &features, &[]);
+    let instructions = own_server_instructions("toko-kue", &features, &[], None);
     assert!(instructions.command.contains("--channel whatsapp=toko-kue"), "{}", instructions.command);
     for name in ["WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_APP_SECRET", "WHATSAPP_VERIFY_TOKEN"] {
         assert!(instructions.command.contains(&format!("-e {name}=<from the WhatsApp step>")), "{name}");

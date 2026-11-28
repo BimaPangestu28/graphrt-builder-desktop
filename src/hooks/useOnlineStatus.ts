@@ -1,17 +1,17 @@
 import { useEffect, useState } from 'react'
 import { getAgentDeployment } from '@/api/deploy'
-import type { DeploymentStatus } from '@/api/deployTypes'
+import type { DeploymentStatus, DeploymentView } from '@/api/deployTypes'
 
-/** Status of the agent's online copy, null while unknown, when it is not online or without an agent. */
-export function useOnlineStatus(agentId: string | null): DeploymentStatus | null {
-  const [status, setStatus] = useState<DeploymentStatus | null>(null)
+/** The agent's online copy, null while unknown, when it is not online or without an agent. */
+export function useOnlineDeployment(agentId: string | null): DeploymentView | null {
+  const [view, setView] = useState<DeploymentView | null>(null)
   useEffect(() => {
-    setStatus(null)
+    setView(null)
     if (!agentId) return
     let isCurrent = true
     getAgentDeployment(agentId)
-      .then((view) => {
-        if (isCurrent) setStatus(view?.deployment.status ?? null)
+      .then((loaded) => {
+        if (isCurrent) setView(loaded)
       })
       .catch((loadError: unknown) => {
         // Screens still show what this computer knows; the agent page says what is wrong online.
@@ -21,5 +21,10 @@ export function useOnlineStatus(agentId: string | null): DeploymentStatus | null
       isCurrent = false
     }
   }, [agentId])
-  return status
+  return view
+}
+
+/** Status of the agent's online copy, null while unknown, when it is not online or without an agent. */
+export function useOnlineStatus(agentId: string | null): DeploymentStatus | null {
+  return useOnlineDeployment(agentId)?.deployment.status ?? null
 }

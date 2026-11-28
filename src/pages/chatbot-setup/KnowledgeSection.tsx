@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { KnowledgeBase, KnowledgeBaseDetail, KnowledgeSource } from '@/api/knowledgeTypes'
 import { joinClassNames } from '@/components/ui'
@@ -78,12 +78,10 @@ function AttachForm({ available, isBusy, onAttach, onCancel }: { available: Know
       </p>
     )
   }
-  const submit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (chosenId) onAttach(chosenId)
-  }
+  // Not a <form>: this sits inside the setup form, and a nested form's button submitted the
+  // outer one in the desktop's web view, so "Use it" did nothing.
   return (
-    <form onSubmit={submit} className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <label className="flex flex-auto flex-col gap-1.5">
         <span className="text-[12px] font-medium text-ink-2">{messages().chatbot.knowledgeBase}</span>
         <select value={chosenId} onChange={(event) => setChosenId(event.target.value)} className={joinClassNames(fieldControlClassNames, 'px-2.5')}>
@@ -95,14 +93,14 @@ function AttachForm({ available, isBusy, onAttach, onCancel }: { available: Know
         </select>
       </label>
       <div className="flex gap-2 self-end">
-        <button type="submit" disabled={isBusy} className={compactButtonClassNames('primary')}>
+        <button type="button" disabled={isBusy || !chosenId} onClick={() => onAttach(chosenId)} className={compactButtonClassNames('primary')}>
           {messages().chatbot.useIt}
         </button>
         <button type="button" onClick={onCancel} className={compactButtonClassNames('secondary')}>
           {messages().chatbot.cancel}
         </button>
       </div>
-    </form>
+    </div>
   )
 }
 

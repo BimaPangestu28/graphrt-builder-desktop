@@ -1039,7 +1039,12 @@ impl DeployService {
     ///
     /// # Errors
     /// `InvalidInput` when something is turned on and the installed tools are too old for it.
-    fn feature_arguments(&self, provider: DeployProvider, features: &OnlineFeatures) -> AppResult<Vec<String>> {
+    fn feature_arguments(
+        &self,
+        agent: &Agent,
+        provider: DeployProvider,
+        features: &OnlineFeatures,
+    ) -> AppResult<Vec<String>> {
         let has_store = self.has_store(provider);
         if !has_store && features.needs_storage() {
             return Err(AppError::InvalidInput(LAMBDA_NEEDS_STORE.into()));
@@ -1048,7 +1053,7 @@ impl DeployService {
             return Err(AppError::InvalidInput(WHATSAPP_NEEDS_NEWER_TOOLS.into()));
         }
         if self.cli_knows_online_features() {
-            let mut arguments = features.deploy_arguments();
+            let mut arguments = features.deploy_arguments(self.chat_title(agent)?.as_deref());
             if !has_store {
                 // Nothing to drop where there is no store (and Lambda refuses the flag).
                 arguments.retain(|argument| argument != "--drop-store");
@@ -1059,6 +1064,23 @@ impl DeployService {
             return Err(AppError::InvalidInput(ONLINE_FEATURES_NEED_NEWER_TOOLS.into()));
         }
         Ok(Vec::new())
+    }
+
+    /// The title of the agent's chat page: a chatbot's saved "Name customers see", else the
+    /// agent's name.
+    ///
+    /// # Errors
+    /// Storage errors, or `Serialization` for a corrupt stored setup.
+    fn chat_title(&self, agent: &Agent) -> AppResult<Option<String>> {
+        let customer_name = match agent.kind {
+            crate::storage::models::AgentKind::Chatbot => {
+                crate::chatbot_setup::load_saved_settings(&self.db, &agent.id)?
+                    .map(|settings| settings.persona.display_name)
+                    .filter(|name| !name.trim().is_empty())
+            }
+            _ => None,
+        };
+        Ok(online::chat_title(customer_name.as_deref().unwrap_or(&agent.name)))
     }
 
     /// The Docker instructions of "My own server" with these choices.
@@ -1072,7 +1094,13 @@ impl DeployService {
         features: &OnlineFeatures,
     ) -> AppResult<OwnServerInstructions> {
         let key_names: Vec<String> = self.keys_for(agent, requirements)?.into_iter().map(|key| key.env_name).collect();
-        Ok(online::own_server_instructions(&online::agent_file_stem(&agent.name), &features.checked()?, &key_names))
+        let title = self.chat_title(agent)?;
+        Ok(online::own_server_instructions(
+            &online::agent_file_stem(&agent.name),
+            &features.checked()?,
+            &key_names,
+            title.as_deref(),
+        ))
     }
 
     fn deploy_image(&self, agent_id: &str) -> AppResult<Option<String>> {
@@ -1274,7 +1302,7 @@ impl DeployService {
         cancel: Arc<tokio::sync::Notify>,
     ) -> AppResult<DeployOutcome> {
         // Before anything is written or sent: tools too old for a chosen page refuse here.
-        let feature_arguments = self.feature_arguments(options.provider, &options.features)?;
+        let feature_arguments = self.feature_arguments(agent, options.provider, &options.features)?;
         let previous = self.db.get_deployment(&agent.id)?;
         let is_first = previous.as_ref().is_none_or(|record| record.status == DeploymentStatus::Failed);
         // After the highest label ever deployed, not the one serving: after a roll back to v1, v2
@@ -1444,7 +1472,7 @@ impl DeployService {
             image: self.deploy_image(agent_id)?,
             rotate_api_key: true,
             // A deploy turns off what it does not name: keep what is on.
-            feature_arguments: self.feature_arguments(record.provider, &self.online_features(agent_id)?)?,
+            feature_arguments: self.feature_arguments(&agent, record.provider, &self.online_features(agent_id)?)?,
             agent_file,
         };
         let cancel = self.start_tracking_deploy(agent_id)?;
