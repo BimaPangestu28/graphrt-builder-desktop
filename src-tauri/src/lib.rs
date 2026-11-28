@@ -53,6 +53,7 @@ pub mod learning;
 pub mod linux_display;
 pub mod live_view;
 pub mod local_cli;
+mod local_model;
 pub mod mcp;
 pub mod memory;
 pub mod model_catalog;
