@@ -111,7 +111,7 @@ sha2 = "0.11"
 # MCP OAuth sign-in: parsing and building authorization URLs and form bodies, and the PKCE
 # verifier / state (both already in the dependency tree through reqwest and uuid).
 url = "2"
-getrandom = "0.3"
+getrandom = "0.4"
 tar = { version = "0.4", default-features = false }
 flate2 = "1"
 # The Node.js runtime is downloaded on demand: `.tar.xz` on macOS/Linux, `.zip` on Windows
