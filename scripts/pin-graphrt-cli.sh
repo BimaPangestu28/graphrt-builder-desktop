@@ -14,7 +14,7 @@
 #   4. writes scripts/graphrt-cli-checksums.txt and scripts/graphrt-cli-version.
 #
 # Commit both files. Deploys also need the matching image
-# ghcr.io/bimapangestu28/graphrt:<version> (the CLI runs it on Fly.io by default): check it is
+# ghcr.io/graphrt/graphrt:<version> (the CLI runs it on Fly.io by default): check it is
 # published before pinning a release.
 #
 # Trust: graphrt releases are not signed; SHA256SUMS comes from GitHub over HTTPS.
@@ -102,7 +102,7 @@ main() {
   mv "$checksums_file.tmp" "$checksums_file"
   echo "$version" >"$output_dir/graphrt-cli-version"
   echo "wrote $checksums_file and $output_dir/graphrt-cli-version ($version)."
-  echo "Check that ghcr.io/bimapangestu28/graphrt:$version is published before shipping this pin."
+  echo "Check that ghcr.io/graphrt/graphrt:$version is published before shipping this pin."
 }
 
 main "$@"

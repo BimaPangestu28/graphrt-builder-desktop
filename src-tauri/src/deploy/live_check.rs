@@ -85,6 +85,20 @@ fn live_service(temp: &tempfile::TempDir) -> (DeployService, Arc<Database>, Arc<
             flow_yaml: CHAT_FLOW.into(),
         })
         .unwrap();
+    // Only a release goes online.
+    db.create_release(
+        &agent.id,
+        crate::storage::quality::NewRelease {
+            agent_version: agent.current_version,
+            notes: "Live check".into(),
+            check_id: None,
+            passed: None,
+            total: None,
+            required_percent: 80,
+            override_reason: Some("live check of the deploy service".into()),
+        },
+    )
+    .unwrap();
     let service = DeployService::new(DeployServiceConfig {
         app_data_dir: temp.path().to_path_buf(),
         db: db.clone(),
@@ -167,8 +181,13 @@ async fn live_put_online_passes_the_choices() {
     credentials.set_api_key(crate::credentials::ModelProvider::Openai, "sk-live-check-not-a-real-key").unwrap();
     let token = serde_json::json!({ "token": required("FLY_API_TOKEN") }).to_string();
     credentials.set_deploy_secret("account:fly", &token).unwrap();
-    println!("the tools know the chat and phone pages: {}", service.cli_info().online_features);
-    assert!(service.cli_info().online_features, "this graphrt is older than the chat page and the phone page");
+    let tools = service.cli_info();
+    println!(
+        "the tools know the chat and phone pages: {}, WhatsApp Business and Teams online: {}",
+        tools.online_features,
+        service.cli_knows_channels()
+    );
+    assert!(tools.online_features, "this graphrt is older than the chat page and the phone page");
     let report = CompatibilityReport { ready: true, items: Vec::new() };
     let options = |features: OnlineFeatures| DeployOptions {
         provider: DeployProvider::Fly,

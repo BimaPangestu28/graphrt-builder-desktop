@@ -248,7 +248,7 @@ export function ReviewStep({ agentName, review, isUpdate, onCliChanged, onBack, 
             className="box-border h-9 w-full rounded-lg border border-line-strong bg-surface px-3 font-mono text-[12px] text-ink"
           />
           <span className="text-[12px] text-muted">
-            {messages().deploy.leaveEmptyToUse}{' '}<code>{messages().deploy.ghcrIoBimapangestu28Graphrt}</code> {messages().deploy.atTheVersionOfTheGraphrt}{' '}<code>{messages().deploy.graphrtServe}</code> {messages().deploy.passedAs}{' '}<code>{messages().deploy.image}</code>).
+            {messages().deploy.leaveEmptyToUse}{' '}<code>{messages().deploy.graphrtImage}</code> {messages().deploy.atTheVersionOfTheGraphrt}{' '}<code>{messages().deploy.graphrtServe}</code> {messages().deploy.passedAs}{' '}<code>{messages().deploy.image}</code>).
           </span>
         </label>
       </DevelopersDetails>

@@ -241,10 +241,21 @@ pub struct OwnServerInstructions {
 }
 
 /// The newest graphrt release that does NOT have the chat page, the phone page and their
-/// environment variables. They are on graphrt `main` and come with the next release.
+/// environment variables. They came with graphrt 0.6.3.
 pub const LAST_GRAPHRT_WITHOUT_ONLINE_FEATURES: &str = "0.6.2";
 /// The graphrt server image.
 const GRAPHRT_IMAGE: &str = "ghcr.io/graphrt/graphrt";
+
+/// The image tag the "My own server" instructions name when a feature needs a newer graphrt:
+/// the graphrt version this app downloads when it has the features, a placeholder otherwise.
+fn image_tag_with_online_features(pinned_cli_version: Option<&str>) -> String {
+    match pinned_cli_version {
+        Some(version) if crate::plugins::is_newer_version(version, LAST_GRAPHRT_WITHOUT_ONLINE_FEATURES) => {
+            version.to_owned()
+        }
+        _ => format!("<a version newer than {LAST_GRAPHRT_WITHOUT_ONLINE_FEATURES}>"),
+    }
+}
 
 /// `Menu questions chatbot` → `menu-questions-chatbot`: the name the app suggests for the agent
 /// file (`src/pages/OwnServerPage.tsx`, `fileNameFor`). `graphrt serve` names an agent after
@@ -305,7 +316,7 @@ pub fn own_server_instructions(
     }
     let needs_newer = features.any();
     let image = if needs_newer {
-        format!("  {GRAPHRT_IMAGE}:<a version newer than {LAST_GRAPHRT_WITHOUT_ONLINE_FEATURES}>")
+        format!("  {GRAPHRT_IMAGE}:{}", image_tag_with_online_features(crate::deploy::cli_release::GRAPHRT_CLI_VERSION))
     } else {
         GRAPHRT_IMAGE.to_owned()
     };
@@ -447,12 +458,23 @@ mod tests {
             "-e GRAPHRT_MONITOR=1",
             "-e GRAPHRT_PUSH=mailto:ana@example.com",
             "-e GRAPHRT_EXPIRE_APPROVALS=1",
-            "ghcr.io/graphrt/graphrt:<a version newer than 0.6.2>",
+            &format!(
+                "ghcr.io/graphrt/graphrt:{}",
+                image_tag_with_online_features(crate::deploy::cli_release::GRAPHRT_CLI_VERSION)
+            ),
         ] {
             assert!(full.command.contains(expected), "missing {expected} in\n{}", full.command);
         }
         assert_eq!(full.needs_graphrt_newer_than.as_deref(), Some("0.6.2"));
         assert_eq!(full.chat_address.as_deref(), Some("https://<the address of this server>/chat/menu-chatbot"));
         assert!(full.phone_address.is_some());
+    }
+
+    #[test]
+    fn own_server_instructions_name_the_pinned_version_once_it_has_the_features() {
+        assert_eq!(image_tag_with_online_features(Some("0.6.3")), "0.6.3");
+        assert_eq!(image_tag_with_online_features(Some("0.7.0")), "0.7.0");
+        assert_eq!(image_tag_with_online_features(Some("0.6.0")), "<a version newer than 0.6.2>");
+        assert_eq!(image_tag_with_online_features(None), "<a version newer than 0.6.2>");
     }
 }
