@@ -613,6 +613,10 @@ fn prefer_offered_reading(plan: &mut Plan, operations: &[OfferedOperation], job:
             .filter(|label| label.len() >= 4 && !matches!(*label, "www" | "api" | "apis"))
             .collect();
         let named = labels.iter().any(|label| job_words.iter().any(|word| word == label));
+        // A chatbot's own chat channel is the app's: the bot replies there, it never looks it up.
+        // llama3.2 "passed confirmed orders" with a lookup on `api.whatsapp.com` for a bot the
+        // job said answers WhatsApp questions, and the chat failed on the 404.
+        let chat_channel = is_chatbot && is_chat_channel(&host);
         // `whatsapp` for the `whatsapp-api` plugin as well as for one named `whatsapp`.
         let plugin_service = labels
             .iter()
@@ -626,7 +630,7 @@ fn prefer_offered_reading(plan: &mut Plan, operations: &[OfferedOperation], job:
                 operation: operation.kind.clone(),
                 fields: std::collections::BTreeMap::new(),
             };
-        } else if (plugin_service || (is_chatbot && !named)) && has_other_result(&plan.steps, index) {
+        } else if (plugin_service || chat_channel || (is_chatbot && !named)) && has_other_result(&plan.steps, index) {
             // A chatbot answers from what the job says; a guessed API only fails the chat.
             log::info!("the lookup on {host} is left out: nothing the job names lives there");
             plan.steps.remove(index);
@@ -634,6 +638,24 @@ fn prefer_offered_reading(plan: &mut Plan, operations: &[OfferedOperation], job:
         }
         index += 1;
     }
+}
+
+/// Services a chatbot is reached through (Connect screen), whose sites hold nothing to read.
+const CHAT_CHANNEL_SITES: &[&str] = &[
+    "whatsapp.com",
+    "whatsapp.net",
+    "wa.me",
+    "telegram.org",
+    "telegram.me",
+    "t.me",
+    "slack.com",
+    "teams.microsoft.com",
+];
+
+/// Whether `host` is one of [`CHAT_CHANNEL_SITES`] or below one.
+fn is_chat_channel(host: &str) -> bool {
+    let host = host.to_ascii_lowercase();
+    CHAT_CHANNEL_SITES.iter().any(|site| host == *site || host.ends_with(&format!(".{site}")))
 }
 
 /// Why a plan is not used.
