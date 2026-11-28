@@ -76,7 +76,8 @@ pub(crate) fn agent_tools_for(
     agent_files: Option<Arc<AgentFiles>>,
     agent_id: &str,
 ) -> graphrt_core::tool::ToolRegistry {
-    let dependencies = agent_tools::EngineDependencies { db, credentials, model_source, agent_files };
+    let dependencies =
+        agent_tools::EngineDependencies { db, credentials, model_source, agent_files, read_only_memory: false };
     agent_tools::agent_tool_registry(&dependencies, vec![agent_id.to_owned()])
 }
 use crate::agent_files::{AgentFiles, FileAccess, FileScope};
@@ -231,6 +232,7 @@ impl RunManager {
             credentials: self.credentials.clone(),
             model_source: self.model_source.clone(),
             agent_files: self.agent_files.clone(),
+            read_only_memory: false,
         }
     }
 

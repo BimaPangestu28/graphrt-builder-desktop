@@ -250,9 +250,10 @@ pub fn listed_helpers(flow_yaml: &str) -> AppResult<Vec<String>> {
 }
 
 /// Takes a deleted agent off the helpers of every agent that listed it (a new version of each),
-/// so their runs and chatbot replies keep working. Returns the agents changed; an agent that
-/// cannot be changed now (the builder is editing it) is logged and keeps the entry, and its
-/// runs then say which helper is gone.
+/// so their runs and chatbot replies keep working. Each step loses only that entry: what the
+/// other steps may ask, and the descriptions, stay as they were. Returns the agents changed;
+/// an agent that cannot be changed now (the builder is editing it) is logged and keeps the
+/// entry, and its runs then say which helper is gone.
 pub fn remove_helper_everywhere(db: &Database, removed_agent_id: &str, context: &GraphContext<'_>) -> Vec<String> {
     let agents = match db.list_agents() {
         Ok(agents) => agents,
@@ -263,30 +264,102 @@ pub fn remove_helper_everywhere(db: &Database, removed_agent_id: &str, context: 
     };
     let mut changed = Vec::new();
     for agent in agents {
-        let Ok(helpers) = listed_helpers(&agent.flow_yaml) else { continue };
-        if !helpers.iter().any(|helper| helper == removed_agent_id) {
-            continue;
-        }
-        let current = match agent_abilities(db, &agent.id) {
-            Ok(abilities) => abilities.helpers,
-            Err(error) => {
-                log::error!("could not read the helpers of agent {}: {error}", agent.id);
-                continue;
-            }
-        };
-        let change = AbilityChange::Helpers {
-            agent_ids: helpers.into_iter().filter(|helper| helper != removed_agent_id).collect(),
-            max_parallel: current.max_parallel,
-            max_calls: current.max_calls,
-        };
-        match set_ability(db, &agent.id, &change, context) {
-            Ok(_) => changed.push(agent.id),
+        match remove_helper_from(db, &agent, removed_agent_id, context) {
+            Ok(true) => changed.push(agent.id),
+            Ok(false) => {}
             Err(error) => {
                 log::error!("could not take deleted agent {removed_agent_id} off the helpers of {}: {error}", agent.id)
             }
         }
     }
     changed
+}
+
+/// Removes `removed_agent_id` from each step's own `subagents` of `agent`; `false` when none listed it.
+fn remove_helper_from(
+    db: &Database,
+    agent: &Agent,
+    removed_agent_id: &str,
+    context: &GraphContext<'_>,
+) -> AppResult<bool> {
+    if edit_lock::is_builder_editing(&agent.id) {
+        return Err(AppError::BuilderBusy);
+    }
+    let base = EditableDocument::parse(&agent.flow_yaml)?;
+    let mut workflow = base.workflow.clone();
+    let mut changed_step_ids = Vec::new();
+    for step in workflow.graph.nodes.iter_mut().filter(|node| node.kind == AGENT_STEP_KIND) {
+        let Some(Json::Array(entries)) = step.config.get_mut(HELPERS_KEY) else { continue };
+        let before = entries.len();
+        entries.retain(|entry| entry.get("workflow").and_then(Json::as_str) != Some(removed_agent_id));
+        if entries.len() == before {
+            continue;
+        }
+        if entries.is_empty() {
+            for key in [HELPERS_KEY, MAX_PARALLEL_KEY, MAX_CALLS_KEY] {
+                step.config.remove(key);
+            }
+        }
+        changed_step_ids.push(step.id.clone());
+    }
+    if changed_step_ids.is_empty() {
+        return Ok(false);
+    }
+    let summary = format!("{ABILITIES_EDIT_PREFIX}no longer asks a deleted agent for help");
+    save_new_version(db, agent, &base, &workflow, &changed_step_ids, &summary, context)?;
+    Ok(true)
+}
+
+/// Whether a run of `flow_yaml` keeps notes about people: one of its steps remembers, or one of
+/// the helper agents it may ask (and theirs) does. A document that cannot be read counts as yes,
+/// so the safer customer id applies.
+pub fn remembers_people(db: &Database, flow_yaml: &str) -> bool {
+    let mut queue = vec![flow_yaml.to_owned()];
+    let mut seen: Vec<String> = Vec::new();
+    while let Some(flow) = queue.pop() {
+        let Ok(document) = EditableDocument::parse(&flow) else { return true };
+        let agent_steps = document.workflow.graph.nodes.iter().filter(|node| node.kind == AGENT_STEP_KIND);
+        if agent_steps.clone().any(|node| read_memory(&node.config).enabled) {
+            return true;
+        }
+        for step in agent_steps {
+            for helper_id in read_helpers(&step.config).agent_ids {
+                if seen.contains(&helper_id) || seen.len() >= crate::engine::helpers::MAX_LINKED_AGENTS {
+                    continue;
+                }
+                seen.push(helper_id.clone());
+                if let Ok(helper) = db.get_agent(&helper_id) {
+                    queue.push(helper.flow_yaml);
+                }
+            }
+        }
+    }
+    false
+}
+
+/// `flow_yaml` with long term memory that only reads (`write: off`): tests and release checks
+/// recall what the agent knows but never save notes, so no check leaves anything behind.
+///
+/// # Errors
+/// `Workflow` when the document cannot be read or written.
+pub fn without_memory_writes(flow_yaml: &str) -> AppResult<String> {
+    let base = EditableDocument::parse(flow_yaml)?;
+    let mut workflow = base.workflow.clone();
+    let mut changed = false;
+    for step in workflow.graph.nodes.iter_mut().filter(|node| node.kind == AGENT_STEP_KIND) {
+        let Some(memory) = step.config.get(MEMORY_KEY).filter(|memory| read_memory_value(memory)) else { continue };
+        let mut fields = match memory {
+            Json::Object(fields) => fields.clone(),
+            _ => Map::new(),
+        };
+        fields.insert("write".to_owned(), Json::from("off"));
+        step.config.insert(MEMORY_KEY.to_owned(), Json::Object(fields));
+        changed = true;
+    }
+    match changed {
+        true => base.to_yaml(&workflow),
+        false => Ok(flow_yaml.to_owned()),
+    }
 }
 
 /// Applies one change to every step that can use it, saved as a new version. Saves nothing
@@ -956,25 +1029,72 @@ graph:
     }
 
     #[test]
-    fn a_deleted_helper_is_taken_off_every_agent_that_asked_it() {
+    fn a_deleted_helper_is_taken_off_each_step_and_nothing_else_moves() {
         let db = Database::open_in_memory().unwrap();
-        let lead = create(&db, "Support", "", STEPS);
         let kept = create(&db, "Stock checker", "", include_str!("../../fixtures/flows/simple_answer.yaml"));
         let gone = create(&db, "Invoices", "", include_str!("../../fixtures/flows/simple_answer.yaml"));
+        let other = create(&db, "Prices", "", include_str!("../../fixtures/flows/simple_answer.yaml"));
+        // Two steps set apart by hand: the first asks `kept` and `gone`, the second asks `other`.
+        let two_steps = STEPS.replace(
+            "    - id: polish\n      type: llm",
+            &format!(
+                "    - {{ id: second, type: agent, model: {{ provider: openai, name: gpt-4o-mini }}, query: \"{{{{#helper.text#}}}}\", subagents: [{{ workflow: {other}, description: Prices by hand }}] }}\n    - id: polish\n      type: llm"
+            ),
+        );
+        let lead = create(&db, "Support", "", &two_steps);
+        let mut document = EditableDocument::parse(&db.get_agent(&lead).unwrap().flow_yaml).unwrap();
+        let first = document.workflow.graph.nodes.iter_mut().find(|node| node.id == "helper").unwrap();
+        first.config.insert(HELPERS_KEY.into(), serde_json::json!([{"workflow": kept, "description": "Stock"}, {"workflow": gone, "description": "Invoices"}]));
+        let flow_yaml = document.to_yaml(&document.workflow).unwrap();
+        db.update_agent_flow_from_version(&lead, 1, &flow_yaml, "by hand").unwrap();
+        db.delete_agent(&gone).unwrap();
         let registry = flow::draft_node_registry();
         let context = GraphContext::new(&registry);
-        let helpers =
-            AbilityChange::Helpers { agent_ids: vec![kept.clone(), gone.clone()], max_parallel: 3, max_calls: 9 };
-        set_ability(&db, &lead, &helpers, &context).unwrap();
-        db.delete_agent(&gone).unwrap();
 
         assert_eq!(remove_helper_everywhere(&db, &gone, &context), std::slice::from_ref(&lead));
 
         assert_eq!(
-            agent_abilities(&db, &lead).unwrap().helpers,
-            HelpersSetting { agent_ids: vec![kept], max_parallel: 3, max_calls: 9 }
+            step_config(&db, &lead, "helper").get(HELPERS_KEY),
+            Some(&serde_json::json!([{"workflow": kept, "description": "Stock"}]))
+        );
+        assert_eq!(
+            step_config(&db, &lead, "second").get(HELPERS_KEY),
+            Some(&serde_json::json!([{"workflow": other, "description": "Prices by hand"}])),
+            "the other step keeps its own helper and description"
         );
         assert!(remove_helper_everywhere(&db, &gone, &context).is_empty(), "nothing left to change");
+    }
+
+    #[test]
+    fn checks_get_a_memory_that_only_reads() {
+        let with_memory = STEPS.replace(
+            "query: \"{{#start.question#}}\",",
+            "query: \"{{#start.question#}}\", long_term_memory: { graph: true },",
+        );
+        let read_only = without_memory_writes(&with_memory).unwrap();
+        let document = EditableDocument::parse(&read_only).unwrap();
+        let step = document.workflow.graph.nodes.iter().find(|node| node.id == "helper").unwrap();
+        assert_eq!(step.config.get(MEMORY_KEY), Some(&serde_json::json!({"graph": true, "write": "off"})));
+        assert!(check_memory_scope(&read_only, Some("a1")).is_ok());
+        flow::compile_flow(&read_only).unwrap();
+        assert_eq!(without_memory_writes(STEPS).unwrap(), STEPS, "a flow without memory is left as it is");
+    }
+
+    #[test]
+    fn a_flow_remembers_people_through_its_own_steps_or_a_helper() {
+        let db = Database::open_in_memory().unwrap();
+        let with_memory = STEPS
+            .replace("query: \"{{#start.question#}}\",", "query: \"{{#start.question#}}\", long_term_memory: auto,");
+        assert!(!remembers_people(&db, STEPS));
+        assert!(remembers_people(&db, &with_memory));
+        let helper = create(&db, "Remembering helper", "", &with_memory);
+        let asks_it = STEPS.replace(
+            "query: \"{{#start.question#}}\",",
+            &format!(
+                "query: \"{{{{#start.question#}}}}\", subagents: [{{ workflow: {helper}, description: Helper }}],"
+            ),
+        );
+        assert!(remembers_people(&db, &asks_it));
     }
 
     #[test]

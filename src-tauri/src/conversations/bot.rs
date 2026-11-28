@@ -238,7 +238,7 @@ fn build_run_input(
         .input(MESSAGE_INPUT, message_text)
         .sys("query", message_text)
         .sys("conversation_id", conversation.id.as_str())
-        .sys("user_id", person_of(conversation));
+        .sys("user_id", conversation.customer_handle.as_str());
     run_input.env = env;
     // Untrusted JSON conversion: stored values can never forge file references.
     run_input.conversation =
@@ -246,8 +246,9 @@ fn build_run_input(
     run_input
 }
 
-/// Who the customer is to the agent (`sys.user_id`, the person long term memory keeps notes
-/// about): their handle, when it is theirs alone.
+/// Who the customer is to long term memory (the `sys.user_id` of a reply whose agent, or one
+/// of its helpers, remembers people; other flows keep the plain handle): their handle, when it
+/// is theirs alone.
 /// - A WhatsApp Web chat that is not a phone number is known only by its display name, which
 ///   anyone can set: such a customer is nobody in particular (memory only proposes notes).
 /// - A handle equal to the app's own ids (the owner, the checks) is refused the same way, so a
@@ -264,15 +265,26 @@ pub(crate) fn person_of(conversation: &Conversation) -> &str {
     }
 }
 
-/// Whether a customer of `channel` with `handle` is a person memory may keep notes about.
+/// Whether a customer of `channel` with `handle` is a person memory may keep notes about: one
+/// person whose id the channel gives and nobody can choose.
+/// - Personal WhatsApp (WhatsApp Web): a chat that is not a phone number is known by its name,
+///   and a name can look like a number (`+62…`), so no WhatsApp Web handle is trusted.
+/// - Slack: only direct messages (`D…` channels); a channel thread is many people.
+/// - Microsoft Teams: only 1:1 chats (`a:…`); group chats and channel threads are many people.
+/// - The app's own ids (the owner, the checks) are never a customer.
 pub(crate) fn is_memory_person(channel: &str, handle: &str) -> bool {
-    let is_display_name =
-        channel == crate::conversations::channels::whatsapp_web::WHATSAPP_WEB_CHANNEL && !handle.starts_with('+');
+    use crate::conversations::channels::{
+        slack::SLACK_CHANNEL, teams_online::TEAMS_CHANNEL, whatsapp_web::WHATSAPP_WEB_CHANNEL,
+    };
     let is_app_id = handle == crate::memory::APP_USER || handle.starts_with(crate::memory::CHECKS_USER);
-    channel != crate::conversations::channel::TEST_CHANNEL
-        && !is_display_name
-        && !is_app_id
-        && !handle.trim().is_empty()
+    let is_one_person = match channel {
+        WHATSAPP_WEB_CHANNEL => false,
+        SLACK_CHANNEL => handle.starts_with('D'),
+        TEAMS_CHANNEL => handle.starts_with("a:"),
+        crate::conversations::channel::TEST_CHANNEL => false,
+        _ => true,
+    };
+    is_one_person && !is_app_id && !handle.trim().is_empty()
 }
 
 fn collect_turn(assembled_reply: String, outputs: &IndexMap<String, Value>, variables: Json) -> BotTurn {
@@ -354,9 +366,15 @@ mod tests {
     #[test]
     fn the_person_memory_keeps_notes_about_is_a_handle_nobody_else_can_take() {
         assert_eq!(person_of(&conversation("telegram", "5521")), "5521");
-        assert_eq!(person_of(&conversation("whatsapp-web", "+628129")), "+628129");
-        // A display name anyone can set, and the app's own ids, are nobody in particular.
+        // Personal WhatsApp shows a name for some chats, and a name can look like a number.
+        assert_eq!(person_of(&conversation("whatsapp-web", "+628129")), "");
         assert_eq!(person_of(&conversation("whatsapp-web", "Dana Wijaya")), "");
+        assert_eq!(person_of(&conversation("whatsapp", "628129")), "628129");
+        // Group chats and channel threads are many people.
+        assert_eq!(person_of(&conversation("slack", "D0123")), "D0123");
+        assert_eq!(person_of(&conversation("slack", "C0456:1700000000.1")), "");
+        assert_eq!(person_of(&conversation("teams", "a:1personal")), "a:1personal");
+        assert_eq!(person_of(&conversation("teams", "19:abc@thread.tacv2;messageid=1")), "");
         assert_eq!(person_of(&conversation("whatsapp-web", "desktop-owner")), "");
         assert_eq!(person_of(&conversation("telegram", crate::memory::APP_USER)), "");
         assert_eq!(person_of(&conversation("slack", crate::memory::CHECKS_USER)), "");

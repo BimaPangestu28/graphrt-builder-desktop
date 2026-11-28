@@ -21,9 +21,7 @@ use crate::agent_files::AgentFiles;
 use crate::chatbot_setup::reply::prepare_reply;
 use crate::conversations::bot::MESSAGE_INPUT;
 use crate::credentials::CredentialStore;
-use crate::engine::{
-    agent_tools_for, link_helper_agents, prepare_engine_and_env, EngineDependencies, ModelRegistrySource, RunScope,
-};
+use crate::engine::{link_helper_agents, prepare_engine_and_env, EngineDependencies, ModelRegistrySource, RunScope};
 use crate::error::AppResult;
 use crate::storage::models::{Agent, AgentKind};
 use crate::storage::Database;
@@ -32,7 +30,7 @@ use crate::storage::Database;
 pub const QUESTION_TIMEOUT: Duration = Duration::from_secs(180);
 /// `sys.conversation_id` and `sys.user_id` of a check's chatbot turns.
 const CHECK_CONVERSATION: &str = CHECK_USER_ID;
-/// Start of the `sys.user_id` of a check's chatbot turns (`test-check:<uuid>`, one per case).
+/// `sys.user_id` of a check's chatbot turns (memory only reads in checks, so it keeps nothing).
 pub(crate) const CHECK_USER_ID: &str = "test-check";
 
 /// What every run of a check needs from the app.
@@ -46,24 +44,24 @@ pub struct CheckDependencies {
 
 impl CheckDependencies {
     /// The engine and `env.*` values of `flow_yaml` for the agent `agent_id`.
+    ///
+    /// Long term memory only reads in checks (the agent's, its helpers' and the agents it calls
+    /// as tools): a check recalls what the agent knows but never leaves a note behind.
     fn engine_for(&self, agent_id: &str, flow_yaml: &str) -> AppResult<(Engine, IndexMap<String, Value>)> {
-        let tools = agent_tools_for(
-            self.db.clone(),
-            self.credentials.clone(),
-            self.model_source.clone(),
-            self.agent_files.clone(),
-            agent_id,
-        );
-        let trusted_hosts = self.db.trusted_lookup_hosts(agent_id)?;
-        let scope = RunScope { agent_id: Some(agent_id), trusted_hosts: &trusted_hosts, files: None };
-        let (engine, env) =
-            prepare_engine_and_env(flow_yaml, &scope, &self.credentials, &self.db, &*self.model_source, tools)?;
         let dependencies = EngineDependencies {
             db: self.db.clone(),
             credentials: self.credentials.clone(),
             model_source: self.model_source.clone(),
             agent_files: self.agent_files.clone(),
+            read_only_memory: true,
         };
+        let flow_yaml = crate::agent_graph::abilities::without_memory_writes(flow_yaml)?;
+        let flow_yaml = flow_yaml.as_str();
+        let tools = crate::engine::agent_tools::agent_tool_registry(&dependencies, vec![agent_id.to_owned()]);
+        let trusted_hosts = self.db.trusted_lookup_hosts(agent_id)?;
+        let scope = RunScope { agent_id: Some(agent_id), trusted_hosts: &trusted_hosts, files: None };
+        let (engine, env) =
+            prepare_engine_and_env(flow_yaml, &scope, &self.credentials, &self.db, &*self.model_source, tools)?;
         Ok((link_helper_agents(engine, flow_yaml, &dependencies)?, env))
     }
 
@@ -124,14 +122,11 @@ impl AgentTarget {
             Ok(prepared_engine) => prepared_engine,
             Err(error) => return failed_capture(&error.to_string(), started),
         };
-        // Each case is its own person: what the chatbot remembers in one case never reaches
-        // another case or a later check (erased below).
-        let person = format!("{CHECK_USER_ID}:{}", uuid::Uuid::new_v4());
         let mut input = RunInput::new()
             .input(MESSAGE_INPUT, question)
             .sys("query", question)
             .sys("conversation_id", CHECK_CONVERSATION)
-            .sys("user_id", person.as_str());
+            .sys("user_id", CHECK_CONVERSATION);
         input.env = env;
         let mut assembler = ResponseAssembler::new(engine.graph());
         for (name, value) in &prepared.sys_values {
@@ -145,9 +140,6 @@ impl AgentTarget {
             events.push(event);
         }
         let latency_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
-        if let Err(error) = crate::memory::erase_now(&agent.id, &person).await {
-            log::warn!("could not erase what a check case of agent {} remembered: {}", agent.id, error.message);
-        }
         RunCapture::from_events(events, assembler.text_so_far().to_owned(), latency_ms)
     }
 }

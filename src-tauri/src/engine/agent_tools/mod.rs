@@ -58,6 +58,8 @@ pub(crate) struct EngineDependencies {
     pub(crate) model_source: Arc<dyn ModelRegistrySource>,
     /// The agents' file workspaces; a nested agent works in its own.
     pub(crate) agent_files: Option<Arc<crate::agent_files::AgentFiles>>,
+    /// Long term memory only reads (tests and release checks): no run saves a note.
+    pub(crate) read_only_memory: bool,
 }
 
 /// The tool registry for a run of `agent_ids_above.last()`: holds the `agents`
@@ -205,15 +207,19 @@ impl AgentToolRuntime {
             trusted_hosts: &trusted_hosts,
             files: file_access.as_ref(),
         };
+        let flow_yaml = match self.dependencies.read_only_memory {
+            true => crate::agent_graph::abilities::without_memory_writes(&agent.flow_yaml)?,
+            false => agent.flow_yaml.clone(),
+        };
         let engine = preparation::build_engine(
-            &agent.flow_yaml,
+            &flow_yaml,
             &scope,
             &self.dependencies.credentials,
             &self.dependencies.db,
             &*self.dependencies.model_source,
             registry_with_budget(&self.dependencies, agent_ids_below, self.budget.clone()),
         )?;
-        let engine = super::helpers::link_helper_agents(engine, &agent.flow_yaml, &self.dependencies)?;
+        let engine = super::helpers::link_helper_agents(engine, &flow_yaml, &self.dependencies)?;
         let mut run_input = RunInput::new();
         run_input.inputs = preparation::json_object_to_value_map(arguments, "step inputs")?;
         run_input.env = preparation::workflow_env(&agent.flow_yaml, &self.dependencies.credentials)?;

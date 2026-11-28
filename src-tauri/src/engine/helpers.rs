@@ -57,13 +57,24 @@ pub(crate) fn link_helper_agents(
             }
             other => other,
         })?;
+        if helper.status == crate::storage::models::AgentStatus::Paused {
+            return Err(AppError::InvalidInput(format!(
+                "{} is paused, so it cannot help other agents: resume it, or take it off the helpers",
+                helper.name
+            )));
+        }
+        // Tests and checks: the helper's memory only reads, as the agent's own does.
+        let helper_flow = match dependencies.read_only_memory {
+            true => crate::agent_graph::abilities::without_memory_writes(&helper.flow_yaml)?,
+            false => helper.flow_yaml.clone(),
+        };
         let trusted_hosts = dependencies.db.trusted_lookup_hosts(&helper.id)?;
         let files =
             dependencies.agent_files.clone().map(|files| FileAccess { files, scope: FileScope::agent(&helper.id) });
         let scope = RunScope { agent_id: Some(&helper.id), trusted_hosts: &trusted_hosts, files: files.as_ref() };
         let tools = agent_tool_registry(dependencies, vec![helper.id.clone()]);
         let (helper_engine, env) = preparation::prepare_engine_and_env(
-            &helper.flow_yaml,
+            &helper_flow,
             &scope,
             &dependencies.credentials,
             &dependencies.db,

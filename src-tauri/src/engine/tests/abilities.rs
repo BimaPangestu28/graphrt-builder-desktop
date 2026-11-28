@@ -286,3 +286,18 @@ fn a_helper_that_needs_a_file_to_start_is_refused_when_linked() {
 
     assert!(matches!(refused, Err(AppError::InvalidInput(message)) if message.contains("cannot be asked for help")));
 }
+
+#[tokio::test]
+async fn a_paused_helper_is_refused_with_its_name() {
+    let harness = harness_with_answers(&["unused"]);
+    let registry = crate::flow::draft_node_registry();
+    let lead = create_agent(&harness.db, LEAD);
+    let helper = create_agent(&harness.db, ECHO_HELPER);
+    let change = AbilityChange::Helpers { agent_ids: vec![helper.id.clone()], max_parallel: 4, max_calls: 16 };
+    set_ability(&harness.db, &lead.id, &change, &GraphContext::new(&registry)).unwrap();
+    harness.db.set_agent_status(&helper.id, AgentStatus::Paused).unwrap();
+
+    let refused = harness.runs.start_run(&lead.id, RunTrigger::Test, json!({"question": "?"})).await;
+
+    assert!(matches!(refused, Err(AppError::InvalidInput(message)) if message.contains("is paused")));
+}

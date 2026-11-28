@@ -661,6 +661,11 @@ impl ConversationManager {
             tools,
         )?;
         let engine = link_helper_agents(engine, &prepared.flow_text, &self.engine_dependencies())?;
+        // An agent that remembers people (or asks a helper that does) knows the customer by a
+        // handle nobody else can take (see `bot::person_of`); other flows keep the plain handle.
+        if crate::agent_graph::abilities::remembers_people(&self.db, &prepared.flow_text) {
+            sys_values.push(("user_id".to_owned(), self::bot::person_of(conversation).to_owned()));
+        }
         let on_draft = |draft: &str| self.emit_draft(conversation, draft);
         let mut turn =
             run_bot_turn(&engine, env, conversation, model_text, &sys_values, &customer_turn.files, &on_draft).await?;
@@ -727,6 +732,7 @@ impl ConversationManager {
             credentials: self.credentials.clone(),
             model_source: self.model_source.clone(),
             agent_files: self.agent_files.clone(),
+            read_only_memory: false,
         }
     }
 

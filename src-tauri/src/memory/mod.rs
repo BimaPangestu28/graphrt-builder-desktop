@@ -32,7 +32,7 @@ use graphrt_core::memory::{ForgetTarget, MemoryBank, MemoryError, MemoryScope, M
 use graphrt_memory::{ListFilter, MemoryStore};
 use serde::Deserialize;
 
-pub(crate) use self::active::{erase_now, memories_service};
+pub(crate) use self::active::memories_service;
 
 /// Clears the store runs use (tests that published one).
 #[cfg(test)]
@@ -49,8 +49,8 @@ use crate::storage::Database;
 pub const MEMORY_DIR_NAME: &str = "memory";
 /// `sys.user_id` of runs started in the app (Test, Run now): the person at this computer.
 pub const APP_USER: &str = "desktop-owner";
-/// Start of the `sys.user_id` of the agent's tests and release checks (`quality::target`):
-/// each case is its own person, erased when the case is done.
+/// `sys.user_id` of the agent's tests and release checks (`quality::target`), where memory
+/// only reads; an id starting with it is never a customer.
 pub const CHECKS_USER: &str = crate::quality::target::CHECK_USER_ID;
 /// Who acts when the owner removes or approves a note (kept in the store's audit log).
 const OWNER_ACTOR: &str = "owner:desktop";
