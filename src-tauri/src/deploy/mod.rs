@@ -435,8 +435,9 @@ impl DeployService {
         }
     }
 
-    /// Tests: a signed-in Google account with a fresh access token (no network).
-    #[cfg(test)]
+    /// Tests: a signed-in Google account with a fresh access token (no network; used by the
+    /// Unix-only fake-CLI tests).
+    #[cfg(all(test, unix))]
     pub(crate) async fn sign_in_google_for_test(&self, email: &str, access_token: &str) {
         let sign_in = GoogleSignIn::new("1//test-refresh".into(), Some(email.into()));
         self.save_google_sign_in(&sign_in).unwrap();

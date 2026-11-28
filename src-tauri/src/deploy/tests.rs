@@ -212,10 +212,12 @@ fn release_numbers_are_compared_as_numbers() {
     assert!(!release_at_least("unreleased", (0, 6, 4)));
 }
 
+#[cfg(unix)]
 fn google_place(project: &str) -> CloudPlace {
     CloudPlace { project: project.into(), region: "asia-southeast2".into() }
 }
 
+#[cfg(unix)]
 fn google_options(place: Option<CloudPlace>) -> DeployOptions {
     DeployOptions { provider: DeployProvider::GoogleCloud, cloud_place: place, ..fly_options() }
 }
