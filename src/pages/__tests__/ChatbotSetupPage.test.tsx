@@ -3,6 +3,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { resetSampleAgents, sampleAgentsBackend } from '@/api/sampleBackend/agents'
 import { resetSampleChatbotSetups, sampleChatbotSetupBackend } from '@/api/sampleBackend/chatbotSetup'
 import { resetSampleConversations, sampleConversationsBackend } from '@/api/sampleBackend/conversations'
+import { resetSampleDeploy, seedSampleDeployment } from '@/api/sampleBackend/deploy'
 import { resetSampleKnowledge } from '@/api/sampleBackend/knowledge'
 import { resetSampleTrustedHosts } from '@/api/sampleBackend/trustedHosts'
 import { ChatbotSetupPage } from '../ChatbotSetupPage'
@@ -28,6 +29,7 @@ describe('ChatbotSetupPage', () => {
     resetSampleConversations()
     resetSampleChatbotSetups()
     resetSampleKnowledge()
+    resetSampleDeploy()
     resetSampleTrustedHosts()
   })
 
@@ -48,6 +50,13 @@ describe('ChatbotSetupPage', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Trust' }))
     })
     expect(await screen.findByText('api.open-meteo.com')).toBeInTheDocument()
+  })
+
+  it('says Online when its online copy answers', async () => {
+    seedSampleDeployment('catering-assistant', {})
+    renderChatbotSetup()
+    expect(await screen.findByText('Online')).toBeInTheDocument()
+    expect(screen.queryByText('Live')).not.toBeInTheDocument()
   })
 
   it('pauses and goes live through the agent status', async () => {

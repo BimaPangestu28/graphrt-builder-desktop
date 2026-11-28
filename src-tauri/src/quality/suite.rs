@@ -43,10 +43,15 @@ pub fn tests_fingerprint(tests: &[AgentTest]) -> String {
     hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
+/// What the judges are told about hand-offs of an agent that never passes a chat to anyone.
+pub const NO_HANDOFF_RULES: &str = "This assistant does not pass chats to anyone.";
+
 /// The eval file of `tests` (JSON, which graphrt reads like YAML). `input_name` receives
-/// each question; `required_percent` of the answers must be good.
-pub fn suite_document(tests: &[AgentTest], input_name: &str, required_percent: i64) -> Json {
-    let cases: Vec<Json> = tests.iter().map(|test| case_document(test, input_name)).collect();
+/// each question; `required_percent` of the answers must be good. `handoff_rules` tells the
+/// judges when the assistant passes the chat to the owner (a chatbot's rules, else
+/// [`NO_HANDOFF_RULES`]), so a hand-off the rules ask for is a good answer.
+pub fn suite_document(tests: &[AgentTest], input_name: &str, required_percent: i64, handoff_rules: &str) -> Json {
+    let cases: Vec<Json> = tests.iter().map(|test| case_document(test, input_name, handoff_rules)).collect();
     let pass_rate = (required_percent.clamp(0, 100) as f64) / 100.0;
     json!({
         "description": "Tests written in Graphrt Desktop",
@@ -56,27 +61,22 @@ pub fn suite_document(tests: &[AgentTest], input_name: &str, required_percent: i
     })
 }
 
-fn case_document(test: &AgentTest, input_name: &str) -> Json {
+fn case_document(test: &AgentTest, input_name: &str, handoff_rules: &str) -> Json {
     let mut vars = Map::new();
     vars.insert(input_name.to_owned(), Json::String(test.question.clone()));
     // `{{vars.x}}` alone becomes the value itself, so the question is never read as a template.
-    let question_reference = format!("{{{{vars.{input_name}}}}}");
-    let mut assertions = Vec::new();
-    if test.good_answer.is_empty() {
-        assertions.push(json!({
-            "type": "judge",
-            "workflow": ANSWERS_QUESTION_JUDGE,
-            "metric": "answers_question",
-            "inputs": { "question": question_reference },
-        }));
+    // The other inputs are this app's own words (no `{{`), so rendering keeps them as they are.
+    let inputs = json!({
+        "question": format!("{{{{vars.{input_name}}}}}"),
+        "language": super::language::reason_language(&test.question),
+        "handoff_rules": handoff_rules,
+    });
+    let (workflow, metric) = if test.good_answer.is_empty() {
+        (ANSWERS_QUESTION_JUDGE, "answers_question")
     } else {
-        assertions.push(json!({
-            "type": "judge",
-            "workflow": GOOD_ANSWER_JUDGE,
-            "metric": "good_answer",
-            "inputs": { "question": question_reference },
-        }));
-    }
+        (GOOD_ANSWER_JUDGE, "good_answer")
+    };
+    let mut assertions = vec![json!({ "type": "judge", "workflow": workflow, "metric": metric, "inputs": inputs })];
     if !test.must_include.is_empty() {
         assertions.push(json!({ "type": "icontains-all", "value": test.must_include, "metric": "must_include" }));
     }
@@ -103,8 +103,14 @@ fn case_document(test: &AgentTest, input_name: &str) -> Json {
 ///
 /// # Errors
 /// `Internal` when graphrt refuses the document (a bug in this module).
-pub fn build_suite(tests: &[AgentTest], input_name: &str, required_percent: i64, base: &Path) -> AppResult<EvalSuite> {
-    let document = suite_document(tests, input_name, required_percent);
+pub fn build_suite(
+    tests: &[AgentTest],
+    input_name: &str,
+    required_percent: i64,
+    handoff_rules: &str,
+    base: &Path,
+) -> AppResult<EvalSuite> {
+    let document = suite_document(tests, input_name, required_percent, handoff_rules);
     EvalSuite::parse(&document.to_string(), base)
         .map_err(|error| AppError::Internal(format!("the tests could not be prepared: {error}")))
 }
@@ -151,7 +157,9 @@ mod tests {
         let mut with_words = test_case("t2", "");
         with_words.must_include = vec!["09.00".into()];
         with_words.must_not_include = vec!["closed".into()];
-        let suite = build_suite(&[test_case("t1", "From 9 to 5"), with_words], "message", 80, Path::new("/x")).unwrap();
+        let rules = "Pass the chat to the owner only when:\n- an order is ready to confirm";
+        let suite =
+            build_suite(&[test_case("t1", "From 9 to 5"), with_words], "message", 80, rules, Path::new("/x")).unwrap();
         assert_eq!(suite.cases.len(), 2);
         assert!((suite.gate.pass_rate - 0.8).abs() < 1e-9);
         let first = &suite.cases[0];
@@ -160,6 +168,9 @@ mod tests {
         assert_eq!(first.expected, Some(json!("From 9 to 5")));
         assert_eq!(first.assertions[0].kind, "judge");
         assert_eq!(first.assertions[0].config["workflow"], GOOD_ANSWER_JUDGE);
+        let inputs = &first.assertions[0].config["inputs"];
+        assert_eq!(inputs["language"], "English", "the judge is told the language of the question");
+        assert_eq!(inputs["handoff_rules"], rules);
         let second: Vec<&str> = suite.cases[1].assertions.iter().map(|spec| spec.kind.as_str()).collect();
         assert_eq!(second, ["judge", "icontains-all", "not-icontains-any"]);
         assert_eq!(suite.cases[1].assertions[0].config["workflow"], ANSWERS_QUESTION_JUDGE);

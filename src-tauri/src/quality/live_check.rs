@@ -167,3 +167,91 @@ async fn live_check_and_release_with_openai() {
         println!("version 1 was blocked as expected");
     }
 }
+
+const BAKERY_FLOW: &str = r#"version: "1"
+name: bakery
+graph:
+  nodes:
+    - id: start
+      type: start
+      variables:
+        - { variable: message, type: paragraph, required: true }
+    - id: reply
+      type: llm
+      model: { provider: openai, name: gpt-4o-mini, completion_params: { temperature: 0 } }
+      prompt_template:
+        - role: system
+          text: "You answer customers of Toko Roti Melati, a bakery in Bandung. Open every day 08.00 to 20.00. Chocolate cake Rp 150000. When a customer wants to place an order, do not take it: say thank you and that the owner will reply here shortly. Answer in the customer's language."
+        - { role: user, text: "{{#start.message#}}" }
+    - id: answer
+      type: answer
+      answer: "{{#reply.text#}}"
+  edges:
+    - { source: start, target: reply }
+    - { source: reply, target: answer }
+"#;
+
+/// The judge writes its reasons in the language of each question and accepts a hand-off the
+/// chatbot's rules ask for (an order to confirm goes to the owner).
+#[tokio::test]
+#[ignore = "needs a real OpenAI key in GRAPHRT_LIVE_OPENAI_KEY_FILE"]
+async fn live_judge_language_and_handoffs_with_openai() {
+    let Some(key_file) = std::env::var_os("GRAPHRT_LIVE_OPENAI_KEY_FILE") else {
+        panic!("set GRAPHRT_LIVE_OPENAI_KEY_FILE to the file with the OpenAI key");
+    };
+    let key = std::fs::read_to_string(key_file).expect("the key file can be read");
+    let db = Arc::new(Database::open_in_memory().unwrap());
+    let credentials = Arc::new(CredentialStore::in_memory());
+    credentials.set_api_key(ModelProvider::Openai, key.trim()).unwrap();
+    drop(key);
+    let agent = db
+        .create_agent(NewAgent {
+            name: "Toko Roti Melati".into(),
+            kind: AgentKind::Chatbot,
+            description: "Answers customer questions for a bakery".into(),
+            flow_yaml: BAKERY_FLOW.into(),
+        })
+        .unwrap();
+    let service = QualityService::new(
+        CheckDependencies {
+            db: db.clone(),
+            credentials: credentials.clone(),
+            model_source: Arc::new(KeychainModelRegistrySource),
+            agent_files: None,
+        },
+        Arc::new(DefaultDraftModel { db: db.clone(), credentials }),
+        Arc::new(Printed),
+    );
+    let id = agent.id.as_str();
+    let test = |question: &str, good_answer: &str| TestInput {
+        question: question.into(),
+        good_answer: good_answer.into(),
+        ..TestInput::default()
+    };
+    service
+        .add_tests(
+            id,
+            vec![
+                test("What are your opening hours?", "We open every day from 08:00 to 20:00."),
+                test("Can I place an order for delivery?", "The owner will reply soon."),
+                test("Jam berapa toko buka?", "Setiap hari jam 08.00 sampai 20.00."),
+            ],
+        )
+        .unwrap();
+    let check = service.run_check_now(id).await.expect("the check runs");
+    print_check("bakery", &check);
+    let reason = |question: &str| {
+        let found = check.questions.iter().find(|candidate| candidate.question == question).unwrap();
+        let why = found.good_because.clone().unwrap_or_default();
+        let why_not: Vec<String> = found.not_good_because.iter().map(|reason| format!("{reason:?}")).collect();
+        (found.good, format!("{why} {}", why_not.join(" ")).to_lowercase())
+    };
+    let indonesian_words = [" yang ", " jawaban ", " tidak ", " dengan ", " memberikan "];
+    for question in ["What are your opening hours?", "Can I place an order for delivery?"] {
+        let (_, why) = reason(question);
+        assert!(!indonesian_words.iter().any(|word| why.contains(word)), "English reason for {question}: {why}");
+    }
+    let (_, indonesian_why) = reason("Jam berapa toko buka?");
+    assert!(indonesian_words.iter().any(|word| indonesian_why.contains(word)), "Indonesian reason: {indonesian_why}");
+    assert!(reason("Can I place an order for delivery?").0, "the hand-off the rules ask for is a good answer");
+}

@@ -10,6 +10,8 @@ graph:
       variables:
         - { variable: output, type: paragraph, required: true }
         - { variable: question, type: paragraph, required: true }
+        - { variable: language, type: text-input, required: false }
+        - { variable: handoff_rules, type: paragraph, required: false }
 
     - id: judge
       type: llm
@@ -21,16 +23,20 @@ graph:
             REPLY answer the QUESTION that was asked? An evasive, off-topic, empty or
             generic reply fails. A reply that honestly says it does not know and offers a
             way to get help passes.
-            - pass: the reply responds to what was asked.
+
+            Passing the chat to the owner: the assistant does it in these cases.
+            {{#start.handoff_rules#}}
+            A reply that says the owner (or a person) will reply or take over passes when
+            the question is one of the cases these rules pass to the owner.
+            - pass: the reply responds to what was asked, or hands over as above.
             - fail: it is about something else, avoids the question or is empty.
             - unknown: the question itself cannot be understood.
-            Write the reasoning first: one short sentence a shop owner understands. Write it
-            in the language the QUESTION is written in (Indonesian for an Indonesian question,
-            English for an English one), and call them the question, the reply and the good
-            answer in plain words, not the labels in capitals. Then the verdict.
+            Write the reasoning first: one short sentence a shop owner understands, written
+            in {{#start.language#}}. Call them the question and the reply in plain words,
+            not the labels in capitals. Then the verdict.
         - role: user
           text: |
-            Answer in JSON. The reasoning is in the language of this question.
+            Answer in JSON. Write the reasoning in {{#start.language#}}.
 
             QUESTION:
             {{#start.question#}}

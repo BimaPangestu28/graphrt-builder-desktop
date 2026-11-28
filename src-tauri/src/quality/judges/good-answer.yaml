@@ -1,8 +1,14 @@
 # Judge of a test with a good answer written by the person (see `quality::suite`).
 # MODEL_PROVIDER and MODEL_NAME are replaced with the app's default model before compiling.
+#
+# Two steps. `handoff` only states facts about passing the chat to the owner; whether such a
+# hand-off is a good answer is decided by `right_handoff`, not by a model (small models wrote
+# "the reply hands over like the good answer" and still said fail): a reply that hands over
+# passes when the good answer hands over too, or when the agent's rules pass this kind of
+# question to the owner. Every other reply goes to `judge`, which checks the content.
 version: "1"
 name: judge-good-answer
-description: Pass when the reply gives what the good answer says.
+description: Pass when the reply gives what the good answer says, or hands over when it should.
 graph:
   nodes:
     - id: start
@@ -11,6 +17,73 @@ graph:
         - { variable: output, type: paragraph, required: true }
         - { variable: expected, type: paragraph, required: true }
         - { variable: question, type: paragraph, required: true }
+        - { variable: language, type: text-input, required: false }
+        - { variable: handoff_rules, type: paragraph, required: false }
+
+    - id: handoff
+      type: llm
+      model: { provider: MODEL_PROVIDER, name: MODEL_NAME, completion_params: { temperature: 0 } }
+      prompt_template:
+        - role: system
+          text: |
+            You read one reply of a business's assistant. State three facts, true or false:
+            - reply_hands_over: the REPLY says the owner or a person will reply, take over or
+              get back to the customer.
+            - good_answer_hands_over: the GOOD ANSWER (written by the owner) says that too,
+              or says the assistant does not know or will ask someone.
+            - question_is_a_handoff_case: the QUESTION itself is one of these cases (judge the
+              question, not the reply): {{#start.handoff_rules#}}
+            Then one short sentence a shop owner understands, in {{#start.language#}}, that
+            says what the reply does about the owner, for example "The reply passes the order
+            to the owner, as the good answer does." or "The reply answers itself."
+        - role: user
+          text: |
+            Answer in JSON with the keys reply_hands_over, good_answer_hands_over,
+            question_is_a_handoff_case and sentence.
+
+            QUESTION:
+            {{#start.question#}}
+
+            GOOD ANSWER:
+            {{#start.expected#}}
+
+            REPLY:
+            {{#start.output#}}
+      structured_output:
+        schema:
+          type: object
+          required: [reply_hands_over, good_answer_hands_over, question_is_a_handoff_case, sentence]
+          additionalProperties: false
+          properties:
+            reply_hands_over: { type: boolean }
+            good_answer_hands_over: { type: boolean }
+            question_is_a_handoff_case: { type: boolean }
+            sentence: { type: string }
+
+    - id: right_handoff
+      type: if-else
+      cases:
+        - case_id: like_the_good_answer
+          logical_operator: and
+          conditions:
+            - { variable_selector: [handoff, structured_output, reply_hands_over], comparison_operator: is, value: "true" }
+            - { variable_selector: [handoff, structured_output, good_answer_hands_over], comparison_operator: is, value: "true" }
+        - case_id: by_the_rules
+          logical_operator: and
+          conditions:
+            - { variable_selector: [handoff, structured_output, reply_hands_over], comparison_operator: is, value: "true" }
+            - { variable_selector: [handoff, structured_output, question_is_a_handoff_case], comparison_operator: is, value: "true" }
+
+    - id: handed_over
+      type: template-transform
+      template: "pass"
+      variables: []
+
+    - id: end_handed_over
+      type: end
+      outputs:
+        - { variable: verdict, value_selector: [handed_over, output] }
+        - { variable: reasoning, value_selector: [handoff, structured_output, sentence] }
 
     - id: judge
       type: llm
@@ -28,13 +101,12 @@ graph:
             - pass: the reply gives what the good answer says.
             - fail: it misses or contradicts part of it, or does not answer.
             - unknown: the good answer itself cannot be understood.
-            Write the reasoning first: one short sentence a shop owner understands. Write it
-            in the language the QUESTION is written in (Indonesian for an Indonesian question,
-            English for an English one), and call them the question, the reply and the good
-            answer in plain words, not the labels in capitals. Then the verdict.
+            Write the reasoning first: one short sentence a shop owner understands, written
+            in {{#start.language#}}. Call them the question, the reply and the good answer
+            in plain words, not the labels in capitals. Then the verdict.
         - role: user
           text: |
-            Answer in JSON. The reasoning is in the language of this question.
+            Answer in JSON. Write the reasoning in {{#start.language#}}.
 
             QUESTION:
             {{#start.question#}}
@@ -60,5 +132,10 @@ graph:
         - { variable: reasoning, value_selector: [judge, structured_output, reasoning] }
 
   edges:
-    - { source: start, target: judge }
+    - { source: start, target: handoff }
+    - { source: handoff, target: right_handoff }
+    - { source: right_handoff, target: handed_over, handle: like_the_good_answer }
+    - { source: right_handoff, target: handed_over, handle: by_the_rules }
+    - { source: handed_over, target: end_handed_over }
+    - { source: right_handoff, target: judge, handle: "false" }
     - { source: judge, target: end }

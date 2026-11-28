@@ -168,7 +168,7 @@ export function AgentOnlinePanel({ agentId, agentName, view, onViewChange }: Age
         </div>
         {deployment.status === 'needs_attention' && deployment.statusMessage && <span className="text-[13px] text-amber-strong">{deployment.statusMessage}</span>}
         <div className="flex flex-wrap gap-2">
-          {updateLink}
+          {/* Updating is offered only when the release in use is not the one online (the notice above). */}
           {isPaused ? (
             <Button size="sm" variant="secondary" onClick={() => void run({ action: 'resume' }, 'resume')} disabled={busyAction !== null}>
               {busyAction === 'resume' ? messages().deploy.resuming : messages().deploy.resume}

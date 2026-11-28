@@ -54,13 +54,35 @@ pub struct OnlineTexts {
     pub handoff_rules: String,
 }
 
+/// Id of the retrieval step the online copy gets when its flow has none of its own.
+pub const ONLINE_KNOWLEDGE_STEP: &str = "chatbot_knowledge";
+
+/// What the bot's model steps read before the passages the online copy looks up (the same
+/// words as the brief on this computer, [`super::brief`]).
+const ONLINE_KNOWLEDGE_HEADING: &str =
+    "Facts from the owner's knowledge (answer only from these; say so when the answer is not there):";
+
 /// [`overlay_flow`] for the online copy: the references read `env.*`, and the document
 /// declares those variables with `texts` as their values (replacing ones of the same name).
 ///
 /// # Errors
 /// `Workflow` when the document cannot be read or written back.
-pub fn overlay_for_online(flow_yaml: &str, knowledge_base_ids: &[String], texts: &OnlineTexts) -> AppResult<String> {
-    let (mut workflow, _) = overlay_in(flow_yaml, knowledge_base_ids, ENV_NAMESPACE)?;
+///
+/// On this computer the host looks up passages for flows without a retrieval step and puts
+/// them in the brief. The online copy has no host, so such a flow with knowledge attached
+/// gets its own retrieval step right after `start` ([`ONLINE_KNOWLEDGE_STEP`], searching the
+/// customer's message for `passages` passages), and its `llm` steps read the passages as
+/// their context.
+pub fn overlay_for_online(
+    flow_yaml: &str,
+    knowledge_base_ids: &[String],
+    texts: &OnlineTexts,
+    passages: usize,
+) -> AppResult<String> {
+    let (mut workflow, has_retrieval_step) = overlay_in(flow_yaml, knowledge_base_ids, ENV_NAMESPACE)?;
+    if !has_retrieval_step && !knowledge_base_ids.is_empty() {
+        add_knowledge_step(&mut workflow, knowledge_base_ids, passages)?;
+    }
     let values = [
         (BRIEF_SYS_NAME, texts.brief.as_str()),
         (HANDOFF_RULES_SYS_NAME, texts.handoff_rules.as_str()),
@@ -76,6 +98,71 @@ pub fn overlay_for_online(flow_yaml: &str, knowledge_base_ids: &[String], texts:
         });
     }
     workflow.to_json().map_err(|error| AppError::Workflow(error.to_string()))
+}
+
+/// Inserts [`ONLINE_KNOWLEDGE_STEP`] between `start` and what follows it, and points every
+/// `llm` step's context at its passages.
+fn add_knowledge_step(workflow: &mut Workflow, knowledge_base_ids: &[String], passages: usize) -> AppResult<()> {
+    let start = workflow
+        .graph
+        .nodes
+        .iter()
+        .find(|node| node.kind == "start")
+        .ok_or_else(|| AppError::Workflow("the chatbot has no start step".into()))?;
+    let start_id = start.id.clone();
+    let message = start
+        .config
+        .get("variables")
+        .and_then(Json::as_array)
+        .into_iter()
+        .flatten()
+        .find(|variable| {
+            matches!(variable.get("type").and_then(Json::as_str), Some("paragraph" | "text-input" | "string") | None)
+        })
+        .and_then(|variable| variable.get("variable").and_then(Json::as_str))
+        .map(|name| json!([start_id, name]))
+        .unwrap_or_else(|| json!(["sys", "query"]));
+    if workflow.graph.nodes.iter().any(|node| node.id == ONLINE_KNOWLEDGE_STEP) {
+        return Err(AppError::Workflow(format!("the chatbot already has a step named {ONLINE_KNOWLEDGE_STEP}")));
+    }
+    workflow.graph.nodes.push(graphrt_core::dsl::NodeDoc::new(
+        ONLINE_KNOWLEDGE_STEP,
+        KNOWLEDGE_RETRIEVAL_KIND,
+        json!({
+            "query_variable_selector": message,
+            "dataset_ids": knowledge_base_ids,
+            "multiple_retrieval_config": { "top_k": passages.max(1) },
+        }),
+    ));
+    for edge in workflow.graph.edges.iter_mut().filter(|edge| edge.source == start_id) {
+        edge.source = ONLINE_KNOWLEDGE_STEP.to_owned();
+    }
+    workflow.graph.edges.push(graphrt_core::dsl::EdgeDoc::new(start_id, ONLINE_KNOWLEDGE_STEP));
+    for node in workflow.graph.nodes.iter_mut().filter(|node| node.kind == "llm") {
+        node.config.insert(
+            "context".into(),
+            json!({ "enabled": true, "variable_selector": [ONLINE_KNOWLEDGE_STEP, "result"] }),
+        );
+        add_after_brief(&mut node.config, &format!("{ONLINE_KNOWLEDGE_HEADING}\n{{{{#context#}}}}"));
+    }
+    Ok(())
+}
+
+/// Puts `text` right after the brief in the first system message ([`prepend_system_message`]
+/// put the brief there), where the brief on this computer carries its passages.
+fn add_after_brief(config: &mut Map<String, Json>, text: &str) {
+    let brief = reference(ENV_NAMESPACE, BRIEF_SYS_NAME);
+    let first_system = config
+        .get_mut("prompt_template")
+        .and_then(Json::as_array_mut)
+        .and_then(|messages| messages.first_mut())
+        .and_then(Json::as_object_mut)
+        .filter(|first| first.get("role").and_then(Json::as_str) == Some("system"));
+    if let Some(first) = first_system {
+        let original = first.get("text").and_then(Json::as_str).unwrap_or_default().to_owned();
+        let with_text = original.replacen(&brief, &format!("{brief}\n\n{text}"), 1);
+        first.insert("text".into(), Json::String(with_text));
+    }
 }
 
 /// `sys`: values the host gives each reply on this computer.

@@ -226,8 +226,8 @@ fn changes_answers(saved: &ChatbotSettings, next: &ChatbotSettings) -> bool {
 /// ([`overlay::overlay_for_online`]), the stored flow for other agents and for chatbots
 /// whose setup was never saved by then.
 ///
-/// Knowledge passages the bot gets on this computer from the host (flows without a
-/// retrieval step) are not part of it: the online copy answers from its retrieval steps.
+/// A flow without a retrieval step gets one for the attached knowledge (on this computer the
+/// host looks the passages up), so the online copy answers from the same knowledge.
 ///
 /// # Errors
 /// `Workflow` when the flow cannot be overlaid; `Serialization` for a corrupt stored setup.
@@ -239,13 +239,14 @@ pub fn flow_for_online(db: &Database, agent: &Agent) -> AppResult<String> {
         return Ok(agent.flow_yaml.clone());
     };
     let settings: ChatbotSettings = serde_json::from_value(stored)?;
-    let knowledge_base_ids: Vec<String> =
-        reply::attached_knowledge_bases(db, &settings)?.into_iter().map(|base| base.id).collect();
+    let knowledge_bases = reply::attached_knowledge_bases(db, &settings)?;
+    let passages = reply::passage_count(&knowledge_bases);
+    let knowledge_base_ids: Vec<String> = knowledge_bases.into_iter().map(|base| base.id).collect();
     let texts = overlay::OnlineTexts {
         brief: brief::chatbot_brief(&settings, None),
         handoff_rules: brief::handoff_rules_text(&settings.handoff_rules),
     };
-    overlay::overlay_for_online(&agent.flow_yaml, &knowledge_base_ids, &texts)
+    overlay::overlay_for_online(&agent.flow_yaml, &knowledge_base_ids, &texts, passages)
 }
 
 /// Adds a knowledge base to the chatbot (saving the setup if it never was).

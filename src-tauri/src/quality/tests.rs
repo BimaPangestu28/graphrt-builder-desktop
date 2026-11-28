@@ -21,6 +21,8 @@ use crate::storage::Database;
 #[derive(Debug, Default)]
 struct ShopModel {
     requests: Mutex<usize>,
+    /// Every request the judges sent, as text.
+    judge_requests: Mutex<Vec<String>>,
 }
 
 fn text_of(request: &ChatRequest) -> String {
@@ -37,7 +39,23 @@ impl ChatModel for ShopModel {
             *requests += 1;
         }
         let text = text_of(&request);
-        let answer = if text.contains("You check one reply") {
+        let answer = if text.contains("State three facts") {
+            // A reply that says the owner will reply hands over; the rules of a shop that hands
+            // orders over make an order question a hand-off case.
+            let reply = section(&text, "REPLY:").to_lowercase();
+            let question = section(&text, "QUESTION:");
+            let question = question.split("GOOD ANSWER:").next().unwrap_or_default().to_lowercase();
+            serde_json::json!({
+                "reply_hands_over": reply.contains("owner will reply"),
+                "good_answer_hands_over": false,
+                "question_is_a_handoff_case": text.contains("- an order is ready to confirm") && question.contains("order"),
+                "sentence": "Orders go to the owner.",
+            })
+            .to_string()
+        } else if text.contains("You check one reply") {
+            if let Ok(mut judged) = self.judge_requests.lock() {
+                judged.push(text.clone());
+            }
             let reply = section(&text, "REPLY:").to_lowercase();
             let good = section(&text, "GOOD ANSWER (written by the owner):");
             let key_word = good.split_whitespace().next().unwrap_or("x").to_lowercase();
@@ -46,6 +64,8 @@ impl ChatModel for ShopModel {
             } else {
                 r#"{"reasoning":"The reply does not say it.","verdict":"fail"}"#.to_owned()
             }
+        } else if text.contains("HANDS_ORDERS_OVER") && text.to_lowercase().contains("order") {
+            "Thank you, the owner will reply here shortly.".to_owned()
         } else if text.contains("ALWAYS_HELPFUL") {
             "We open at 9. Yes, we deliver.".to_owned()
         } else if text.contains("open") {
@@ -124,6 +144,7 @@ graph:
 }
 
 struct Harness {
+    model: Arc<ShopModel>,
     service: QualityService,
     db: Arc<Database>,
     agent_id: String,
@@ -143,14 +164,15 @@ fn harness() -> Harness {
         })
         .unwrap();
     let sink = Arc::new(Quiet::default());
+    let model = Arc::new(ShopModel::default());
     let dependencies = CheckDependencies {
         db: db.clone(),
         credentials,
-        model_source: Arc::new(FixedModelSource(Arc::new(ShopModel::default()))),
+        model_source: Arc::new(FixedModelSource(model.clone())),
         agent_files: None,
     };
     let service = QualityService::new(dependencies, Arc::new(NoDraftModel), sink.clone());
-    Harness { service, db, agent_id: agent.id, sink }
+    Harness { model, service, db, agent_id: agent.id, sink }
 }
 
 fn test_of(question: &str, good_answer: &str) -> TestInput {
@@ -189,7 +211,10 @@ async fn a_check_gates_the_release_and_a_better_version_is_released_and_rolled_b
 
     let blocked = harness.service.create_release(id, "First", None).unwrap_err();
     assert!(blocked.to_string().contains("Only 1 of 2 answers were good; 2 are needed"), "{blocked}");
+    let status = |harness: &Harness| harness.db.get_agent(id).unwrap().status;
+    assert_eq!(status(&harness), AgentStatus::Draft, "a check without enough good answers is no test passed");
     let forced = harness.service.create_release(id, "First", Some("Shop opens tomorrow".into())).unwrap();
+    assert_eq!(status(&harness), AgentStatus::Draft, "released anyway is not tested");
     assert_eq!((forced.number, forced.passed, forced.total), (1, Some(1), Some(2)));
     assert_eq!(forced.override_reason.as_deref(), Some("Shop opens tomorrow"));
 
@@ -198,6 +223,7 @@ async fn a_check_gates_the_release_and_a_better_version_is_released_and_rolled_b
     let second = harness.service.run_check_now(id).await.unwrap();
     assert_eq!((second.good, second.total), (2, 2));
     assert!(second.enough_good);
+    assert_eq!(status(&harness), AgentStatus::Tested, "a passing check marks the draft tested");
     assert_eq!(second.previous.as_ref().map(|previous| (previous.good, previous.agent_version)), Some((1, 1)));
     let delivery = second.questions.iter().find(|question| question.question == "Do you deliver?").unwrap();
     assert_eq!(delivery.change, Some(QuestionChange::NowGood));
@@ -218,6 +244,27 @@ async fn a_check_gates_the_release_and_a_better_version_is_released_and_rolled_b
 
     let finished = harness.sink.0.lock().unwrap().iter().filter(|progress| progress.finished).count();
     assert_eq!(finished, 2);
+}
+
+#[tokio::test]
+async fn the_judge_is_told_the_language_of_the_question_and_when_the_agent_hands_over() {
+    let harness = harness();
+    let id = harness.agent_id.as_str();
+    harness
+        .service
+        .add_tests(
+            id,
+            vec![test_of("When do you open?", "9 in the morning"), test_of("Jam berapa buka?", "Jam 9 pagi")],
+        )
+        .unwrap();
+    harness.service.run_check_now(id).await.unwrap();
+    let judged = harness.model.judge_requests.lock().unwrap().clone();
+    assert_eq!(judged.len(), 2);
+    let english = judged.iter().find(|text| text.contains("When do you open?")).unwrap();
+    assert!(english.contains("written\nin English") || english.contains("written in English"), "{english}");
+    assert!(english.contains("Write the reasoning in English."), "{english}");
+    let indonesian = judged.iter().find(|text| text.contains("Jam berapa buka?")).unwrap();
+    assert!(indonesian.contains("Write the reasoning in Indonesian (Bahasa Indonesia)."), "{indonesian}");
 }
 
 #[tokio::test]
@@ -286,4 +333,95 @@ fn checks_left_running_by_a_closed_app_are_marked_not_finished() {
     let _service = QualityService::new(dependencies, Arc::new(NoDraftModel), Arc::new(Quiet::default()));
     let stored = db.get_check(&agent.id, &check.id).unwrap();
     assert_eq!((stored.status, stored.error_message.as_deref()), (CheckStatus::Failed, Some(APP_CLOSED_MESSAGE)));
+}
+
+#[test]
+fn a_chatbots_judges_get_its_handoff_rules() {
+    let db = Database::open_in_memory().unwrap();
+    let chatbot = db
+        .create_agent(NewAgent {
+            name: "Bakery".into(),
+            kind: AgentKind::Chatbot,
+            description: "Answers".into(),
+            flow_yaml: flow("Answer briefly."),
+        })
+        .unwrap();
+    let never_saved = handoff_rules_of(&db, &chatbot).unwrap();
+    assert_eq!(
+        never_saved,
+        "It passes the chat to the owner when:\n- the customer asks for a person\n- an order is ready to confirm\n- the customer sounds upset",
+        "not knowing an answer is never a right hand-off for a test that says the answer"
+    );
+
+    let mut settings =
+        crate::chatbot_setup::get_chatbot_setup(&db, &chatbot.id, &|_| Default::default()).unwrap().settings;
+    settings.handoff_rules.order_ready = false;
+    crate::chatbot_setup::save_chatbot_settings(&db, &chatbot.id, settings, &|_| Default::default()).unwrap();
+    let saved = handoff_rules_of(&db, &db.get_agent(&chatbot.id).unwrap()).unwrap();
+    assert!(!saved.contains("order"), "{saved}");
+    let mut settings =
+        crate::chatbot_setup::get_chatbot_setup(&db, &chatbot.id, &|_| Default::default()).unwrap().settings;
+    settings.handoff_rules = crate::chatbot_setup::HandoffRules {
+        asks_for_person: false,
+        not_in_knowledge: true,
+        order_ready: false,
+        sounds_upset: false,
+    };
+    crate::chatbot_setup::save_chatbot_settings(&db, &chatbot.id, settings, &|_| Default::default()).unwrap();
+    assert_eq!(handoff_rules_of(&db, &db.get_agent(&chatbot.id).unwrap()).unwrap(), suite::NO_HANDOFF_RULES);
+}
+
+/// A chatbot that hands every order over to the owner.
+const CHATBOT_FLOW: &str = r#"version: "1"
+name: bakery
+graph:
+  nodes:
+    - id: start
+      type: start
+      variables:
+        - { variable: message, type: paragraph, required: true }
+    - id: reply
+      type: llm
+      model: { provider: openai, name: gpt-4o-mini }
+      prompt_template:
+        - { role: system, text: "HANDS_ORDERS_OVER" }
+        - { role: user, text: "{{#start.message#}}" }
+    - id: answer
+      type: answer
+      answer: "{{#reply.text#}}"
+  edges:
+    - { source: start, target: reply }
+    - { source: reply, target: answer }
+"#;
+
+#[tokio::test]
+async fn a_hand_off_the_chatbots_rules_ask_for_is_a_good_answer() {
+    let harness = harness();
+    let chatbot = harness
+        .db
+        .create_agent(NewAgent {
+            name: "Bakery".into(),
+            kind: AgentKind::Chatbot,
+            description: "Answers".into(),
+            flow_yaml: CHATBOT_FLOW.into(),
+        })
+        .unwrap();
+    let id = chatbot.id.as_str();
+    harness
+        .service
+        .add_tests(id, vec![test_of("Can I place an order for delivery?", "Yes we deliver tomorrow")])
+        .unwrap();
+    let check = harness.service.run_check_now(id).await.unwrap();
+    let order = &check.questions[0];
+    assert_eq!(order.answer, "Thank you, the owner will reply here shortly.");
+    assert!(order.good, "the rules pass orders to the owner: {order:?}");
+    assert_eq!(order.good_because.as_deref(), Some("Orders go to the owner."));
+
+    // With the order rule off, the same hand-off misses what the good answer says.
+    let mut settings =
+        crate::chatbot_setup::get_chatbot_setup(&harness.db, id, &|_| Default::default()).unwrap().settings;
+    settings.handoff_rules.order_ready = false;
+    crate::chatbot_setup::save_chatbot_settings(&harness.db, id, settings, &|_| Default::default()).unwrap();
+    let check = harness.service.run_check_now(id).await.unwrap();
+    assert!(!check.questions[0].good, "{:?}", check.questions[0]);
 }

@@ -127,7 +127,7 @@ pub(super) fn attached_knowledge_bases(
 }
 
 /// Passages to look up: the largest "Passages per answer" among the attached knowledge bases.
-fn passage_count(knowledge_bases: &[StoredKnowledgeBase]) -> usize {
+pub(super) fn passage_count(knowledge_bases: &[StoredKnowledgeBase]) -> usize {
     let most = knowledge_bases.iter().map(|base| base.settings.passages_per_answer).max().unwrap_or(1);
     usize::try_from(most.max(1)).unwrap_or(1)
 }
