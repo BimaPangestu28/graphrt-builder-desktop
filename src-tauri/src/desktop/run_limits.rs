@@ -169,6 +169,9 @@ impl RunLimitsSettings {
             max_depth: self.max_nesting_depth,
             default_node_timeout_ms: Some(u64::from(self.step_timeout_seconds) * 1000),
             max_concurrency: usize::try_from(self.max_parallel_steps).unwrap_or(usize::MAX),
+            // Token and cost limits are per agent (its "Spending limit"), applied per run.
+            max_total_tokens: None,
+            max_cost_micros: None,
         }
     }
 }
